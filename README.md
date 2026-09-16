@@ -141,9 +141,27 @@ Audio capture, transcription, and Ollama networking aren't covered by
 these tests — they need real hardware/permissions/services and are best
 verified by hand per the setup guide's walkthrough.
 
+`Tests/SessionNotesTests/IntegrationTests.swift` exercises the storage,
+search, retrieval, and export layers together against a real temp-directory
+store — headless "integration" coverage that runs reliably in CI (UI
+automation would be flakier and is deferred).
+
 `.github/workflows/smoke-test.yml` runs this same build + test on a macOS
 runner for every push and pull request — it's the first place the app is
-actually compiled, so it doubles as the build smoke test.
+actually compiled, so it doubles as the build smoke test. It caches the
+resolved Swift packages (SwiftWhisper/whisper.cpp) to speed runs and reports
+a per-target code-coverage summary.
+
+## Releasing
+
+Push a tag like `v1.1.0` and `.github/workflows/release.yml` builds the
+ad-hoc-signed app, packages a drag-to-Applications **DMG** with `hdiutil`,
+generates the **`appcast.json`** the in-app updater polls, and publishes both
+as a GitHub Release with the `gh` CLI (no third-party release actions). The
+updater's default feed is that release's `appcast.json` asset, so cutting a
+tag is all it takes to offer an update to installed copies. Releases are
+ad-hoc signed (no notarization), so first launch still needs a right-click →
+Open.
 
 ## Known limitations
 
