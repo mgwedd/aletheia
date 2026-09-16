@@ -91,9 +91,10 @@ Key files:
 
 ## Building
 
-Requires a Mac with Xcode installed (this repository was authored in a
-Linux CI environment with no macOS/Xcode available, so the build has not
-been run or compiled here — see **Known limitations** below).
+Requires a Mac with Xcode 16+ installed. (The code was authored on Linux
+with no local macOS/Xcode; it's compiled and unit-tested on every push by
+the macOS CI in `.github/workflows/smoke-test.yml` — see **Known
+limitations** for what CI does and doesn't cover.)
 
 ```bash
 ./scripts/build.sh
@@ -130,15 +131,14 @@ actually compiled, so it doubles as the build smoke test.
 
 ## Known limitations
 
-- **Never compiled.** This was built without access to macOS or Xcode, so
-  while the code follows documented APIs as closely as verification
-  allowed (SwiftWhisper's and ScreenCaptureKit's public interfaces were
-  checked against their current documentation/source during development,
-  including a fix for a documented ScreenCaptureKit gotcha around empty
-  window-exclusion lists), the first real build on an actual Mac is also
-  the first compile — treat it as needing a normal debugging pass, not as
-  finished, tested software. The unit tests above at least exercise the
-  non-UI, non-AVFoundation logic ahead of that first build.
+- **Runtime paths need manual verification.** CI compiles the whole app
+  (including SwiftWhisper/whisper.cpp) on macOS and runs the unit tests, so
+  it builds and the platform-independent logic is covered. What CI can't
+  exercise is the hardware/permission/service-dependent flow: microphone
+  and Screen & System Audio Recording capture, on-device Whisper
+  transcription, and the Ollama round-trips. Those still need a hands-on
+  pass on a real Mac (the PR's test-plan checklist walks through them)
+  before trusting the app with a real session.
 - **Mic/call sync isn't sample-accurate.** The two audio tracks start a
   few milliseconds apart (whichever of AVAudioEngine/ScreenCaptureKit
   spins up first); fine for matching up who-said-what at conversation
