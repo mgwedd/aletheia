@@ -4,6 +4,7 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
+    @EnvironmentObject private var updateService: UpdateService
     @StateObject private var whisperDownloader = WhisperModelDownloader()
     @State private var ollamaPullProgress: Double = 0
     @State private var ollamaPullStatus: String = ""
@@ -61,6 +62,24 @@ struct SettingsView: View {
                         Button("Download \(settings.ollamaModelName)") { Task { await pullOllamaModel() } }
                     }
                 }
+            }
+
+            Section("Software Update") {
+                LabeledContent("Current version", value: appVersionString)
+                HStack {
+                    if updateService.isChecking {
+                        ProgressView().controlSize(.small)
+                        Text("Checking…").foregroundStyle(.secondary)
+                    } else {
+                        Button("Check for Updates") {
+                            Task { await updateService.checkForUpdates(force: true) }
+                        }
+                    }
+                    Spacer()
+                }
+                Text("Session Notes checks for a new version on launch and lets you know when one is ready.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Status") {
@@ -138,6 +157,10 @@ struct SettingsView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private var appVersionString: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
     }
 
     private func runHealthChecks() async {
