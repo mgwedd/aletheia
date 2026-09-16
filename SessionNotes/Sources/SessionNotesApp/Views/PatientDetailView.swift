@@ -26,10 +26,19 @@ struct PatientDetailView: View {
                         appModel.savePatientNotes(updated)
                     }
 
-                Button {
-                    showPatientChat = true
-                } label: {
-                    Label("Ask About All Sessions", systemImage: "bubble.left.and.bubble.right")
+                HStack {
+                    Button {
+                        showPatientChat = true
+                    } label: {
+                        Label("Ask About All Sessions", systemImage: "bubble.left.and.bubble.right")
+                    }
+                    Spacer()
+                    Button {
+                        exportHistory()
+                    } label: {
+                        Label("Export History", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(sessions.isEmpty)
                 }
 
                 Divider()
@@ -101,6 +110,13 @@ struct PatientDetailView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func exportHistory() {
+        guard let store = appModel.store else { return }
+        let markdown = store.exportPatientHistoryMarkdown(patient: patient)
+        let name = FileSaver.fileName(patient.name, "Session History") + ".md"
+        FileSaver.saveText(markdown, suggestedName: name)
     }
 }
 
