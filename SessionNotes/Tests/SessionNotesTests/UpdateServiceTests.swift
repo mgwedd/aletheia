@@ -17,7 +17,7 @@ private struct NoopInstaller: UpdateInstalling {
     @MainActor func install(_ release: ReleaseInfo) {}
 }
 
-private func release(_ version: String) -> ReleaseInfo {
+private func makeRelease(_ version: String) -> ReleaseInfo {
     ReleaseInfo(
         version: version,
         downloadURL: URL(string: "https://example.com/SessionNotes-\(version).dmg")!,
@@ -52,23 +52,23 @@ final class UpdateServiceTests: XCTestCase {
     }
 
     func testOffersNewerVersion() async {
-        let service = makeService(checker: FakeChecker(.success(release("1.1.0"))))
+        let service = makeService(checker: FakeChecker(.success(makeRelease("1.1.0"))))
         await service.checkForUpdates(force: true)
         XCTAssertEqual(service.available?.version, "1.1.0")
     }
 
     func testDoesNotOfferSameOrOlderVersion() async {
-        let same = makeService(checker: FakeChecker(.success(release("1.0.0"))))
+        let same = makeService(checker: FakeChecker(.success(makeRelease("1.0.0"))))
         await same.checkForUpdates(force: true)
         XCTAssertNil(same.available)
 
-        let older = makeService(checker: FakeChecker(.success(release("0.9.0"))))
+        let older = makeService(checker: FakeChecker(.success(makeRelease("0.9.0"))))
         await older.checkForUpdates(force: true)
         XCTAssertNil(older.available)
     }
 
     func testSkippedVersionIsNotOfferedAgain() async {
-        let service = makeService(checker: FakeChecker(.success(release("1.2.0"))))
+        let service = makeService(checker: FakeChecker(.success(makeRelease("1.2.0"))))
         await service.checkForUpdates(force: true)
         XCTAssertNotNil(service.available)
 
@@ -86,7 +86,7 @@ final class UpdateServiceTests: XCTestCase {
     }
 
     func testThrottleSkipsRepeatCheckWithinInterval() async {
-        let checker = FakeChecker(.success(release("1.1.0")))
+        let checker = FakeChecker(.success(makeRelease("1.1.0")))
         let service = makeService(checker: checker)
 
         await service.checkForUpdates(force: true)   // counts
