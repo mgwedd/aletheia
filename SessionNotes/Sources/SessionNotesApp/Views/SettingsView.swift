@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var isPullingOllamaModel = false
     @State private var healthChecks: [ToolHealthCheck] = []
     @State private var isCheckingHealth = false
+    @State private var showSetup = false
     @State private var errorMessage: String?
     @Environment(\.dismiss) private var dismiss
 
@@ -95,7 +96,11 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Button("Refresh Status") { Task { await runHealthChecks() } }
+                HStack {
+                    Button("Refresh Status") { Task { await runHealthChecks() } }
+                    Spacer()
+                    Button("Setup Assistant…") { showSetup = true }
+                }
             }
         }
         .formStyle(.grouped)
@@ -104,6 +109,23 @@ struct SettingsView: View {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") { dismiss() }
             }
+        }
+        .sheet(isPresented: $showSetup) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Setup Assistant").font(.headline)
+                    Spacer()
+                    Button("Done") { showSetup = false }
+                }
+                .padding()
+                Divider()
+                ScrollView { SetupChecklistView().padding() }
+            }
+            .frame(width: 560, height: 560)
+            .environmentObject(settings)
+            .environmentObject(appModel)
+            .environmentObject(integrations)
+            .onDisappear { Task { await runHealthChecks() } }
         }
         .task { await runHealthChecks() }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {

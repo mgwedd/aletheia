@@ -8,7 +8,18 @@ struct ToolHealthCheck: Identifiable {
         case failed
     }
 
+    /// Stable identity of what's being checked, so the guided setup flow can
+    /// map a check to a one-click fix without matching on display strings.
+    enum Kind {
+        case dataFolder
+        case microphone
+        case screenRecording
+        case whisperModel
+        case ollama
+    }
+
     let id = UUID()
+    let kind: Kind
     let title: String
     let status: Status
     let detail: String
@@ -31,28 +42,29 @@ enum ToolHealth {
 
     static func dataFolderCheck(settings: AppSettings) -> ToolHealthCheck {
         if let url = settings.dataRootURL {
-            return ToolHealthCheck(title: "Data folder", status: .ok, detail: url.path)
+            return ToolHealthCheck(kind: .dataFolder, title: "Data folder", status: .ok, detail: url.path)
         }
-        return ToolHealthCheck(title: "Data folder", status: .failed, detail: "No folder chosen yet. Open Settings to pick one.")
+        return ToolHealthCheck(kind: .dataFolder, title: "Data folder", status: .failed, detail: "No folder chosen yet. Open Settings to pick one.")
     }
 
     static func microphoneCheck() -> ToolHealthCheck {
         switch MicRecorder.permissionStatus {
         case .authorized:
-            return ToolHealthCheck(title: "Microphone access", status: .ok, detail: "Session Notes can record your voice.")
+            return ToolHealthCheck(kind: .microphone, title: "Microphone access", status: .ok, detail: "Session Notes can record your voice.")
         case .notDetermined:
-            return ToolHealthCheck(title: "Microphone access", status: .warning, detail: "You'll be asked to allow this the first time you record.")
+            return ToolHealthCheck(kind: .microphone, title: "Microphone access", status: .warning, detail: "You'll be asked to allow this the first time you record.")
         default:
-            return ToolHealthCheck(title: "Microphone access", status: .failed, detail: "Turn this on in System Settings > Privacy & Security > Microphone.")
+            return ToolHealthCheck(kind: .microphone, title: "Microphone access", status: .failed, detail: "Turn this on in System Settings > Privacy & Security > Microphone.")
         }
     }
 
     static func screenRecordingCheck() async -> ToolHealthCheck {
         let granted = await SystemAudioCapture.checkPermission()
         if granted {
-            return ToolHealthCheck(title: "Call audio capture", status: .ok, detail: "Session Notes can capture the other side of your call.")
+            return ToolHealthCheck(kind: .screenRecording, title: "Call audio capture", status: .ok, detail: "Session Notes can capture the other side of your call.")
         }
         return ToolHealthCheck(
+            kind: .screenRecording,
             title: "Call audio capture",
             status: .failed,
             detail: "Turn this on in System Settings > Privacy & Security > Screen & System Audio Recording, then relaunch Session Notes."
@@ -62,19 +74,19 @@ enum ToolHealth {
     static func whisperModelCheck(settings: AppSettings) -> ToolHealthCheck {
         let path = settings.whisperModelPath
         if FileManager.default.fileExists(atPath: path.path) {
-            return ToolHealthCheck(title: "Transcription model", status: .ok, detail: "\(settings.whisperModel.displayName) is ready.")
+            return ToolHealthCheck(kind: .whisperModel, title: "Transcription model", status: .ok, detail: "\(settings.whisperModel.displayName) is ready.")
         }
-        return ToolHealthCheck(title: "Transcription model", status: .failed, detail: "Not downloaded yet. Open Settings to download it (about \(settings.whisperModel.approximateSizeMB) MB).")
+        return ToolHealthCheck(kind: .whisperModel, title: "Transcription model", status: .failed, detail: "Not downloaded yet. Open Settings to download it (about \(settings.whisperModel.approximateSizeMB) MB).")
     }
 
     static func ollamaCheck(settings: AppSettings, assistant: Assistant) async -> ToolHealthCheck {
         guard await assistant.isReachable() else {
-            return ToolHealthCheck(title: "AI summaries & chat", status: .failed, detail: "Can't reach Ollama. Open the Ollama app first, then reload this screen.")
+            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .failed, detail: "Can't reach Ollama. Open the Ollama app first, then reload this screen.")
         }
         let hasModel = await assistant.hasModel(settings.ollamaModelName)
         if hasModel {
-            return ToolHealthCheck(title: "AI summaries & chat", status: .ok, detail: "\(settings.ollamaModelName) is ready.")
+            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .ok, detail: "\(settings.ollamaModelName) is ready.")
         }
-        return ToolHealthCheck(title: "AI summaries & chat", status: .warning, detail: "Ollama is running, but \(settings.ollamaModelName) isn't downloaded yet. Open Settings to download it.")
+        return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .warning, detail: "Ollama is running, but \(settings.ollamaModelName) isn't downloaded yet. Open Settings to download it.")
     }
 }
