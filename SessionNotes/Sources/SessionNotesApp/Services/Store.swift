@@ -105,9 +105,13 @@ final class Store {
         let sessions: [SessionRecord] = entries.compactMap { folder in
             guard folder.lastPathComponent.hasSuffix("_Session") else { return nil }
             guard let isDir = try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory, isDir else { return nil }
-            let dateString = String(folder.lastPathComponent.dropLast("_Session".count).prefix(10))
+            // The date is always the leading "YYYY-MM-DD" of the folder
+            // name, whether it's "…_Session" or a collision-suffixed
+            // "…_Session-2".
+            let dateString = String(folder.lastPathComponent.prefix(10))
             let date = dateFolderFormatter.date(from: dateString) ?? Date.distantPast
             return SessionRecord(
+                id: StableID.uuid(from: folder.lastPathComponent),
                 patientId: patient.id,
                 date: date,
                 folderName: folder.lastPathComponent,
@@ -131,7 +135,7 @@ final class Store {
         }
         let sessionDir = dir.appendingPathComponent(folderName, isDirectory: true)
         try fileManager.createDirectory(at: sessionDir, withIntermediateDirectories: true)
-        return SessionRecord(patientId: patient.id, date: date, folderName: folderName)
+        return SessionRecord(id: StableID.uuid(from: folderName), patientId: patient.id, date: date, folderName: folderName)
     }
 
     func sessionDir(for patient: Patient, session: SessionRecord) -> URL {
@@ -218,10 +222,23 @@ final class Store {
     }
 }
 
+/// Plain `.iso8601` only has whole-second resolution, which would silently
+/// truncate timestamps on every save/reload round trip (harmless for
+/// display today, but a needless precision loss). Fractional seconds keep
+/// it lossless.
+private let sessionNotesDateFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+}()
+
 extension JSONEncoder {
     static let sessionNotes: JSONEncoder = {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(sessionNotesDateFormatter.string(from: date))
+        }
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return encoder
     }()
@@ -230,7 +247,14 @@ extension JSONEncoder {
 extension JSONDecoder {
     static let sessionNotes: JSONDecoder = {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            guard let date = sessionNotesDateFormatter.date(from: string) else {
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO8601 date: \(string)")
+            }
+            return date
+        }
         return decoder
     }()
 }

@@ -18,6 +18,9 @@ struct PatientDetailView: View {
                     .frame(minHeight: 100, maxHeight: 160)
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
                     .onChange(of: notes) { _, newValue in
+                        // Skip the onAppear sync (notes = patient.notes)
+                        // firing this too — only persist actual edits.
+                        guard newValue != patient.notes else { return }
                         var updated = patient
                         updated.notes = newValue
                         appModel.savePatientNotes(updated)
@@ -50,7 +53,7 @@ struct PatientDetailView: View {
             .frame(minWidth: 320)
 
             if let selectedSession {
-                SessionDetailView(patient: patient, session: selectedSession)
+                SessionDetailView(patient: patient, session: selectedSession, onSessionUpdated: refresh)
                     .id(selectedSession.id)
             } else {
                 ContentUnavailableView(

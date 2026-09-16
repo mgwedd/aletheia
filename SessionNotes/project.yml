@@ -16,9 +16,6 @@ settings:
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
-    PRODUCT_BUNDLE_IDENTIFIER: com.sessionnotes.app
-    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
 packages:
   SwiftWhisper:
@@ -39,7 +36,37 @@ targets:
       path: Sources/SessionNotesApp/Resources/Info.plist
     entitlements:
       path: Sources/SessionNotesApp/Resources/SessionNotes.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sessionnotes.app
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     dependencies:
       - package: SwiftWhisper
       - sdk: ScreenCaptureKit.framework
       - sdk: AVFoundation.framework
+
+  SessionNotesTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests/SessionNotesTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sessionnotes.appTests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: SessionNotes
+
+schemes:
+  SessionNotes:
+    build:
+      targets:
+        SessionNotes: all
+        SessionNotesTests: [test]
+    test:
+      targets:
+        - SessionNotesTests
+    run:
+      config: Debug

@@ -3,6 +3,11 @@ import SwiftUI
 struct SessionDetailView: View {
     let patient: Patient
     let session: SessionRecord
+    /// Called after recording, transcribing, or summarizing changes what's
+    /// on disk for this session, so the sessions list (visible at the same
+    /// time in the split view) can refresh its "has recording/transcript/
+    /// summary" badges without the therapist needing to click away and back.
+    var onSessionUpdated: () -> Void = {}
 
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var settings: AppSettings
@@ -160,6 +165,7 @@ struct SessionDetailView: View {
 
     private func stopRecording() async {
         await recorder.stop()
+        onSessionUpdated()
     }
 
     private func transcribe() async {
@@ -177,6 +183,7 @@ struct SessionDetailView: View {
             transcriptText = text
             try store.saveTranscript(text, for: patient, session: session)
             appModel.refreshPatients()
+            onSessionUpdated()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -192,6 +199,7 @@ struct SessionDetailView: View {
             let result = try await client.generate(model: settings.ollamaModelName, prompt: prompt)
             summaryText = result
             try store.saveSummary(result, for: patient, session: session)
+            onSessionUpdated()
         } catch {
             errorMessage = error.localizedDescription
         }

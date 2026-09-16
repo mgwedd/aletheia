@@ -48,7 +48,11 @@ final class SystemAudioCapture: NSObject {
             throw SystemAudioCaptureError.noDisplayAvailable
         }
 
-        let filter = SCContentFilter(display: display, excludingWindows: [])
+        // `init(display:excludingWindows:)` with an empty window list is a
+        // known ScreenCaptureKit gotcha that can make the stream silently
+        // never start; excludingApplications with an empty list is the
+        // documented-safe way to say "capture everything on this display".
+        let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
         let config = SCStreamConfiguration()
         config.capturesAudio = true
         config.sampleRate = 48000

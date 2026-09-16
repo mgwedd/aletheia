@@ -106,20 +106,39 @@ Runtime build at `dist/Session Notes.app`. `project.yml` (rather than a
 checked-in `.xcodeproj`) is the source of truth for the project, which
 keeps it diffable and avoids hand-edited `.pbxproj` merge conflicts.
 
+## Testing
+
+`Tests/SessionNotesTests` covers the platform-independent logic — patient
+slug/collision handling, session date-folder naming and collisions,
+transcript/summary persistence, cross-session context ordering, and the
+deterministic session-ID scheme (`Services/StableID.swift`) — via
+`@testable import SessionNotes` against a temp directory `Store`, plus the
+prompt templates in `Services/Prompts.swift`. Run them from Xcode
+(`Cmd+U`) or:
+
+```bash
+cd SessionNotes && xcodegen generate && xcodebuild test -scheme SessionNotes -destination 'platform=macOS'
+```
+
+Audio capture, transcription, and Ollama networking aren't covered by
+these tests — they need real hardware/permissions/services and are best
+verified by hand per the setup guide's walkthrough.
+
 ## Known limitations
 
 - **Never compiled.** This was built without access to macOS or Xcode, so
   while the code follows documented APIs as closely as verification
   allowed (SwiftWhisper's and ScreenCaptureKit's public interfaces were
-  checked against their current documentation/source during development),
-  the first real build on an actual Mac is also the first compile — treat
-  it as needing a normal debugging pass, not as finished, tested software.
+  checked against their current documentation/source during development,
+  including a fix for a documented ScreenCaptureKit gotcha around empty
+  window-exclusion lists), the first real build on an actual Mac is also
+  the first compile — treat it as needing a normal debugging pass, not as
+  finished, tested software. The unit tests above at least exercise the
+  non-UI, non-AVFoundation logic ahead of that first build.
 - **Mic/call sync isn't sample-accurate.** The two audio tracks start a
   few milliseconds apart (whichever of AVAudioEngine/ScreenCaptureKit
   spins up first); fine for matching up who-said-what at conversation
   granularity, not frame-accurate lip sync.
-- **No app icon yet** — `Assets.xcassets/AppIcon.appiconset` is an empty
-  placeholder. Cosmetic only; add one in Xcode whenever convenient.
 - **CPU-only inference.** SwiftWhisper/whisper.cpp uses Metal where
   available but there's no bundled CoreML encoder, so larger Whisper
   models will be noticeably slower on an Air than on a machine with more
