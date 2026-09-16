@@ -271,6 +271,20 @@ final class Store {
         }
         return chunks.joined(separator: "\n\n")
     }
+
+    /// Relevance-aware variant of `gatherPatientContext`: for a small history
+    /// it returns everything (same as above); once the transcripts outgrow
+    /// the prompt budget it hands back only the passages most relevant to
+    /// `question`. This is the actual retrieval upgrade the naive method was
+    /// designed to be swapped for.
+    func gatherPatientContext(for patient: Patient, relevantTo question: String) -> String {
+        let sessions = (try? listSessions(for: patient)) ?? []
+        let documents = sessions.compactMap { session -> TranscriptDocument? in
+            guard let transcript = transcript(for: patient, session: session), !transcript.isEmpty else { return nil }
+            return TranscriptDocument(date: session.date, text: transcript)
+        }
+        return PatientContextRetriever.context(for: documents, question: question)
+    }
 }
 
 /// Plain `.iso8601` only has whole-second resolution, which would silently
