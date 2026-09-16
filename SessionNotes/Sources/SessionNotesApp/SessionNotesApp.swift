@@ -4,11 +4,13 @@ import SwiftUI
 struct SessionNotesApp: App {
     @StateObject private var settings = AppSettings.shared
     @StateObject private var appModel: AppModel
+    @StateObject private var integrations: Integrations
 
     init() {
         let settings = AppSettings.shared
         _settings = StateObject(wrappedValue: settings)
         _appModel = StateObject(wrappedValue: AppModel(settings: settings))
+        _integrations = StateObject(wrappedValue: Integrations(settings: settings))
     }
 
     var body: some Scene {
@@ -16,6 +18,7 @@ struct SessionNotesApp: App {
             RootView()
                 .environmentObject(settings)
                 .environmentObject(appModel)
+                .environmentObject(integrations)
                 .sheet(isPresented: showFirstRun) {
                     FirstRunView()
                         .environmentObject(settings)

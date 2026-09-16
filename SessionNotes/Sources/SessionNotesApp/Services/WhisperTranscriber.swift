@@ -24,11 +24,15 @@ private struct TranscribedLine {
 /// so this runs on a background executor. `onProgress` may be called from
 /// any thread — callers hop back to the main actor themselves before
 /// touching UI state.
-final class WhisperTranscriber {
+final class WhisperTranscriber: Transcribing {
     private let modelPath: URL
 
     init(modelPath: URL) {
         self.modelPath = modelPath
+    }
+
+    var isReady: Bool {
+        FileManager.default.fileExists(atPath: modelPath.path)
     }
 
     /// Transcribes the mic and call recordings separately, then merges the

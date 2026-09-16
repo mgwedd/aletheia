@@ -65,6 +65,22 @@ plain, Finder-browsable JSON/text — never a database — matching the design
 goal of a non-technical user being able to see and understand her own
 files.
 
+### Integrations (adapter layer)
+
+The external integrations are behind protocols in `Services/Integrations/`,
+so each is swappable without touching the UI:
+
+- `Transcribing` — speech-to-text (implemented by `WhisperTranscriber`,
+  i.e. whisper.cpp compiled into the app via SwiftWhisper; no external CLI
+  or GUI app).
+- `Assistant` — the local LLM used for summaries and chat (implemented by
+  `OllamaClient` over `127.0.0.1:11434`). `AssistantService` builds the
+  prompts and is what the summary/chat views call.
+- `Integrations` is the one registry that decides which concrete type backs
+  each adapter; views ask it for a `Transcribing` or `AssistantService` and
+  never construct a client directly. Swapping a backend is a one-line change
+  there.
+
 Key files:
 
 - `Services/Store.swift` — all patient/session file I/O.

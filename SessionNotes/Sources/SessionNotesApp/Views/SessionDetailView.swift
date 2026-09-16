@@ -10,7 +10,7 @@ struct SessionDetailView: View {
     var onSessionUpdated: () -> Void = {}
 
     @EnvironmentObject private var appModel: AppModel
-    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var integrations: Integrations
     @StateObject private var recorder = SessionRecorder()
 
     @State private var transcriptText: String = ""
@@ -189,7 +189,7 @@ struct SessionDetailView: View {
         transcribeProgress = 0
         defer { isTranscribing = false }
         do {
-            let transcriber = WhisperTranscriber(modelPath: settings.whisperModelPath)
+            let transcriber = integrations.makeTranscriber()
             let micURL = store.micRecordingURL(for: patient, session: session)
             let callURL = store.callRecordingURL(for: patient, session: session)
             let text = try await transcriber.transcribeSession(micURL: micURL, callURL: callURL) { progress in
@@ -209,9 +209,7 @@ struct SessionDetailView: View {
         isSummarizing = true
         defer { isSummarizing = false }
         do {
-            let client = OllamaClient(baseURL: settings.ollamaBaseURL)
-            let prompt = Prompts.summarize(transcript: transcriptText)
-            let result = try await client.generate(model: settings.ollamaModelName, prompt: prompt)
+            let result = try await integrations.makeAssistantService().summarize(transcript: transcriptText)
             summaryText = result
             try store.saveSummary(result, for: patient, session: session)
             onSessionUpdated()
@@ -227,9 +225,8 @@ struct SessionDetailView: View {
         Task {
             defer { isChatSending = false }
             do {
-                let prompt = Prompts.sessionChat(transcript: transcriptText, history: chatMessages, question: question)
-                let client = OllamaClient(baseURL: settings.ollamaBaseURL)
-                let response = try await client.generate(model: settings.ollamaModelName, prompt: prompt)
+                let response = try await integrations.makeAssistantService()
+                    .answerAboutSession(transcript: transcriptText, history: chatMessages, question: question)
                 chatMessages.append(ChatMessage(role: .assistant, text: response))
                 try? store.saveSessionChat(chatMessages, for: patient, session: session)
             } catch {

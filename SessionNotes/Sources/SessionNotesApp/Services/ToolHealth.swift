@@ -20,11 +20,11 @@ struct ToolHealthCheck: Identifiable {
 /// these tools are.
 @MainActor
 enum ToolHealth {
-    static func runAllChecks(settings: AppSettings) async -> [ToolHealthCheck] {
+    static func runAllChecks(settings: AppSettings, assistant: Assistant) async -> [ToolHealthCheck] {
         async let mic = microphoneCheck()
         async let screen = screenRecordingCheck()
         async let whisperModel = whisperModelCheck(settings: settings)
-        async let ollama = ollamaCheck(settings: settings)
+        async let ollama = ollamaCheck(settings: settings, assistant: assistant)
         async let dataFolder = dataFolderCheck(settings: settings)
         return await [dataFolder, mic, screen, whisperModel, ollama]
     }
@@ -67,12 +67,11 @@ enum ToolHealth {
         return ToolHealthCheck(title: "Transcription model", status: .failed, detail: "Not downloaded yet. Open Settings to download it (about \(settings.whisperModel.approximateSizeMB) MB).")
     }
 
-    static func ollamaCheck(settings: AppSettings) async -> ToolHealthCheck {
-        let client = OllamaClient(baseURL: settings.ollamaBaseURL)
-        guard await client.isReachable() else {
+    static func ollamaCheck(settings: AppSettings, assistant: Assistant) async -> ToolHealthCheck {
+        guard await assistant.isReachable() else {
             return ToolHealthCheck(title: "AI summaries & chat", status: .failed, detail: "Can't reach Ollama. Open the Ollama app first, then reload this screen.")
         }
-        let hasModel = await client.hasModel(settings.ollamaModelName)
+        let hasModel = await assistant.hasModel(settings.ollamaModelName)
         if hasModel {
             return ToolHealthCheck(title: "AI summaries & chat", status: .ok, detail: "\(settings.ollamaModelName) is ready.")
         }
