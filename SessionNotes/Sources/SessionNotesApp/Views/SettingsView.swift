@@ -34,6 +34,9 @@ struct SettingsView: View {
                         Text(model.displayName).tag(model)
                     }
                 }
+                Text("Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.whisperModel.shortName).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 HStack {
                     if whisperDownloader.isDownloading {
                         ProgressView(value: whisperDownloader.progress)

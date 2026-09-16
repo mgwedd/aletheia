@@ -31,6 +31,10 @@ struct SetupChecklistView: View {
                 if item.id != items.last?.id { Divider() }
             }
 
+            Label(settings.recommendation.summary, systemImage: "cpu")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Text("Everything runs on this Mac. The only thing to install is Ollama; the models download here in the app.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

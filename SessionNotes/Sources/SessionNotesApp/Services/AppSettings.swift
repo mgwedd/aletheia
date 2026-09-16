@@ -35,6 +35,15 @@ enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
     }
 
     var fileName: String { "ggml-\(rawValue).bin" }
+
+    var shortName: String {
+        switch self {
+        case .baseEn: return "Base"
+        case .smallEn: return "Small"
+        case .mediumEn: return "Medium"
+        case .largeV3: return "Large v3"
+        }
+    }
 }
 
 /// All persisted app preferences. Backed by UserDefaults; nothing here is
@@ -80,13 +89,26 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(updateFeedURL.absoluteString, forKey: Keys.updateFeedURL) }
     }
 
+    /// What this Mac can comfortably run, and the model sizes recommended for
+    /// it. Computed once at launch and surfaced in setup so defaults match the
+    /// hardware instead of a one-size-fits-all guess.
+    let hardware: HardwareCapabilities
+    let recommendation: ModelRecommendation
+
     private init() {
+        let hardware = HardwareCapabilities.current()
+        let recommendation = ModelAdvisor.recommend(for: hardware)
+        self.hardware = hardware
+        self.recommendation = recommendation
+
+        // First launch picks defaults that fit the hardware; once the user has
+        // chosen, their choice always wins.
         if let raw = defaults.string(forKey: Keys.whisperModel), let model = WhisperModel(rawValue: raw) {
             whisperModel = model
         } else {
-            whisperModel = .smallEn
+            whisperModel = recommendation.whisperModel
         }
-        ollamaModelName = defaults.string(forKey: Keys.ollamaModelName) ?? "llama3.1:8b"
+        ollamaModelName = defaults.string(forKey: Keys.ollamaModelName) ?? recommendation.ollamaModel
         if let raw = defaults.string(forKey: Keys.ollamaBaseURL), let url = URL(string: raw) {
             ollamaBaseURL = url
         } else {
