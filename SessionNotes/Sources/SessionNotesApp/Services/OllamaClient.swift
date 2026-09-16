@@ -40,7 +40,7 @@ private struct OllamaPullProgress: Decodable {
 /// lives, which is also what keeps the app sandbox-compatible (it only
 /// needs the network-client entitlement, not permission to run arbitrary
 /// executables).
-final class OllamaClient {
+final class OllamaClient: Assistant {
     private let baseURL: URL
     private let session = URLSession.shared
 

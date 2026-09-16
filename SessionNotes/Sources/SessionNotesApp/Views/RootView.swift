@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var integrations: Integrations
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
     @State private var showSearch = false
@@ -41,6 +42,8 @@ struct RootView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(settings)
+                .environmentObject(appModel)
+                .environmentObject(integrations)
                 .frame(minWidth: 560, minHeight: 520)
         }
         .sheet(isPresented: $showSearch) {

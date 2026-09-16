@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var integrations: Integrations
     @StateObject private var whisperDownloader = WhisperModelDownloader()
     @State private var ollamaPullProgress: Double = 0
     @State private var ollamaPullStatus: String = ""
@@ -126,8 +127,8 @@ struct SettingsView: View {
         ollamaPullProgress = 0
         defer { isPullingOllamaModel = false }
         do {
-            let client = OllamaClient(baseURL: settings.ollamaBaseURL)
-            try await client.pullModel(settings.ollamaModelName) { progress, status in
+            let assistant = integrations.makeAssistant()
+            try await assistant.pullModel(settings.ollamaModelName) { progress, status in
                 Task { @MainActor in
                     ollamaPullProgress = progress
                     ollamaPullStatus = status
@@ -142,6 +143,6 @@ struct SettingsView: View {
     private func runHealthChecks() async {
         isCheckingHealth = true
         defer { isCheckingHealth = false }
-        healthChecks = await ToolHealth.runAllChecks(settings: settings)
+        healthChecks = await ToolHealth.runAllChecks(settings: settings, assistant: integrations.makeAssistant())
     }
 }

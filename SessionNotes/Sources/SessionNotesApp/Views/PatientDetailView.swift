@@ -4,6 +4,7 @@ struct PatientDetailView: View {
     let patient: Patient
 
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var integrations: Integrations
     @State private var sessions: [SessionRecord] = []
     @State private var selectedSession: SessionRecord?
     @State private var notes: String = ""
@@ -79,6 +80,8 @@ struct PatientDetailView: View {
         }
         .sheet(isPresented: $showPatientChat) {
             PatientChatSheet(patient: patient)
+                .environmentObject(appModel)
+                .environmentObject(integrations)
                 .frame(minWidth: 560, minHeight: 500)
         }
         .alert("Something went wrong", isPresented: errorBinding) {
@@ -149,7 +152,7 @@ private struct SessionRow: View {
 private struct PatientChatSheet: View {
     let patient: Patient
     @EnvironmentObject private var appModel: AppModel
-    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var integrations: Integrations
     @State private var messages: [ChatMessage] = []
     @State private var isSending = false
     @State private var errorMessage: String?
@@ -186,9 +189,8 @@ private struct PatientChatSheet: View {
             defer { isSending = false }
             do {
                 let context = store.gatherPatientContext(for: patient, relevantTo: question)
-                let prompt = Prompts.patientChat(context: context, history: messages, question: question)
-                let client = OllamaClient(baseURL: settings.ollamaBaseURL)
-                let response = try await client.generate(model: settings.ollamaModelName, prompt: prompt)
+                let response = try await integrations.makeAssistantService()
+                    .answerAboutPatient(context: context, history: messages, question: question)
                 messages.append(ChatMessage(role: .assistant, text: response))
                 try? store.savePatientChat(messages, for: patient)
             } catch {
