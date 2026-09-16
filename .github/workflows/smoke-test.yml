@@ -17,15 +17,17 @@ concurrency:
 jobs:
   build-and-test:
     name: Build & test (macOS)
-    runs-on: macos-14
+    # macos-15 ships Xcode 16, whose project format XcodeGen emits; the
+    # older macos-14 image (Xcode 15.4) can't read it.
+    runs-on: macos-15
     defaults:
       run:
         working-directory: SessionNotes
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select latest stable Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Show selected Xcode
+        run: xcodebuild -version
 
       - name: Install XcodeGen
         run: brew install xcodegen
