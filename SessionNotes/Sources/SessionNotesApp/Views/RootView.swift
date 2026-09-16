@@ -5,6 +5,7 @@ struct RootView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var integrations: Integrations
     @EnvironmentObject private var updateService: UpdateService
+    @ObservedObject private var navigator = AppNavigator.shared
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
     @State private var showSearch = false
@@ -72,6 +73,18 @@ struct RootView: View {
         } message: {
             Text(appModel.schemaWarning ?? "")
         }
+        .onChange(of: navigator.pendingPatientID) { _, _ in navigateToPendingPatient() }
+        .onAppear { navigateToPendingPatient() }
+    }
+
+    /// Honors a navigation request from an App Intent (Siri/Shortcuts).
+    private func navigateToPendingPatient() {
+        guard let id = navigator.pendingPatientID else { return }
+        appModel.refreshPatients()
+        if let match = appModel.patients.first(where: { $0.id == id }) {
+            selectedPatient = match
+        }
+        navigator.pendingPatientID = nil
     }
 
     private var errorBinding: Binding<Bool> {
