@@ -30,6 +30,7 @@ struct SessionNotesApp: App {
                     FirstRunView()
                         .environmentObject(settings)
                         .environmentObject(appModel)
+                        .environmentObject(integrations)
                 }
                 .frame(minWidth: 900, minHeight: 600)
                 .task { await updateService.checkForUpdates() }
