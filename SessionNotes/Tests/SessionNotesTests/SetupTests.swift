@@ -7,7 +7,7 @@ final class SetupTests: XCTestCase {
     }
 
     func testOkChecksHaveNoAction() {
-        for kind in [ToolHealthCheck.Kind.dataFolder, .microphone, .screenRecording, .whisperModel, .ollama] {
+        for kind in [ToolHealthCheck.Kind.dataFolder, .microphone, .screenRecording, .whisperModel, .ollama, .appleIntelligence] {
             XCTAssertNil(Setup.action(for: check(kind, .ok)))
         }
     }
@@ -20,6 +20,8 @@ final class SetupTests: XCTestCase {
         XCTAssertEqual(Setup.action(for: check(.whisperModel, .failed)), .downloadTranscriptionModel)
         XCTAssertEqual(Setup.action(for: check(.ollama, .failed)), .installOrOpenOllama)
         XCTAssertEqual(Setup.action(for: check(.ollama, .warning)), .downloadOllamaModel)
+        XCTAssertEqual(Setup.action(for: check(.appleIntelligence, .failed)), .enableAppleIntelligence)
+        XCTAssertNil(Setup.action(for: check(.appleIntelligence, .warning)))
     }
 
     func testIsReadyIgnoresWarningsButNotFailures() {

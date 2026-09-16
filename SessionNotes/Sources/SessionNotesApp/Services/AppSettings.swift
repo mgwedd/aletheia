@@ -59,6 +59,7 @@ final class AppSettings: ObservableObject {
     private enum Keys {
         static let dataRootBookmark = "dataRootBookmark"
         static let whisperModel = "whisperModel"
+        static let assistantBackend = "assistantBackend"
         static let ollamaModelName = "ollamaModelName"
         static let ollamaBaseURL = "ollamaBaseURL"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
@@ -75,6 +76,9 @@ final class AppSettings: ObservableObject {
     @Published var dataRootURL: URL?
     @Published var whisperModel: WhisperModel {
         didSet { defaults.set(whisperModel.rawValue, forKey: Keys.whisperModel) }
+    }
+    @Published var assistantBackend: AssistantBackend {
+        didSet { defaults.set(assistantBackend.rawValue, forKey: Keys.assistantBackend) }
     }
     @Published var ollamaModelName: String {
         didSet { defaults.set(ollamaModelName, forKey: Keys.ollamaModelName) }
@@ -107,6 +111,11 @@ final class AppSettings: ObservableObject {
             whisperModel = model
         } else {
             whisperModel = recommendation.whisperModel
+        }
+        if let raw = defaults.string(forKey: Keys.assistantBackend), let backend = AssistantBackend(rawValue: raw) {
+            assistantBackend = backend
+        } else {
+            assistantBackend = .automatic
         }
         ollamaModelName = defaults.string(forKey: Keys.ollamaModelName) ?? recommendation.ollamaModel
         if let raw = defaults.string(forKey: Keys.ollamaBaseURL), let url = URL(string: raw) {

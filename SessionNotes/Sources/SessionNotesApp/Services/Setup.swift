@@ -9,6 +9,7 @@ enum SetupAction: Equatable {
     case downloadTranscriptionModel
     case installOrOpenOllama
     case downloadOllamaModel
+    case enableAppleIntelligence
 
     var label: String {
         switch self {
@@ -19,6 +20,7 @@ enum SetupAction: Equatable {
         case .downloadTranscriptionModel: return "Download"
         case .installOrOpenOllama: return "Get Ollama"
         case .downloadOllamaModel: return "Download Model"
+        case .enableAppleIntelligence: return "Open Settings"
         }
     }
 }
@@ -55,6 +57,10 @@ enum Setup {
             return .installOrOpenOllama      // not reachable — install/launch it
         case (.ollama, .warning):
             return .downloadOllamaModel      // running, model missing
+        case (.appleIntelligence, .failed):
+            return .enableAppleIntelligence  // supported but turned off
+        case (.appleIntelligence, .warning):
+            return nil                       // e.g. model still downloading — nothing to click
         }
     }
 

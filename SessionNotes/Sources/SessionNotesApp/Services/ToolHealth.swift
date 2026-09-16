@@ -16,6 +16,7 @@ struct ToolHealthCheck: Identifiable {
         case screenRecording
         case whisperModel
         case ollama
+        case appleIntelligence
     }
 
     let id = UUID()
@@ -31,13 +32,13 @@ struct ToolHealthCheck: Identifiable {
 /// these tools are.
 @MainActor
 enum ToolHealth {
-    static func runAllChecks(settings: AppSettings, assistant: Assistant) async -> [ToolHealthCheck] {
+    static func runAllChecks(settings: AppSettings, backend: AssistantBackend, assistant: Assistant) async -> [ToolHealthCheck] {
         async let mic = microphoneCheck()
         async let screen = screenRecordingCheck()
         async let whisperModel = whisperModelCheck(settings: settings)
-        async let ollama = ollamaCheck(settings: settings, assistant: assistant)
+        async let ai = assistantCheck(settings: settings, backend: backend, assistant: assistant)
         async let dataFolder = dataFolderCheck(settings: settings)
-        return await [dataFolder, mic, screen, whisperModel, ollama]
+        return await [dataFolder, mic, screen, whisperModel, ai]
     }
 
     static func dataFolderCheck(settings: AppSettings) -> ToolHealthCheck {
@@ -77,6 +78,24 @@ enum ToolHealth {
             return ToolHealthCheck(kind: .whisperModel, title: "Transcription model", status: .ok, detail: "\(settings.whisperModel.displayName) is ready.")
         }
         return ToolHealthCheck(kind: .whisperModel, title: "Transcription model", status: .failed, detail: "Not downloaded yet. Open Settings to download it (about \(settings.whisperModel.approximateSizeMB) MB).")
+    }
+
+    /// Reports on whichever backend will actually run (see
+    /// `Integrations.effectiveAssistantBackend`), so the guidance matches what
+    /// the user needs to do — nothing at all on Apple Intelligence, or the
+    /// Ollama install/model steps otherwise.
+    static func assistantCheck(settings: AppSettings, backend: AssistantBackend, assistant: Assistant) async -> ToolHealthCheck {
+        switch backend {
+        case .appleIntelligence:
+            if Integrations.appleIntelligenceAvailable {
+                return ToolHealthCheck(kind: .appleIntelligence, title: "AI summaries & chat", status: .ok, detail: "Apple Intelligence is ready — nothing to install.")
+            }
+            // Shouldn't normally happen (the backend only resolves to Apple
+            // Intelligence when it's available), but guard the race anyway.
+            return ToolHealthCheck(kind: .appleIntelligence, title: "AI summaries & chat", status: .failed, detail: "Turn on Apple Intelligence in System Settings › Apple Intelligence & Siri, then reload this screen.")
+        case .ollama, .automatic, .localLlama:
+            return await ollamaCheck(settings: settings, assistant: assistant)
+        }
     }
 
     static func ollamaCheck(settings: AppSettings, assistant: Assistant) async -> ToolHealthCheck {

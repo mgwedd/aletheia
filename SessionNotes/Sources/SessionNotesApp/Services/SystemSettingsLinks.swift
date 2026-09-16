@@ -18,6 +18,14 @@ enum SystemSettingsLinks {
         NSWorkspace.shared.open(ollamaDownload)
     }
 
+    /// Best-effort deep link to the Apple Intelligence & Siri pane. The pane
+    /// anchor isn't a stable public API, so if it doesn't resolve the OS falls
+    /// back to opening System Settings; the on-screen text names the path either
+    /// way.
+    static func openAppleIntelligenceSettings() {
+        open("x-apple.systempreferences:com.apple.Siri-Settings.extension")
+    }
+
     private static func open(_ string: String) {
         if let url = URL(string: string) {
             NSWorkspace.shared.open(url)

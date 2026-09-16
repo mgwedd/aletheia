@@ -83,7 +83,7 @@ struct SetupChecklistView: View {
     private func refresh() async {
         isChecking = true
         defer { isChecking = false }
-        items = Setup.items(from: await ToolHealth.runAllChecks(settings: settings, assistant: integrations.makeAssistant()))
+        items = Setup.items(from: await ToolHealth.runAllChecks(settings: settings, backend: integrations.effectiveAssistantBackend, assistant: integrations.makeAssistant()))
     }
 
     private func perform(_ action: SetupAction) async {
@@ -109,6 +109,8 @@ struct SetupChecklistView: View {
             } catch {
                 errorMessage = error.localizedDescription
             }
+        case .enableAppleIntelligence:
+            SystemSettingsLinks.openAppleIntelligenceSettings()
         case .installOrOpenOllama:
             SystemSettingsLinks.openOllamaDownload()
         case .downloadOllamaModel:

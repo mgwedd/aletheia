@@ -53,18 +53,36 @@ struct SettingsView: View {
                 }
             }
 
-            Section("AI Summaries & Chat (Ollama)") {
-                TextField("Model name", text: $settings.ollamaModelName)
-                Text("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com.")
+            Section("AI Summaries & Chat") {
+                Picker("Engine", selection: $settings.assistantBackend) {
+                    ForEach(AssistantBackend.allCases) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
+                Text(settings.assistantBackend.summary)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                HStack {
-                    if isPullingOllamaModel {
-                        ProgressView(value: ollamaPullProgress)
-                        Text(ollamaPullStatus).font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Button("Download \(settings.ollamaModelName)") { Task { await pullOllamaModel() } }
+                LabeledContent("In use now", value: integrations.effectiveAssistantBackend.displayName)
+                    .font(.caption)
+
+                if integrations.effectiveAssistantBackend == .ollama {
+                    Divider()
+                    TextField("Ollama model name", text: $settings.ollamaModelName)
+                    Text("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        if isPullingOllamaModel {
+                            ProgressView(value: ollamaPullProgress)
+                            Text(ollamaPullStatus).font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            Button("Download \(settings.ollamaModelName)") { Task { await pullOllamaModel() } }
+                        }
                     }
+                } else if integrations.effectiveAssistantBackend == .appleIntelligence {
+                    Label("Runs on your Mac with Apple Intelligence — nothing to install or download.", systemImage: "apple.logo")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -191,6 +209,6 @@ struct SettingsView: View {
     private func runHealthChecks() async {
         isCheckingHealth = true
         defer { isCheckingHealth = false }
-        healthChecks = await ToolHealth.runAllChecks(settings: settings, assistant: integrations.makeAssistant())
+        healthChecks = await ToolHealth.runAllChecks(settings: settings, backend: integrations.effectiveAssistantBackend, assistant: integrations.makeAssistant())
     }
 }

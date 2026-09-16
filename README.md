@@ -73,13 +73,45 @@ so each is swappable without touching the UI:
 - `Transcribing` — speech-to-text (implemented by `WhisperTranscriber`,
   i.e. whisper.cpp compiled into the app via SwiftWhisper; no external CLI
   or GUI app).
-- `Assistant` — the local LLM used for summaries and chat (implemented by
-  `OllamaClient` over `127.0.0.1:11434`). `AssistantService` builds the
-  prompts and is what the summary/chat views call.
+- `Assistant` — the local LLM used for summaries and chat. There are
+  multiple implementations behind this one protocol, chosen per Mac (see
+  **AI backend** below): `FoundationModelsAssistant` (Apple Intelligence,
+  on-device) and `OllamaClient` (a local Ollama server over
+  `127.0.0.1:11434`). `AssistantService` builds the prompts and is what the
+  summary/chat views call.
 - `Integrations` is the one registry that decides which concrete type backs
   each adapter; views ask it for a `Transcribing` or `AssistantService` and
-  never construct a client directly. Swapping a backend is a one-line change
-  there.
+  never construct a client directly. Its `effectiveAssistantBackend` resolves
+  the user's preference against what the machine actually supports, and
+  `makeAssistant()` hands back the matching implementation.
+
+### AI backend (tiered, on-device first)
+
+Summaries and chat run against a local model, picked to keep setup as close
+to zero-install as the hardware allows:
+
+1. **Apple Intelligence (primary).** On a Mac that supports it,
+   `FoundationModelsAssistant` uses Apple's on-device Foundation Models —
+   no install, no model download, no external process, and the OS keeps the
+   model updated. The whole file sits behind `#if canImport(FoundationModels)`
+   so it compiles out on toolchains whose SDK predates the framework (the CI
+   image today) and lights up automatically when built with a newer Xcode.
+2. **Ollama (fallback).** Where Apple Intelligence isn't available,
+   `OllamaClient` talks to a local Ollama server. This is the one backend
+   that needs a one-time install, and the setup/status screens only ask for
+   it when it's the backend actually in use.
+3. **Embedded llama.cpp (staged).** The planned third tier bundles the
+   official [`ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp)
+   runtime (pinned) inside the app, updated as part of the normal app-update
+   process, with GGUF models downloaded/refreshed separately (like the
+   Whisper models). The `AssistantBackend.localLlama` case and the resolver
+   already accommodate it; wiring the runtime is deferred because the heavy
+   C++ build needs a real Mac to verify. Only official/first-party runtimes
+   are used — no third-party LLM wrappers, per the supply-chain constraint.
+
+`AssistantBackendResolver` is the pure decision function (given what's
+available, which backend wins); it's unit-tested in isolation and carries no
+framework dependency. The user can override the automatic choice in Settings.
 
 Key files:
 
