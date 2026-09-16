@@ -198,6 +198,57 @@ final class Store {
         try data.write(to: url, options: .atomic)
     }
 
+    // MARK: - Search
+
+    /// Sessions for one patient whose transcript or summary matches the
+    /// query, newest first. Transcript matches take precedence over summary
+    /// matches for the same session (the transcript is the authoritative
+    /// record, so that's the excerpt worth showing).
+    func searchSessions(for patient: Patient, query: String) -> [SessionSearchResult] {
+        guard !TextSearch.queryTerms(query).isEmpty else { return [] }
+        let sessions = (try? listSessions(for: patient)) ?? []
+        var results: [SessionSearchResult] = []
+        for session in sessions {
+            if let transcript = transcript(for: patient, session: session), TextSearch.matches(transcript, query: query) {
+                results.append(SessionSearchResult(
+                    id: session.id,
+                    session: session,
+                    matchedIn: .transcript,
+                    snippet: TextSearch.snippet(from: transcript, query: query) ?? ""
+                ))
+            } else if let summary = summary(for: patient, session: session), TextSearch.matches(summary, query: query) {
+                results.append(SessionSearchResult(
+                    id: session.id,
+                    session: session,
+                    matchedIn: .summary,
+                    snippet: TextSearch.snippet(from: summary, query: query) ?? ""
+                ))
+            }
+        }
+        return results
+    }
+
+    /// Every patient with a name match or at least one matching session,
+    /// in the same alphabetical order as `listPatients`.
+    func searchAllPatients(query: String) -> [PatientSearchResult] {
+        guard !TextSearch.queryTerms(query).isEmpty else { return [] }
+        let patients = (try? listPatients()) ?? []
+        var results: [PatientSearchResult] = []
+        for patient in patients {
+            let nameMatched = TextSearch.matches(patient.name, query: query)
+            let sessionResults = searchSessions(for: patient, query: query)
+            if nameMatched || !sessionResults.isEmpty {
+                results.append(PatientSearchResult(
+                    id: patient.id,
+                    patient: patient,
+                    nameMatched: nameMatched,
+                    sessionResults: sessionResults
+                ))
+            }
+        }
+        return results
+    }
+
     // MARK: - Cross-session context (the RAG swap-point)
 
     /// Concatenates every transcript for a patient, newest first, with dated
