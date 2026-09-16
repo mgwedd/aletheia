@@ -178,11 +178,28 @@ search, retrieval, and export layers together against a real temp-directory
 store — headless "integration" coverage that runs reliably in CI (UI
 automation would be flakier and is deferred).
 
-`.github/workflows/smoke-test.yml` runs this same build + test on a macOS
-runner for every push and pull request — it's the first place the app is
-actually compiled, so it doubles as the build smoke test. It caches the
-resolved Swift packages (SwiftWhisper/whisper.cpp) to speed runs and reports
-a per-target code-coverage summary.
+`.github/workflows/smoke-test.yml` runs this same build + test on real macOS
+runners for every push and pull request — it's the first place the app is
+actually compiled, so it doubles as the build smoke test. Notable practices,
+all using only first-party GitHub actions plus Homebrew CLIs (no third-party
+marketplace actions, per the supply-chain constraint):
+
+- **Two-toolchain matrix.** `macos-15` (Xcode 16) is the required signal;
+  `macos-26` (Xcode 26) runs as a non-blocking canary — it's the only place
+  the `#if canImport(FoundationModels)` Apple Intelligence path actually
+  compiles, so a newest-SDK regression surfaces without blocking the merge.
+- **Readable, annotated logs.** `xcodebuild` is piped through `xcbeautify`
+  with `--renderer github-actions`, so warnings/errors show up as inline
+  annotations; `set -o pipefail` + `NSUnbufferedIO=YES` preserve exit codes
+  and stream output live.
+- **Non-interactive & bounded.** `-skipPackagePluginValidation` avoids a
+  package-plugin trust prompt hanging the run, and a job `timeout-minutes`
+  caps stuck builds.
+- **Caching & diagnostics.** The resolved Swift packages
+  (SwiftWhisper/whisper.cpp) are cached per runner image; a per-target
+  code-coverage summary is written to the job summary; and on failure the
+  `.xcresult` bundle is uploaded as an artifact so a maintainer can open it
+  in Xcode instead of re-running CI.
 
 ## Releasing
 
