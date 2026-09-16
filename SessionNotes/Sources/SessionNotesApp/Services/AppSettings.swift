@@ -53,7 +53,13 @@ final class AppSettings: ObservableObject {
         static let ollamaModelName = "ollamaModelName"
         static let ollamaBaseURL = "ollamaBaseURL"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
+        static let updateFeedURL = "updateFeedURL"
     }
+
+    /// Where the app looks for its update manifest. Defaults to the
+    /// `appcast.json` asset of the repo's latest GitHub release; until a
+    /// release publishes one, the check just finds nothing (no error shown).
+    static let defaultUpdateFeedURL = URL(string: "https://github.com/mgwedd/aletheia/releases/latest/download/appcast.json")!
 
     private let defaults = UserDefaults.standard
 
@@ -70,6 +76,9 @@ final class AppSettings: ObservableObject {
     @Published var hasCompletedFirstRun: Bool {
         didSet { defaults.set(hasCompletedFirstRun, forKey: Keys.hasCompletedFirstRun) }
     }
+    @Published var updateFeedURL: URL {
+        didSet { defaults.set(updateFeedURL.absoluteString, forKey: Keys.updateFeedURL) }
+    }
 
     private init() {
         if let raw = defaults.string(forKey: Keys.whisperModel), let model = WhisperModel(rawValue: raw) {
@@ -84,6 +93,11 @@ final class AppSettings: ObservableObject {
             ollamaBaseURL = URL(string: "http://127.0.0.1:11434")!
         }
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
+        if let raw = defaults.string(forKey: Keys.updateFeedURL), let url = URL(string: raw) {
+            updateFeedURL = url
+        } else {
+            updateFeedURL = AppSettings.defaultUpdateFeedURL
+        }
         dataRootURL = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark)
     }
 
