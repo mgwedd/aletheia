@@ -67,6 +67,11 @@ struct RootView: View {
         } message: {
             Text(appModel.errorMessage ?? "")
         }
+        .alert("Update Session Notes", isPresented: schemaWarningBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(appModel.schemaWarning ?? "")
+        }
     }
 
     private var errorBinding: Binding<Bool> {
@@ -80,6 +85,13 @@ struct RootView: View {
         Binding(
             get: { updateService.available != nil },
             set: { if !$0 { updateService.dismiss() } }
+        )
+    }
+
+    private var schemaWarningBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.schemaWarning != nil },
+            set: { if !$0 { appModel.schemaWarning = nil } }
         )
     }
 }
