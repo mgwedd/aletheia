@@ -78,9 +78,24 @@ struct SessionDetailView: View {
             }
             .disabled(recorder.isRecording || isTranscribing || !hasAnyRecording)
 
+            Button {
+                exportSession()
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .disabled(transcriptText.isEmpty && summaryText.isEmpty)
+
             Spacer()
         }
         .padding()
+    }
+
+    private func exportSession() {
+        guard let store = appModel.store else { return }
+        let markdown = store.exportSessionMarkdown(patient: patient, session: session)
+        let dateStr = String(session.folderName.prefix(10))
+        let name = FileSaver.fileName(patient.name, dateStr) + ".md"
+        FileSaver.saveText(markdown, suggestedName: name)
     }
 
     private var hasAnyRecording: Bool {

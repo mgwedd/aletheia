@@ -249,6 +249,29 @@ final class Store {
         return results
     }
 
+    // MARK: - Export
+
+    func exportSessionMarkdown(patient: Patient, session: SessionRecord) -> String {
+        MarkdownExporter.session(
+            date: session.date,
+            patientName: patient.name,
+            transcript: transcript(for: patient, session: session),
+            summary: summary(for: patient, session: session)
+        )
+    }
+
+    func exportPatientHistoryMarkdown(patient: Patient) -> String {
+        let sessions = (try? listSessions(for: patient)) ?? []
+        let exports = sessions.map { session in
+            SessionExport(
+                date: session.date,
+                transcript: transcript(for: patient, session: session) ?? "",
+                summary: summary(for: patient, session: session) ?? ""
+            )
+        }
+        return MarkdownExporter.patientHistory(patientName: patient.name, notes: patient.notes, sessions: exports)
+    }
+
     // MARK: - Cross-session context (the RAG swap-point)
 
     /// Concatenates every transcript for a patient, newest first, with dated
