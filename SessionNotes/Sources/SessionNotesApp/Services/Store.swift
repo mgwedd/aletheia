@@ -37,8 +37,49 @@ final class Store {
         return f
     }()
 
+    /// Result of reconciling this data folder's schema stamp with the version
+    /// this build understands, computed once when the store opens.
+    let schemaCompatibility: SchemaCompatibility
+
     init(root: URL) {
         self.root = root
+        self.schemaCompatibility = Store.reconcileSchema(at: root)
+    }
+
+    // MARK: - Schema
+
+    private static func reconcileSchema(at root: URL) -> SchemaCompatibility {
+        let fileManager = FileManager.default
+        try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        let metaURL = root.appendingPathComponent(DataSchema.metadataFileName)
+        let current = DataSchema.currentVersion
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+
+        if let data = try? Data(contentsOf: metaURL),
+           let meta = try? JSONDecoder().decode(StoreMetadata.self, from: data) {
+            if meta.schemaVersion > current {
+                return .needsNewerApp(dataVersion: meta.schemaVersion, appVersion: current)
+            }
+            if meta.schemaVersion < current {
+                // (Migrations from meta.schemaVersion → current would run here.)
+                writeMetadata(StoreMetadata(schemaVersion: current, lastWrittenBy: appVersion), to: metaURL)
+                return .upgraded(fromVersion: meta.schemaVersion)
+            }
+            return .ok
+        }
+
+        // No stamp yet (fresh folder, or one from before versioning existed):
+        // claim it at the current version.
+        writeMetadata(StoreMetadata(schemaVersion: current, lastWrittenBy: appVersion), to: metaURL)
+        return .ok
+    }
+
+    private static func writeMetadata(_ meta: StoreMetadata, to url: URL) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? encoder.encode(meta) {
+            try? data.write(to: url, options: .atomic)
+        }
     }
 
     private var patientsDir: URL { root.appendingPathComponent("Patients", isDirectory: true) }
