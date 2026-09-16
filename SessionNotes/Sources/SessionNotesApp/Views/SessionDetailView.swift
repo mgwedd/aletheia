@@ -188,6 +188,9 @@ struct SessionDetailView: View {
         isTranscribing = true
         transcribeProgress = 0
         defer { isTranscribing = false }
+        // Ask in context: transcription can take minutes, and we want to tell
+        // her when it's done if she's stepped away.
+        await integrations.makeNotifier().requestAuthorization()
         do {
             let transcriber = integrations.makeTranscriber()
             let micURL = store.micRecordingURL(for: patient, session: session)
@@ -199,6 +202,9 @@ struct SessionDetailView: View {
             try store.saveTranscript(text, for: patient, session: session)
             appModel.refreshPatients()
             onSessionUpdated()
+            await integrations.makeNotifier().post(
+                SessionNotifications.transcriptionComplete(patientName: patient.name, date: session.date)
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -213,6 +219,9 @@ struct SessionDetailView: View {
             summaryText = result
             try store.saveSummary(result, for: patient, session: session)
             onSessionUpdated()
+            await integrations.makeNotifier().post(
+                SessionNotifications.summaryReady(patientName: patient.name, date: session.date)
+            )
         } catch {
             errorMessage = error.localizedDescription
         }

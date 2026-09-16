@@ -33,4 +33,12 @@ final class Integrations: ObservableObject {
     func makeAssistantService() -> AssistantService {
         AssistantService(assistant: makeAssistant(), model: settings.ollamaModelName)
     }
+
+    /// System notifications (transcript/summary ready). Created once so the
+    /// same authorization state is reused.
+    private let notifier: AppNotifying = UserNotificationService()
+
+    func makeNotifier() -> AppNotifying {
+        notifier
+    }
 }
