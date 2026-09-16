@@ -1,0 +1,45 @@
+name: SessionNotes
+options:
+  bundleIdPrefix: com.sessionnotes
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    # Ad-hoc signed: no Apple Developer account needed. Gatekeeper will
+    # require a right-click > Open the first time it's launched, which
+    # is covered in docs/SETUP-GUIDE.md.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    PRODUCT_BUNDLE_IDENTIFIER: com.sessionnotes.app
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+packages:
+  SwiftWhisper:
+    url: https://github.com/exPHAT/SwiftWhisper.git
+    from: "1.2.0"
+
+targets:
+  SessionNotes:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/SessionNotesApp
+        excludes:
+          - "Resources/Info.plist"
+          - "Resources/SessionNotes.entitlements"
+    info:
+      path: Sources/SessionNotesApp/Resources/Info.plist
+    entitlements:
+      path: Sources/SessionNotesApp/Resources/SessionNotes.entitlements
+    dependencies:
+      - package: SwiftWhisper
+      - sdk: ScreenCaptureKit.framework
+      - sdk: AVFoundation.framework

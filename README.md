@@ -1,1 +1,126 @@
-# aletheia
+# aletheia — Session Notes
+
+A local-only macOS app for a therapist to record, transcribe, and summarize
+browser-based video therapy sessions, and to ask questions across a
+patient's session history. Privacy is the whole point: session audio is
+PHI, so nothing here ever leaves the Mac it runs on.
+
+See **[docs/SETUP-GUIDE.md](docs/SETUP-GUIDE.md)** for the end-user setup
+walkthrough and **[CONSENT.md](CONSENT.md)** for the consent/legal note
+that applies before recording any real session.
+
+## Why a native Swift/SwiftUI app
+
+An earlier draft of this app was a Python/Tkinter script hand-wrapped into
+a `.app` bundle that shelled out to `ffmpeg`, `whisper-cli`, and `ollama`
+as subprocesses. That works, but it isn't how you'd build this for real:
+no code signing/notarization story, no sandboxing, no proper permission
+prompts, and a dependency on the system `python3` that Apple has been
+deprecating. This is a ground-up rewrite as a native macOS app, chosen
+deliberately over that approach and over Electron, to get:
+
+- **A real, sandboxed macOS app.** `App Sandbox` + Hardened Runtime are
+  both on (see `SessionNotes/Sources/SessionNotesApp/Resources/SessionNotes.entitlements`).
+  This is possible specifically because nothing in this app spawns an
+  external process — see below.
+- **No external CLI dependencies.** Transcription runs in-process via
+  [SwiftWhisper](https://github.com/exPHAT/SwiftWhisper) (a Swift binding
+  for whisper.cpp), and Ollama is reached over its local HTTP API rather
+  than the `ollama` CLI. The only thing installed outside the app itself
+  is Ollama's own Mac app.
+- **No BlackHole / virtual audio driver.** The original design captured
+  the call's audio by routing it through a third-party kernel-adjacent
+  audio driver (BlackHole) that had to be installed and wired up in Audio
+  MIDI Setup. This version captures system audio with **ScreenCaptureKit**
+  in audio-only mode instead — a built-in macOS API gated by a single
+  system permission (the same one screen recorders use), no driver
+  install, no manual routing.
+- **Proper permission handling.** Microphone and Screen & System Audio
+  Recording are both requested through normal macOS APIs and show up as
+  normal System Settings toggles, with plain-language guidance in-app and
+  in Settings > Status when either is off.
+
+Distribution is ad-hoc signed (no Apple Developer account/notarization),
+so the first launch needs a right-click > Open — see the setup guide.
+
+## Architecture
+
+```
+<dataRoot>/Patients/<Patient-Slug>/
+  patient.json
+  patient_chat.json
+  YYYY-MM-DD_Session/
+    mic.caf          # therapist's microphone (AVAudioEngine tap)
+    call.caf          # the other side of the call (ScreenCaptureKit audio)
+    transcript.txt    # merged, timestamped, speaker-labeled
+    summary.txt
+    chat.json
+```
+
+`<dataRoot>` defaults to a folder the user picks inside iCloud Drive (so
+backup is automatic) via `NSOpenPanel`; sandboxed access to it persists
+across launches via a security-scoped bookmark
+(`Services/SecurityScopedBookmark.swift`). Data is otherwise
+plain, Finder-browsable JSON/text — never a database — matching the design
+goal of a non-technical user being able to see and understand her own
+files.
+
+Key files:
+
+- `Services/Store.swift` — all patient/session file I/O.
+  `gatherPatientContext(for:)` is the one place cross-transcript context
+  gets assembled for the "ask across all sessions" feature. It's
+  deliberately naive (concatenate every transcript, newest first, with
+  dated headers) — if transcript volume ever outgrows the model's context
+  window, that's the only function that needs to change (e.g. to
+  embedding-based retrieval).
+- `Services/MicRecorder.swift` / `Services/SystemAudioCapture.swift` /
+  `Services/SessionRecorder.swift` — mic and call audio are recorded as
+  two separate files rather than mixed down to one; that's what lets the
+  transcript label lines "Therapist" vs. "Call audio" instead of a single
+  blended track.
+- `Services/WhisperTranscriber.swift` / `Services/AudioResampler.swift` /
+  `Services/WhisperModelDownloader.swift` — in-process transcription via
+  SwiftWhisper, with a model downloader (no Terminal/Homebrew step) that
+  streams progress into Settings.
+- `Services/OllamaClient.swift` — talks to `http://127.0.0.1:11434`
+  directly; also drives an in-app model-download progress bar via
+  Ollama's `/api/pull` streaming endpoint.
+- `Services/ToolHealth.swift` — the plain-language status checks shown in
+  Settings (permissions granted? model downloaded? Ollama reachable?).
+
+## Building
+
+Requires a Mac with Xcode installed (this repository was authored in a
+Linux CI environment with no macOS/Xcode available, so the build has not
+been run or compiled here — see **Known limitations** below).
+
+```bash
+./scripts/build.sh
+```
+
+This installs [XcodeGen](https://github.com/yonaskolb/XcodeGen) via
+Homebrew if needed, generates `SessionNotes.xcodeproj` from
+`SessionNotes/project.yml`, and produces an ad-hoc signed, Hardened
+Runtime build at `dist/Session Notes.app`. `project.yml` (rather than a
+checked-in `.xcodeproj`) is the source of truth for the project, which
+keeps it diffable and avoids hand-edited `.pbxproj` merge conflicts.
+
+## Known limitations
+
+- **Never compiled.** This was built without access to macOS or Xcode, so
+  while the code follows documented APIs as closely as verification
+  allowed (SwiftWhisper's and ScreenCaptureKit's public interfaces were
+  checked against their current documentation/source during development),
+  the first real build on an actual Mac is also the first compile — treat
+  it as needing a normal debugging pass, not as finished, tested software.
+- **Mic/call sync isn't sample-accurate.** The two audio tracks start a
+  few milliseconds apart (whichever of AVAudioEngine/ScreenCaptureKit
+  spins up first); fine for matching up who-said-what at conversation
+  granularity, not frame-accurate lip sync.
+- **No app icon yet** — `Assets.xcassets/AppIcon.appiconset` is an empty
+  placeholder. Cosmetic only; add one in Xcode whenever convenient.
+- **CPU-only inference.** SwiftWhisper/whisper.cpp uses Metal where
+  available but there's no bundled CoreML encoder, so larger Whisper
+  models will be noticeably slower on an Air than on a machine with more
+  cores. The default ("Small") model is chosen for that reason.

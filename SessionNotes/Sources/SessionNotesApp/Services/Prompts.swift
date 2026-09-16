@@ -1,0 +1,59 @@
+import Foundation
+
+/// The prompt templates sent to the local Ollama model. Kept in one place
+/// so the disclaimer language (summaries can be wrong; always read the
+/// transcript) stays consistent everywhere it's used.
+enum Prompts {
+    static func summarize(transcript: String) -> String {
+        """
+        You are helping a therapist review her own session notes. Summarize \
+        the following therapy session transcript into concise clinical notes: \
+        presenting topics, notable statements, mood/affect observations, and \
+        any follow-ups to revisit next session. Do not invent details that \
+        aren't in the transcript. If the transcript is too short or unclear \
+        to summarize, say so plainly.
+
+        Transcript:
+        \(transcript)
+        """
+    }
+
+    static func sessionChat(transcript: String, history: [ChatMessage], question: String) -> String {
+        """
+        You are helping a therapist ask questions about one specific therapy \
+        session. Answer only using the transcript below — if the answer \
+        isn't in it, say you don't see that in this session's transcript. \
+        Never speculate.
+
+        Transcript:
+        \(transcript)
+
+        \(formatHistory(history))
+        Therapist's question: \(question)
+        """
+    }
+
+    static func patientChat(context: String, history: [ChatMessage], question: String) -> String {
+        """
+        You are helping a therapist ask questions across all of one \
+        patient's past session transcripts, given below (most recent \
+        first, each labeled with its date). Answer only using these \
+        transcripts — if the answer isn't in them, say you don't see that \
+        in the recorded sessions. Cite the session date(s) you drew from \
+        when relevant. Never speculate.
+
+        \(context)
+
+        \(formatHistory(history))
+        Therapist's question: \(question)
+        """
+    }
+
+    private static func formatHistory(_ history: [ChatMessage]) -> String {
+        guard !history.isEmpty else { return "" }
+        let lines = history.suffix(6).map { message in
+            "\(message.role == .user ? "Therapist" : "Assistant"): \(message.text)"
+        }
+        return "Recent conversation:\n" + lines.joined(separator: "\n") + "\n"
+    }
+}
