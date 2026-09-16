@@ -7,6 +7,7 @@ struct ChatPaneView: View {
     let title: String
     @Binding var messages: [ChatMessage]
     var isSending: Bool
+    var suggestions: [String] = []
     var onSend: (String) -> Void
 
     @State private var draft: String = ""
@@ -17,9 +18,24 @@ struct ChatPaneView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         if messages.isEmpty {
-                            Text("Ask a question about \(title). The AI only knows what's in the transcript(s) here.")
-                                .foregroundStyle(.secondary)
-                                .padding()
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Ask a question about \(title). The AI only knows what's in the transcript(s) here.")
+                                    .foregroundStyle(.secondary)
+                                if !suggestions.isEmpty {
+                                    Text("Try asking").font(.caption).foregroundStyle(.secondary)
+                                    ForEach(suggestions, id: \.self) { suggestion in
+                                        Button {
+                                            onSend(suggestion)
+                                        } label: {
+                                            Text(suggestion)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .disabled(isSending)
+                                    }
+                                }
+                            }
+                            .padding()
                         }
                         ForEach(messages) { message in
                             ChatBubble(message: message).id(message.id)

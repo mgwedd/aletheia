@@ -269,6 +269,18 @@ final class Store {
         return results
     }
 
+    /// The earliest session whose transcript mentions the query — answers
+    /// "when did they first bring this up?". Returns nil when nothing matches.
+    func firstMention(of query: String, for patient: Patient) -> SessionRecord? {
+        guard !TextSearch.queryTerms(query).isEmpty else { return nil }
+        // listSessions is newest-first; walk oldest-first to find the first.
+        let sessions = ((try? listSessions(for: patient)) ?? []).sorted { $0.date < $1.date }
+        return sessions.first { session in
+            guard let transcript = transcript(for: patient, session: session) else { return false }
+            return TextSearch.matches(transcript, query: query)
+        }
+    }
+
     /// Every patient with a name match or at least one matching session,
     /// in the same alphabetical order as `listPatients`.
     func searchAllPatients(query: String) -> [PatientSearchResult] {
