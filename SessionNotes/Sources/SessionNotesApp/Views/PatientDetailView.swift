@@ -169,7 +169,7 @@ private struct PatientChatSheet: View {
         Task {
             defer { isSending = false }
             do {
-                let context = try store.gatherPatientContext(for: patient)
+                let context = store.gatherPatientContext(for: patient, relevantTo: question)
                 let prompt = Prompts.patientChat(context: context, history: messages, question: question)
                 let client = OllamaClient(baseURL: settings.ollamaBaseURL)
                 let response = try await client.generate(model: settings.ollamaModelName, prompt: prompt)

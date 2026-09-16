@@ -5,11 +5,19 @@ struct RootView: View {
     @EnvironmentObject private var settings: AppSettings
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
+    @State private var showSearch = false
 
     var body: some View {
         NavigationSplitView {
             PatientsListView(selectedPatient: $selectedPatient)
                 .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        Button {
+                            showSearch = true
+                        } label: {
+                            Label("Search", systemImage: "magnifyingglass")
+                        }
+                    }
                     ToolbarItem(placement: .automatic) {
                         Button {
                             showSettings = true
@@ -34,6 +42,10 @@ struct RootView: View {
             SettingsView()
                 .environmentObject(settings)
                 .frame(minWidth: 560, minHeight: 520)
+        }
+        .sheet(isPresented: $showSearch) {
+            GlobalSearchView(onSelectPatient: { selectedPatient = $0 })
+                .environmentObject(appModel)
         }
         .alert("Something went wrong", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
