@@ -1,0 +1,60 @@
+name: Smoke Test
+
+# Builds the app and runs the unit tests on a real macOS runner. This is
+# the first place SessionNotes is actually compiled (it's authored without
+# access to macOS/Xcode), so the primary goal is catching build breakage —
+# the unit tests are a bonus that also run here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & test (macOS)
+    # macos-15 ships Xcode 16, whose project format XcodeGen emits; the
+    # older macos-14 image (Xcode 15.4) can't read it.
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: SessionNotes
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show selected Xcode
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # Resolving SwiftWhisper (which compiles whisper.cpp) is the slow,
+      # network-dependent step; do it once up front so a failure here is
+      # clearly a dependency problem rather than a build problem.
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project SessionNotes.xcodeproj -scheme SessionNotes
+
+      - name: Build
+        run: |
+          xcodebuild build \
+            -project SessionNotes.xcodeproj \
+            -scheme SessionNotes \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build
+
+      - name: Run unit tests
+        run: |
+          xcodebuild test \
+            -project SessionNotes.xcodeproj \
+            -scheme SessionNotes \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build
