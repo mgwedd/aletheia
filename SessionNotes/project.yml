@@ -9,13 +9,19 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
-    ENABLE_HARDENED_RUNTIME: YES
     # Ad-hoc signed: no Apple Developer account needed. Gatekeeper will
     # require a right-click > Open the first time it's launched, which
     # is covered in docs/SETUP-GUIDE.md.
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
+  configs:
+    Release:
+      # Hardened Runtime only matters for distribution, and it interferes
+      # with XCTest injecting its bundle into the host app, so keep it off
+      # for Debug (where tests run) and on for the Release build that
+      # scripts/build.sh ships.
+      ENABLE_HARDENED_RUNTIME: YES
 
 packages:
   SwiftWhisper:

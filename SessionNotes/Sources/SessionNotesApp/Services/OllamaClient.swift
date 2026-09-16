@@ -70,6 +70,12 @@ final class OllamaClient {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // stream:false means Ollama sends nothing until the whole response
+        // is ready. Summarizing a long transcript with an 8B model on a
+        // MacBook Air can easily run past URLSession's 60s default request
+        // timeout, so give it plenty of headroom rather than failing a slow
+        // (but working) local generation.
+        request.timeoutInterval = 600
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": model,
             "prompt": prompt,

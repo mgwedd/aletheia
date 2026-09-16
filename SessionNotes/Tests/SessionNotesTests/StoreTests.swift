@@ -93,6 +93,27 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(reloaded?.hasSummary, true)
     }
 
+    func testSlugStripsPunctuationAndCollapsesSeparators() throws {
+        let patient = try store.createPatient(name: "O'Brien,  Mary-Kate")
+        XCTAssertEqual(patient.slug, "O-Brien-Mary-Kate")
+    }
+
+    func testBlankPatientNameStillGetsAUsableSlug() throws {
+        let patient = try store.createPatient(name: "   ")
+        XCTAssertEqual(patient.slug, "Patient")
+    }
+
+    func testHasRecordingReflectsEitherAudioFile() throws {
+        let patient = try store.createPatient(name: "Test Patient")
+        let session = try store.createSession(for: patient)
+
+        XCTAssertEqual(try store.listSessions(for: patient).first?.hasRecording, false)
+
+        // Only the mic track present should still count as "has recording".
+        try Data("fake audio".utf8).write(to: store.micRecordingURL(for: patient, session: session))
+        XCTAssertEqual(try store.listSessions(for: patient).first?.hasRecording, true)
+    }
+
     func testGatherPatientContextOrdersNewestFirstAndSkipsEmptyTranscripts() throws {
         let patient = try store.createPatient(name: "Test Patient")
         let calendar = Calendar(identifier: .gregorian)

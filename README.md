@@ -124,6 +124,10 @@ Audio capture, transcription, and Ollama networking aren't covered by
 these tests — they need real hardware/permissions/services and are best
 verified by hand per the setup guide's walkthrough.
 
+`.github/workflows/smoke-test.yml` runs this same build + test on a macOS
+runner for every push and pull request — it's the first place the app is
+actually compiled, so it doubles as the build smoke test.
+
 ## Known limitations
 
 - **Never compiled.** This was built without access to macOS or Xcode, so

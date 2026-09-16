@@ -70,6 +70,12 @@ final class WhisperTranscriber {
         whisper.delegate = forwarder
 
         let segments = try await whisper.transcribe(audioFrames: samples)
+        // SwiftWhisper holds `delegate` weakly; nothing else retains
+        // `forwarder`, so without this the optimizer could release it right
+        // after the assignment above and silently drop every progress
+        // callback. Referencing it after the await pins its lifetime across
+        // the whole transcription.
+        withExtendedLifetime(forwarder) {}
         return segments.map { segment in
             TranscribedLine(source: source, startTime: TimeInterval(segment.startTime) / 1000.0, text: segment.text)
         }
