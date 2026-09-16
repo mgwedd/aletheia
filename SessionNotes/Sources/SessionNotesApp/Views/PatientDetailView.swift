@@ -167,7 +167,7 @@ private struct PatientChatSheet: View {
             }
             .padding()
             Divider()
-            ChatPaneView(title: "all sessions", messages: $messages, isSending: isSending, onSend: send)
+            ChatPaneView(title: "all sessions", messages: $messages, isSending: isSending, suggestions: SuggestedQuestions.patient, onSend: send)
         }
         .onAppear {
             if let store = appModel.store {

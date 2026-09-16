@@ -158,7 +158,7 @@ struct SessionDetailView: View {
     }
 
     private var chatTab: some View {
-        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, onSend: sendChat)
+        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: SuggestedQuestions.session, onSend: sendChat)
     }
 
     private func load() {
