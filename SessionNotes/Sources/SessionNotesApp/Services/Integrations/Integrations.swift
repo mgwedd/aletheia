@@ -77,4 +77,9 @@ final class Integrations: ObservableObject {
     func makeNotifier() -> AppNotifying {
         notifier
     }
+
+    /// Follow-up reminders into the user's Reminders app (EventKit).
+    func makeReminderScheduler() -> ReminderScheduling {
+        EventKitReminderScheduler()
+    }
 }

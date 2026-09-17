@@ -16,6 +16,8 @@
 	<string>Private use only. Not for distribution.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Session Notes needs microphone access to record your voice during a therapy session.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Session Notes adds a follow-up reminder to your Reminders only when you ask it to, so a session doesn't slip through the cracks.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>LSApplicationSecondaryCategoryType</key>

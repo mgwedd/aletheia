@@ -21,6 +21,14 @@
 	<true/>
 
 	<!--
+	Adding a follow-up reminder to the user's Reminders (EventKit), only on an
+	explicit action. This is the sandbox entitlement that gates EventKit
+	access; the separate Reminders privacy prompt still applies at runtime.
+	-->
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+
+	<!--
 	The user picks the data folder (defaults to a folder inside iCloud
 	Drive) via NSOpenPanel on first launch. This entitlement is what lets
 	a sandboxed app keep read/write access to that folder, via a

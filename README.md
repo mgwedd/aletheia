@@ -147,6 +147,11 @@ Key files:
   route logic (`SpotlightItemBuilder`) is pure and unit-tested; the
   CoreSpotlight calls (`SpotlightIndexer`, `SpotlightContinuationModifier`)
   are a thin, SDK-guarded layer. Tapping a hit opens the patient.
+- `Services/Reminders/` — follow-up reminders into the user's Reminders app
+  (EventKit), only on an explicit "Remind Me" action from a session. The
+  content/timing logic (`SessionReminderBuilder`) is pure and unit-tested; the
+  EventKit call (`ReminderScheduler`) is a thin, SDK-guarded layer behind the
+  `ReminderScheduling` adapter.
 
 ## Building
 

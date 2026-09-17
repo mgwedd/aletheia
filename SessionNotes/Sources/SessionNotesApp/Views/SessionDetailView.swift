@@ -21,6 +21,7 @@ struct SessionDetailView: View {
     @State private var isSummarizing = false
     @State private var isChatSending = false
     @State private var errorMessage: String?
+    @State private var reminderConfirmation: String?
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -44,6 +45,11 @@ struct SessionDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
+        }
+        .alert("Reminder Added", isPresented: Binding(get: { reminderConfirmation != nil }, set: { if !$0 { reminderConfirmation = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(reminderConfirmation ?? "")
         }
     }
 
@@ -85,9 +91,33 @@ struct SessionDetailView: View {
             }
             .disabled(transcriptText.isEmpty && summaryText.isEmpty)
 
+            Menu {
+                ForEach(ReminderLeadTime.allCases) { leadTime in
+                    Button(leadTime.displayName) { Task { await scheduleReminder(leadTime) } }
+                }
+            } label: {
+                Label("Remind Me", systemImage: "bell")
+            }
+            .menuIndicator(.hidden)
+            .help("Add a follow-up reminder to your Reminders app")
+
             Spacer()
         }
         .padding()
+    }
+
+    private func scheduleReminder(_ leadTime: ReminderLeadTime) async {
+        let draft = SessionReminderBuilder.draft(
+            patientName: patient.name,
+            sessionDate: session.date,
+            leadTime: leadTime
+        )
+        do {
+            try await integrations.makeReminderScheduler().schedule(draft)
+            reminderConfirmation = "Reminder set for \(leadTime.displayName.lowercased()) at 9:00 AM."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func exportSession() {
