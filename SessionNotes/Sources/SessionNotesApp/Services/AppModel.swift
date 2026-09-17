@@ -6,6 +6,9 @@ import Foundation
 final class AppModel: ObservableObject {
     @Published var patients: [Patient] = []
     @Published var errorMessage: String?
+    /// Set when the chosen data folder was written by a newer app version, so
+    /// this build shouldn't modify it. Surfaced to the user as a warning.
+    @Published var schemaWarning: String?
 
     private(set) var store: Store?
     private let settings: AppSettings
@@ -19,9 +22,21 @@ final class AppModel: ObservableObject {
         guard let root = settings.dataRootURL else {
             store = nil
             patients = []
+            schemaWarning = nil
             return
         }
-        store = Store(root: root)
+        let newStore = Store(root: root)
+        store = newStore
+        if case let .needsNewerApp(dataVersion, appVersion) = newStore.schemaCompatibility {
+            schemaWarning = """
+            This folder's data was created by a newer version of Session Notes \
+            (data format v\(dataVersion); this copy understands v\(appVersion)). \
+            Please update Session Notes before adding or changing anything here, \
+            so none of your notes are lost.
+            """
+        } else {
+            schemaWarning = nil
+        }
         refreshPatients()
     }
 

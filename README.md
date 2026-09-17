@@ -65,6 +65,54 @@ plain, Finder-browsable JSON/text — never a database — matching the design
 goal of a non-technical user being able to see and understand her own
 files.
 
+### Integrations (adapter layer)
+
+The external integrations are behind protocols in `Services/Integrations/`,
+so each is swappable without touching the UI:
+
+- `Transcribing` — speech-to-text (implemented by `WhisperTranscriber`,
+  i.e. whisper.cpp compiled into the app via SwiftWhisper; no external CLI
+  or GUI app).
+- `Assistant` — the local LLM used for summaries and chat. There are
+  multiple implementations behind this one protocol, chosen per Mac (see
+  **AI backend** below): `FoundationModelsAssistant` (Apple Intelligence,
+  on-device) and `OllamaClient` (a local Ollama server over
+  `127.0.0.1:11434`). `AssistantService` builds the prompts and is what the
+  summary/chat views call.
+- `Integrations` is the one registry that decides which concrete type backs
+  each adapter; views ask it for a `Transcribing` or `AssistantService` and
+  never construct a client directly. Its `effectiveAssistantBackend` resolves
+  the user's preference against what the machine actually supports, and
+  `makeAssistant()` hands back the matching implementation.
+
+### AI backend (tiered, on-device first)
+
+Summaries and chat run against a local model, picked to keep setup as close
+to zero-install as the hardware allows:
+
+1. **Apple Intelligence (primary).** On a Mac that supports it,
+   `FoundationModelsAssistant` uses Apple's on-device Foundation Models —
+   no install, no model download, no external process, and the OS keeps the
+   model updated. The whole file sits behind `#if canImport(FoundationModels)`
+   so it compiles out on toolchains whose SDK predates the framework (the CI
+   image today) and lights up automatically when built with a newer Xcode.
+2. **Ollama (fallback).** Where Apple Intelligence isn't available,
+   `OllamaClient` talks to a local Ollama server. This is the one backend
+   that needs a one-time install, and the setup/status screens only ask for
+   it when it's the backend actually in use.
+3. **Embedded llama.cpp (staged).** The planned third tier bundles the
+   official [`ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp)
+   runtime (pinned) inside the app, updated as part of the normal app-update
+   process, with GGUF models downloaded/refreshed separately (like the
+   Whisper models). The `AssistantBackend.localLlama` case and the resolver
+   already accommodate it; wiring the runtime is deferred because the heavy
+   C++ build needs a real Mac to verify. Only official/first-party runtimes
+   are used — no third-party LLM wrappers, per the supply-chain constraint.
+
+`AssistantBackendResolver` is the pure decision function (given what's
+available, which backend wins); it's unit-tested in isolation and carries no
+framework dependency. The user can override the automatic choice in Settings.
+
 Key files:
 
 - `Services/Store.swift` — all patient/session file I/O.
@@ -125,9 +173,44 @@ Audio capture, transcription, and Ollama networking aren't covered by
 these tests — they need real hardware/permissions/services and are best
 verified by hand per the setup guide's walkthrough.
 
-`.github/workflows/smoke-test.yml` runs this same build + test on a macOS
-runner for every push and pull request — it's the first place the app is
-actually compiled, so it doubles as the build smoke test.
+`Tests/SessionNotesTests/IntegrationTests.swift` exercises the storage,
+search, retrieval, and export layers together against a real temp-directory
+store — headless "integration" coverage that runs reliably in CI (UI
+automation would be flakier and is deferred).
+
+`.github/workflows/smoke-test.yml` runs this same build + test on real macOS
+runners for every push and pull request — it's the first place the app is
+actually compiled, so it doubles as the build smoke test. Notable practices,
+all using only first-party GitHub actions plus Homebrew CLIs (no third-party
+marketplace actions, per the supply-chain constraint):
+
+- **Two-toolchain matrix.** `macos-15` (Xcode 16) is the required signal;
+  `macos-26` (Xcode 26) runs as a non-blocking canary — it's the only place
+  the `#if canImport(FoundationModels)` Apple Intelligence path actually
+  compiles, so a newest-SDK regression surfaces without blocking the merge.
+- **Readable, annotated logs.** `xcodebuild` is piped through `xcbeautify`
+  with `--renderer github-actions`, so warnings/errors show up as inline
+  annotations; `set -o pipefail` + `NSUnbufferedIO=YES` preserve exit codes
+  and stream output live.
+- **Non-interactive & bounded.** `-skipPackagePluginValidation` avoids a
+  package-plugin trust prompt hanging the run, and a job `timeout-minutes`
+  caps stuck builds.
+- **Caching & diagnostics.** The resolved Swift packages
+  (SwiftWhisper/whisper.cpp) are cached per runner image; a per-target
+  code-coverage summary is written to the job summary; and on failure the
+  `.xcresult` bundle is uploaded as an artifact so a maintainer can open it
+  in Xcode instead of re-running CI.
+
+## Releasing
+
+Push a tag like `v1.1.0` and `.github/workflows/release.yml` builds the
+ad-hoc-signed app, packages a drag-to-Applications **DMG** with `hdiutil`,
+generates the **`appcast.json`** the in-app updater polls, and publishes both
+as a GitHub Release with the `gh` CLI (no third-party release actions). The
+updater's default feed is that release's `appcast.json` asset, so cutting a
+tag is all it takes to offer an update to installed copies. Releases are
+ad-hoc signed (no notarization), so first launch still needs a right-click →
+Open.
 
 ## Known limitations
 

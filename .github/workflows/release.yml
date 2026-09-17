@@ -1,0 +1,75 @@
+name: Release
+
+# Cutting a release: push a tag like `v1.1.0`. This builds the ad-hoc-signed
+# app, packages a drag-to-Applications DMG, generates the `appcast.json` the
+# in-app updater polls, and publishes both as a GitHub Release.
+#
+# Supply-chain note: no third-party release actions — packaging uses the
+# built-in `hdiutil` and publishing uses the pre-installed `gh` CLI.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show selected Xcode
+        run: xcodebuild -version
+
+      - name: Build Release app
+        run: ./scripts/build.sh
+
+      - name: Package DMG and appcast
+        id: package
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          APP="dist/Session Notes.app"
+          test -d "$APP"
+
+          STAGING="dist/dmg"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          cp -R "$APP" "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+
+          DMG="dist/SessionNotes-${VERSION}.dmg"
+          hdiutil create -volname "Session Notes" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
+
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/SessionNotes-${VERSION}.dmg"
+          cat > dist/appcast.json <<EOF
+          {
+            "version": "${VERSION}",
+            "downloadURL": "${DOWNLOAD_URL}",
+            "releaseNotes": "Session Notes ${VERSION}. See the release page for details.",
+            "minimumSystemVersion": "14.0",
+            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "${{ steps.package.outputs.dmg }}" \
+            "dist/appcast.json" \
+            --title "Session Notes ${{ steps.package.outputs.version }}" \
+            --notes "Automated release for ${GITHUB_REF_NAME}. First launch: right-click the app and choose Open (ad-hoc signed, not notarized)." \
+            --verify-tag

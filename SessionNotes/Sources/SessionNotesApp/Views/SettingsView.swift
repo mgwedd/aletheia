@@ -3,12 +3,15 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var integrations: Integrations
+    @EnvironmentObject private var updateService: UpdateService
     @StateObject private var whisperDownloader = WhisperModelDownloader()
     @State private var ollamaPullProgress: Double = 0
     @State private var ollamaPullStatus: String = ""
     @State private var isPullingOllamaModel = false
     @State private var healthChecks: [ToolHealthCheck] = []
     @State private var isCheckingHealth = false
+    @State private var showSetup = false
     @State private var errorMessage: String?
     @Environment(\.dismiss) private var dismiss
 
@@ -31,6 +34,9 @@ struct SettingsView: View {
                         Text(model.displayName).tag(model)
                     }
                 }
+                Text("Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.whisperModel.shortName).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 HStack {
                     if whisperDownloader.isDownloading {
                         ProgressView(value: whisperDownloader.progress)
@@ -47,19 +53,55 @@ struct SettingsView: View {
                 }
             }
 
-            Section("AI Summaries & Chat (Ollama)") {
-                TextField("Model name", text: $settings.ollamaModelName)
-                Text("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack {
-                    if isPullingOllamaModel {
-                        ProgressView(value: ollamaPullProgress)
-                        Text(ollamaPullStatus).font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Button("Download \(settings.ollamaModelName)") { Task { await pullOllamaModel() } }
+            Section("AI Summaries & Chat") {
+                Picker("Engine", selection: $settings.assistantBackend) {
+                    ForEach(AssistantBackend.allCases) { backend in
+                        Text(backend.displayName).tag(backend)
                     }
                 }
+                Text(settings.assistantBackend.summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                LabeledContent("In use now", value: integrations.effectiveAssistantBackend.displayName)
+                    .font(.caption)
+
+                if integrations.effectiveAssistantBackend == .ollama {
+                    Divider()
+                    TextField("Ollama model name", text: $settings.ollamaModelName)
+                    Text("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        if isPullingOllamaModel {
+                            ProgressView(value: ollamaPullProgress)
+                            Text(ollamaPullStatus).font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            Button("Download \(settings.ollamaModelName)") { Task { await pullOllamaModel() } }
+                        }
+                    }
+                } else if integrations.effectiveAssistantBackend == .appleIntelligence {
+                    Label("Runs on your Mac with Apple Intelligence — nothing to install or download.", systemImage: "apple.logo")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Software Update") {
+                LabeledContent("Current version", value: appVersionString)
+                HStack {
+                    if updateService.isChecking {
+                        ProgressView().controlSize(.small)
+                        Text("Checking…").foregroundStyle(.secondary)
+                    } else {
+                        Button("Check for Updates") {
+                            Task { await updateService.checkForUpdates(force: true) }
+                        }
+                    }
+                    Spacer()
+                }
+                Text("Session Notes checks for a new version on launch and lets you know when one is ready.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Status") {
@@ -75,7 +117,11 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Button("Refresh Status") { Task { await runHealthChecks() } }
+                HStack {
+                    Button("Refresh Status") { Task { await runHealthChecks() } }
+                    Spacer()
+                    Button("Setup Assistant…") { showSetup = true }
+                }
             }
         }
         .formStyle(.grouped)
@@ -84,6 +130,23 @@ struct SettingsView: View {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") { dismiss() }
             }
+        }
+        .sheet(isPresented: $showSetup) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Setup Assistant").font(.headline)
+                    Spacer()
+                    Button("Done") { showSetup = false }
+                }
+                .padding()
+                Divider()
+                ScrollView { SetupChecklistView().padding() }
+            }
+            .frame(width: 560, height: 560)
+            .environmentObject(settings)
+            .environmentObject(appModel)
+            .environmentObject(integrations)
+            .onDisappear { Task { await runHealthChecks() } }
         }
         .task { await runHealthChecks() }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
@@ -126,8 +189,8 @@ struct SettingsView: View {
         ollamaPullProgress = 0
         defer { isPullingOllamaModel = false }
         do {
-            let client = OllamaClient(baseURL: settings.ollamaBaseURL)
-            try await client.pullModel(settings.ollamaModelName) { progress, status in
+            let assistant = integrations.makeAssistant()
+            try await assistant.pullModel(settings.ollamaModelName) { progress, status in
                 Task { @MainActor in
                     ollamaPullProgress = progress
                     ollamaPullStatus = status
@@ -139,9 +202,13 @@ struct SettingsView: View {
         }
     }
 
+    private var appVersionString: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+    }
+
     private func runHealthChecks() async {
         isCheckingHealth = true
         defer { isCheckingHealth = false }
-        healthChecks = await ToolHealth.runAllChecks(settings: settings)
+        healthChecks = await ToolHealth.runAllChecks(settings: settings, backend: integrations.effectiveAssistantBackend, assistant: integrations.makeAssistant())
     }
 }

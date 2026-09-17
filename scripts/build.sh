@@ -29,11 +29,15 @@ echo "Generating Xcode project…"
 xcodegen generate
 
 echo "Building (Release)…"
+# -skipPackagePluginValidation keeps the build non-interactive: without it,
+# xcodebuild can block on a "trust this package plugin?" prompt on a fresh
+# machine (or in CI), which never gets answered.
 xcodebuild \
     -project SessionNotes.xcodeproj \
     -scheme SessionNotes \
     -configuration Release \
     -derivedDataPath build \
+    -skipPackagePluginValidation \
     CODE_SIGN_IDENTITY="-" \
     CODE_SIGNING_REQUIRED=YES \
     CODE_SIGNING_ALLOWED=YES \

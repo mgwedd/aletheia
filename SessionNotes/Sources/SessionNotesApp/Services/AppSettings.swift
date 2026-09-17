@@ -35,6 +35,15 @@ enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
     }
 
     var fileName: String { "ggml-\(rawValue).bin" }
+
+    var shortName: String {
+        switch self {
+        case .baseEn: return "Base"
+        case .smallEn: return "Small"
+        case .mediumEn: return "Medium"
+        case .largeV3: return "Large v3"
+        }
+    }
 }
 
 /// All persisted app preferences. Backed by UserDefaults; nothing here is
@@ -50,16 +59,26 @@ final class AppSettings: ObservableObject {
     private enum Keys {
         static let dataRootBookmark = "dataRootBookmark"
         static let whisperModel = "whisperModel"
+        static let assistantBackend = "assistantBackend"
         static let ollamaModelName = "ollamaModelName"
         static let ollamaBaseURL = "ollamaBaseURL"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
+        static let updateFeedURL = "updateFeedURL"
     }
+
+    /// Where the app looks for its update manifest. Defaults to the
+    /// `appcast.json` asset of the repo's latest GitHub release; until a
+    /// release publishes one, the check just finds nothing (no error shown).
+    static let defaultUpdateFeedURL = URL(string: "https://github.com/mgwedd/aletheia/releases/latest/download/appcast.json")!
 
     private let defaults = UserDefaults.standard
 
     @Published var dataRootURL: URL?
     @Published var whisperModel: WhisperModel {
         didSet { defaults.set(whisperModel.rawValue, forKey: Keys.whisperModel) }
+    }
+    @Published var assistantBackend: AssistantBackend {
+        didSet { defaults.set(assistantBackend.rawValue, forKey: Keys.assistantBackend) }
     }
     @Published var ollamaModelName: String {
         didSet { defaults.set(ollamaModelName, forKey: Keys.ollamaModelName) }
@@ -70,20 +89,46 @@ final class AppSettings: ObservableObject {
     @Published var hasCompletedFirstRun: Bool {
         didSet { defaults.set(hasCompletedFirstRun, forKey: Keys.hasCompletedFirstRun) }
     }
+    @Published var updateFeedURL: URL {
+        didSet { defaults.set(updateFeedURL.absoluteString, forKey: Keys.updateFeedURL) }
+    }
+
+    /// What this Mac can comfortably run, and the model sizes recommended for
+    /// it. Computed once at launch and surfaced in setup so defaults match the
+    /// hardware instead of a one-size-fits-all guess.
+    let hardware: HardwareCapabilities
+    let recommendation: ModelRecommendation
 
     private init() {
+        let hardware = HardwareCapabilities.current()
+        let recommendation = ModelAdvisor.recommend(for: hardware)
+        self.hardware = hardware
+        self.recommendation = recommendation
+
+        // First launch picks defaults that fit the hardware; once the user has
+        // chosen, their choice always wins.
         if let raw = defaults.string(forKey: Keys.whisperModel), let model = WhisperModel(rawValue: raw) {
             whisperModel = model
         } else {
-            whisperModel = .smallEn
+            whisperModel = recommendation.whisperModel
         }
-        ollamaModelName = defaults.string(forKey: Keys.ollamaModelName) ?? "llama3.1:8b"
+        if let raw = defaults.string(forKey: Keys.assistantBackend), let backend = AssistantBackend(rawValue: raw) {
+            assistantBackend = backend
+        } else {
+            assistantBackend = .automatic
+        }
+        ollamaModelName = defaults.string(forKey: Keys.ollamaModelName) ?? recommendation.ollamaModel
         if let raw = defaults.string(forKey: Keys.ollamaBaseURL), let url = URL(string: raw) {
             ollamaBaseURL = url
         } else {
             ollamaBaseURL = URL(string: "http://127.0.0.1:11434")!
         }
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
+        if let raw = defaults.string(forKey: Keys.updateFeedURL), let url = URL(string: raw) {
+            updateFeedURL = url
+        } else {
+            updateFeedURL = AppSettings.defaultUpdateFeedURL
+        }
         dataRootURL = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark)
     }
 
