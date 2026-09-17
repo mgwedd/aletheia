@@ -8,6 +8,8 @@ struct PatientDetailView: View {
     @State private var sessions: [SessionRecord] = []
     @State private var selectedSession: SessionRecord?
     @State private var notes: String = ""
+    @State private var clinicalHistory: String = ""
+    @State private var medications: [Medication] = []
     @State private var showPatientChat = false
     @State private var errorMessage: String?
 
@@ -26,6 +28,8 @@ struct PatientDetailView: View {
                         updated.notes = newValue
                         appModel.savePatientNotes(updated)
                     }
+
+                backgroundSection
 
                 HStack {
                     Button {
@@ -89,6 +93,8 @@ struct PatientDetailView: View {
         .navigationTitle(patient.name)
         .onAppear {
             notes = patient.notes
+            clinicalHistory = patient.clinicalHistory
+            medications = patient.medications
             refresh()
         }
         .sheet(isPresented: $showPatientChat) {
@@ -106,6 +112,68 @@ struct PatientDetailView: View {
 
     private var errorBinding: Binding<Bool> {
         Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    /// A collapsible patient background: a free-text clinical-history TL;DR and a
+    /// medications (name | dose) table. Both are saved to the patient and fed to
+    /// the AI's patient context so it can weigh them when relevant.
+    private var backgroundSection: some View {
+        DisclosureGroup("Background") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Clinical history").font(.caption).foregroundStyle(.secondary)
+                TextEditor(text: $clinicalHistory)
+                    .font(.body)
+                    .frame(minHeight: 70, maxHeight: 130)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
+                    .onChange(of: clinicalHistory) { _, v in
+                        guard v != patient.clinicalHistory else { return }
+                        saveBackground()
+                    }
+
+                HStack {
+                    Text("Medications").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button { medications.append(Medication()) } label: {
+                        Label("Add Medication", systemImage: "plus")
+                    }
+                    .labelStyle(.iconOnly)
+                    .help("Add a medication")
+                }
+
+                if medications.isEmpty {
+                    Text("None recorded.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach($medications) { $med in
+                        HStack(spacing: 6) {
+                            TextField("Medication", text: $med.name)
+                            TextField("Dose", text: $med.dose).frame(width: 110)
+                            Button(role: .destructive) {
+                                medications.removeAll { $0.id == med.id }
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Remove")
+                        }
+                    }
+                }
+
+                Text("Saved with the patient and shared with the AI's patient context.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            .padding(.top, 4)
+            .onChange(of: medications) { _, v in
+                guard v != patient.medications else { return }
+                saveBackground()
+            }
+        }
+    }
+
+    private func saveBackground() {
+        var updated = patient
+        updated.clinicalHistory = clinicalHistory
+        updated.medications = medications
+        appModel.savePatientNotes(updated)
     }
 
     private func refresh() {
