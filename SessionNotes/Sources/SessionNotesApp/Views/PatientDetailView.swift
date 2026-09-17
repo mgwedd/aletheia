@@ -169,6 +169,7 @@ private struct PatientChatSheet: View {
     @State private var messages: [ChatMessage] = []
     @State private var isSending = false
     @State private var errorMessage: String?
+    @StateObject private var chatRunner = ChatStreamRunner()
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -180,7 +181,7 @@ private struct PatientChatSheet: View {
             }
             .padding()
             Divider()
-            ChatPaneView(title: "all sessions", messages: $messages, isSending: isSending, suggestions: SuggestedQuestions.patient, onSend: send)
+            ChatPaneView(title: "all sessions", messages: $messages, isSending: isSending, suggestions: SuggestedQuestions.patient, onSend: send, onStop: { chatRunner.stop() })
         }
         .onAppear {
             if let store = appModel.store {
@@ -198,18 +199,25 @@ private struct PatientChatSheet: View {
         guard let store = appModel.store else { return }
         messages.append(ChatMessage(role: .user, text: question))
         isSending = true
-        Task {
-            defer { isSending = false }
-            do {
-                let context = store.gatherCitedPatientContext(for: patient, relevantTo: question)
-                let response = try await integrations.makeAssistantService()
-                    .answerAboutPatient(context: context.text, history: messages, question: question)
-                let decorated = Citations.decorate(answer: response, sources: context.sources)
-                messages.append(ChatMessage(role: .assistant, text: decorated))
-                try? store.savePatientChat(messages, for: patient)
-            } catch {
+        let assistantID = UUID()
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: question)
+        let stream = integrations.makeAssistantService()
+            .streamAnswerAboutPatient(context: context.text, history: messages, question: question)
+        chatRunner.start(
+            stream: stream,
+            // Stream the raw answer live; fold in the numbered source footer once
+            // the full text is in, so citations don't flicker mid-stream.
+            onReveal: { text in messages.upsert(id: assistantID, role: .assistant, text: text) },
+            onError: { error in
+                isSending = false
                 errorMessage = error.localizedDescription
+            },
+            onFinish: { finalText in
+                let decorated = Citations.decorate(answer: finalText, sources: context.sources)
+                messages.upsert(id: assistantID, role: .assistant, text: decorated)
+                isSending = false
+                try? store.savePatientChat(messages, for: patient)
             }
-        }
+        )
     }
 }

@@ -22,17 +22,13 @@ struct AssistantService {
         history: [ChatMessage],
         question: String
     ) async throws -> String {
-        let formattedComments = comments.map { comment -> String in
-            let quote = comment.quotedText.trimmingCharacters(in: .whitespacesAndNewlines)
-            return quote.isEmpty ? "- \(comment.body)" : "- On “\(quote)”: \(comment.body)"
-        }
         return try await assistant.generate(
             model: model,
             system: systemPrompt,
             prompt: Prompts.sessionChat(
                 transcript: transcript,
                 notes: notes,
-                comments: formattedComments,
+                comments: Self.formatComments(comments),
                 history: history,
                 question: question
             )
@@ -45,5 +41,52 @@ struct AssistantService {
             system: systemPrompt,
             prompt: Prompts.patientChat(context: context, history: history, question: question)
         )
+    }
+
+    // MARK: - Streaming
+
+    /// Streams the answer to a session question as the growing full text so far.
+    /// Backends that stream natively (Ollama, Foundation Models, llama.cpp) emit
+    /// progressively; others fall back to a single final emission.
+    func streamAnswerAboutSession(
+        transcript: String,
+        notes: String = "",
+        comments: [SessionComment] = [],
+        history: [ChatMessage],
+        question: String
+    ) -> AsyncThrowingStream<String, Error> {
+        assistant.stream(
+            model: model,
+            system: systemPrompt,
+            prompt: Prompts.sessionChat(
+                transcript: transcript,
+                notes: notes,
+                comments: Self.formatComments(comments),
+                history: history,
+                question: question
+            )
+        )
+    }
+
+    /// Streams the answer to a whole-patient question as the growing full text.
+    func streamAnswerAboutPatient(
+        context: String,
+        history: [ChatMessage],
+        question: String
+    ) -> AsyncThrowingStream<String, Error> {
+        assistant.stream(
+            model: model,
+            system: systemPrompt,
+            prompt: Prompts.patientChat(context: context, history: history, question: question)
+        )
+    }
+
+    /// Renders stored margin comments into the plain lines the prompt expects.
+    /// Shared by the batch and streaming session-chat paths.
+    static func formatComments(_ comments: [SessionComment]) -> [String] {
+        comments.map { comment in
+            let quote = comment.quotedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            return quote.isEmpty ? "- \(comment.body)" : "- On “\(quote)”: \(comment.body)"
+        }
     }
 }
