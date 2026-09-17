@@ -14,6 +14,8 @@ struct SessionDetailView: View {
     @StateObject private var recorder = SessionRecorder()
 
     @State private var transcriptText: String = ""
+    @State private var isEditingTranscript = false
+    @State private var transcriptDraft = ""
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
     @State private var sessionNote: String = ""
@@ -62,6 +64,30 @@ struct SessionDetailView: View {
             Text(confirmationMessage ?? "")
         }
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
+        .onChange(of: recorder.longRunningReminder) { _, exceeded in
+            // Also fire a system notification so it's noticed if the app isn't
+            // focused (the therapist has likely switched to the call window).
+            if exceeded {
+                Task {
+                    await integrations.makeNotifier().post(
+                        SessionNotifications.longRecordingReminder(patientName: patient.name)
+                    )
+                }
+            }
+        }
+        .alert("Still recording", isPresented: recorderReminderBinding) {
+            Button("Keep Recording", role: .cancel) {}
+            Button("Stop Now", role: .destructive) { Task { await stopRecording() } }
+        } message: {
+            Text("This session has been recording for over 90 minutes. Did you forget to end it?")
+        }
+    }
+
+    private var recorderReminderBinding: Binding<Bool> {
+        Binding(
+            get: { recorder.longRunningReminder },
+            set: { if !$0 { recorder.longRunningReminder = false } }
+        )
     }
 
     private var header: some View {
@@ -209,10 +235,34 @@ struct SessionDetailView: View {
     }
 
     private var transcriptTab: some View {
-        VStack(alignment: .leading) {
-            if transcriptText.isEmpty {
+        VStack(alignment: .leading, spacing: 0) {
+            if transcriptText.isEmpty && !isEditingTranscript {
                 ContentUnavailableView("No Transcript Yet", systemImage: "text.alignleft", description: Text("Record a session, then tap Transcribe."))
+            } else if isEditingTranscript {
+                HStack {
+                    Label("Editing the transcript — this is the source of truth used for summaries and chat.", systemImage: "pencil")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Cancel") { isEditingTranscript = false }
+                    Button("Save") { saveEditedTranscript() }
+                        .keyboardShortcut(.defaultAction)
+                }
+                .padding([.horizontal, .top])
+                TextEditor(text: $transcriptDraft)
+                    .font(.body.monospaced())
+                    .padding(8)
             } else {
+                HStack {
+                    Spacer()
+                    Button {
+                        transcriptDraft = transcriptText
+                        isEditingTranscript = true
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                    .help("Correct the transcript or remove sensitive content")
+                }
+                .padding([.horizontal, .top])
                 ScrollView {
                     Text(transcriptText)
                         .textSelection(.enabled)
@@ -220,6 +270,18 @@ struct SessionDetailView: View {
                         .padding()
                 }
             }
+        }
+    }
+
+    private func saveEditedTranscript() {
+        guard let store = appModel.store else { return }
+        do {
+            try store.saveTranscript(transcriptDraft, for: patient, session: session)
+            transcriptText = transcriptDraft
+            isEditingTranscript = false
+            onSessionUpdated()
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

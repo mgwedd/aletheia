@@ -25,4 +25,12 @@ enum SessionNotifications {
             body: "The AI summary for \(patientName)'s \(dateFormatter.string(from: date)) session is ready to review."
         )
     }
+
+    static func longRecordingReminder(patientName: String) -> AppNotificationContent {
+        AppNotificationContent(
+            identifier: "long-recording-\(patientName)",
+            title: "Still recording",
+            body: "\(patientName)'s session has been recording for over 90 minutes. Did you forget to end it?"
+        )
+    }
 }
