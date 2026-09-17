@@ -7,6 +7,8 @@ Cutting a `v*` tag builds the release and the in-app updater's `appcast.json`.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-17
+
 ### Added
 - Setup now asks for Calendar and Reminders access up front (optional), so the
   "Schedule Next Session" and "Remind Me" features are ready without an

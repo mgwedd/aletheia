@@ -5,9 +5,9 @@
 	<key>CFBundleDisplayName</key>
 	<string>Session Notes</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.1.0</string>
 	<key>CFBundleVersion</key>
-	<string>56</string>
+	<string>59</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSApplicationCategoryType</key>
