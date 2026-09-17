@@ -121,7 +121,11 @@ Key files:
   deliberately naive (concatenate every transcript, newest first, with
   dated headers) — if transcript volume ever outgrows the model's context
   window, that's the only function that needs to change (e.g. to
-  embedding-based retrieval).
+  embedding-based retrieval). Its `gatherCitedPatientContext` variant tags
+  each session (`[S1]` newest-first) in the context so the model can cite its
+  sources; `Services/Citations.swift` then maps those tags back to real dates,
+  rewrites the answer, and appends a plain-language "Sources" line the
+  therapist can trust.
 - `Services/MicRecorder.swift` / `Services/SystemAudioCapture.swift` /
   `Services/SessionRecorder.swift` — mic and call audio are recorded as
   two separate files rather than mixed down to one; that's what lets the

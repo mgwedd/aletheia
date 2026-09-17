@@ -29,7 +29,8 @@ enum PatientContextRetriever {
     static func context(
         for documents: [TranscriptDocument],
         question: String,
-        characterBudget: Int = 6000
+        characterBudget: Int = 6000,
+        labels: [Date: String] = [:]
     ) -> String {
         let usable = documents.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard !usable.isEmpty else { return "" }
@@ -40,7 +41,7 @@ enum PatientContextRetriever {
         // Small enough, or no usable query terms to rank on: return the whole
         // history, newest first — identical to the naive path.
         if terms.isEmpty || totalChars <= characterBudget {
-            return formatWhole(usable)
+            return formatWhole(usable, labels: labels)
         }
 
         var chunks: [(date: Date, order: Int, text: String)] = []
@@ -59,7 +60,7 @@ enum PatientContextRetriever {
 
         // No passage mentions the question: hand back the most recent history
         // that fits, rather than nothing.
-        guard !scored.isEmpty else { return formatWhole(usable, budget: characterBudget) }
+        guard !scored.isEmpty else { return formatWhole(usable, budget: characterBudget, labels: labels) }
 
         var selected: [ScoredChunk] = []
         var used = 0
@@ -69,7 +70,7 @@ enum PatientContextRetriever {
             used += chunk.text.count
             if used >= characterBudget { break }
         }
-        return formatSelected(selected)
+        return formatSelected(selected, labels: labels)
     }
 
     // MARK: - Chunking
@@ -134,16 +135,22 @@ enum PatientContextRetriever {
         return f
     }()
 
-    private static func header(_ date: Date) -> String {
-        "===== Session \(headerFormatter.string(from: date)) ====="
+    /// A session header. When a citation `label` is supplied (e.g. "S1"), it's
+    /// embedded so the model can cite that session inline as `[S1]`.
+    private static func header(_ date: Date, labels: [Date: String]) -> String {
+        let dateString = headerFormatter.string(from: date)
+        if let tag = labels[date] {
+            return "===== Session [\(tag)] \(dateString) ====="
+        }
+        return "===== Session \(dateString) ====="
     }
 
-    private static func formatWhole(_ documents: [TranscriptDocument], budget: Int? = nil) -> String {
+    private static func formatWhole(_ documents: [TranscriptDocument], budget: Int? = nil, labels: [Date: String] = [:]) -> String {
         let sorted = documents.sorted { $0.date > $1.date }
         var blocks: [String] = []
         var used = 0
         for doc in sorted {
-            let block = "\(header(doc.date))\n\(doc.text)"
+            let block = "\(header(doc.date, labels: labels))\n\(doc.text)"
             if let budget, !blocks.isEmpty, used + block.count > budget { break }
             blocks.append(block)
             used += block.count
@@ -151,7 +158,7 @@ enum PatientContextRetriever {
         return blocks.joined(separator: "\n\n")
     }
 
-    private static func formatSelected(_ chunks: [ScoredChunk]) -> String {
+    private static func formatSelected(_ chunks: [ScoredChunk], labels: [Date: String] = [:]) -> String {
         let byDate = Dictionary(grouping: chunks, by: { $0.date })
         let orderedDates = byDate.keys.sorted(by: >)
         var blocks: [String] = []
@@ -159,7 +166,7 @@ enum PatientContextRetriever {
             let passages = byDate[date]!
                 .sorted { $0.order < $1.order }
                 .map(\.text)
-            blocks.append("\(header(date))\n\(passages.joined(separator: "\n…\n"))")
+            blocks.append("\(header(date, labels: labels))\n\(passages.joined(separator: "\n…\n"))")
         }
         return blocks.joined(separator: "\n\n")
     }
