@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(CoreSpotlight)
+import CoreSpotlight
+#endif
 
 @main
 struct SessionNotesApp: App {
@@ -39,6 +42,7 @@ struct SessionNotesApp: App {
                         Task { await updateService.checkForUpdates() }
                     }
                 }
+                .modifier(SpotlightContinuationModifier())
         }
         .commands {
             CommandGroup(replacing: .newItem) {}

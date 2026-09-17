@@ -140,6 +140,13 @@ Key files:
   Ollama's `/api/pull` streaming endpoint.
 - `Services/ToolHealth.swift` — the plain-language status checks shown in
   Settings (permissions granted? model downloaded? Ollama reachable?).
+- `Services/Spotlight/` — optional macOS Spotlight indexing. Off by default
+  and **metadata-only** (patient names and session dates, never transcript or
+  summary content), because names in system-wide search are a privacy
+  trade-off the user opts into (Settings › Spotlight Search). The index-and-
+  route logic (`SpotlightItemBuilder`) is pure and unit-tested; the
+  CoreSpotlight calls (`SpotlightIndexer`, `SpotlightContinuationModifier`)
+  are a thin, SDK-guarded layer. Tapping a hit opens the patient.
 
 ## Building
 

@@ -12,9 +12,11 @@ final class AppModel: ObservableObject {
 
     private(set) var store: Store?
     private let settings: AppSettings
+    private let spotlightIndexer: SpotlightIndexing
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, spotlightIndexer: SpotlightIndexing = SpotlightIndexer.shared) {
         self.settings = settings
+        self.spotlightIndexer = spotlightIndexer
         rebuildStore()
     }
 
@@ -44,9 +46,28 @@ final class AppModel: ObservableObject {
         guard let store else { return }
         do {
             patients = try store.listPatients()
+            reindexSpotlight()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Rebuilds the Spotlight index from the current patients/sessions when the
+    /// user has opted in, or clears it when they haven't. Metadata only — see
+    /// `SpotlightItemBuilder`. Safe to call often; it's a no-op off macOS.
+    func reindexSpotlight() {
+        guard settings.spotlightIndexingEnabled else {
+            spotlightIndexer.clear()
+            return
+        }
+        guard let store else { return }
+        let patients = self.patients
+        var entries: [SpotlightEntry] = []
+        for patient in patients {
+            let sessions = (try? store.listSessions(for: patient)) ?? []
+            entries += SpotlightItemBuilder.entries(for: patient, sessions: sessions)
+        }
+        spotlightIndexer.replaceIndex(with: entries)
     }
 
     @discardableResult
