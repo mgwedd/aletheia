@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject private var integrations: Integrations
     @EnvironmentObject private var updateService: UpdateService
     @StateObject private var whisperDownloader = WhisperModelDownloader()
+    @StateObject private var llamaDownloader = LlamaModelDownloader()
     @State private var ollamaPullProgress: Double = 0
     @State private var ollamaPullStatus: String = ""
     @State private var isPullingOllamaModel = false
@@ -83,6 +84,30 @@ struct SettingsView: View {
                     Label("Runs on your Mac with Apple Intelligence — nothing to install or download.", systemImage: "apple.logo")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+            }
+
+            if LlamaRuntime.isBuilt {
+                Section("Built-in Model (llama.cpp)") {
+                    Picker("Model", selection: $settings.llamaModel) {
+                        ForEach(LlamaModel.allCases) { model in
+                            Text(model.displayName).tag(model)
+                        }
+                    }
+                    HStack {
+                        if llamaDownloader.isDownloading {
+                            ProgressView(value: llamaDownloader.progress)
+                            Text("\(Int(llamaDownloader.progress * 100))%")
+                        } else if FileManager.default.fileExists(atPath: LlamaRuntime.modelURL(for: settings.llamaModel).path) {
+                            Label("Downloaded", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                            Spacer()
+                            Button("Re-download") { Task { await downloadLlamaModel() } }
+                        } else {
+                            Text("Not downloaded (~\(settings.llamaModel.approximateSizeMB) MB)").foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Download") { Task { await downloadLlamaModel() } }
+                        }
+                    }
                 }
             }
 
@@ -186,6 +211,15 @@ struct SettingsView: View {
     private func downloadWhisperModel() async {
         do {
             try await whisperDownloader.download(settings.whisperModel, to: settings.whisperModelPath)
+            await runHealthChecks()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func downloadLlamaModel() async {
+        do {
+            try await llamaDownloader.download(settings.llamaModel, to: LlamaRuntime.modelURL(for: settings.llamaModel))
             await runHealthChecks()
         } catch {
             errorMessage = error.localizedDescription
