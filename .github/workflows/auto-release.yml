@@ -84,7 +84,7 @@ jobs:
           # [skip ci] is belt-and-suspenders: a commit pushed with GITHUB_TOKEN
           # already can't re-trigger this workflow (recursion is suppressed).
           git commit -m "chore(release): v${NEXT} [skip ci]"
-          git tag -a "v${NEXT}" -m "Session Notes ${NEXT}"
+          git tag -a "v${NEXT}" -m "Aletheia ${NEXT}"
           git push origin HEAD:main
           git push origin "v${NEXT}"
 

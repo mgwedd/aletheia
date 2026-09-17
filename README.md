@@ -1,4 +1,4 @@
-# aletheia — Session Notes
+# Aletheia — private therapy session notes
 
 A local-only macOS app for a therapist to record, transcribe, and summarize
 browser-based video therapy sessions, then search, annotate, and ask questions

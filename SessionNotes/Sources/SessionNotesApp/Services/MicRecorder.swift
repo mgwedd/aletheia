@@ -7,7 +7,7 @@ enum MicRecorderError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .permissionDenied:
-            return "Session Notes doesn't have permission to use the microphone. Open System Settings > Privacy & Security > Microphone and turn it on for Session Notes."
+            return "Aletheia doesn't have permission to use the microphone. Open System Settings > Privacy & Security > Microphone and turn it on for Aletheia."
         case .alreadyRunning:
             return "A recording is already in progress."
         }

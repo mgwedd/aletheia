@@ -1,11 +1,17 @@
 # Changelog
 
-All notable changes to Session Notes are recorded here. The format follows
+All notable changes to Aletheia are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); the project adopts
 [semantic versioning](https://semver.org/) once the first release is tagged.
 Cutting a `v*` tag builds the release and the in-app updater's `appcast.json`.
 
 ## [Unreleased]
+
+### Changed
+- The app is now named **Aletheia** everywhere it's shown — the window and menu,
+  permission prompts ("Aletheia would like to…"), setup, and the distributed
+  `Aletheia.app`/DMG. Internal identifiers (bundle id, Xcode target) are
+  unchanged, so existing permission grants and data folders carry over.
 
 ## [1.1.0] - 2026-09-17
 

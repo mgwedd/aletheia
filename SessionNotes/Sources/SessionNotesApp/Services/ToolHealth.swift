@@ -55,7 +55,7 @@ enum ToolHealth {
     static func microphoneCheck() -> ToolHealthCheck {
         switch MicRecorder.permissionStatus {
         case .authorized:
-            return ToolHealthCheck(kind: .microphone, title: "Microphone access", status: .ok, detail: "Session Notes can record your voice.")
+            return ToolHealthCheck(kind: .microphone, title: "Microphone access", status: .ok, detail: "Aletheia can record your voice.")
         case .notDetermined:
             return ToolHealthCheck(kind: .microphone, title: "Microphone access", status: .warning, detail: "You'll be asked to allow this the first time you record.")
         default:
@@ -65,7 +65,7 @@ enum ToolHealth {
 
     static func screenRecordingCheck() -> ToolHealthCheck {
         if SystemAudioCapture.checkPermission() {
-            return ToolHealthCheck(kind: .screenRecording, title: "Call audio capture", status: .ok, detail: "Session Notes can capture the other side of your call.")
+            return ToolHealthCheck(kind: .screenRecording, title: "Call audio capture", status: .ok, detail: "Aletheia can capture the other side of your call.")
         }
         return ToolHealthCheck(
             kind: .screenRecording,

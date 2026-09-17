@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<!--
-	App Sandbox is on. Session Notes never launches an external process
+	App Sandbox is on. Aletheia never launches an external process
 	(no ffmpeg / whisper-cli / ollama subprocess): transcription runs
 	in-process via whisper.cpp (SwiftWhisper), and Ollama is reached over
 	localhost HTTP, so full sandboxing is possible without giving up any

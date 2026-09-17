@@ -13,7 +13,7 @@ enum ReminderSchedulerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .accessDenied:
-            return "Session Notes doesn't have permission to add Reminders. Turn it on in System Settings › Privacy & Security › Reminders."
+            return "Aletheia doesn't have permission to add Reminders. Turn it on in System Settings › Privacy & Security › Reminders."
         case .unavailable:
             return "Reminders aren't available on this system."
         }

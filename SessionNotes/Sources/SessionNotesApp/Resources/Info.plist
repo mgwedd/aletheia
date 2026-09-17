@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Session Notes</string>
+	<string>Aletheia</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.1.0</string>
 	<key>CFBundleVersion</key>
@@ -15,11 +15,11 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Private use only. Not for distribution.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Session Notes needs microphone access to record your voice during a therapy session.</string>
+	<string>Aletheia needs microphone access to record your voice during a therapy session.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>Session Notes adds a follow-up reminder to your Reminders only when you ask it to, so a session doesn't slip through the cracks.</string>
+	<string>Aletheia adds a follow-up reminder to your Reminders only when you ask it to, so a session doesn't slip through the cracks.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>Session Notes adds a next-session event to your Calendar only when you ask it to.</string>
+	<string>Aletheia adds a next-session event to your Calendar only when you ask it to.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>LSApplicationSecondaryCategoryType</key>

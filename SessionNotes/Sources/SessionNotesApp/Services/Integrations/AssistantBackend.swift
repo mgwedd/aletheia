@@ -41,7 +41,7 @@ enum AssistantBackend: String, CaseIterable, Identifiable, Codable, Hashable {
         case .ollama:
             return "Runs a model through the free Ollama app. Works on older Macs; needs a one-time install."
         case .localLlama:
-            return "A model built into Session Notes itself."
+            return "A model built into Aletheia itself."
         }
     }
 }

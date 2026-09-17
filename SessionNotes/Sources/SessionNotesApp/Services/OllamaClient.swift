@@ -36,7 +36,7 @@ private struct OllamaPullProgress: Decodable {
 /// Talks to the Ollama server over its local REST API (default
 /// 127.0.0.1:11434) instead of shelling out to the `ollama` CLI. Ollama
 /// itself is installed and launched by the user like any other Mac app —
-/// Session Notes never spawns it and never needs to know where its binary
+/// Aletheia never spawns it and never needs to know where its binary
 /// lives, which is also what keeps the app sandbox-compatible (it only
 /// needs the network-client entitlement, not permission to run arbitrary
 /// executables).

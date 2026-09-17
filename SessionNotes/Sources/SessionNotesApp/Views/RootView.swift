@@ -68,7 +68,7 @@ struct RootView: View {
         } message: {
             Text(appModel.errorMessage ?? "")
         }
-        .alert("Update Session Notes", isPresented: schemaWarningBinding) {
+        .alert("Update Aletheia", isPresented: schemaWarningBinding) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(appModel.schemaWarning ?? "")

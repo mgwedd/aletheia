@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds Session Notes.app from source. Run this on a Mac with Xcode
+# Builds Aletheia.app from source. Run this on a Mac with Xcode
 # installed (the free Command Line Tools are not enough — SwiftUI/
 # ScreenCaptureKit apps need the full Xcode app from the App Store).
 #
@@ -8,7 +8,7 @@
 #   2. Generates SessionNotes.xcodeproj from project.yml.
 #   3. Builds a Release build, ad-hoc code signed with the Hardened Runtime
 #      enabled (no Apple Developer account needed).
-#   4. Copies the finished app to ./dist/Session Notes.app.
+#   4. Copies the finished app to ./dist/Aletheia.app.
 #
 # First launch on any Mac will still need a right-click > Open, since this
 # isn't notarized by Apple — see docs/SETUP-GUIDE.md.
@@ -67,7 +67,7 @@ xcodebuild \
 
 # The product/target name is "SessionNotes" (no space); the space only appears
 # in the Finder display name (CFBundleDisplayName). So the built bundle is
-# SessionNotes.app — we copy it to the friendlier "Session Notes.app" for dist.
+# SessionNotes.app — we copy it to the friendlier "Aletheia.app" for dist.
 APP_PATH="build/Build/Products/Release/SessionNotes.app"
 if [ ! -d "$APP_PATH" ]; then
     echo "Build finished but the .app wasn't found at $APP_PATH" >&2
@@ -75,9 +75,9 @@ if [ ! -d "$APP_PATH" ]; then
 fi
 
 mkdir -p ../dist
-rm -rf "../dist/Session Notes.app"
-cp -R "$APP_PATH" "../dist/Session Notes.app"
+rm -rf "../dist/Aletheia.app"
+cp -R "$APP_PATH" "../dist/Aletheia.app"
 
 echo
-echo "Done. Session Notes.app is in the dist/ folder at the repo root."
+echo "Done. Aletheia.app is in the dist/ folder at the repo root."
 echo "First launch: right-click the app > Open, since it isn't notarized."

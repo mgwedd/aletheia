@@ -13,7 +13,7 @@ enum CalendarSchedulerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .accessDenied:
-            return "Session Notes doesn't have permission to add Calendar events. Turn it on in System Settings › Privacy & Security › Calendars."
+            return "Aletheia doesn't have permission to add Calendar events. Turn it on in System Settings › Privacy & Security › Calendars."
         case .unavailable:
             return "No calendar is available to add the event to."
         }

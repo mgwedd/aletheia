@@ -9,7 +9,7 @@ enum SystemAudioCaptureError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .permissionDenied:
-            return "Session Notes doesn't have permission to capture the call audio. Open System Settings > Privacy & Security > Screen & System Audio Recording and turn it on for Session Notes."
+            return "Aletheia doesn't have permission to capture the call audio. Open System Settings > Privacy & Security > Screen & System Audio Recording and turn it on for Aletheia."
         case .noDisplayAvailable:
             return "Couldn't find a display to capture system audio from."
         }

@@ -18,7 +18,7 @@ enum MarkdownExporter {
 
     static func session(date: Date, patientName: String, transcript: String?, summary: String?) -> String {
         var lines: [String] = [
-            "# Session Notes — \(patientName)",
+            "# Aletheia — \(patientName)",
             "",
             "**Date:** \(dateFormatter.string(from: date))",
             "",

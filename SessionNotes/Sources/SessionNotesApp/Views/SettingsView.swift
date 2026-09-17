@@ -146,7 +146,7 @@ struct SettingsView: View {
                     }
                     Spacer()
                 }
-                Text("Session Notes checks for a new version on launch and lets you know when one is ready.")
+                Text("Aletheia checks for a new version on launch and lets you know when one is ready.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

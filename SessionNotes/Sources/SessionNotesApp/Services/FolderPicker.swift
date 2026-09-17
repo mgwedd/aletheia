@@ -8,7 +8,7 @@ import AppKit
 enum FolderPicker {
     static func choose() -> URL? {
         let panel = NSOpenPanel()
-        panel.title = "Choose Your Session Notes Folder"
+        panel.title = "Choose Your Aletheia Folder"
         panel.message = "Pick a folder inside iCloud Drive so your notes back up automatically, or choose any folder you like. Use \"New Folder\" to create one."
         panel.canChooseFiles = false
         panel.canChooseDirectories = true

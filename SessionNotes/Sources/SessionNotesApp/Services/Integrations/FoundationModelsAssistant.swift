@@ -13,7 +13,7 @@ import FoundationModels
 /// The whole file is behind `#if canImport(FoundationModels)` so it compiles
 /// out cleanly on toolchains whose SDK predates the framework (the CI image
 /// today builds with Xcode 16, which has no FoundationModels), and lights up
-/// automatically when Session Notes is built with a newer Xcode. Nothing else
+/// automatically when Aletheia is built with a newer Xcode. Nothing else
 /// in the app references this type without the same guard.
 @available(macOS 26.0, *)
 final class FoundationModelsAssistant: Assistant {
