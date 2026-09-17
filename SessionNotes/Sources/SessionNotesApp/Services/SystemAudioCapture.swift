@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreGraphics
 import ScreenCaptureKit
 
 enum SystemAudioCaptureError: LocalizedError {
@@ -33,13 +34,25 @@ final class SystemAudioCapture: NSObject {
     var onError: ((Error) -> Void)?
     private(set) var isRunning = false
 
-    static func checkPermission() async -> Bool {
-        do {
-            _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            return true
-        } catch {
-            return false
-        }
+    /// Whether Screen Recording (which gates ScreenCaptureKit audio) is granted —
+    /// checked *without* prompting. Using the CoreGraphics preflight instead of
+    /// probing `SCShareableContent` is what stops the setup flow from re-showing
+    /// the system permission dialog every time it re-runs its health checks. Safe
+    /// to poll as often as we like.
+    static func checkPermission() -> Bool {
+        CGPreflightScreenCaptureAccess()
+    }
+
+    /// Ask for Screen Recording access with a single, explicit system prompt.
+    /// Only triggers the dialog when the state is undetermined; once the user has
+    /// denied it, macOS won't re-prompt (this returns false and the UI sends them
+    /// to System Settings instead). Because the app never poisons its own TCC
+    /// state with a premature capture attempt, a grant takes effect for the
+    /// running process — no relaunch required.
+    /// - Returns: whether access is granted right after the request.
+    @discardableResult
+    static func requestPermission() -> Bool {
+        CGRequestScreenCaptureAccess()
     }
 
     func start(to url: URL) async throws {

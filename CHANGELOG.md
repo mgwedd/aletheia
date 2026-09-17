@@ -28,6 +28,11 @@ Cutting a `v*` tag builds the release and the in-app updater's `appcast.json`.
 
 - Streaming chat responses with an adaptive, word-by-word reveal and a Stop
   control, across all backends (Ollama, Apple Intelligence, llama.cpp).
+### Fixed
+- Screen Recording setup no longer re-prompts on every health check and doesn't
+  need an app relaunch: permission is checked with a non-prompting preflight, the
+  system dialog appears once from an explicit Allow, and the checklist turns green
+  live the moment access is granted.
 
 ### Infrastructure
 - App Sandbox + Hardened Runtime; no external process is ever spawned.
