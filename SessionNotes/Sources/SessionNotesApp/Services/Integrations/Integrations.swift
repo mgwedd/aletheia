@@ -60,9 +60,20 @@ final class Integrations: ObservableObject {
         ).resolve(settings.assistantBackend)
     }
 
+    /// Apple Intelligence is intentionally disabled for now. Apple is moving Siri
+    /// / system intelligence toward a Google Gemini backhaul, and for PHI this app
+    /// only uses backends it can prove stay on this Mac (Ollama, built-in
+    /// llama.cpp). The on-device Foundation Models API doesn't itself use that
+    /// cloud path, but we keep the guarantee simple and provable by not depending
+    /// on Apple's stack. Set this to `false` to re-enable the on-device path.
+    static let appleIntelligenceBlocked = true
+
     /// Whether Apple's Foundation Models are usable on this machine right now.
-    /// False on any toolchain/SDK without the framework (so it's false in CI).
+    /// False on any toolchain/SDK without the framework (so it's false in CI),
+    /// and false whenever `appleIntelligenceBlocked` is set — so the resolver
+    /// never selects it and `Automatic` stays fully local.
     static var appleIntelligenceAvailable: Bool {
+        if appleIntelligenceBlocked { return false }
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) { return FoundationModelsAssistant.isAvailable }
         #endif

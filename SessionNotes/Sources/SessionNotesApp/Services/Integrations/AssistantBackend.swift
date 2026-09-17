@@ -35,7 +35,7 @@ enum AssistantBackend: String, CaseIterable, Identifiable, Codable, Hashable {
     var summary: String {
         switch self {
         case .automatic:
-            return "Use Apple Intelligence when this Mac supports it, otherwise fall back automatically."
+            return "Pick the best local backend automatically — the built-in model if present, otherwise Ollama."
         case .appleIntelligence:
             return "Runs entirely on your Mac with nothing to install. Requires a Mac that supports Apple Intelligence."
         case .ollama:
