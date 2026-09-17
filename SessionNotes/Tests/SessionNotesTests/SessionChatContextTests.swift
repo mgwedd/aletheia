@@ -21,14 +21,17 @@ final class SessionChatContextTests: XCTestCase {
         )
         XCTAssertTrue(prompt.contains("Therapist's session notes:"))
         XCTAssertTrue(prompt.contains("She seemed brighter today."))
-        XCTAssertTrue(prompt.contains("margin comments"))
+        // The section header (not the instruction text) is what's conditional.
+        XCTAssertTrue(prompt.contains("Therapist's margin comments on the transcript:"))
         XCTAssertTrue(prompt.contains("worse since the move"))
     }
 
     func testPromptOmitsSectionsWhenNoAnnotations() {
         let prompt = Prompts.sessionChat(transcript: "T", history: [], question: "Q")
+        // Assert on the section headers, which only appear when annotations
+        // exist — the prompt's static instructions mention "margin comments".
         XCTAssertFalse(prompt.contains("Therapist's session notes:"))
-        XCTAssertFalse(prompt.contains("margin comments"))
+        XCTAssertFalse(prompt.contains("Therapist's margin comments on the transcript:"))
     }
 
     func testAnswerAboutSessionForwardsNotesAndComments() async throws {
