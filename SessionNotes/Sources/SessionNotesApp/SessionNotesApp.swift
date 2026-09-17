@@ -10,6 +10,9 @@ struct SessionNotesApp: App {
     @StateObject private var integrations: Integrations
     @StateObject private var updateService: UpdateService
     @StateObject private var appLock: AppLock
+    /// One recorder for the whole app, shared by the session view and the
+    /// menu-bar control so both drive (and reflect) the same recording.
+    @StateObject private var recorder = SessionRecorder()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -31,6 +34,7 @@ struct SessionNotesApp: App {
                 .environmentObject(appModel)
                 .environmentObject(integrations)
                 .environmentObject(updateService)
+                .environmentObject(recorder)
                 .sheet(isPresented: showFirstRun) {
                     FirstRunView()
                         .environmentObject(settings)
@@ -64,6 +68,20 @@ struct SessionNotesApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
+
+        MenuBarExtra("Aletheia Recording", systemImage: menuBarSymbol) {
+            RecordingMenuBar()
+                .environmentObject(recorder)
+                .environmentObject(appModel)
+        }
+        .menuBarExtraStyle(.window)
+    }
+
+    /// The menu-bar icon reflects recording state at a glance: a filled red dot
+    /// while recording, paused while paused, and a neutral waveform when idle.
+    private var menuBarSymbol: String {
+        guard recorder.isRecording else { return "waveform" }
+        return recorder.isPaused ? "pause.circle.fill" : "record.circle.fill"
     }
 
     private var showFirstRun: Binding<Bool> {

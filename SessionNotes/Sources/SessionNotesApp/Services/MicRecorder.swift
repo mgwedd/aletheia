@@ -25,6 +25,11 @@ final class MicRecorder {
     private let engine = AVAudioEngine()
     private var file: AVAudioFile?
     private(set) var isRunning = false
+    /// When true, the input tap keeps running but its buffers are dropped, so
+    /// the file skips the paused span instead of stopping the engine (restarting
+    /// AVAudioEngine mid-session risks glitches). Written on the main actor,
+    /// read on the audio thread; a single Bool tolerates that racey read.
+    var isPaused = false
 
     static func requestPermission() async -> Bool {
         await withCheckedContinuation { continuation in
@@ -48,7 +53,7 @@ final class MicRecorder {
         self.file = file
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            guard let self else { return }
+            guard let self, !self.isPaused else { return }
             try? self.file?.write(from: buffer)
         }
 
@@ -63,5 +68,6 @@ final class MicRecorder {
         engine.stop()
         file = nil
         isRunning = false
+        isPaused = false
     }
 }

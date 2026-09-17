@@ -11,7 +11,9 @@ struct SessionDetailView: View {
 
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
-    @StateObject private var recorder = SessionRecorder()
+    // Shared with the menu-bar control (injected at app level) so both drive the
+    // same recording. "Recording" in this view means *this* session specifically.
+    @EnvironmentObject private var recorder: SessionRecorder
 
     @State private var transcriptText: String = ""
     @State private var isEditingTranscript = false
@@ -68,9 +70,10 @@ struct SessionDetailView: View {
             // Also fire a system notification so it's noticed if the app isn't
             // focused (the therapist has likely switched to the call window).
             if exceeded {
+                let name = recorder.active?.patientName ?? patient.name
                 Task {
                     await integrations.makeNotifier().post(
-                        SessionNotifications.longRecordingReminder(patientName: patient.name)
+                        SessionNotifications.longRecordingReminder(patientName: name)
                     )
                 }
             }
@@ -85,7 +88,8 @@ struct SessionDetailView: View {
 
     private var recorderReminderBinding: Binding<Bool> {
         Binding(
-            get: { recorder.longRunningReminder },
+            // Only the view of the session actually recording shows the alert.
+            get: { recorder.longRunningReminder && isRecordingThisSession },
             set: { if !$0 { recorder.longRunningReminder = false } }
         )
     }
@@ -107,17 +111,34 @@ struct SessionDetailView: View {
 
     private var headerControls: some View {
         HStack(spacing: 16) {
-            if recorder.isRecording {
+            if isRecordingThisSession {
                 Button(role: .destructive) {
                     Task { await stopRecording() }
                 } label: {
                     Label("Stop Recording", systemImage: "stop.circle.fill")
                 }
                 .help("Stop recording this session")
-                Image(systemName: "record.circle.fill")
-                    .foregroundStyle(.red)
-                    .symbolEffect(.pulse, options: .repeating)
-                    .help("Recording…")
+                if recorder.isPaused {
+                    Button { recorder.resume() } label: {
+                        Label("Resume", systemImage: "play.circle")
+                    }
+                    .help("Resume recording")
+                } else {
+                    Button { recorder.pause() } label: {
+                        Label("Pause", systemImage: "pause.circle")
+                    }
+                    .help("Pause recording")
+                }
+                Image(systemName: recorder.isPaused ? "pause.circle.fill" : "record.circle.fill")
+                    .foregroundStyle(recorder.isPaused ? .orange : .red)
+                    .symbolEffect(.pulse, options: recorder.isPaused ? .nonRepeating : .repeating)
+                    .help(recorder.isPaused ? "Paused" : "Recording…")
+            } else if recorder.isRecording {
+                // A different session is recording (via the menu bar); don't let
+                // this view start a second one or stop the other by surprise.
+                Label("Recording another session", systemImage: "record.circle")
+                    .foregroundStyle(.secondary)
+                    .help("Stop the current recording from the menu bar first")
             } else {
                 Button {
                     Task { await startRecording() }
@@ -424,11 +445,28 @@ struct SessionDetailView: View {
         comments = commentStore.comments(patientSlug: patient.slug, sessionFolder: session.folderName)
     }
 
+    /// Whether the app-wide recorder is recording *this* session (vs. another
+    /// one started from the menu bar).
+    private var isRecordingThisSession: Bool {
+        recorder.isRecording
+            && recorder.active?.patientSlug == patient.slug
+            && recorder.active?.sessionFolder == session.folderName
+    }
+
     private func startRecording() async {
         guard let store = appModel.store else { return }
         let micURL = store.micRecordingURL(for: patient, session: session)
         let callURL = store.callRecordingURL(for: patient, session: session)
-        await recorder.start(micURL: micURL, callURL: callURL)
+        await recorder.start(
+            micURL: micURL,
+            callURL: callURL,
+            context: .init(
+                patientID: patient.id,
+                patientName: patient.name,
+                patientSlug: patient.slug,
+                sessionFolder: session.folderName
+            )
+        )
         if case .error(let message) = recorder.state {
             errorMessage = message
         }

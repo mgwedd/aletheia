@@ -18,7 +18,9 @@ enum SystemAudioCaptureError: LocalizedError {
 
 /// Captures the *other side* of the video call — whatever is coming out of
 /// the Mac's speakers/headphones during the session — using ScreenCaptureKit
-/// in audio-only mode. This replaces the BlackHole virtual-audio-device
+/// in audio-only mode. It captures system audio, so it's app-agnostic: Zoom, a
+/// browser (Tebra), FaceTime, or any other call all work the same way with no
+/// per-app setup. This replaces the BlackHole virtual-audio-device
 /// approach: no third-party kernel extension or Audio MIDI Setup routing is
 /// needed, only a one-time system permission grant (the same "Screen &
 /// System Audio Recording" permission macOS uses for screen recorders).
@@ -33,6 +35,9 @@ final class SystemAudioCapture: NSObject {
     private var fileURL: URL?
     var onError: ((Error) -> Void)?
     private(set) var isRunning = false
+    /// When true, the SCStream keeps running but incoming buffers are dropped,
+    /// so the call track skips the paused span in step with the mic track.
+    var isPaused = false
 
     /// Whether Screen Recording (which gates ScreenCaptureKit audio) is granted —
     /// checked *without* prompting. Using the CoreGraphics preflight instead of
@@ -91,10 +96,11 @@ final class SystemAudioCapture: NSObject {
         self.stream = nil
         self.file = nil
         isRunning = false
+        isPaused = false
     }
 
     private func write(_ buffer: AVAudioPCMBuffer) {
-        guard let fileURL else { return }
+        guard !isPaused, let fileURL else { return }
         do {
             if file == nil {
                 file = try AVAudioFile(forWriting: fileURL, settings: buffer.format.settings)

@@ -22,7 +22,7 @@ struct FirstRunView: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Recordings, transcripts, and summaries are saved as plain files you can open in Finder.", systemImage: "folder")
-                        Label("It captures your microphone and the call's audio straight from your Mac — any browser video call, no extra audio setup.", systemImage: "waveform")
+                        Label("It captures your microphone and the call's audio straight from your Mac — Zoom, a browser (Tebra), FaceTime, any call — no extra audio setup.", systemImage: "waveform")
                         Label("Speech-to-text runs on-device. AI summaries use a local model through Ollama, also on this Mac.", systemImage: "lock.shield")
                         Label("Recording a session requires the client's consent and compliance with your licensing board's rules — that's on you to confirm before you hit record.", systemImage: "exclamationmark.triangle")
                     }
