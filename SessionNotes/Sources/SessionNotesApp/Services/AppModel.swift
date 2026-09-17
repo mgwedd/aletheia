@@ -11,6 +11,9 @@ final class AppModel: ObservableObject {
     @Published var schemaWarning: String?
 
     private(set) var store: Store?
+    /// Local SQLite store for the therapist's own annotations (inline comments
+    /// and freeform session notes), living inside the chosen data folder.
+    private(set) var commentStore: CommentStore?
     private let settings: AppSettings
     private let spotlightIndexer: SpotlightIndexing
 
@@ -23,12 +26,14 @@ final class AppModel: ObservableObject {
     func rebuildStore() {
         guard let root = settings.dataRootURL else {
             store = nil
+            commentStore = nil
             patients = []
             schemaWarning = nil
             return
         }
         let newStore = Store(root: root)
         store = newStore
+        commentStore = CommentStore(root: root)
         if case let .needsNewerApp(dataVersion, appVersion) = newStore.schemaCompatibility {
             schemaWarning = """
             This folder's data was created by a newer version of Session Notes \

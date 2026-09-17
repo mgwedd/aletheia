@@ -16,6 +16,10 @@ struct SessionDetailView: View {
     @State private var transcriptText: String = ""
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
+    @State private var sessionNote: String = ""
+    @State private var comments: [SessionComment] = []
+    @State private var newCommentQuote: String = ""
+    @State private var newCommentBody: String = ""
     @State private var isTranscribing = false
     @State private var transcribeProgress: Double = 0
     @State private var isSummarizing = false
@@ -38,6 +42,8 @@ struct SessionDetailView: View {
             Divider()
             TabView {
                 transcriptTab.tabItem { Label("Transcript", systemImage: "text.alignleft") }
+                notesTab.tabItem { Label("Notes", systemImage: "square.and.pencil") }
+                commentsTab.tabItem { Label("Comments", systemImage: "bubble.left") }
                 summaryTab.tabItem { Label("Summary", systemImage: "doc.text") }
                 chatTab.tabItem { Label("Ask", systemImage: "bubble.left.and.bubble.right") }
             }
@@ -196,6 +202,72 @@ struct SessionDetailView: View {
         }
     }
 
+    private var notesTab: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Your private notes for this session — jot things down during or after the session. Kept separate from the transcript, and included when you ask about this session.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding([.horizontal, .top])
+            TextEditor(text: $sessionNote)
+                .font(.body)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(8)
+                .onChange(of: sessionNote) { _, newValue in
+                    appModel.commentStore?.saveNote(patientSlug: patient.slug, sessionFolder: session.folderName, text: newValue)
+                }
+        }
+    }
+
+    private var commentsTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Add a comment")
+                    .font(.body.weight(.medium))
+                TextField("Passage this is about (optional)", text: $newCommentQuote)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Your comment", text: $newCommentBody, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(2...5)
+                HStack {
+                    Spacer()
+                    Button("Add Comment", action: addComment)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(newCommentBody.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .padding([.horizontal, .top])
+
+            Divider()
+
+            if comments.isEmpty {
+                ContentUnavailableView("No Comments Yet", systemImage: "bubble.left", description: Text("Comments you add are included when you ask about this session."))
+            } else {
+                List {
+                    ForEach(comments) { comment in
+                        VStack(alignment: .leading, spacing: 4) {
+                            if !comment.quotedText.isEmpty {
+                                Text("“\(comment.quotedText)”")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .italic()
+                            }
+                            Text(comment.body)
+                            HStack {
+                                Spacer()
+                                Button(role: .destructive) { deleteComment(comment) } label: {
+                                    Label("Delete", systemImage: "trash").labelStyle(.iconOnly)
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+                .listStyle(.inset)
+            }
+        }
+    }
+
     private var summaryTab: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -242,6 +314,31 @@ struct SessionDetailView: View {
         transcriptText = store.transcript(for: patient, session: session) ?? ""
         summaryText = store.summary(for: patient, session: session) ?? ""
         chatMessages = store.loadSessionChat(for: patient, session: session)
+        if let commentStore = appModel.commentStore {
+            sessionNote = commentStore.note(patientSlug: patient.slug, sessionFolder: session.folderName)
+            comments = commentStore.comments(patientSlug: patient.slug, sessionFolder: session.folderName)
+        }
+    }
+
+    private func addComment() {
+        guard let commentStore = appModel.commentStore else { return }
+        let body = newCommentBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        _ = commentStore.addComment(
+            patientSlug: patient.slug,
+            sessionFolder: session.folderName,
+            quotedText: newCommentQuote.trimmingCharacters(in: .whitespacesAndNewlines),
+            body: body
+        )
+        newCommentQuote = ""
+        newCommentBody = ""
+        comments = commentStore.comments(patientSlug: patient.slug, sessionFolder: session.folderName)
+    }
+
+    private func deleteComment(_ comment: SessionComment) {
+        guard let commentStore = appModel.commentStore else { return }
+        commentStore.deleteComment(id: comment.id)
+        comments = commentStore.comments(patientSlug: patient.slug, sessionFolder: session.folderName)
     }
 
     private func startRecording() async {
@@ -311,7 +408,7 @@ struct SessionDetailView: View {
             defer { isChatSending = false }
             do {
                 let response = try await integrations.makeAssistantService()
-                    .answerAboutSession(transcript: transcriptText, history: chatMessages, question: question)
+                    .answerAboutSession(transcript: transcriptText, notes: sessionNote, comments: comments, history: chatMessages, question: question)
                 chatMessages.append(ChatMessage(role: .assistant, text: response))
                 try? store.saveSessionChat(chatMessages, for: patient, session: session)
             } catch {
