@@ -49,6 +49,33 @@ if [ "${1:-}" = "--classify" ]; then
     exit 0
 fi
 
+# True when every changed path is documentation, markdown, or a test — i.e.
+# nothing that affects the built app. Only source or config changes should cut a
+# release; a docs/test-only merge is not worth a rebuild. An empty list (no file
+# changes) also counts as ignorable. Reads the newline-separated path list as $1.
+only_ignorable_paths() {
+    local files="$1" f
+    [ -z "$(printf '%s' "$files" | tr -d '[:space:]')" ] && return 0
+    while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        case "$f" in
+            *.md) ;;          # markdown (README, CHANGELOG, docs notes, …)
+            docs/*) ;;        # the docs tree
+            *Tests/*) ;;      # test sources (SessionNotes/Tests/…)
+            *) return 1 ;;    # a source or config file → releasable
+        esac
+    done <<EOF
+$files
+EOF
+    return 0
+}
+
+if [ "${1:-}" = "--only-ignorable" ]; then
+    # Testing hook: read a path list on stdin, exit 0 if all ignorable.
+    only_ignorable_paths "$(cat)"
+    exit $?
+fi
+
 cd "$(dirname "$0")/.."
 
 INFO_PLIST="SessionNotes/Sources/SessionNotesApp/Resources/Info.plist"
@@ -95,6 +122,7 @@ else
     CURRENT="${LAST_TAG#v}"
     COMMITS="$(git log "${LAST_TAG}..HEAD" --pretty=format:'%s%n%b' 2>/dev/null || true)"
     COMMIT_COUNT="$(git rev-list "${LAST_TAG}..HEAD" --count 2>/dev/null || echo 0)"
+    CHANGED="$(git diff --name-only "${LAST_TAG}..HEAD" 2>/dev/null || true)"
 
     if [ "$COMMIT_COUNT" -eq 0 ]; then
         BUMP="none"
@@ -106,6 +134,13 @@ else
 
     if [ "$BUMP" = "none" ]; then
         NEXT="$CURRENT"
+        RELEASE="false"
+    elif [ "$FORCE_BUMP" = "auto" ] && only_ignorable_paths "$CHANGED"; then
+        # An automatic release, but only docs/tests/markdown changed since the
+        # last tag — nothing that affects the built app, so skip the rebuild.
+        # A manual dispatch (FORCE_BUMP set) still releases regardless.
+        NEXT="$CURRENT"
+        BUMP="none"
         RELEASE="false"
     else
         NEXT="$(bump_version "$CURRENT" "$BUMP")"

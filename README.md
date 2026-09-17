@@ -187,6 +187,11 @@ carry the convention: use **squash-merge with the PR title as the subject** (e.g
 `feat: streaming chat`) rather than the default `Merge pull request #NN …`, which
 is never releasable. A merge whose commits don't match any rule is a no-op.
 
+Releases also require a **source or config change**: a merge that touches only
+markdown, `docs/`, or test files never rebuilds, even with a `feat:`/`fix:`
+subject. (A later code change still ships those docs along with it.) A manual
+dispatch overrides this.
+
 **Cut a release by hand** (e.g. to force a level, for the first tag, or when the
 commit subjects weren't conventional) from the Actions tab → **Auto Release** →
 **Run workflow**: pick a bump level, or enable **dry run** to preview the

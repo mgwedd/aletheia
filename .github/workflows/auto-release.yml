@@ -19,6 +19,14 @@ name: Auto Release
 on:
   push:
     branches: [main]
+    # Skip the run outright when a merge touches only docs/tests/markdown —
+    # nothing that affects the built app. compute-release.sh applies the same
+    # rule over the whole tag range as the authoritative gate (so a later code
+    # push still releases the docs that rode along).
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '**/Tests/**'
   workflow_dispatch:
     inputs:
       bump:
