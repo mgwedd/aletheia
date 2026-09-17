@@ -100,14 +100,34 @@ to zero-install as the hardware allows:
    `OllamaClient` talks to a local Ollama server. This is the one backend
    that needs a one-time install, and the setup/status screens only ask for
    it when it's the backend actually in use.
-3. **Embedded llama.cpp (staged).** The planned third tier bundles the
-   official [`ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp)
-   runtime (pinned) inside the app, updated as part of the normal app-update
-   process, with GGUF models downloaded/refreshed separately (like the
-   Whisper models). The `AssistantBackend.localLlama` case and the resolver
-   already accommodate it; wiring the runtime is deferred because the heavy
-   C++ build needs a real Mac to verify. Only official/first-party runtimes
-   are used — no third-party LLM wrappers, per the supply-chain constraint.
+3. **Embedded llama.cpp (scaffolded, needs Mac bring-up).** The third tier
+   bundles the official [`ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp)
+   runtime (pinned) inside the app, updated with the app, with GGUF models
+   downloaded/refreshed separately (like the Whisper models). The rails are in
+   `Services/Llama/`: a model catalog (`LlamaModel`), a downloader
+   (`LlamaModelDownloader`), on-disk/availability logic (`LlamaRuntime`), and
+   the `Assistant` binding (`LlamaAssistant`). Only official/first-party
+   runtimes are used — no third-party LLM wrappers, per the supply-chain
+   constraint. See **Embedded llama.cpp** below to switch it on.
+
+### Embedded llama.cpp
+
+The binding is behind `#if canImport(llama)`, so it compiles out until the
+package is linked and the resolver keeps `localLlama` falling back to Ollama.
+CI therefore stays green without building the heavy C++. To bring it up on a
+Mac:
+
+1. In `SessionNotes/project.yml`, uncomment the `llama` package stanza and the
+   `- package: llama` target dependency, and set `revision:` to a **verified
+   `ggml-org/llama.cpp` commit SHA** (pin it — don't track a branch).
+2. Regenerate and build (`./scripts/build.sh`). `LlamaAssistant` now compiles;
+   `LlamaRuntime.isBuilt` becomes true and Settings shows a "Built-in Model"
+   section to download a GGUF.
+3. Verify `LlamaAssistant`'s C-API calls against that pinned `llama.h` — the
+   symbol names and pointer lifetimes are written to the public API but were
+   **not** compiler-checked in CI. Fix any that shifted.
+4. Confirm the `LlamaModel.downloadURL`s resolve to real assets and add a
+   SHA-256 integrity check before shipping this backend enabled.
 
 `AssistantBackendResolver` is the pure decision function (given what's
 available, which backend wins); it's unit-tested in isolation and carries no

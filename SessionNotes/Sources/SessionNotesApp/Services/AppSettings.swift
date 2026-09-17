@@ -60,6 +60,7 @@ final class AppSettings: ObservableObject {
         static let dataRootBookmark = "dataRootBookmark"
         static let whisperModel = "whisperModel"
         static let assistantBackend = "assistantBackend"
+        static let llamaModel = "llamaModel"
         static let ollamaModelName = "ollamaModelName"
         static let ollamaBaseURL = "ollamaBaseURL"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
@@ -80,6 +81,9 @@ final class AppSettings: ObservableObject {
     }
     @Published var assistantBackend: AssistantBackend {
         didSet { defaults.set(assistantBackend.rawValue, forKey: Keys.assistantBackend) }
+    }
+    @Published var llamaModel: LlamaModel {
+        didSet { defaults.set(llamaModel.rawValue, forKey: Keys.llamaModel) }
     }
     @Published var ollamaModelName: String {
         didSet { defaults.set(ollamaModelName, forKey: Keys.ollamaModelName) }
@@ -122,6 +126,11 @@ final class AppSettings: ObservableObject {
             assistantBackend = backend
         } else {
             assistantBackend = .automatic
+        }
+        if let raw = defaults.string(forKey: Keys.llamaModel), let model = LlamaModel(rawValue: raw) {
+            llamaModel = model
+        } else {
+            llamaModel = .llama32_3b
         }
         ollamaModelName = defaults.string(forKey: Keys.ollamaModelName) ?? recommendation.ollamaModel
         if let raw = defaults.string(forKey: Keys.ollamaBaseURL), let url = URL(string: raw) {

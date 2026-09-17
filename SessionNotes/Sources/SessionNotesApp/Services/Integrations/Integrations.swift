@@ -36,9 +36,14 @@ final class Integrations: ObservableObject {
             #endif
             return OllamaClient(baseURL: settings.ollamaBaseURL)
         case .localLlama:
-            // Staged: the bundled llama.cpp runtime isn't wired yet, so fall
-            // back to Ollama. `effectiveAssistantBackend` won't actually select
-            // this until `localLlamaAvailable` flips true; this arm is defensive.
+            #if canImport(llama)
+            if LlamaRuntime.isAvailable(model: settings.llamaModel) {
+                return LlamaAssistant(modelURL: LlamaRuntime.modelURL(for: settings.llamaModel))
+            }
+            #endif
+            // Runtime not linked (default today) or model not downloaded: fall
+            // back to Ollama. Flipping this on is just adding the pinned
+            // llama.cpp package — see README › Embedded llama.cpp.
             return OllamaClient(baseURL: settings.ollamaBaseURL)
         case .ollama, .automatic:
             return OllamaClient(baseURL: settings.ollamaBaseURL)
@@ -51,7 +56,7 @@ final class Integrations: ObservableObject {
     var effectiveAssistantBackend: AssistantBackend {
         AssistantBackendResolver(
             appleIntelligenceAvailable: Self.appleIntelligenceAvailable,
-            localLlamaAvailable: false
+            localLlamaAvailable: LlamaRuntime.isAvailable(model: settings.llamaModel)
         ).resolve(settings.assistantBackend)
     }
 
