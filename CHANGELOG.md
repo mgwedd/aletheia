@@ -1,11 +1,13 @@
 # Changelog
 
 All notable changes to Aletheia are recorded here. The format follows
-[Keep a Changelog](https://keepachangelog.com/); the project adopts
-[semantic versioning](https://semver.org/) once the first release is tagged.
-Cutting a `v*` tag builds the release and the in-app updater's `appcast.json`.
+[Keep a Changelog](https://keepachangelog.com/) and [semantic
+versioning](https://semver.org/).
 
-## [Unreleased]
+**This file is generated at release time** from the [Conventional
+Commit](https://www.conventionalcommits.org/) messages since the previous tag —
+don't edit it in pull requests. Write a good commit subject (`feat: …`,
+`fix: …`) and the release automation adds the entry for you.
 
 ## [1.2.0] - 2026-09-17
 

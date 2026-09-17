@@ -6,9 +6,9 @@
 #      CFBundleVersion to a monotonic build number (the commit count), so the
 #      shipped app reports the version being released and the in-app updater's
 #      version comparison is meaningful.
-#   2. Promotes CHANGELOG.md's "## [Unreleased]" block to "## [<version>] - <date>"
-#      (Keep a Changelog convention) and leaves a fresh empty Unreleased above it,
-#      so the hand-curated notes become that release's notes.
+#   2. Inserts a CHANGELOG.md section for the version, generated from the
+#      Conventional Commit subjects since the last tag (see changelog-section.sh).
+#      CHANGELOG.md is never hand-edited in PRs, so it can't cause conflicts.
 #
 # Pure awk/sed + git — no third-party tools. Idempotent enough to re-run.
 #
@@ -41,17 +41,18 @@ set_plist_string() {
 set_plist_string "CFBundleShortVersionString" "$VERSION"
 set_plist_string "CFBundleVersion" "$BUILD_NUMBER"
 
-# --- CHANGELOG: promote the first "## [Unreleased]" to a versioned section. ---
+# --- CHANGELOG: generate this version's section from commits and insert it above
+# the most recent existing version (right after the header block). ---
+SECTION="$(scripts/changelog-section.sh "$VERSION")"
 tmp="$(mktemp)"
-awk -v version="$VERSION" -v today="$TODAY" '
-    !done && /^## \[Unreleased\]/ {
-        print "## [Unreleased]"
+SECTION="$SECTION" awk '
+    !done && /^## \[/ {
+        print ENVIRON["SECTION"]
         print ""
-        print "## [" version "] - " today
         done = 1
-        next
     }
     { print }
+    END { if (!done) { print ""; print ENVIRON["SECTION"] } }
 ' "$CHANGELOG" > "$tmp"
 mv "$tmp" "$CHANGELOG"
 
