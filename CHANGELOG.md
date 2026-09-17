@@ -7,6 +7,8 @@ Cutting a `v*` tag builds the release and the in-app updater's `appcast.json`.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-17
+
 ### Added
 - Native macOS app: record a session's microphone and call audio (two tracks,
   via ScreenCaptureKit — no virtual audio driver), on-device Whisper
