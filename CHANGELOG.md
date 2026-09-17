@@ -7,6 +7,8 @@ Cutting a `v*` tag builds the release and the in-app updater's `appcast.json`.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-17
+
 ### Changed
 - The app is now named **Aletheia** everywhere it's shown — the window and menu,
   permission prompts ("Aletheia would like to…"), setup, and the distributed
