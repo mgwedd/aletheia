@@ -17,8 +17,25 @@ struct PatientsListView: View {
         List(filteredPatients, selection: $selectedPatient) { patient in
             Text(patient.name)
                 .font(.headline)
-                .padding(.vertical, 2)
+                .padding(.vertical, 4)
                 .tag(patient)
+        }
+        .overlay {
+            if appModel.patients.isEmpty {
+                ContentUnavailableView {
+                    Label("No Patients Yet", systemImage: "person.crop.circle.badge.plus")
+                } description: {
+                    Text("Add your first patient to start recording and reviewing sessions.")
+                } actions: {
+                    Button("Add Patient") {
+                        newPatientName = ""
+                        showAddPatient = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            } else if filteredPatients.isEmpty {
+                ContentUnavailableView.search(text: searchText)
+            }
         }
         .searchable(text: $searchText, prompt: "Search patients")
         .navigationTitle("Patients")
@@ -61,9 +78,11 @@ private struct AddPatientSheet: View {
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)
                 Button("Add", action: onAdd)
+                    .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            .controlSize(.large)
         }
         .padding(24)
         .frame(width: 360)
