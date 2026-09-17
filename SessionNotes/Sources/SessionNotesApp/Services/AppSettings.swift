@@ -62,6 +62,7 @@ final class AppSettings: ObservableObject {
         static let assistantBackend = "assistantBackend"
         static let llamaModel = "llamaModel"
         static let ollamaModelName = "ollamaModelName"
+        static let systemPrompt = "systemPrompt"
         static let ollamaBaseURL = "ollamaBaseURL"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
         static let updateFeedURL = "updateFeedURL"
@@ -87,6 +88,11 @@ final class AppSettings: ObservableObject {
     }
     @Published var ollamaModelName: String {
         didSet { defaults.set(ollamaModelName, forKey: Keys.ollamaModelName) }
+    }
+    /// The system prompt prepended to every LLM request. Defaults to
+    /// `Prompts.defaultSystemPrompt`; fully editable (and resettable) in Settings.
+    @Published var systemPrompt: String {
+        didSet { defaults.set(systemPrompt, forKey: Keys.systemPrompt) }
     }
     @Published var ollamaBaseURL: URL {
         didSet { defaults.set(ollamaBaseURL.absoluteString, forKey: Keys.ollamaBaseURL) }
@@ -133,6 +139,8 @@ final class AppSettings: ObservableObject {
             llamaModel = .llama32_3b
         }
         ollamaModelName = defaults.string(forKey: Keys.ollamaModelName) ?? recommendation.ollamaModel
+        let savedPrompt = defaults.string(forKey: Keys.systemPrompt)
+        systemPrompt = (savedPrompt?.isEmpty == false) ? savedPrompt! : Prompts.defaultSystemPrompt
         if let raw = defaults.string(forKey: Keys.ollamaBaseURL), let url = URL(string: raw) {
             ollamaBaseURL = url
         } else {

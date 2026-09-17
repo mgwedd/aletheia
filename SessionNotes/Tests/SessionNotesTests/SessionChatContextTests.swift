@@ -6,7 +6,8 @@ private final class CapturingAssistant: Assistant, @unchecked Sendable {
     func isReachable() async -> Bool { true }
     func listModels() async throws -> [String] { [] }
     func hasModel(_ name: String) async -> Bool { true }
-    func generate(model: String, prompt: String) async throws -> String { lastPrompt = prompt; return "ok" }
+    var lastSystem: String?
+    func generate(model: String, system: String, prompt: String) async throws -> String { lastSystem = system; lastPrompt = prompt; return "ok" }
     func pullModel(_ name: String, onProgress: @escaping (Double, String) -> Void) async throws {}
 }
 

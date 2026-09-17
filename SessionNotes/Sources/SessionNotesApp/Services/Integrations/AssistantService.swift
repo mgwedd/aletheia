@@ -8,9 +8,11 @@ import Foundation
 struct AssistantService {
     let assistant: Assistant
     let model: String
+    /// Standing instructions sent with every request (see `AppSettings.systemPrompt`).
+    var systemPrompt: String = Prompts.defaultSystemPrompt
 
     func summarize(transcript: String) async throws -> String {
-        try await assistant.generate(model: model, prompt: Prompts.summarize(transcript: transcript))
+        try await assistant.generate(model: model, system: systemPrompt, prompt: Prompts.summarize(transcript: transcript))
     }
 
     func answerAboutSession(
@@ -26,6 +28,7 @@ struct AssistantService {
         }
         return try await assistant.generate(
             model: model,
+            system: systemPrompt,
             prompt: Prompts.sessionChat(
                 transcript: transcript,
                 notes: notes,
@@ -39,6 +42,7 @@ struct AssistantService {
     func answerAboutPatient(context: String, history: [ChatMessage], question: String) async throws -> String {
         try await assistant.generate(
             model: model,
+            system: systemPrompt,
             prompt: Prompts.patientChat(context: context, history: history, question: question)
         )
     }

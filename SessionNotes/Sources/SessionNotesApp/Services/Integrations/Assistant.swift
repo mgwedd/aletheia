@@ -19,8 +19,9 @@ protocol Assistant {
     /// or any `name:tag`).
     func hasModel(_ name: String) async -> Bool
 
-    /// Generate a completion for a prompt with the named model.
-    func generate(model: String, prompt: String) async throws -> String
+    /// Generate a completion for a prompt with the named model, steered by a
+    /// system prompt (the app's/user's standing instructions).
+    func generate(model: String, system: String, prompt: String) async throws -> String
 
     /// Download a model, reporting progress as (fraction 0...1, status text).
     func pullModel(_ name: String, onProgress: @escaping (Double, String) -> Void) async throws

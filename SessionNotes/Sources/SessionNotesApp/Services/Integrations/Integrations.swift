@@ -72,7 +72,7 @@ final class Integrations: ObservableObject {
     /// The use-case layer over the LLM adapter, preconfigured with the
     /// currently selected model. This is what summary/chat call sites use.
     func makeAssistantService() -> AssistantService {
-        AssistantService(assistant: makeAssistant(), model: settings.ollamaModelName)
+        AssistantService(assistant: makeAssistant(), model: settings.ollamaModelName, systemPrompt: settings.systemPrompt)
     }
 
     /// System notifications (transcript/summary ready). Created once so the

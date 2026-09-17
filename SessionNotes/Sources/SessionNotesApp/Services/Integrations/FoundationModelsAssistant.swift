@@ -56,10 +56,12 @@ final class FoundationModelsAssistant: Assistant {
     func listModels() async throws -> [String] { ["Apple Intelligence"] }
     func hasModel(_ name: String) async -> Bool { Self.isAvailable }
 
-    func generate(model: String, prompt: String) async throws -> String {
+    func generate(model: String, system: String, prompt: String) async throws -> String {
         // A fresh session per request keeps summaries/chat turns independent;
         // the app already carries its own conversation context in the prompt.
-        let session = LanguageModelSession()
+        // The system prompt maps to the session's standing instructions.
+        let trimmed = system.trimmingCharacters(in: .whitespacesAndNewlines)
+        let session = trimmed.isEmpty ? LanguageModelSession() : LanguageModelSession(instructions: trimmed)
         let response = try await session.respond(to: prompt)
         return response.content
     }

@@ -66,7 +66,7 @@ final class OllamaClient: Assistant {
         (try? await listModels())?.contains { $0 == name || $0 == "\(name):latest" || $0.hasPrefix("\(name):") } ?? false
     }
 
-    func generate(model: String, prompt: String) async throws -> String {
+    func generate(model: String, system: String, prompt: String) async throws -> String {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -76,11 +76,15 @@ final class OllamaClient: Assistant {
         // timeout, so give it plenty of headroom rather than failing a slow
         // (but working) local generation.
         request.timeoutInterval = 600
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             "model": model,
             "prompt": prompt,
             "stream": false,
-        ])
+        ]
+        if !system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["system"] = system
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw OllamaError.notReachable }
