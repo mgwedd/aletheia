@@ -82,4 +82,9 @@ final class Integrations: ObservableObject {
     func makeReminderScheduler() -> ReminderScheduling {
         EventKitReminderScheduler()
     }
+
+    /// Next-session events into the user's Calendar (EventKit).
+    func makeCalendarScheduler() -> CalendarScheduling {
+        EventKitCalendarScheduler()
+    }
 }

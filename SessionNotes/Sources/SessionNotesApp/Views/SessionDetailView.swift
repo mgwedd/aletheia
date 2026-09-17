@@ -21,7 +21,10 @@ struct SessionDetailView: View {
     @State private var isSummarizing = false
     @State private var isChatSending = false
     @State private var errorMessage: String?
-    @State private var reminderConfirmation: String?
+    @State private var confirmationMessage: String?
+    @State private var showScheduleSheet = false
+    @State private var scheduleStart = Date()
+    @State private var scheduleDurationMinutes = SessionEventBuilder.defaultDurationMinutes
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -46,11 +49,12 @@ struct SessionDetailView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .alert("Reminder Added", isPresented: Binding(get: { reminderConfirmation != nil }, set: { if !$0 { reminderConfirmation = nil } })) {
+        .alert("Done", isPresented: Binding(get: { confirmationMessage != nil }, set: { if !$0 { confirmationMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(reminderConfirmation ?? "")
+            Text(confirmationMessage ?? "")
         }
+        .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
     }
 
     private var header: some View {
@@ -101,6 +105,15 @@ struct SessionDetailView: View {
             .menuIndicator(.hidden)
             .help("Add a follow-up reminder to your Reminders app")
 
+            Button {
+                scheduleStart = SessionEventBuilder.suggestedStart()
+                scheduleDurationMinutes = SessionEventBuilder.defaultDurationMinutes
+                showScheduleSheet = true
+            } label: {
+                Label("Schedule Next…", systemImage: "calendar.badge.plus")
+            }
+            .help("Add the next session to your Calendar")
+
             Spacer()
         }
         .padding()
@@ -114,10 +127,43 @@ struct SessionDetailView: View {
         )
         do {
             try await integrations.makeReminderScheduler().schedule(draft)
-            reminderConfirmation = "Reminder set for \(leadTime.displayName.lowercased()) at 9:00 AM."
+            confirmationMessage = "Reminder set for \(leadTime.displayName.lowercased()) at 9:00 AM."
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func scheduleEvent() async {
+        let draft = SessionEventBuilder.draft(
+            patientName: patient.name,
+            start: scheduleStart,
+            durationMinutes: scheduleDurationMinutes
+        )
+        do {
+            try await integrations.makeCalendarScheduler().schedule(draft)
+            showScheduleSheet = false
+            confirmationMessage = "Added “\(draft.title)” to your Calendar."
+        } catch {
+            showScheduleSheet = false
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private var scheduleSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Schedule Next Session").font(.headline)
+            DatePicker("Date & time", selection: $scheduleStart)
+                .datePickerStyle(.compact)
+            Stepper("Duration: \(scheduleDurationMinutes) minutes", value: $scheduleDurationMinutes, in: 15...120, step: 5)
+            HStack {
+                Spacer()
+                Button("Cancel") { showScheduleSheet = false }
+                Button("Add to Calendar") { Task { await scheduleEvent() } }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+        .frame(width: 400)
     }
 
     private func exportSession() {

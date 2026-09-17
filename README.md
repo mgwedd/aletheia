@@ -152,6 +152,10 @@ Key files:
   content/timing logic (`SessionReminderBuilder`) is pure and unit-tested; the
   EventKit call (`ReminderScheduler`) is a thin, SDK-guarded layer behind the
   `ReminderScheduling` adapter.
+- `Services/Calendar/` — "Schedule Next Session" adds a next-appointment event
+  to the user's Calendar (EventKit), again only on an explicit action. Same
+  shape as reminders: pure `SessionEventBuilder` (unit-tested) plus a thin,
+  SDK-guarded `CalendarScheduler` behind the `CalendarScheduling` adapter.
 
 ## Building
 
