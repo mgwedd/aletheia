@@ -13,10 +13,26 @@ struct AssistantService {
         try await assistant.generate(model: model, prompt: Prompts.summarize(transcript: transcript))
     }
 
-    func answerAboutSession(transcript: String, history: [ChatMessage], question: String) async throws -> String {
-        try await assistant.generate(
+    func answerAboutSession(
+        transcript: String,
+        notes: String = "",
+        comments: [SessionComment] = [],
+        history: [ChatMessage],
+        question: String
+    ) async throws -> String {
+        let formattedComments = comments.map { comment -> String in
+            let quote = comment.quotedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            return quote.isEmpty ? "- \(comment.body)" : "- On “\(quote)”: \(comment.body)"
+        }
+        return try await assistant.generate(
             model: model,
-            prompt: Prompts.sessionChat(transcript: transcript, history: history, question: question)
+            prompt: Prompts.sessionChat(
+                transcript: transcript,
+                notes: notes,
+                comments: formattedComments,
+                history: history,
+                question: question
+            )
         )
     }
 

@@ -176,6 +176,17 @@ Key files:
   to the user's Calendar (EventKit), again only on an explicit action. Same
   shape as reminders: pure `SessionEventBuilder` (unit-tested) plus a thin,
   SDK-guarded `CalendarScheduler` behind the `CalendarScheduling` adapter.
+- `Services/CommentStore.swift` — the therapist's own annotations (inline
+  transcript comments and freeform per-session notes). These are the one thing
+  the app keeps in a real local database: **SQLite** (the OS's built-in
+  `SQLite3`, no dependency) at `<dataRoot>/SessionNotes.sqlite`, so it still
+  lives inside the chosen data folder and backs up with everything else, never
+  leaving the Mac. Keyed by `<patientSlug>/<sessionFolder>`. Notes and comments
+  are fed into the session chat prompt (`Prompts.sessionChat`) — kept clearly
+  labeled and distinct from the transcript — so the assistant weighs the
+  therapist's own judgment when answering. The elegant inline-selection comment
+  UI (AppKit) is a follow-up; the store, notes editor, and chat integration
+  land first.
 
 ## Building
 
