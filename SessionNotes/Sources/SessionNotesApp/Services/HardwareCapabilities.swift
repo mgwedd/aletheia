@@ -25,8 +25,11 @@ struct HardwareCapabilities: Equatable {
     }
 
     var shortDescription: String {
-        let arch = isAppleSilicon ? "Apple Silicon" : "Intel"
-        return "\(arch), \(physicalMemoryGB) GB memory"
+        // Lead with the real chip (e.g. "Apple M3 Pro") — captured from
+        // machdep.cpu.brand_string — then CPU cores and unified memory, which is
+        // the actual limiter for on-device Whisper/LLM inference. (macOS exposes
+        // no API for Neural Engine or GPU core counts, so those aren't shown.)
+        "\(chipDescription) · \(coreCount)-core CPU · \(physicalMemoryGB) GB memory"
     }
 
     private static func sysctlInt(_ name: String) -> Int64? {
