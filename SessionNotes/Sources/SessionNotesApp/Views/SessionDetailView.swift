@@ -24,6 +24,7 @@ struct SessionDetailView: View {
     @State private var transcribeProgress: Double = 0
     @State private var isSummarizing = false
     @State private var isChatSending = false
+    @StateObject private var chatRunner = ChatStreamRunner()
     @State private var errorMessage: String?
     @State private var confirmationMessage: String?
     @State private var showScheduleSheet = false
@@ -306,7 +307,7 @@ struct SessionDetailView: View {
     }
 
     private var chatTab: some View {
-        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: SuggestedQuestions.session, onSend: sendChat)
+        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: SuggestedQuestions.session, onSend: sendChat, onStop: { chatRunner.stop() })
     }
 
     private func load() {
@@ -404,16 +405,26 @@ struct SessionDetailView: View {
         guard let store = appModel.store else { return }
         chatMessages.append(ChatMessage(role: .user, text: question))
         isChatSending = true
-        Task {
-            defer { isChatSending = false }
-            do {
-                let response = try await integrations.makeAssistantService()
-                    .answerAboutSession(transcript: transcriptText, notes: sessionNote, comments: comments, history: chatMessages, question: question)
-                chatMessages.append(ChatMessage(role: .assistant, text: response))
-                try? store.saveSessionChat(chatMessages, for: patient, session: session)
-            } catch {
+        let assistantID = UUID()
+        let stream = integrations.makeAssistantService()
+            .streamAnswerAboutSession(
+                transcript: transcriptText,
+                notes: sessionNote,
+                comments: comments,
+                history: chatMessages,
+                question: question
+            )
+        chatRunner.start(
+            stream: stream,
+            onReveal: { text in chatMessages.upsert(id: assistantID, role: .assistant, text: text) },
+            onError: { error in
+                isChatSending = false
                 errorMessage = error.localizedDescription
+            },
+            onFinish: { _ in
+                isChatSending = false
+                try? store.saveSessionChat(chatMessages, for: patient, session: session)
             }
-        }
+        )
     }
 }

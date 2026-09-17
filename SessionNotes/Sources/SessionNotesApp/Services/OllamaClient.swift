@@ -96,6 +96,55 @@ final class OllamaClient: Assistant {
         return decoded.response
     }
 
+    /// Real token streaming via Ollama's `stream:true` NDJSON: each line is a
+    /// `{response, done}` chunk. We accumulate the deltas and yield the growing
+    /// full text so callers see one uniform "text so far" shape.
+    func stream(model: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
+                    request.httpMethod = "POST"
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.timeoutInterval = 600
+                    var body: [String: Any] = ["model": model, "prompt": prompt, "stream": true]
+                    if !system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        body["system"] = system
+                    }
+                    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+                    let (bytes, response) = try await session.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse else { throw OllamaError.notReachable }
+                    guard http.statusCode == 200 else {
+                        throw http.statusCode == 404 ? OllamaError.modelNotFound(model) : OllamaError.badResponse
+                    }
+
+                    var full = ""
+                    for try await line in bytes.lines {
+                        if Task.isCancelled { break }
+                        guard let chunk = OllamaClient.streamChunk(fromLine: line) else { continue }
+                        full += chunk.text
+                        continuation.yield(full)
+                        if chunk.done { break }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// Parses one NDJSON line from `/api/generate` streaming into its text delta
+    /// and done flag. Pure, so the streaming accumulation is unit-testable.
+    static func streamChunk(fromLine line: String) -> (text: String, done: Bool)? {
+        guard let data = line.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(OllamaGenerateResponse.self, from: data)
+        else { return nil }
+        return (decoded.response, decoded.done)
+    }
+
     /// Streams pull progress (0...1) as Ollama downloads a model, so the
     /// Settings screen can show a real progress bar instead of a spinner —
     /// no Terminal `ollama pull` command required.

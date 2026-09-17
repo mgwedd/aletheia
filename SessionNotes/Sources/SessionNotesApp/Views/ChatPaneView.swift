@@ -9,8 +9,17 @@ struct ChatPaneView: View {
     var isSending: Bool
     var suggestions: [String] = []
     var onSend: (String) -> Void
+    /// When provided, a Stop button appears while `isSending` so the user can
+    /// halt a long generation and keep whatever streamed in so far.
+    var onStop: (() -> Void)? = nil
 
     @State private var draft: String = ""
+
+    /// Show the "Thinking…" spinner only until the first streamed token lands —
+    /// once the assistant bubble has text, the growing bubble is the progress.
+    private var isWaitingForFirstToken: Bool {
+        isSending && (messages.last?.role != .assistant || (messages.last?.text.isEmpty ?? true))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,7 +49,7 @@ struct ChatPaneView: View {
                         ForEach(messages) { message in
                             ChatBubble(message: message).id(message.id)
                         }
-                        if isSending {
+                        if isWaitingForFirstToken {
                             HStack { ProgressView().controlSize(.small); Text("Thinking…").foregroundStyle(.secondary) }
                                 .padding(.leading, 4)
                                 .id("sending-indicator")
@@ -49,6 +58,9 @@ struct ChatPaneView: View {
                     .padding()
                 }
                 .onChange(of: messages.count) { _, _ in
+                    scrollToBottom(proxy)
+                }
+                .onChange(of: messages.last?.text) { _, _ in
                     scrollToBottom(proxy)
                 }
                 .onChange(of: isSending) { _, _ in
@@ -61,8 +73,16 @@ struct ChatPaneView: View {
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(1...4)
                     .onSubmit(send)
-                Button("Send", action: send)
-                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
+                    .disabled(isSending)
+                if isSending, let onStop {
+                    Button(role: .destructive, action: onStop) {
+                        Label("Stop", systemImage: "stop.fill")
+                    }
+                    .help("Stop generating")
+                } else {
+                    Button("Send", action: send)
+                        .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
+                }
             }
             .padding()
         }
@@ -70,7 +90,7 @@ struct ChatPaneView: View {
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
         withAnimation {
-            if isSending {
+            if isWaitingForFirstToken {
                 proxy.scrollTo("sending-indicator", anchor: .bottom)
             } else if let last = messages.last {
                 proxy.scrollTo(last.id, anchor: .bottom)

@@ -12,6 +12,15 @@ import llama
 /// API symbol names and pointer lifetimes below track llama.cpp's public
 /// `llama.h` as of the pin; verify them against the exact pinned revision when
 /// bringing this up on a Mac, and adjust if the API has shifted.
+/// A thread-safe one-way "stop" flag. The stream's `onTermination` (Stop button,
+/// or the consumer going away) sets it; the background inference loop polls it.
+private final class CancellationFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+    var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return flag }
+    func cancel() { lock.lock(); flag = true; lock.unlock() }
+}
+
 final class LlamaAssistant: Assistant {
     enum LlamaError: LocalizedError {
         case modelLoadFailed, contextInitFailed, tokenizeFailed, samplerInitFailed, decodeFailed
@@ -55,6 +64,33 @@ final class LlamaAssistant: Assistant {
         }
     }
 
+    /// Token-by-token streaming: runs the same blocking inference loop off the
+    /// calling thread, but yields the growing full text after each token instead
+    /// of only returning at the end. Honors cancellation so a Stop in the UI
+    /// halts generation promptly.
+    func stream(model _: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
+        let trimmed = system.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fullPrompt = trimmed.isEmpty ? prompt : "System: \(trimmed)\n\n\(prompt)"
+        let cancelled = CancellationFlag()
+        return AsyncThrowingStream { continuation in
+            continuation.onTermination = { _ in cancelled.cancel() }
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self else { continuation.finish(); return }
+                do {
+                    try self.runInference(
+                        prompt: fullPrompt,
+                        isCancelled: { cancelled.isCancelled }
+                    ) { soFar in
+                        continuation.yield(soFar)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
     private func ensureModelLoaded() throws {
         guard model == nil else { return }
         llama_backend_init()
@@ -65,7 +101,15 @@ final class LlamaAssistant: Assistant {
         model = loaded
     }
 
-    private func runInference(prompt: String) throws -> String {
+    /// Runs the greedy decode loop. `onToken`, when given, is called with the
+    /// growing full text after each token (for streaming); `isCancelled` lets a
+    /// streaming caller stop generation early. Returns the final trimmed text.
+    @discardableResult
+    private func runInference(
+        prompt: String,
+        isCancelled: @escaping () -> Bool = { false },
+        onToken: ((String) -> Void)? = nil
+    ) throws -> String {
         try ensureModelLoaded()
         guard let model else { throw LlamaError.modelLoadFailed }
         let vocab = llama_model_get_vocab(model)
@@ -98,10 +142,12 @@ final class LlamaAssistant: Assistant {
         var batch = llama_batch_get_one(&tokens, Int32(tokens.count))
         var produced = 0
         while produced < maxTokens {
+            if isCancelled() { break }
             guard llama_decode(context, batch) == 0 else { throw LlamaError.decodeFailed }
             var next = llama_sampler_sample(sampler, context, -1)
             if llama_vocab_is_eog(vocab, next) { break }
             output += piece(for: next, vocab: vocab)
+            onToken?(output)
             batch = llama_batch_get_one(&next, 1)
             produced += 1
         }

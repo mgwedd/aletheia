@@ -66,6 +66,29 @@ final class FoundationModelsAssistant: Assistant {
         return response.content
     }
 
+    /// Real streaming via Foundation Models' `streamResponse`. That API yields
+    /// *cumulative snapshots* (the growing answer so far), which already matches
+    /// the "full text so far" contract of `Assistant.stream`, so we forward each
+    /// snapshot straight through.
+    func stream(model: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let trimmed = system.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let session = trimmed.isEmpty ? LanguageModelSession() : LanguageModelSession(instructions: trimmed)
+                    for try await snapshot in session.streamResponse(to: prompt) {
+                        if Task.isCancelled { break }
+                        continuation.yield(snapshot.content)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     func pullModel(_ name: String, onProgress: @escaping (Double, String) -> Void) async throws {
         // Nothing to download — the OS manages the model lifecycle.
         onProgress(1.0, "ready")
