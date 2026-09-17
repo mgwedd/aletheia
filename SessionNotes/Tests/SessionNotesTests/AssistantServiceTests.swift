@@ -6,6 +6,7 @@ import XCTest
 /// the app's use cases work against any Assistant, not just OllamaClient.
 private final class FakeAssistant: Assistant, @unchecked Sendable {
     var lastModel: String?
+    var lastSystem: String?
     var lastPrompt: String?
     var response = "canned response"
 
@@ -13,8 +14,9 @@ private final class FakeAssistant: Assistant, @unchecked Sendable {
     func listModels() async throws -> [String] { ["fake-model"] }
     func hasModel(_ name: String) async -> Bool { true }
 
-    func generate(model: String, prompt: String) async throws -> String {
+    func generate(model: String, system: String, prompt: String) async throws -> String {
         lastModel = model
+        lastSystem = system
         lastPrompt = prompt
         return response
     }

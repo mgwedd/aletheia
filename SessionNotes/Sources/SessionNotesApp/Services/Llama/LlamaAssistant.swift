@@ -41,11 +41,15 @@ final class LlamaAssistant: Assistant {
         onProgress(1.0, "ready")
     }
 
-    func generate(model _: String, prompt: String) async throws -> String {
+    func generate(model _: String, system: String, prompt: String) async throws -> String {
+        // The pinned model's chat template would be the ideal home for the
+        // system prompt; for this staged reference we prepend it plainly.
+        let trimmed = system.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fullPrompt = trimmed.isEmpty ? prompt : "System: \(trimmed)\n\n\(prompt)"
         // Inference is blocking; run it off the calling thread.
-        try await withCheckedThrowingContinuation { continuation in
+        return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                do { continuation.resume(returning: try self.runInference(prompt: prompt)) }
+                do { continuation.resume(returning: try self.runInference(prompt: fullPrompt)) }
                 catch { continuation.resume(throwing: error) }
             }
         }

@@ -87,6 +87,20 @@ struct SettingsView: View {
                 }
             }
 
+            Section("AI Instructions") {
+                Text("The standing instructions sent with every AI request — the assistant's voice and rules. Editing this changes how summaries and chat behave.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextEditor(text: $settings.systemPrompt)
+                    .font(.callout)
+                    .frame(minHeight: 120)
+                HStack {
+                    Spacer()
+                    Button("Reset to Default") { settings.systemPrompt = Prompts.defaultSystemPrompt }
+                        .disabled(settings.systemPrompt == Prompts.defaultSystemPrompt)
+                }
+            }
+
             if LlamaRuntime.isBuilt {
                 Section("Built-in Model (llama.cpp)") {
                     Picker("Model", selection: $settings.llamaModel) {
