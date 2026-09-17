@@ -243,14 +243,31 @@ marketplace actions, per the supply-chain constraint):
 
 ## Releasing
 
-Push a tag like `v1.1.0` and `.github/workflows/release.yml` builds the
-ad-hoc-signed app, packages a drag-to-Applications **DMG** with `hdiutil`,
-generates the **`appcast.json`** the in-app updater polls, and publishes both
-as a GitHub Release with the `gh` CLI (no third-party release actions). The
-updater's default feed is that release's `appcast.json` asset, so cutting a
-tag is all it takes to offer an update to installed copies. Releases are
-ad-hoc signed (no notarization), so first launch still needs a right-click →
-Open.
+The Swift/macOS pipeline runs entirely on GitHub Actions with **only
+first-party actions plus Apple/Homebrew CLIs** — no third-party marketplace
+actions, per the supply-chain constraint. Three workflows:
+
+- **CI** (`smoke-test.yml`) — build + tests on every push/PR across a
+  `macos-15` (required) and `macos-26` (canary) matrix (see **Testing**).
+- **Continuous delivery** (`cd.yml`) — every merge to `main` (and every PR, to
+  validate packaging) builds the app and uploads a drag-to-Applications **DMG**
+  as a downloadable workflow artifact, versioned `SessionNotes-<version>-<sha>`.
+- **Release** (`release.yml`) — push a tag like `v1.1.0` to build, package the
+  DMG, generate the **`appcast.json`** the in-app updater polls, and publish
+  both as a GitHub Release with `gh`. The updater's default feed is that
+  release's `appcast.json` asset, so cutting a tag is all it takes to offer an
+  update to installed copies.
+
+**Signing & notarization are optional and secret-gated.** With no secrets set,
+the release is ad-hoc signed (first launch needs right-click → Open). Add
+`MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PWD`, `MACOS_SIGN_IDENTITY`,
+`KEYCHAIN_PASSWORD` (Developer ID signing) and `APPLE_ID`, `APPLE_TEAM_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD` (notarization) as repository secrets and the same
+tag build signs with Developer ID (`security`/`codesign` into a temp keychain),
+notarizes and staples the DMG (`xcrun notarytool … --wait` + `xcrun stapler`),
+and produces a build that opens with a double-click. Requires a paid Apple
+Developer account; the workflow no-ops the signing/notarization steps safely
+without the secrets.
 
 ## Known limitations
 

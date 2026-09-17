@@ -29,6 +29,12 @@ echo "Generating Xcode project…"
 xcodegen generate
 
 echo "Building (Release)…"
+# Signing identity defaults to ad-hoc ("-"); the release workflow overrides it
+# with a Developer ID when signing/notarizing (CODE_SIGN_IDENTITY env), and can
+# add a secure timestamp via OTHER_CODE_SIGN_FLAGS="--timestamp".
+IDENTITY="${CODE_SIGN_IDENTITY:--}"
+EXTRA_CODE_SIGN_FLAGS="${OTHER_CODE_SIGN_FLAGS:-}"
+
 # -skipPackagePluginValidation keeps the build non-interactive: without it,
 # xcodebuild can block on a "trust this package plugin?" prompt on a fresh
 # machine (or in CI), which never gets answered.
@@ -38,12 +44,16 @@ xcodebuild \
     -configuration Release \
     -derivedDataPath build \
     -skipPackagePluginValidation \
-    CODE_SIGN_IDENTITY="-" \
+    CODE_SIGN_IDENTITY="$IDENTITY" \
+    OTHER_CODE_SIGN_FLAGS="$EXTRA_CODE_SIGN_FLAGS" \
     CODE_SIGNING_REQUIRED=YES \
     CODE_SIGNING_ALLOWED=YES \
     build
 
-APP_PATH="build/Build/Products/Release/Session Notes.app"
+# The product/target name is "SessionNotes" (no space); the space only appears
+# in the Finder display name (CFBundleDisplayName). So the built bundle is
+# SessionNotes.app — we copy it to the friendlier "Session Notes.app" for dist.
+APP_PATH="build/Build/Products/Release/SessionNotes.app"
 if [ ! -d "$APP_PATH" ]; then
     echo "Build finished but the .app wasn't found at $APP_PATH" >&2
     exit 1
