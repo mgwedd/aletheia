@@ -7,6 +7,12 @@ Cutting a `v*` tag builds the release and the in-app updater's `appcast.json`.
 
 ## [Unreleased]
 
+### Added
+- Patient view now has a **Background** section: a free-text clinical-history
+  TL;DR and a medications (name | dose) table. Both are saved with the patient
+  and always included in the AI's patient context, so the assistant can weigh
+  the therapist's summary and current meds when relevant.
+
 ## [1.1.0] - 2026-09-17
 
 ### Added

@@ -382,7 +382,14 @@ final class Store {
             sources.append(CitationSource(tag: tag, date: session.date, folderName: session.folderName))
             documents.append(TranscriptDocument(date: session.date, text: transcript))
         }
-        let text = PatientContextRetriever.context(for: documents, question: question, labels: labels)
+        let transcriptsText = PatientContextRetriever.context(for: documents, question: question, labels: labels)
+        // Always prepend the patient's background (clinical history + meds) so the
+        // assistant can draw on it whenever it's relevant, without it having to be
+        // requested. Empty when nothing has been entered.
+        let background = patient.aiBackgroundBlock
+        let text = [background, transcriptsText]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n\n")
         return PatientContext(text: text, sources: sources)
     }
 }
