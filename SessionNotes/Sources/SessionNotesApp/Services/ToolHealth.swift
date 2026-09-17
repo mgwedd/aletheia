@@ -17,6 +17,8 @@ struct ToolHealthCheck: Identifiable {
         case whisperModel
         case ollama
         case appleIntelligence
+        case calendar
+        case reminders
     }
 
     let id = UUID()
@@ -38,7 +40,9 @@ enum ToolHealth {
         async let ai = assistantCheck(settings: settings, backend: backend, assistant: assistant)
         async let dataFolder = dataFolderCheck(settings: settings)
         let screen = screenRecordingCheck()
-        return await [dataFolder, mic, screen, whisperModel, ai]
+        let calendar = calendarCheck()
+        let reminders = remindersCheck()
+        return await [dataFolder, mic, screen, whisperModel, ai, calendar, reminders]
     }
 
     static func dataFolderCheck(settings: AppSettings) -> ToolHealthCheck {
@@ -69,6 +73,47 @@ enum ToolHealth {
             status: .failed,
             detail: "Click Allow to grant Screen & System Audio Recording. This updates here as soon as you approve — no restart needed."
         )
+    }
+
+    /// Calendar and Reminders are optional conveniences ("Schedule Next Session"
+    /// and "Remind Me"). They never block readiness — an unmet one is a warning,
+    /// not a failure — but surfacing them in setup lets the therapist grant
+    /// access once, up front, instead of being interrupted mid-task later.
+    static func calendarCheck() -> ToolHealthCheck {
+        optionalAccessCheck(
+            kind: .calendar,
+            title: "Calendar (optional)",
+            feature: .calendar,
+            grantedDetail: "Can add “Schedule Next Session” events to your calendar.",
+            featureName: "Schedule Next Session"
+        )
+    }
+
+    static func remindersCheck() -> ToolHealthCheck {
+        optionalAccessCheck(
+            kind: .reminders,
+            title: "Reminders (optional)",
+            feature: .reminders,
+            grantedDetail: "Can add session follow-ups to your Reminders.",
+            featureName: "Remind Me"
+        )
+    }
+
+    private static func optionalAccessCheck(
+        kind: ToolHealthCheck.Kind,
+        title: String,
+        feature: EventKitAccess.Feature,
+        grantedDetail: String,
+        featureName: String
+    ) -> ToolHealthCheck {
+        switch EventKitAccess.status(feature) {
+        case .granted:
+            return ToolHealthCheck(kind: kind, title: title, status: .ok, detail: grantedDetail)
+        case .unavailable:
+            return ToolHealthCheck(kind: kind, title: title, status: .warning, detail: "Not available on this Mac — “\(featureName)” will stay off.")
+        case .notDetermined, .denied:
+            return ToolHealthCheck(kind: kind, title: title, status: .warning, detail: "Optional. Allow to use “\(featureName).” If you skip it, that feature stays off — you can turn it on anytime.")
+        }
     }
 
     static func whisperModelCheck(settings: AppSettings) -> ToolHealthCheck {

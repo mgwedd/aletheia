@@ -13,6 +13,16 @@ Cutting a `v*` tag builds the release and the in-app updater's `appcast.json`.
   `Aletheia.app`/DMG. Internal identifiers (bundle id, Xcode target) are
   unchanged, so existing permission grants and data folders carry over.
 
+## [1.1.0] - 2026-09-17
+
+### Added
+- Setup now asks for Calendar and Reminders access up front (optional), so the
+  "Schedule Next Session" and "Remind Me" features are ready without an
+  interrupting permission prompt mid-task. Declining just leaves those features
+  off; you can enable them anytime. Access is checked without prompting.
+- Hardware summary now shows the detected chip and CPU core count (e.g.
+  "Apple M3 Pro · 12-core CPU · 36 GB memory") instead of a generic label.
+
 ## [1.0.0] - 2026-09-17
 
 ### Added
