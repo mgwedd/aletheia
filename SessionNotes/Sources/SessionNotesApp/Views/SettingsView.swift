@@ -157,6 +157,20 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Legal") {
+                HStack(spacing: 16) {
+                    Link("Terms of Service", destination: Legal.termsURL)
+                    Link("Privacy Policy", destination: Legal.privacyURL)
+                }
+                if let accepted = settings.acceptedLegalDate, settings.hasAcceptedCurrentLegal {
+                    LabeledContent("Accepted", value: legalAcceptanceStamp(version: settings.acceptedLegalVersion, at: accepted))
+                        .font(.caption)
+                }
+                Text("Your acceptance of the terms is recorded only on this Mac. It is never sent anywhere.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Software Update") {
                 LabeledContent("Current version", value: appVersionString)
                 HStack {
@@ -280,6 +294,13 @@ struct SettingsView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func legalAcceptanceStamp(version: String, at date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return "v\(version) on \(formatter.string(from: date))"
     }
 
     private var appVersionString: String {
