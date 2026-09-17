@@ -1,0 +1,11 @@
+#!/bin/bash
+# Optional local guard: blocks a commit that would introduce a secret or PHI
+# artifact, so leaks are caught before they ever leave your Mac (belt-and-
+# suspenders with the Secret Scan CI gate).
+#
+# Install once:  git config core.hooksPath scripts/hooks
+# (or symlink this file into .git/hooks/pre-commit)
+
+set -uo pipefail
+repo_root="$(git rev-parse --show-toplevel)"
+exec "$repo_root/scripts/scan-secrets.sh"

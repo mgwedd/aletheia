@@ -37,3 +37,21 @@ Secure-Enclave-only key cannot decrypt a backup on different hardware.
 | Someone opens your unlocked Mac | — | ✅ | ✅ |
 | Malware / another process reading the folder while you're logged in | — | — | ✅ |
 | A synced (e.g. iCloud) copy of the folder | — | — | ✅ |
+
+## Keeping secrets & PHI out of the repo
+
+The repo must never contain credentials or patient data. Two layers enforce it:
+
+- **Secret Scan CI gate** (`.github/workflows/secret-scan.yml` → `scripts/scan-secrets.sh`):
+  runs on every PR and push and **fails the build** if a commit contains secret
+  content (private keys, cloud/API tokens) or a sensitive/PHI filename
+  (`.p12`/`.pem`/`.env`/… or the app's runtime artifacts — `*.caf`, `*.sqlite`,
+  `transcript.txt`, `summary.txt`, `patient.json`, …). Pure git + grep, no
+  third-party scanner; it fails closed on any scanner error.
+- **Local pre-commit hook** (`scripts/hooks/pre-commit`): same check before a
+  commit is even created. Opt in once with
+  `git config core.hooksPath scripts/hooks`.
+
+Also enable **GitHub's native secret scanning + push protection** (Settings →
+Code security) for a third layer that blocks known-provider tokens at push time.
+Signing/Apple credentials belong in **GitHub Secrets**, never in the tree.
