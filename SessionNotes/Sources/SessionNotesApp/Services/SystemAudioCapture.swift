@@ -33,6 +33,9 @@ final class SystemAudioCapture: NSObject {
     private var fileURL: URL?
     var onError: ((Error) -> Void)?
     private(set) var isRunning = false
+    /// When true, the SCStream keeps running but incoming buffers are dropped,
+    /// so the call track skips the paused span in step with the mic track.
+    var isPaused = false
 
     /// Whether Screen Recording (which gates ScreenCaptureKit audio) is granted —
     /// checked *without* prompting. Using the CoreGraphics preflight instead of
@@ -91,10 +94,11 @@ final class SystemAudioCapture: NSObject {
         self.stream = nil
         self.file = nil
         isRunning = false
+        isPaused = false
     }
 
     private func write(_ buffer: AVAudioPCMBuffer) {
-        guard let fileURL else { return }
+        guard !isPaused, let fileURL else { return }
         do {
             if file == nil {
                 file = try AVAudioFile(forWriting: fileURL, settings: buffer.format.settings)

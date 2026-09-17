@@ -24,7 +24,21 @@ enum RecordingLimit {
 /// source ("You" vs "Call audio") instead of a single blended track.
 @MainActor
 final class SessionRecorder: ObservableObject {
+    /// Which session a recording is writing into. Held so a global control (the
+    /// menu-bar item) can name what's recording and route back to it, and so a
+    /// session view knows whether *it* is the one recording.
+    struct ActiveRecording: Equatable {
+        let patientID: UUID
+        let patientName: String
+        let patientSlug: String
+        let sessionFolder: String
+    }
+
     @Published private(set) var state: RecordingState = .idle
+    /// True while recording is paused (captures still running, buffers dropped).
+    @Published private(set) var isPaused = false
+    /// The session currently being recorded, or nil when idle.
+    @Published private(set) var active: ActiveRecording?
     /// Set once when a recording has run past `RecordingLimit.reminderThreshold`,
     /// so the UI can ask whether the therapist forgot to end the session. The
     /// view clears it when the user answers.
@@ -34,7 +48,7 @@ final class SessionRecorder: ObservableObject {
     private let systemAudio = SystemAudioCapture()
     private var reminderTask: Task<Void, Never>?
 
-    func start(micURL: URL, callURL: URL) async {
+    func start(micURL: URL, callURL: URL, context: ActiveRecording) async {
         if case .recording = state { return }
 
         let micGranted = await MicRecorder.requestPermission()
@@ -50,13 +64,34 @@ final class SessionRecorder: ObservableObject {
         do {
             try mic.start(to: micURL)
             try await systemAudio.start(to: callURL)
+            isPaused = false
+            active = context
             state = .recording(startedAt: Date())
             startReminderTimer()
         } catch {
             mic.stop()
             await systemAudio.stop()
+            active = nil
             state = .error(error.localizedDescription)
         }
+    }
+
+    /// Pause both captures without ending the session. The mic and call streams
+    /// keep running but stop writing, so the recording resumes as one continuous
+    /// file with the paused span omitted.
+    func pause() {
+        guard isRecording, !isPaused else { return }
+        mic.isPaused = true
+        systemAudio.isPaused = true
+        isPaused = true
+    }
+
+    /// Resume writing after a `pause()`.
+    func resume() {
+        guard isRecording, isPaused else { return }
+        mic.isPaused = false
+        systemAudio.isPaused = false
+        isPaused = false
     }
 
     func stop() async {
@@ -64,6 +99,8 @@ final class SessionRecorder: ObservableObject {
         reminderTask = nil
         mic.stop()
         await systemAudio.stop()
+        isPaused = false
+        active = nil
         state = .idle
     }
 
@@ -82,5 +119,11 @@ final class SessionRecorder: ObservableObject {
     var isRecording: Bool {
         if case .recording = state { return true }
         return false
+    }
+
+    /// When the active recording began (for an elapsed-time display), or nil.
+    var startedAt: Date? {
+        if case .recording(let date) = state { return date }
+        return nil
     }
 }

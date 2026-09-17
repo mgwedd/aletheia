@@ -88,6 +88,22 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Create a fresh session for a patient — used by the menu-bar quick-start,
+    /// which records into a brand-new session rather than an existing one.
+    /// Returns the created session, or nil on error (surfaced via errorMessage).
+    @discardableResult
+    func startNewSession(for patient: Patient) -> SessionRecord? {
+        guard let store else { return nil }
+        do {
+            let session = try store.createSession(for: patient)
+            refreshPatients()
+            return session
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     func savePatientNotes(_ patient: Patient) {
         guard let store else { return }
         do {
