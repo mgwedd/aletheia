@@ -1,0 +1,77 @@
+name: CD (build artifact)
+
+# Continuous delivery: every merge to main (and every PR, to validate the
+# packaging) builds the ad-hoc-signed app, packages a drag-to-Applications DMG,
+# and uploads it as a downloadable workflow artifact. Versioned, notarized
+# releases are cut separately by release.yml on a tag.
+#
+# Supply-chain note: only first-party actions (checkout, cache, upload-artifact)
+# and Homebrew/Apple built-in CLIs — no third-party marketplace actions.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Build & package (macOS)
+    runs-on: macos-15
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: SessionNotes
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show selected Xcode
+        run: xcodebuild -version
+
+      # Same SPM cache key as smoke-test so the two workflows share the
+      # resolved SwiftWhisper/whisper.cpp sources.
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: SessionNotes/build/SourcePackages
+          key: spm-macos-15-${{ hashFiles('SessionNotes/project.yml') }}
+          restore-keys: spm-macos-15-
+
+      - name: Build Release app (ad-hoc signed)
+        working-directory: .
+        run: ./scripts/build.sh
+
+      - name: Package DMG
+        id: dmg
+        working-directory: .
+        run: |
+          set -euo pipefail
+          APP="dist/Session Notes.app"
+          test -d "$APP"
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          BASENAME="SessionNotes-${VERSION}-${SHORT_SHA}"
+
+          STAGING="dist/dmg"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          cp -R "$APP" "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+
+          DMG="dist/${BASENAME}.dmg"
+          hdiutil create -volname "Session Notes" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
+
+          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
+          echo "basename=$BASENAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.dmg.outputs.basename }}
+          path: dist/${{ steps.dmg.outputs.basename }}.dmg
+          retention-days: 14
+          if-no-files-found: error

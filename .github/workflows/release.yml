@@ -1,11 +1,24 @@
 name: Release
 
-# Cutting a release: push a tag like `v1.1.0`. This builds the ad-hoc-signed
-# app, packages a drag-to-Applications DMG, generates the `appcast.json` the
-# in-app updater polls, and publishes both as a GitHub Release.
+# Cutting a release: push a tag like `v1.1.0`. This builds the app, packages a
+# drag-to-Applications DMG, generates the `appcast.json` the in-app updater
+# polls, and publishes both as a GitHub Release.
 #
-# Supply-chain note: no third-party release actions — packaging uses the
-# built-in `hdiutil` and publishing uses the pre-installed `gh` CLI.
+# Signing/notarization is OPTIONAL and gated on repository secrets — with none
+# set, this produces the same ad-hoc-signed build as before (first launch needs
+# right-click → Open). Add the secrets below to get a Developer ID-signed,
+# notarized, stapled DMG that opens with a double-click:
+#   MACOS_CERTIFICATE            base64 of your Developer ID Application .p12
+#   MACOS_CERTIFICATE_PWD        password for that .p12
+#   MACOS_SIGN_IDENTITY          e.g. "Developer ID Application: Jane (TEAMID)"
+#   KEYCHAIN_PASSWORD            any strong throwaway string
+#   APPLE_ID                     Apple ID email for notarization
+#   APPLE_TEAM_ID                 10-char team id
+#   APPLE_APP_SPECIFIC_PASSWORD  app-specific password for that Apple ID
+#
+# Supply-chain note: no third-party actions — signing uses the built-in
+# `security`/`codesign`, notarization uses `xcrun notarytool`/`stapler`,
+# packaging uses `hdiutil`, and publishing uses the pre-installed `gh` CLI.
 
 on:
   push:
@@ -23,14 +36,46 @@ jobs:
   release:
     name: Build and publish
     runs-on: macos-15
+    env:
+      HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
+      HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Show selected Xcode
         run: xcodebuild -version
 
+      - name: Import Developer ID certificate
+        if: env.HAS_SIGNING == 'true'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PWD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # Put our keychain first on the search list, keeping the existing ones.
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
       - name: Build Release app
-        run: ./scripts/build.sh
+        env:
+          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [ "${HAS_SIGNING}" = "true" ]; then
+            export CODE_SIGN_IDENTITY="$SIGN_IDENTITY"
+            export OTHER_CODE_SIGN_FLAGS="--timestamp"
+          fi
+          ./scripts/build.sh
 
       - name: Package DMG and appcast
         id: package
@@ -63,13 +108,34 @@ jobs:
           echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Notarize and staple
+        if: env.HAS_NOTARIZATION == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit "${{ steps.package.outputs.dmg }}" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          xcrun stapler staple "${{ steps.package.outputs.dmg }}"
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+          if [ "${HAS_NOTARIZATION}" = "true" ]; then
+            LAUNCH_NOTE="Signed with Developer ID and notarized — opens with a double-click."
+          else
+            LAUNCH_NOTE="First launch: right-click the app and choose Open (ad-hoc signed, not notarized)."
+          fi
           gh release create "${GITHUB_REF_NAME}" \
             "${{ steps.package.outputs.dmg }}" \
             "dist/appcast.json" \
             --title "Session Notes ${{ steps.package.outputs.version }}" \
-            --notes "Automated release for ${GITHUB_REF_NAME}. First launch: right-click the app and choose Open (ad-hoc signed, not notarized)." \
+            --notes "Automated release for ${GITHUB_REF_NAME}. ${LAUNCH_NOTE}" \
             --verify-tag
