@@ -9,6 +9,12 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [1.6.0] - 2026-09-17
+
+### Added
+- append-only local receipt for legal acceptance
+- require & record local acceptance of Terms and Privacy Policy
+
 ## [1.5.0] - 2026-09-17
 
 ### Added
