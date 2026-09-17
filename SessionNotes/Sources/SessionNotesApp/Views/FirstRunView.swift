@@ -8,10 +8,10 @@ struct FirstRunView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Welcome to Session Notes").font(.largeTitle.bold())
+                    Text("Welcome to Aletheia").font(.largeTitle.bold())
 
                     Text("""
-                    Everything Session Notes does — recording, transcription, and \
+                    Everything Aletheia does — recording, transcription, and \
                     AI summaries — happens on this Mac. Nothing is uploaded anywhere.
                     """)
                     .fixedSize(horizontal: false, vertical: true)

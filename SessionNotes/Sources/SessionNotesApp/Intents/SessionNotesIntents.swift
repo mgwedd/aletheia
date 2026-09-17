@@ -19,7 +19,7 @@ struct ShowTodaysSessionsIntent: AppIntent {
 /// "Open [patient]" — brings the app forward on that patient.
 struct OpenPatientIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Patient"
-    static var description = IntentDescription("Opens Session Notes to a patient.")
+    static var description = IntentDescription("Opens Aletheia to a patient.")
     static var openAppWhenRun = true
 
     @Parameter(title: "Patient")
@@ -45,7 +45,7 @@ struct NewSessionIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let store = SessionQueries.currentStore() else {
-            return .result(dialog: "Open Session Notes and choose a data folder first.")
+            return .result(dialog: "Open Aletheia and choose a data folder first.")
         }
         let patients = (try? store.listPatients()) ?? []
         guard let match = patients.first(where: { $0.id == patient.id }) else {

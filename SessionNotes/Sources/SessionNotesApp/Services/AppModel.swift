@@ -36,9 +36,9 @@ final class AppModel: ObservableObject {
         commentStore = CommentStore(root: root)
         if case let .needsNewerApp(dataVersion, appVersion) = newStore.schemaCompatibility {
             schemaWarning = """
-            This folder's data was created by a newer version of Session Notes \
+            This folder's data was created by a newer version of Aletheia \
             (data format v\(dataVersion); this copy understands v\(appVersion)). \
-            Please update Session Notes before adding or changing anything here, \
+            Please update Aletheia before adding or changing anything here, \
             so none of your notes are lost.
             """
         } else {

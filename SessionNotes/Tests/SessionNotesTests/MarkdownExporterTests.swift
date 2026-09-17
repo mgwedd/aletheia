@@ -13,7 +13,7 @@ final class MarkdownExporterTests: XCTestCase {
             transcript: "[00:00] Therapist: Hello.",
             summary: "Brief check-in."
         )
-        XCTAssertTrue(md.contains("# Session Notes — Jane Doe"))
+        XCTAssertTrue(md.contains("# Aletheia — Jane Doe"))
         XCTAssertTrue(md.contains("## Summary"))
         XCTAssertTrue(md.contains("Brief check-in."))
         XCTAssertTrue(md.contains("## Transcript"))

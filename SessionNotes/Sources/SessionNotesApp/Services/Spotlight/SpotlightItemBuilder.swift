@@ -42,7 +42,7 @@ enum SpotlightItemBuilder {
             SpotlightEntry(
                 uniqueIdentifier: patientIdentifier(patient.id),
                 title: patient.name,
-                contentDescription: "Therapy patient in Session Notes.",
+                contentDescription: "Therapy patient in Aletheia.",
                 keywords: keywords(for: patient),
                 contentModificationDate: nil
             )
@@ -94,6 +94,6 @@ enum SpotlightItemBuilder {
         let nameTokens = patient.name
             .split(whereSeparator: { $0 == " " || $0 == "-" })
             .map(String.init)
-        return nameTokens + ["therapy", "patient", "Session Notes"]
+        return nameTokens + ["therapy", "patient", "Aletheia"]
     }
 }

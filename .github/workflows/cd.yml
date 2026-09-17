@@ -50,7 +50,7 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          APP="dist/Session Notes.app"
+          APP="dist/Aletheia.app"
           test -d "$APP"
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"
           SHORT_SHA="${GITHUB_SHA::7}"
@@ -63,7 +63,7 @@ jobs:
           ln -s /Applications "$STAGING/Applications"
 
           DMG="dist/${BASENAME}.dmg"
-          hdiutil create -volname "Session Notes" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
+          hdiutil create -volname "Aletheia" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
 
           echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
           echo "basename=$BASENAME" >> "$GITHUB_OUTPUT"

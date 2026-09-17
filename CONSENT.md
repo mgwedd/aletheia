@@ -1,6 +1,6 @@
 # Consent and Legal — Read This Before Recording
 
-Session Notes makes it technically easy to record a video therapy session.
+Aletheia makes it technically easy to record a video therapy session.
 That doesn't make it automatically legal or ethical to do so. Before you
 record a session with this app, you (the therapist) are responsible for
 confirming, independently of this software:
@@ -23,7 +23,7 @@ confirming, independently of this software:
    with any particular platform). Check the terms of whichever platform
    you use for sessions.
 
-Session Notes does not manage consent forms, does not enforce any
+Aletheia does not manage consent forms, does not enforce any
 particular jurisdiction's rules, and does not contact anyone on your
 behalf. That responsibility is yours.
 

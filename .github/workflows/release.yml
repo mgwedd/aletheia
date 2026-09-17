@@ -86,7 +86,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          APP="dist/Session Notes.app"
+          APP="dist/Aletheia.app"
           test -d "$APP"
 
           STAGING="dist/dmg"
@@ -96,14 +96,14 @@ jobs:
           ln -s /Applications "$STAGING/Applications"
 
           DMG="dist/SessionNotes-${VERSION}.dmg"
-          hdiutil create -volname "Session Notes" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
+          hdiutil create -volname "Aletheia" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
 
           DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/SessionNotes-${VERSION}.dmg"
           cat > dist/appcast.json <<EOF
           {
             "version": "${VERSION}",
             "downloadURL": "${DOWNLOAD_URL}",
-            "releaseNotes": "Session Notes ${VERSION}. See the release page for details.",
+            "releaseNotes": "Aletheia ${VERSION}. See the release page for details.",
             "minimumSystemVersion": "14.0",
             "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
@@ -140,6 +140,6 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             "${{ steps.package.outputs.dmg }}" \
             "dist/appcast.json" \
-            --title "Session Notes ${{ steps.package.outputs.version }}" \
+            --title "Aletheia ${{ steps.package.outputs.version }}" \
             --notes "Automated release for ${GITHUB_REF_NAME}. ${LAUNCH_NOTE}" \
             --verify-tag
