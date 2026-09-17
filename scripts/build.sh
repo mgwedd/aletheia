@@ -16,6 +16,21 @@
 set -euo pipefail
 cd "$(dirname "$0")/../SessionNotes"
 
+# Preflight: the full Xcode app is required. If the active developer directory
+# points at the Command Line Tools (or Xcode isn't installed), xcodebuild fails
+# deep in the build with a cryptic message — catch it here with the fix.
+if ! xcodebuild -version >/dev/null 2>&1; then
+    DEVDIR="$(xcode-select -p 2>/dev/null || echo 'none')"
+    echo "Error: xcodebuild needs the full Xcode app, but the active developer directory is:" >&2
+    echo "    $DEVDIR" >&2
+    echo >&2
+    echo "Fix it (install Xcode from the App Store first if you haven't):" >&2
+    echo "    sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer" >&2
+    echo "    sudo xcodebuild -license accept" >&2
+    echo "Then re-run this script. Verify with: xcodebuild -version" >&2
+    exit 1
+fi
+
 if ! command -v xcodegen >/dev/null 2>&1; then
     echo "XcodeGen not found — installing via Homebrew…"
     if ! command -v brew >/dev/null 2>&1; then

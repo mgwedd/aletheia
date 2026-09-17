@@ -21,9 +21,13 @@ name: Release
 # packaging uses `hdiutil`, and publishing uses the pre-installed `gh` CLI.
 
 on:
+  # Manual/automated tags: push a `v*` tag directly, or let auto-release.yml
+  # dispatch this against the tag it just created (a tag pushed by the default
+  # GITHUB_TOKEN can't trigger `push`, so the automation dispatches instead).
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
