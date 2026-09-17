@@ -14,6 +14,14 @@ enum SystemSettingsLinks {
         open("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
     }
 
+    static func openCalendarSettings() {
+        open("x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")
+    }
+
+    static func openRemindersSettings() {
+        open("x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders")
+    }
+
     static func openOllamaDownload() {
         NSWorkspace.shared.open(ollamaDownload)
     }

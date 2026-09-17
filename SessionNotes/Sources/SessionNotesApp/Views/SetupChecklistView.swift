@@ -136,6 +136,17 @@ struct SetupChecklistView: View {
             }
         case .enableAppleIntelligence:
             SystemSettingsLinks.openAppleIntelligenceSettings()
+        case .requestCalendarAccess:
+            // Ask up front; a prior denial won't re-prompt, so fall back to Settings.
+            if await EventKitAccess.request(.calendar) == false,
+               EventKitAccess.status(.calendar) == .denied {
+                SystemSettingsLinks.openCalendarSettings()
+            }
+        case .requestRemindersAccess:
+            if await EventKitAccess.request(.reminders) == false,
+               EventKitAccess.status(.reminders) == .denied {
+                SystemSettingsLinks.openRemindersSettings()
+            }
         case .installOrOpenOllama:
             SystemSettingsLinks.openOllamaDownload()
         case .downloadOllamaModel:

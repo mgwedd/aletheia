@@ -3,7 +3,7 @@ import XCTest
 
 final class ModelAdvisorTests: XCTestCase {
     private func hardware(appleSilicon: Bool, memGB: Int, cores: Int = 8) -> HardwareCapabilities {
-        HardwareCapabilities(isAppleSilicon: appleSilicon, physicalMemoryGB: memGB, coreCount: cores, chipDescription: "Test")
+        HardwareCapabilities(isAppleSilicon: appleSilicon, physicalMemoryGB: memGB, coreCount: cores, chipDescription: "Apple M-Test")
     }
 
     func testAppleSiliconHighMemoryGetsLargerModels() {
@@ -32,7 +32,7 @@ final class ModelAdvisorTests: XCTestCase {
 
     func testSummaryMentionsHardwareAndModel() {
         let r = ModelAdvisor.recommend(for: hardware(appleSilicon: true, memGB: 16))
-        XCTAssertTrue(r.summary.contains("Apple Silicon"))
+        XCTAssertTrue(r.summary.contains("Apple M-Test"))   // the detected chip
         XCTAssertTrue(r.summary.contains("16 GB"))
         XCTAssertTrue(r.summary.contains("Medium"))
     }

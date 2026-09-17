@@ -11,6 +11,8 @@ enum SetupAction: Equatable {
     case installOrOpenOllama
     case downloadOllamaModel
     case enableAppleIntelligence
+    case requestCalendarAccess
+    case requestRemindersAccess
 
     var label: String {
         switch self {
@@ -23,6 +25,8 @@ enum SetupAction: Equatable {
         case .installOrOpenOllama: return "Get Ollama"
         case .downloadOllamaModel: return "Download Model"
         case .enableAppleIntelligence: return "Open Settings"
+        case .requestCalendarAccess: return "Allow"
+        case .requestRemindersAccess: return "Allow"
         }
     }
 }
@@ -66,6 +70,10 @@ enum Setup {
             return .enableAppleIntelligence  // supported but turned off
         case (.appleIntelligence, .warning):
             return nil                       // e.g. model still downloading — nothing to click
+        case (.calendar, _):
+            return .requestCalendarAccess    // optional; asks once, falls back to Settings if denied
+        case (.reminders, _):
+            return .requestRemindersAccess
         }
     }
 
