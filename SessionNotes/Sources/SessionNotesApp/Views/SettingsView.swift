@@ -56,7 +56,12 @@ struct SettingsView: View {
 
             Section("AI Summaries & Chat") {
                 Picker("Engine", selection: $settings.assistantBackend) {
-                    ForEach(AssistantBackend.allCases) { backend in
+                    // Apple Intelligence is intentionally hidden for now (see
+                    // Integrations.appleIntelligenceBlocked) — keep AI fully on
+                    // backends we can prove stay on this Mac.
+                    ForEach(AssistantBackend.allCases.filter {
+                        !($0 == .appleIntelligence && Integrations.appleIntelligenceBlocked)
+                    }) { backend in
                         Text(backend.displayName).tag(backend)
                     }
                 }

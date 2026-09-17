@@ -117,6 +117,12 @@ Apple Intelligence and the llama.cpp binding compile in behind
 `#if canImport(...)`, so they light up on a supporting Mac/toolchain and
 compile out otherwise.
 
+> **Apple Intelligence is currently disabled** (`Integrations.appleIntelligenceBlocked`).
+> As Apple moves system intelligence toward a cloud (Gemini) backhaul, Aletheia
+> sticks to backends it can prove stay on this Mac — Ollama and the built-in
+> llama.cpp. `Automatic` therefore resolves to a local backend. Flip the flag to
+> re-enable the on-device Foundation Models path.
+
 <details>
 <summary>Bringing up the embedded llama.cpp backend (Mac, one-time)</summary>
 
