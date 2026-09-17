@@ -176,11 +176,13 @@ reads the commits since the last `v*` tag and decides the bump:
 | `fix:` / `perf:` / `revert:` | `fix: crash on empty note` | **patch** (`1.4.2 → 1.4.3`) |
 | `chore:` / `docs:` / `test:` / … | `docs: tweak README` | **no release** |
 
-When a bump is warranted it stamps `CHANGELOG.md`'s `[Unreleased]` block with the
-version and date, sets the app version in `Info.plist`, tags `main` HEAD, and
-hands off to `release.yml` to build the DMG, generate the updater's
-`appcast.json`, and publish the GitHub Release. Merges with only chore/docs
-commits are a quiet no-op, so routine work doesn't cut versions.
+When a bump is warranted it **generates the `CHANGELOG.md` section from the
+commit subjects** since the last tag (grouped into Added/Fixed/Changed), sets the
+app version in `Info.plist`, tags `main` HEAD, and hands off to `release.yml` to
+build the DMG, generate the updater's `appcast.json`, and publish the GitHub
+Release. Merges with only chore/docs commits are a quiet no-op, so routine work
+doesn't cut versions. **Don't hand-edit `CHANGELOG.md` in a PR** — it's produced
+at release time, so editing it just creates merge conflicts.
 
 The bump is read from **commit subjects on `main`**, so the merge commits need to
 carry the convention: use **squash-merge with the PR title as the subject** (e.g.
