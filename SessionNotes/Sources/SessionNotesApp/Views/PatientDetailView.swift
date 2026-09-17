@@ -188,10 +188,11 @@ private struct PatientChatSheet: View {
         Task {
             defer { isSending = false }
             do {
-                let context = store.gatherPatientContext(for: patient, relevantTo: question)
+                let context = store.gatherCitedPatientContext(for: patient, relevantTo: question)
                 let response = try await integrations.makeAssistantService()
-                    .answerAboutPatient(context: context, history: messages, question: question)
-                messages.append(ChatMessage(role: .assistant, text: response))
+                    .answerAboutPatient(context: context.text, history: messages, question: question)
+                let decorated = Citations.decorate(answer: response, sources: context.sources)
+                messages.append(ChatMessage(role: .assistant, text: decorated))
                 try? store.savePatientChat(messages, for: patient)
             } catch {
                 errorMessage = error.localizedDescription

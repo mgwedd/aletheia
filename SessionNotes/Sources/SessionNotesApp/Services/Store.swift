@@ -361,6 +361,30 @@ final class Store {
         }
         return PatientContextRetriever.context(for: documents, question: question)
     }
+
+    /// Like `gatherPatientContext(for:relevantTo:)`, but also assigns each
+    /// session a short citation tag (`S1` newest first) embedded in its header,
+    /// and returns the tag→session mapping. This is what lets the chat show
+    /// which sessions an answer drew from (see `Citations`).
+    func gatherCitedPatientContext(for patient: Patient, relevantTo question: String) -> PatientContext {
+        let sessions = ((try? listSessions(for: patient)) ?? []).sorted { $0.date > $1.date }
+        var labels: [Date: String] = [:]
+        var sources: [CitationSource] = []
+        var documents: [TranscriptDocument] = []
+        var index = 1
+        for session in sessions {
+            guard let transcript = transcript(for: patient, session: session), !transcript.isEmpty else { continue }
+            let tag = "S\(index)"
+            index += 1
+            // Same-day sessions share a date key; the retriever groups by date
+            // too, so they cite as one source — consistent with how it renders.
+            labels[session.date] = tag
+            sources.append(CitationSource(tag: tag, date: session.date, folderName: session.folderName))
+            documents.append(TranscriptDocument(date: session.date, text: transcript))
+        }
+        let text = PatientContextRetriever.context(for: documents, question: question, labels: labels)
+        return PatientContext(text: text, sources: sources)
+    }
 }
 
 /// Plain `.iso8601` only has whole-second resolution, which would silently
