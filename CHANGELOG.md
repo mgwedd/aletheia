@@ -26,6 +26,8 @@ Cutting a `v*` tag builds the release and the in-app updater's `appcast.json`.
 - Guided first-run setup, permission/status checks, and an in-app updater that
   polls an appcast and installs new versions.
 
+- Streaming chat responses with an adaptive, word-by-word reveal and a Stop
+  control, across all backends (Ollama, Apple Intelligence, llama.cpp).
 ### Fixed
 - Screen Recording setup no longer re-prompts on every health check and doesn't
   need an app relaunch: permission is checked with a non-prompting preflight, the
@@ -38,8 +40,10 @@ Cutting a `v*` tag builds the release and the in-app updater's `appcast.json`.
   (`macos-15` required, `macos-26` canary), continuous-delivery DMG artifacts,
   and a tag-driven release that generates the updater feed and supports
   secret-gated Developer ID signing + notarization.
+- Automated releases from Conventional Commits: merges to `main` derive the
+  semver bump, stamp the changelog and app version, tag, and publish — no manual
+  version bumping. See the README's Releasing section.
 
 ### Not yet shipped
 - Embedded llama.cpp needs a one-time Mac bring-up (see the README).
-- Google-Docs-style inline comment highlighting and streaming ("live typing")
-  chat responses are in progress.
+- Google-Docs-style inline comment highlighting is in progress.

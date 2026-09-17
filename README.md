@@ -148,8 +148,10 @@ Apple/Homebrew CLIs** — no third-party marketplace actions:
 ```mermaid
 flowchart LR
   PRs[push / PR] --> CI[CI — build + tests<br/>macos-15 required · macos-26 canary]
-  Main[merge to main] --> CD[CD — DMG artifact per commit]
-  Tag[tag v*] --> Rel[Release — DMG + appcast + GitHub Release]
+  Main[merge to main] --> Auto[Auto Release — read commits<br/>bump · changelog · tag]
+  Main --> CD[CD — DMG artifact per commit]
+  Auto -->|releasable| Rel[Release — DMG + appcast + GitHub Release]
+  Auto -->|chore/docs only| Skip[no-op]
   Rel --> Gate{signing secrets set?}
   Gate -- yes --> Note[Developer ID + notarize + staple]
   Gate -- no --> Adhoc[ad-hoc signed]
@@ -160,6 +162,41 @@ retrieval/citations, prompt building, annotations) against a temp directory;
 audio/transcription/LLM round-trips need a hands-on pass on a real Mac.
 Signing & notarization are optional and secret-gated (see
 `.github/workflows/release.yml` for the exact secret names).
+
+### Releasing
+
+Releases are **automated from [Conventional Commits](https://www.conventionalcommits.org/)** —
+no manual version bumping. On every merge to `main`, the `Auto Release` workflow
+reads the commits since the last `v*` tag and decides the bump:
+
+| Commit type | Example | Result |
+| --- | --- | --- |
+| `feat!:` / `BREAKING CHANGE:` | `feat!: drop macOS 13` | **major** (`1.4.2 → 2.0.0`) |
+| `feat:` | `feat: streaming chat` | **minor** (`1.4.2 → 1.5.0`) |
+| `fix:` / `perf:` / `revert:` | `fix: crash on empty note` | **patch** (`1.4.2 → 1.4.3`) |
+| `chore:` / `docs:` / `test:` / … | `docs: tweak README` | **no release** |
+
+When a bump is warranted it stamps `CHANGELOG.md`'s `[Unreleased]` block with the
+version and date, sets the app version in `Info.plist`, tags `main` HEAD, and
+hands off to `release.yml` to build the DMG, generate the updater's
+`appcast.json`, and publish the GitHub Release. Merges with only chore/docs
+commits are a quiet no-op, so routine work doesn't cut versions.
+
+The bump is read from **commit subjects on `main`**, so the merge commits need to
+carry the convention: use **squash-merge with the PR title as the subject** (e.g.
+`feat: streaming chat`) rather than the default `Merge pull request #NN …`, which
+is never releasable. A merge whose commits don't match any rule is a no-op.
+
+Releases also require a **source or config change**: a merge that touches only
+markdown, `docs/`, or test files never rebuilds, even with a `feat:`/`fix:`
+subject. (A later code change still ships those docs along with it.) A manual
+dispatch overrides this.
+
+**Cut a release by hand** (e.g. to force a level, for the first tag, or when the
+commit subjects weren't conventional) from the Actions tab → **Auto Release** →
+**Run workflow**: pick a bump level, or enable **dry run** to preview the
+computed version without tagging. To skip the automation entirely, pushing a
+`v*` tag yourself still triggers `release.yml` directly.
 
 ## Known limitations
 
