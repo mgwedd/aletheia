@@ -16,7 +16,7 @@ final class SetupTests: XCTestCase {
         XCTAssertEqual(Setup.action(for: check(.dataFolder, .failed)), .chooseFolder)
         XCTAssertEqual(Setup.action(for: check(.microphone, .warning)), .requestMicrophone)
         XCTAssertEqual(Setup.action(for: check(.microphone, .failed)), .openMicrophoneSettings)
-        XCTAssertEqual(Setup.action(for: check(.screenRecording, .failed)), .openScreenRecordingSettings)
+        XCTAssertEqual(Setup.action(for: check(.screenRecording, .failed)), .requestScreenRecording)
         XCTAssertEqual(Setup.action(for: check(.whisperModel, .failed)), .downloadTranscriptionModel)
         XCTAssertEqual(Setup.action(for: check(.ollama, .failed)), .installOrOpenOllama)
         XCTAssertEqual(Setup.action(for: check(.ollama, .warning)), .downloadOllamaModel)

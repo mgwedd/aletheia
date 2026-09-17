@@ -86,6 +86,21 @@ struct SetupChecklistView: View {
         items = Setup.items(from: await ToolHealth.runAllChecks(settings: settings, backend: integrations.effectiveAssistantBackend, assistant: integrations.makeAssistant()))
     }
 
+    /// After sending the therapist to grant Screen Recording, watch for the grant
+    /// and refresh the checklist the moment it lands — so the row turns green on
+    /// its own, with no "quit and relaunch" step. Gives up quietly after a while;
+    /// the Refresh button and the next `.task` still catch it later.
+    private func pollForScreenRecordingGrant() async {
+        for _ in 0..<60 { // ~30s at 0.5s intervals
+            if Task.isCancelled { return }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            if SystemAudioCapture.checkPermission() {
+                await refresh()
+                return
+            }
+        }
+    }
+
     private func perform(_ action: SetupAction) async {
         switch action {
         case .chooseFolder:
@@ -101,8 +116,18 @@ struct SetupChecklistView: View {
             _ = await MicRecorder.requestPermission()
         case .openMicrophoneSettings:
             SystemSettingsLinks.openMicrophoneSettings()
+        case .requestScreenRecording:
+            // One explicit system prompt. If already granted or the user grants
+            // it now, we're done and the live poll flips the row green without a
+            // relaunch. If macOS won't prompt (previously denied), send them to
+            // the exact Settings pane instead.
+            if !SystemAudioCapture.requestPermission() {
+                SystemSettingsLinks.openScreenRecordingSettings()
+                await pollForScreenRecordingGrant()
+            }
         case .openScreenRecordingSettings:
             SystemSettingsLinks.openScreenRecordingSettings()
+            await pollForScreenRecordingGrant()
         case .downloadTranscriptionModel:
             do {
                 try await whisperDownloader.download(settings.whisperModel, to: settings.whisperModelPath)
