@@ -34,10 +34,10 @@ struct ToolHealthCheck: Identifiable {
 enum ToolHealth {
     static func runAllChecks(settings: AppSettings, backend: AssistantBackend, assistant: Assistant) async -> [ToolHealthCheck] {
         async let mic = microphoneCheck()
-        async let screen = screenRecordingCheck()
         async let whisperModel = whisperModelCheck(settings: settings)
         async let ai = assistantCheck(settings: settings, backend: backend, assistant: assistant)
         async let dataFolder = dataFolderCheck(settings: settings)
+        let screen = screenRecordingCheck()
         return await [dataFolder, mic, screen, whisperModel, ai]
     }
 
@@ -59,16 +59,15 @@ enum ToolHealth {
         }
     }
 
-    static func screenRecordingCheck() async -> ToolHealthCheck {
-        let granted = await SystemAudioCapture.checkPermission()
-        if granted {
+    static func screenRecordingCheck() -> ToolHealthCheck {
+        if SystemAudioCapture.checkPermission() {
             return ToolHealthCheck(kind: .screenRecording, title: "Call audio capture", status: .ok, detail: "Session Notes can capture the other side of your call.")
         }
         return ToolHealthCheck(
             kind: .screenRecording,
             title: "Call audio capture",
             status: .failed,
-            detail: "Turn this on in System Settings > Privacy & Security > Screen & System Audio Recording, then relaunch Session Notes."
+            detail: "Click Allow to grant Screen & System Audio Recording. This updates here as soon as you approve — no restart needed."
         )
     }
 

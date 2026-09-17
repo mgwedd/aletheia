@@ -5,6 +5,7 @@ enum SetupAction: Equatable {
     case chooseFolder
     case requestMicrophone
     case openMicrophoneSettings
+    case requestScreenRecording
     case openScreenRecordingSettings
     case downloadTranscriptionModel
     case installOrOpenOllama
@@ -16,6 +17,7 @@ enum SetupAction: Equatable {
         case .chooseFolder: return "Choose Folder…"
         case .requestMicrophone: return "Allow Microphone"
         case .openMicrophoneSettings: return "Open Settings"
+        case .requestScreenRecording: return "Allow"
         case .openScreenRecordingSettings: return "Open Settings"
         case .downloadTranscriptionModel: return "Download"
         case .installOrOpenOllama: return "Get Ollama"
@@ -50,7 +52,10 @@ enum Setup {
         case (.microphone, .failed):
             return .openMicrophoneSettings   // previously denied — send to Settings
         case (.screenRecording, _):
-            return .openScreenRecordingSettings
+            // One button that asks for access with a single system prompt; if
+            // it was previously denied (macOS won't re-prompt), the handler
+            // falls back to opening System Settings.
+            return .requestScreenRecording
         case (.whisperModel, _):
             return .downloadTranscriptionModel
         case (.ollama, .failed):
