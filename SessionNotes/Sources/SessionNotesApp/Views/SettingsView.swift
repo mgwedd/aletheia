@@ -73,7 +73,22 @@ struct SettingsView: View {
 
                 if integrations.effectiveAssistantBackend == .ollama {
                     Divider()
-                    TextField("Ollama model name", text: $settings.ollamaModelName)
+                    Picker("Model", selection: ollamaModelSelection) {
+                        ForEach(OllamaCatalog.options) { option in
+                            Text("\(option.label) (~\(String(format: "%.1f", option.approxSizeGB)) GB)")
+                                .tag(option.tag)
+                        }
+                        Text("Custom…").tag(OllamaCatalog.customTag)
+                    }
+                    if let option = OllamaCatalog.option(for: settings.ollamaModelName) {
+                        Text(option.blurb).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text("Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.ollamaModel).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if !OllamaCatalog.contains(settings.ollamaModelName) {
+                        TextField("Ollama model tag (e.g. qwen2.5:7b)", text: $settings.ollamaModelName)
+                    }
                     Text("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -83,6 +98,7 @@ struct SettingsView: View {
                             Text(ollamaPullStatus).font(.caption).foregroundStyle(.secondary)
                         } else {
                             Button("Download \(settings.ollamaModelName)") { Task { await pullOllamaModel() } }
+                                .disabled(settings.ollamaModelName.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                     }
                 } else if integrations.effectiveAssistantBackend == .appleIntelligence {
@@ -294,6 +310,23 @@ struct SettingsView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Maps the free-form `ollamaModelName` to the tiered picker: a known catalog
+    /// tag selects that row; anything else selects "Custom…" and reveals the text
+    /// field. Picking a catalog row sets the tag; switching to Custom clears a
+    /// catalog tag so the field starts empty for typing.
+    private var ollamaModelSelection: Binding<String> {
+        Binding(
+            get: { OllamaCatalog.contains(settings.ollamaModelName) ? settings.ollamaModelName : OllamaCatalog.customTag },
+            set: { newValue in
+                if newValue == OllamaCatalog.customTag {
+                    if OllamaCatalog.contains(settings.ollamaModelName) { settings.ollamaModelName = "" }
+                } else {
+                    settings.ollamaModelName = newValue
+                }
+            }
+        )
     }
 
     private func legalAcceptanceStamp(version: String, at date: Date) -> String {
