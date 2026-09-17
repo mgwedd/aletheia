@@ -33,6 +33,7 @@ struct PatientDetailView: View {
                     } label: {
                         Label("Ask About All Sessions", systemImage: "bubble.left.and.bubble.right")
                     }
+                    .disabled(sessions.isEmpty)
                     Spacer()
                     Button {
                         exportHistory()
@@ -58,6 +59,18 @@ struct PatientDetailView: View {
                     SessionRow(session: session).tag(session)
                 }
                 .listStyle(.inset)
+                .overlay {
+                    if sessions.isEmpty {
+                        ContentUnavailableView {
+                            Label("No Sessions Yet", systemImage: "waveform")
+                        } description: {
+                            Text("Start a session to record, transcribe, and summarize it.")
+                        } actions: {
+                            Button("New Session") { newSession() }
+                                .buttonStyle(.borderedProminent)
+                        }
+                    }
+                }
             }
             .padding()
             .frame(minWidth: 320)
