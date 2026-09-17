@@ -67,6 +67,7 @@ final class AppSettings: ObservableObject {
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
         static let updateFeedURL = "updateFeedURL"
         static let spotlightIndexingEnabled = "spotlightIndexingEnabled"
+        static let appLockEnabled = "appLockEnabled"
     }
 
     /// Where the app looks for its update manifest. Defaults to the
@@ -108,6 +109,10 @@ final class AppSettings: ObservableObject {
     @Published var spotlightIndexingEnabled: Bool {
         didSet { defaults.set(spotlightIndexingEnabled, forKey: Keys.spotlightIndexingEnabled) }
     }
+    /// Require Touch ID / the login password to open the app (see `AppLock`).
+    @Published var appLockEnabled: Bool {
+        didSet { defaults.set(appLockEnabled, forKey: Keys.appLockEnabled) }
+    }
 
     /// What this Mac can comfortably run, and the model sizes recommended for
     /// it. Computed once at launch and surfaced in setup so defaults match the
@@ -148,6 +153,7 @@ final class AppSettings: ObservableObject {
         }
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
+        appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
         if let raw = defaults.string(forKey: Keys.updateFeedURL), let url = URL(string: raw) {
             updateFeedURL = url
         } else {

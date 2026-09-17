@@ -22,6 +22,10 @@ enum SystemSettingsLinks {
         open("x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders")
     }
 
+    static func openFileVaultSettings() {
+        open("x-apple.systempreferences:com.apple.preference.security?FileVault")
+    }
+
     static func openOllamaDownload() {
         NSWorkspace.shared.open(ollamaDownload)
     }
