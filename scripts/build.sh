@@ -50,7 +50,10 @@ xcodebuild \
     CODE_SIGNING_ALLOWED=YES \
     build
 
-APP_PATH="build/Build/Products/Release/Session Notes.app"
+# The product/target name is "SessionNotes" (no space); the space only appears
+# in the Finder display name (CFBundleDisplayName). So the built bundle is
+# SessionNotes.app — we copy it to the friendlier "Session Notes.app" for dist.
+APP_PATH="build/Build/Products/Release/SessionNotes.app"
 if [ ! -d "$APP_PATH" ]; then
     echo "Build finished but the .app wasn't found at $APP_PATH" >&2
     exit 1
