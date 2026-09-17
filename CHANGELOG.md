@@ -7,6 +7,11 @@ Cutting a `v*` tag builds the release and the in-app updater's `appcast.json`.
 
 ## [Unreleased]
 
+### Fixed
+- Session header buttons no longer overflow or truncate in a narrow window —
+  they show full labels when there's room and collapse to icons (with tooltips)
+  when there isn't.
+
 ## [1.1.0] - 2026-09-17
 
 ### Added
