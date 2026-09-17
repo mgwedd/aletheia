@@ -1,9 +1,9 @@
 # Aletheia — private therapy session notes
 
 A local-only macOS app for a therapist to record, transcribe, and summarize
-browser-based video therapy sessions, then search, annotate, and ask questions
-across a patient's history. **Privacy is the whole point:** session audio is
-PHI, so nothing ever leaves the Mac it runs on.
+video therapy sessions — Zoom, a browser (Tebra), FaceTime, any call — then
+search, annotate, and ask questions across a patient's history. **Privacy is the
+whole point:** session audio is PHI, so nothing ever leaves the Mac it runs on.
 
 📖 [Setup guide](docs/SETUP-GUIDE.md) · ⚖️ [Consent note](CONSENT.md) · 🔒 [Security](SECURITY.md) · 📝 [Changelog](CHANGELOG.md) · 📄 [License](LICENSE) · 📃 [Terms](TERMS.md) · 🔏 [Privacy](PRIVACY.md)
 
@@ -12,7 +12,8 @@ PHI, so nothing ever leaves the Mac it runs on.
 ## What it does
 
 - 🎙 **Record** the therapist's mic and the call's audio as two tracks — no
-  virtual audio driver.
+  virtual audio driver. Works with any call app (Zoom, browser, FaceTime), since
+  it captures system audio. Start/pause/stop from the window or the menu bar.
 - ✍️ **Transcribe** on-device (Whisper), speaker-labeled, then **summarize**
   with a local LLM.
 - 🔎 **Search** across every patient and session; **export** a session or a

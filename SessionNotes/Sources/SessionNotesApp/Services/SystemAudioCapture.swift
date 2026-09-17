@@ -18,7 +18,9 @@ enum SystemAudioCaptureError: LocalizedError {
 
 /// Captures the *other side* of the video call — whatever is coming out of
 /// the Mac's speakers/headphones during the session — using ScreenCaptureKit
-/// in audio-only mode. This replaces the BlackHole virtual-audio-device
+/// in audio-only mode. It captures system audio, so it's app-agnostic: Zoom, a
+/// browser (Tebra), FaceTime, or any other call all work the same way with no
+/// per-app setup. This replaces the BlackHole virtual-audio-device
 /// approach: no third-party kernel extension or Audio MIDI Setup routing is
 /// needed, only a one-time system permission grant (the same "Screen &
 /// System Audio Recording" permission macOS uses for screen recorders).

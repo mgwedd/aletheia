@@ -98,7 +98,10 @@ something doesn't seem to be working.
 1. Add a patient.
 2. Open a patient, click **New Session**.
 3. Click **Record Session** right when your video call starts, **Stop
-   Recording** when it ends.
+   Recording** when it ends. Any call app works — Zoom, a browser (Tebra),
+   FaceTime — because Aletheia captures your Mac's system audio, not one app.
+   You can also Start / Pause / Stop from the menu-bar icon with the call
+   window in front.
 4. Click **Transcribe** — this runs entirely on your Mac and can take a
    few minutes for a longer session.
 5. Click **Summarize with AI** on the Summary tab.
