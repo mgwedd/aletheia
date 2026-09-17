@@ -64,6 +64,7 @@ final class AppSettings: ObservableObject {
         static let ollamaBaseURL = "ollamaBaseURL"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
         static let updateFeedURL = "updateFeedURL"
+        static let spotlightIndexingEnabled = "spotlightIndexingEnabled"
     }
 
     /// Where the app looks for its update manifest. Defaults to the
@@ -91,6 +92,11 @@ final class AppSettings: ObservableObject {
     }
     @Published var updateFeedURL: URL {
         didSet { defaults.set(updateFeedURL.absoluteString, forKey: Keys.updateFeedURL) }
+    }
+    /// Off by default: putting patient names into system-wide Spotlight is a
+    /// privacy trade-off (anyone at the Mac can see them), so the user opts in.
+    @Published var spotlightIndexingEnabled: Bool {
+        didSet { defaults.set(spotlightIndexingEnabled, forKey: Keys.spotlightIndexingEnabled) }
     }
 
     /// What this Mac can comfortably run, and the model sizes recommended for
@@ -124,6 +130,7 @@ final class AppSettings: ObservableObject {
             ollamaBaseURL = URL(string: "http://127.0.0.1:11434")!
         }
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
+        spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         if let raw = defaults.string(forKey: Keys.updateFeedURL), let url = URL(string: raw) {
             updateFeedURL = url
         } else {

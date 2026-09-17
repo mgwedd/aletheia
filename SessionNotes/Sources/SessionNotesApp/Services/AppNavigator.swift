@@ -14,4 +14,16 @@ final class AppNavigator: ObservableObject {
     func requestOpen(patientID: UUID) {
         pendingPatientID = patientID
     }
+
+    /// Opens the target of a Spotlight hit. Session hits currently land on the
+    /// owning patient (the session list is right there); patient hits open the
+    /// patient directly.
+    func open(_ route: SpotlightRoute) {
+        switch route {
+        case .patient(let id):
+            requestOpen(patientID: id)
+        case .session(let patientID, _):
+            requestOpen(patientID: patientID)
+        }
+    }
 }
