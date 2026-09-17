@@ -133,6 +133,25 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Security") {
+                Toggle("Require Touch ID or password to open", isOn: $settings.appLockEnabled)
+                Text("Locks the app when it opens and whenever it's hidden, so your patients' notes stay behind your Touch ID or Mac password.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Divider()
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Encrypt this Mac's disk with FileVault")
+                            .font(.body.weight(.medium))
+                        Text("Recommended. FileVault encrypts everything on this Mac at rest so patient data can't be read if the computer is lost or stolen. macOS manages it; it doesn't affect your backups.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Open Settings") { SystemSettingsLinks.openFileVaultSettings() }
+                }
+            }
+
             Section("Software Update") {
                 LabeledContent("Current version", value: appVersionString)
                 HStack {
