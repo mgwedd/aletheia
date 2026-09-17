@@ -68,6 +68,8 @@ final class AppSettings: ObservableObject {
         static let updateFeedURL = "updateFeedURL"
         static let spotlightIndexingEnabled = "spotlightIndexingEnabled"
         static let appLockEnabled = "appLockEnabled"
+        static let acceptedLegalVersion = "acceptedLegalVersion"
+        static let acceptedLegalDate = "acceptedLegalDate"
     }
 
     /// Where the app looks for its update manifest. Defaults to the
@@ -113,6 +115,17 @@ final class AppSettings: ObservableObject {
     @Published var appLockEnabled: Bool {
         didSet { defaults.set(appLockEnabled, forKey: Keys.appLockEnabled) }
     }
+    /// The version of the Terms/Privacy Policy the user accepted (see `Legal`).
+    /// Empty until accepted. Persisted locally so the practice has a record that
+    /// the terms were accepted, and which version, before the app could be used.
+    @Published private(set) var acceptedLegalVersion: String {
+        didSet { defaults.set(acceptedLegalVersion, forKey: Keys.acceptedLegalVersion) }
+    }
+    /// When the current terms were accepted, recorded locally alongside the
+    /// version. `nil` until accepted. Never leaves this Mac.
+    @Published private(set) var acceptedLegalDate: Date? {
+        didSet { defaults.set(acceptedLegalDate?.timeIntervalSince1970 ?? 0, forKey: Keys.acceptedLegalDate) }
+    }
 
     /// What this Mac can comfortably run, and the model sizes recommended for
     /// it. Computed once at launch and surfaced in setup so defaults match the
@@ -154,6 +167,9 @@ final class AppSettings: ObservableObject {
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
+        acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
+        let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
+        acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil
         if let raw = defaults.string(forKey: Keys.updateFeedURL), let url = URL(string: raw) {
             updateFeedURL = url
         } else {
@@ -168,6 +184,30 @@ final class AppSettings: ObservableObject {
     func setDataRoot(_ url: URL) throws {
         try SecurityScopedBookmark.save(url: url, key: Keys.dataRootBookmark)
         dataRootURL = url
+    }
+
+    /// Whether the user has accepted the current version of the Terms/Privacy
+    /// Policy. The first-run flow blocks on this, so the app can't be used
+    /// without it (and re-appears when the terms version changes).
+    var hasAcceptedCurrentLegal: Bool {
+        Legal.isAccepted(acceptedLegalVersion)
+    }
+
+    /// Record acceptance of the current terms locally: the version and the
+    /// moment it was accepted. Writes both to UserDefaults (the gate) and an
+    /// append-only receipt in the data folder (`LegalReceipt`). This is a
+    /// good-faith on-device record, not tamper-proof proof and not tied to a
+    /// person's identity. Defaults are injectable for tests.
+    func recordLegalAcceptance(version: String = Legal.currentVersion, at date: Date = Date()) {
+        acceptedLegalVersion = version
+        acceptedLegalDate = date
+        LegalReceipt.append(version: version, at: date, root: dataRootURL, appVersion: Self.appVersionString)
+    }
+
+    /// The app's marketing version (CFBundleShortVersionString), for stamping
+    /// records. Falls back to "unknown" outside a bundle (e.g. tests).
+    static var appVersionString: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
     }
 
     var whisperModelPath: URL {

@@ -5,7 +5,7 @@ browser-based video therapy sessions, then search, annotate, and ask questions
 across a patient's history. **Privacy is the whole point:** session audio is
 PHI, so nothing ever leaves the Mac it runs on.
 
-📖 [Setup guide](docs/SETUP-GUIDE.md) · ⚖️ [Consent note](CONSENT.md) · 🔒 [Security](SECURITY.md) · 📝 [Changelog](CHANGELOG.md) · 📄 [License](LICENSE)
+📖 [Setup guide](docs/SETUP-GUIDE.md) · ⚖️ [Consent note](CONSENT.md) · 🔒 [Security](SECURITY.md) · 📝 [Changelog](CHANGELOG.md) · 📄 [License](LICENSE) · 📃 [Terms](TERMS.md) · 🔏 [Privacy](PRIVACY.md)
 
 > **License:** source-available but **not** open source — all rights reserved. The code is public for transparency and evaluation; running or reusing it needs written permission. See [LICENSE](LICENSE).
 
