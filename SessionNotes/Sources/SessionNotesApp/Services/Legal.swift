@@ -6,10 +6,12 @@ import Foundation
 /// Settings.
 ///
 /// Acceptance is recorded locally (see `AppSettings.recordLegalAcceptance`):
-/// the accepted version string and the timestamp are written to this Mac and
-/// never leave it. That local record is what lets the practice show, if it ever
-/// matters, that these terms were accepted before the app could be used — the
-/// first-run flow will not let anyone continue without accepting.
+/// the accepted version and timestamp go to UserDefaults (the gate) and to an
+/// append-only receipt file in the data folder (`LegalReceipt`). Both stay on
+/// this Mac. This is a good-faith local record — not tamper-proof, and not tied
+/// to a person's identity (no local store can prove either). What it does show:
+/// the first-run flow will not let anyone continue without accepting, so the app
+/// cannot be used without a recorded acceptance of the current terms.
 enum Legal {
     /// The current terms version. This is the date the terms last changed, and
     /// it is exactly what gets stored as the accepted version. **Bump this

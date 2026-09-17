@@ -194,11 +194,20 @@ final class AppSettings: ObservableObject {
     }
 
     /// Record acceptance of the current terms locally: the version and the
-    /// moment it was accepted. This is the durable, on-device proof that the
-    /// terms were accepted before use. Defaults are injectable for tests.
+    /// moment it was accepted. Writes both to UserDefaults (the gate) and an
+    /// append-only receipt in the data folder (`LegalReceipt`). This is a
+    /// good-faith on-device record, not tamper-proof proof and not tied to a
+    /// person's identity. Defaults are injectable for tests.
     func recordLegalAcceptance(version: String = Legal.currentVersion, at date: Date = Date()) {
         acceptedLegalVersion = version
         acceptedLegalDate = date
+        LegalReceipt.append(version: version, at: date, root: dataRootURL, appVersion: Self.appVersionString)
+    }
+
+    /// The app's marketing version (CFBundleShortVersionString), for stamping
+    /// records. Falls back to "unknown" outside a bundle (e.g. tests).
+    static var appVersionString: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
     }
 
     var whisperModelPath: URL {

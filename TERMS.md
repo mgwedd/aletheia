@@ -14,9 +14,16 @@ agree to these Terms of Service ("Terms") and to the [Privacy Policy](PRIVACY.md
 If you do not agree, do not use the App.
 
 The App records your acceptance **on your own Mac** — the version of these Terms
-you accepted and the date and time you accepted them. It does not send that
-record, or anything else, to the developer. You cannot use the App without
-first accepting; the setup screen will not let you continue until you do.
+you accepted and the date and time you accepted them, both in the App's settings
+and in an `legal-acceptance.log` file in your data folder that you can open and
+read. It does not send that record, or anything else, to the developer. You
+cannot use the App without first accepting; the setup screen will not let you
+continue until you do.
+
+That record is a good-faith local log kept for your own reference. It is not
+tamper-proof and does not identify who was at the keyboard — no record stored on
+your own device can prove either — so treat it as a convenience, not as
+independent legal evidence.
 
 ## 2. License
 
