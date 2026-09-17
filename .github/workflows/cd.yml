@@ -1,9 +1,13 @@
 name: CD (build artifact)
 
-# Continuous delivery: every merge to main (and every PR, to validate the
-# packaging) builds the ad-hoc-signed app, packages a drag-to-Applications DMG,
-# and uploads it as a downloadable workflow artifact. Versioned, notarized
-# releases are cut separately by release.yml on a tag.
+# Continuous delivery: builds the ad-hoc-signed app, packages a
+# drag-to-Applications DMG, and uploads it as a downloadable workflow artifact.
+# Versioned, notarized releases are cut separately by release.yml on a tag.
+#
+# Cost note: macOS runners bill at 10x, and this build only *packages* — the
+# unit tests live in smoke-test.yml, which still runs on every PR. So the DMG
+# build runs automatically on main and on demand for a PR branch (Run workflow),
+# but not on every PR push. Docs-only changes to main are skipped.
 #
 # Supply-chain note: only first-party actions (checkout, cache, upload-artifact)
 # and Homebrew/Apple built-in CLIs — no third-party marketplace actions.
@@ -11,7 +15,9 @@ name: CD (build artifact)
 on:
   push:
     branches: [main]
-  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   workflow_dispatch:
 
 concurrency:

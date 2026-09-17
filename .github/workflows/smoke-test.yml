@@ -12,6 +12,9 @@ name: Smoke Test
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   pull_request:
 
 concurrency:
@@ -27,15 +30,15 @@ jobs:
     # only place the Apple Intelligence backend actually compiles. It's a
     # canary (continue-on-error) so a newest-toolchain hiccup surfaces without
     # blocking the merge, while macos-15 (Xcode 16) stays the required signal.
-    continue-on-error: ${{ matrix.experimental }}
+    #
+    # To save macOS minutes (billed 10x), the canary runs only on main pushes
+    # and manual dispatch — not on every PR, where macos-15 is the signal that
+    # matters. On a PR the matrix is just [macos-15]; elsewhere it adds macos-26.
+    continue-on-error: ${{ matrix.runner == 'macos-26' }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runner: macos-15
-            experimental: false
-          - runner: macos-26
-            experimental: true
+        runner: ${{ github.event_name == 'pull_request' && fromJSON('["macos-15"]') || fromJSON('["macos-15", "macos-26"]') }}
     defaults:
       run:
         working-directory: SessionNotes
