@@ -66,19 +66,39 @@ struct SessionDetailView: View {
 
     private var header: some View {
         HStack(spacing: 16) {
+            // Show full labels when the window is wide enough; fall back to
+            // icon-only buttons (each keeps a .help tooltip) when it isn't, so
+            // the labels never overflow or truncate. ViewThatFits picks the
+            // first layout whose ideal width fits the available space.
+            ViewThatFits(in: .horizontal) {
+                headerControls.labelStyle(.titleAndIcon)
+                headerControls.labelStyle(.iconOnly)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding()
+    }
+
+    private var headerControls: some View {
+        HStack(spacing: 16) {
             if recorder.isRecording {
                 Button(role: .destructive) {
                     Task { await stopRecording() }
                 } label: {
                     Label("Stop Recording", systemImage: "stop.circle.fill")
                 }
-                Text("Recording…").foregroundStyle(.red)
+                .help("Stop recording this session")
+                Image(systemName: "record.circle.fill")
+                    .foregroundStyle(.red)
+                    .symbolEffect(.pulse, options: .repeating)
+                    .help("Recording…")
             } else {
                 Button {
                     Task { await startRecording() }
                 } label: {
                     Label("Record Session", systemImage: "record.circle")
                 }
+                .help("Record this session's audio")
                 .disabled(isTranscribing)
             }
 
@@ -93,6 +113,7 @@ struct SessionDetailView: View {
                     Label("Transcribe", systemImage: "waveform")
                 }
             }
+            .help("Transcribe the recorded audio on-device")
             .disabled(recorder.isRecording || isTranscribing || !hasAnyRecording)
 
             Button {
@@ -100,6 +121,7 @@ struct SessionDetailView: View {
             } label: {
                 Label("Export", systemImage: "square.and.arrow.up")
             }
+            .help("Export this session to Markdown")
             .disabled(transcriptText.isEmpty && summaryText.isEmpty)
 
             Menu {
@@ -110,6 +132,7 @@ struct SessionDetailView: View {
                 Label("Remind Me", systemImage: "bell")
             }
             .menuIndicator(.hidden)
+            .fixedSize()
             .help("Add a follow-up reminder to your Reminders app")
 
             Button {
@@ -120,10 +143,7 @@ struct SessionDetailView: View {
                 Label("Schedule Next…", systemImage: "calendar.badge.plus")
             }
             .help("Add the next session to your Calendar")
-
-            Spacer()
         }
-        .padding()
     }
 
     private func scheduleReminder(_ leadTime: ReminderLeadTime) async {
