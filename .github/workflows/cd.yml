@@ -4,10 +4,16 @@ name: CD (build artifact)
 # drag-to-Applications DMG, and uploads it as a downloadable workflow artifact.
 # Versioned, notarized releases are cut separately by release.yml on a tag.
 #
-# Cost note: macOS runners bill at 10x, and this build only *packages* — the
-# unit tests live in smoke-test.yml, which still runs on every PR. So the DMG
-# build runs automatically on main and on demand for a PR branch (Run workflow),
-# but not on every PR push. Docs-only changes to main are skipped.
+# Where it runs: on main pushes, on demand (Run workflow), and on every pull
+# request — so a reviewer always has a real, runnable build to test the change
+# by hand without a Mac toolchain of their own. The repo is public, so standard
+# macOS runners are free (only -xlarge runners bill), which is what makes the
+# per-PR build affordable. Docs-only changes are skipped, and concurrency
+# cancels superseded runs so rapid pushes don't stack.
+#
+# The build is ad-hoc signed (no secrets), so it works the same on a PR from a
+# fork as on main; first launch still needs a right-click > Open (see the job
+# summary and docs/SETUP-GUIDE.md).
 #
 # Supply-chain note: only first-party actions (checkout, cache, upload-artifact)
 # and Homebrew/Apple built-in CLIs — no third-party marketplace actions.
@@ -15,6 +21,10 @@ name: CD (build artifact)
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  pull_request:
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
@@ -54,13 +64,23 @@ jobs:
       - name: Package DMG
         id: dmg
         working-directory: .
+        env:
+          # On a pull_request event GITHUB_SHA is the ephemeral merge commit;
+          # the PR's own head sha is the one a tester can match to a commit.
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           APP="dist/Aletheia.app"
           test -d "$APP"
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"
-          SHORT_SHA="${GITHUB_SHA::7}"
-          BASENAME="SessionNotes-${VERSION}-${SHORT_SHA}"
+          if [ -n "${PR_NUMBER:-}" ]; then
+            SHORT_SHA="${HEAD_SHA::7}"
+            BASENAME="Aletheia-${VERSION}-pr${PR_NUMBER}-${SHORT_SHA}"
+          else
+            SHORT_SHA="${GITHUB_SHA::7}"
+            BASENAME="Aletheia-${VERSION}-${SHORT_SHA}"
+          fi
 
           STAGING="dist/dmg"
           rm -rf "$STAGING"
@@ -73,6 +93,7 @@ jobs:
 
           echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
           echo "basename=$BASENAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -81,3 +102,16 @@ jobs:
           path: dist/${{ steps.dmg.outputs.basename }}.dmg
           retention-days: 14
           if-no-files-found: error
+
+      # Make the download obvious from the run's summary page, with the one
+      # gotcha a tester hits on an ad-hoc-signed (un-notarized) build.
+      - name: Build summary
+        if: always()
+        run: |
+          {
+            echo "### 📦 Downloadable build"
+            echo ""
+            echo "**\`${{ steps.dmg.outputs.basename }}.dmg\`** (Aletheia ${{ steps.dmg.outputs.version }}) is attached to this run under **Artifacts**, below."
+            echo ""
+            echo "To test it: download and unzip, open the \`.dmg\`, drag **Aletheia** to Applications, then **right-click → Open** the first time (it's ad-hoc signed, not notarized, so a plain double-click is blocked by Gatekeeper). See \`docs/SETUP-GUIDE.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
