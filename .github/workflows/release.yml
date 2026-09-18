@@ -95,10 +95,10 @@ jobs:
           cp -R "$APP" "$STAGING/"
           ln -s /Applications "$STAGING/Applications"
 
-          DMG="dist/SessionNotes-${VERSION}.dmg"
+          DMG="dist/Aletheia-${VERSION}.dmg"
           hdiutil create -volname "Aletheia" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
 
-          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/SessionNotes-${VERSION}.dmg"
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/Aletheia-${VERSION}.dmg"
           cat > dist/appcast.json <<EOF
           {
             "version": "${VERSION}",

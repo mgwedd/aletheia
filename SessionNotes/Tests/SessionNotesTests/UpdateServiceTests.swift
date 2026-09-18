@@ -20,7 +20,7 @@ private struct NoopInstaller: UpdateInstalling {
 private func makeRelease(_ version: String) -> ReleaseInfo {
     ReleaseInfo(
         version: version,
-        downloadURL: URL(string: "https://example.com/SessionNotes-\(version).dmg")!,
+        downloadURL: URL(string: "https://example.com/Aletheia-\(version).dmg")!,
         releaseNotes: "Notes for \(version)",
         minimumSystemVersion: "14.0",
         publishedAt: nil
