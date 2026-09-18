@@ -10,6 +10,26 @@ struct SessionComment: Identifiable, Equatable {
     var body: String
     let createdAt: Date
     var updatedAt: Date
+    /// Seconds into the session that this comment's passage falls at, derived
+    /// from the transcript's time codes when the comment is created. nil when the
+    /// passage couldn't be located (e.g. no quote, or a hand-typed passage).
+    var anchorSeconds: Double?
+
+    init(
+        id: String,
+        quotedText: String,
+        body: String,
+        createdAt: Date,
+        updatedAt: Date,
+        anchorSeconds: Double? = nil
+    ) {
+        self.id = id
+        self.quotedText = quotedText
+        self.body = body
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.anchorSeconds = anchorSeconds
+    }
 }
 
 /// Local database for the therapist's own annotations — inline transcript
@@ -63,7 +83,8 @@ final class CommentStore {
             quoted_text TEXT NOT NULL,
             body TEXT NOT NULL,
             created_at REAL NOT NULL,
-            updated_at REAL NOT NULL
+            updated_at REAL NOT NULL,
+            anchor_seconds REAL
         );
         CREATE INDEX IF NOT EXISTS idx_comments_session ON comments(session_key);
         CREATE TABLE IF NOT EXISTS notes (
@@ -72,7 +93,24 @@ final class CommentStore {
             updated_at REAL NOT NULL
         );
         """
-        return exec(sql)
+        guard exec(sql) else { return false }
+        // A database created before time anchors won't have the column; add it.
+        // (It's nullable, so existing comments simply have no anchor.)
+        ensureColumn("anchor_seconds", type: "REAL", on: "comments")
+        return true
+    }
+
+    /// Adds a column to a table if it isn't already there, so older databases
+    /// upgrade in place. Ignores the "duplicate column" case by checking first.
+    private func ensureColumn(_ column: String, type: String, on table: String) {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "PRAGMA table_info(\(table));", -1, &stmt, nil) == SQLITE_OK else { return }
+        var present = false
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if columnText(stmt, 1) == column { present = true }
+        }
+        sqlite3_finalize(stmt)
+        if !present { _ = exec("ALTER TABLE \(table) ADD COLUMN \(column) \(type);") }
     }
 
     // MARK: - Comments
@@ -80,19 +118,21 @@ final class CommentStore {
     func comments(patientSlug: String, sessionFolder: String) -> [SessionComment] {
         let key = Self.sessionKey(patientSlug: patientSlug, sessionFolder: sessionFolder)
         var result: [SessionComment] = []
-        let sql = "SELECT id, quoted_text, body, created_at, updated_at FROM comments WHERE session_key = ? ORDER BY created_at ASC;"
+        let sql = "SELECT id, quoted_text, body, created_at, updated_at, anchor_seconds FROM comments WHERE session_key = ? ORDER BY created_at ASC;"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
         bindText(stmt, 1, key)
         while sqlite3_step(stmt) == SQLITE_ROW {
+            let anchor = sqlite3_column_type(stmt, 5) == SQLITE_NULL ? nil : sqlite3_column_double(stmt, 5)
             result.append(
                 SessionComment(
                     id: columnText(stmt, 0),
                     quotedText: decodeField(columnText(stmt, 1)),
                     body: decodeField(columnText(stmt, 2)),
                     createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)),
-                    updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4))
+                    updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)),
+                    anchorSeconds: anchor
                 )
             )
         }
@@ -100,10 +140,10 @@ final class CommentStore {
     }
 
     @discardableResult
-    func addComment(patientSlug: String, sessionFolder: String, quotedText: String, body: String, now: Date = Date()) -> SessionComment? {
-        let comment = SessionComment(id: UUID().uuidString, quotedText: quotedText, body: body, createdAt: now, updatedAt: now)
+    func addComment(patientSlug: String, sessionFolder: String, quotedText: String, body: String, anchorSeconds: Double? = nil, now: Date = Date()) -> SessionComment? {
+        let comment = SessionComment(id: UUID().uuidString, quotedText: quotedText, body: body, createdAt: now, updatedAt: now, anchorSeconds: anchorSeconds)
         let key = Self.sessionKey(patientSlug: patientSlug, sessionFolder: sessionFolder)
-        let sql = "INSERT INTO comments (id, session_key, quoted_text, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?);"
+        let sql = "INSERT INTO comments (id, session_key, quoted_text, body, created_at, updated_at, anchor_seconds) VALUES (?, ?, ?, ?, ?, ?, ?);"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
@@ -113,6 +153,7 @@ final class CommentStore {
         bindText(stmt, 4, encodeField(body))
         sqlite3_bind_double(stmt, 5, now.timeIntervalSince1970)
         sqlite3_bind_double(stmt, 6, now.timeIntervalSince1970)
+        if let anchorSeconds { sqlite3_bind_double(stmt, 7, anchorSeconds) } else { sqlite3_bind_null(stmt, 7) }
         return sqlite3_step(stmt) == SQLITE_DONE ? comment : nil
     }
 

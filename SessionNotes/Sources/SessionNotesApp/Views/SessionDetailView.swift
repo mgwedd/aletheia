@@ -329,6 +329,11 @@ struct SessionDetailView: View {
                     .font(.body.weight(.medium))
                 TextField("Passage this is about (optional)", text: $newCommentQuote)
                     .textFieldStyle(.roundedBorder)
+                if !transcriptText.isEmpty {
+                    Text("Paste the exact words from the transcript to anchor the comment to that moment.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
                 TextField("Your comment", text: $newCommentBody, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(2...5)
@@ -349,6 +354,12 @@ struct SessionDetailView: View {
                 List {
                     ForEach(comments) { comment in
                         VStack(alignment: .leading, spacing: 4) {
+                            if let anchor = comment.anchorSeconds {
+                                Label(TranscriptTimeline.format(Int(anchor)), systemImage: "clock")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .help("This comment is anchored to \(TranscriptTimeline.format(Int(anchor))) in the session")
+                            }
                             if !comment.quotedText.isEmpty {
                                 Text("“\(comment.quotedText)”")
                                     .font(.caption)
@@ -428,11 +439,17 @@ struct SessionDetailView: View {
         guard let commentStore = appModel.commentStore else { return }
         let body = newCommentBody.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
+        let quote = newCommentQuote.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Anchor the comment to the moment in the session its passage falls at,
+        // read from the transcript's time codes. nil when there's no quote or it
+        // isn't found verbatim.
+        let anchor: Double? = quote.isEmpty ? nil : TranscriptTimeline.seconds(forQuote: quote, in: transcriptText).map { Double($0) }
         _ = commentStore.addComment(
             patientSlug: patient.slug,
             sessionFolder: session.folderName,
-            quotedText: newCommentQuote.trimmingCharacters(in: .whitespacesAndNewlines),
-            body: body
+            quotedText: quote,
+            body: body,
+            anchorSeconds: anchor
         )
         newCommentQuote = ""
         newCommentBody = ""
