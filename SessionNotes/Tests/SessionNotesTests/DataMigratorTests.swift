@@ -52,7 +52,7 @@ final class DataMigratorTests: XCTestCase {
         let keyedStore = Store(root: root, protector: keyed)
         XCTAssertEqual(keyedStore.transcript(for: patient, session: session), "hello transcript")
         XCTAssertEqual(keyedStore.summary(for: patient, session: session), "a short summary")
-        XCTAssertEqual(keyedStore.listPatients().map(\.name), ["Dana Cole"])
+        XCTAssertEqual(try keyedStore.listPatients().map(\.name), ["Dana Cole"])
         let keyedComments = try XCTUnwrap(CommentStore(root: root, protector: keyed))
         XCTAssertEqual(keyedComments.note(patientSlug: patient.slug, sessionFolder: session.folderName), "private note")
 
