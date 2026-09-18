@@ -117,7 +117,8 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(appLockEnabled, forKey: Keys.appLockEnabled) }
     }
     /// The clinical documentation format the "Generate note" action defaults to.
-    /// SOAP is the most widely accepted, so it's the out-of-box default.
+    /// Free text out of the box (`ProgressNoteFormat.default`); a therapist who
+    /// wants a payer-ready structure picks SOAP/DAP/BIRP here or per session.
     @Published var progressNoteFormat: ProgressNoteFormat {
         didSet { defaults.set(progressNoteFormat.rawValue, forKey: Keys.progressNoteFormat) }
     }
@@ -176,7 +177,7 @@ final class AppSettings: ObservableObject {
         if let raw = defaults.string(forKey: Keys.progressNoteFormat), let format = ProgressNoteFormat(rawValue: raw) {
             progressNoteFormat = format
         } else {
-            progressNoteFormat = .soap
+            progressNoteFormat = .default
         }
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)

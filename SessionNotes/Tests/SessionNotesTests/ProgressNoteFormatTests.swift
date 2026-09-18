@@ -24,6 +24,15 @@ final class ProgressNoteFormatTests: XCTestCase {
         }
     }
 
+    func testDefaultIsFreeText() {
+        // The app ships defaulting to free text — a therapist opts into a
+        // structured payer format, it isn't imposed. Guards the regression where
+        // the default was silently SOAP.
+        XCTAssertEqual(ProgressNoteFormat.default, .narrative)
+        XCTAssertTrue(ProgressNoteFormat.default.sections.isEmpty,
+                      "the default must be free-form (no imposed template)")
+    }
+
     func testShortAndDisplayNamesAreDistinct() {
         let shorts = Set(ProgressNoteFormat.allCases.map(\.shortName))
         XCTAssertEqual(shorts.count, ProgressNoteFormat.allCases.count)
