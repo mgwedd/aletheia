@@ -126,7 +126,8 @@ struct RecordingMenuBar: View {
                 patientName: patient.name,
                 patientSlug: patient.slug,
                 sessionFolder: session.folderName
-            )
+            ),
+            protector: appModel.currentProtector
         )
         NSApp.activate(ignoringOtherApps: true)
         AppNavigator.shared.requestOpen(patientID: patient.id)

@@ -89,16 +89,41 @@ No custom cryptography: AES-256-GCM and PBKDF2 via Apple's **CryptoKit** and
 constraint). No SQLCipher — the database is protected by the same envelope, not
 a third-party SQLite build.
 
-## Rollout (staged PRs)
+## What's encrypted
 
-1. **Crypto core** — `DataCipher` (envelope) + `PassphraseKDF` + `Keystore`,
-   with tests. No read/write path touched yet, so existing data is untouched.
-   _(this PR)_
-2. **Manager + Settings UI** — `EncryptionManager` (enable/disable/unlock,
-   set/change passphrase), first-run + Settings surfaces, honest warnings.
-3. **Wire text artifacts** — route `Store`'s file I/O through the cipher
-   (transcript, summary, chat, `patient.json`), lazy migration on enable.
-4. **Wire audio + database** — seal `mic.caf` / `call.caf` on stop; seal the
-   comment/notes DB (export-seal on close, open-decrypt on open).
-5. **Enable/disable migration + recovery flow** — bulk convert on toggle;
-   passphrase-recovery entry point for a fresh Mac.
+| Data | How |
+|------|-----|
+| transcript.txt, summary.txt, chat.json, patient.json, patient_chat.json | one-shot `DataCipher` envelope, via `FileProtector` in `Store` |
+| comment quote/body, note body (SessionNotes.sqlite) | field-level (`FieldCipher`, base64 envelope per value); DB file, schema, keys, timestamps stay a normal SQLite file — no SQLCipher |
+| mic.caf, call.caf | streaming `ChunkedCipher` (bounded memory), sealed on stop, decrypted to a temp file for transcription |
+
+Not encrypted (by design): patient/session **folder names**, the schema
+metadata stamp, and the keystore itself. Names are how the app finds things;
+keep identifying detail out of them if that matters.
+
+## Turning it on / off
+
+Settings → **Extra Encryption**. Turning it on sets a recovery passphrase and
+runs `DataMigrator` to seal the folder's existing PHI; turning it off decrypts
+everything back to plain files first and only then removes the keystore, so a
+failure never leaves data unreadable. The DEK is held in memory for the running
+session; a fresh launch of an encrypted folder prompts for the passphrase once
+(`EncryptionUnlockView`). Migration is safe to re-run — a keyed protector reads
+plaintext and sealed files alike, so a half-converted folder still works.
+
+**Remember on this Mac (optional).** From the unlock gate or Settings the user
+can store the DEK in the login keychain (`DeviceKeyStore`,
+`WhenUnlockedThisDeviceOnly`, never synced), so the folder auto-unlocks on
+launch instead of asking for the passphrase. It's a convenience/security
+trade-off — anything running as the logged-in user can then reach the key, the
+same "malware while unlocked" surface already excluded above — so it's **off by
+default** and the passphrase is always the fallback. Turning encryption off, or
+toggling remember off, deletes the keychain copy.
+
+## Rollout (shipped in stages)
+
+1. **Crypto core** — `DataCipher`, `PassphraseKDF`, `Keystore`.
+2. **Manager + choke point** — `EncryptionManager`, `FileProtector` (dormant).
+3. **Text + database** — `Store` files and `CommentStore` fields.
+4. **Audio** — `ChunkedCipher` streaming seal/open.
+5. **UI + migration** — Settings enable/disable, unlock gate, `DataMigrator`.

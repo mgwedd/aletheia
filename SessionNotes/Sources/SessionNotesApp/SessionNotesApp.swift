@@ -10,6 +10,9 @@ struct SessionNotesApp: App {
     @StateObject private var integrations: Integrations
     @StateObject private var updateService: UpdateService
     @StateObject private var appLock: AppLock
+    /// Tier-2 at-rest encryption: owns the folder's key lifecycle and hands the
+    /// stores a `FileProtector`. Off until the user turns it on in Settings.
+    @StateObject private var encryption: EncryptionManager
     /// One recorder for the whole app, shared by the session view and the
     /// menu-bar control so both drive (and reflect) the same recording.
     @StateObject private var recorder = SessionRecorder()
@@ -18,7 +21,9 @@ struct SessionNotesApp: App {
     init() {
         let settings = AppSettings.shared
         _settings = StateObject(wrappedValue: settings)
-        _appModel = StateObject(wrappedValue: AppModel(settings: settings))
+        let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL })
+        _encryption = StateObject(wrappedValue: encryption)
+        _appModel = StateObject(wrappedValue: AppModel(settings: settings, encryption: encryption))
         _integrations = StateObject(wrappedValue: Integrations(settings: settings))
         _updateService = StateObject(wrappedValue: UpdateService(
             checker: AppcastUpdateChecker(feedURL: settings.updateFeedURL),
@@ -35,6 +40,7 @@ struct SessionNotesApp: App {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(recorder)
+                .environmentObject(encryption)
                 .sheet(isPresented: showFirstRun) {
                     FirstRunView()
                         .environmentObject(settings)
@@ -61,6 +67,17 @@ struct SessionNotesApp: App {
                     if appLock.isLocked {
                         LockView()
                             .environmentObject(appLock)
+                            .transition(.opacity)
+                    }
+                }
+                // Tier-2: an encrypted folder needs its passphrase once per launch
+                // before its notes can be read or written.
+                .overlay {
+                    if settings.dataRootURL != nil && encryption.state == .lockedNeedsPassphrase {
+                        EncryptionUnlockView()
+                            .environmentObject(encryption)
+                            .environmentObject(settings)
+                            .environmentObject(appModel)
                             .transition(.opacity)
                     }
                 }

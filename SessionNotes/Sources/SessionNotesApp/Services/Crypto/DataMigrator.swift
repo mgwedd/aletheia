@@ -1,0 +1,99 @@
+import Foundation
+
+/// Converts a data folder's existing PHI between plaintext and sealed form when
+/// encryption is turned on or off — the bulk pass so a folder that already has
+/// sessions in it isn't left half-protected.
+///
+///   enable:  migrate(from: .passthrough, to: <keyed>)   plaintext → sealed
+///   disable: migrate(from: <keyed>,      to: .passthrough) sealed → plaintext
+///
+/// It knows the same layout `Store` writes:
+///   Patients/<slug>/patient.json, patient_chat.json
+///   Patients/<slug>/<…_Session>/{transcript.txt, summary.txt, chat.json,
+///                                 mic.caf, call.caf}
+///   SessionNotes.sqlite  (the comment/notes DB, field-level)
+///
+/// Text/JSON go through the one-shot cipher, audio through the streaming one,
+/// and the database through `CommentStore.reencrypt`. Errors are collected per
+/// item rather than aborting: a keyed protector reads plaintext and sealed
+/// files alike, so a partially-converted folder still works and the pass can be
+/// safely re-run.
+enum DataMigrator {
+    /// The `.caf` recordings, migrated with the streaming cipher.
+    private static let audioNames = ["mic.caf", "call.caf"]
+    /// The one-shot-sealed text/JSON files in a session folder.
+    private static let sessionFileNames = ["transcript.txt", "summary.txt", "chat.json"]
+    /// The one-shot-sealed files directly under a patient folder.
+    private static let patientFileNames = ["patient.json", "patient_chat.json"]
+
+    struct Result {
+        var converted = 0
+        var failures: [String] = []
+        var isComplete: Bool { failures.isEmpty }
+    }
+
+    @discardableResult
+    static func migrate(root: URL, from: FileProtector, to: FileProtector) -> Result {
+        let fm = FileManager.default
+        var result = Result()
+
+        let patientsDir = root.appendingPathComponent("Patients", isDirectory: true)
+        let patientDirs = (try? fm.contentsOfDirectory(at: patientsDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+
+        for patientDir in patientDirs {
+            guard (try? patientDir.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
+
+            for name in patientFileNames {
+                migrateFile(patientDir.appendingPathComponent(name), from: from, to: to, into: &result)
+            }
+
+            let sessionDirs = (try? fm.contentsOfDirectory(at: patientDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+            for sessionDir in sessionDirs where sessionDir.lastPathComponent.hasSuffix("_Session") {
+                for name in sessionFileNames {
+                    migrateFile(sessionDir.appendingPathComponent(name), from: from, to: to, into: &result)
+                }
+                for name in audioNames {
+                    migrateAudioFile(sessionDir.appendingPathComponent(name), from: from, to: to, into: &result)
+                }
+            }
+        }
+
+        // Database (field-level): decode with `from`, encode with `to`.
+        if fm.fileExists(atPath: root.appendingPathComponent("SessionNotes.sqlite").path) {
+            if let store = CommentStore(root: root, protector: from), store.reencrypt(to: to) {
+                result.converted += 1
+            } else {
+                result.failures.append("SessionNotes.sqlite")
+            }
+        }
+
+        return result
+    }
+
+    private static func migrateFile(_ url: URL, from: FileProtector, to: FileProtector, into result: inout Result) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            let data = try from.data(contentsOf: url)
+            try to.write(data, to: url)
+            result.converted += 1
+        } catch {
+            result.failures.append(url.lastPathComponent)
+        }
+    }
+
+    private static func migrateAudioFile(_ url: URL, from: FileProtector, to: FileProtector, into result: inout Result) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            if to.isEncrypting {
+                try to.sealLargeFileInPlace(at: url) // plaintext → sealed (no-op if already sealed)
+            } else {
+                // sealed → plaintext: decrypt with `from`, replace the original.
+                let (readable, isTemp) = try from.decryptedCopyOfLargeFile(at: url)
+                if isTemp { _ = try FileManager.default.replaceItemAt(url, withItemAt: readable) }
+            }
+            result.converted += 1
+        } catch {
+            result.failures.append(url.lastPathComponent)
+        }
+    }
+}
