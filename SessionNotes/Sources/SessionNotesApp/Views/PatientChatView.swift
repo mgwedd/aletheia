@@ -63,7 +63,7 @@ struct PatientChatView: View {
                 }
             }
         }
-        .onAppear(perform: reloadThreads)
+        .onAppear { reloadThreads() }
         .onChange(of: selectedThreadID) { _, newID in
             // Load the newly-selected thread's messages, but never clobber an
             // in-flight working copy (persist() re-selects the same id).
