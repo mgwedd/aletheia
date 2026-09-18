@@ -110,14 +110,23 @@ private struct ChatBubble: View {
     let message: ChatMessage
 
     var body: some View {
-        HStack {
-            if message.role == .user { Spacer(minLength: 40) }
-            Text(message.text)
-                .textSelection(.enabled)
-                .padding(10)
-                .background(message.role == .user ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            if message.role == .assistant { Spacer(minLength: 40) }
+        HStack(alignment: .top) {
+            if message.role == .user {
+                // The therapist's own words, shown verbatim in a trailing bubble.
+                Spacer(minLength: 40)
+                Text(message.text)
+                    .textSelection(.enabled)
+                    .padding(10)
+                    .background(Color.accentColor.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                // The assistant answer, rendered as rich Markdown across the full
+                // width (like ChatGPT/Claude) so headings, lists, and code read
+                // as a document rather than a cramped bubble of raw markup.
+                MarkdownMessageView(text: message.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 40)
+            }
         }
     }
 }
