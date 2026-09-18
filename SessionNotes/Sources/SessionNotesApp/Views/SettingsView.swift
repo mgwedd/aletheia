@@ -196,6 +196,28 @@ struct SettingsView: View {
                 encryptionSection
             }
 
+            Section("Backup") {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Time Machine (recommended)").font(.body.weight(.medium))
+                        Text("Your data folder and its database back up automatically with macOS Time Machine — on your own backup disk, nothing leaves this Mac.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                Divider()
+                Toggle("Keep an encrypted backup copy on this Mac", isOn: $settings.localEncryptedBackupEnabled)
+                Text("An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Divider()
+                Toggle("Also back up to iCloud (end-to-end encrypted)", isOn: $settings.iCloudEncryptedBackupEnabled)
+                Text("Uploads the same encrypted snapshot to your private iCloud. It's sealed with your key before it leaves this Mac, so Apple only ever stores data it can't read. Activates in a signed build with iCloud configured; your choice is saved until then.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Legal") {
                 HStack(spacing: 16) {
                     Link("Terms of Service", destination: Legal.termsURL)
