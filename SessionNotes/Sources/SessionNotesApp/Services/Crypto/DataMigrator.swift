@@ -9,6 +9,7 @@ import Foundation
 ///
 /// It knows the same layout `Store` writes:
 ///   Patients/<slug>/patient.json, patient_chat.json
+///   Patients/<slug>/ChatThreads/<id>.json
 ///   Patients/<slug>/<…_Session>/{transcript.txt, summary.txt, chat.json,
 ///                                 mic.caf, call.caf}
 ///   SessionNotes.sqlite  (the comment/notes DB, field-level)
@@ -45,6 +46,14 @@ enum DataMigrator {
 
             for name in patientFileNames {
                 migrateFile(patientDir.appendingPathComponent(name), from: from, to: to, into: &result)
+            }
+
+            // Chat threads live one-per-file under ChatThreads/ with dynamic
+            // (UUID) names, so enumerate rather than use a fixed list.
+            let threadsDir = patientDir.appendingPathComponent("ChatThreads", isDirectory: true)
+            let threadFiles = (try? fm.contentsOfDirectory(at: threadsDir, includingPropertiesForKeys: nil)) ?? []
+            for file in threadFiles where file.pathExtension == "json" {
+                migrateFile(file, from: from, to: to, into: &result)
             }
 
             let sessionDirs = (try? fm.contentsOfDirectory(at: patientDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
