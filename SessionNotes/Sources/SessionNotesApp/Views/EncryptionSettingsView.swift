@@ -97,6 +97,7 @@ struct EncryptionUnlockView: View {
     @EnvironmentObject private var appModel: AppModel
 
     @State private var passphrase = ""
+    @State private var rememberOnDevice = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -112,6 +113,10 @@ struct EncryptionUnlockView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 320)
                     .onSubmit(unlock)
+
+                Toggle("Remember on this Mac", isOn: $rememberOnDevice)
+                    .toggleStyle(.checkbox)
+                    .help("Stores the key in this Mac's login keychain so you won't be asked next launch. Leave off for maximum security.")
 
                 if let errorMessage {
                     Text(errorMessage).font(.caption).foregroundStyle(.red)
@@ -133,6 +138,7 @@ struct EncryptionUnlockView: View {
     private func unlock() {
         do {
             try encryption.unlock(passphrase: passphrase)
+            if rememberOnDevice { try? encryption.rememberOnDevice() }
             passphrase = ""
             errorMessage = nil
         } catch {

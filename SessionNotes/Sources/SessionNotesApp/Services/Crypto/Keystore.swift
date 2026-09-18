@@ -22,6 +22,10 @@ struct Keystore: Codable, Equatable {
 
     var version: Int
     var wrappings: [Wrapping]
+    /// Random per-folder id, assigned lazily the first time the DEK is
+    /// remembered on a device (the Keychain entry is keyed by it). `nil` until
+    /// then, and omitted from older keystores — decoding tolerates its absence.
+    var id: String?
 
     /// One way to unwrap the DEK. `wrappedKey` is `DataCipher.seal(DEK, KEK)`;
     /// for a passphrase slot the KEK is `PassphraseKDF(passphrase, salt,

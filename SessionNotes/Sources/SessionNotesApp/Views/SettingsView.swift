@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var showEncryptionSetup = false
     @State private var confirmDisableEncryption = false
     @State private var isDisablingEncryption = false
+    @State private var rememberOnDevice = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -272,6 +273,7 @@ struct SettingsView: View {
             Text("Your notes, transcripts, summaries, chat, records and recordings will be decrypted back to plain files on disk. FileVault, if on, still protects them.")
         }
         .task { await runHealthChecks() }
+        .onAppear { rememberOnDevice = encryption.isRememberedOnDevice }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -297,7 +299,19 @@ struct SettingsView: View {
         case .unlocked:
             Label("On — unlocked for this session", systemImage: "lock.fill")
                 .foregroundStyle(.green)
-            Text("Your data folder is encrypted at rest. You'll enter your recovery passphrase once each time you open Aletheia.")
+            Text("Your data folder is encrypted at rest with your recovery passphrase.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle("Unlock automatically on this Mac", isOn: $rememberOnDevice)
+                .onChange(of: rememberOnDevice) { _, on in
+                    do {
+                        if on { try encryption.rememberOnDevice() } else { encryption.forgetOnDevice() }
+                    } catch {
+                        errorMessage = error.localizedDescription
+                        rememberOnDevice = false
+                    }
+                }
+            Text("Stores the key in this Mac's login keychain so you don't retype your passphrase each launch. Turn off for maximum security — Aletheia will always ask.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack {

@@ -111,6 +111,15 @@ session; a fresh launch of an encrypted folder prompts for the passphrase once
 (`EncryptionUnlockView`). Migration is safe to re-run — a keyed protector reads
 plaintext and sealed files alike, so a half-converted folder still works.
 
+**Remember on this Mac (optional).** From the unlock gate or Settings the user
+can store the DEK in the login keychain (`DeviceKeyStore`,
+`WhenUnlockedThisDeviceOnly`, never synced), so the folder auto-unlocks on
+launch instead of asking for the passphrase. It's a convenience/security
+trade-off — anything running as the logged-in user can then reach the key, the
+same "malware while unlocked" surface already excluded above — so it's **off by
+default** and the passphrase is always the fallback. Turning encryption off, or
+toggling remember off, deletes the keychain copy.
+
 ## Rollout (shipped in stages)
 
 1. **Crypto core** — `DataCipher`, `PassphraseKDF`, `Keystore`.

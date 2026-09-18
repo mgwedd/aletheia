@@ -54,10 +54,12 @@ final class EncryptionManager: ObservableObject {
     var onProtectionChanged: (() -> Void)?
 
     private let dataRootProvider: () -> URL?
+    private let deviceKeys: DeviceKeyStoring
     private var dek: SymmetricKey?
 
-    init(dataRootProvider: @escaping () -> URL?) {
+    init(dataRootProvider: @escaping () -> URL?, deviceKeys: DeviceKeyStoring = KeychainDeviceKeyStore()) {
         self.dataRootProvider = dataRootProvider
+        self.deviceKeys = deviceKeys
         refresh()
     }
 
@@ -82,12 +84,46 @@ final class EncryptionManager: ObservableObject {
     /// Recomputes state from disk. Call on launch and whenever the data folder
     /// changes; it doesn't drop an already-held key for the same folder.
     func refresh() {
-        guard isEnabled else {
+        guard isEnabled, let root = dataRoot else {
             dek = nil
             state = .disabled
             return
         }
+        // Auto-unlock from this Mac's keychain if the user chose to be remembered.
+        if dek == nil, let id = Keystore.load(from: root)?.id, let key = deviceKeys.load(for: id) {
+            dek = key
+        }
         state = dek == nil ? .lockedNeedsPassphrase : .unlocked
+    }
+
+    /// Whether the DEK is remembered in this Mac's keychain for auto-unlock.
+    var isRememberedOnDevice: Bool {
+        guard let root = dataRoot, let id = Keystore.load(from: root)?.id else { return false }
+        return deviceKeys.load(for: id) != nil
+    }
+
+    /// Stores the DEK in this Mac's keychain so future launches unlock without
+    /// the passphrase. Assigns the keystore a stable id on first use. Requires
+    /// the folder to be unlocked.
+    func rememberOnDevice() throws {
+        guard let root = dataRoot, var keystore = Keystore.load(from: root) else { throw ManagerError.notEnabled }
+        guard let dek else { throw FileProtector.ProtectorError.locked }
+        let id: String
+        if let existing = keystore.id {
+            id = existing
+        } else {
+            id = UUID().uuidString
+            keystore.id = id
+            try keystore.write(to: root)
+        }
+        try deviceKeys.save(dek, for: id)
+    }
+
+    /// Removes the remembered DEK from this Mac's keychain; the folder stays
+    /// encrypted and will ask for the passphrase next launch.
+    func forgetOnDevice() {
+        guard let root = dataRoot, let id = Keystore.load(from: root)?.id else { return }
+        deviceKeys.delete(for: id)
     }
 
     // MARK: - Transitions
@@ -120,6 +156,7 @@ final class EncryptionManager: ObservableObject {
         guard dek != nil else { throw ManagerError.locked }
         let result = DataMigrator.migrate(root: root, from: protector, to: .passthrough)
         guard result.isComplete else { throw ManagerError.decryptionIncomplete(result.failures) }
+        forgetOnDevice() // drop the keychain copy before the keystore (which holds its id) is gone
         try FileManager.default.removeItem(at: root.appendingPathComponent(Keystore.fileName))
         dek = nil
         state = .disabled
