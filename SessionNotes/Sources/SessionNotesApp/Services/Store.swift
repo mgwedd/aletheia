@@ -239,6 +239,61 @@ final class Store {
         return (try? JSONDecoder.sessionNotes.decode([ChatMessage].self, from: data)) ?? []
     }
 
+    // MARK: - Chat threads (per-patient, multi-thread)
+
+    /// Where a patient's chat threads live, one JSON file per thread.
+    func chatThreadsDir(for patient: Patient) -> URL {
+        patientDir(for: patient).appendingPathComponent("ChatThreads", isDirectory: true)
+    }
+
+    /// A patient's chat threads, most-recently-active first.
+    ///
+    /// The first time it's called for a patient (before the ChatThreads folder
+    /// exists) it imports any legacy single-thread `patient_chat.json` into one
+    /// thread, so upgrading to multi-thread chat never drops an existing
+    /// conversation. Creating the folder marks the import done, so emptying the
+    /// thread list later doesn't re-import.
+    func loadChatThreads(for patient: Patient) -> [ChatThread] {
+        let dir = chatThreadsDir(for: patient)
+        if !fileManager.fileExists(atPath: dir.path) {
+            try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+            let legacy = loadPatientChat(for: patient)
+            if !legacy.isEmpty {
+                let thread = ChatThread(
+                    title: "",
+                    createdAt: legacy.first?.date ?? Date(),
+                    updatedAt: legacy.last?.date ?? Date(),
+                    messages: legacy
+                )
+                try? saveChatThread(thread, for: patient)
+                return [thread]
+            }
+            return []
+        }
+
+        let entries = (try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        let threads: [ChatThread] = entries.compactMap { url in
+            guard url.pathExtension == "json" else { return nil }
+            guard let data = (try? protector.dataIfPresent(at: url)) ?? nil else { return nil }
+            return try? JSONDecoder.sessionNotes.decode(ChatThread.self, from: data)
+        }
+        return threads.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    func saveChatThread(_ thread: ChatThread, for patient: Patient) throws {
+        let dir = chatThreadsDir(for: patient)
+        try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("\(thread.id.uuidString).json")
+        let data = try JSONEncoder.sessionNotes.encode(thread)
+        try protector.write(data, to: url)
+    }
+
+    func deleteChatThread(id: UUID, for patient: Patient) throws {
+        let url = chatThreadsDir(for: patient).appendingPathComponent("\(id.uuidString).json")
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        try fileManager.removeItem(at: url)
+    }
+
     private func saveChat(_ messages: [ChatMessage], at url: URL) throws {
         let data = try JSONEncoder.sessionNotes.encode(messages)
         try protector.write(data, to: url)
