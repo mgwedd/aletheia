@@ -15,7 +15,7 @@ import Foundation
 /// envelope is only ever handed back decrypted. The one hard error is an
 /// envelope with no key — an encrypted file read while the folder is locked —
 /// which must surface, not silently look like missing content.
-struct FileProtector {
+struct FileProtector: Sendable {
     let key: SymmetricKey?
 
     /// The passthrough protector used everywhere encryption is off.
@@ -89,5 +89,35 @@ struct FileProtector {
 
     func write(_ string: String, to url: URL, options: Data.WritingOptions = .atomic) throws {
         try write(Data(string.utf8), to: url, options: options)
+    }
+
+    // MARK: - Large files (audio)
+
+    /// Seals a large file in place using the streaming `ChunkedCipher`. A no-op
+    /// when encryption is off or the file is already sealed. Used for the
+    /// session audio, where reading the whole recording into memory to use the
+    /// one-shot cipher would be wasteful.
+    func sealLargeFileInPlace(at url: URL) throws {
+        guard let key else { return }
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        guard !ChunkedCipher.isEnvelope(fileAt: url) else { return }
+
+        let temp = url.deletingLastPathComponent()
+            .appendingPathComponent(".\(UUID().uuidString).tmp")
+        try ChunkedCipher.seal(fileAt: url, to: temp, using: key)
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
+    }
+
+    /// Returns a readable copy of a possibly-sealed large file. When it's a
+    /// chunked envelope and we hold the key, it's decrypted to a temporary file
+    /// the caller must delete (`isTemporary == true`); otherwise the original
+    /// URL is returned untouched. Lets audio processing (which needs a real,
+    /// seekable file) stay crypto-agnostic.
+    func decryptedCopyOfLargeFile(at url: URL) throws -> (url: URL, isTemporary: Bool) {
+        guard let key, ChunkedCipher.isEnvelope(fileAt: url) else { return (url, false) }
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("aletheia-\(UUID().uuidString).caf")
+        try ChunkedCipher.open(fileAt: url, to: temp, using: key)
+        return (temp, true)
     }
 }

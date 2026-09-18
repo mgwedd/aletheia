@@ -465,7 +465,8 @@ struct SessionDetailView: View {
                 patientName: patient.name,
                 patientSlug: patient.slug,
                 sessionFolder: session.folderName
-            )
+            ),
+            protector: appModel.currentProtector
         )
         if case .error(let message) = recorder.state {
             errorMessage = message
@@ -489,7 +490,17 @@ struct SessionDetailView: View {
             let transcriber = integrations.makeTranscriber()
             let micURL = store.micRecordingURL(for: patient, session: session)
             let callURL = store.callRecordingURL(for: patient, session: session)
-            let text = try await transcriber.transcribeSession(micURL: micURL, callURL: callURL) { progress in
+            // If the recordings are sealed, decrypt them to temporary files for
+            // the resampler (which needs a real, seekable audio file), and clean
+            // the plaintext copies up afterwards.
+            let protector = appModel.currentProtector
+            let (micReadURL, micIsTemp) = try protector.decryptedCopyOfLargeFile(at: micURL)
+            let (callReadURL, callIsTemp) = try protector.decryptedCopyOfLargeFile(at: callURL)
+            defer {
+                if micIsTemp { try? FileManager.default.removeItem(at: micReadURL) }
+                if callIsTemp { try? FileManager.default.removeItem(at: callReadURL) }
+            }
+            let text = try await transcriber.transcribeSession(micURL: micReadURL, callURL: callReadURL) { progress in
                 Task { @MainActor in transcribeProgress = progress }
             }
             transcriptText = text

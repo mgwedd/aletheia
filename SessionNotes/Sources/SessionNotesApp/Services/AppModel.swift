@@ -31,6 +31,11 @@ final class AppModel: ObservableObject {
         encryption.onProtectionChanged = { [weak self] in self?.rebuildStore() }
     }
 
+    /// The protector the stores are currently using — for callers that seal or
+    /// open PHI outside the stores (the recorder's audio; transcription's
+    /// decrypt-to-temp).
+    var currentProtector: FileProtector { encryption.protector }
+
     func rebuildStore() {
         // Recompute encryption state first (the data folder may have just
         // changed), then build the stores around the resulting protector.

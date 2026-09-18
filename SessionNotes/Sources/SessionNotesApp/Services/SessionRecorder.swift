@@ -48,7 +48,14 @@ final class SessionRecorder: ObservableObject {
     private let systemAudio = SystemAudioCapture()
     private var reminderTask: Task<Void, Never>?
 
-    func start(micURL: URL, callURL: URL, context: ActiveRecording) async {
+    /// Seals the finished recordings when encryption is on. Captured at
+    /// `start()` and applied in `stop()` so the audio never lands as plaintext
+    /// on an encrypted folder (beyond the live-recording window, by design).
+    private var protector: FileProtector = .passthrough
+    private var micURL: URL?
+    private var callURL: URL?
+
+    func start(micURL: URL, callURL: URL, context: ActiveRecording, protector: FileProtector = .passthrough) async {
         if case .recording = state { return }
 
         let micGranted = await MicRecorder.requestPermission()
@@ -64,6 +71,9 @@ final class SessionRecorder: ObservableObject {
         do {
             try mic.start(to: micURL)
             try await systemAudio.start(to: callURL)
+            self.protector = protector
+            self.micURL = micURL
+            self.callURL = callURL
             isPaused = false
             active = context
             state = .recording(startedAt: Date())
@@ -100,8 +110,29 @@ final class SessionRecorder: ObservableObject {
         mic.stop()
         await systemAudio.stop()
         isPaused = false
+        let sealError = await sealRecordingsIfNeeded()
         active = nil
-        state = .idle
+        micURL = nil
+        callURL = nil
+        state = sealError.map { .error($0) } ?? .idle
+    }
+
+    /// Seals both recordings in place when encryption is on. Runs off the main
+    /// actor (chunked streaming, so bounded memory over a long recording). On
+    /// failure the plaintext recording is kept — losing the session would be
+    /// worse — and the error is surfaced so the user knows it wasn't encrypted.
+    private func sealRecordingsIfNeeded() async -> String? {
+        guard protector.isEncrypting else { return nil }
+        let protector = self.protector
+        let urls = [micURL, callURL].compactMap { $0 }
+        return await Task.detached(priority: .utility) { () -> String? in
+            do {
+                for url in urls { try protector.sealLargeFileInPlace(at: url) }
+                return nil
+            } catch {
+                return "The recording was saved but couldn't be encrypted: \(error.localizedDescription)"
+            }
+        }.value
     }
 
     /// After the reminder threshold, flag that the session has likely been left
