@@ -9,6 +9,13 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [1.7.0] - 2026-09-18
+
+### Added
+- add at-rest encryption crypto core (envelope cipher + passphrase keystore)
+- tiered Ollama model picker in Settings (lighter / recommended / heavier)
+- menu-bar Start/Pause/Stop for session recording
+
 ## [1.6.0] - 2026-09-17
 
 ### Added
