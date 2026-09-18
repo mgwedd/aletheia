@@ -12,6 +12,10 @@ struct PatientDetailView: View {
     @State private var medications: [Medication] = []
     @State private var showPatientChat = false
     @State private var errorMessage: String?
+    /// Clinical background (history + medications) is important context, so it
+    /// starts open. Controlled (vs. a bare DisclosureGroup) so the chevron
+    /// reliably toggles it.
+    @State private var showBackground = true
 
     var body: some View {
         HSplitView {
@@ -118,7 +122,7 @@ struct PatientDetailView: View {
     /// medications (name | dose) table. Both are saved to the patient and fed to
     /// the AI's patient context so it can weigh them when relevant.
     private var backgroundSection: some View {
-        DisclosureGroup("Background") {
+        DisclosureGroup("Background", isExpanded: $showBackground) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Clinical history").font(.caption).foregroundStyle(.secondary)
                 TextEditor(text: $clinicalHistory)

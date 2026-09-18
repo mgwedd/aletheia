@@ -39,6 +39,28 @@ struct PatientsListView: View {
         }
         .searchable(text: $searchText, prompt: "Search patients")
         .navigationTitle("Patients")
+        // An always-visible bar at the foot of the sidebar. The toolbar "+"
+        // alone gets swept into the window's ">>" overflow when the pane is
+        // narrow, so adding a patient looked impossible — this never hides.
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                Divider()
+                Button {
+                    newPatientName = ""
+                    showAddPatient = true
+                } label: {
+                    Label("New Patient", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .keyboardShortcut("n", modifiers: .command)
+                .help("Add a new patient (⌘N)")
+            }
+            .background(.bar)
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
