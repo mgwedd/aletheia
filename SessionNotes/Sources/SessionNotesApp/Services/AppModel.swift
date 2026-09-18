@@ -48,9 +48,13 @@ final class AppModel: ObservableObject {
             return
         }
         let protector = encryption.protector
-        let newStore = Store(root: root, protector: protector)
+        // Build the DB store once and share it with the file Store, so chat
+        // threads (now DB-backed) and comments/notes all go through one
+        // connection rather than two pointed at the same file.
+        let newCommentStore = CommentStore(root: root, protector: protector)
+        commentStore = newCommentStore
+        let newStore = Store(root: root, protector: protector, commentStore: newCommentStore)
         store = newStore
-        commentStore = CommentStore(root: root, protector: protector)
         if case let .needsNewerApp(dataVersion, appVersion) = newStore.schemaCompatibility {
             schemaWarning = """
             This folder's data was created by a newer version of Aletheia \

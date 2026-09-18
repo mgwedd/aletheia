@@ -61,6 +61,10 @@ final class CommentStore {
         guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
             return nil
         }
+        // PHI hygiene: zero freed pages and cells so plaintext that's deleted or
+        // re-sealed (a removed comment, a thread re-encrypted on an encryption
+        // toggle) can't survive in the file's free space and be recovered.
+        _ = exec("PRAGMA secure_delete = ON;")
         guard createSchema() else {
             sqlite3_close(db)
             return nil
@@ -92,6 +96,15 @@ final class CommentStore {
             body TEXT NOT NULL,
             updated_at REAL NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS chat_threads (
+            id TEXT PRIMARY KEY,
+            patient_slug TEXT NOT NULL,
+            title TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL,
+            messages TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_threads_patient ON chat_threads(patient_slug);
         """
         guard exec(sql) else { return false }
         // A database created before time anchors won't have the column; add it.
@@ -207,10 +220,91 @@ final class CommentStore {
         return sqlite3_step(stmt) == SQLITE_DONE
     }
 
+    // MARK: - Chat threads
+
+    /// A patient's chat threads, most-recently-active first. Titles and the
+    /// message payload are sealed per-field like every other PHI column.
+    func chatThreads(patientSlug: String) -> [ChatThread] {
+        var result: [ChatThread] = []
+        let sql = "SELECT id, title, created_at, updated_at, messages FROM chat_threads WHERE patient_slug = ? ORDER BY updated_at DESC;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, patientSlug)
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let id = UUID(uuidString: columnText(stmt, 0)) else { continue }
+            result.append(
+                ChatThread(
+                    id: id,
+                    title: decodeField(columnText(stmt, 1)),
+                    createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 2)),
+                    updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)),
+                    messages: decodeMessages(columnText(stmt, 4))
+                )
+            )
+        }
+        return result
+    }
+
+    /// Inserts a thread or updates it in place (by id). `created_at` and the
+    /// owning patient are fixed at insert; edits carry title/messages/updated_at.
+    @discardableResult
+    func saveChatThread(_ thread: ChatThread, patientSlug: String) -> Bool {
+        let sql = """
+        INSERT INTO chat_threads (id, patient_slug, title, created_at, updated_at, messages)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            updated_at = excluded.updated_at,
+            messages = excluded.messages;
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, thread.id.uuidString)
+        bindText(stmt, 2, patientSlug)
+        bindText(stmt, 3, encodeField(thread.title))
+        sqlite3_bind_double(stmt, 4, thread.createdAt.timeIntervalSince1970)
+        sqlite3_bind_double(stmt, 5, thread.updatedAt.timeIntervalSince1970)
+        bindText(stmt, 6, encodeMessages(thread.messages))
+        return sqlite3_step(stmt) == SQLITE_DONE
+    }
+
+    @discardableResult
+    func deleteChatThread(id: UUID, patientSlug: String) -> Bool {
+        let sql = "DELETE FROM chat_threads WHERE id = ? AND patient_slug = ?;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, id.uuidString)
+        bindText(stmt, 2, patientSlug)
+        return sqlite3_step(stmt) == SQLITE_DONE
+    }
+
     // MARK: - Field encryption
 
     private func encodeField(_ text: String) -> String { FieldCipher.encode(text, using: protector) }
     private func decodeField(_ stored: String) -> String { FieldCipher.decode(stored, using: protector) }
+
+    /// A thread's messages are stored as one sealed JSON blob — the whole
+    /// conversation is opaque at rest, and the array shape stays out of the
+    /// schema so it can evolve without a migration.
+    private func encodeMessages(_ messages: [ChatMessage]) -> String {
+        guard
+            let data = try? JSONEncoder.sessionNotes.encode(messages),
+            let json = String(data: data, encoding: .utf8)
+        else { return encodeField("[]") }
+        return encodeField(json)
+    }
+
+    private func decodeMessages(_ stored: String) -> [ChatMessage] {
+        let json = decodeField(stored)
+        guard
+            let data = json.data(using: .utf8),
+            let messages = try? JSONDecoder.sessionNotes.decode([ChatMessage].self, from: data)
+        else { return [] }
+        return messages
+    }
 
     // MARK: - Migration
 
@@ -256,6 +350,24 @@ final class CommentStore {
             guard sqlite3_prepare_v2(db, "UPDATE notes SET body = ? WHERE session_key = ?;", -1, &up, nil) == SQLITE_OK else { return false }
             bindText(up, 1, recode(row.body))
             bindText(up, 2, row.key)
+            let ok = sqlite3_step(up) == SQLITE_DONE
+            sqlite3_finalize(up)
+            guard ok else { return false }
+        }
+
+        // Chat threads: gather (id, title, messages), then update each.
+        var threads: [(id: String, title: String, messages: String)] = []
+        guard sqlite3_prepare_v2(db, "SELECT id, title, messages FROM chat_threads;", -1, &stmt, nil) == SQLITE_OK else { return false }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            threads.append((columnText(stmt, 0), columnText(stmt, 1), columnText(stmt, 2)))
+        }
+        sqlite3_finalize(stmt)
+        for row in threads {
+            var up: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "UPDATE chat_threads SET title = ?, messages = ? WHERE id = ?;", -1, &up, nil) == SQLITE_OK else { return false }
+            bindText(up, 1, recode(row.title))
+            bindText(up, 2, recode(row.messages))
+            bindText(up, 3, row.id)
             let ok = sqlite3_step(up) == SQLITE_DONE
             sqlite3_finalize(up)
             guard ok else { return false }

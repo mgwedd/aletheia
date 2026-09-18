@@ -17,13 +17,18 @@ enum StoreError: LocalizedError {
 /// All disk I/O lives here. Layout, on purpose, is plain and Finder-browsable:
 ///
 ///   <dataRoot>/Patients/<Patient-Slug>/patient.json
-///   <dataRoot>/Patients/<Patient-Slug>/patient_chat.json
 ///   <dataRoot>/Patients/<Patient-Slug>/YYYY-MM-DD_Session/
 ///       mic.caf            (therapist's microphone)
 ///       call.caf            (the other side of the call, captured system audio)
 ///       transcript.txt
 ///       summary.txt
 ///       chat.json
+///
+/// Patient chat threads used to live one-JSON-file-per-thread under
+/// `ChatThreads/` (plus a legacy single-thread `patient_chat.json`); they're now
+/// rows in the SQLite store (`CommentStore`), reached through the same
+/// `loadChatThreads`/`saveChatThread` API. Any leftover files are imported into
+/// the DB on first access and then removed (see `migrateLegacyChatThreads`).
 ///
 /// `gatherPatientContext` is the one place cross-transcript context gets
 /// assembled for the chat feature. It's intentionally naive (concatenate
@@ -35,6 +40,12 @@ final class Store {
     /// `.passthrough` (the default) is a byte-for-byte no-op, so the store
     /// behaves exactly as before when encryption is off.
     private let protector: FileProtector
+    /// SQLite-backed store for the therapist's annotations. Chat threads now live
+    /// here too; this store owns the file→DB migration but the DB is the same one
+    /// `AppModel` exposes for comments/notes. Built from the same root/protector
+    /// when not injected, so direct `Store(root:)` construction (tests) still
+    /// gets a working thread store.
+    private let commentStore: CommentStore?
     private let dateFolderFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
@@ -45,9 +56,10 @@ final class Store {
     /// this build understands, computed once when the store opens.
     let schemaCompatibility: SchemaCompatibility
 
-    init(root: URL, protector: FileProtector = .passthrough) {
+    init(root: URL, protector: FileProtector = .passthrough, commentStore: CommentStore? = nil) {
         self.root = root
         self.protector = protector
+        self.commentStore = commentStore ?? CommentStore(root: root, protector: protector)
         self.schemaCompatibility = Store.reconcileSchema(at: root)
     }
 
@@ -241,22 +253,56 @@ final class Store {
 
     // MARK: - Chat threads (per-patient, multi-thread)
 
-    /// Where a patient's chat threads live, one JSON file per thread.
+    /// Legacy location: a patient's chat threads used to live one-JSON-per-file
+    /// here. Kept so the one-time migration can find and retire them.
     func chatThreadsDir(for patient: Patient) -> URL {
         patientDir(for: patient).appendingPathComponent("ChatThreads", isDirectory: true)
     }
 
-    /// A patient's chat threads, most-recently-active first.
-    ///
-    /// The first time it's called for a patient (before the ChatThreads folder
-    /// exists) it imports any legacy single-thread `patient_chat.json` into one
-    /// thread, so upgrading to multi-thread chat never drops an existing
-    /// conversation. Creating the folder marks the import done, so emptying the
-    /// thread list later doesn't re-import.
+    /// A patient's chat threads, most-recently-active first, read from the DB.
+    /// Any threads still on disk (from a build before this offload) are imported
+    /// into the DB and their files removed the first time this runs.
     func loadChatThreads(for patient: Patient) -> [ChatThread] {
-        let dir = chatThreadsDir(for: patient)
-        if !fileManager.fileExists(atPath: dir.path) {
-            try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        migrateLegacyChatThreads(for: patient)
+        return commentStore?.chatThreads(patientSlug: patient.slug) ?? []
+    }
+
+    func saveChatThread(_ thread: ChatThread, for patient: Patient) throws {
+        commentStore?.saveChatThread(thread, patientSlug: patient.slug)
+    }
+
+    func deleteChatThread(id: UUID, for patient: Patient) throws {
+        commentStore?.deleteChatThread(id: id, patientSlug: patient.slug)
+    }
+
+    /// One-time move of a patient's file-based chat into SQLite, then removes the
+    /// files so the data folder de-clutters. Idempotent: once the files are gone
+    /// there's nothing left to import. Source files are deleted only after their
+    /// content is safely written to the DB, so an interrupted run re-imports
+    /// rather than losing anything (the DB upsert is keyed by thread id).
+    private func migrateLegacyChatThreads(for patient: Patient) {
+        guard let commentStore else { return }
+        let threadsDir = chatThreadsDir(for: patient)
+        let legacyChatFile = patientDir(for: patient).appendingPathComponent("patient_chat.json")
+        let hasThreadFiles = fileManager.fileExists(atPath: threadsDir.path)
+        let hasLegacyChat = fileManager.fileExists(atPath: legacyChatFile.path)
+        guard hasThreadFiles || hasLegacyChat else { return }
+
+        if hasThreadFiles {
+            // Multi-thread era: import each thread file verbatim.
+            let entries = (try? fileManager.contentsOfDirectory(at: threadsDir, includingPropertiesForKeys: nil)) ?? []
+            var allImported = true
+            for url in entries where url.pathExtension == "json" {
+                guard
+                    let data = (try? protector.dataIfPresent(at: url)) ?? nil,
+                    let thread = try? JSONDecoder.sessionNotes.decode(ChatThread.self, from: data),
+                    commentStore.saveChatThread(thread, patientSlug: patient.slug)
+                else { allImported = false; continue }
+            }
+            if allImported { try? fileManager.removeItem(at: threadsDir) }
+        } else if hasLegacyChat {
+            // Pre-thread era: the single conversation becomes one thread. Only
+            // when there were no thread files, matching the original import rule.
             let legacy = loadPatientChat(for: patient)
             if !legacy.isEmpty {
                 let thread = ChatThread(
@@ -265,33 +311,12 @@ final class Store {
                     updatedAt: legacy.last?.date ?? Date(),
                     messages: legacy
                 )
-                try? saveChatThread(thread, for: patient)
-                return [thread]
+                guard commentStore.saveChatThread(thread, patientSlug: patient.slug) else { return }
             }
-            return []
         }
-
-        let entries = (try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-        let threads: [ChatThread] = entries.compactMap { url in
-            guard url.pathExtension == "json" else { return nil }
-            guard let data = (try? protector.dataIfPresent(at: url)) ?? nil else { return nil }
-            return try? JSONDecoder.sessionNotes.decode(ChatThread.self, from: data)
-        }
-        return threads.sorted { $0.updatedAt > $1.updatedAt }
-    }
-
-    func saveChatThread(_ thread: ChatThread, for patient: Patient) throws {
-        let dir = chatThreadsDir(for: patient)
-        try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent("\(thread.id.uuidString).json")
-        let data = try JSONEncoder.sessionNotes.encode(thread)
-        try protector.write(data, to: url)
-    }
-
-    func deleteChatThread(id: UUID, for patient: Patient) throws {
-        let url = chatThreadsDir(for: patient).appendingPathComponent("\(id.uuidString).json")
-        guard fileManager.fileExists(atPath: url.path) else { return }
-        try fileManager.removeItem(at: url)
+        // Retire the legacy single-thread file once its content is in the DB (or
+        // it was already superseded by thread files).
+        if hasLegacyChat { try? fileManager.removeItem(at: legacyChatFile) }
     }
 
     private func saveChat(_ messages: [ChatMessage], at url: URL) throws {

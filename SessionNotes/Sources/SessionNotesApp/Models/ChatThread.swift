@@ -6,9 +6,10 @@ import Foundation
 /// history, a specific incident), so each is its own thread — ChatGPT-style —
 /// persisted as a file the user can browse, rename, and delete.
 ///
-/// Stored one-per-file under `<patientDir>/ChatThreads/<id>.json`, so threads
-/// stay Finder-browsable and back up with everything else, and encryption seals
-/// them like any other PHI file.
+/// Persisted as a row in the local SQLite store (`CommentStore`), keyed by the
+/// patient's slug, with the title and message payload sealed per-field like any
+/// other PHI. (Earlier builds kept one JSON file per thread under
+/// `<patientDir>/ChatThreads/`; those are imported into the DB on first access.)
 struct ChatThread: Identifiable, Codable, Equatable {
     let id: UUID
     /// The therapist's chosen title. Empty means "untitled" — `displayTitle`
