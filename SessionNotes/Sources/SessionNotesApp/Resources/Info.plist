@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Aletheia</string>
+	<key>CFBundleName</key>
+	<string>Aletheia</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.12.1</string>
 	<key>CFBundleVersion</key>
