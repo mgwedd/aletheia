@@ -67,10 +67,18 @@ enum DataMigrator {
             }
         }
 
-        // Database (field-level): decode with `from`, encode with `to`.
-        if fm.fileExists(atPath: root.appendingPathComponent("SessionNotes.sqlite").path) {
-            if let store = CommentStore(root: root, protector: from), store.reencrypt(to: to) {
-                result.converted += 1
+        // Database (field-level): decode with `from`, encode with `to`. Snapshot
+        // first — a bulk PHI rewrite is exactly the kind of operation worth being
+        // able to roll back if it's interrupted or fails partway.
+        let dbURL = CommentStore.databaseURL(root: root)
+        if fm.fileExists(atPath: dbURL.path) {
+            if let store = CommentStore(root: root, protector: from) {
+                DatabaseSnapshotManager(root: root).makeSnapshot(of: store, reason: "pre-encryption-change")
+                if store.reencrypt(to: to) {
+                    result.converted += 1
+                } else {
+                    result.failures.append("SessionNotes.sqlite")
+                }
             } else {
                 result.failures.append("SessionNotes.sqlite")
             }

@@ -54,9 +54,15 @@ final class CommentStore {
     // tells it to copy, which is always safe here.
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+    /// The database file for a given data folder — the single SQLite store all
+    /// annotations, notes, and chat threads live in.
+    static func databaseURL(root: URL) -> URL {
+        root.appendingPathComponent("SessionNotes.sqlite")
+    }
+
     init?(root: URL, protector: FileProtector = .passthrough) {
         self.protector = protector
-        let url = root.appendingPathComponent("SessionNotes.sqlite")
+        let url = Self.databaseURL(root: root)
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
             return nil
@@ -279,6 +285,22 @@ final class CommentStore {
         bindText(stmt, 1, id.uuidString)
         bindText(stmt, 2, patientSlug)
         return sqlite3_step(stmt) == SQLITE_DONE
+    }
+
+    // MARK: - Snapshot
+
+    /// Writes a consistent, compact copy of the database to `destination` using
+    /// SQLite's `VACUUM INTO`. Safe to call while the store is open — the copy is
+    /// internally consistent even mid-session, so it's never a half-written file.
+    /// `destination` must not already exist (a `VACUUM INTO` requirement) and its
+    /// parent directory must exist. Returns false on any SQLite error.
+    @discardableResult
+    func snapshot(to destination: URL) -> Bool {
+        // VACUUM INTO takes a string literal, not a bound parameter, so the path
+        // is embedded directly; double any single quotes to keep it a safe,
+        // single-quoted literal.
+        let escaped = destination.path.replacingOccurrences(of: "'", with: "''")
+        return exec("VACUUM INTO '\(escaped)';")
     }
 
     // MARK: - Field encryption
