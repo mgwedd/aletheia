@@ -9,6 +9,14 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [1.10.0] - 2026-09-18
+
+### Added
+- multi-thread patient chat with a thread browser
+
+### Fixed
+- use a closure for onAppear so the defaulted reloadThreads type-checks
+
 ## [1.9.0] - 2026-09-18
 
 ### Added
