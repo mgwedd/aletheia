@@ -228,7 +228,9 @@ struct SettingsView: View {
                     }
                 }
                 HStack {
-                    Button("Refresh Status") { Task { await runHealthChecks() } }
+                    Label("Updates automatically", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Button("Setup Assistant…") { showSetup = true }
                 }
@@ -272,7 +274,7 @@ struct SettingsView: View {
         } message: {
             Text("Your notes, transcripts, summaries, chat, records and recordings will be decrypted back to plain files on disk. FileVault, if on, still protects them.")
         }
-        .task { await runHealthChecks() }
+        .liveStatusRefresh { authoritative in await runHealthChecks(authoritative: authoritative) }
         .onAppear { rememberOnDevice = encryption.isRememberedOnDevice }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -427,9 +429,15 @@ struct SettingsView: View {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
     }
 
-    private func runHealthChecks() async {
+    private func runHealthChecks(authoritative: Bool = true) async {
+        guard !isCheckingHealth else { return }
         isCheckingHealth = true
         defer { isCheckingHealth = false }
-        healthChecks = await ToolHealth.runAllChecks(settings: settings, backend: integrations.effectiveAssistantBackend, assistant: integrations.makeAssistant())
+        healthChecks = await ToolHealth.runAllChecks(
+            settings: settings,
+            backend: integrations.effectiveAssistantBackend,
+            assistant: integrations.makeAssistant(),
+            authoritative: authoritative
+        )
     }
 }

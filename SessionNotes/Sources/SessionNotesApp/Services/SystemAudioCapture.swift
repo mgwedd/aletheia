@@ -48,6 +48,31 @@ final class SystemAudioCapture: NSObject {
         CGPreflightScreenCaptureAccess()
     }
 
+    /// The authoritative, live answer to "is Screen & System Audio Recording
+    /// granted right now?" — used at the moments the user has just changed it
+    /// (returning from System Settings, or right after the grant prompt).
+    ///
+    /// `CGPreflightScreenCaptureAccess()` is decided once per process launch and
+    /// then cached, so on macOS 14/15 a grant made while the app is running keeps
+    /// reading back as *denied* until relaunch — exactly the false negative that
+    /// makes the setup row stay red after the toggle is on. Actually trying to
+    /// read `SCShareableContent` reflects the current TCC state without a
+    /// relaunch: it succeeds when access is granted and throws when it isn't.
+    ///
+    /// This can surface the one-time system prompt when the state is still
+    /// undetermined, so it's called only on explicit/among-activation refreshes,
+    /// never on the fast background poll (which stays on the non-prompting
+    /// `checkPermission()`).
+    static func verifyAccessGranted() async -> Bool {
+        if CGPreflightScreenCaptureAccess() { return true }
+        do {
+            _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Ask for Screen Recording access with a single, explicit system prompt.
     /// Only triggers the dialog when the state is undetermined; once the user has
     /// denied it, macOS won't re-prompt (this returns false and the UI sends them
