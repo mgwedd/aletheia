@@ -1,4 +1,3 @@
-import Combine
 import CryptoKit
 import Foundation
 
@@ -15,7 +14,10 @@ import Foundation
 /// The DEK lives only in memory here and only while unlocked; `lock()` drops
 /// it. Enabling and unlocking are the only ways it enters memory, and both go
 /// through `Keystore`, so this type holds no cryptography of its own.
-@MainActor
+///
+/// Not actor-isolated, matching `AppSettings`: every mutation happens
+/// synchronously in response to a direct user action (a button in Settings or
+/// first-run), so it follows the same main-thread-by-convention pattern.
 final class EncryptionManager: ObservableObject {
     enum State: Equatable {
         /// No keystore in the data folder — encryption has never been turned on.

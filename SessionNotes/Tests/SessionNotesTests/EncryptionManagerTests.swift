@@ -2,7 +2,6 @@ import CryptoKit
 import XCTest
 @testable import SessionNotes
 
-@MainActor
 final class EncryptionManagerTests: XCTestCase {
     private let fastIterations = 1_000
     private var tempRoot: URL!

@@ -24,12 +24,18 @@ struct SessionComment: Identifiable, Equatable {
 /// `SessionRecord`s are rebuilt from disk each listing.
 final class CommentStore {
     private var db: OpaquePointer?
+    /// Seals the PHI text columns (comment quote/body, note body) before they're
+    /// bound, and opens them on read. No SQLCipher: the DB file, schema, keys and
+    /// timestamps stay a normal SQLite file — only the free-text values are
+    /// sealed. `.passthrough` (the default) stores plain text, unchanged.
+    private let protector: FileProtector
 
     // SQLite wants to know whether a bound string outlives the call; TRANSIENT
     // tells it to copy, which is always safe here.
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-    init?(root: URL) {
+    init?(root: URL, protector: FileProtector = .passthrough) {
+        self.protector = protector
         let url = root.appendingPathComponent("SessionNotes.sqlite")
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
@@ -83,8 +89,8 @@ final class CommentStore {
             result.append(
                 SessionComment(
                     id: columnText(stmt, 0),
-                    quotedText: columnText(stmt, 1),
-                    body: columnText(stmt, 2),
+                    quotedText: decodeField(columnText(stmt, 1)),
+                    body: decodeField(columnText(stmt, 2)),
                     createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)),
                     updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4))
                 )
@@ -103,8 +109,8 @@ final class CommentStore {
         defer { sqlite3_finalize(stmt) }
         bindText(stmt, 1, comment.id)
         bindText(stmt, 2, key)
-        bindText(stmt, 3, quotedText)
-        bindText(stmt, 4, body)
+        bindText(stmt, 3, encodeField(quotedText))
+        bindText(stmt, 4, encodeField(body))
         sqlite3_bind_double(stmt, 5, now.timeIntervalSince1970)
         sqlite3_bind_double(stmt, 6, now.timeIntervalSince1970)
         return sqlite3_step(stmt) == SQLITE_DONE ? comment : nil
@@ -116,7 +122,7 @@ final class CommentStore {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
         defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, body)
+        bindText(stmt, 1, encodeField(body))
         sqlite3_bind_double(stmt, 2, now.timeIntervalSince1970)
         bindText(stmt, 3, id)
         return sqlite3_step(stmt) == SQLITE_DONE
@@ -141,7 +147,7 @@ final class CommentStore {
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return "" }
         defer { sqlite3_finalize(stmt) }
         bindText(stmt, 1, key)
-        return sqlite3_step(stmt) == SQLITE_ROW ? columnText(stmt, 0) : ""
+        return sqlite3_step(stmt) == SQLITE_ROW ? decodeField(columnText(stmt, 0)) : ""
     }
 
     @discardableResult
@@ -155,9 +161,33 @@ final class CommentStore {
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
         defer { sqlite3_finalize(stmt) }
         bindText(stmt, 1, key)
-        bindText(stmt, 2, text)
+        bindText(stmt, 2, encodeField(text))
         sqlite3_bind_double(stmt, 3, now.timeIntervalSince1970)
         return sqlite3_step(stmt) == SQLITE_DONE
+    }
+
+    // MARK: - Field encryption
+
+    /// Seals a text value for storage when encryption is on, as base64 of the
+    /// envelope. With encryption off (passthrough) the value is stored as plain
+    /// text, exactly as before — so existing databases are unchanged.
+    private func encodeField(_ text: String) -> String {
+        guard protector.isEncrypting, let sealed = try? protector.seal(Data(text.utf8)) else { return text }
+        return sealed.base64EncodedString()
+    }
+
+    /// Reverses `encodeField`. A stored value is decrypted only when it base64-
+    /// decodes to one of our envelopes; anything else (legacy plain text, or a
+    /// value written while encryption was off) is returned as-is, so a folder
+    /// migrates lazily. A present-but-undecryptable envelope means the DB is
+    /// open while locked; that's a misconfiguration the stores gate against.
+    private func decodeField(_ stored: String) -> String {
+        guard
+            let data = Data(base64Encoded: stored),
+            DataCipher.isEnvelope(data),
+            let opened = try? protector.open(data)
+        else { return stored }
+        return String(decoding: opened, as: UTF8.self)
     }
 
     // MARK: - SQLite helpers

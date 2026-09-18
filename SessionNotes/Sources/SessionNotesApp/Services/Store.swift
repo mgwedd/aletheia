@@ -31,6 +31,10 @@ enum StoreError: LocalizedError {
 final class Store {
     private let root: URL
     private let fileManager = FileManager.default
+    /// Transparently seals/opens every PHI file this store reads or writes.
+    /// `.passthrough` (the default) is a byte-for-byte no-op, so the store
+    /// behaves exactly as before when encryption is off.
+    private let protector: FileProtector
     private let dateFolderFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
@@ -41,8 +45,9 @@ final class Store {
     /// this build understands, computed once when the store opens.
     let schemaCompatibility: SchemaCompatibility
 
-    init(root: URL) {
+    init(root: URL, protector: FileProtector = .passthrough) {
         self.root = root
+        self.protector = protector
         self.schemaCompatibility = Store.reconcileSchema(at: root)
     }
 
@@ -91,7 +96,7 @@ final class Store {
         let entries = try fileManager.contentsOfDirectory(at: patientsDir, includingPropertiesForKeys: nil)
         let patients: [Patient] = entries.compactMap { dir in
             let file = dir.appendingPathComponent("patient.json")
-            guard let data = try? Data(contentsOf: file) else { return nil }
+            guard let data = (try? protector.dataIfPresent(at: file)) ?? nil else { return nil }
             return try? JSONDecoder.sessionNotes.decode(Patient.self, from: data)
         }
         return patients.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -109,7 +114,7 @@ final class Store {
     func save(_ patient: Patient) throws {
         let data = try JSONEncoder.sessionNotes.encode(patient)
         try fileManager.createDirectory(at: patientDir(for: patient), withIntermediateDirectories: true)
-        try data.write(to: patientDir(for: patient).appendingPathComponent("patient.json"), options: .atomic)
+        try protector.write(data, to: patientDir(for: patient).appendingPathComponent("patient.json"))
     }
 
     func patientDir(for patient: Patient) -> URL {
@@ -193,22 +198,22 @@ final class Store {
 
     func transcript(for patient: Patient, session: SessionRecord) -> String? {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
-        return try? String(contentsOf: url, encoding: .utf8)
+        return (try? protector.stringIfPresent(at: url)) ?? nil
     }
 
     func saveTranscript(_ text: String, for patient: Patient, session: SessionRecord) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try protector.write(text, to: url)
     }
 
     func summary(for patient: Patient, session: SessionRecord) -> String? {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("summary.txt")
-        return try? String(contentsOf: url, encoding: .utf8)
+        return (try? protector.stringIfPresent(at: url)) ?? nil
     }
 
     func saveSummary(_ text: String, for patient: Patient, session: SessionRecord) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("summary.txt")
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try protector.write(text, to: url)
     }
 
     // MARK: - Chat
@@ -230,13 +235,13 @@ final class Store {
     }
 
     private func loadChat(at url: URL) -> [ChatMessage] {
-        guard let data = try? Data(contentsOf: url) else { return [] }
+        guard let data = (try? protector.dataIfPresent(at: url)) ?? nil else { return [] }
         return (try? JSONDecoder.sessionNotes.decode([ChatMessage].self, from: data)) ?? []
     }
 
     private func saveChat(_ messages: [ChatMessage], at url: URL) throws {
         let data = try JSONEncoder.sessionNotes.encode(messages)
-        try data.write(to: url, options: .atomic)
+        try protector.write(data, to: url)
     }
 
     // MARK: - Search
