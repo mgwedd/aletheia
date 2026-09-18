@@ -9,6 +9,12 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [1.12.1] - 2026-09-18
+
+### Fixed
+- avoid await inside && autoclosure in ToolHealth
+- live-updating status + reliable screen-recording detection
+
 ## [1.12.0] - 2026-09-18
 
 ### Added
