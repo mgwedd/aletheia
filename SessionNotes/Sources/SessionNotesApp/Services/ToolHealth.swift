@@ -34,12 +34,24 @@ struct ToolHealthCheck: Identifiable {
 /// these tools are.
 @MainActor
 enum ToolHealth {
-    static func runAllChecks(settings: AppSettings, backend: AssistantBackend, assistant: Assistant) async -> [ToolHealthCheck] {
-        async let mic = microphoneCheck()
-        async let whisperModel = whisperModelCheck(settings: settings)
+    /// - Parameter authoritative: when true (an explicit refresh, first appear,
+    ///   or an app-activation refresh), the Screen Recording check confirms a
+    ///   live grant with `SCShareableContent` so a permission just toggled on is
+    ///   seen without relaunch. The fast background poll passes `false` to stay
+    ///   on the cheap, never-prompting preflight.
+    static func runAllChecks(
+        settings: AppSettings,
+        backend: AssistantBackend,
+        assistant: Assistant,
+        authoritative: Bool = true
+    ) async -> [ToolHealthCheck] {
+        // The AI check hits the network; run it concurrently with the (also
+        // async) screen-recording probe. The rest are cheap local reads.
         async let ai = assistantCheck(settings: settings, backend: backend, assistant: assistant)
-        async let dataFolder = dataFolderCheck(settings: settings)
-        let screen = screenRecordingCheck()
+        let mic = microphoneCheck()
+        let whisperModel = whisperModelCheck(settings: settings)
+        let dataFolder = dataFolderCheck(settings: settings)
+        let screen = await screenRecordingCheck(authoritative: authoritative)
         let calendar = calendarCheck()
         let reminders = remindersCheck()
         return await [dataFolder, mic, screen, whisperModel, ai, calendar, reminders]
@@ -53,7 +65,14 @@ enum ToolHealth {
     }
 
     static func microphoneCheck() -> ToolHealthCheck {
-        switch MicRecorder.permissionStatus {
+        classifyMicrophone(MicRecorder.permissionStatus)
+    }
+
+    /// Pure mapping from the raw microphone authorization to a check row, split
+    /// out so the granted→OK / denied→failed logic is unit-testable without the
+    /// system permission API.
+    static func classifyMicrophone(_ status: AVAuthorizationStatus) -> ToolHealthCheck {
+        switch status {
         case .authorized:
             return ToolHealthCheck(kind: .microphone, title: "Microphone access", status: .ok, detail: "Aletheia can record your voice.")
         case .notDetermined:
@@ -63,8 +82,18 @@ enum ToolHealth {
         }
     }
 
-    static func screenRecordingCheck() -> ToolHealthCheck {
-        if SystemAudioCapture.checkPermission() {
+    static func screenRecordingCheck(authoritative: Bool) async -> ToolHealthCheck {
+        // Cheap non-prompting preflight first; only fall back to the live,
+        // possibly-prompting SCShareableContent probe on an authoritative refresh
+        // (which is exactly when the user has just come back from granting it).
+        let granted = SystemAudioCapture.checkPermission()
+            || (authoritative && (await SystemAudioCapture.verifyAccessGranted()))
+        return classifyScreenRecording(granted: granted)
+    }
+
+    /// Pure mapping from "is call-audio capture granted?" to a check row.
+    static func classifyScreenRecording(granted: Bool) -> ToolHealthCheck {
+        if granted {
             return ToolHealthCheck(kind: .screenRecording, title: "Call audio capture", status: .ok, detail: "Aletheia can capture the other side of your call.")
         }
         return ToolHealthCheck(
@@ -117,11 +146,19 @@ enum ToolHealth {
     }
 
     static func whisperModelCheck(settings: AppSettings) -> ToolHealthCheck {
-        let path = settings.whisperModelPath
-        if FileManager.default.fileExists(atPath: path.path) {
-            return ToolHealthCheck(kind: .whisperModel, title: "Transcription model", status: .ok, detail: "\(settings.whisperModel.displayName) is ready.")
+        classifyWhisperModel(
+            exists: FileManager.default.fileExists(atPath: settings.whisperModelPath.path),
+            modelDisplayName: settings.whisperModel.displayName,
+            sizeMB: settings.whisperModel.approximateSizeMB
+        )
+    }
+
+    /// Pure mapping from "is the transcription model on disk?" to a check row.
+    static func classifyWhisperModel(exists: Bool, modelDisplayName: String, sizeMB: Int) -> ToolHealthCheck {
+        if exists {
+            return ToolHealthCheck(kind: .whisperModel, title: "Transcription model", status: .ok, detail: "\(modelDisplayName) is ready.")
         }
-        return ToolHealthCheck(kind: .whisperModel, title: "Transcription model", status: .failed, detail: "Not downloaded yet. Open Settings to download it (about \(settings.whisperModel.approximateSizeMB) MB).")
+        return ToolHealthCheck(kind: .whisperModel, title: "Transcription model", status: .failed, detail: "Not downloaded yet. Open Settings to download it (about \(sizeMB) MB).")
     }
 
     /// Reports on whichever backend will actually run (see
@@ -143,13 +180,19 @@ enum ToolHealth {
     }
 
     static func ollamaCheck(settings: AppSettings, assistant: Assistant) async -> ToolHealthCheck {
-        guard await assistant.isReachable() else {
-            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .failed, detail: "Can't reach Ollama. Open the Ollama app first, then reload this screen.")
+        let reachable = await assistant.isReachable()
+        let hasModel = reachable && (await assistant.hasModel(settings.ollamaModelName))
+        return classifyOllama(reachable: reachable, hasModel: hasModel, modelName: settings.ollamaModelName)
+    }
+
+    /// Pure mapping from Ollama reachability + model presence to a check row.
+    static func classifyOllama(reachable: Bool, hasModel: Bool, modelName: String) -> ToolHealthCheck {
+        guard reachable else {
+            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .failed, detail: "Can't reach Ollama, the free local AI engine Aletheia runs on. Install it (once) and keep it running, then this turns green on its own.")
         }
-        let hasModel = await assistant.hasModel(settings.ollamaModelName)
         if hasModel {
-            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .ok, detail: "\(settings.ollamaModelName) is ready.")
+            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .ok, detail: "\(modelName) is ready.")
         }
-        return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .warning, detail: "Ollama is running, but \(settings.ollamaModelName) isn't downloaded yet. Open Settings to download it.")
+        return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .warning, detail: "Ollama is running, but the \(modelName) model isn't downloaded yet. Use “Download” here — it downloads inside Aletheia.")
     }
 }
