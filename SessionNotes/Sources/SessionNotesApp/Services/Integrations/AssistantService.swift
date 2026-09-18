@@ -15,6 +15,47 @@ struct AssistantService {
         try await assistant.generate(model: model, system: systemPrompt, prompt: Prompts.summarize(transcript: transcript))
     }
 
+    /// Drafts a clinical progress note in the given documentation format
+    /// (SOAP/DAP/BIRP) or a narrative summary, grounded in the transcript and
+    /// the therapist's own notes and margin comments.
+    func progressNote(
+        format: ProgressNoteFormat,
+        transcript: String,
+        notes: String = "",
+        comments: [SessionComment] = []
+    ) async throws -> String {
+        try await assistant.generate(
+            model: model,
+            system: systemPrompt,
+            prompt: Prompts.progressNote(
+                format: format,
+                transcript: transcript,
+                notes: notes,
+                comments: Self.formatComments(comments)
+            )
+        )
+    }
+
+    /// Streams the progress note as the growing full text so far, so the note
+    /// visibly writes itself. Backends without native streaming emit once.
+    func streamProgressNote(
+        format: ProgressNoteFormat,
+        transcript: String,
+        notes: String = "",
+        comments: [SessionComment] = []
+    ) -> AsyncThrowingStream<String, Error> {
+        assistant.stream(
+            model: model,
+            system: systemPrompt,
+            prompt: Prompts.progressNote(
+                format: format,
+                transcript: transcript,
+                notes: notes,
+                comments: Self.formatComments(comments)
+            )
+        )
+    }
+
     func answerAboutSession(
         transcript: String,
         notes: String = "",

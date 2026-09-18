@@ -70,6 +70,7 @@ final class AppSettings: ObservableObject {
         static let appLockEnabled = "appLockEnabled"
         static let acceptedLegalVersion = "acceptedLegalVersion"
         static let acceptedLegalDate = "acceptedLegalDate"
+        static let progressNoteFormat = "progressNoteFormat"
     }
 
     /// Where the app looks for its update manifest. Defaults to the
@@ -114,6 +115,11 @@ final class AppSettings: ObservableObject {
     /// Require Touch ID / the login password to open the app (see `AppLock`).
     @Published var appLockEnabled: Bool {
         didSet { defaults.set(appLockEnabled, forKey: Keys.appLockEnabled) }
+    }
+    /// The clinical documentation format the "Generate note" action defaults to.
+    /// SOAP is the most widely accepted, so it's the out-of-box default.
+    @Published var progressNoteFormat: ProgressNoteFormat {
+        didSet { defaults.set(progressNoteFormat.rawValue, forKey: Keys.progressNoteFormat) }
     }
     /// The version of the Terms/Privacy Policy the user accepted (see `Legal`).
     /// Empty until accepted. Persisted locally so the practice has a record that
@@ -167,6 +173,11 @@ final class AppSettings: ObservableObject {
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
+        if let raw = defaults.string(forKey: Keys.progressNoteFormat), let format = ProgressNoteFormat(rawValue: raw) {
+            progressNoteFormat = format
+        } else {
+            progressNoteFormat = .soap
+        }
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil
