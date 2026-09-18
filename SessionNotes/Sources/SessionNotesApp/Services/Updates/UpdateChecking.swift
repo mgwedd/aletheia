@@ -29,7 +29,7 @@ protocol UpdateChecking {
 /// expected to describe the single latest release:
 ///
 ///     { "version": "1.1.0",
-///       "downloadURL": "https://.../SessionNotes-1.1.0.dmg",
+///       "downloadURL": "https://.../Aletheia-1.1.0.dmg",
 ///       "releaseNotes": "…",
 ///       "minimumSystemVersion": "14.0",
 ///       "publishedAt": "2026-09-16T00:00:00Z" }

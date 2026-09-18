@@ -52,9 +52,35 @@ final class OllamaClient: Assistant {
         (try? await listModels()) != nil
     }
 
+    /// Whether a thrown error is Ollama simply not running/listening — a
+    /// connection-level `URLError` rather than an HTTP or decode failure. Used to
+    /// turn URLSession's bare "Could not connect to the server" into the app's
+    /// own, actionable "Can't reach Ollama…" message. Pure, so it's unit-tested.
+    static func isConnectionFailure(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost,
+             .notConnectedToInternet, .timedOut, .dnsLookupFailed, .resourceUnavailable:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Runs a URLSession call, translating a connection-level failure into
+    /// `OllamaError.notReachable` so every path shows the friendly guidance.
+    private func mappingConnectionErrors<T>(_ work: () async throws -> T) async throws -> T {
+        do {
+            return try await work()
+        } catch {
+            if Self.isConnectionFailure(error) { throw OllamaError.notReachable }
+            throw error
+        }
+    }
+
     func listModels() async throws -> [String] {
         let url = baseURL.appendingPathComponent("api/tags")
-        let (data, response) = try await session.data(from: url)
+        let (data, response) = try await mappingConnectionErrors { try await session.data(from: url) }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw OllamaError.notReachable
         }
@@ -86,7 +112,7 @@ final class OllamaClient: Assistant {
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await mappingConnectionErrors { try await session.data(for: request) }
         guard let http = response as? HTTPURLResponse else { throw OllamaError.notReachable }
         guard http.statusCode == 200 else {
             if http.statusCode == 404 { throw OllamaError.modelNotFound(model) }
@@ -113,7 +139,7 @@ final class OllamaClient: Assistant {
                     }
                     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-                    let (bytes, response) = try await session.bytes(for: request)
+                    let (bytes, response) = try await mappingConnectionErrors { try await session.bytes(for: request) }
                     guard let http = response as? HTTPURLResponse else { throw OllamaError.notReachable }
                     guard http.statusCode == 200 else {
                         throw http.statusCode == 404 ? OllamaError.modelNotFound(model) : OllamaError.badResponse
@@ -154,7 +180,7 @@ final class OllamaClient: Assistant {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "stream": true])
 
-        let (bytes, response) = try await session.bytes(for: request)
+        let (bytes, response) = try await mappingConnectionErrors { try await session.bytes(for: request) }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw OllamaError.notReachable
         }

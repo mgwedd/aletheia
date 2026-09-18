@@ -48,6 +48,75 @@ enum Prompts {
         """
     }
 
+    /// Builds a clinical progress note in a standard documentation format
+    /// (SOAP/DAP/BIRP), or a plain narrative summary. The heading structure and
+    /// per-section meaning come from `ProgressNoteFormat` so the model writes to
+    /// the exact sections the exporter and the payer expect. Grounded strictly
+    /// in the transcript and the therapist's own notes/comments; empty sections
+    /// are marked rather than filled with guesses.
+    static func progressNote(
+        format: ProgressNoteFormat,
+        transcript: String,
+        notes: String = "",
+        comments: [String] = []
+    ) -> String {
+        guard !format.sections.isEmpty else {
+            return summarizeNarrative(transcript: transcript, notes: notes, comments: comments)
+        }
+
+        let sectionSpec = format.sections
+            .map { "## \($0.heading)\n\($0.guidance)" }
+            .joined(separator: "\n\n")
+        let headingList = format.sections.map(\.heading).joined(separator: ", ")
+
+        return """
+        You are helping a licensed psychotherapist write a clinical progress \
+        note for one therapy session, in the \(format.displayName) format. \
+        Draft the note from the material below.
+
+        Write exactly these sections, each as a level-2 Markdown heading \
+        (\(headingList)), in this order, and nothing outside them:
+
+        \(sectionSpec)
+
+        Rules:
+        - Ground every statement in the transcript and the therapist's own \
+        notes and comments. Never invent details, diagnoses, quotes, or events.
+        - Treat the therapist's notes and comments as her clinical judgment and \
+        weave them in where they fit a section.
+        - Write in the concise, professional third-person voice of a chart note \
+        (e.g. "Client reported…"), not a transcript recap.
+        - If a section has nothing to support it in the material, write \
+        "Not documented in this session." under that heading rather than \
+        guessing.
+        - If a safety concern (risk of harm to self or others) appears, state \
+        it plainly in the Assessment/appropriate section.
+        - Do not add a diagnosis that isn't already in the material.
+
+        Transcript:
+        \(transcript)
+        \(therapistMaterial(notes: notes, comments: comments))
+        """
+    }
+
+    /// The narrative-format path of `progressNote`: a prose summary that still
+    /// folds in the therapist's own notes and comments.
+    private static func summarizeNarrative(transcript: String, notes: String, comments: [String]) -> String {
+        """
+        You are helping a therapist review her own session notes. Write a \
+        concise narrative clinical summary of the following therapy session: \
+        presenting topics, notable statements, mood/affect observations, and \
+        any follow-ups to revisit next session. Fold in the therapist's own \
+        notes and comments where they fit, treating them as her clinical \
+        judgment. Do not invent details that aren't in the material. If the \
+        material is too short or unclear to summarize, say so plainly.
+
+        Transcript:
+        \(transcript)
+        \(therapistMaterial(notes: notes, comments: comments))
+        """
+    }
+
     static func sessionChat(
         transcript: String,
         notes: String = "",
