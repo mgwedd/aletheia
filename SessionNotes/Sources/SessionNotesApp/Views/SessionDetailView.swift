@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// The tabs in the session detail, made an explicit type so a highlighted
+/// transcript passage can jump the view to the Comments tab.
+enum SessionTab: Hashable {
+    case transcript, notes, comments, summary, ask
+}
+
 struct SessionDetailView: View {
     let patient: Patient
     let session: SessionRecord
@@ -24,6 +30,15 @@ struct SessionDetailView: View {
     @State private var comments: [SessionComment] = []
     @State private var newCommentQuote: String = ""
     @State private var newCommentBody: String = ""
+    /// The passage currently selected in the transcript view (empty = just a
+    /// caret), driving the "Comment on selection" affordance.
+    @State private var transcriptSelection = ""
+    @State private var showInlineComposer = false
+    @State private var inlineCommentBody = ""
+    @State private var selectedTab: SessionTab = .transcript
+    /// When a highlighted passage is clicked, the comment it anchors — used to
+    /// flash that comment in the Comments tab.
+    @State private var focusedCommentID: String?
     @State private var isTranscribing = false
     @State private var transcribeProgress: Double = 0
     @State private var isSummarizing = false
@@ -45,12 +60,12 @@ struct SessionDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            TabView {
-                transcriptTab.tabItem { Label("Transcript", systemImage: "text.alignleft") }
-                notesTab.tabItem { Label("Notes", systemImage: "square.and.pencil") }
-                commentsTab.tabItem { Label("Comments", systemImage: "bubble.left") }
-                summaryTab.tabItem { Label("Summary", systemImage: "doc.text") }
-                chatTab.tabItem { Label("Ask", systemImage: "bubble.left.and.bubble.right") }
+            TabView(selection: $selectedTab) {
+                transcriptTab.tabItem { Label("Transcript", systemImage: "text.alignleft") }.tag(SessionTab.transcript)
+                notesTab.tabItem { Label("Notes", systemImage: "square.and.pencil") }.tag(SessionTab.notes)
+                commentsTab.tabItem { Label("Comments", systemImage: "bubble.left") }.tag(SessionTab.comments)
+                summaryTab.tabItem { Label("Summary", systemImage: "doc.text") }.tag(SessionTab.summary)
+                chatTab.tabItem { Label("Ask", systemImage: "bubble.left.and.bubble.right") }.tag(SessionTab.ask)
             }
         }
         .navigationTitle(Self.dateFormatter.string(from: session.date))
@@ -273,7 +288,16 @@ struct SessionDetailView: View {
                     .font(.body.monospaced())
                     .padding(8)
             } else {
-                HStack {
+                HStack(spacing: 8) {
+                    Button {
+                        beginInlineComment()
+                    } label: {
+                        Label("Comment on Selection", systemImage: "text.bubble")
+                    }
+                    .disabled(transcriptSelection.isEmpty)
+                    .help(transcriptSelection.isEmpty
+                          ? "Select a passage in the transcript to comment on it"
+                          : "Add a comment on the selected passage")
                     Spacer()
                     Button {
                         transcriptDraft = transcriptText
@@ -284,14 +308,85 @@ struct SessionDetailView: View {
                     .help("Correct the transcript or remove sensitive content")
                 }
                 .padding([.horizontal, .top])
-                ScrollView {
-                    Text(transcriptText)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
+                TranscriptTextView(
+                    transcript: transcriptText,
+                    comments: comments.map { (id: $0.id, quote: $0.quotedText) },
+                    selection: $transcriptSelection,
+                    onOpenComment: openComment
+                )
+                .overlay(alignment: .bottomLeading) {
+                    if !comments.isEmpty {
+                        Text("Highlighted passages have comments — click one to open it.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(6)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 6))
+                            .padding(8)
+                    }
                 }
             }
         }
+        .sheet(isPresented: $showInlineComposer) { inlineComposer }
+    }
+
+    /// The composer shown after selecting a transcript passage: the quoted text
+    /// is fixed (it's what you selected), you just write the note.
+    private var inlineComposer: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Comment on passage").font(.headline)
+            Text("“\(transcriptSelection)”")
+                .font(.callout)
+                .italic()
+                .foregroundStyle(.secondary)
+                .lineLimit(4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+                .background(Color.yellow.opacity(0.18), in: RoundedRectangle(cornerRadius: 6))
+            TextEditor(text: $inlineCommentBody)
+                .font(.body)
+                .frame(minHeight: 90, maxHeight: 160)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { showInlineComposer = false }
+                Button("Add Comment") { saveInlineComment() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(inlineCommentBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .controlSize(.large)
+        }
+        .padding(20)
+        .frame(width: 440)
+    }
+
+    private func beginInlineComment() {
+        inlineCommentBody = ""
+        showInlineComposer = true
+    }
+
+    private func saveInlineComment() {
+        guard let commentStore = appModel.commentStore else { return }
+        let quote = transcriptSelection.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = inlineCommentBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !quote.isEmpty, !body.isEmpty else { return }
+        let anchor = TranscriptTimeline.seconds(forQuote: quote, in: transcriptText).map { Double($0) }
+        _ = commentStore.addComment(
+            patientSlug: patient.slug,
+            sessionFolder: session.folderName,
+            quotedText: quote,
+            body: body,
+            anchorSeconds: anchor
+        )
+        comments = commentStore.comments(patientSlug: patient.slug, sessionFolder: session.folderName)
+        showInlineComposer = false
+    }
+
+    /// Clicking a highlighted passage jumps to the Comments tab and flashes the
+    /// matching comment.
+    private func openComment(_ id: String) {
+        focusedCommentID = id
+        selectedTab = .comments
     }
 
     private func saveEditedTranscript() {
@@ -330,7 +425,7 @@ struct SessionDetailView: View {
                 TextField("Passage this is about (optional)", text: $newCommentQuote)
                     .textFieldStyle(.roundedBorder)
                 if !transcriptText.isEmpty {
-                    Text("Paste the exact words from the transcript to anchor the comment to that moment.")
+                    Text("Tip: in the Transcript tab, select a passage and click “Comment on Selection” to anchor and highlight it in place. Or paste the exact words here.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -351,34 +446,48 @@ struct SessionDetailView: View {
             if comments.isEmpty {
                 ContentUnavailableView("No Comments Yet", systemImage: "bubble.left", description: Text("Comments you add are included when you ask about this session."))
             } else {
-                List {
-                    ForEach(comments) { comment in
-                        VStack(alignment: .leading, spacing: 4) {
-                            if let anchor = comment.anchorSeconds {
-                                Label(TranscriptTimeline.format(Int(anchor)), systemImage: "clock")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .help("This comment is anchored to \(TranscriptTimeline.format(Int(anchor))) in the session")
-                            }
-                            if !comment.quotedText.isEmpty {
-                                Text("“\(comment.quotedText)”")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .italic()
-                            }
-                            Text(comment.body)
-                            HStack {
-                                Spacer()
-                                Button(role: .destructive) { deleteComment(comment) } label: {
-                                    Label("Delete", systemImage: "trash").labelStyle(.iconOnly)
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(comments) { comment in
+                            VStack(alignment: .leading, spacing: 4) {
+                                if let anchor = comment.anchorSeconds {
+                                    Label(TranscriptTimeline.format(Int(anchor)), systemImage: "clock")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .help("This comment is anchored to \(TranscriptTimeline.format(Int(anchor))) in the session")
                                 }
-                                .buttonStyle(.borderless)
+                                if !comment.quotedText.isEmpty {
+                                    Text("“\(comment.quotedText)”")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .italic()
+                                }
+                                Text(comment.body)
+                                HStack {
+                                    Spacer()
+                                    Button(role: .destructive) { deleteComment(comment) } label: {
+                                        Label("Delete", systemImage: "trash").labelStyle(.iconOnly)
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
                             }
+                            .padding(.vertical, 2)
+                            .listRowBackground(focusedCommentID == comment.id ? Color.yellow.opacity(0.18) : nil)
+                            .id(comment.id)
                         }
-                        .padding(.vertical, 2)
+                    }
+                    .listStyle(.inset)
+                    .onChange(of: focusedCommentID) { _, id in
+                        guard let id else { return }
+                        withAnimation { proxy.scrollTo(id, anchor: .center) }
+                        // Clear the flash after a moment so it's a pulse, not a
+                        // permanent selection.
+                        Task {
+                            try? await Task.sleep(nanoseconds: 2_000_000_000)
+                            if focusedCommentID == id { focusedCommentID = nil }
+                        }
                     }
                 }
-                .listStyle(.inset)
             }
         }
     }
