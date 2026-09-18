@@ -9,6 +9,15 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [1.8.0] - 2026-09-18
+
+### Added
+- optional Keychain unlock — remember the data key on this Mac
+- enable/disable Tier-2 encryption from Settings with bulk migration and unlock gate
+- encrypt session audio at rest with a streaming chunked cipher
+- encrypt transcripts, summaries, chat, patient records and the notes DB at rest
+- add FileProtector I/O choke point and EncryptionManager key lifecycle
+
 ## [1.7.0] - 2026-09-18
 
 ### Added
