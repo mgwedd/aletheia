@@ -22,8 +22,9 @@ struct SetupChecklistView: View {
                 Text("Setup Checklist").font(.headline)
                 Spacer()
                 if isChecking { ProgressView().controlSize(.small) }
-                Button("Refresh") { Task { await refresh() } }
-                    .disabled(isChecking)
+                Text("Updates on its own")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             ForEach(items) { item in
@@ -35,11 +36,11 @@ struct SetupChecklistView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Text("Everything runs on this Mac. The only thing to install is Ollama; the models download here in the app.")
+            Text("Everything runs on this Mac. Aletheia's AI uses Ollama — a free local engine you install once — and the AI model then downloads inside Aletheia. This list updates itself as you grant each permission; no restart needed.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .task { await refresh() }
+        .liveStatusRefresh { authoritative in await refresh(authoritative: authoritative) }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -80,10 +81,20 @@ struct SetupChecklistView: View {
         }
     }
 
-    private func refresh() async {
+    /// Re-runs the checks and updates the rows. Skips a run that would overlap an
+    /// in-flight one (the background timer can tick mid-check), so the fast poll
+    /// never piles up. `authoritative` is forwarded to the Screen Recording check
+    /// so a just-granted permission is confirmed live on appear/activation.
+    private func refresh(authoritative: Bool = true) async {
+        guard !isChecking else { return }
         isChecking = true
         defer { isChecking = false }
-        items = Setup.items(from: await ToolHealth.runAllChecks(settings: settings, backend: integrations.effectiveAssistantBackend, assistant: integrations.makeAssistant()))
+        items = Setup.items(from: await ToolHealth.runAllChecks(
+            settings: settings,
+            backend: integrations.effectiveAssistantBackend,
+            assistant: integrations.makeAssistant(),
+            authoritative: authoritative
+        ))
     }
 
     /// After sending the therapist to grant Screen Recording, watch for the grant
@@ -94,7 +105,7 @@ struct SetupChecklistView: View {
         for _ in 0..<60 { // ~30s at 0.5s intervals
             if Task.isCancelled { return }
             try? await Task.sleep(nanoseconds: 500_000_000)
-            if SystemAudioCapture.checkPermission() {
+            if await SystemAudioCapture.verifyAccessGranted() {
                 await refresh()
                 return
             }

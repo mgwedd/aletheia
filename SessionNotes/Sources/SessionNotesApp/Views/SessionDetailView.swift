@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct SessionDetailView: View {
     let patient: Patient
@@ -11,6 +14,7 @@ struct SessionDetailView: View {
 
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
+    @EnvironmentObject private var settings: AppSettings
     // Shared with the menu-bar control (injected at app level) so both drive the
     // same recording. "Recording" in this view means *this* session specifically.
     @EnvironmentObject private var recorder: SessionRecorder
@@ -26,9 +30,9 @@ struct SessionDetailView: View {
     @State private var newCommentBody: String = ""
     @State private var isTranscribing = false
     @State private var transcribeProgress: Double = 0
-    @State private var isSummarizing = false
     @State private var isChatSending = false
     @StateObject private var chatRunner = ChatStreamRunner()
+    @StateObject private var noteRunner = ChatStreamRunner()
     @State private var errorMessage: String?
     @State private var confirmationMessage: String?
     @State private var showScheduleSheet = false
@@ -49,7 +53,7 @@ struct SessionDetailView: View {
                 transcriptTab.tabItem { Label("Transcript", systemImage: "text.alignleft") }
                 notesTab.tabItem { Label("Notes", systemImage: "square.and.pencil") }
                 commentsTab.tabItem { Label("Comments", systemImage: "bubble.left") }
-                summaryTab.tabItem { Label("Summary", systemImage: "doc.text") }
+                summaryTab.tabItem { Label("Note", systemImage: "doc.text") }
                 chatTab.tabItem { Label("Ask", systemImage: "bubble.left.and.bubble.right") }
             }
         }
@@ -385,33 +389,62 @@ struct SessionDetailView: View {
 
     private var summaryTab: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Button {
-                    Task { await summarize() }
-                } label: {
-                    if isSummarizing {
-                        Label("Summarizing…", systemImage: "sparkles")
-                    } else {
-                        Label("Summarize with AI", systemImage: "sparkles")
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("Format", selection: $settings.progressNoteFormat) {
+                    ForEach(ProgressNoteFormat.allCases) { format in
+                        Text(format.shortName).tag(format)
                     }
                 }
-                .disabled(transcriptText.isEmpty || isSummarizing)
-                Spacer()
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .disabled(noteRunner.isStreaming)
+
+                HStack(alignment: .firstTextBaseline) {
+                    Text(settings.progressNoteFormat.blurb)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 12)
+                    if noteRunner.isStreaming {
+                        Button(role: .destructive) { noteRunner.stop() } label: {
+                            Label("Stop", systemImage: "stop.fill")
+                        }
+                    } else {
+                        Button {
+                            generateNote()
+                        } label: {
+                            Label(summaryText.isEmpty ? "Generate note" : "Regenerate", systemImage: "sparkles")
+                        }
+                        .keyboardShortcut("g", modifiers: .command)
+                        .disabled(transcriptText.isEmpty)
+                    }
+                    if !summaryText.isEmpty && !noteRunner.isStreaming {
+                        Button {
+                            copyToPasteboard(summaryText)
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                        .help("Copy the note to paste into your EHR")
+                    }
+                }
             }
             .padding([.horizontal, .top])
 
             if !summaryText.isEmpty {
-                Text("AI-generated. Always read alongside the transcript before relying on it.")
+                Text("AI-drafted from the transcript and your notes. Review and edit before it goes in the record.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal)
             }
 
-            if summaryText.isEmpty {
-                ContentUnavailableView("No Summary Yet", systemImage: "doc.text", description: Text("Transcribe the session first, then generate a summary."))
+            if summaryText.isEmpty && !noteRunner.isStreaming {
+                ContentUnavailableView(
+                    "No Note Yet",
+                    systemImage: "doc.text",
+                    description: Text("Transcribe the session, pick a format, then generate a \(settings.progressNoteFormat.shortName) note.")
+                )
             } else {
                 ScrollView {
-                    Text(summaryText)
+                    MarkdownMessageView(text: summaryText)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
@@ -532,21 +565,41 @@ struct SessionDetailView: View {
         }
     }
 
-    private func summarize() async {
+    /// Streams a clinical progress note (in the selected format) into the
+    /// summary view as it writes, then persists the finished note. Reuses the
+    /// same calm word-by-word reveal as chat, with a working Stop.
+    private func generateNote() {
         guard let store = appModel.store else { return }
-        isSummarizing = true
-        defer { isSummarizing = false }
-        do {
-            let result = try await integrations.makeAssistantService().summarize(transcript: transcriptText)
-            summaryText = result
-            try store.saveSummary(result, for: patient, session: session)
-            onSessionUpdated()
-            await integrations.makeNotifier().post(
-                SessionNotifications.summaryReady(patientName: patient.name, date: session.date)
-            )
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        let stream = integrations.makeAssistantService().streamProgressNote(
+            format: settings.progressNoteFormat,
+            transcript: transcriptText,
+            notes: sessionNote,
+            comments: comments
+        )
+        noteRunner.start(
+            stream: stream,
+            onReveal: { text in summaryText = text },
+            onError: { error in errorMessage = error.localizedDescription },
+            onFinish: { final in
+                let trimmed = final.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+                summaryText = final
+                try? store.saveSummary(final, for: patient, session: session)
+                onSessionUpdated()
+                Task {
+                    await integrations.makeNotifier().post(
+                        SessionNotifications.summaryReady(patientName: patient.name, date: session.date)
+                    )
+                }
+            }
+        )
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        #if canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #endif
     }
 
     private func sendChat(_ question: String) {
