@@ -16,6 +16,11 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
 
     var id: String { rawValue }
 
+    /// The out-of-box default: free text, no imposed template. A therapist who
+    /// wants a payer-ready structure opts into SOAP/DAP/BIRP, per session or as
+    /// their Settings default.
+    static let `default`: ProgressNoteFormat = .narrative
+
     /// One clause naming a section and, in plain clinical language, what belongs
     /// in it. The guidance is written for the model, but reads correctly to a
     /// clinician too.
@@ -30,7 +35,7 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
         case .soap: return "SOAP note"
         case .dap: return "DAP note"
         case .birp: return "BIRP note"
-        case .narrative: return "Narrative summary"
+        case .narrative: return "Free text (no template)"
         }
     }
 
@@ -40,7 +45,7 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
         case .soap: return "SOAP"
         case .dap: return "DAP"
         case .birp: return "BIRP"
-        case .narrative: return "Narrative"
+        case .narrative: return "Free text"
         }
     }
 
@@ -50,7 +55,7 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
         case .soap: return "Subjective · Objective · Assessment · Plan — the most widely accepted progress-note format."
         case .dap: return "Data · Assessment · Plan — a leaner structure common in behavioral health."
         case .birp: return "Behavior · Intervention · Response · Plan — centers what happened in the room."
-        case .narrative: return "A plain-prose summary of the session, no fixed headings."
+        case .narrative: return "Plain-prose summary of the session, no fixed headings — Aletheia's default."
         }
     }
 

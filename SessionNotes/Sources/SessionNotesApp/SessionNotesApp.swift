@@ -84,6 +84,26 @@ struct SessionNotesApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
+            // Put a real "Check for Updates…" in the app menu, next to About,
+            // so updates aren't only a silent on-launch check.
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    Task { await updateService.checkForUpdates() }
+                }
+            }
+        }
+
+        // Gives the standard "Settings…" (⌘,) item in the app menu — the macOS
+        // home every Mac user reaches for — backed by the same AppSettings the
+        // in-window Settings sheet uses.
+        Settings {
+            SettingsView()
+                .environmentObject(settings)
+                .environmentObject(appModel)
+                .environmentObject(integrations)
+                .environmentObject(updateService)
+                .environmentObject(encryption)
+                .frame(minWidth: 520, minHeight: 480)
         }
 
         MenuBarExtra("Aletheia Recording", systemImage: menuBarSymbol) {

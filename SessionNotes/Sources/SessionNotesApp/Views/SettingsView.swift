@@ -127,6 +127,20 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Note-Taking Format") {
+                Picker("Default format", selection: $settings.progressNoteFormat) {
+                    ForEach(ProgressNoteFormat.allCases) { format in
+                        Text(format.displayName).tag(format)
+                    }
+                }
+                Text(settings.progressNoteFormat.blurb)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("The format new session notes start in. You can still switch formats for any single session on its Note tab.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             if LlamaRuntime.isBuilt {
                 Section("Built-in Model (llama.cpp)") {
                     Picker("Model", selection: $settings.llamaModel) {
