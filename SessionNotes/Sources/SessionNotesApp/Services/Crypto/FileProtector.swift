@@ -121,3 +121,23 @@ struct FileProtector: Sendable {
         return (temp, true)
     }
 }
+
+/// Field-level coding for database TEXT columns, sharing the file envelope so a
+/// column and a file are protected the same way. When a key is held a value is
+/// stored as base64 of the envelope; otherwise it's plain text. Decode detects
+/// which it is, so a column migrates lazily just like a file.
+enum FieldCipher {
+    static func encode(_ text: String, using protector: FileProtector) -> String {
+        guard protector.isEncrypting, let sealed = try? protector.seal(Data(text.utf8)) else { return text }
+        return sealed.base64EncodedString()
+    }
+
+    static func decode(_ stored: String, using protector: FileProtector) -> String {
+        guard
+            let data = Data(base64Encoded: stored),
+            DataCipher.isEnvelope(data),
+            let opened = try? protector.open(data)
+        else { return stored }
+        return String(decoding: opened, as: UTF8.self)
+    }
+}

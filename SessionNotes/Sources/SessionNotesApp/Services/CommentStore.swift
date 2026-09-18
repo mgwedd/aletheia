@@ -168,26 +168,58 @@ final class CommentStore {
 
     // MARK: - Field encryption
 
-    /// Seals a text value for storage when encryption is on, as base64 of the
-    /// envelope. With encryption off (passthrough) the value is stored as plain
-    /// text, exactly as before — so existing databases are unchanged.
-    private func encodeField(_ text: String) -> String {
-        guard protector.isEncrypting, let sealed = try? protector.seal(Data(text.utf8)) else { return text }
-        return sealed.base64EncodedString()
-    }
+    private func encodeField(_ text: String) -> String { FieldCipher.encode(text, using: protector) }
+    private func decodeField(_ stored: String) -> String { FieldCipher.decode(stored, using: protector) }
 
-    /// Reverses `encodeField`. A stored value is decrypted only when it base64-
-    /// decodes to one of our envelopes; anything else (legacy plain text, or a
-    /// value written while encryption was off) is returned as-is, so a folder
-    /// migrates lazily. A present-but-undecryptable envelope means the DB is
-    /// open while locked; that's a misconfiguration the stores gate against.
-    private func decodeField(_ stored: String) -> String {
-        guard
-            let data = Data(base64Encoded: stored),
-            DataCipher.isEnvelope(data),
-            let opened = try? protector.open(data)
-        else { return stored }
-        return String(decoding: opened, as: UTF8.self)
+    // MARK: - Migration
+
+    /// Re-encodes every free-text column from this store's protector to
+    /// `newProtector` (decode with the current one, encode with the new one), so
+    /// turning encryption on or off converts the database in place. Values are
+    /// collected before updating to avoid mutating rows mid-scan. Returns false
+    /// on any SQLite error.
+    @discardableResult
+    func reencrypt(to newProtector: FileProtector) -> Bool {
+        func recode(_ value: String) -> String {
+            FieldCipher.encode(FieldCipher.decode(value, using: protector), using: newProtector)
+        }
+
+        // Comments: gather (id, quoted_text, body), then update each.
+        var comments: [(id: String, quoted: String, body: String)] = []
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT id, quoted_text, body FROM comments;", -1, &stmt, nil) == SQLITE_OK else { return false }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            comments.append((columnText(stmt, 0), columnText(stmt, 1), columnText(stmt, 2)))
+        }
+        sqlite3_finalize(stmt)
+        for row in comments {
+            var up: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "UPDATE comments SET quoted_text = ?, body = ? WHERE id = ?;", -1, &up, nil) == SQLITE_OK else { return false }
+            bindText(up, 1, recode(row.quoted))
+            bindText(up, 2, recode(row.body))
+            bindText(up, 3, row.id)
+            let ok = sqlite3_step(up) == SQLITE_DONE
+            sqlite3_finalize(up)
+            guard ok else { return false }
+        }
+
+        // Notes: gather (session_key, body), then update each.
+        var notes: [(key: String, body: String)] = []
+        guard sqlite3_prepare_v2(db, "SELECT session_key, body FROM notes;", -1, &stmt, nil) == SQLITE_OK else { return false }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            notes.append((columnText(stmt, 0), columnText(stmt, 1)))
+        }
+        sqlite3_finalize(stmt)
+        for row in notes {
+            var up: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "UPDATE notes SET body = ? WHERE session_key = ?;", -1, &up, nil) == SQLITE_OK else { return false }
+            bindText(up, 1, recode(row.body))
+            bindText(up, 2, row.key)
+            let ok = sqlite3_step(up) == SQLITE_DONE
+            sqlite3_finalize(up)
+            guard ok else { return false }
+        }
+        return true
     }
 
     // MARK: - SQLite helpers

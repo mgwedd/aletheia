@@ -5,6 +5,7 @@ struct SettingsView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
     @EnvironmentObject private var updateService: UpdateService
+    @EnvironmentObject private var encryption: EncryptionManager
     @StateObject private var whisperDownloader = WhisperModelDownloader()
     @StateObject private var llamaDownloader = LlamaModelDownloader()
     @State private var ollamaPullProgress: Double = 0
@@ -14,6 +15,9 @@ struct SettingsView: View {
     @State private var isCheckingHealth = false
     @State private var showSetup = false
     @State private var errorMessage: String?
+    @State private var showEncryptionSetup = false
+    @State private var confirmDisableEncryption = false
+    @State private var isDisablingEncryption = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -173,6 +177,10 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Extra Encryption") {
+                encryptionSection
+            }
+
             Section("Legal") {
                 HStack(spacing: 16) {
                     Link("Terms of Service", destination: Legal.termsURL)
@@ -249,11 +257,76 @@ struct SettingsView: View {
             .environmentObject(integrations)
             .onDisappear { Task { await runHealthChecks() } }
         }
+        .sheet(isPresented: $showEncryptionSetup) {
+            EncryptionSetupSheet()
+                .environmentObject(encryption)
+        }
+        .confirmationDialog(
+            "Turn off encryption?",
+            isPresented: $confirmDisableEncryption,
+            titleVisibility: .visible
+        ) {
+            Button("Turn Off and Decrypt", role: .destructive) { disableEncryption() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your notes, transcripts, summaries, chat, records and recordings will be decrypted back to plain files on disk. FileVault, if on, still protects them.")
+        }
         .task { await runHealthChecks() }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var encryptionSection: some View {
+        switch encryption.state {
+        case .disabled:
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Off").font(.body.weight(.medium))
+                    Text("Encrypt your notes, transcripts, summaries, chat, patient records and recordings on disk with a passphrase — protecting them even on an external drive, a backup, or a synced folder. FileVault is still recommended as the baseline.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Turn On…") { showEncryptionSetup = true }
+                    .disabled(settings.dataRootURL == nil)
+            }
+        case .unlocked:
+            Label("On — unlocked for this session", systemImage: "lock.fill")
+                .foregroundStyle(.green)
+            Text("Your data folder is encrypted at rest. You'll enter your recovery passphrase once each time you open Aletheia.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                if isDisablingEncryption {
+                    ProgressView().controlSize(.small)
+                    Text("Decrypting…").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Button("Turn Off Encryption…", role: .destructive) { confirmDisableEncryption = true }
+                }
+                Spacer()
+            }
+        case .lockedNeedsPassphrase:
+            Label("On — locked", systemImage: "lock")
+                .foregroundStyle(.secondary)
+            Text("Unlock from the main window to manage encryption.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func disableEncryption() {
+        isDisablingEncryption = true
+        Task { @MainActor in
+            do {
+                try encryption.disable()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isDisablingEncryption = false
         }
     }
 

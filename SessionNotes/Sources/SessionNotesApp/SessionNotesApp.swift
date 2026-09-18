@@ -70,6 +70,17 @@ struct SessionNotesApp: App {
                             .transition(.opacity)
                     }
                 }
+                // Tier-2: an encrypted folder needs its passphrase once per launch
+                // before its notes can be read or written.
+                .overlay {
+                    if settings.dataRootURL != nil && encryption.state == .lockedNeedsPassphrase {
+                        EncryptionUnlockView()
+                            .environmentObject(encryption)
+                            .environmentObject(settings)
+                            .environmentObject(appModel)
+                            .transition(.opacity)
+                    }
+                }
         }
         .commands {
             CommandGroup(replacing: .newItem) {}

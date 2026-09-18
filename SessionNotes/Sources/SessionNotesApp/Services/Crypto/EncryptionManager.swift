@@ -32,12 +32,17 @@ final class EncryptionManager: ObservableObject {
         case noDataFolder
         case alreadyEnabled
         case notEnabled
+        case locked
+        case decryptionIncomplete([String])
 
         var errorDescription: String? {
             switch self {
             case .noDataFolder: return "Choose a data folder before turning on encryption."
             case .alreadyEnabled: return "Encryption is already turned on for this folder."
             case .notEnabled: return "Encryption isn't turned on for this folder."
+            case .locked: return "Unlock the data with your passphrase before changing encryption."
+            case let .decryptionIncomplete(items):
+                return "Encryption is still on: \(items.count) item(s) couldn't be decrypted, so nothing was removed. Try again."
             }
         }
     }
@@ -88,16 +93,36 @@ final class EncryptionManager: ObservableObject {
     // MARK: - Transitions
 
     /// Turns encryption on for this folder: mints a new keystore around a fresh
-    /// DEK sealed under `passphrase`, and holds the DEK unlocked. Existing
-    /// plaintext files are not converted here — that's the migrator's job; this
-    /// only establishes the key.
-    func enable(passphrase: String, iterations: Int = PassphraseKDF.defaultIterations) throws {
+    /// DEK sealed under `passphrase`, holds the DEK unlocked, and seals the
+    /// folder's existing plaintext PHI. Migration is best-effort — a keyed
+    /// protector reads plaintext and sealed files alike, so a partially
+    /// converted folder still works and the pass can be re-run — so the result
+    /// is returned for the UI to surface rather than failing the enable.
+    @discardableResult
+    func enable(passphrase: String, iterations: Int = PassphraseKDF.defaultIterations) throws -> DataMigrator.Result {
         guard let root = dataRoot else { throw ManagerError.noDataFolder }
         guard !Keystore.exists(at: root) else { throw ManagerError.alreadyEnabled }
         let (keystore, dek) = try Keystore.create(passphrase: passphrase, iterations: iterations)
         try keystore.write(to: root)
         self.dek = dek
         state = .unlocked
+        let result = DataMigrator.migrate(root: root, from: .passthrough, to: protector)
+        onProtectionChanged?()
+        return result
+    }
+
+    /// Turns encryption off: decrypts all PHI back to plaintext, and only then
+    /// removes the keystore and drops the key. If any item can't be decrypted
+    /// the keystore is kept (so nothing becomes unreadable) and it throws.
+    /// Requires the folder to be unlocked.
+    func disable() throws {
+        guard let root = dataRoot, Keystore.exists(at: root) else { throw ManagerError.notEnabled }
+        guard dek != nil else { throw ManagerError.locked }
+        let result = DataMigrator.migrate(root: root, from: protector, to: .passthrough)
+        guard result.isComplete else { throw ManagerError.decryptionIncomplete(result.failures) }
+        try FileManager.default.removeItem(at: root.appendingPathComponent(Keystore.fileName))
+        dek = nil
+        state = .disabled
         onProtectionChanged?()
     }
 

@@ -5,6 +5,7 @@ struct RootView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var integrations: Integrations
     @EnvironmentObject private var updateService: UpdateService
+    @EnvironmentObject private var encryption: EncryptionManager
     @ObservedObject private var navigator = AppNavigator.shared
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
@@ -47,6 +48,7 @@ struct RootView: View {
                 .environmentObject(appModel)
                 .environmentObject(integrations)
                 .environmentObject(updateService)
+                .environmentObject(encryption)
                 .frame(minWidth: 560, minHeight: 520)
         }
         .sheet(isPresented: $showSearch) {
