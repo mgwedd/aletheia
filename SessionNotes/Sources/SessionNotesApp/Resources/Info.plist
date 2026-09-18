@@ -7,9 +7,9 @@
 	<key>CFBundleName</key>
 	<string>Aletheia</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.12.2</string>
+	<string>1.13.0</string>
 	<key>CFBundleVersion</key>
-	<string>134</string>
+	<string>138</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSApplicationCategoryType</key>
