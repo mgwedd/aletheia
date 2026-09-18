@@ -86,8 +86,10 @@ enum ToolHealth {
         // Cheap non-prompting preflight first; only fall back to the live,
         // possibly-prompting SCShareableContent probe on an authoritative refresh
         // (which is exactly when the user has just come back from granting it).
-        let granted = SystemAudioCapture.checkPermission()
-            || (authoritative && (await SystemAudioCapture.verifyAccessGranted()))
+        var granted = SystemAudioCapture.checkPermission()
+        if !granted && authoritative {
+            granted = await SystemAudioCapture.verifyAccessGranted()
+        }
         return classifyScreenRecording(granted: granted)
     }
 
@@ -181,7 +183,10 @@ enum ToolHealth {
 
     static func ollamaCheck(settings: AppSettings, assistant: Assistant) async -> ToolHealthCheck {
         let reachable = await assistant.isReachable()
-        let hasModel = reachable && (await assistant.hasModel(settings.ollamaModelName))
+        var hasModel = false
+        if reachable {
+            hasModel = await assistant.hasModel(settings.ollamaModelName)
+        }
         return classifyOllama(reachable: reachable, hasModel: hasModel, modelName: settings.ollamaModelName)
     }
 
