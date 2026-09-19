@@ -19,12 +19,16 @@ import SQLite3
 /// caller's job.
 final class SQLitePersistenceCore: PersistenceCore {
     private var db: OpaquePointer?
+    /// The database file, retained so a pre-migration snapshot can be written
+    /// beside it before a schema upgrade transforms the data.
+    private let url: URL
 
     // SQLite needs to know whether a bound value outlives the call; TRANSIENT
     // tells it to copy, which is always safe here.
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     init?(url: URL) {
+        self.url = url
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard sqlite3_open_v2(url.path, &db,
@@ -56,7 +60,8 @@ final class SQLitePersistenceCore: PersistenceCore {
     /// or any SQLite error, which fails `init` (returns nil) — the same contract
     /// the previous `createSchema()` had. A newer database is left untouched.
     private func migrateSchema() -> Bool {
-        switch SchemaMigrator.plan(current: userVersion()) {
+        let current = userVersion()
+        switch SchemaMigrator.plan(current: current) {
         case .upToDate:
             return true
         case .needsNewerApp:
@@ -65,6 +70,15 @@ final class SQLitePersistenceCore: PersistenceCore {
             // "please update" message; here we just decline to open.
             return false
         case .migrate(let steps, let target):
+            // Never transform existing data without a recoverable pre-image.
+            // For a database that already holds data (current > 0), snapshot it
+            // first; if that snapshot can't be written, refuse to migrate and
+            // leave the data untouched at its old version, rather than upgrade
+            // with no way back (docs/DATA-SAFETY.md). A fresh/baseline database
+            // (current 0) has nothing to protect, so no snapshot is taken.
+            if let backupURL = MigrationBackup.snapshotURL(forDatabaseAt: url, fromVersion: current) {
+                guard snapshotBeforeMigration(to: backupURL) else { return false }
+            }
             // One transaction: either the schema reaches `target` or nothing
             // changes. DDL is transactional in SQLite, and every step is
             // idempotent, so re-running after an interrupted upgrade is safe.
@@ -83,6 +97,18 @@ final class SQLitePersistenceCore: PersistenceCore {
         guard sqlite3_prepare_v2(db, "PRAGMA user_version;", -1, &stmt, nil) == SQLITE_OK else { return 0 }
         defer { sqlite3_finalize(stmt) }
         return sqlite3_step(stmt) == SQLITE_ROW ? Int(sqlite3_column_int(stmt, 0)) : 0
+    }
+
+    /// Writes a consistent pre-migration copy of the database to `destination`
+    /// via `VACUUM INTO`. Creates the `Backups/` directory, and refuses (returns
+    /// false) rather than overwrite an existing file — the timestamped name makes
+    /// a collision practically impossible, and clobbering an earlier pre-image
+    /// would defeat the point. False here aborts the migration.
+    private func snapshotBeforeMigration(to destination: URL) -> Bool {
+        try? FileManager.default.createDirectory(
+            at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard !FileManager.default.fileExists(atPath: destination.path) else { return false }
+        return snapshot(to: destination)
     }
 
     // MARK: - PersistenceCore

@@ -159,8 +159,9 @@ and attested it is correct.**
 | **DB schema version** via `PRAGMA user_version` | **this PR** | `SQLitePersistenceCore` |
 | **Ordered, transactional migration runner**; refuse-newer | **this PR** | `SchemaMigrator` (pure, unit-tested) + core |
 | **File-format version** for the data folder | in place | `DataSchema` / `StoreMetadata` / `SchemaCompatibility` |
-| **Snapshot-before-migrate** (DB via `VACUUM INTO`, small JSON copied) | next | `snapshot(to:)` exists; wire a pre-migration backup |
-| **Attest-then-prune** UX + **Restore previous version** | next | Settings + a post-update banner |
+| **Snapshot-before-migrate** (DB via `VACUUM INTO`) — refuse to migrate if the pre-image can't be written | **in place** | `MigrationBackup` (pure policy) + `SQLitePersistenceCore` |
+| **Attest-then-prune** UX + **Restore previous version** | next | `MigrationBackup.prunable` ready; needs Settings + a post-update banner |
+| **Snapshot the small JSON** (patient/session) alongside the DB | next | copy referenced JSON into the same pre-image set |
 | **Whole-folder atomicity** across DB + files | Arch v2 (7), #70 | backup archive covers DB + referenced files |
 
 ### Why this is affordable
@@ -195,7 +196,8 @@ copy, which is another reason the device + escrow paths matter.
 
 1. **This PR** — DB `user_version` + `SchemaMigrator` (ordered, transactional,
    refuse-newer). The versioning foundation for everything above.
-2. Snapshot-before-migrate + attest-then-prune + Restore UI.
+2. Snapshot-before-migrate — **done** (`MigrationBackup` + core). Next:
+   attest-then-prune + Restore UI, and snapshotting the small JSON too.
 3. Device-KEK keyslot hardening (`SecAccessControl` biometrics; promote to a
    `Wrapping`), passphrase-saved confirmation, and the recovery-paths view.
 4. CloudKit escrow slot (rides on #60 once CloudKit backup lands).
