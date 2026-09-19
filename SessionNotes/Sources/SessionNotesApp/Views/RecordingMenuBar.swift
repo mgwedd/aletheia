@@ -12,9 +12,14 @@ import AppKit
 struct RecordingMenuBar: View {
     @EnvironmentObject private var recorder: SessionRecorder
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var integrations: Integrations
+    @State private var engineState: EngineRunState = .loading
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            engineStatusRow
+            Divider()
             if let active = recorder.active {
                 recordingControls(active)
             } else {
@@ -26,6 +31,25 @@ struct RecordingMenuBar: View {
         }
         .padding(14)
         .frame(width: 280)
+        // Every time the menu is opened (this view is re-created) and every
+        // 5s while it's open — cheap enough for the local-only health check
+        // this reuses, and nothing here is data anyone would need faster.
+        .liveStatusRefresh(every: 5) { _ in
+            engineState = await EngineStatusProbe.currentState(settings: settings, integrations: integrations)
+        }
+    }
+
+    // MARK: Engine status
+
+    /// Read-only line showing whether the local AI engine (Ollama, or the
+    /// embedded llama.cpp runtime) is reachable and which model is active —
+    /// reuses the same health-check seam as Settings/setup, just polled here
+    /// on a slower cadence since the menu bar is glanced at, not stared at.
+    private var engineStatusRow: some View {
+        let presentation = EngineStatusPresentation.present(engineState)
+        return Label(presentation.label, systemImage: presentation.symbolName)
+            .font(.caption)
+            .foregroundStyle(presentation.tint.color)
     }
 
     // MARK: Recording
@@ -131,5 +155,19 @@ struct RecordingMenuBar: View {
         )
         NSApp.activate(ignoringOtherApps: true)
         AppNavigator.shared.requestOpen(patientID: patient.id)
+    }
+}
+
+private extension EngineStatusTint {
+    /// Matches the green/yellow/red convention `SettingsView.statusIcon`
+    /// already uses for `ToolHealthCheck.Status`, so this reads as the same
+    /// status language elsewhere in the app.
+    var color: Color {
+        switch self {
+        case .green: return .green
+        case .yellow: return .yellow
+        case .red: return .red
+        case .gray: return .secondary
+        }
     }
 }
