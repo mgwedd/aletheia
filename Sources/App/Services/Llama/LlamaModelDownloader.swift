@@ -15,6 +15,10 @@ final class LlamaModelDownloader: NSObject, ObservableObject {
 
     private var continuation: CheckedContinuation<Void, Error>?
     private var destinationURL: URL?
+    /// Digest to verify the finished download against, captured from the model at
+    /// download start; `nil` means the model isn't pinned yet (download accepted
+    /// unverified — see `LlamaModel.expectedSHA256`).
+    private var expectedSHA256: String?
     private lazy var session: URLSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
 
     @MainActor
@@ -26,10 +30,24 @@ final class LlamaModelDownloader: NSObject, ObservableObject {
 
         try FileManager.default.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         self.destinationURL = destinationURL
+        self.expectedSHA256 = model.expectedSHA256
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             self.continuation = continuation
             session.downloadTask(with: model.downloadURL).resume()
+        }
+    }
+
+    /// Verifies the file just moved into place against the pinned digest, if any.
+    /// A mismatch deletes the file (so a corrupt or tampered model is never left
+    /// behind looking valid) and throws. Runs on the delegate's background queue,
+    /// so hashing multi-gigabyte weights never blocks the main thread.
+    private func verifyIntegrity(of fileURL: URL) throws {
+        guard let expectedSHA256 else { return }
+        let actual = try ModelDigest.sha256(ofFileAt: fileURL)
+        guard actual.caseInsensitiveCompare(expectedSHA256) == .orderedSame else {
+            try? FileManager.default.removeItem(at: fileURL)
+            throw ModelDownloadError.integrityCheckFailed(expected: expectedSHA256, actual: actual)
         }
     }
 }
@@ -58,6 +76,7 @@ extension LlamaModelDownloader: URLSessionDownloadDelegate {
                 try FileManager.default.removeItem(at: destinationURL)
             }
             try FileManager.default.moveItem(at: location, to: destinationURL)
+            try verifyIntegrity(of: destinationURL)
             continuation?.resume()
         } catch {
             continuation?.resume(throwing: error)

@@ -3,11 +3,14 @@ import Foundation
 enum ModelDownloadError: LocalizedError {
     case noDestination
     case downloadFailed(String)
+    case integrityCheckFailed(expected: String, actual: String)
 
     var errorDescription: String? {
         switch self {
         case .noDestination: return "No download destination was set."
         case .downloadFailed(let message): return "Couldn't download the model: \(message)"
+        case .integrityCheckFailed:
+            return "The downloaded model failed its integrity check and was discarded. Please try downloading it again."
         }
     }
 }
