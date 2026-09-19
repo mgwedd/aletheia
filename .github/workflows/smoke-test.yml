@@ -1,7 +1,7 @@
 name: Smoke Test
 
 # Builds the app and runs the unit tests on real macOS runners. This is the
-# first place SessionNotes is actually compiled (it's authored without access
+# first place Aletheia is actually compiled (it's authored without access
 # to macOS/Xcode), so the primary goal is catching build breakage — the unit
 # tests are a bonus that also run here.
 #
@@ -39,9 +39,6 @@ jobs:
       fail-fast: false
       matrix:
         runner: ${{ github.event_name == 'pull_request' && fromJSON('["macos-15"]') || fromJSON('["macos-15", "macos-26"]') }}
-    defaults:
-      run:
-        working-directory: SessionNotes
     env:
       # Stream xcodebuild output line-by-line so the xcbeautify pipe renders in
       # real time instead of buffering until the step ends.
@@ -65,8 +62,8 @@ jobs:
       - name: Cache Swift packages
         uses: actions/cache@v4
         with:
-          path: SessionNotes/build/SourcePackages
-          key: spm-${{ matrix.runner }}-${{ hashFiles('SessionNotes/project.yml') }}
+          path: build/SourcePackages
+          key: spm-${{ matrix.runner }}-${{ hashFiles('project.yml') }}
           restore-keys: spm-${{ matrix.runner }}-
 
       # Resolving SwiftWhisper (which compiles whisper.cpp) is the slow,
@@ -76,8 +73,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild -resolvePackageDependencies \
-            -project SessionNotes.xcodeproj \
-            -scheme SessionNotes \
+            -project Aletheia.xcodeproj \
+            -scheme Aletheia \
             -derivedDataPath build \
             -skipPackagePluginValidation \
             | xcbeautify --renderer github-actions
@@ -86,8 +83,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild build \
-            -project SessionNotes.xcodeproj \
-            -scheme SessionNotes \
+            -project Aletheia.xcodeproj \
+            -scheme Aletheia \
             -configuration Debug \
             -destination 'platform=macOS' \
             -derivedDataPath build \
@@ -98,8 +95,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild test \
-            -project SessionNotes.xcodeproj \
-            -scheme SessionNotes \
+            -project Aletheia.xcodeproj \
+            -scheme Aletheia \
             -configuration Debug \
             -destination 'platform=macOS' \
             -derivedDataPath build \
@@ -125,6 +122,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TestResults-${{ matrix.runner }}
-          path: SessionNotes/build/TestResults.xcresult
+          path: build/TestResults.xcresult
           retention-days: 7
           if-no-files-found: ignore

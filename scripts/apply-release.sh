@@ -20,7 +20,7 @@ VERSION="${1:?usage: apply-release.sh <version>}"
 VERSION="${VERSION#v}"
 cd "$(dirname "$0")/.."
 
-INFO_PLIST="SessionNotes/Sources/SessionNotesApp/Resources/Info.plist"
+INFO_PLIST="Sources/App/Resources/Info.plist"
 CHANGELOG="CHANGELOG.md"
 BUILD_NUMBER="$(git rev-list --count HEAD)"
 TODAY="$(date -u +%Y-%m-%d)"
