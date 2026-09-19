@@ -37,7 +37,7 @@ final class SQLitePersistenceCore: PersistenceCore {
         // adapter-sealed when encryption is on, but a defence in depth for the
         // plaintext (`.passthrough`) case costs nothing here.
         _ = exec("PRAGMA secure_delete = ON;")
-        guard createSchema() else {
+        guard migrateSchema() else {
             sqlite3_close(db)
             return nil
         }
@@ -47,21 +47,42 @@ final class SQLitePersistenceCore: PersistenceCore {
 
     // MARK: - Schema
 
-    private func createSchema() -> Bool {
-        exec("""
-        CREATE TABLE IF NOT EXISTS records (
-            kind TEXT NOT NULL,
-            id TEXT NOT NULL,
-            owner_id TEXT,
-            item_id TEXT,
-            payload BLOB NOT NULL,
-            created_at REAL NOT NULL,
-            updated_at REAL NOT NULL,
-            PRIMARY KEY (kind, id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_records_kind_item ON records(kind, item_id);
-        CREATE INDEX IF NOT EXISTS idx_records_kind_owner ON records(kind, owner_id);
-        """)
+    /// The database's current schema version (`PRAGMA user_version`); 0 for a
+    /// brand-new file or one written before migrations existed.
+    var schemaVersion: Int { userVersion() }
+
+    /// Bring the database up to `SchemaMigrator.latestVersion`, or refuse to open
+    /// a file a newer build wrote. Returns false on a newer-than-latest database
+    /// or any SQLite error, which fails `init` (returns nil) — the same contract
+    /// the previous `createSchema()` had. A newer database is left untouched.
+    private func migrateSchema() -> Bool {
+        switch SchemaMigrator.plan(current: userVersion()) {
+        case .upToDate:
+            return true
+        case .needsNewerApp:
+            // Written by a newer app; an older schema must not silently rewrite
+            // it. The file-level `SchemaCompatibility` guard surfaces the
+            // "please update" message; here we just decline to open.
+            return false
+        case .migrate(let steps, let target):
+            // One transaction: either the schema reaches `target` or nothing
+            // changes. DDL is transactional in SQLite, and every step is
+            // idempotent, so re-running after an interrupted upgrade is safe.
+            guard exec("BEGIN;") else { return false }
+            for step in steps {
+                guard exec(step.sql) else { _ = exec("ROLLBACK;"); return false }
+            }
+            guard exec("PRAGMA user_version = \(target);") else { _ = exec("ROLLBACK;"); return false }
+            return exec("COMMIT;")
+        }
+    }
+
+    /// Reads `PRAGMA user_version` (0 if it can't be read).
+    private func userVersion() -> Int {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "PRAGMA user_version;", -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        return sqlite3_step(stmt) == SQLITE_ROW ? Int(sqlite3_column_int(stmt, 0)) : 0
     }
 
     // MARK: - PersistenceCore

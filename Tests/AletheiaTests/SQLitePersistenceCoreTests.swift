@@ -1,4 +1,5 @@
 import XCTest
+import SQLite3
 @testable import Aletheia
 
 /// The SQLite-backed core must satisfy the same `PersistenceCore` contract the
@@ -139,6 +140,70 @@ final class SQLitePersistenceCoreTests: XCTestCase {
         let got = try XCTUnwrap(core.record(kind: "misc", id: "unscoped"))
         XCTAssertNil(got.ownerID)
         XCTAssertNil(got.itemID)
+    }
+
+    // MARK: - Schema versioning (PRAGMA user_version + migrations)
+
+    /// A brand-new database is stamped at the latest schema version, so a later
+    /// build knows exactly how far this one had taken it.
+    func testFreshDatabaseIsStampedAtLatestVersion() {
+        XCTAssertEqual(core.schemaVersion, SchemaMigrator.latestVersion)
+        XCTAssertGreaterThan(SchemaMigrator.latestVersion, 0)
+    }
+
+    /// A pre-migration database — the baseline tables present but `user_version`
+    /// still 0 (how earlier builds left it) — upgrades in place on open: it's
+    /// stamped to the latest version and its existing rows are untouched.
+    func testLegacyUnversionedDatabaseUpgradesInPlaceWithoutDataLoss() throws {
+        core = nil // close the fresh core so we can plant a "legacy" file
+        let legacyURL = root.appendingPathComponent("legacy.sqlite")
+        try withRawDatabase(at: legacyURL) { db in
+            // The exact baseline DDL an older build created, with user_version 0.
+            try exec(db, """
+            CREATE TABLE IF NOT EXISTS records (
+                kind TEXT NOT NULL, id TEXT NOT NULL, owner_id TEXT, item_id TEXT,
+                payload BLOB NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL,
+                PRIMARY KEY (kind, id));
+            """)
+            try exec(db, "INSERT INTO records (kind,id,owner_id,item_id,payload,created_at,updated_at) " +
+                         "VALUES ('note','keep',NULL,NULL,x'6869',1000,1000);")
+        }
+
+        let upgraded = try XCTUnwrap(SQLitePersistenceCore(url: legacyURL))
+        XCTAssertEqual(upgraded.schemaVersion, SchemaMigrator.latestVersion, "opened database was stamped")
+        XCTAssertEqual(upgraded.record(kind: "note", id: "keep").map { String(decoding: $0.payload, as: UTF8.self) },
+                       "hi", "existing rows survive the in-place upgrade")
+    }
+
+    /// A database written by a newer build (a higher `user_version` than this
+    /// build understands) is refused rather than silently rewritten with an older
+    /// schema — the DB-level counterpart to `SchemaCompatibility.needsNewerApp`.
+    func testNewerDatabaseIsRefused() throws {
+        core = nil
+        let futureURL = root.appendingPathComponent("future.sqlite")
+        try withRawDatabase(at: futureURL) { db in
+            try exec(db, "PRAGMA user_version = \(SchemaMigrator.latestVersion + 1);")
+        }
+        XCTAssertNil(SQLitePersistenceCore(url: futureURL),
+                     "a newer-than-latest database must not open under an older schema")
+    }
+
+    // MARK: - Raw-SQLite test helpers (plant fixtures the core would never write)
+
+    private func withRawDatabase(at url: URL, _ body: (OpaquePointer) throws -> Void) throws {
+        var db: OpaquePointer?
+        guard sqlite3_open(url.path, &db) == SQLITE_OK, let db else {
+            throw XCTSkip("couldn't open a raw SQLite database for the fixture")
+        }
+        defer { sqlite3_close(db) }
+        try body(db)
+    }
+
+    private func exec(_ db: OpaquePointer, _ sql: String) throws {
+        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
+            throw NSError(domain: "sqlite", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: String(cString: sqlite3_errmsg(db))])
+        }
     }
 
     /// `snapshot(to:)` writes a consistent, readable copy while the store is open.
