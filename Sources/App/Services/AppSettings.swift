@@ -101,6 +101,7 @@ final class AppSettings: ObservableObject {
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
+        static let keepDataOutOfSystemBackups = "keepDataOutOfSystemBackups"
     }
 
     /// Where the app looks for its update manifest. Defaults to the
@@ -182,6 +183,17 @@ final class AppSettings: ObservableObject {
     @Published var keepAudioRecordings: Bool {
         didSet { defaults.set(keepAudioRecordings, forKey: Keys.keepAudioRecordings) }
     }
+    /// Keep the data folder out of Time Machine and iCloud's device backup (via
+    /// `isExcludedFromBackup`). On by default: the folder can hold plaintext PHI
+    /// when at-rest encryption is off, so the only off-device copy should be the
+    /// app's own encrypted snapshot. Applied to the folder whenever this changes
+    /// or the data root is set.
+    @Published var keepDataOutOfSystemBackups: Bool {
+        didSet {
+            defaults.set(keepDataOutOfSystemBackups, forKey: Keys.keepDataOutOfSystemBackups)
+            applyBackupExclusion()
+        }
+    }
     /// The version of the Terms/Privacy Policy the user accepted (see `Legal`).
     /// Empty until accepted. Persisted locally so the practice has a record that
     /// the terms were accepted, and which version, before the app could be used.
@@ -235,6 +247,11 @@ final class AppSettings: ObservableObject {
         localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)
         iCloudEncryptedBackupEnabled = defaults.bool(forKey: Keys.iCloudEncryptedBackupEnabled)
         keepAudioRecordings = defaults.bool(forKey: Keys.keepAudioRecordings)
+        // Default on when never set: keep PHI out of system backups unless the
+        // user opts back in.
+        keepDataOutOfSystemBackups = defaults.object(forKey: Keys.keepDataOutOfSystemBackups) == nil
+            ? true
+            : defaults.bool(forKey: Keys.keepDataOutOfSystemBackups)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
         if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,
@@ -257,6 +274,9 @@ final class AppSettings: ObservableObject {
             updateFeedURL = AppSettings.defaultUpdateFeedURL
         }
         dataRootURL = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark)
+        // Re-assert the backup-exclusion policy on the resolved folder each launch
+        // (best-effort: the folder may not be accessible yet this early).
+        applyBackupExclusion()
     }
 
     /// Called after the user picks (or creates) the data folder via NSOpenPanel.
@@ -265,6 +285,15 @@ final class AppSettings: ObservableObject {
     func setDataRoot(_ url: URL) throws {
         try SecurityScopedBookmark.save(url: url, key: Keys.dataRootBookmark)
         dataRootURL = url
+        applyBackupExclusion()
+    }
+
+    /// Applies the current `keepDataOutOfSystemBackups` choice to the data folder,
+    /// so it's kept out of (or allowed back into) Time Machine and iCloud's device
+    /// backup. Best-effort — a failure to write the flag never blocks the app.
+    private func applyBackupExclusion() {
+        guard let root = dataRootURL else { return }
+        try? BackupExclusion.setExcluded(keepDataOutOfSystemBackups, at: root)
     }
 
     /// Whether the user has accepted the current version of the Terms/Privacy
