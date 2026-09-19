@@ -91,4 +91,7 @@ the app keeps records until the clinician removes them.
 - Settings › Legal — locally recorded acceptance of the current Terms/Privacy.
 
 See also [SECURITY.md](../SECURITY.md) for the threat model and the
-secret/PHI leak gates that keep the repository clean.
+secret/PHI leak gates that keep the repository clean, and
+[DATA-SAFETY.md](DATA-SAFETY.md) for the key-recovery and safe-update
+(versioned-migration) models that keep a clinician from ever losing or
+corrupting their own records.
