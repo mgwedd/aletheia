@@ -14,7 +14,10 @@ final class SecurityPostureTests: XCTestCase {
         encryptionEnabled: Bool = true,
         encryptionUnlocked: Bool = true,
         auditLogActive: Bool = true,
-        localEncryptedBackup: Bool = true
+        localEncryptedBackup: Bool = true,
+        iCloudBackupEnabled: Bool = false,
+        iCloudBackupConfigured: Bool = false,
+        networkOnline: Bool? = nil
     ) -> [PostureItem] {
         SecurityPosture.evaluate(
             appLockEnabled: appLockEnabled,
@@ -23,7 +26,10 @@ final class SecurityPostureTests: XCTestCase {
             encryptionEnabled: encryptionEnabled,
             encryptionUnlocked: encryptionUnlocked,
             auditLogActive: auditLogActive,
-            localEncryptedBackup: localEncryptedBackup
+            localEncryptedBackup: localEncryptedBackup,
+            iCloudBackupEnabled: iCloudBackupEnabled,
+            iCloudBackupConfigured: iCloudBackupConfigured,
+            networkOnline: networkOnline
         )
     }
 
@@ -72,6 +78,59 @@ final class SecurityPostureTests: XCTestCase {
         // Everything actionable is satisfied; only informational gaps remain
         // (no backup, encryption locked). Headline must stay secure.
         let items = evaluate(encryptionUnlocked: false, localEncryptedBackup: false)
+        XCTAssertFalse(items.contains { $0.level == .actionRecommended })
+        XCTAssertEqual(SecurityPosture.overall(items), .secure)
+    }
+
+    func testICloudBackupOnlySecureWhenEnabledAndProvisioned() {
+        // Enabled + provisioned: an active, sealed off-device copy.
+        XCTAssertEqual(
+            item("cloudBackup", in: evaluate(iCloudBackupEnabled: true, iCloudBackupConfigured: true))?.level,
+            .secure)
+        // Enabled but not provisioned (current build): the choice is saved but
+        // nothing is uploaded yet — informational, never "secure".
+        XCTAssertEqual(
+            item("cloudBackup", in: evaluate(iCloudBackupEnabled: true, iCloudBackupConfigured: false))?.level,
+            .informational)
+        // Off: an available option, informational.
+        XCTAssertEqual(
+            item("cloudBackup", in: evaluate(iCloudBackupEnabled: false))?.level,
+            .informational)
+    }
+
+    func testICloudBackupNeverDrivesActionable() {
+        // Neither the saved-but-inactive toggle nor its absence should ask for action.
+        for enabled in [true, false] {
+            let items = evaluate(iCloudBackupEnabled: enabled, iCloudBackupConfigured: false)
+            XCTAssertNotEqual(item("cloudBackup", in: items)?.level, .actionRecommended)
+        }
+    }
+
+    func testNetworkItemIsAlwaysInformational() {
+        for state: Bool? in [true, false, nil] {
+            let items = evaluate(networkOnline: state)
+            let network = item("network", in: items)
+            XCTAssertNotNil(network, "network item should always be present")
+            XCTAssertEqual(network?.level, .informational)
+        }
+    }
+
+    func testNetworkDetailReflectsReachability() {
+        XCTAssertTrue(item("network", in: evaluate(networkOnline: true))?.detail.contains("online") ?? false)
+        XCTAssertTrue(item("network", in: evaluate(networkOnline: false))?.detail.contains("offline") ?? false)
+        // Unknown state must not assert either online or offline.
+        let unknown = item("network", in: evaluate(networkOnline: nil))?.detail ?? ""
+        XCTAssertFalse(unknown.contains("online"))
+        XCTAssertFalse(unknown.contains("offline"))
+    }
+
+    func testNetworkAndCloudDoNotDowngradeHardenedHeadline() {
+        // Online, iCloud saved-but-inactive, and no local backup: all informational.
+        let items = evaluate(
+            localEncryptedBackup: false,
+            iCloudBackupEnabled: true,
+            iCloudBackupConfigured: false,
+            networkOnline: true)
         XCTAssertFalse(items.contains { $0.level == .actionRecommended })
         XCTAssertEqual(SecurityPosture.overall(items), .secure)
     }

@@ -8,6 +8,7 @@ struct SecurityPostureView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var encryption: EncryptionManager
+    @StateObject private var reachability = NetworkReachability()
 
     private var postureItems: [PostureItem] {
         SecurityPosture.evaluate(
@@ -17,7 +18,10 @@ struct SecurityPostureView: View {
             encryptionEnabled: encryption.isEnabled,
             encryptionUnlocked: encryption.isUnlocked,
             auditLogActive: appModel.audit != nil,
-            localEncryptedBackup: settings.localEncryptedBackupEnabled
+            localEncryptedBackup: settings.localEncryptedBackupEnabled,
+            iCloudBackupEnabled: settings.iCloudEncryptedBackupEnabled,
+            iCloudBackupConfigured: ICloudEncryptedBackupService.isProvisioned,
+            networkOnline: reachability.isOnline
         )
     }
 

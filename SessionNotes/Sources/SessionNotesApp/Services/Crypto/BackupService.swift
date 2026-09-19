@@ -122,7 +122,13 @@ struct LocalEncryptedBackupService: BackupService {
 struct ICloudEncryptedBackupService: BackupService {
     let key: SymmetricKey
 
-    var isConfigured: Bool { false }
+    /// Whether this build has the iCloud/CloudKit capability provisioned (see the
+    /// TODO above). `false` until a signed build wires it up, so the UI can show
+    /// the choice — and the security overview can say it's saved-but-not-yet-active
+    /// — without instances or a key on hand.
+    static var isProvisioned: Bool { false }
+
+    var isConfigured: Bool { Self.isProvisioned }
 
     func backUp(databaseURL: URL, reason: String) async -> BackupOutcome { .notConfigured }
     func restoreLatest(to databaseURL: URL) async -> BackupOutcome { .notConfigured }

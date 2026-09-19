@@ -32,7 +32,10 @@ enum SecurityPosture {
         encryptionEnabled: Bool,
         encryptionUnlocked: Bool,
         auditLogActive: Bool,
-        localEncryptedBackup: Bool
+        localEncryptedBackup: Bool,
+        iCloudBackupEnabled: Bool,
+        iCloudBackupConfigured: Bool,
+        networkOnline: Bool?
     ) -> [PostureItem] {
         var items: [PostureItem] = []
 
@@ -78,21 +81,51 @@ enum SecurityPosture {
                 ? "Security-relevant actions are recorded on this Mac (no names or clinical content)."
                 : "Choose a data folder to begin recording the on-device audit log."))
 
-        // Encrypted backup copy.
+        // Encrypted backup copy on this Mac.
         items.append(PostureItem(id: "encryptedBackup", title: "Encrypted backup",
             level: localEncryptedBackup ? .secure : .informational,
             detail: localEncryptedBackup
                 ? "An end-to-end-encrypted backup copy is kept, sealed with your key."
                 : "Consider keeping an encrypted backup copy, safe to sit in Time Machine."))
 
+        // Off-device copy in the user's private iCloud (CloudKit). Only ever
+        // ciphertext leaves the Mac; until a signed build provisions CloudKit the
+        // toggle is a saved preference that uploads nothing, so don't claim it's
+        // active — mirror the Settings copy and keep it informational.
+        if iCloudBackupEnabled && iCloudBackupConfigured {
+            items.append(PostureItem(id: "cloudBackup", title: "Encrypted iCloud backup", level: .secure,
+                detail: "An end-to-end-encrypted copy syncs to your private iCloud. It's sealed with your key first, so only ciphertext ever leaves this Mac."))
+        } else if iCloudBackupEnabled {
+            items.append(PostureItem(id: "cloudBackup", title: "Encrypted iCloud backup", level: .informational,
+                detail: "iCloud backup is turned on but activates in a signed build with iCloud configured — nothing is uploaded yet. When it does, only end-to-end-encrypted ciphertext will leave this Mac."))
+        } else {
+            items.append(PostureItem(id: "cloudBackup", title: "Encrypted iCloud backup", level: .informational,
+                detail: "Optionally keep an end-to-end-encrypted copy in your private iCloud for off-device recovery. It's sealed with your key first, so only ciphertext would ever leave this Mac."))
+        }
+
         // FileVault: the app can't read its state under the sandbox, so this is a
         // standing recommendation with a link elsewhere in Settings.
         items.append(PostureItem(id: "fileVault", title: "FileVault", level: .informational,
             detail: "Full-disk encryption is recommended as the baseline. Manage it in System Settings."))
 
+        // Network activity: connectivity itself is never a problem to fix here —
+        // PHI never traverses the network whatever the state — so this stays
+        // informational and only phrases what (if anything) leaves.
+        let networkDetail: String
+        switch networkOnline {
+        case .some(true):
+            networkDetail = "This Mac is online, but no patient data is sent. Transcription and AI run locally; only end-to-end-encrypted backups ever leave."
+        case .some(false):
+            networkDetail = "This Mac is offline. Aletheia is fully functional without a network."
+        case .none:
+            networkDetail = "No patient data is sent over the network. Transcription and AI run locally; only end-to-end-encrypted backups ever leave."
+        }
+        items.append(PostureItem(id: "network", title: "Network activity", level: .informational,
+            detail: networkDetail))
+
         // Standing on-device guarantee — reassurance, always true by design.
         items.append(PostureItem(id: "onDevice", title: "On-device only", level: .secure,
-            detail: "All transcription and AI run on this Mac. No patient data is sent to the cloud."))
+            detail: "All transcription and note generation run on this Mac's own hardware."))
 
         return items
     }
