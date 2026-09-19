@@ -114,7 +114,7 @@ launches via a security-scoped bookmark:
 
 ```
 <dataRoot>/
-  SessionNotes.sqlite          # notes, inline comments, chat threads (PHI, local)
+  Aletheia.sqlite               # notes, inline comments, chat threads (PHI, local)
   .backups/                    # opt-in end-to-end-encrypted backup archives
   .snapshots/                  # consistent DB snapshots (VACUUM INTO) for migrations
   Patients/<Patient-Slug>/
@@ -168,7 +168,7 @@ compile out otherwise.
 The binding lives behind `#if canImport(llama)` and compiles out until the
 package is linked, so CI stays green without building the heavy C++.
 
-1. In `SessionNotes/project.yml`, uncomment the `llama` package stanza and the
+1. In `project.yml`, uncomment the `llama` package stanza and the
    `- package: llama` dependency, and pin `revision:` to a **verified
    `ggml-org/llama.cpp` commit SHA** (don't track a branch).
 2. `./scripts/build.sh` — `LlamaAssistant` now compiles and Settings shows a
@@ -199,15 +199,14 @@ can be Developer ID-signed and notarized (below).
 
 ## Build · Test · Release
 
-Requires a Mac with Xcode 16+. The project is generated from
-`SessionNotes/project.yml` (XcodeGen) rather than a checked-in `.xcodeproj`.
-Deployment target is macOS 14. Product/display name is **Aletheia**, but the
-Xcode target, scheme, and source directory are still `SessionNotes`, and the
-bundle-id prefix is `com.sessionnotes` — intentional, not a bug.
+Requires a Mac with Xcode 16+. The project is generated from `project.yml`
+(XcodeGen) rather than a checked-in `.xcodeproj`. Deployment target is
+macOS 14. Product/display name, Xcode target, scheme, and bundle-id prefix
+(`com.aletheia`) are all **Aletheia**.
 
 ```bash
 ./scripts/build.sh          # ad-hoc signed app in dist/
-cd SessionNotes && xcodegen generate && xcodebuild test -scheme SessionNotes -destination 'platform=macOS'
+xcodegen generate && xcodebuild test -scheme Aletheia -destination 'platform=macOS'
 ```
 
 CI/CD runs entirely on GitHub Actions with **only first-party actions plus

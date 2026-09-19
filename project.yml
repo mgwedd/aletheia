@@ -1,0 +1,87 @@
+name: Aletheia
+options:
+  bundleIdPrefix: com.aletheia
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    # Ad-hoc signed: no Apple Developer account needed. Gatekeeper will
+    # require a right-click > Open the first time it's launched, which
+    # is covered in docs/SETUP-GUIDE.md.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+  configs:
+    Release:
+      # Hardened Runtime only matters for distribution, and it interferes
+      # with XCTest injecting its bundle into the host app, so keep it off
+      # for Debug (where tests run) and on for the Release build that
+      # scripts/build.sh ships.
+      ENABLE_HARDENED_RUNTIME: YES
+
+packages:
+  SwiftWhisper:
+    url: https://github.com/exPHAT/SwiftWhisper.git
+    from: "1.2.0"
+  # Embedded llama.cpp fallback — staged (see README › Embedded llama.cpp).
+  # Uncomment, pin to a verified revision, and add `- package: llama` to the
+  # Aletheia target dependencies below to compile the local LLM backend;
+  # `LlamaAssistant` then activates automatically via `#if canImport(llama)`.
+  # Only the official ggml-org runtime is used (supply-chain constraint).
+  # llama:
+  #   url: https://github.com/ggml-org/llama.cpp.git
+  #   revision: "PIN_TO_A_VERIFIED_COMMIT_SHA"
+
+targets:
+  Aletheia:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/App
+        excludes:
+          - "Resources/Info.plist"
+          - "Resources/Aletheia.entitlements"
+    info:
+      path: Sources/App/Resources/Info.plist
+    entitlements:
+      path: Sources/App/Resources/Aletheia.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.app
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    dependencies:
+      - package: SwiftWhisper
+      # - package: llama   # staged: uncomment with the packages stanza above
+      - sdk: ScreenCaptureKit.framework
+      - sdk: AVFoundation.framework
+
+  AletheiaTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests/AletheiaTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.appTests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Aletheia
+
+schemes:
+  Aletheia:
+    build:
+      targets:
+        Aletheia: all
+        AletheiaTests: [test]
+    test:
+      targets:
+        - AletheiaTests
+    run:
+      config: Debug

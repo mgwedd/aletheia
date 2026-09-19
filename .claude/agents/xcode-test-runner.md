@@ -15,15 +15,14 @@ You run this repo's XCTest suite and report the result. Be fast and mechanical.
 ## Steps
 1. From the repo root:
    ```bash
-   cd SessionNotes
    command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
    xcodegen generate
    ```
 2. Run the tests (Debug — Hardened Runtime is off there so XCTest can inject):
    ```bash
    xcodebuild test \
-     -project SessionNotes.xcodeproj \
-     -scheme SessionNotes \
+     -project Aletheia.xcodeproj \
+     -scheme Aletheia \
      -destination 'platform=macOS' \
      -skipPackagePluginValidation \
      2>&1 | tee /tmp/aletheia-xctest.log
@@ -37,5 +36,5 @@ You run this repo's XCTest suite and report the result. Be fast and mechanical.
   pulled from lines matching `error:` / `failed` in the log. No log dumps.
 - Note total tests run and wall time if available.
 - Do not edit code or tests. Diagnosis only; hand fixes back to the caller.
-- The scheme `SessionNotes` already includes the `SessionNotesTests` target, so
+- The scheme `Aletheia` already includes the `AletheiaTests` target, so
   no scheme changes are needed.

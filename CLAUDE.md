@@ -20,10 +20,10 @@ Concise, non-obvious rules for this repo. (Obvious stuff omitted on purpose.)
   it; a PR that's ready for Michael to review/merge is a normal open PR.
 
 ## Names & project generation
-- Product/display name is **Aletheia**, but the Xcode target, scheme, and source
-  dir are still **`SessionNotes`**, and the bundle-id prefix is
-  **`com.sessionnotes`**. Don't "fix" this mismatch.
-- **No `.xcodeproj` is checked in.** `SessionNotes/project.yml` is the source of
+- Product/display name, Xcode target, scheme, and Swift module are all
+  **Aletheia**; the bundle-id prefix is **`com.aletheia`**. The app source dir
+  is `Sources/App`, the test source dir is `Tests/AletheiaTests`.
+- **No `.xcodeproj` is checked in.** `project.yml` (repo root) is the source of
   truth; XcodeGen generates the project. Edit `project.yml`, not a pbxproj.
 - Deployment target: **macOS 14**.
 
