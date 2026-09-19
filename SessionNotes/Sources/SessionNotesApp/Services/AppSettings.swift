@@ -46,6 +46,32 @@ enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
     }
 }
 
+/// Idle auto-lock choices offered in Settings (HIPAA §164.312(a)(2)(iii)
+/// "automatic logoff"). The raw value is the timeout in minutes; `.off` (0)
+/// disables idle auto-lock regardless of how long the app sits untouched.
+enum IdleAutoLockTimeout: Int, CaseIterable, Identifiable, Codable, Hashable {
+    case off = 0
+    case oneMinute = 1
+    case fiveMinutes = 5
+    case fifteenMinutes = 15
+    case thirtyMinutes = 30
+    case sixtyMinutes = 60
+
+    var id: Int { rawValue }
+
+    /// 15 minutes: short enough to matter for a clinician stepping away
+    /// mid-session, long enough not to interrupt writing a note.
+    static let defaultTimeout: IdleAutoLockTimeout = .fifteenMinutes
+
+    var displayName: String {
+        switch self {
+        case .off: return "Never"
+        case .oneMinute: return "1 minute"
+        default: return "\(rawValue) minutes"
+        }
+    }
+}
+
 /// All persisted app preferences. Backed by UserDefaults; nothing here is
 /// sensitive (no credentials — everything the app talks to is local).
 ///
@@ -68,6 +94,7 @@ final class AppSettings: ObservableObject {
         static let updateFeedURL = "updateFeedURL"
         static let spotlightIndexingEnabled = "spotlightIndexingEnabled"
         static let appLockEnabled = "appLockEnabled"
+        static let idleAutoLockMinutes = "idleAutoLockMinutes"
         static let acceptedLegalVersion = "acceptedLegalVersion"
         static let acceptedLegalDate = "acceptedLegalDate"
         static let progressNoteFormat = "progressNoteFormat"
@@ -117,6 +144,14 @@ final class AppSettings: ObservableObject {
     /// Require Touch ID / the login password to open the app (see `AppLock`).
     @Published var appLockEnabled: Bool {
         didSet { defaults.set(appLockEnabled, forKey: Keys.appLockEnabled) }
+    }
+    /// HIPAA §164.312(a)(2)(iii) "automatic logoff": how many minutes of
+    /// inactivity before `AppLock` re-engages, one of `IdleAutoLockTimeout`'s
+    /// `allCases` values. `0` means "Never" (idle auto-lock off). Only takes
+    /// effect while `appLockEnabled` is on — locking requires the Touch ID /
+    /// password gate to exist in the first place.
+    @Published var idleAutoLockMinutes: Int {
+        didSet { defaults.set(idleAutoLockMinutes, forKey: Keys.idleAutoLockMinutes) }
     }
     /// The clinical documentation format the "Generate note" action defaults to.
     /// Free text out of the box (`ProgressNoteFormat.default`); a therapist who
@@ -190,6 +225,12 @@ final class AppSettings: ObservableObject {
         iCloudEncryptedBackupEnabled = defaults.bool(forKey: Keys.iCloudEncryptedBackupEnabled)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
+        if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,
+           IdleAutoLockTimeout.allCases.map(\.rawValue).contains(stored) {
+            idleAutoLockMinutes = stored
+        } else {
+            idleAutoLockMinutes = IdleAutoLockTimeout.defaultTimeout.rawValue
+        }
         if let raw = defaults.string(forKey: Keys.progressNoteFormat), let format = ProgressNoteFormat(rawValue: raw) {
             progressNoteFormat = format
         } else {
