@@ -111,6 +111,11 @@ final class CommentStore {
             messages TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_chat_threads_patient ON chat_threads(patient_slug);
+        CREATE TABLE IF NOT EXISTS session_chats (
+            session_key TEXT PRIMARY KEY,
+            messages TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        );
         """
         guard exec(sql) else { return false }
         // A database created before time anchors won't have the column; add it.
@@ -287,6 +292,48 @@ final class CommentStore {
         return sqlite3_step(stmt) == SQLITE_DONE
     }
 
+    // MARK: - Session chat
+
+    /// The assistant conversation held on one session's transcript. Like a chat
+    /// thread's, the whole message array is stored as one sealed JSON blob, keyed
+    /// by the session's stable `<patientSlug>/<sessionFolder>` key.
+    func sessionChat(patientSlug: String, sessionFolder: String) -> [ChatMessage] {
+        let key = Self.sessionKey(patientSlug: patientSlug, sessionFolder: sessionFolder)
+        let sql = "SELECT messages FROM session_chats WHERE session_key = ?;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, key)
+        return sqlite3_step(stmt) == SQLITE_ROW ? decodeMessages(columnText(stmt, 0)) : []
+    }
+
+    /// Upserts a session's chat by its session key. An empty conversation clears
+    /// the row rather than storing an empty blob, so the table stays tidy for the
+    /// many sessions that are never chatted about.
+    @discardableResult
+    func saveSessionChat(_ messages: [ChatMessage], patientSlug: String, sessionFolder: String, now: Date = Date()) -> Bool {
+        let key = Self.sessionKey(patientSlug: patientSlug, sessionFolder: sessionFolder)
+        if messages.isEmpty {
+            let sql = "DELETE FROM session_chats WHERE session_key = ?;"
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+            defer { sqlite3_finalize(stmt) }
+            bindText(stmt, 1, key)
+            return sqlite3_step(stmt) == SQLITE_DONE
+        }
+        let sql = """
+        INSERT INTO session_chats (session_key, messages, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(session_key) DO UPDATE SET messages = excluded.messages, updated_at = excluded.updated_at;
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, key)
+        bindText(stmt, 2, encodeMessages(messages))
+        sqlite3_bind_double(stmt, 3, now.timeIntervalSince1970)
+        return sqlite3_step(stmt) == SQLITE_DONE
+    }
+
     // MARK: - Snapshot
 
     /// Writes a consistent, compact copy of the database to `destination` using
@@ -390,6 +437,23 @@ final class CommentStore {
             bindText(up, 1, recode(row.title))
             bindText(up, 2, recode(row.messages))
             bindText(up, 3, row.id)
+            let ok = sqlite3_step(up) == SQLITE_DONE
+            sqlite3_finalize(up)
+            guard ok else { return false }
+        }
+
+        // Session chats: gather (session_key, messages), then update each.
+        var sessionChats: [(key: String, messages: String)] = []
+        guard sqlite3_prepare_v2(db, "SELECT session_key, messages FROM session_chats;", -1, &stmt, nil) == SQLITE_OK else { return false }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            sessionChats.append((columnText(stmt, 0), columnText(stmt, 1)))
+        }
+        sqlite3_finalize(stmt)
+        for row in sessionChats {
+            var up: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "UPDATE session_chats SET messages = ? WHERE session_key = ?;", -1, &up, nil) == SQLITE_OK else { return false }
+            bindText(up, 1, recode(row.messages))
+            bindText(up, 2, row.key)
             let ok = sqlite3_step(up) == SQLITE_DONE
             sqlite3_finalize(up)
             guard ok else { return false }
