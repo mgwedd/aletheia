@@ -27,6 +27,10 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Security Overview") {
+                SecurityPostureView()
+            }
+
             Section("Data Folder") {
                 HStack {
                     Text(settings.dataRootURL?.path ?? "Not chosen yet")
