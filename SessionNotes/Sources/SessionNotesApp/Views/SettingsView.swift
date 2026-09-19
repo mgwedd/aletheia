@@ -19,6 +19,10 @@ struct SettingsView: View {
     @State private var confirmDisableEncryption = false
     @State private var isDisablingEncryption = false
     @State private var rememberOnDevice = false
+    /// Audit-log entries for the viewer, newest first. Loaded on appear and after
+    /// an export; a snapshot, not a live binding (the log is append-only on disk).
+    @State private var auditEntries: [AuditEvent] = []
+    private let auditPreviewLimit = 15
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -214,6 +218,37 @@ struct SettingsView: View {
                 encryptionSection
             }
 
+            Section("Security Audit Log") {
+                Text("An on-device record of actions that touch patient data — app unlocks, encryption changes, exports and deletions. It holds no names or clinical content, never leaves this Mac, and satisfies HIPAA's audit-control requirement (§164.312(b)).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if auditEntries.isEmpty {
+                    Text("No activity recorded yet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(auditEntries.prefix(auditPreviewLimit).enumerated()), id: \.offset) { item in
+                        HStack {
+                            Text(item.element.action.displayName)
+                            Spacer()
+                            Text(auditTimestamp(item.element)).foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                    }
+                    if auditEntries.count > auditPreviewLimit {
+                        Text("Showing the \(auditPreviewLimit) most recent of \(auditEntries.count) entries.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                HStack {
+                    Button("Refresh", action: loadAuditEntries)
+                    Spacer()
+                    Button("Export…", action: exportAuditLog)
+                        .disabled(auditEntries.isEmpty)
+                }
+            }
+
             Section("Backup") {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -329,7 +364,10 @@ struct SettingsView: View {
             Text("Your notes, transcripts, summaries, chat, records and recordings will be decrypted back to plain files on disk. FileVault, if on, still protects them.")
         }
         .liveStatusRefresh { authoritative in await runHealthChecks(authoritative: authoritative) }
-        .onAppear { rememberOnDevice = encryption.isRememberedOnDevice }
+        .onAppear {
+            rememberOnDevice = encryption.isRememberedOnDevice
+            loadAuditEntries()
+        }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -345,6 +383,60 @@ struct SettingsView: View {
         } else {
             return "By default, recordings are deleted the moment a session is transcribed — only the transcript is kept. Keeping the original audio requires \"Extra Encryption\" below, so any retained recording stays encrypted at rest rather than sitting on disk in the clear."
         }
+    }
+
+    // MARK: - Audit log viewer
+
+    /// Load the log into the viewer, newest first. `entries()` reads file order
+    /// (oldest first), so reverse for a most-recent-at-top list.
+    private func loadAuditEntries() {
+        auditEntries = Array((appModel.audit?.entries() ?? []).reversed())
+    }
+
+    private func auditTimestamp(_ entry: AuditEvent) -> String {
+        guard let date = entry.date else { return entry.at }
+        return Self.auditDateFormatter.string(from: date)
+    }
+
+    /// Human-readable, oldest-first rendering for the exported file (a log reads
+    /// naturally top-to-bottom in time). Header states the PHI-free scope.
+    private func auditExportText() -> String {
+        let all = appModel.audit?.entries() ?? []
+        let header = """
+        Aletheia security audit log (HIPAA §164.312(b)) — an on-device record with no PHI.
+        Exported \(Self.auditDateFormatter.string(from: Date()))
+
+        """
+        let lines = all.map { entry -> String in
+            let ts = entry.date.map { Self.auditDateFormatter.string(from: $0) } ?? entry.at
+            var parts = ["\(ts)  \(entry.action.displayName)"]
+            if let subject = entry.subjectID { parts.append("record \(subject)") }
+            if let detail = entry.detail { parts.append(detail) }
+            return parts.joined(separator: "  ·  ")
+        }
+        return header + lines.joined(separator: "\n") + "\n"
+    }
+
+    private func exportAuditLog() {
+        let name = FileSaver.fileName("Aletheia Audit Log", Self.auditFileStamp())
+        if FileSaver.saveText(auditExportText(), suggestedName: "\(name).txt") {
+            // The export itself is an ePHI-adjacent action worth recording.
+            appModel.recordAudit(.auditLogExported)
+            loadAuditEntries()
+        }
+    }
+
+    private static let auditDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
+    private static func auditFileStamp() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
     }
 
     @ViewBuilder

@@ -23,13 +23,18 @@ struct SessionNotesApp: App {
         _settings = StateObject(wrappedValue: settings)
         let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL })
         _encryption = StateObject(wrappedValue: encryption)
-        _appModel = StateObject(wrappedValue: AppModel(settings: settings, encryption: encryption))
+        let appModel = AppModel(settings: settings, encryption: encryption)
+        _appModel = StateObject(wrappedValue: appModel)
         _integrations = StateObject(wrappedValue: Integrations(settings: settings))
         _updateService = StateObject(wrappedValue: UpdateService(
             checker: AppcastUpdateChecker(feedURL: settings.updateFeedURL),
             currentVersion: UpdateService.bundleVersion()
         ))
-        _appLock = StateObject(wrappedValue: AppLock(settings: settings))
+        let appLock = AppLock(settings: settings)
+        // Record each successful unlock in the on-device audit log (HIPAA
+        // §164.312(b)). AppLock stays decoupled from the log via this hook.
+        appLock.onUnlock = { [weak appModel] in appModel?.recordAudit(.appUnlocked) }
+        _appLock = StateObject(wrappedValue: appLock)
     }
 
     var body: some Scene {

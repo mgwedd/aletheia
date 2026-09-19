@@ -14,6 +14,14 @@ final class AppModel: ObservableObject {
     /// Local SQLite store for the therapist's own annotations (inline comments
     /// and freeform session notes), living inside the chosen data folder.
     private(set) var commentStore: CommentStore?
+    /// On-device, append-only audit log of ePHI-affecting actions (HIPAA
+    /// §164.312(b)), living in the data folder beside the stores.
+    private(set) var audit: AuditLog?
+    // Previous encryption on/unlocked state, so `rebuildStore` (which fires on
+    // every protection change) can derive what changed and record it. Both are
+    // `nil` until the first build, so launching the app isn't logged as a change.
+    private var lastEncryptionEnabled: Bool?
+    private var lastEncryptionUnlocked: Bool?
     private let settings: AppSettings
     /// Supplies the `FileProtector` the stores read/write through. When
     /// encryption is off or locked it's a passthrough, so the stores behave as
@@ -46,7 +54,10 @@ final class AppModel: ObservableObject {
         // Recompute encryption state first (the data folder may have just
         // changed), then build the stores around the resulting protector.
         encryption.refresh()
-        guard let root = settings.dataRootURL else {
+        let dataRoot = settings.dataRootURL
+        audit = dataRoot.map(AuditLog.init)
+        logEncryptionTransitionIfNeeded()
+        guard let root = dataRoot else {
             store = nil
             commentStore = nil
             patients = []
@@ -72,6 +83,36 @@ final class AppModel: ObservableObject {
             schemaWarning = nil
         }
         refreshPatients()
+    }
+
+    /// Record an ePHI-affecting action, if a data folder (and thus a log) exists.
+    /// The thin seam call sites use so they don't reach into `audit` directly.
+    func recordAudit(_ action: AuditAction, subjectID: String? = nil, detail: String? = nil) {
+        audit?.record(action, subjectID: subjectID, detail: detail)
+    }
+
+    /// Compares the current encryption on/unlocked state against the last build's
+    /// and records any transition. `rebuildStore` fires on enable, disable,
+    /// unlock and lock, but can't itself say which happened — this derives it.
+    private func logEncryptionTransitionIfNeeded() {
+        let enabled = encryption.isEnabled
+        let unlocked = encryption.isUnlocked
+        defer {
+            lastEncryptionEnabled = enabled
+            lastEncryptionUnlocked = unlocked
+        }
+        // First build (launch): record the baseline, don't log it as a change.
+        guard let wasEnabled = lastEncryptionEnabled,
+              let wasUnlocked = lastEncryptionUnlocked else { return }
+        if !wasEnabled, enabled {
+            audit?.record(.encryptionEnabled)
+        } else if wasEnabled, !enabled {
+            audit?.record(.encryptionDisabled)
+        } else if wasEnabled, enabled, !wasUnlocked, unlocked {
+            // Unlocking an already-enabled folder (a fresh enable already logs
+            // .encryptionEnabled, so it isn't double-counted as an unlock).
+            audit?.record(.encryptionUnlocked)
+        }
     }
 
     func refreshPatients() {
