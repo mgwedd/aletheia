@@ -13,6 +13,12 @@ struct SessionComment: Identifiable, Equatable {
     /// from the transcript's time codes when the comment is created. nil when the
     /// passage couldn't be located (e.g. no quote, or a hand-typed passage).
     var anchorSeconds: Double?
+    /// Google-Docs-style resolution: a resolved comment drops its transcript
+    /// highlight and collapses into the rail's "Resolved" section, but is kept
+    /// (never silently deleted) so the therapist can reopen it. Defaults to
+    /// false, and older payloads written before this field simply decode as
+    /// unresolved.
+    var resolved: Bool
 
     init(
         id: String,
@@ -20,7 +26,8 @@ struct SessionComment: Identifiable, Equatable {
         body: String,
         createdAt: Date,
         updatedAt: Date,
-        anchorSeconds: Double? = nil
+        anchorSeconds: Double? = nil,
+        resolved: Bool = false
     ) {
         self.id = id
         self.quotedText = quotedText
@@ -28,6 +35,7 @@ struct SessionComment: Identifiable, Equatable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.anchorSeconds = anchorSeconds
+        self.resolved = resolved
     }
 }
 
@@ -99,6 +107,11 @@ final class CommentStore {
     @discardableResult
     func updateComment(id: String, body: String, now: Date = Date()) -> Bool {
         annotations.updateComment(id: id, body: body, now: now)
+    }
+
+    @discardableResult
+    func setCommentResolved(id: String, resolved: Bool, now: Date = Date()) -> Bool {
+        annotations.setCommentResolved(id: id, resolved: resolved, now: now)
     }
 
     @discardableResult

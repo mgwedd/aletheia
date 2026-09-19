@@ -19,9 +19,14 @@ import AppKit
 struct TranscriptTextView: NSViewRepresentable {
     let transcript: String
     /// (comment id, quoted passage) pairs — the same `quotedText` comments store.
+    /// Only the passages you want highlighted (e.g. unresolved comments).
     let comments: [(id: String, quote: String)]
     @Binding var selection: String
     var onOpenComment: (String) -> Void = { _ in }
+    /// When set, the passage this comment anchors to is scrolled into view and
+    /// briefly flashed — the "click a card in the rail → jump to the text"
+    /// direction of the Google-Docs two-way focus. Cleared by the owner.
+    var focusedCommentID: String? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -53,13 +58,42 @@ struct TranscriptTextView: NSViewRepresentable {
         // changed; rebuilding on every SwiftUI pass would clobber the user's
         // in-progress selection.
         context.coordinator.render(into: textView, transcript: transcript, comments: comments)
+        context.coordinator.flashIfNeeded(in: textView, focusedCommentID: focusedCommentID, comments: comments)
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: TranscriptTextView
         private var renderedSignature: Int?
+        /// The last comment id we scrolled-to-and-flashed, so re-flowing the view
+        /// on unrelated SwiftUI passes doesn't re-trigger the flash.
+        private var lastFlashedID: String?
 
         init(_ parent: TranscriptTextView) { self.parent = parent }
+
+        /// Scrolls the passage anchored by `focusedCommentID` into view and
+        /// flashes it, once per distinct id. Uses the layout manager's temporary
+        /// attributes so the text storage (and thus the persisted highlight
+        /// attributes) is never mutated.
+        func flashIfNeeded(in textView: NSTextView, focusedCommentID: String?, comments: [(id: String, quote: String)]) {
+            guard let id = focusedCommentID else {
+                lastFlashedID = nil
+                return
+            }
+            guard id != lastFlashedID else { return }
+            lastFlashedID = id
+            guard
+                let span = TranscriptHighlighter.spans(in: textView.string, comments: comments)
+                    .first(where: { $0.commentID == id }),
+                let layoutManager = textView.layoutManager
+            else { return }
+
+            textView.scrollRangeToVisible(span.range)
+            let flash = NSColor.systemYellow.withAlphaComponent(0.55)
+            layoutManager.addTemporaryAttributes([.backgroundColor: flash], forCharacterRange: span.range)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak layoutManager] in
+                layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: span.range)
+            }
+        }
 
         func render(into textView: NSTextView, transcript: String, comments: [(id: String, quote: String)]) {
             let signature = Self.signature(transcript: transcript, comments: comments)

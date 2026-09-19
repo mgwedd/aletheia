@@ -123,9 +123,11 @@ struct AssistantService {
     }
 
     /// Renders stored margin comments into the plain lines the prompt expects.
-    /// Shared by the batch and streaming session-chat paths.
+    /// Shared by the batch and streaming session-chat paths. Resolved comments
+    /// are left out: like a resolved Google-Docs thread, they've been closed out
+    /// and shouldn't quietly steer a regenerated note or answer.
     static func formatComments(_ comments: [SessionComment]) -> [String] {
-        comments.map { comment in
+        comments.filter { !$0.resolved }.map { comment in
             let quote = comment.quotedText.trimmingCharacters(in: .whitespacesAndNewlines)
             return quote.isEmpty ? "- \(comment.body)" : "- On “\(quote)”: \(comment.body)"
         }
