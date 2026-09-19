@@ -1,15 +1,81 @@
 # Aletheia — private therapy session notes
 
-A local-only macOS app for a therapist to record, transcribe, and summarize
-video therapy sessions — Zoom, a browser (Tebra), FaceTime, any call — then
-search, annotate, and ask questions across a patient's history. **Privacy is the
-whole point:** session audio is PHI, so nothing ever leaves the Mac it runs on.
+A local-only macOS app built on a **domain-neutral core** — on-device
+transcription, on-device AI, and local document management — wrapped by a
+**domain adapter** for its first (and currently only) use case: a therapist
+recording, transcribing, and summarizing video therapy sessions, then
+searching, annotating, and asking questions across a patient's history.
+**Privacy is the whole point:** session audio and everything derived from it
+is PHI, so nothing ever leaves the Mac it runs on.
 
 📖 [Setup guide](docs/SETUP-GUIDE.md) · ⚖️ [Consent note](CONSENT.md) · 🔒 [Security](SECURITY.md) · 📝 [Changelog](CHANGELOG.md) · 📄 [License](LICENSE) · 📃 [Terms](TERMS.md) · 🔏 [Privacy](PRIVACY.md)
 
 > **License:** source-available but **not** open source — all rights reserved. The code is public for transparency and evaluation; running or reusing it needs written permission. See [LICENSE](LICENSE).
 
-## What it does
+## Architecture
+
+The app is split into a **generic core** that knows nothing clinical and a
+**domain adapter + views** that give it meaning. The core exposes three
+domain-neutral capabilities; a domain layer wraps them for a specific use
+case:
+
+```mermaid
+flowchart TD
+  UI["SwiftUI views — therapist domain\npatients · sessions · chat"] --> Dom
+
+  subgraph Dom["Domain adapter — therapist-specific"]
+    PR[PatientRepository]
+    SR[SessionRepository]
+    CR["Annotation / Chat repositories"]
+  end
+
+  Dom --> Core
+
+  subgraph Core["Generic core — domain-neutral, no clinical vocabulary"]
+    Trans["Transcription\non-device speech-to-text"]
+    AIB["AI backend\non-device LLM: summarize · retrieve · chat"]
+    Doc["Document management\nstorage · encryption at rest · search · backup/export"]
+  end
+
+  Core --> Store[("SQLite + files\nopaque records keyed by UUID")]
+```
+
+- **Transcription** — on-device speech-to-text of recorded audio
+  (`Transcribing`, backed by [SwiftWhisper](https://github.com/exPHAT/SwiftWhisper)
+  / whisper.cpp), speaker-labeled, in-process.
+- **AI backend** — local LLM inference behind `AssistantService`:
+  summarization, retrieval over stored content, and chat — never a call to a
+  cloud model.
+- **Document management** — durable local storage, encryption at rest,
+  search, backup, and export. The storage seam (`PersistenceCore`) is
+  strictly generic: it stores an opaque `payload` keyed by `(kind, id)`,
+  scoped to an opaque `ownerID`/`itemID`, and never inspects or interprets
+  the bytes. Not even the words "patient" or "session" appear at this layer.
+
+A **domain adapter** sits above the core and decides what the opaque
+primitives mean: `PatientRepository`, `SessionRepository`,
+`AnnotationRepository`, and `ChatRepository` are what decide that `ownerID`
+is a patient, `itemID` is a session, and `kind == "comment"` is a margin
+note. Everything clinical lives in this layer and the views above it — the
+core is reusable as-is for a different single-user, on-device domain (legal
+intake, coaching notes, journaling) by swapping only the adapter and the UI.
+
+### Why therapists, why offline
+
+The first domain built on the core is a therapist managing their patients —
+chosen because clinical session data is PHI, where privacy and security
+aren't a preference but a requirement. That requirement is what drives the
+architecture, not the other way around: no analytics or telemetry, no
+servers, on-device transcription, on-device AI, encryption at rest. A domain
+where a leak is merely embarrassing wouldn't force this design; one where
+it's a compliance and ethical failure does.
+
+Every external integration sits behind a protocol in `Services/Integrations/`
+and `Services/Persistence/`, so a concrete backend swaps without touching the
+domain layer or the UI. The `Integrations` registry decides which concrete
+type backs each adapter at runtime.
+
+## The therapist domain (current application)
 
 - 🎙 **Record** the therapist's mic and the call's audio as two tracks — no
   virtual audio driver. Works with any call app (Zoom, browser, FaceTime), since
@@ -25,7 +91,7 @@ whole point:** session audio is PHI, so nothing ever leaves the Mac it runs on.
 - 🔔 **Fits the Mac** — Spotlight, Siri/Shortcuts, Reminders, Calendar,
   notifications, and an in-app updater.
 
-## How a session flows
+### How a session flows
 
 ```mermaid
 flowchart LR
@@ -40,43 +106,7 @@ flowchart LR
   Chat --> Cited[Answer with cited sessions]
 ```
 
-## Why native Swift/SwiftUI
-
-An earlier draft shelled out to `ffmpeg`/`whisper-cli`/`ollama` from a
-Python/Tkinter wrapper. This is a ground-up native rewrite so the app can be a
-**real sandboxed macOS app** — App Sandbox + Hardened Runtime on — which is
-possible only because it never spawns an external process:
-
-- **Transcription in-process** via [SwiftWhisper](https://github.com/exPHAT/SwiftWhisper)
-  (whisper.cpp), not a CLI.
-- **Call audio via ScreenCaptureKit** in audio-only mode — one system
-  permission, no BlackHole/virtual driver.
-- **Local LLM** reached in-process or over `127.0.0.1`, never by spawning a
-  binary.
-
-Distribution is ad-hoc signed by default (no Apple Developer account), so the
-first launch needs a right-click → Open — see the setup guide. Tagged releases
-can be Developer ID-signed and notarized (below).
-
-## Architecture
-
-```mermaid
-flowchart TD
-  UI[SwiftUI views] --> Integ[Integrations registry]
-  UI --> Store[Store — Finder-browsable files]
-  UI --> DB[CommentStore — SQLite]
-  Integ --> Transcribing
-  Integ --> AssistantService
-  Transcribing --> Whisper[WhisperTranscriber]
-  AssistantService --> Backend{Assistant backend}
-  Backend --> AI[Apple Intelligence]
-  Backend --> Llama[Built-in llama.cpp]
-  Backend --> Ollama[Ollama]
-```
-
-Every external integration sits behind a protocol in `Services/Integrations/`,
-so a backend swaps without touching the UI. The one registry (`Integrations`)
-decides which concrete type backs each adapter.
+### Storage layout
 
 **Storage is deliberately plain and Finder-browsable** — one folder the user
 picks (defaults inside iCloud Drive, so backup is automatic), reached across
@@ -99,7 +129,7 @@ Everything except the annotations DB is plain JSON/text a non-technical user
 can read. The one database is SQLite living *inside* that same folder, so it
 backs up with everything else and never leaves the Mac.
 
-## AI backend (tiered, on-device first)
+### AI backend (tiered, on-device first)
 
 The backend is chosen to keep setup as close to zero-install as the hardware
 allows; the user can override it in Settings.
@@ -118,10 +148,11 @@ Apple Intelligence and the llama.cpp binding compile in behind
 `#if canImport(...)`, so they light up on a supporting Mac/toolchain and
 compile out otherwise.
 
-> **Apple Intelligence is currently disabled** (`Integrations.appleIntelligenceBlocked`).
-> As Apple moves system intelligence toward a cloud (Gemini) backhaul, Aletheia
-> sticks to backends it can prove stay on this Mac — Ollama and the built-in
-> llama.cpp. `Automatic` therefore resolves to a local backend. Flip the flag to
+> **Apple Intelligence is currently disabled** (`Integrations.appleIntelligenceBlocked`),
+> kept off so the AI backend stays provably on-device: as Apple moves system
+> intelligence toward a cloud (Gemini) backhaul, Aletheia sticks to backends
+> it can prove stay on this Mac — Ollama and the built-in llama.cpp.
+> `Automatic` therefore resolves to a local backend. Flip the flag to
 > re-enable the on-device Foundation Models path.
 
 <details>
@@ -141,10 +172,31 @@ package is linked, so CI stays green without building the heavy C++.
    shipping it enabled.
 </details>
 
+## Why native Swift/SwiftUI
+
+An earlier draft shelled out to `ffmpeg`/`whisper-cli`/`ollama` from a
+Python/Tkinter wrapper. This is a ground-up native rewrite so the app can be a
+**real sandboxed macOS app** — App Sandbox + Hardened Runtime on — which is
+possible only because it never spawns an external process:
+
+- **Transcription in-process** via [SwiftWhisper](https://github.com/exPHAT/SwiftWhisper)
+  (whisper.cpp), not a CLI.
+- **Call audio via ScreenCaptureKit** in audio-only mode — one system
+  permission, no BlackHole/virtual driver.
+- **Local LLM** reached in-process or over `127.0.0.1`, never by spawning a
+  binary.
+
+Distribution is ad-hoc signed by default (no Apple Developer account), so the
+first launch needs a right-click → Open — see the setup guide. Tagged releases
+can be Developer ID-signed and notarized (below).
+
 ## Build · Test · Release
 
 Requires a Mac with Xcode 16+. The project is generated from
 `SessionNotes/project.yml` (XcodeGen) rather than a checked-in `.xcodeproj`.
+Deployment target is macOS 14. Product/display name is **Aletheia**, but the
+Xcode target, scheme, and source directory are still `SessionNotes`, and the
+bundle-id prefix is `com.sessionnotes` — intentional, not a bug.
 
 ```bash
 ./scripts/build.sh          # ad-hoc signed app in dist/
