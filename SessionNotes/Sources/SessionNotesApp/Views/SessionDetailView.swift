@@ -662,6 +662,18 @@ struct SessionDetailView: View {
             }
             transcriptText = text
             try store.saveTranscript(text, for: patient, session: session)
+            // Transcript-only by default: discard the raw audio now that the
+            // transcript (the document of record) is saved. Audio is kept only
+            // when the user opted in *and* at-rest encryption is on, so anything
+            // retained on disk is ciphertext, never plaintext PHI. The gate is
+            // enforced here on behavior, not just in the UI, so stale settings or
+            // encryption being turned off can't leave audio in the clear.
+            if AudioRetentionPolicy.discardsAudioAfterTranscription(
+                optedIn: settings.keepAudioRecordings,
+                encryptionEnabled: appModel.isEncryptionEnabled
+            ) {
+                store.deleteRecordings(for: patient, session: session)
+            }
             appModel.refreshPatients()
             onSessionUpdated()
             await integrations.makeNotifier().post(
