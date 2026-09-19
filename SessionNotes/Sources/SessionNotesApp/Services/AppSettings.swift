@@ -71,6 +71,8 @@ final class AppSettings: ObservableObject {
         static let acceptedLegalVersion = "acceptedLegalVersion"
         static let acceptedLegalDate = "acceptedLegalDate"
         static let progressNoteFormat = "progressNoteFormat"
+        static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
+        static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
     }
 
     /// Where the app looks for its update manifest. Defaults to the
@@ -122,6 +124,18 @@ final class AppSettings: ObservableObject {
     @Published var progressNoteFormat: ProgressNoteFormat {
         didSet { defaults.set(progressNoteFormat.rawValue, forKey: Keys.progressNoteFormat) }
     }
+    /// Opt-in: keep an end-to-end-encrypted backup copy of the database on this
+    /// Mac (in addition to whatever Time Machine already does). The default is
+    /// off — Time Machine of the data folder is the baseline local backup.
+    @Published var localEncryptedBackupEnabled: Bool {
+        didSet { defaults.set(localEncryptedBackupEnabled, forKey: Keys.localEncryptedBackupEnabled) }
+    }
+    /// Opt-in: also upload the end-to-end-encrypted backup to the user's private
+    /// iCloud (CloudKit). The blob is encrypted with the user's key before it
+    /// leaves the Mac, so Apple only ever stores ciphertext. Off by default.
+    @Published var iCloudEncryptedBackupEnabled: Bool {
+        didSet { defaults.set(iCloudEncryptedBackupEnabled, forKey: Keys.iCloudEncryptedBackupEnabled) }
+    }
     /// The version of the Terms/Privacy Policy the user accepted (see `Legal`).
     /// Empty until accepted. Persisted locally so the practice has a record that
     /// the terms were accepted, and which version, before the app could be used.
@@ -172,6 +186,8 @@ final class AppSettings: ObservableObject {
             ollamaBaseURL = URL(string: "http://127.0.0.1:11434")!
         }
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
+        localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)
+        iCloudEncryptedBackupEnabled = defaults.bool(forKey: Keys.iCloudEncryptedBackupEnabled)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
         if let raw = defaults.string(forKey: Keys.progressNoteFormat), let format = ProgressNoteFormat(rawValue: raw) {
