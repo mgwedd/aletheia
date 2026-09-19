@@ -38,6 +38,10 @@ final class AppLock: ObservableObject {
     /// Set when an unlock attempt fails, for the lock screen to show.
     @Published var lastError: String?
 
+    /// Called once on each successful unlock, so the composition root can record
+    /// an audit entry (HIPAA §164.312(b)) without `AppLock` depending on the log.
+    var onUnlock: (() -> Void)?
+
     private let settings: AppSettings
 
     /// The last time the user interacted with the app (mouse/keyboard event
@@ -114,6 +118,7 @@ final class AppLock: ObservableObject {
             if ok {
                 isLocked = false
                 lastError = nil
+                onUnlock?()
                 // Otherwise the next idle check would see a stale (very old)
                 // `lastActivity` from before the app was locked and put the
                 // lock screen right back up.
