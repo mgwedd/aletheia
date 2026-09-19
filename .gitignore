@@ -227,3 +227,7 @@ SessionNotes/.swiftpm/
 .DS_Store
 xcuserdata/
 *.xcuserstate
+
+# Claude Code subagent git worktrees — transient, isolated checkouts created
+# for background agents and auto-cleaned when they finish. Never commit them.
+.claude/worktrees/
