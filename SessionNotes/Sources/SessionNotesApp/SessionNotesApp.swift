@@ -110,6 +110,8 @@ struct SessionNotesApp: App {
             RecordingMenuBar()
                 .environmentObject(recorder)
                 .environmentObject(appModel)
+                .environmentObject(settings)
+                .environmentObject(integrations)
         }
         .menuBarExtraStyle(.window)
     }
