@@ -32,6 +32,12 @@ final class InMemoryPersistenceCore: PersistenceCore {
             .sorted { $0.createdAt < $1.createdAt }
     }
 
+    func allRecords(kind: String) -> [PersistedRecord] {
+        storage.values
+            .filter { $0.kind == kind }
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+
     @discardableResult
     func put(_ record: PersistedRecord) -> Bool {
         storage[key(record.kind, record.id)] = record

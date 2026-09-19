@@ -68,6 +68,12 @@ protocol PersistenceCore: AnyObject {
     /// Every record of `kind` owned by `ownerID`, oldest first.
     func records(kind: String, ownerID: UUID) -> [PersistedRecord]
 
+    /// Every record of `kind`, oldest first, regardless of owner/item scope.
+    /// For a bulk operation that must touch every record of a kind no matter
+    /// which item or owner it hangs off — chiefly re-sealing every payload when
+    /// the encryption key changes (a `reencrypt`-style pass).
+    func allRecords(kind: String) -> [PersistedRecord]
+
     /// Inserts a record or replaces the existing one with the same `(kind, id)`.
     /// Returns false only on a storage error.
     @discardableResult
