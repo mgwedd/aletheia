@@ -114,10 +114,11 @@ launches via a security-scoped bookmark:
 
 ```
 <dataRoot>/
-  SessionNotes.sqlite          # therapist's notes + inline comments (PHI, local)
+  SessionNotes.sqlite          # notes, inline comments, chat threads (PHI, local)
+  .backups/                    # opt-in end-to-end-encrypted backup archives
+  .snapshots/                  # consistent DB snapshots (VACUUM INTO) for migrations
   Patients/<Patient-Slug>/
     patient.json
-    patient_chat.json
     YYYY-MM-DD_Session/
       mic.caf / call.caf        # two audio tracks
       transcript.txt            # merged, timestamped, speaker-labeled
@@ -125,9 +126,15 @@ launches via a security-scoped bookmark:
       chat.json
 ```
 
-Everything except the annotations DB is plain JSON/text a non-technical user
-can read. The one database is SQLite living *inside* that same folder, so it
-backs up with everything else and never leaves the Mac.
+Everything except the SQLite database is plain JSON/text a non-technical user
+can read. The database lives *inside* that same folder, so it backs up with
+everything else and never leaves the Mac — it holds the therapist's inline
+transcript comments, per-session freeform notes, and per-patient chat threads
+(chat threads used to be JSON files under `ChatThreads/`; they migrate into
+the DB the first time a patient is opened). Optional AES-256-GCM at-rest
+encryption (files and DB text columns) and end-to-end-encrypted backup
+archives are opt-in — see [docs/ENCRYPTION.md](docs/ENCRYPTION.md) and
+[SECURITY.md](SECURITY.md).
 
 ### AI backend (tiered, on-device first)
 

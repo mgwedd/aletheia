@@ -18,20 +18,28 @@ hidden, so an unlocked, unattended Mac doesn't expose patient notes through the
 app. It changes no files and has no effect on backup or restore. Password
 fallback is always available, so you can't be locked out of your own data.
 
-## Planned
+**At-rest encryption of the data folder (opt-in, "Extra Encryption").** Settings
+can encrypt the SQLite database's text columns, transcripts, summaries, and
+audio with AES-256-GCM so the files are ciphertext on disk (protecting against
+a compromised-while-running Mac and any synced copies). Key handling uses
+envelope encryption: a recovery passphrase you set wraps a per-folder data key,
+with an optional Keychain-backed "remember on this Mac" so you aren't prompted
+every launch. Trade-off: encrypted files are no longer Finder-readable
+plaintext, and the recovery passphrase must be kept safe — losing it and any
+device-remembered copy makes the data unrecoverable. Full design in
+[docs/ENCRYPTION.md](docs/ENCRYPTION.md).
 
-**At-rest encryption of the data folder (opt-in, Tier 2).** Encrypt the SQLite
-database, transcripts, summaries, and audio with AES-256-GCM so the files are
-ciphertext on disk (protecting against a compromised-while-running Mac and any
-synced copies). Key handling uses envelope encryption: a data key unlocked by
-Touch ID for daily use, **plus a user-held recovery passphrase** so a backup can
-be restored on a new Mac. Trade-off: encrypted files are no longer
-Finder-readable plaintext, and the recovery passphrase must be kept safe — a
-Secure-Enclave-only key cannot decrypt a backup on different hardware.
+**Backups.** The data folder backs up with zero configuration via macOS Time
+Machine. Settings › Backup also offers an opt-in end-to-end-encrypted backup
+archive (`.aletheiabackup`, sealed with your key) written to a local
+`.backups/` folder, plus a staged (not yet live) opt-in encrypted iCloud
+destination for the same archive. Point-in-time database snapshots
+(`.snapshots/`, via SQLite's `VACUUM INTO`) protect schema migrations and
+encryption on/off changes against a mid-write failure.
 
 ## Threat model, briefly
 
-| Scenario | FileVault | App lock | Tier 2 |
+| Scenario | FileVault | App lock | Extra Encryption |
 | --- | --- | --- | --- |
 | Mac lost/stolen while off | ✅ | — | ✅ |
 | Someone opens your unlocked Mac | — | ✅ | ✅ |
