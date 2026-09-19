@@ -111,4 +111,12 @@ final class AssistantServiceStreamingTests: XCTestCase {
         XCTAssertEqual(lines[0], "- On “sleep”: worse lately")
         XCTAssertEqual(lines[1], "- general note")
     }
+
+    func testFormatCommentsExcludesResolved() {
+        let now = Date()
+        let active = SessionComment(id: "1", quotedText: "sleep", body: "worse lately", createdAt: now, updatedAt: now)
+        let resolved = SessionComment(id: "2", quotedText: "meds", body: "handled", createdAt: now, updatedAt: now, resolved: true)
+        let lines = AssistantService.formatComments([active, resolved])
+        XCTAssertEqual(lines, ["- On “sleep”: worse lately"], "a resolved comment stays out of the AI context")
+    }
 }

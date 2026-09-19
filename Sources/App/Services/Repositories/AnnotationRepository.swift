@@ -36,6 +36,10 @@ final class AnnotationRepository {
         var quotedText: String
         var body: String
         var anchorSeconds: Double?
+        /// Google-Docs-style resolution. Optional in the payload so comments
+        /// written before this field existed decode cleanly (treated as
+        /// unresolved); `makeComment` maps a missing/`nil` value to `false`.
+        var resolved: Bool?
     }
 
     func comments(sessionID: UUID) -> [SessionComment] {
@@ -50,7 +54,7 @@ final class AnnotationRepository {
         anchorSeconds: Double? = nil,
         now: Date = Date()
     ) -> SessionComment? {
-        let payload = CommentPayload(quotedText: quotedText, body: body, anchorSeconds: anchorSeconds)
+        let payload = CommentPayload(quotedText: quotedText, body: body, anchorSeconds: anchorSeconds, resolved: false)
         guard let data = RecordPayloadCodec.encode(payload, using: protector) else { return nil }
         let record = PersistedRecord(
             id: UUID().uuidString, kind: Self.commentKind, itemID: sessionID,
@@ -76,6 +80,21 @@ final class AnnotationRepository {
         return core.put(record)
     }
 
+    /// Flips a comment's resolved state, leaving `quotedText`, `body`, and
+    /// `anchorSeconds` untouched — the Google-Docs "Resolve"/"Reopen" action.
+    @discardableResult
+    func setCommentResolved(id: String, resolved: Bool, now: Date = Date()) -> Bool {
+        guard
+            var record = core.record(kind: Self.commentKind, id: id),
+            var payload = RecordPayloadCodec.decode(CommentPayload.self, from: record.payload, using: protector)
+        else { return false }
+        payload.resolved = resolved
+        guard let data = RecordPayloadCodec.encode(payload, using: protector) else { return false }
+        record.payload = data
+        record.updatedAt = now
+        return core.put(record)
+    }
+
     @discardableResult
     func deleteComment(id: String) -> Bool {
         core.remove(kind: Self.commentKind, id: id)
@@ -89,7 +108,8 @@ final class AnnotationRepository {
         if let payload = RecordPayloadCodec.decode(CommentPayload.self, from: record.payload, using: protector) {
             return SessionComment(
                 id: record.id, quotedText: payload.quotedText, body: payload.body,
-                createdAt: record.createdAt, updatedAt: record.updatedAt, anchorSeconds: payload.anchorSeconds
+                createdAt: record.createdAt, updatedAt: record.updatedAt,
+                anchorSeconds: payload.anchorSeconds, resolved: payload.resolved ?? false
             )
         }
         let garbled = RecordPayloadCodec.openedText(from: record.payload, using: protector)

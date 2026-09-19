@@ -70,6 +70,41 @@ final class AnnotationRepositoryTests: XCTestCase {
         XCTAssertFalse(repository.updateComment(id: "does-not-exist", body: "x"))
     }
 
+    func testNewCommentsDefaultToUnresolved() throws {
+        let session = UUID()
+        let comment = try XCTUnwrap(repository.addComment(sessionID: session, quotedText: "q", body: "b"))
+        XCTAssertFalse(comment.resolved)
+        XCTAssertFalse(try XCTUnwrap(repository.comments(sessionID: session).first).resolved)
+    }
+
+    func testResolveAndReopenComment() throws {
+        let session = UUID()
+        let t0 = Date(timeIntervalSince1970: 1000)
+        let t1 = Date(timeIntervalSince1970: 2000)
+        let t2 = Date(timeIntervalSince1970: 3000)
+        let comment = try XCTUnwrap(
+            repository.addComment(sessionID: session, quotedText: "q", body: "b", anchorSeconds: 42, now: t0)
+        )
+
+        XCTAssertTrue(repository.setCommentResolved(id: comment.id, resolved: true, now: t1))
+        var reloaded = try XCTUnwrap(repository.comments(sessionID: session).first)
+        XCTAssertTrue(reloaded.resolved)
+        XCTAssertEqual(reloaded.body, "b", "resolving leaves the body alone")
+        XCTAssertEqual(reloaded.quotedText, "q", "resolving leaves the quote alone")
+        XCTAssertEqual(reloaded.anchorSeconds, 42, "resolving leaves the anchor alone")
+        XCTAssertEqual(reloaded.updatedAt, t1)
+        XCTAssertEqual(reloaded.createdAt, t0)
+
+        XCTAssertTrue(repository.setCommentResolved(id: comment.id, resolved: false, now: t2))
+        reloaded = try XCTUnwrap(repository.comments(sessionID: session).first)
+        XCTAssertFalse(reloaded.resolved)
+        XCTAssertEqual(reloaded.updatedAt, t2)
+    }
+
+    func testResolveUnknownCommentFails() {
+        XCTAssertFalse(repository.setCommentResolved(id: "does-not-exist", resolved: true))
+    }
+
     func testDeleteComment() throws {
         let session = UUID()
         let comment = try XCTUnwrap(repository.addComment(sessionID: session, quotedText: "", body: "gone"))

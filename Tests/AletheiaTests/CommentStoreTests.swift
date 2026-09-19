@@ -51,6 +51,24 @@ final class CommentStoreTests: XCTestCase {
         XCTAssertTrue(store.comments(sessionID: session).isEmpty)
     }
 
+    func testResolvePersistsAcrossReopen() throws {
+        let session = UUID()
+        let id: String
+        do {
+            let store = try XCTUnwrap(CommentStore(root: tempRoot))
+            let comment = try XCTUnwrap(store.addComment(sessionID: session, quotedText: "q", body: "b"))
+            id = comment.id
+            XCTAssertFalse(comment.resolved)
+            XCTAssertTrue(store.setCommentResolved(id: id, resolved: true))
+            XCTAssertEqual(store.comments(sessionID: session).first?.resolved, true)
+        }
+        // Reopen the same database: the resolved flag survived to disk.
+        let reopened = try XCTUnwrap(CommentStore(root: tempRoot))
+        XCTAssertEqual(reopened.comments(sessionID: session).first?.resolved, true)
+        XCTAssertTrue(reopened.setCommentResolved(id: id, resolved: false))
+        XCTAssertEqual(reopened.comments(sessionID: session).first?.resolved, false)
+    }
+
     func testNotesUpsertAndPersistAcrossReopen() throws {
         let session = UUID()
         do {
