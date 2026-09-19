@@ -93,6 +93,15 @@ The **Status** section at the bottom of Settings tells you, in plain
 language, exactly what's ready and what isn't — check back here any time
 something doesn't seem to be working.
 
+### Optional: extra protection
+
+Settings also has a **Security** section (Touch ID / password app lock and an
+opt-in "Extra Encryption" that seals your notes, transcripts, and recordings
+with a passphrase — see [SECURITY.md](../SECURITY.md)) and a **Backup**
+section (your data folder already backs up with Time Machine; you can also
+turn on an encrypted backup copy). None of this is required to start
+recording — it's there for when you want it.
+
 ## Using the app
 
 1. Add a patient.

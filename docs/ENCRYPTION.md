@@ -1,7 +1,8 @@
 # At-rest encryption (Tier 2)
 
-Opt-in AES-256-GCM encryption of the data folder's contents. This document is
-the design of record; it is landing in stages (see **Rollout** at the end).
+Opt-in AES-256-GCM encryption of the data folder's contents, available from
+Settings › Extra Encryption. This document is the design of record; it shipped
+in the stages below (see **Rollout**).
 
 Tier 1 (already shipped) is the Touch ID / password **app lock** — it gates
 _opening the running app_. Tier 2 protects the _files on disk_, so the notes

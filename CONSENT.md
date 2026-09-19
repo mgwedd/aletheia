@@ -29,8 +29,8 @@ behalf. That responsibility is yours.
 
 ## A note on AI summaries
 
-AI-generated summaries (via the local Ollama model) are a drafting aid, not
-a clinical record of truth. They can misstate, omit, or misattribute
-things said in a session. Always read a summary alongside its transcript
-before relying on it, and treat the transcript — not the summary — as the
-authoritative record.
+AI-generated summaries (via a local, on-device model — Ollama or the app's
+built-in model) are a drafting aid, not a clinical record of truth. They can
+misstate, omit, or misattribute things said in a session. Always read a
+summary alongside its transcript before relying on it, and treat the
+transcript — not the summary — as the authoritative record.
