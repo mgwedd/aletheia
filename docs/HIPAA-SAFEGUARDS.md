@@ -59,9 +59,13 @@ These belong to the practice. Aletheia supports, but cannot satisfy, them:
 - **Workforce security, sanction policy, information-access management** — org
   policy. On a shared Mac, use separate macOS accounts and enable app lock +
   idle auto-lock.
-- **Contingency plan / data backup (§164.308(a)(7))** — Time Machine backs up the
-  data folder locally; an opt-in encrypted snapshot (optionally to the
-  clinician's own iCloud) supports off-device recovery. Test your restores.
+- **Contingency plan / data backup (§164.308(a)(7))** — by default the data
+  folder is **excluded from Time Machine and iCloud's device backup**
+  (`isExcludedFromBackup`), so unencrypted PHI never lands in a system backup;
+  the recommended off-device recovery path is the app's opt-in, end-to-end-
+  encrypted snapshot (optionally to the clinician's own iCloud). A clinician who
+  runs an encrypted Time Machine target can re-enable system-backup coverage in
+  Settings › Backup. Test your restores.
 - **Facility & workstation/device controls (§164.310)** — physical security of
   the Mac is the practice's. FileVault + app lock reduce exposure if a device is
   lost or left unattended.
@@ -82,7 +86,8 @@ the app keeps records until the clinician removes them.
 - Settings › Security — app lock, idle auto-lock, FileVault guidance.
 - Settings › Extra Encryption — at-rest encryption (Tier 2) and recovery
   passphrase; see [ENCRYPTION.md](ENCRYPTION.md).
-- Settings › Backup — Time Machine guidance and opt-in encrypted snapshot.
+- Settings › Backup — system-backup exclusion (on by default) and opt-in
+  encrypted snapshot.
 - Settings › Legal — locally recorded acceptance of the current Terms/Privacy.
 
 See also [SECURITY.md](../SECURITY.md) for the threat model and the
