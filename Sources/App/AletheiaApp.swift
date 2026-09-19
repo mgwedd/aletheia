@@ -51,6 +51,10 @@ struct AletheiaApp: App {
                         .environmentObject(settings)
                         .environmentObject(appModel)
                         .environmentObject(integrations)
+                        // A sheet gets a fresh environment on macOS, so the
+                        // objects FirstRunView (and the encryption setup sheet it
+                        // presents) reads must be injected here explicitly.
+                        .environmentObject(encryption)
                 }
                 .frame(minWidth: 900, minHeight: 600)
                 .task { await updateService.checkForUpdates() }
