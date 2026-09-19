@@ -39,9 +39,11 @@ struct SessionComment: Identifiable, Equatable {
 /// else and never leaves the Mac. Built on the OS's own `SQLite3` (a system
 /// library, no third-party dependency).
 ///
-/// Keyed by `<patientSlug>/<sessionFolder>`, which is unique per session and
-/// stable across reloads, so annotations follow the session even though
-/// `SessionRecord`s are rebuilt from disk each listing.
+/// Session-scoped rows (comments, notes, session chat) are keyed by the
+/// session's `UUID` — assigned once at creation and persisted in the session's
+/// `session.json` — and patient-scoped rows (chat threads) by the patient's
+/// `UUID`. Identity is never derived from a folder name or slug, so annotations
+/// follow a session or patient even if the on-disk folder is renamed or moved.
 final class CommentStore {
     private var db: OpaquePointer?
     /// Seals the PHI text columns (comment quote/body, note body) before they're
@@ -79,40 +81,36 @@ final class CommentStore {
 
     deinit { sqlite3_close(db) }
 
-    static func sessionKey(patientSlug: String, sessionFolder: String) -> String {
-        "\(patientSlug)/\(sessionFolder)"
-    }
-
     // MARK: - Schema
 
     private func createSchema() -> Bool {
         let sql = """
         CREATE TABLE IF NOT EXISTS comments (
             id TEXT PRIMARY KEY,
-            session_key TEXT NOT NULL,
+            session_id TEXT NOT NULL,
             quoted_text TEXT NOT NULL,
             body TEXT NOT NULL,
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL,
             anchor_seconds REAL
         );
-        CREATE INDEX IF NOT EXISTS idx_comments_session ON comments(session_key);
+        CREATE INDEX IF NOT EXISTS idx_comments_session ON comments(session_id);
         CREATE TABLE IF NOT EXISTS notes (
-            session_key TEXT PRIMARY KEY,
+            session_id TEXT PRIMARY KEY,
             body TEXT NOT NULL,
             updated_at REAL NOT NULL
         );
         CREATE TABLE IF NOT EXISTS chat_threads (
             id TEXT PRIMARY KEY,
-            patient_slug TEXT NOT NULL,
+            patient_id TEXT NOT NULL,
             title TEXT NOT NULL,
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL,
             messages TEXT NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_chat_threads_patient ON chat_threads(patient_slug);
+        CREATE INDEX IF NOT EXISTS idx_chat_threads_patient ON chat_threads(patient_id);
         CREATE TABLE IF NOT EXISTS session_chats (
-            session_key TEXT PRIMARY KEY,
+            session_id TEXT PRIMARY KEY,
             messages TEXT NOT NULL,
             updated_at REAL NOT NULL
         );
@@ -139,14 +137,13 @@ final class CommentStore {
 
     // MARK: - Comments
 
-    func comments(patientSlug: String, sessionFolder: String) -> [SessionComment] {
-        let key = Self.sessionKey(patientSlug: patientSlug, sessionFolder: sessionFolder)
+    func comments(sessionID: UUID) -> [SessionComment] {
         var result: [SessionComment] = []
-        let sql = "SELECT id, quoted_text, body, created_at, updated_at, anchor_seconds FROM comments WHERE session_key = ? ORDER BY created_at ASC;"
+        let sql = "SELECT id, quoted_text, body, created_at, updated_at, anchor_seconds FROM comments WHERE session_id = ? ORDER BY created_at ASC;"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, key)
+        bindText(stmt, 1, sessionID.uuidString)
         while sqlite3_step(stmt) == SQLITE_ROW {
             let anchor = sqlite3_column_type(stmt, 5) == SQLITE_NULL ? nil : sqlite3_column_double(stmt, 5)
             result.append(
@@ -164,15 +161,14 @@ final class CommentStore {
     }
 
     @discardableResult
-    func addComment(patientSlug: String, sessionFolder: String, quotedText: String, body: String, anchorSeconds: Double? = nil, now: Date = Date()) -> SessionComment? {
+    func addComment(sessionID: UUID, quotedText: String, body: String, anchorSeconds: Double? = nil, now: Date = Date()) -> SessionComment? {
         let comment = SessionComment(id: UUID().uuidString, quotedText: quotedText, body: body, createdAt: now, updatedAt: now, anchorSeconds: anchorSeconds)
-        let key = Self.sessionKey(patientSlug: patientSlug, sessionFolder: sessionFolder)
-        let sql = "INSERT INTO comments (id, session_key, quoted_text, body, created_at, updated_at, anchor_seconds) VALUES (?, ?, ?, ?, ?, ?, ?);"
+        let sql = "INSERT INTO comments (id, session_id, quoted_text, body, created_at, updated_at, anchor_seconds) VALUES (?, ?, ?, ?, ?, ?, ?);"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
         bindText(stmt, 1, comment.id)
-        bindText(stmt, 2, key)
+        bindText(stmt, 2, sessionID.uuidString)
         bindText(stmt, 3, encodeField(quotedText))
         bindText(stmt, 4, encodeField(body))
         sqlite3_bind_double(stmt, 5, now.timeIntervalSince1970)
@@ -205,27 +201,25 @@ final class CommentStore {
 
     // MARK: - Notes
 
-    func note(patientSlug: String, sessionFolder: String) -> String {
-        let key = Self.sessionKey(patientSlug: patientSlug, sessionFolder: sessionFolder)
-        let sql = "SELECT body FROM notes WHERE session_key = ?;"
+    func note(sessionID: UUID) -> String {
+        let sql = "SELECT body FROM notes WHERE session_id = ?;"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return "" }
         defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, key)
+        bindText(stmt, 1, sessionID.uuidString)
         return sqlite3_step(stmt) == SQLITE_ROW ? decodeField(columnText(stmt, 0)) : ""
     }
 
     @discardableResult
-    func saveNote(patientSlug: String, sessionFolder: String, text: String, now: Date = Date()) -> Bool {
-        let key = Self.sessionKey(patientSlug: patientSlug, sessionFolder: sessionFolder)
+    func saveNote(sessionID: UUID, text: String, now: Date = Date()) -> Bool {
         let sql = """
-        INSERT INTO notes (session_key, body, updated_at) VALUES (?, ?, ?)
-        ON CONFLICT(session_key) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at;
+        INSERT INTO notes (session_id, body, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at;
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
         defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, key)
+        bindText(stmt, 1, sessionID.uuidString)
         bindText(stmt, 2, encodeField(text))
         sqlite3_bind_double(stmt, 3, now.timeIntervalSince1970)
         return sqlite3_step(stmt) == SQLITE_DONE
@@ -235,13 +229,13 @@ final class CommentStore {
 
     /// A patient's chat threads, most-recently-active first. Titles and the
     /// message payload are sealed per-field like every other PHI column.
-    func chatThreads(patientSlug: String) -> [ChatThread] {
+    func chatThreads(patientID: UUID) -> [ChatThread] {
         var result: [ChatThread] = []
-        let sql = "SELECT id, title, created_at, updated_at, messages FROM chat_threads WHERE patient_slug = ? ORDER BY updated_at DESC;"
+        let sql = "SELECT id, title, created_at, updated_at, messages FROM chat_threads WHERE patient_id = ? ORDER BY updated_at DESC;"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, patientSlug)
+        bindText(stmt, 1, patientID.uuidString)
         while sqlite3_step(stmt) == SQLITE_ROW {
             guard let id = UUID(uuidString: columnText(stmt, 0)) else { continue }
             result.append(
@@ -260,9 +254,9 @@ final class CommentStore {
     /// Inserts a thread or updates it in place (by id). `created_at` and the
     /// owning patient are fixed at insert; edits carry title/messages/updated_at.
     @discardableResult
-    func saveChatThread(_ thread: ChatThread, patientSlug: String) -> Bool {
+    func saveChatThread(_ thread: ChatThread, patientID: UUID) -> Bool {
         let sql = """
-        INSERT INTO chat_threads (id, patient_slug, title, created_at, updated_at, messages)
+        INSERT INTO chat_threads (id, patient_id, title, created_at, updated_at, messages)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
@@ -273,7 +267,7 @@ final class CommentStore {
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
         defer { sqlite3_finalize(stmt) }
         bindText(stmt, 1, thread.id.uuidString)
-        bindText(stmt, 2, patientSlug)
+        bindText(stmt, 2, patientID.uuidString)
         bindText(stmt, 3, encodeField(thread.title))
         sqlite3_bind_double(stmt, 4, thread.createdAt.timeIntervalSince1970)
         sqlite3_bind_double(stmt, 5, thread.updatedAt.timeIntervalSince1970)
@@ -282,13 +276,13 @@ final class CommentStore {
     }
 
     @discardableResult
-    func deleteChatThread(id: UUID, patientSlug: String) -> Bool {
-        let sql = "DELETE FROM chat_threads WHERE id = ? AND patient_slug = ?;"
+    func deleteChatThread(id: UUID, patientID: UUID) -> Bool {
+        let sql = "DELETE FROM chat_threads WHERE id = ? AND patient_id = ?;"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
         defer { sqlite3_finalize(stmt) }
         bindText(stmt, 1, id.uuidString)
-        bindText(stmt, 2, patientSlug)
+        bindText(stmt, 2, patientID.uuidString)
         return sqlite3_step(stmt) == SQLITE_DONE
     }
 
@@ -296,39 +290,37 @@ final class CommentStore {
 
     /// The assistant conversation held on one session's transcript. Like a chat
     /// thread's, the whole message array is stored as one sealed JSON blob, keyed
-    /// by the session's stable `<patientSlug>/<sessionFolder>` key.
-    func sessionChat(patientSlug: String, sessionFolder: String) -> [ChatMessage] {
-        let key = Self.sessionKey(patientSlug: patientSlug, sessionFolder: sessionFolder)
-        let sql = "SELECT messages FROM session_chats WHERE session_key = ?;"
+    /// by the session's stable `UUID`.
+    func sessionChat(sessionID: UUID) -> [ChatMessage] {
+        let sql = "SELECT messages FROM session_chats WHERE session_id = ?;"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, key)
+        bindText(stmt, 1, sessionID.uuidString)
         return sqlite3_step(stmt) == SQLITE_ROW ? decodeMessages(columnText(stmt, 0)) : []
     }
 
-    /// Upserts a session's chat by its session key. An empty conversation clears
+    /// Upserts a session's chat by its session id. An empty conversation clears
     /// the row rather than storing an empty blob, so the table stays tidy for the
     /// many sessions that are never chatted about.
     @discardableResult
-    func saveSessionChat(_ messages: [ChatMessage], patientSlug: String, sessionFolder: String, now: Date = Date()) -> Bool {
-        let key = Self.sessionKey(patientSlug: patientSlug, sessionFolder: sessionFolder)
+    func saveSessionChat(_ messages: [ChatMessage], sessionID: UUID, now: Date = Date()) -> Bool {
         if messages.isEmpty {
-            let sql = "DELETE FROM session_chats WHERE session_key = ?;"
+            let sql = "DELETE FROM session_chats WHERE session_id = ?;"
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
             defer { sqlite3_finalize(stmt) }
-            bindText(stmt, 1, key)
+            bindText(stmt, 1, sessionID.uuidString)
             return sqlite3_step(stmt) == SQLITE_DONE
         }
         let sql = """
-        INSERT INTO session_chats (session_key, messages, updated_at) VALUES (?, ?, ?)
-        ON CONFLICT(session_key) DO UPDATE SET messages = excluded.messages, updated_at = excluded.updated_at;
+        INSERT INTO session_chats (session_id, messages, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET messages = excluded.messages, updated_at = excluded.updated_at;
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
         defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, key)
+        bindText(stmt, 1, sessionID.uuidString)
         bindText(stmt, 2, encodeMessages(messages))
         sqlite3_bind_double(stmt, 3, now.timeIntervalSince1970)
         return sqlite3_step(stmt) == SQLITE_DONE
@@ -407,16 +399,16 @@ final class CommentStore {
             guard ok else { return false }
         }
 
-        // Notes: gather (session_key, body), then update each.
+        // Notes: gather (session_id, body), then update each.
         var notes: [(key: String, body: String)] = []
-        guard sqlite3_prepare_v2(db, "SELECT session_key, body FROM notes;", -1, &stmt, nil) == SQLITE_OK else { return false }
+        guard sqlite3_prepare_v2(db, "SELECT session_id, body FROM notes;", -1, &stmt, nil) == SQLITE_OK else { return false }
         while sqlite3_step(stmt) == SQLITE_ROW {
             notes.append((columnText(stmt, 0), columnText(stmt, 1)))
         }
         sqlite3_finalize(stmt)
         for row in notes {
             var up: OpaquePointer?
-            guard sqlite3_prepare_v2(db, "UPDATE notes SET body = ? WHERE session_key = ?;", -1, &up, nil) == SQLITE_OK else { return false }
+            guard sqlite3_prepare_v2(db, "UPDATE notes SET body = ? WHERE session_id = ?;", -1, &up, nil) == SQLITE_OK else { return false }
             bindText(up, 1, recode(row.body))
             bindText(up, 2, row.key)
             let ok = sqlite3_step(up) == SQLITE_DONE
@@ -442,16 +434,16 @@ final class CommentStore {
             guard ok else { return false }
         }
 
-        // Session chats: gather (session_key, messages), then update each.
+        // Session chats: gather (session_id, messages), then update each.
         var sessionChats: [(key: String, messages: String)] = []
-        guard sqlite3_prepare_v2(db, "SELECT session_key, messages FROM session_chats;", -1, &stmt, nil) == SQLITE_OK else { return false }
+        guard sqlite3_prepare_v2(db, "SELECT session_id, messages FROM session_chats;", -1, &stmt, nil) == SQLITE_OK else { return false }
         while sqlite3_step(stmt) == SQLITE_ROW {
             sessionChats.append((columnText(stmt, 0), columnText(stmt, 1)))
         }
         sqlite3_finalize(stmt)
         for row in sessionChats {
             var up: OpaquePointer?
-            guard sqlite3_prepare_v2(db, "UPDATE session_chats SET messages = ? WHERE session_key = ?;", -1, &up, nil) == SQLITE_OK else { return false }
+            guard sqlite3_prepare_v2(db, "UPDATE session_chats SET messages = ? WHERE session_id = ?;", -1, &up, nil) == SQLITE_OK else { return false }
             bindText(up, 1, recode(row.messages))
             bindText(up, 2, row.key)
             let ok = sqlite3_step(up) == SQLITE_DONE

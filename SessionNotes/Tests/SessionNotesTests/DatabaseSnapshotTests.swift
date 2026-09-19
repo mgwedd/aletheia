@@ -24,9 +24,11 @@ final class DatabaseSnapshotTests: XCTestCase {
 
     func testSnapshotIsConsistentAndReopenable() throws {
         let store = try makeStore()
-        store.addComment(patientSlug: "p", sessionFolder: "s", quotedText: "q", body: "b")
-        _ = store.saveNote(patientSlug: "p", sessionFolder: "s", text: "note body")
-        store.saveChatThread(ChatThread(title: "Thread"), patientSlug: "p")
+        let session = UUID()
+        let patient = UUID()
+        store.addComment(sessionID: session, quotedText: "q", body: "b")
+        _ = store.saveNote(sessionID: session, text: "note body")
+        store.saveChatThread(ChatThread(title: "Thread"), patientID: patient)
 
         let snapshot = try XCTUnwrap(
             DatabaseSnapshotManager(root: tempRoot).makeSnapshot(of: store, reason: "test")
@@ -39,9 +41,9 @@ final class DatabaseSnapshotTests: XCTestCase {
         try FileManager.default.copyItem(at: snapshot, to: CommentStore.databaseURL(root: otherRoot))
         let reopened = try XCTUnwrap(CommentStore(root: otherRoot))
 
-        XCTAssertEqual(reopened.comments(patientSlug: "p", sessionFolder: "s").map(\.body), ["b"])
-        XCTAssertEqual(reopened.note(patientSlug: "p", sessionFolder: "s"), "note body")
-        XCTAssertEqual(reopened.chatThreads(patientSlug: "p").map(\.title), ["Thread"])
+        XCTAssertEqual(reopened.comments(sessionID: session).map(\.body), ["b"])
+        XCTAssertEqual(reopened.note(sessionID: session), "note body")
+        XCTAssertEqual(reopened.chatThreads(patientID: patient).map(\.title), ["Thread"])
     }
 
     func testRetentionKeepsNewestN() throws {
@@ -65,20 +67,21 @@ final class DatabaseSnapshotTests: XCTestCase {
     func testRestoreReturnsLiveDatabaseToSnapshotState() throws {
         let manager = DatabaseSnapshotManager(root: tempRoot)
         let liveURL = CommentStore.databaseURL(root: tempRoot)
+        let session = UUID()
         var snapshot: URL!
 
         // Scope the store so ARC closes its connection before we restore.
         do {
             let store = try makeStore()
-            _ = store.saveNote(patientSlug: "p", sessionFolder: "s", text: "original")
+            _ = store.saveNote(sessionID: session, text: "original")
             snapshot = try XCTUnwrap(manager.makeSnapshot(of: store, reason: "before-edit"))
-            _ = store.saveNote(patientSlug: "p", sessionFolder: "s", text: "edited-after-snapshot")
+            _ = store.saveNote(sessionID: session, text: "edited-after-snapshot")
         }
 
         XCTAssertTrue(manager.restore(snapshot, to: liveURL))
 
         let reopened = try XCTUnwrap(CommentStore(root: tempRoot))
-        XCTAssertEqual(reopened.note(patientSlug: "p", sessionFolder: "s"), "original",
+        XCTAssertEqual(reopened.note(sessionID: session), "original",
                        "restore rolls the live DB back to the snapshot")
         XCTAssertTrue(FileManager.default.fileExists(atPath: snapshot.path),
                       "the snapshot file survives a restore")
@@ -87,7 +90,7 @@ final class DatabaseSnapshotTests: XCTestCase {
     func testSnapshotOfSealedDatabaseStaysSealed() throws {
         let keyed = FileProtector(key: SymmetricKey(size: .bits256))
         let store = try XCTUnwrap(CommentStore(root: tempRoot, protector: keyed))
-        _ = store.saveNote(patientSlug: "p", sessionFolder: "s", text: "confidential detail")
+        _ = store.saveNote(sessionID: UUID(), text: "confidential detail")
 
         let snapshot = try XCTUnwrap(
             DatabaseSnapshotManager(root: tempRoot).makeSnapshot(of: store, reason: "sealed")

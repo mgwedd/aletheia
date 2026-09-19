@@ -80,29 +80,31 @@ final class EncryptedStoreTests: XCTestCase {
 
     func testCommentColumnsAreEncryptedAtRest() throws {
         let store = try XCTUnwrap(CommentStore(root: tempRoot, protector: keyed))
-        _ = store.addComment(patientSlug: "alex-doe", sessionFolder: "2026-09-18_Session",
+        let session = UUID()
+        _ = store.addComment(sessionID: session,
                              quotedText: "felt anxious", body: "explore triggers next time")
-        XCTAssertEqual(store.note(patientSlug: "alex-doe", sessionFolder: "2026-09-18_Session"), "")
-        store.saveNote(patientSlug: "alex-doe", sessionFolder: "2026-09-18_Session", text: "private note body")
+        XCTAssertEqual(store.note(sessionID: session), "")
+        store.saveNote(sessionID: session, text: "private note body")
 
         // Keyed reader recovers plaintext.
-        let comment = try XCTUnwrap(store.comments(patientSlug: "alex-doe", sessionFolder: "2026-09-18_Session").first)
+        let comment = try XCTUnwrap(store.comments(sessionID: session).first)
         XCTAssertEqual(comment.quotedText, "felt anxious")
         XCTAssertEqual(comment.body, "explore triggers next time")
-        XCTAssertEqual(store.note(patientSlug: "alex-doe", sessionFolder: "2026-09-18_Session"), "private note body")
+        XCTAssertEqual(store.note(sessionID: session), "private note body")
 
         // A passthrough reader over the same DB cannot recover the plaintext.
         let locked = try XCTUnwrap(CommentStore(root: tempRoot, protector: .passthrough))
-        let lockedComment = try XCTUnwrap(locked.comments(patientSlug: "alex-doe", sessionFolder: "2026-09-18_Session").first)
+        let lockedComment = try XCTUnwrap(locked.comments(sessionID: session).first)
         XCTAssertNotEqual(lockedComment.body, "explore triggers next time")
-        XCTAssertNotEqual(locked.note(patientSlug: "alex-doe", sessionFolder: "2026-09-18_Session"), "private note body")
+        XCTAssertNotEqual(locked.note(sessionID: session), "private note body")
     }
 
     func testLegacyPlaintextCommentsStayReadableUnderKey() throws {
+        let session = UUID()
         let plain = try XCTUnwrap(CommentStore(root: tempRoot, protector: .passthrough))
-        plain.saveNote(patientSlug: "casey", sessionFolder: "2026-09-18_Session", text: "written before encryption")
+        plain.saveNote(sessionID: session, text: "written before encryption")
 
         let keyedReader = try XCTUnwrap(CommentStore(root: tempRoot, protector: keyed))
-        XCTAssertEqual(keyedReader.note(patientSlug: "casey", sessionFolder: "2026-09-18_Session"), "written before encryption")
+        XCTAssertEqual(keyedReader.note(sessionID: session), "written before encryption")
     }
 }

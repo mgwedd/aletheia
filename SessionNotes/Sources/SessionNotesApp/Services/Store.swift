@@ -18,10 +18,20 @@ enum StoreError: LocalizedError {
 ///
 ///   <dataRoot>/Patients/<Patient-Slug>/patient.json
 ///   <dataRoot>/Patients/<Patient-Slug>/YYYY-MM-DD_Session/
+///       session.json       (the session's stable id + date)
 ///       mic.caf            (therapist's microphone)
 ///       call.caf            (the other side of the call, captured system audio)
 ///       transcript.txt
 ///       summary.txt
+///
+/// Identity is a persisted `UUID`, never the path. A patient's id lives in
+/// `patient.json`, a session's in `session.json` — both assigned once at
+/// creation. The folder names (`<Patient-Slug>/`, `YYYY-MM-DD_Session/`) are a
+/// human-friendly *organization* detail, freely renamable: the SQLite store
+/// (`CommentStore`) keys comments/notes/chats on those ids, so annotations
+/// follow a session or patient across a rename or move. A folder that turns up
+/// without a `session.json` (created before this scheme, or dropped in by hand)
+/// is minted an id on first listing and stays stable from then on.
 ///
 /// Conversations (per-patient chat threads and each session's assistant chat)
 /// used to live in JSON files here (`ChatThreads/`, the legacy single-thread
@@ -34,6 +44,16 @@ enum StoreError: LocalizedError {
 /// `gatherPatientContext` is the one place cross-transcript context gets
 /// assembled for the chat feature. It's intentionally naive (concatenate
 /// everything) so it's the single spot to swap in real retrieval later.
+
+/// A session's persisted identity, stored as `session.json` inside the session
+/// folder. `id` is assigned once at creation and is the key everything in the
+/// database references; `date` is persisted too so the session keeps its date
+/// even once the folder name is no longer the source of truth (it's renamable).
+private struct SessionMetadata: Codable {
+    let id: UUID
+    let date: Date
+}
+
 final class Store {
     private let root: URL
     private let fileManager = FileManager.default
@@ -162,17 +182,17 @@ final class Store {
         guard fileManager.fileExists(atPath: dir.path) else { return [] }
         let entries = try fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isDirectoryKey])
         let sessions: [SessionRecord] = entries.compactMap { folder in
-            guard folder.lastPathComponent.hasSuffix("_Session") else { return nil }
             guard let isDir = try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory, isDir else { return nil }
-            // The date is always the leading "YYYY-MM-DD" of the folder
-            // name, whether it's "…_Session" or a collision-suffixed
-            // "…_Session-2".
-            let dateString = String(folder.lastPathComponent.prefix(10))
-            let date = dateFolderFormatter.date(from: dateString) ?? Date.distantPast
+            // A session folder is one carrying a `session.json` identity record,
+            // or (legacy / manually created) one named "…_Session". The latter
+            // is minted an id on sight so it becomes stable from here on.
+            let hasMetadata = fileManager.fileExists(atPath: sessionMetadataURL(for: folder).path)
+            guard hasMetadata || folder.lastPathComponent.hasSuffix("_Session") else { return nil }
+            let meta = sessionMetadata(for: folder)
             return SessionRecord(
-                id: StableID.uuid(from: folder.lastPathComponent),
+                id: meta.id,
                 patientId: patient.id,
-                date: date,
+                date: meta.date,
                 folderName: folder.lastPathComponent,
                 hasRecording: fileManager.fileExists(atPath: folder.appendingPathComponent("call.caf").path)
                     || fileManager.fileExists(atPath: folder.appendingPathComponent("mic.caf").path),
@@ -194,7 +214,46 @@ final class Store {
         }
         let sessionDir = dir.appendingPathComponent(folderName, isDirectory: true)
         try fileManager.createDirectory(at: sessionDir, withIntermediateDirectories: true)
-        return SessionRecord(id: StableID.uuid(from: folderName), patientId: patient.id, date: date, folderName: folderName)
+        // Assign the session's stable identity at creation and persist it.
+        let meta = SessionMetadata(id: UUID(), date: date)
+        try writeSessionMetadata(meta, to: sessionMetadataURL(for: sessionDir))
+        return SessionRecord(id: meta.id, patientId: patient.id, date: date, folderName: folderName)
+    }
+
+    // MARK: - Session identity
+
+    /// The `session.json` identity file for a session folder.
+    private func sessionMetadataURL(for sessionDir: URL) -> URL {
+        sessionDir.appendingPathComponent("session.json")
+    }
+
+    /// Reads a session folder's persisted identity, minting and persisting one
+    /// the first time a folder is seen without it (a folder from before this
+    /// scheme, or one a therapist created by hand in Finder). The date falls
+    /// back to the folder name's leading `YYYY-MM-DD` for such folders.
+    ///
+    /// Written as **plaintext**, not through the `protector`: it carries no name
+    /// or note text — only a UUID and the session date, and that date is already
+    /// visible in the cleartext folder name. Keeping it plaintext also keeps
+    /// identity independent of the encryption toggle (`DataMigrator` doesn't
+    /// rewrite this file), so turning encryption on/off can never orphan a
+    /// session by leaving its id file unreadable.
+    private func sessionMetadata(for sessionDir: URL) -> SessionMetadata {
+        let url = sessionMetadataURL(for: sessionDir)
+        if let data = try? Data(contentsOf: url),
+           let meta = try? JSONDecoder.sessionNotes.decode(SessionMetadata.self, from: data) {
+            return meta
+        }
+        let dateString = String(sessionDir.lastPathComponent.prefix(10))
+        let date = dateFolderFormatter.date(from: dateString) ?? Date.distantPast
+        let meta = SessionMetadata(id: UUID(), date: date)
+        try? writeSessionMetadata(meta, to: url)
+        return meta
+    }
+
+    private func writeSessionMetadata(_ meta: SessionMetadata, to url: URL) throws {
+        let data = try JSONEncoder.sessionNotes.encode(meta)
+        try data.write(to: url, options: .atomic)
     }
 
     func sessionDir(for patient: Patient, session: SessionRecord) -> URL {
@@ -236,11 +295,11 @@ final class Store {
     /// removed the first time this runs.
     func loadSessionChat(for patient: Patient, session: SessionRecord) -> [ChatMessage] {
         migrateLegacySessionChat(for: patient, session: session)
-        return commentStore?.sessionChat(patientSlug: patient.slug, sessionFolder: session.folderName) ?? []
+        return commentStore?.sessionChat(sessionID: session.id) ?? []
     }
 
     func saveSessionChat(_ messages: [ChatMessage], for patient: Patient, session: SessionRecord) throws {
-        commentStore?.saveSessionChat(messages, patientSlug: patient.slug, sessionFolder: session.folderName)
+        commentStore?.saveSessionChat(messages, sessionID: session.id)
     }
 
     /// One-time move of a session's file-based chat into SQLite, then removes the
@@ -257,7 +316,7 @@ final class Store {
             try? fileManager.removeItem(at: legacyFile)
             return
         }
-        guard commentStore.saveSessionChat(legacy, patientSlug: patient.slug, sessionFolder: session.folderName) else { return }
+        guard commentStore.saveSessionChat(legacy, sessionID: session.id) else { return }
         try? fileManager.removeItem(at: legacyFile)
     }
 
@@ -287,15 +346,15 @@ final class Store {
     /// into the DB and their files removed the first time this runs.
     func loadChatThreads(for patient: Patient) -> [ChatThread] {
         migrateLegacyChatThreads(for: patient)
-        return commentStore?.chatThreads(patientSlug: patient.slug) ?? []
+        return commentStore?.chatThreads(patientID: patient.id) ?? []
     }
 
     func saveChatThread(_ thread: ChatThread, for patient: Patient) throws {
-        commentStore?.saveChatThread(thread, patientSlug: patient.slug)
+        commentStore?.saveChatThread(thread, patientID: patient.id)
     }
 
     func deleteChatThread(id: UUID, for patient: Patient) throws {
-        commentStore?.deleteChatThread(id: id, patientSlug: patient.slug)
+        commentStore?.deleteChatThread(id: id, patientID: patient.id)
     }
 
     /// One-time move of a patient's file-based chat into SQLite, then removes the
@@ -319,7 +378,7 @@ final class Store {
                 guard
                     let data = (try? protector.dataIfPresent(at: url)) ?? nil,
                     let thread = try? JSONDecoder.sessionNotes.decode(ChatThread.self, from: data),
-                    commentStore.saveChatThread(thread, patientSlug: patient.slug)
+                    commentStore.saveChatThread(thread, patientID: patient.id)
                 else { allImported = false; continue }
             }
             if allImported { try? fileManager.removeItem(at: threadsDir) }
@@ -334,7 +393,7 @@ final class Store {
                     updatedAt: legacy.last?.date ?? Date(),
                     messages: legacy
                 )
-                guard commentStore.saveChatThread(thread, patientSlug: patient.slug) else { return }
+                guard commentStore.saveChatThread(thread, patientID: patient.id) else { return }
             }
         }
         // Retire the legacy single-thread file once its content is in the DB (or

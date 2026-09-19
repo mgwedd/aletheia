@@ -178,4 +178,65 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(loaded.map(\.text), ["legacy question", "legacy answer"])
         XCTAssertFalse(FileManager.default.fileExists(atPath: legacyFile.path), "legacy chat.json should be removed after import")
     }
+
+    // MARK: - Stable opaque identity (issue #64)
+
+    func testSessionIdentityIsPersistedNotDerivedFromFolder() throws {
+        let patient = try store.createPatient(name: "Persisted ID")
+        let session = try store.createSession(for: patient)
+
+        // The identity lives in session.json, written at creation.
+        let metaURL = store.sessionDir(for: patient, session: session).appendingPathComponent("session.json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: metaURL.path), "createSession persists session.json")
+
+        // Re-listing yields the same id (read back from disk, not re-derived).
+        let relisted = try XCTUnwrap(try store.listSessions(for: patient).first)
+        XCTAssertEqual(relisted.id, session.id)
+    }
+
+    /// The heart of #64: annotations key on the session's persisted UUID, so
+    /// renaming/moving the folder (even to a name that breaks the "…_Session"
+    /// convention) keeps a session's chat, notes, and comments attached.
+    func testAnnotationsFollowSessionAcrossFolderRename() throws {
+        let patient = try store.createPatient(name: "Mover")
+        let session = try store.createSession(for: patient)
+
+        let messages = [
+            ChatMessage(role: .user, text: "before the move"),
+            ChatMessage(role: .assistant, text: "still attached after"),
+        ]
+        try store.saveSessionChat(messages, for: patient, session: session)
+        // Notes/comments go through the same SQLite file the Store owns.
+        let comments = try XCTUnwrap(CommentStore(root: tempRoot))
+        comments.saveNote(sessionID: session.id, text: "kept note")
+        _ = comments.addComment(sessionID: session.id, quotedText: "q", body: "kept comment")
+
+        // Rename the folder on disk to a non-conventional name.
+        let oldDir = store.sessionDir(for: patient, session: session)
+        let newDir = store.patientDir(for: patient).appendingPathComponent("Renamed Folder", isDirectory: true)
+        try FileManager.default.moveItem(at: oldDir, to: newDir)
+
+        let relisted = try XCTUnwrap(try store.listSessions(for: patient).first)
+        XCTAssertEqual(relisted.id, session.id, "the session keeps its id across a folder rename")
+        XCTAssertEqual(relisted.folderName, "Renamed Folder")
+
+        XCTAssertEqual(store.loadSessionChat(for: patient, session: relisted).map(\.text), messages.map(\.text))
+        XCTAssertEqual(comments.note(sessionID: relisted.id), "kept note")
+        XCTAssertEqual(comments.comments(sessionID: relisted.id).map(\.body), ["kept comment"])
+    }
+
+    /// A folder created without a session.json (dropped in by hand, or from
+    /// before this scheme) is minted a stable id on first listing and keeps it.
+    func testFolderWithoutMetadataIsMintedStableID() throws {
+        let patient = try store.createPatient(name: "Hand Made")
+        let folder = store.patientDir(for: patient).appendingPathComponent("2026-05-01_Session", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        let first = try XCTUnwrap(try store.listSessions(for: patient).first)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("session.json").path),
+                      "listing mints and persists an id for a metadata-less folder")
+
+        let second = try XCTUnwrap(try store.listSessions(for: patient).first)
+        XCTAssertEqual(first.id, second.id, "the minted id is stable on subsequent listings")
+    }
 }
