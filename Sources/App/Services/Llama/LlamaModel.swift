@@ -36,6 +36,20 @@ enum LlamaModel: String, CaseIterable, Identifiable, Codable, Hashable {
 
     var fileName: String { "\(rawValue).gguf" }
 
+    /// Pinned SHA-256 of the exact GGUF asset, checked by `LlamaModelDownloader`
+    /// before a downloaded model is accepted. `nil` means "not pinned yet" — the
+    /// download proceeds unverified, which is why the embedded backend stays
+    /// staged (see README › Embedded llama.cpp): pinning these is part of the
+    /// on-a-Mac bring-up. Hugging Face stores LFS blobs *by* their SHA-256, so
+    /// the value can be read from the file's LFS pointer (`oid sha256:…`) without
+    /// downloading the whole weight, then confirmed against a real download.
+    var expectedSHA256: String? {
+        switch self {
+        case .llama32_1b: return nil
+        case .llama32_3b: return nil
+        }
+    }
+
     /// Official GGUF conversions published by ggml-org (the llama.cpp project),
     /// keeping the weights on a first-party source rather than a random mirror.
     /// The exact asset paths must be confirmed on a real Mac during the staged
