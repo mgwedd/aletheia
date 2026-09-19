@@ -159,4 +159,23 @@ final class StoreTests: XCTestCase {
         let describe = { (list: [ChatMessage]) in list.map { "\($0.role.rawValue)|\($0.text)" } }
         XCTAssertEqual(describe(reloaded), describe(messages))
     }
+
+    /// A `chat.json` from a build before the SQLite offload is imported into the
+    /// DB on first load and the file is retired.
+    func testLegacySessionChatFileMigratesToDatabase() throws {
+        let patient = try store.createPatient(name: "Legacy Chat")
+        let session = try store.createSession(for: patient)
+
+        let legacyFile = store.sessionDir(for: patient, session: session).appendingPathComponent("chat.json")
+        let messages = [
+            ChatMessage(role: .user, text: "legacy question"),
+            ChatMessage(role: .assistant, text: "legacy answer"),
+        ]
+        try JSONEncoder.sessionNotes.encode(messages).write(to: legacyFile)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyFile.path))
+
+        let loaded = store.loadSessionChat(for: patient, session: session)
+        XCTAssertEqual(loaded.map(\.text), ["legacy question", "legacy answer"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyFile.path), "legacy chat.json should be removed after import")
+    }
 }

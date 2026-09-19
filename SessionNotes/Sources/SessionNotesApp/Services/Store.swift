@@ -22,13 +22,14 @@ enum StoreError: LocalizedError {
 ///       call.caf            (the other side of the call, captured system audio)
 ///       transcript.txt
 ///       summary.txt
-///       chat.json
 ///
-/// Patient chat threads used to live one-JSON-file-per-thread under
-/// `ChatThreads/` (plus a legacy single-thread `patient_chat.json`); they're now
-/// rows in the SQLite store (`CommentStore`), reached through the same
-/// `loadChatThreads`/`saveChatThread` API. Any leftover files are imported into
-/// the DB on first access and then removed (see `migrateLegacyChatThreads`).
+/// Conversations (per-patient chat threads and each session's assistant chat)
+/// used to live in JSON files here (`ChatThreads/`, the legacy single-thread
+/// `patient_chat.json`, and per-session `chat.json`); they're now rows in the
+/// SQLite store (`CommentStore`), reached through the same `loadChatThreads` /
+/// `loadSessionChat` API. Any leftover files are imported into the DB on first
+/// access and then removed (see `migrateLegacyChatThreads` /
+/// `migrateLegacySessionChat`). Transcripts, summaries, and audio stay as files.
 ///
 /// `gatherPatientContext` is the one place cross-transcript context gets
 /// assembled for the chat feature. It's intentionally naive (concatenate
@@ -230,12 +231,34 @@ final class Store {
 
     // MARK: - Chat
 
+    /// A session's assistant conversation, read from the DB. Any leftover
+    /// `chat.json` (from a build before this offload) is imported into the DB and
+    /// removed the first time this runs.
     func loadSessionChat(for patient: Patient, session: SessionRecord) -> [ChatMessage] {
-        loadChat(at: sessionDir(for: patient, session: session).appendingPathComponent("chat.json"))
+        migrateLegacySessionChat(for: patient, session: session)
+        return commentStore?.sessionChat(patientSlug: patient.slug, sessionFolder: session.folderName) ?? []
     }
 
     func saveSessionChat(_ messages: [ChatMessage], for patient: Patient, session: SessionRecord) throws {
-        try saveChat(messages, at: sessionDir(for: patient, session: session).appendingPathComponent("chat.json"))
+        commentStore?.saveSessionChat(messages, patientSlug: patient.slug, sessionFolder: session.folderName)
+    }
+
+    /// One-time move of a session's file-based chat into SQLite, then removes the
+    /// file. Idempotent: once `chat.json` is gone there's nothing to import. The
+    /// file is deleted only after its content is safely written to the DB, so an
+    /// interrupted run re-imports rather than losing anything (the upsert is keyed
+    /// by session key). An empty `chat.json` is just retired.
+    private func migrateLegacySessionChat(for patient: Patient, session: SessionRecord) {
+        guard let commentStore else { return }
+        let legacyFile = sessionDir(for: patient, session: session).appendingPathComponent("chat.json")
+        guard fileManager.fileExists(atPath: legacyFile.path) else { return }
+        let legacy = loadChat(at: legacyFile)
+        if legacy.isEmpty {
+            try? fileManager.removeItem(at: legacyFile)
+            return
+        }
+        guard commentStore.saveSessionChat(legacy, patientSlug: patient.slug, sessionFolder: session.folderName) else { return }
+        try? fileManager.removeItem(at: legacyFile)
     }
 
     func loadPatientChat(for patient: Patient) -> [ChatMessage] {
