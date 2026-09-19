@@ -9,6 +9,10 @@ struct EncryptionSetupSheet: View {
     @State private var passphrase = ""
     @State private var confirm = ""
     @State private var acknowledged = false
+    /// Default on: store the key in this Mac's keychain so, after this one-time
+    /// setup, encryption is transparent on every later launch. The passphrase
+    /// stays the recovery path if the keychain is ever lost.
+    @State private var rememberOnDevice = true
     @State private var working = false
     @State private var didEnable = false
     @State private var warning: String?
@@ -38,6 +42,9 @@ struct EncryptionSetupSheet: View {
             }
 
             Toggle("I understand my data can't be recovered if I lose this passphrase.", isOn: $acknowledged)
+
+            Toggle("Remember on this Mac", isOn: $rememberOnDevice)
+                .help("Stores the key in this Mac's login keychain so you won't be asked for the passphrase on later launches. Leave off for maximum security.")
 
             if let warning {
                 Text(warning).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
@@ -73,6 +80,7 @@ struct EncryptionSetupSheet: View {
         Task { @MainActor in
             do {
                 let result = try encryption.enable(passphrase: passphrase)
+                if rememberOnDevice { try? encryption.rememberOnDevice() }
                 working = false
                 didEnable = true
                 if !result.isComplete {

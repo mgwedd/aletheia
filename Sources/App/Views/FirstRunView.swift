@@ -3,10 +3,12 @@ import SwiftUI
 struct FirstRunView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var encryption: EncryptionManager
 
     /// Set once the user ticks the acceptance box. Not persisted until they
     /// press "Get Started" — that's the moment acceptance is recorded on disk.
     @State private var agreedToLegal = false
+    @State private var showEncryptionSetup = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +36,10 @@ struct FirstRunView: View {
 
                     Divider()
 
+                    encryptionSection
+
+                    Divider()
+
                     legalSection
                 }
                 .padding(32)
@@ -57,6 +63,49 @@ struct FirstRunView: View {
             .padding(20)
         }
         .frame(width: 600, height: 680)
+    }
+
+    /// Recommends turning on at-rest encryption as part of setup — Aletheia's
+    /// default posture. Shown as an opt-out step: the therapist can set it up now
+    /// or proceed and turn it on later in Settings; it never blocks "Get Started".
+    @ViewBuilder
+    private var encryptionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Protect your data").font(.headline)
+            if encryption.isEnabled {
+                Label("At-rest encryption is on for this folder.", systemImage: "checkmark.seal.fill")
+                    .font(.callout)
+                    .foregroundStyle(.green)
+            } else if EncryptionOnboarding.isRecommended(
+                dataFolderChosen: settings.dataRootURL != nil,
+                alreadyEnabled: encryption.isEnabled
+            ) {
+                Text("Recommended: encrypt your notes, transcripts, summaries, chat, and recordings on disk with a recovery passphrase — on top of the app lock. It keeps your data protected even on an external drive, in a backup, or in a synced folder.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 12) {
+                    Button {
+                        showEncryptionSetup = true
+                    } label: {
+                        Label("Set Up Encryption", systemImage: "lock.shield")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Text("Or turn it on later in Settings. FileVault is recommended either way.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                // No data folder chosen yet — the checklist above prompts for it.
+                Text("Choose a data folder above, then you can turn on at-rest encryption here.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .sheet(isPresented: $showEncryptionSetup) {
+            EncryptionSetupSheet()
+                .environmentObject(encryption)
+        }
     }
 
     private var legalSection: some View {
