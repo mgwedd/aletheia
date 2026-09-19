@@ -86,6 +86,19 @@ final class SQLitePersistenceCore: PersistenceCore {
               kind: kind, scope: ownerID.uuidString)
     }
 
+    func allRecords(kind: String) -> [PersistedRecord] {
+        let sql = "SELECT kind, id, owner_id, item_id, payload, created_at, updated_at FROM records WHERE kind = ? ORDER BY created_at ASC;"
+        var result: [PersistedRecord] = []
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, kind)
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            result.append(row(stmt))
+        }
+        return result
+    }
+
     @discardableResult
     func put(_ record: PersistedRecord) -> Bool {
         // INSERT OR REPLACE swaps the whole row by (kind, id), matching the

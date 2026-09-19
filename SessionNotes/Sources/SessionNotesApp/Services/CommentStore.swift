@@ -1,5 +1,4 @@
 import Foundation
-import SQLite3
 
 /// One margin comment the therapist anchored to a piece of a transcript
 /// (Google-Docs style). `quotedText` is the passage it's attached to; `body` is
@@ -33,11 +32,26 @@ struct SessionComment: Identifiable, Equatable {
 }
 
 /// Local database for the therapist's own annotations — inline transcript
-/// comments and freeform per-session notes. These are PHI, and the user asked
-/// for a real local database, so this is SQLite living *inside the chosen data
-/// folder* (`<dataRoot>/SessionNotes.sqlite`) — it backs up with everything
-/// else and never leaves the Mac. Built on the OS's own `SQLite3` (a system
-/// library, no third-party dependency).
+/// comments, freeform per-session notes, per-session assistant chat, and
+/// per-patient chat threads. These are PHI, and the user asked for a real
+/// local database, so this is SQLite living *inside the chosen data folder*
+/// (`<dataRoot>/SessionNotes.sqlite`) — it backs up with everything else and
+/// never leaves the Mac.
+///
+/// As of Arch v2 (2) (#65/#74/#76) this class is a thin domain-named adapter,
+/// not the storage itself: the actual reading and writing happens in
+/// `AnnotationRepository` and `ChatRepository`, both built on the generic
+/// `PersistenceCore` (`SQLitePersistenceCore` here). The bespoke `comments` /
+/// `notes` / `chat_threads` / `session_chats` tables this class used to own
+/// directly are gone — everything now lives in the core's one `records`
+/// table — which is a clean cut rather than a migration, since there are no
+/// existing installs to carry forward.
+///
+/// This type is kept, under its original name and with its original method
+/// signatures, purely so its existing callers — `Store` (which shares one
+/// instance with it for chat data) and views that reach
+/// `AppModel.commentStore` directly for comments/notes — need no changes for
+/// this slice. See the PR description for that coordination trade-off.
 ///
 /// Session-scoped rows (comments, notes, session chat) are keyed by the
 /// session's `UUID` — assigned once at creation and persisted in the session's
@@ -45,16 +59,17 @@ struct SessionComment: Identifiable, Equatable {
 /// `UUID`. Identity is never derived from a folder name or slug, so annotations
 /// follow a session or patient even if the on-disk folder is renamed or moved.
 final class CommentStore {
-    private var db: OpaquePointer?
-    /// Seals the PHI text columns (comment quote/body, note body) before they're
-    /// bound, and opens them on read. No SQLCipher: the DB file, schema, keys and
-    /// timestamps stay a normal SQLite file — only the free-text values are
-    /// sealed. `.passthrough` (the default) stores plain text, unchanged.
+    private let core: SQLitePersistenceCore
+    private let annotations: AnnotationRepository
+    private let chats: ChatRepository
+    /// Kept only for `reencrypt(to:)`, which needs to know the protector the
+    /// store's current payloads are sealed under before re-sealing them.
     private let protector: FileProtector
 
-    // SQLite wants to know whether a bound string outlives the call; TRANSIENT
-    // tells it to copy, which is always safe here.
-    private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    /// Every record kind this store's data lives under, for operations (only
+    /// `reencrypt`, today) that must walk everything regardless of which
+    /// repository owns it.
+    private static let allKinds = ["comment", "note", "sessionChat", "chatThread"]
 
     /// The database file for a given data folder — the single SQLite store all
     /// annotations, notes, and chat threads live in.
@@ -63,409 +78,103 @@ final class CommentStore {
     }
 
     init?(root: URL, protector: FileProtector = .passthrough) {
+        guard let core = SQLitePersistenceCore(url: Self.databaseURL(root: root)) else { return nil }
+        self.core = core
         self.protector = protector
-        let url = Self.databaseURL(root: root)
-        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
-            return nil
-        }
-        // PHI hygiene: zero freed pages and cells so plaintext that's deleted or
-        // re-sealed (a removed comment, a thread re-encrypted on an encryption
-        // toggle) can't survive in the file's free space and be recovered.
-        _ = exec("PRAGMA secure_delete = ON;")
-        guard createSchema() else {
-            sqlite3_close(db)
-            return nil
-        }
-    }
-
-    deinit { sqlite3_close(db) }
-
-    // MARK: - Schema
-
-    private func createSchema() -> Bool {
-        let sql = """
-        CREATE TABLE IF NOT EXISTS comments (
-            id TEXT PRIMARY KEY,
-            session_id TEXT NOT NULL,
-            quoted_text TEXT NOT NULL,
-            body TEXT NOT NULL,
-            created_at REAL NOT NULL,
-            updated_at REAL NOT NULL,
-            anchor_seconds REAL
-        );
-        CREATE INDEX IF NOT EXISTS idx_comments_session ON comments(session_id);
-        CREATE TABLE IF NOT EXISTS notes (
-            session_id TEXT PRIMARY KEY,
-            body TEXT NOT NULL,
-            updated_at REAL NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS chat_threads (
-            id TEXT PRIMARY KEY,
-            patient_id TEXT NOT NULL,
-            title TEXT NOT NULL,
-            created_at REAL NOT NULL,
-            updated_at REAL NOT NULL,
-            messages TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_chat_threads_patient ON chat_threads(patient_id);
-        CREATE TABLE IF NOT EXISTS session_chats (
-            session_id TEXT PRIMARY KEY,
-            messages TEXT NOT NULL,
-            updated_at REAL NOT NULL
-        );
-        """
-        guard exec(sql) else { return false }
-        // A database created before time anchors won't have the column; add it.
-        // (It's nullable, so existing comments simply have no anchor.)
-        ensureColumn("anchor_seconds", type: "REAL", on: "comments")
-        return true
-    }
-
-    /// Adds a column to a table if it isn't already there, so older databases
-    /// upgrade in place. Ignores the "duplicate column" case by checking first.
-    private func ensureColumn(_ column: String, type: String, on table: String) {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "PRAGMA table_info(\(table));", -1, &stmt, nil) == SQLITE_OK else { return }
-        var present = false
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            if columnText(stmt, 1) == column { present = true }
-        }
-        sqlite3_finalize(stmt)
-        if !present { _ = exec("ALTER TABLE \(table) ADD COLUMN \(column) \(type);") }
+        self.annotations = AnnotationRepository(core: core, protector: protector)
+        self.chats = ChatRepository(core: core, protector: protector)
     }
 
     // MARK: - Comments
 
     func comments(sessionID: UUID) -> [SessionComment] {
-        var result: [SessionComment] = []
-        let sql = "SELECT id, quoted_text, body, created_at, updated_at, anchor_seconds FROM comments WHERE session_id = ? ORDER BY created_at ASC;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, sessionID.uuidString)
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let anchor = sqlite3_column_type(stmt, 5) == SQLITE_NULL ? nil : sqlite3_column_double(stmt, 5)
-            result.append(
-                SessionComment(
-                    id: columnText(stmt, 0),
-                    quotedText: decodeField(columnText(stmt, 1)),
-                    body: decodeField(columnText(stmt, 2)),
-                    createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)),
-                    updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)),
-                    anchorSeconds: anchor
-                )
-            )
-        }
-        return result
+        annotations.comments(sessionID: sessionID)
     }
 
     @discardableResult
     func addComment(sessionID: UUID, quotedText: String, body: String, anchorSeconds: Double? = nil, now: Date = Date()) -> SessionComment? {
-        let comment = SessionComment(id: UUID().uuidString, quotedText: quotedText, body: body, createdAt: now, updatedAt: now, anchorSeconds: anchorSeconds)
-        let sql = "INSERT INTO comments (id, session_id, quoted_text, body, created_at, updated_at, anchor_seconds) VALUES (?, ?, ?, ?, ?, ?, ?);"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, comment.id)
-        bindText(stmt, 2, sessionID.uuidString)
-        bindText(stmt, 3, encodeField(quotedText))
-        bindText(stmt, 4, encodeField(body))
-        sqlite3_bind_double(stmt, 5, now.timeIntervalSince1970)
-        sqlite3_bind_double(stmt, 6, now.timeIntervalSince1970)
-        if let anchorSeconds { sqlite3_bind_double(stmt, 7, anchorSeconds) } else { sqlite3_bind_null(stmt, 7) }
-        return sqlite3_step(stmt) == SQLITE_DONE ? comment : nil
+        annotations.addComment(sessionID: sessionID, quotedText: quotedText, body: body, anchorSeconds: anchorSeconds, now: now)
     }
 
     @discardableResult
     func updateComment(id: String, body: String, now: Date = Date()) -> Bool {
-        let sql = "UPDATE comments SET body = ?, updated_at = ? WHERE id = ?;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, encodeField(body))
-        sqlite3_bind_double(stmt, 2, now.timeIntervalSince1970)
-        bindText(stmt, 3, id)
-        return sqlite3_step(stmt) == SQLITE_DONE
+        annotations.updateComment(id: id, body: body, now: now)
     }
 
     @discardableResult
     func deleteComment(id: String) -> Bool {
-        let sql = "DELETE FROM comments WHERE id = ?;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, id)
-        return sqlite3_step(stmt) == SQLITE_DONE
+        annotations.deleteComment(id: id)
     }
 
     // MARK: - Notes
 
     func note(sessionID: UUID) -> String {
-        let sql = "SELECT body FROM notes WHERE session_id = ?;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return "" }
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, sessionID.uuidString)
-        return sqlite3_step(stmt) == SQLITE_ROW ? decodeField(columnText(stmt, 0)) : ""
+        annotations.note(sessionID: sessionID)
     }
 
     @discardableResult
     func saveNote(sessionID: UUID, text: String, now: Date = Date()) -> Bool {
-        let sql = """
-        INSERT INTO notes (session_id, body, updated_at) VALUES (?, ?, ?)
-        ON CONFLICT(session_id) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at;
-        """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, sessionID.uuidString)
-        bindText(stmt, 2, encodeField(text))
-        sqlite3_bind_double(stmt, 3, now.timeIntervalSince1970)
-        return sqlite3_step(stmt) == SQLITE_DONE
+        annotations.saveNote(sessionID: sessionID, text: text, now: now)
     }
 
     // MARK: - Chat threads
 
     /// A patient's chat threads, most-recently-active first. Titles and the
-    /// message payload are sealed per-field like every other PHI column.
+    /// message payload are sealed at rest like every other PHI value.
     func chatThreads(patientID: UUID) -> [ChatThread] {
-        var result: [ChatThread] = []
-        let sql = "SELECT id, title, created_at, updated_at, messages FROM chat_threads WHERE patient_id = ? ORDER BY updated_at DESC;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, patientID.uuidString)
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            guard let id = UUID(uuidString: columnText(stmt, 0)) else { continue }
-            result.append(
-                ChatThread(
-                    id: id,
-                    title: decodeField(columnText(stmt, 1)),
-                    createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 2)),
-                    updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)),
-                    messages: decodeMessages(columnText(stmt, 4))
-                )
-            )
-        }
-        return result
+        chats.chatThreads(patientID: patientID)
     }
 
-    /// Inserts a thread or updates it in place (by id). `created_at` and the
-    /// owning patient are fixed at insert; edits carry title/messages/updated_at.
     @discardableResult
     func saveChatThread(_ thread: ChatThread, patientID: UUID) -> Bool {
-        let sql = """
-        INSERT INTO chat_threads (id, patient_id, title, created_at, updated_at, messages)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            title = excluded.title,
-            updated_at = excluded.updated_at,
-            messages = excluded.messages;
-        """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, thread.id.uuidString)
-        bindText(stmt, 2, patientID.uuidString)
-        bindText(stmt, 3, encodeField(thread.title))
-        sqlite3_bind_double(stmt, 4, thread.createdAt.timeIntervalSince1970)
-        sqlite3_bind_double(stmt, 5, thread.updatedAt.timeIntervalSince1970)
-        bindText(stmt, 6, encodeMessages(thread.messages))
-        return sqlite3_step(stmt) == SQLITE_DONE
+        chats.saveChatThread(thread, patientID: patientID)
     }
 
     @discardableResult
     func deleteChatThread(id: UUID, patientID: UUID) -> Bool {
-        let sql = "DELETE FROM chat_threads WHERE id = ? AND patient_id = ?;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, id.uuidString)
-        bindText(stmt, 2, patientID.uuidString)
-        return sqlite3_step(stmt) == SQLITE_DONE
+        chats.deleteChatThread(id: id, patientID: patientID)
     }
 
     // MARK: - Session chat
 
-    /// The assistant conversation held on one session's transcript. Like a chat
-    /// thread's, the whole message array is stored as one sealed JSON blob, keyed
-    /// by the session's stable `UUID`.
+    /// The assistant conversation held on one session's transcript.
     func sessionChat(sessionID: UUID) -> [ChatMessage] {
-        let sql = "SELECT messages FROM session_chats WHERE session_id = ?;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, sessionID.uuidString)
-        return sqlite3_step(stmt) == SQLITE_ROW ? decodeMessages(columnText(stmt, 0)) : []
+        chats.sessionChat(sessionID: sessionID)
     }
 
-    /// Upserts a session's chat by its session id. An empty conversation clears
-    /// the row rather than storing an empty blob, so the table stays tidy for the
-    /// many sessions that are never chatted about.
     @discardableResult
     func saveSessionChat(_ messages: [ChatMessage], sessionID: UUID, now: Date = Date()) -> Bool {
-        if messages.isEmpty {
-            let sql = "DELETE FROM session_chats WHERE session_id = ?;"
-            var stmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
-            defer { sqlite3_finalize(stmt) }
-            bindText(stmt, 1, sessionID.uuidString)
-            return sqlite3_step(stmt) == SQLITE_DONE
-        }
-        let sql = """
-        INSERT INTO session_chats (session_id, messages, updated_at) VALUES (?, ?, ?)
-        ON CONFLICT(session_id) DO UPDATE SET messages = excluded.messages, updated_at = excluded.updated_at;
-        """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, sessionID.uuidString)
-        bindText(stmt, 2, encodeMessages(messages))
-        sqlite3_bind_double(stmt, 3, now.timeIntervalSince1970)
-        return sqlite3_step(stmt) == SQLITE_DONE
+        chats.saveSessionChat(messages, sessionID: sessionID, now: now)
     }
 
     // MARK: - Snapshot
 
     /// Writes a consistent, compact copy of the database to `destination` using
-    /// SQLite's `VACUUM INTO`. Safe to call while the store is open — the copy is
-    /// internally consistent even mid-session, so it's never a half-written file.
-    /// `destination` must not already exist (a `VACUUM INTO` requirement) and its
-    /// parent directory must exist. Returns false on any SQLite error.
+    /// SQLite's `VACUUM INTO`, delegated to the underlying core. Safe to call
+    /// while the store is open. `destination` must not already exist and its
+    /// parent directory must. Returns false on any SQLite error.
     @discardableResult
     func snapshot(to destination: URL) -> Bool {
-        // VACUUM INTO takes a string literal, not a bound parameter, so the path
-        // is embedded directly; double any single quotes to keep it a safe,
-        // single-quoted literal.
-        let escaped = destination.path.replacingOccurrences(of: "'", with: "''")
-        return exec("VACUUM INTO '\(escaped)';")
-    }
-
-    // MARK: - Field encryption
-
-    private func encodeField(_ text: String) -> String { FieldCipher.encode(text, using: protector) }
-    private func decodeField(_ stored: String) -> String { FieldCipher.decode(stored, using: protector) }
-
-    /// A thread's messages are stored as one sealed JSON blob — the whole
-    /// conversation is opaque at rest, and the array shape stays out of the
-    /// schema so it can evolve without a migration.
-    private func encodeMessages(_ messages: [ChatMessage]) -> String {
-        guard
-            let data = try? JSONEncoder.sessionNotes.encode(messages),
-            let json = String(data: data, encoding: .utf8)
-        else { return encodeField("[]") }
-        return encodeField(json)
-    }
-
-    private func decodeMessages(_ stored: String) -> [ChatMessage] {
-        let json = decodeField(stored)
-        guard
-            let data = json.data(using: .utf8),
-            let messages = try? JSONDecoder.sessionNotes.decode([ChatMessage].self, from: data)
-        else { return [] }
-        return messages
+        core.snapshot(to: destination)
     }
 
     // MARK: - Migration
 
-    /// Re-encodes every free-text column from this store's protector to
-    /// `newProtector` (decode with the current one, encode with the new one), so
-    /// turning encryption on or off converts the database in place. Values are
-    /// collected before updating to avoid mutating rows mid-scan. Returns false
-    /// on any SQLite error.
+    /// Re-seals every record's payload from this store's protector to
+    /// `newProtector` (open with the current one, seal with the new one), so
+    /// turning encryption on or off converts the whole database in place — the
+    /// same contract this method had over the old bespoke tables, now
+    /// implemented as one generic pass over every kind via `PersistenceCore`.
+    /// Returns false on any storage error.
     @discardableResult
     func reencrypt(to newProtector: FileProtector) -> Bool {
-        func recode(_ value: String) -> String {
-            FieldCipher.encode(FieldCipher.decode(value, using: protector), using: newProtector)
-        }
-
-        // Comments: gather (id, quoted_text, body), then update each.
-        var comments: [(id: String, quoted: String, body: String)] = []
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT id, quoted_text, body FROM comments;", -1, &stmt, nil) == SQLITE_OK else { return false }
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            comments.append((columnText(stmt, 0), columnText(stmt, 1), columnText(stmt, 2)))
-        }
-        sqlite3_finalize(stmt)
-        for row in comments {
-            var up: OpaquePointer?
-            guard sqlite3_prepare_v2(db, "UPDATE comments SET quoted_text = ?, body = ? WHERE id = ?;", -1, &up, nil) == SQLITE_OK else { return false }
-            bindText(up, 1, recode(row.quoted))
-            bindText(up, 2, recode(row.body))
-            bindText(up, 3, row.id)
-            let ok = sqlite3_step(up) == SQLITE_DONE
-            sqlite3_finalize(up)
-            guard ok else { return false }
-        }
-
-        // Notes: gather (session_id, body), then update each.
-        var notes: [(key: String, body: String)] = []
-        guard sqlite3_prepare_v2(db, "SELECT session_id, body FROM notes;", -1, &stmt, nil) == SQLITE_OK else { return false }
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            notes.append((columnText(stmt, 0), columnText(stmt, 1)))
-        }
-        sqlite3_finalize(stmt)
-        for row in notes {
-            var up: OpaquePointer?
-            guard sqlite3_prepare_v2(db, "UPDATE notes SET body = ? WHERE session_id = ?;", -1, &up, nil) == SQLITE_OK else { return false }
-            bindText(up, 1, recode(row.body))
-            bindText(up, 2, row.key)
-            let ok = sqlite3_step(up) == SQLITE_DONE
-            sqlite3_finalize(up)
-            guard ok else { return false }
-        }
-
-        // Chat threads: gather (id, title, messages), then update each.
-        var threads: [(id: String, title: String, messages: String)] = []
-        guard sqlite3_prepare_v2(db, "SELECT id, title, messages FROM chat_threads;", -1, &stmt, nil) == SQLITE_OK else { return false }
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            threads.append((columnText(stmt, 0), columnText(stmt, 1), columnText(stmt, 2)))
-        }
-        sqlite3_finalize(stmt)
-        for row in threads {
-            var up: OpaquePointer?
-            guard sqlite3_prepare_v2(db, "UPDATE chat_threads SET title = ?, messages = ? WHERE id = ?;", -1, &up, nil) == SQLITE_OK else { return false }
-            bindText(up, 1, recode(row.title))
-            bindText(up, 2, recode(row.messages))
-            bindText(up, 3, row.id)
-            let ok = sqlite3_step(up) == SQLITE_DONE
-            sqlite3_finalize(up)
-            guard ok else { return false }
-        }
-
-        // Session chats: gather (session_id, messages), then update each.
-        var sessionChats: [(key: String, messages: String)] = []
-        guard sqlite3_prepare_v2(db, "SELECT session_id, messages FROM session_chats;", -1, &stmt, nil) == SQLITE_OK else { return false }
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            sessionChats.append((columnText(stmt, 0), columnText(stmt, 1)))
-        }
-        sqlite3_finalize(stmt)
-        for row in sessionChats {
-            var up: OpaquePointer?
-            guard sqlite3_prepare_v2(db, "UPDATE session_chats SET messages = ? WHERE session_id = ?;", -1, &up, nil) == SQLITE_OK else { return false }
-            bindText(up, 1, recode(row.messages))
-            bindText(up, 2, row.key)
-            let ok = sqlite3_step(up) == SQLITE_DONE
-            sqlite3_finalize(up)
-            guard ok else { return false }
+        for kind in Self.allKinds {
+            for record in core.allRecords(kind: kind) {
+                var resealed = record
+                resealed.payload = RecordPayloadCodec.reseal(record.payload, from: protector, to: newProtector)
+                guard core.put(resealed) else { return false }
+            }
         }
         return true
-    }
-
-    // MARK: - SQLite helpers
-
-    @discardableResult
-    private func exec(_ sql: String) -> Bool {
-        sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK
-    }
-
-    private func bindText(_ stmt: OpaquePointer?, _ index: Int32, _ value: String) {
-        sqlite3_bind_text(stmt, index, value, -1, Self.transient)
-    }
-
-    private func columnText(_ stmt: OpaquePointer?, _ index: Int32) -> String {
-        guard let cString = sqlite3_column_text(stmt, index) else { return "" }
-        return String(cString: cString)
     }
 }
