@@ -100,6 +100,7 @@ final class AppSettings: ObservableObject {
         static let progressNoteFormat = "progressNoteFormat"
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
+        static let keepAudioRecordings = "keepAudioRecordings"
     }
 
     /// Where the app looks for its update manifest. Defaults to the
@@ -171,6 +172,16 @@ final class AppSettings: ObservableObject {
     @Published var iCloudEncryptedBackupEnabled: Bool {
         didSet { defaults.set(iCloudEncryptedBackupEnabled, forKey: Keys.iCloudEncryptedBackupEnabled) }
     }
+    /// Opt-in: keep a session's raw audio (`mic.caf` / `call.caf`) on disk after
+    /// it has been transcribed. Off by default (transcript-only) — the recording
+    /// is the most sensitive artifact a session produces, so it is discarded once
+    /// the transcript exists. Kept audio is only ever retained as ciphertext:
+    /// `AudioRetentionPolicy` requires at-rest encryption to also be on, so this
+    /// toggle has no effect while encryption is off (see `SettingsView` and
+    /// `SessionDetailView.transcribe()`).
+    @Published var keepAudioRecordings: Bool {
+        didSet { defaults.set(keepAudioRecordings, forKey: Keys.keepAudioRecordings) }
+    }
     /// The version of the Terms/Privacy Policy the user accepted (see `Legal`).
     /// Empty until accepted. Persisted locally so the practice has a record that
     /// the terms were accepted, and which version, before the app could be used.
@@ -223,6 +234,7 @@ final class AppSettings: ObservableObject {
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
         localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)
         iCloudEncryptedBackupEnabled = defaults.bool(forKey: Keys.iCloudEncryptedBackupEnabled)
+        keepAudioRecordings = defaults.bool(forKey: Keys.keepAudioRecordings)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
         if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,

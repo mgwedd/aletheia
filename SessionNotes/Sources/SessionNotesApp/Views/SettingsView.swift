@@ -173,6 +173,14 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Privacy") {
+                Toggle("Keep audio recordings after transcription", isOn: $settings.keepAudioRecordings)
+                    .disabled(!encryption.isEnabled)
+                Text(audioRetentionCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Security") {
                 Toggle("Require Touch ID or password to open", isOn: $settings.appLockEnabled)
                 Text("Locks the app when it opens and whenever it's hidden, so your patients' notes stay behind your Touch ID or Mac password.")
@@ -326,6 +334,16 @@ struct SettingsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    /// Explains the audio-retention toggle, and why it's unavailable until
+    /// at-rest encryption is on — kept audio must be ciphertext, never plaintext.
+    private var audioRetentionCaption: String {
+        if encryption.isEnabled {
+            return "By default, recordings are deleted the moment a session is transcribed — the transcript is kept as the document of record. Turn this on to keep the original audio too; it stays encrypted at rest with your other data."
+        } else {
+            return "By default, recordings are deleted the moment a session is transcribed — only the transcript is kept. Keeping the original audio requires \"Extra Encryption\" below, so any retained recording stays encrypted at rest rather than sitting on disk in the clear."
         }
     }
 

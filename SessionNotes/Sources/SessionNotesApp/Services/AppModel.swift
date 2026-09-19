@@ -36,6 +36,12 @@ final class AppModel: ObservableObject {
     /// decrypt-to-temp).
     var currentProtector: FileProtector { encryption.protector }
 
+    /// Whether at-rest encryption is set up (a keystore exists on disk),
+    /// regardless of whether it's currently unlocked. Audio retention is gated on
+    /// this so kept recordings are only ever stored as ciphertext
+    /// (`AudioRetentionPolicy.keepsAudio`).
+    var isEncryptionEnabled: Bool { encryption.isEnabled }
+
     func rebuildStore() {
         // Recompute encryption state first (the data folder may have just
         // changed), then build the stores around the resulting protector.

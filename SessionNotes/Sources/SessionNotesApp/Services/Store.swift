@@ -268,6 +268,18 @@ final class Store {
         sessionDir(for: patient, session: session).appendingPathComponent("call.caf")
     }
 
+    /// Removes a session's raw audio (`mic.caf` / `call.caf`) from disk. Called
+    /// after transcription when `AudioRetentionPolicy` says the audio should not
+    /// be kept (the transcript-only default), so the recording — the most
+    /// sensitive artifact a session produces — doesn't linger. Best-effort: an
+    /// absent file is a no-op, and a removal failure is swallowed rather than
+    /// surfaced, since the transcript is already saved and is the document of
+    /// record.
+    func deleteRecordings(for patient: Patient, session: SessionRecord) {
+        try? FileManager.default.removeItem(at: micRecordingURL(for: patient, session: session))
+        try? FileManager.default.removeItem(at: callRecordingURL(for: patient, session: session))
+    }
+
     func transcript(for patient: Patient, session: SessionRecord) -> String? {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
         return (try? protector.stringIfPresent(at: url)) ?? nil
