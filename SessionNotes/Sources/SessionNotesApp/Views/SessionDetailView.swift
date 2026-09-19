@@ -376,13 +376,12 @@ struct SessionDetailView: View {
         guard !quote.isEmpty, !body.isEmpty else { return }
         let anchor = TranscriptTimeline.seconds(forQuote: quote, in: transcriptText).map { Double($0) }
         _ = commentStore.addComment(
-            patientSlug: patient.slug,
-            sessionFolder: session.folderName,
+            sessionID: session.id,
             quotedText: quote,
             body: body,
             anchorSeconds: anchor
         )
-        comments = commentStore.comments(patientSlug: patient.slug, sessionFolder: session.folderName)
+        comments = commentStore.comments(sessionID: session.id)
         showInlineComposer = false
     }
 
@@ -416,7 +415,7 @@ struct SessionDetailView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(8)
                 .onChange(of: sessionNote) { _, newValue in
-                    appModel.commentStore?.saveNote(patientSlug: patient.slug, sessionFolder: session.folderName, text: newValue)
+                    appModel.commentStore?.saveNote(sessionID: session.id, text: newValue)
                 }
         }
     }
@@ -572,8 +571,8 @@ struct SessionDetailView: View {
         summaryText = store.summary(for: patient, session: session) ?? ""
         chatMessages = store.loadSessionChat(for: patient, session: session)
         if let commentStore = appModel.commentStore {
-            sessionNote = commentStore.note(patientSlug: patient.slug, sessionFolder: session.folderName)
-            comments = commentStore.comments(patientSlug: patient.slug, sessionFolder: session.folderName)
+            sessionNote = commentStore.note(sessionID: session.id)
+            comments = commentStore.comments(sessionID: session.id)
         }
     }
 
@@ -587,21 +586,20 @@ struct SessionDetailView: View {
         // isn't found verbatim.
         let anchor: Double? = quote.isEmpty ? nil : TranscriptTimeline.seconds(forQuote: quote, in: transcriptText).map { Double($0) }
         _ = commentStore.addComment(
-            patientSlug: patient.slug,
-            sessionFolder: session.folderName,
+            sessionID: session.id,
             quotedText: quote,
             body: body,
             anchorSeconds: anchor
         )
         newCommentQuote = ""
         newCommentBody = ""
-        comments = commentStore.comments(patientSlug: patient.slug, sessionFolder: session.folderName)
+        comments = commentStore.comments(sessionID: session.id)
     }
 
     private func deleteComment(_ comment: SessionComment) {
         guard let commentStore = appModel.commentStore else { return }
         commentStore.deleteComment(id: comment.id)
-        comments = commentStore.comments(patientSlug: patient.slug, sessionFolder: session.folderName)
+        comments = commentStore.comments(sessionID: session.id)
     }
 
     /// Whether the app-wide recorder is recording *this* session (vs. another

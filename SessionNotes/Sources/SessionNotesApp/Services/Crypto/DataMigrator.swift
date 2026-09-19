@@ -14,6 +14,11 @@ import Foundation
 ///                                 mic.caf, call.caf}
 ///   SessionNotes.sqlite  (the comment/notes DB, field-level)
 ///
+/// `session.json` (a session's id + date) is deliberately **not** in this list:
+/// it's plaintext identity — no name or note text, and its date is already in
+/// the cleartext folder name. Keeping it out means the encryption toggle can't
+/// leave a session's id unreadable and orphan its annotations. Don't add it.
+///
 /// Text/JSON go through the one-shot cipher, audio through the streaming one,
 /// and the database through `CommentStore.reencrypt`. Errors are collected per
 /// item rather than aborting: a keyed protector reads plaintext and sealed

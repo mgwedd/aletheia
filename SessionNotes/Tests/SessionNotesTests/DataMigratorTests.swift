@@ -30,8 +30,8 @@ final class DataMigratorTests: XCTestCase {
         try audioBytes.write(to: store.micRecordingURL(for: patient, session: session))
 
         let comments = try XCTUnwrap(CommentStore(root: root))
-        comments.saveNote(patientSlug: patient.slug, sessionFolder: session.folderName, text: "private note")
-        _ = comments.addComment(patientSlug: patient.slug, sessionFolder: session.folderName,
+        comments.saveNote(sessionID: session.id, text: "private note")
+        _ = comments.addComment(sessionID: session.id,
                                 quotedText: "felt stuck", body: "revisit goals")
         return (patient, session, audioBytes)
     }
@@ -54,7 +54,7 @@ final class DataMigratorTests: XCTestCase {
         XCTAssertEqual(keyedStore.summary(for: patient, session: session), "a short summary")
         XCTAssertEqual(try keyedStore.listPatients().map(\.name), ["Dana Cole"])
         let keyedComments = try XCTUnwrap(CommentStore(root: root, protector: keyed))
-        XCTAssertEqual(keyedComments.note(patientSlug: patient.slug, sessionFolder: session.folderName), "private note")
+        XCTAssertEqual(keyedComments.note(sessionID: session.id), "private note")
 
         // Disable: sealed → plaintext, everything restored byte-for-byte.
         let disable = DataMigrator.migrate(root: root, from: keyed, to: .passthrough)
@@ -66,8 +66,8 @@ final class DataMigratorTests: XCTestCase {
         let plainStore = Store(root: root)
         XCTAssertEqual(plainStore.transcript(for: patient, session: session), "hello transcript")
         let plainComments = try XCTUnwrap(CommentStore(root: root))
-        XCTAssertEqual(plainComments.note(patientSlug: patient.slug, sessionFolder: session.folderName), "private note")
-        XCTAssertEqual(plainComments.comments(patientSlug: patient.slug, sessionFolder: session.folderName).first?.body, "revisit goals")
+        XCTAssertEqual(plainComments.note(sessionID: session.id), "private note")
+        XCTAssertEqual(plainComments.comments(sessionID: session.id).first?.body, "revisit goals")
     }
 
     func testManagerEnableSealsAndDisableRestores() throws {
