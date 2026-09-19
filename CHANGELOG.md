@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.2.0] - 2026-09-19
+
+### Added
+- SHA-256 integrity verification for on-device model downloads (#89)
+
 ## [2.1.0] - 2026-09-19
 
 ### Added
