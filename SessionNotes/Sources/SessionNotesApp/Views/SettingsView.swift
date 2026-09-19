@@ -179,6 +179,16 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Divider()
+                Picker("Auto-lock after", selection: idleAutoLockSelection) {
+                    ForEach(IdleAutoLockTimeout.allCases) { timeout in
+                        Text(timeout.displayName).tag(timeout)
+                    }
+                }
+                .disabled(!settings.appLockEnabled)
+                Text("Automatically re-locks after this much time with no activity — HIPAA's required \"automatic logoff.\" Needs \"Require Touch ID or password to open\" turned on above.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Divider()
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Encrypt this Mac's disk with FileVault")
@@ -451,6 +461,16 @@ struct SettingsView: View {
                     settings.ollamaModelName = newValue
                 }
             }
+        )
+    }
+
+    /// Bridges the `Int`-backed `idleAutoLockMinutes` setting to the
+    /// `IdleAutoLockTimeout` picker. Falls back to the default timeout if the
+    /// stored value ever doesn't match one of the offered choices.
+    private var idleAutoLockSelection: Binding<IdleAutoLockTimeout> {
+        Binding(
+            get: { IdleAutoLockTimeout(rawValue: settings.idleAutoLockMinutes) ?? .defaultTimeout },
+            set: { settings.idleAutoLockMinutes = $0.rawValue }
         )
     }
 
