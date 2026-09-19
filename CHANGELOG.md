@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [1.16.0] - 2026-09-19
+
+### Added
+- consistent DB snapshots for safe migrations and rollback
+
 ## [1.15.0] - 2026-09-19
 
 ### Added
