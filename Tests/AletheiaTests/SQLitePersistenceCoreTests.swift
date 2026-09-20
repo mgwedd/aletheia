@@ -151,6 +151,16 @@ final class SQLitePersistenceCoreTests: XCTestCase {
         XCTAssertGreaterThan(SchemaMigrator.latestVersion, 0)
     }
 
+    /// A fresh (version-0) database has no prior data to protect, so opening it
+    /// takes no pre-migration snapshot — the `Backups/` directory isn't created.
+    /// (The snapshot path activates only for a real data-transforming upgrade,
+    /// current > 0, once a v2+ migration ships.)
+    func testFreshDatabaseTakesNoPreMigrationSnapshot() {
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: MigrationBackup.directory(for: dbURL).path),
+            "a brand-new database should not be backed up before its baseline stamp")
+    }
+
     /// A pre-migration database — the baseline tables present but `user_version`
     /// still 0 (how earlier builds left it) — upgrades in place on open: it's
     /// stamped to the latest version and its existing rows are untouched.
