@@ -220,8 +220,14 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Extra Encryption") {
-                encryptionSection
+            // Hidden only when there's nothing to manage: encryption is off and this
+            // build doesn't offer turning it on. Once a folder is encrypted — by
+            // this build or an earlier one — the section (and its unlock/manage
+            // affordances) stays unconditional regardless of build tier.
+            if encryption.isEnabled || appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id) {
+                Section("Extra Encryption") {
+                    encryptionSection
+                }
             }
 
             Section("Security Audit Log") {
