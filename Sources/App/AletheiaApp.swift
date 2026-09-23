@@ -3,6 +3,20 @@ import SwiftUI
 import CoreSpotlight
 #endif
 
+private extension View {
+    /// Applies `SpotlightContinuationModifier` only when the build ships the
+    /// Spotlight feature module — a build without it must not route a stray
+    /// Spotlight continuation into the app.
+    @ViewBuilder
+    func spotlightContinuation(enabled: Bool) -> some View {
+        if enabled {
+            modifier(SpotlightContinuationModifier())
+        } else {
+            self
+        }
+    }
+}
+
 @main
 struct AletheiaApp: App {
     @StateObject private var settings = AppSettings.shared
@@ -70,7 +84,7 @@ struct AletheiaApp: App {
                         break
                     }
                 }
-                .modifier(SpotlightContinuationModifier())
+                .spotlightContinuation(enabled: appModel.featureRegistry.contains(id: SpotlightFeatureModule.id))
                 // Tier-1 protection: cover everything until the user authenticates.
                 .overlay {
                     if appLock.isLocked {
