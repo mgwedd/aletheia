@@ -95,4 +95,34 @@ final class EncryptionManagerTests: XCTestCase {
         try relaunched.unlock(passphrase: "second")
         XCTAssertEqual(relaunched.state, .unlocked)
     }
+
+    /// The non-negotiable constraint behind gating `AtRestEncryptionFeatureModule`
+    /// to `.dev`: a folder encrypted by an earlier (preview/dev) build must still
+    /// unlock and read on an MVP build. `EncryptionManager` takes no
+    /// `FeatureRegistry`/`BuildTier` at all — nothing here could consult tier even
+    /// if it wanted to — so this pins that independence against an explicit
+    /// MVP-tier registry and exercises the full unlock-and-read round trip.
+    func testUnlockPathIsIndependentOfBuildTier() throws {
+        // A prior build already turned encryption on for this folder.
+        try manager(root: tempRoot).enable(passphrase: "already encrypted", iterations: fastIterations)
+
+        // This build's registry doesn't offer turning encryption on...
+        let mvpRegistry = FeatureRegistry.compose(tier: .mvp, from: FeatureRegistry.allModules)
+        XCTAssertFalse(mvpRegistry.contains(id: AtRestEncryptionFeatureModule.id))
+
+        // ...but a fresh manager over the same folder (simulating that MVP
+        // build's launch) still reports the folder as locked, not gone or
+        // disabled, and unlocks and reads normally.
+        let relaunched = manager(root: tempRoot)
+        XCTAssertEqual(relaunched.state, .lockedNeedsPassphrase)
+
+        try relaunched.unlock(passphrase: "already encrypted")
+        XCTAssertEqual(relaunched.state, .unlocked)
+
+        let protector = relaunched.protector
+        XCTAssertTrue(protector.isEncrypting)
+        let note = Data("existing patient note".utf8)
+        let sealed = try protector.seal(note)
+        XCTAssertEqual(try protector.open(sealed), note)
+    }
 }
