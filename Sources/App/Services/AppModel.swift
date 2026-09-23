@@ -28,11 +28,20 @@ final class AppModel: ObservableObject {
     /// they always have.
     private let encryption: EncryptionManager
     private let spotlightIndexer: SpotlightIndexing
+    /// The feature modules this build ships, composed once at launch from the
+    /// full catalog. See `FeatureRegistry`.
+    let featureRegistry: FeatureRegistry
 
-    init(settings: AppSettings, encryption: EncryptionManager, spotlightIndexer: SpotlightIndexing = SpotlightIndexer.shared) {
+    init(
+        settings: AppSettings,
+        encryption: EncryptionManager,
+        spotlightIndexer: SpotlightIndexing = SpotlightIndexer.shared,
+        featureRegistry: FeatureRegistry = .compose(tier: .current, from: FeatureRegistry.allModules)
+    ) {
         self.settings = settings
         self.encryption = encryption
         self.spotlightIndexer = spotlightIndexer
+        self.featureRegistry = featureRegistry
         rebuildStore()
         // Rebuild the stores with a fresh protector whenever encryption is
         // enabled, unlocked, or locked, so reads/writes pick up the key change.
@@ -126,9 +135,14 @@ final class AppModel: ObservableObject {
     }
 
     /// Rebuilds the Spotlight index from the current patients/sessions when the
-    /// user has opted in, or clears it when they haven't. Metadata only — see
-    /// `SpotlightItemBuilder`. Safe to call often; it's a no-op off macOS.
+    /// build ships Spotlight indexing and the user has opted in, or clears it
+    /// otherwise. Metadata only — see `SpotlightItemBuilder`. Safe to call
+    /// often; it's a no-op off macOS.
     func reindexSpotlight() {
+        guard featureRegistry.contains(id: SpotlightFeatureModule.id) else {
+            spotlightIndexer.clear()
+            return
+        }
         guard settings.spotlightIndexingEnabled else {
             spotlightIndexer.clear()
             return

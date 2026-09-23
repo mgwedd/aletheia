@@ -47,3 +47,12 @@ struct FeatureRegistry {
     /// The enabled module ids, in registry order.
     var ids: [String] { modules.map(\.id) }
 }
+
+extension FeatureRegistry {
+    /// Every feature module the app knows about, regardless of build tier.
+    /// `compose(tier:from:)` filters this down to what a given build ships.
+    /// Add each new module here as it's peeled out.
+    static let allModules: [FeatureModule] = [
+        SpotlightFeatureModule()
+    ]
+}

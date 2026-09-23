@@ -173,12 +173,14 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Spotlight Search") {
-                Toggle("Find patients in Spotlight", isOn: $settings.spotlightIndexingEnabled)
-                    .onChange(of: settings.spotlightIndexingEnabled) { _, _ in appModel.reindexSpotlight() }
-                Text("Lets you open a patient or session straight from macOS Spotlight. Only names and dates are indexed — never transcripts or summaries. Anyone using this Mac can see indexed names, so leave this off on a shared computer.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if appModel.featureRegistry.contains(id: SpotlightFeatureModule.id) {
+                Section("Spotlight Search") {
+                    Toggle("Find patients in Spotlight", isOn: $settings.spotlightIndexingEnabled)
+                        .onChange(of: settings.spotlightIndexingEnabled) { _, _ in appModel.reindexSpotlight() }
+                    Text("Lets you open a patient or session straight from macOS Spotlight. Only names and dates are indexed — never transcripts or summaries. Anyone using this Mac can see indexed names, so leave this off on a shared computer.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Privacy") {
