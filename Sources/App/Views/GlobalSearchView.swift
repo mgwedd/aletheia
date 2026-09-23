@@ -1,3 +1,4 @@
+import AletheiaCore
 import SwiftUI
 
 /// Search across every patient's name, transcripts, and summaries. Picking a

@@ -1,3 +1,4 @@
+import AletheiaCore
 import SwiftUI
 
 struct PatientsListView: View {

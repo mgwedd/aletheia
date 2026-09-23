@@ -1,3 +1,4 @@
+import AletheiaCore
 import Foundation
 
 /// Thin coordinator between AppSettings (where is the data?) and Store (the

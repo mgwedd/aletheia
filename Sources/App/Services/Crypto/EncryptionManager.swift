@@ -1,3 +1,4 @@
+import AletheiaCore
 import CryptoKit
 import Foundation
 

@@ -1,3 +1,4 @@
+import AletheiaCore
 import Foundation
 
 /// The prompt templates sent to the local Ollama model. Kept in one place

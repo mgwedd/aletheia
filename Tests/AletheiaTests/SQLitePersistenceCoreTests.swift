@@ -1,3 +1,4 @@
+import AletheiaCore
 import XCTest
 import SQLite3
 @testable import Aletheia

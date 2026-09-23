@@ -1,3 +1,4 @@
+import AletheiaCore
 import Foundation
 
 /// Drives the *responsive-but-calm* streaming reveal for a chat answer.

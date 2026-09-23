@@ -1,3 +1,4 @@
+import AletheiaCore
 import AppIntents
 
 /// "Show today's sessions" — read-only, returns spoken/displayed dialog.

@@ -1,3 +1,4 @@
+import AletheiaCore
 import AppIntents
 
 /// A patient exposed to Shortcuts/Siri so intents can take "for [patient]".

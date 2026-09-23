@@ -1,3 +1,4 @@
+import AletheiaCore
 import SwiftUI
 
 /// The patient's cross-session chat, as multiple browsable threads (ChatGPT

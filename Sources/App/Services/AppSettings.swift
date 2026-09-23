@@ -1,3 +1,4 @@
+import AletheiaCore
 import Foundation
 
 /// Whisper model choices, ordered smallest/fastest to largest/most accurate.

@@ -1,3 +1,4 @@
+import AletheiaCore
 import Foundation
 
 /// Turns a domain value into a `PersistedRecord`'s opaque `payload` and back —

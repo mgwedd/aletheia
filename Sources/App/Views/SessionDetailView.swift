@@ -1,3 +1,4 @@
+import AletheiaCore
 import SwiftUI
 #if canImport(AppKit)
 import AppKit

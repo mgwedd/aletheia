@@ -1,3 +1,4 @@
+import AletheiaCore
 import SwiftUI
 
 /// Reusable chat UI shared by the per-session and cross-patient chat

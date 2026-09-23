@@ -1,3 +1,4 @@
+import AletheiaCore
 import SwiftUI
 
 /// The "Security overview" shown at the top of Settings: an at-a-glance,

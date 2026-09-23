@@ -1,3 +1,4 @@
+import AletheiaCore
 import Foundation
 
 /// A single thing to expose to macOS Spotlight. Deliberately framework-free so

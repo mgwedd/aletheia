@@ -1,3 +1,4 @@
+import AletheiaCore
 import Foundation
 
 /// Typed repository for the therapist's assistant conversations — a session's

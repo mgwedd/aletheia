@@ -1,3 +1,4 @@
+import AletheiaCore
 import Foundation
 
 /// Turns the app's use cases (summarize a session, answer a question about a
