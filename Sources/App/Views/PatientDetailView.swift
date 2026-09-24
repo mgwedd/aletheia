@@ -134,30 +134,35 @@ struct PatientDetailView: View {
                         saveBackground()
                     }
 
-                HStack {
-                    Text("Medications").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button { medications.append(Medication()) } label: {
-                        Label("Add Medication", systemImage: "plus")
+                // Medications is a .preview-tier module; the production build
+                // doesn't display or edit the table. Stored medications are left
+                // untouched on the patient record. See PatientMedicationsFeatureModule.
+                if appModel.featureRegistry.contains(id: PatientMedicationsFeatureModule.id) {
+                    HStack {
+                        Text("Medications").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button { medications.append(Medication()) } label: {
+                            Label("Add Medication", systemImage: "plus")
+                        }
+                        .labelStyle(.iconOnly)
+                        .help("Add a medication")
                     }
-                    .labelStyle(.iconOnly)
-                    .help("Add a medication")
-                }
 
-                if medications.isEmpty {
-                    Text("None recorded.").font(.caption).foregroundStyle(.secondary)
-                } else {
-                    ForEach($medications) { $med in
-                        HStack(spacing: 6) {
-                            TextField("Medication", text: $med.name)
-                            TextField("Dose", text: $med.dose).frame(width: 110)
-                            Button(role: .destructive) {
-                                medications.removeAll { $0.id == med.id }
-                            } label: {
-                                Image(systemName: "trash")
+                    if medications.isEmpty {
+                        Text("None recorded.").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        ForEach($medications) { $med in
+                            HStack(spacing: 6) {
+                                TextField("Medication", text: $med.name)
+                                TextField("Dose", text: $med.dose).frame(width: 110)
+                                Button(role: .destructive) {
+                                    medications.removeAll { $0.id == med.id }
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Remove")
                             }
-                            .buttonStyle(.borderless)
-                            .help("Remove")
                         }
                     }
                 }
