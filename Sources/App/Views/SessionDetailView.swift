@@ -189,25 +189,30 @@ struct SessionDetailView: View {
             .help("Export this session to Markdown")
             .disabled(transcriptText.isEmpty && summaryText.isEmpty)
 
-            Menu {
-                ForEach(ReminderLeadTime.allCases) { leadTime in
-                    Button(leadTime.displayName) { Task { await scheduleReminder(leadTime) } }
+            // "Remind Me" / "Schedule Next…" belong to the `.dev`-tier EventKit
+            // scheduling module; absent from production/preview builds. See
+            // `EventKitSchedulingFeatureModule`.
+            if appModel.featureRegistry.contains(id: EventKitSchedulingFeatureModule.id) {
+                Menu {
+                    ForEach(ReminderLeadTime.allCases) { leadTime in
+                        Button(leadTime.displayName) { Task { await scheduleReminder(leadTime) } }
+                    }
+                } label: {
+                    Label("Remind Me", systemImage: "bell")
                 }
-            } label: {
-                Label("Remind Me", systemImage: "bell")
-            }
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Add a follow-up reminder to your Reminders app")
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Add a follow-up reminder to your Reminders app")
 
-            Button {
-                scheduleStart = SessionEventBuilder.suggestedStart()
-                scheduleDurationMinutes = SessionEventBuilder.defaultDurationMinutes
-                showScheduleSheet = true
-            } label: {
-                Label("Schedule Next…", systemImage: "calendar.badge.plus")
+                Button {
+                    scheduleStart = SessionEventBuilder.suggestedStart()
+                    scheduleDurationMinutes = SessionEventBuilder.defaultDurationMinutes
+                    showScheduleSheet = true
+                } label: {
+                    Label("Schedule Next…", systemImage: "calendar.badge.plus")
+                }
+                .help("Add the next session to your Calendar")
             }
-            .help("Add the next session to your Calendar")
         }
     }
 
@@ -499,7 +504,7 @@ struct SessionDetailView: View {
     }
 
     private var chatTab: some View {
-        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: SuggestedQuestions.session, onSend: sendChat, onStop: { chatRunner.stop() })
+        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() })
     }
 
     private func load() {

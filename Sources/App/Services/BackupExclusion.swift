@@ -22,7 +22,16 @@ enum BackupExclusion {
 
     /// Whether `url` is currently marked excluded from backups. `false` when the
     /// value can't be read.
+    ///
+    /// `URL` caches resource values it has read, and that cache is **not**
+    /// updated by a `setResourceValues` write to the same path through another
+    /// `URL` value. Reading a stale cache is how the round-trip
+    /// (set-excluded → read-back) can report the old value right after a change —
+    /// both in a test and in the app's own backup-toggle state. Clear the cache
+    /// first so this always reflects what's on disk now.
     static func isExcluded(at url: URL) -> Bool {
-        (try? url.resourceValues(forKeys: [.isExcludedFromBackupKey]))?.isExcludedFromBackup ?? false
+        var url = url
+        url.removeAllCachedResourceValues()
+        return (try? url.resourceValues(forKeys: [.isExcludedFromBackupKey]))?.isExcludedFromBackup ?? false
     }
 }
