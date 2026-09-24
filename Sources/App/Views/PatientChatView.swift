@@ -45,7 +45,7 @@ struct PatientChatView: View {
                         title: "all sessions",
                         messages: $messages,
                         isSending: isSending,
-                        suggestions: SuggestedQuestions.patient,
+                        suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.patient : [],
                         onSend: send,
                         onStop: { chatRunner.stop() }
                     )
