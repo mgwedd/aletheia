@@ -43,9 +43,14 @@ packages:
   # Aletheia target dependencies below to compile the local LLM backend;
   # `LlamaAssistant` then activates automatically via `#if canImport(llama)`.
   # Only the official ggml-org runtime is used (supply-chain constraint).
+  # Pinned to the latest stable ggml-org/llama.cpp release, tag b11149.
+  # Kept commented (staged) so CI/production don't compile the C++ runtime: it's
+  # a single target, so linking it would pull the runtime into every tier. Enable
+  # during the Mac bring-up (see README › Embedded llama.cpp) once the engine-seam
+  # factory gates it per tier and the llama.h calls are compiler-verified.
   # llama:
   #   url: https://github.com/ggml-org/llama.cpp.git
-  #   revision: "PIN_TO_A_VERIFIED_COMMIT_SHA"
+  #   revision: "d2e54583c7452353eb35d40431281f6ee984332f"  # tag b11149
 
 targets:
   Aletheia:

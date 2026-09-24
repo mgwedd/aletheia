@@ -169,8 +169,10 @@ The binding lives behind `#if canImport(llama)` and compiles out until the
 package is linked, so CI stays green without building the heavy C++.
 
 1. In `project.yml`, uncomment the `llama` package stanza and the
-   `- package: llama` dependency, and pin `revision:` to a **verified
-   `ggml-org/llama.cpp` commit SHA** (don't track a branch).
+   `- package: llama` dependency. The `revision:` is already pinned to a
+   **specific `ggml-org/llama.cpp` commit SHA** — the latest stable release,
+   tag `b11149` (`d2e54583…`) — never a branch. Re-pin to a newer release only
+   after re-verifying the `llama.h` calls below against it.
 2. `./scripts/build.sh` — `LlamaAssistant` now compiles and Settings shows a
    "Built-in Model" section to download a GGUF.
 3. Verify `LlamaAssistant`'s `llama.h` calls against that pinned revision — the
