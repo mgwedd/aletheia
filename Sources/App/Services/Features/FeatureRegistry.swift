@@ -57,6 +57,7 @@ extension FeatureRegistry {
         AtRestEncryptionFeatureModule(),
         EventKitSchedulingFeatureModule(),
         EmbeddedLlamaFeatureModule(),
-        SuggestedQuestionsFeatureModule()
+        SuggestedQuestionsFeatureModule(),
+        SourceCitationsFeatureModule()
     ]
 }
