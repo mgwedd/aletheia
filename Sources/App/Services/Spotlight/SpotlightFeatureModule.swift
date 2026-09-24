@@ -2,7 +2,7 @@ import Foundation
 
 /// Spotlight indexing as a `FeatureModule`: complete and working, but opt-in
 /// and non-core (record → transcribe → summarize → notes → chat is the MVP),
-/// so it ships from `.preview` rather than `.mvp`.
+/// so it ships from `.preview` rather than `.production`.
 struct SpotlightFeatureModule: FeatureModule {
     /// Also usable as `SpotlightFeatureModule.id` at call sites that only need
     /// the identifier to query the registry, without constructing an instance.

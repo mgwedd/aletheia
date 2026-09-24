@@ -34,9 +34,11 @@ struct FirstRunView: View {
 
                     SetupChecklistView()
 
-                    Divider()
+                    if appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id) {
+                        Divider()
 
-                    encryptionSection
+                        encryptionSection
+                    }
 
                     Divider()
 

@@ -53,6 +53,9 @@ extension FeatureRegistry {
     /// `compose(tier:from:)` filters this down to what a given build ships.
     /// Add each new module here as it's peeled out.
     static let allModules: [FeatureModule] = [
-        SpotlightFeatureModule()
+        SpotlightFeatureModule(),
+        AtRestEncryptionFeatureModule(),
+        EventKitSchedulingFeatureModule(),
+        EmbeddedLlamaFeatureModule()
     ]
 }

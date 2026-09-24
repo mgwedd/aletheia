@@ -12,15 +12,15 @@ final class FeatureRegistryTests: XCTestCase {
     }
 
     private let all: [FeatureModule] = [
-        MockModule(id: "chat", title: "Chat", tier: .mvp),
-        MockModule(id: "notes", title: "Notes", tier: .mvp),
+        MockModule(id: "chat", title: "Chat", tier: .production),
+        MockModule(id: "notes", title: "Notes", tier: .production),
         MockModule(id: "search", title: "Search", tier: .preview),
         MockModule(id: "encryption", title: "Encryption", tier: .preview),
         MockModule(id: "spotlight", title: "Spotlight", tier: .dev),
     ]
 
-    func testMvpBuildComposesOnlyMvpModules() {
-        let registry = FeatureRegistry.compose(tier: .mvp, from: all)
+    func testProductionBuildComposesOnlyProductionModules() {
+        let registry = FeatureRegistry.compose(tier: .production, from: all)
         XCTAssertEqual(Set(registry.ids), ["chat", "notes"])
     }
 
@@ -38,10 +38,10 @@ final class FeatureRegistryTests: XCTestCase {
 
     func testDuplicateIdsKeepTheFirstDeclaration() {
         let dupes: [FeatureModule] = [
-            MockModule(id: "chat", title: "Chat (real)", tier: .mvp),
-            MockModule(id: "chat", title: "Chat (shadow)", tier: .mvp),
+            MockModule(id: "chat", title: "Chat (real)", tier: .production),
+            MockModule(id: "chat", title: "Chat (shadow)", tier: .production),
         ]
-        let registry = FeatureRegistry.compose(tier: .mvp, from: dupes)
+        let registry = FeatureRegistry.compose(tier: .production, from: dupes)
         XCTAssertEqual(registry.ids, ["chat"])
         XCTAssertEqual(registry.module(id: "chat")?.title, "Chat (real)")
     }
@@ -50,10 +50,10 @@ final class FeatureRegistryTests: XCTestCase {
         let unordered: [FeatureModule] = [
             MockModule(id: "z", title: "zebra", tier: .preview),
             MockModule(id: "a", title: "Apple", tier: .preview),
-            MockModule(id: "core", title: "Xylophone", tier: .mvp),
+            MockModule(id: "core", title: "Xylophone", tier: .production),
         ]
         let registry = FeatureRegistry.compose(tier: .dev, from: unordered)
-        // mvp module first regardless of title; then preview modules A→Z.
+        // production module first regardless of title; then preview modules A→Z.
         XCTAssertEqual(registry.ids, ["core", "a", "z"])
     }
 
