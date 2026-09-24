@@ -15,26 +15,45 @@ final class LlamaModelDownloader: NSObject, ObservableObject {
 
     private var continuation: CheckedContinuation<Void, Error>?
     private var destinationURL: URL?
-    /// Digest to verify the finished download against, captured from the model at
+    /// Digest to verify the finished download against, captured from the asset at
     /// download start; `nil` means the model isn't pinned yet (download accepted
     /// unverified — see `LlamaModel.expectedSHA256`).
     private var expectedSHA256: String?
+    /// Progress sink for the in-flight fetch, so a caller using the seam gets
+    /// updates too — not only the `@Published progress` the Settings UI binds to.
+    private var progressHandler: ((Double) -> Void)?
     private lazy var session: URLSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
 
+    /// Convenience for the built-in models the Settings UI offers: fetch a
+    /// `LlamaModel` and drive `@Published progress`. Callers unchanged.
     @MainActor
     func download(_ model: LlamaModel, to destinationURL: URL) async throws {
+        try await fetch(model.asset, to: destinationURL, onProgress: { _ in })
+    }
+
+    /// `ModelDownloadProvider`: the direct-download (HTTP) implementation of the
+    /// seam. Drives `@Published progress`/`isDownloading` for the Settings UI and
+    /// also forwards progress to `onProgress`, verifying the pinned digest before
+    /// the file is accepted.
+    @MainActor
+    func fetch(
+        _ asset: ModelAsset,
+        to destinationURL: URL,
+        onProgress: @escaping (Double) -> Void
+    ) async throws {
         isDownloading = true
         progress = 0
         lastError = nil
-        defer { isDownloading = false }
+        defer { isDownloading = false; progressHandler = nil }
 
         try FileManager.default.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         self.destinationURL = destinationURL
-        self.expectedSHA256 = model.expectedSHA256
+        self.expectedSHA256 = asset.expectedSHA256
+        self.progressHandler = onProgress
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             self.continuation = continuation
-            session.downloadTask(with: model.downloadURL).resume()
+            session.downloadTask(with: asset.remoteURL).resume()
         }
     }
 
@@ -52,6 +71,8 @@ final class LlamaModelDownloader: NSObject, ObservableObject {
     }
 }
 
+extension LlamaModelDownloader: ModelDownloadProvider {}
+
 extension LlamaModelDownloader: URLSessionDownloadDelegate {
     func urlSession(
         _ session: URLSession,
@@ -62,7 +83,10 @@ extension LlamaModelDownloader: URLSessionDownloadDelegate {
     ) {
         guard totalBytesExpectedToWrite > 0 else { return }
         let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        DispatchQueue.main.async { self.progress = fraction }
+        DispatchQueue.main.async {
+            self.progress = fraction
+            self.progressHandler?(fraction)
+        }
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
