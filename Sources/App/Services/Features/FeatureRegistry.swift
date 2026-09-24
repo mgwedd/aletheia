@@ -54,6 +54,14 @@ extension FeatureRegistry {
     /// Add each new module here as it's peeled out.
     static let allModules: [FeatureModule] = [
         SpotlightFeatureModule(),
-        AtRestEncryptionFeatureModule()
+        AtRestEncryptionFeatureModule(),
+        AppIntentsFeatureModule()
     ]
+
+    /// The registry for *this* build, composed once from the compiled tier
+    /// (`BuildTier.current`, which defaults to `.production`). Use this from
+    /// static / non-`AppModel` contexts — such as an `AppShortcutsProvider` the
+    /// system instantiates — that still need to ask whether a module ships.
+    /// `AppModel` composes its own instance the same way for injectability.
+    static let current = compose(tier: .current, from: allModules)
 }

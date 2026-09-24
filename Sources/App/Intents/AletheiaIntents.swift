@@ -59,14 +59,20 @@ struct NewSessionIntent: AppIntent {
 
 struct AletheiaShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
-        AppShortcut(
-            intent: ShowTodaysSessionsIntent(),
-            phrases: [
-                "Show today's sessions in \(.applicationName)",
-                "What sessions do I have today in \(.applicationName)"
-            ],
-            shortTitle: "Today's Sessions",
-            systemImageName: "calendar"
-        )
+        // Siri/Shortcuts is a `.dev`-tier feature module. In production and
+        // preview builds the module is absent, so we offer no shortcut phrases
+        // and the app exposes no voice/automation surface. See
+        // `AppIntentsFeatureModule`.
+        if FeatureRegistry.current.contains(id: AppIntentsFeatureModule.id) {
+            AppShortcut(
+                intent: ShowTodaysSessionsIntent(),
+                phrases: [
+                    "Show today's sessions in \(.applicationName)",
+                    "What sessions do I have today in \(.applicationName)"
+                ],
+                shortTitle: "Today's Sessions",
+                systemImageName: "calendar"
+            )
+        }
     }
 }
