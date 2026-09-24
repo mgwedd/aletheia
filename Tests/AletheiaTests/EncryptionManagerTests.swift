@@ -107,7 +107,7 @@ final class EncryptionManagerTests: XCTestCase {
         try manager(root: tempRoot).enable(passphrase: "already encrypted", iterations: fastIterations)
 
         // This build's registry doesn't offer turning encryption on...
-        let mvpRegistry = FeatureRegistry.compose(tier: .mvp, from: FeatureRegistry.allModules)
+        let mvpRegistry = FeatureRegistry.compose(tier: .production, from: FeatureRegistry.allModules)
         XCTAssertFalse(mvpRegistry.contains(id: AtRestEncryptionFeatureModule.id))
 
         // ...but a fresh manager over the same folder (simulating that MVP
