@@ -36,9 +36,24 @@ final class BuildTierTests: XCTestCase {
         XCTAssertNil(BuildTier(rawValue: "nonsense"))
     }
 
-    /// The test host sets no `AletheiaBuildTier`, so `current` must fall back to
-    /// the thin product rather than the everything build — the safe default.
-    func testCurrentDefaultsToProductionWhenUnset() {
-        XCTAssertEqual(BuildTier.current, .production)
+    /// `compiled` reflects the build configuration's tier flags. CI builds and
+    /// tests all three tiers, so pin `compiled` against the flags actually set
+    /// for this run rather than assuming one tier.
+    func testCompiledTierMatchesTheBuildConfiguration() {
+        #if ALETHEIA_DEV
+        XCTAssertEqual(BuildTier.compiled, .dev)
+        #elseif ALETHEIA_PREVIEW
+        XCTAssertEqual(BuildTier.compiled, .preview)
+        #else
+        XCTAssertEqual(BuildTier.compiled, .production)
+        #endif
+    }
+
+    /// With no `AletheiaBuildTier` Info.plist override in the test host,
+    /// `current` falls back to the compiled tier — whichever tier this run was
+    /// built at. A plain Release build compiles at `.production`, so it ships the
+    /// thin product.
+    func testCurrentFallsBackToCompiledTierWhenUnset() {
+        XCTAssertEqual(BuildTier.current, .compiled)
     }
 }

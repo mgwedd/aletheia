@@ -44,16 +44,32 @@ enum BuildTier: String, CaseIterable, Comparable, Codable {
     /// A build includes everything at or below its own tier.
     func includes(_ moduleTier: BuildTier) -> Bool { moduleTier <= self }
 
-    /// The tier this build was compiled as, read from the `AletheiaBuildTier`
-    /// Info.plist value (set per target in `project.yml`). Defaults to `.production` so
-    /// a plain build — and any build that forgets to set it — is the thin product,
-    /// never accidentally the everything build. An unrecognized value also falls
-    /// back to `.production`.
+    /// The tier this binary was **compiled** at, from the build configuration's
+    /// Swift active compilation conditions (`project.yml`): Debug defines
+    /// `ALETHEIA_DEV` (+`ALETHEIA_PREVIEW`), Release defines neither. This is the
+    /// source of truth for the thin production build — preview/dev-only code
+    /// guarded by these flags (e.g. App Intents) is absent from a `.production`
+    /// binary, not merely hidden at runtime.
+    static var compiled: BuildTier {
+        #if ALETHEIA_DEV
+        return .dev
+        #elseif ALETHEIA_PREVIEW
+        return .preview
+        #else
+        return .production
+        #endif
+    }
+
+    /// The effective tier for this build. Defaults to the compiled tier; an
+    /// `AletheiaBuildTier` Info.plist value, if present and valid, overrides it
+    /// (an escape hatch for forcing a tier without a recompile — e.g. a QA
+    /// build). A missing or unrecognized value falls back to `compiled`, so a
+    /// plain Release build is always the thin `.production` product.
     static var current: BuildTier {
-        guard let raw = Bundle.main.object(forInfoDictionaryKey: "AletheiaBuildTier") as? String,
-              let tier = BuildTier(rawValue: raw) else {
-            return .production
+        if let raw = Bundle.main.object(forInfoDictionaryKey: "AletheiaBuildTier") as? String,
+           let tier = BuildTier(rawValue: raw) {
+            return tier
         }
-        return tier
+        return compiled
     }
 }

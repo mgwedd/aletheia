@@ -23,26 +23,43 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: Build & test (${{ matrix.runner }})
+    name: Build & test (${{ matrix.tier }}, ${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
+    # Build AND test each build tier, so a production or preview binary that
+    # fails to compile (or a tier that composes the wrong feature set) is caught
+    # here — not just the dev build. Each tier maps to a set of Swift active
+    # compilation conditions (see TIER_CONDITIONS below / BuildTier). Tests run
+    # in the Debug config (Hardened Runtime off, so XCTest can inject) with the
+    # tier's conditions overridden on the command line; scripts/build.sh + cd.yml
+    # separately validate the actual Release/Hardened-Runtime production build.
+    #
     # macOS 26 exercises Xcode 26, whose SDK includes FoundationModels — the
     # only place the Apple Intelligence backend actually compiles. It's a
     # canary (continue-on-error) so a newest-toolchain hiccup surfaces without
     # blocking the merge, while macos-15 (Xcode 16) stays the required signal.
     #
-    # To save macOS minutes (billed 10x), the canary runs only on main pushes
-    # and manual dispatch — not on every PR, where macos-15 is the signal that
-    # matters. On a PR the matrix is just [macos-15]; elsewhere it adds macos-26.
+    # To save macOS minutes (billed 10x), the three-tier matrix runs on macos-15
+    # (the required signal); on main pushes and manual dispatch a single macos-26
+    # dev-tier canary is added (the dev tier compiles the whole surface).
     continue-on-error: ${{ matrix.runner == 'macos-26' }}
     strategy:
       fail-fast: false
       matrix:
-        runner: ${{ github.event_name == 'pull_request' && fromJSON('["macos-15"]') || fromJSON('["macos-15", "macos-26"]') }}
+        tier: [production, preview, dev]
+        runner: [macos-15]
+        include: ${{ github.event_name == 'pull_request' && fromJSON('[]') || fromJSON('[{"tier":"dev","runner":"macos-26"}]') }}
     env:
       # Stream xcodebuild output line-by-line so the xcbeautify pipe renders in
       # real time instead of buffering until the step ends.
       NSUnbufferedIO: "YES"
+      # The Swift active compilation conditions for this job's tier. The tiers
+      # nest (production ⊂ preview ⊂ dev); DEBUG is kept so the tier is built in
+      # the test-friendly Debug configuration.
+      TIER_CONDITIONS: >-
+        ${{ (matrix.tier == 'dev' && 'DEBUG ALETHEIA_PREVIEW ALETHEIA_DEV')
+            || (matrix.tier == 'preview' && 'DEBUG ALETHEIA_PREVIEW')
+            || 'DEBUG' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -79,7 +96,7 @@ jobs:
             -skipPackagePluginValidation \
             | xcbeautify --renderer github-actions
 
-      - name: Build
+      - name: Build (${{ matrix.tier }} tier)
         run: |
           set -o pipefail
           xcodebuild build \
@@ -89,9 +106,10 @@ jobs:
             -destination 'platform=macOS' \
             -derivedDataPath build \
             -skipPackagePluginValidation \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS="$TIER_CONDITIONS" \
             | xcbeautify --renderer github-actions
 
-      - name: Run unit tests
+      - name: Run unit tests (${{ matrix.tier }} tier)
         run: |
           set -o pipefail
           xcodebuild test \
@@ -103,13 +121,14 @@ jobs:
             -skipPackagePluginValidation \
             -enableCodeCoverage YES \
             -resultBundlePath build/TestResults.xcresult \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS="$TIER_CONDITIONS" \
             | xcbeautify --renderer github-actions
 
       - name: Code coverage summary
         if: always()
         run: |
           if [ -d build/TestResults.xcresult ]; then
-            echo "### Code coverage (${{ matrix.runner }})" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Code coverage (${{ matrix.tier }} tier, ${{ matrix.runner }})" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             xcrun xccov view --report --only-targets build/TestResults.xcresult >> "$GITHUB_STEP_SUMMARY" || true
             echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -121,7 +140,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: TestResults-${{ matrix.runner }}
+          name: TestResults-${{ matrix.tier }}-${{ matrix.runner }}
           path: build/TestResults.xcresult
           retention-days: 7
           if-no-files-found: ignore

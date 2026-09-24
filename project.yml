@@ -16,7 +16,18 @@ settings:
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
   configs:
+    Debug:
+      # Debug compiles at the `dev` build tier: every feature module's code is
+      # included, so local runs and the unit tests exercise the full feature
+      # surface. `DEBUG` is Xcode's default Debug condition, preserved here
+      # alongside the tier flags. The tiers nest (production ⊂ preview ⊂ dev),
+      # so a dev build defines ALETHEIA_PREVIEW too. See BuildTier.
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG ALETHEIA_PREVIEW ALETHEIA_DEV
     Release:
+      # Release ships the `production` tier: no ALETHEIA_* conditions are
+      # defined, so preview/dev-only code (e.g. App Intents) is compiled out of
+      # the shipped binary entirely — not merely hidden at runtime.
+      #
       # Hardened Runtime only matters for distribution, and it interferes
       # with XCTest injecting its bundle into the host app, so keep it off
       # for Debug (where tests run) and on for the Release build that
