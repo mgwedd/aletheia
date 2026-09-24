@@ -55,6 +55,8 @@ extension FeatureRegistry {
     static let allModules: [FeatureModule] = [
         SpotlightFeatureModule(),
         AtRestEncryptionFeatureModule(),
+        EventKitSchedulingFeatureModule(),
+        EmbeddedLlamaFeatureModule(),
         SuggestedQuestionsFeatureModule()
     ]
 }

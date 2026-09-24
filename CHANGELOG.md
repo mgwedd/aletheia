@@ -9,6 +9,16 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.10.1] - 2026-09-24
+
+### Fixed
+- read backup-exclusion flag fresh, not from a stale URL cache (#118)
+
+## [2.10.0] - 2026-09-24
+
+### Added
+- gate EventKit reminders & calendar behind a dev-only feature module (#113)
+
 ## [2.9.0] - 2026-09-23
 
 ### Added
