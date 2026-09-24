@@ -71,9 +71,14 @@ struct SettingsView: View {
                 Picker("Engine", selection: $settings.assistantBackend) {
                     // Apple Intelligence is intentionally hidden for now (see
                     // Integrations.appleIntelligenceBlocked) — keep AI fully on
-                    // backends we can prove stay on this Mac.
-                    ForEach(AssistantBackend.allCases.filter {
-                        !($0 == .appleIntelligence && Integrations.appleIntelligenceBlocked)
+                    // backends we can prove stay on this Mac. "Built-in model"
+                    // (embedded llama.cpp) is a .dev-tier module until stable, so
+                    // production/preview don't advertise a backend that today
+                    // falls back to Ollama. See EmbeddedLlamaFeatureModule.
+                    ForEach(AssistantBackend.allCases.filter { backend in
+                        if backend == .appleIntelligence && Integrations.appleIntelligenceBlocked { return false }
+                        if backend == .localLlama && !appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id) { return false }
+                        return true
                     }) { backend in
                         Text(backend.displayName).tag(backend)
                     }
@@ -149,7 +154,9 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if LlamaRuntime.isBuilt {
+            // The .dev-tier "Built-in Model" (embedded llama.cpp) management UI —
+            // offered only when the module ships AND the runtime is linked.
+            if LlamaRuntime.isBuilt && appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id) {
                 Section("Built-in Model (llama.cpp)") {
                     Picker("Model", selection: $settings.llamaModel) {
                         ForEach(LlamaModel.allCases) { model in
