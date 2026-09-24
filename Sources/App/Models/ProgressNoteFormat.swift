@@ -12,6 +12,7 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
     case soap
     case dap
     case birp
+    case girp
     case narrative
 
     var id: String { rawValue }
@@ -35,6 +36,7 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
         case .soap: return "SOAP note"
         case .dap: return "DAP note"
         case .birp: return "BIRP note"
+        case .girp: return "GIRP note"
         case .narrative: return "Free text (no template)"
         }
     }
@@ -45,6 +47,7 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
         case .soap: return "SOAP"
         case .dap: return "DAP"
         case .birp: return "BIRP"
+        case .girp: return "GIRP"
         case .narrative: return "Free text"
         }
     }
@@ -55,6 +58,7 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
         case .soap: return "Subjective · Objective · Assessment · Plan — the most widely accepted progress-note format."
         case .dap: return "Data · Assessment · Plan — a leaner structure common in behavioral health."
         case .birp: return "Behavior · Intervention · Response · Plan — centers what happened in the room."
+        case .girp: return "Goal · Intervention · Response · Plan — ties each session back to the treatment plan's goals."
         case .narrative: return "Plain-prose summary of the session, no fixed headings — Aletheia's default."
         }
     }
@@ -93,6 +97,17 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
                         guidance: "How the client responded to those interventions — engagement, insight, shifts, or resistance observed."),
                 Section(heading: "Plan",
                         guidance: "Next steps — homework, referrals, and the focus or timing of the next session."),
+            ]
+        case .girp:
+            return [
+                Section(heading: "Goal",
+                        guidance: "The treatment goal or objective this session worked toward, tied to the client's treatment plan."),
+                Section(heading: "Intervention",
+                        guidance: "What the clinician did to address that goal — the techniques, approaches, and topics worked on in the session."),
+                Section(heading: "Response",
+                        guidance: "How the client responded to those interventions — engagement, insight, shifts, or resistance observed."),
+                Section(heading: "Plan",
+                        guidance: "Next steps toward the goal — homework, referrals, any change to the goal, and the focus or timing of the next session."),
             ]
         case .narrative:
             return []
