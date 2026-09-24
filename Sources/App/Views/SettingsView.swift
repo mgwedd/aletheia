@@ -617,7 +617,8 @@ struct SettingsView: View {
             settings: settings,
             backend: integrations.effectiveAssistantBackend,
             assistant: integrations.makeAssistant(),
-            authoritative: authoritative
+            authoritative: authoritative,
+            includeScheduling: appModel.featureRegistry.contains(id: EventKitSchedulingFeatureModule.id)
         )
     }
 }
