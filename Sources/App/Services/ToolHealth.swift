@@ -43,7 +43,8 @@ enum ToolHealth {
         settings: AppSettings,
         backend: AssistantBackend,
         assistant: Assistant,
-        authoritative: Bool = true
+        authoritative: Bool = true,
+        includeScheduling: Bool = true
     ) async -> [ToolHealthCheck] {
         // The AI check hits the network; run it concurrently with the (also
         // async) screen-recording probe. The rest are cheap local reads.
@@ -52,9 +53,15 @@ enum ToolHealth {
         let whisperModel = whisperModelCheck(settings: settings)
         let dataFolder = dataFolderCheck(settings: settings)
         let screen = await screenRecordingCheck(authoritative: authoritative)
-        let calendar = calendarCheck()
-        let reminders = remindersCheck()
-        return await [dataFolder, mic, screen, whisperModel, ai, calendar, reminders]
+        var checks = await [dataFolder, mic, screen, whisperModel, ai]
+        // Calendar/Reminders belong to the `.dev`-tier EventKit scheduling
+        // module. When that module isn't in the build, don't surface (or ask
+        // for) their permissions at all. See `EventKitSchedulingFeatureModule`.
+        if includeScheduling {
+            checks.append(calendarCheck())
+            checks.append(remindersCheck())
+        }
+        return checks
     }
 
     static func dataFolderCheck(settings: AppSettings) -> ToolHealthCheck {
