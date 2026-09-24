@@ -58,6 +58,7 @@ extension FeatureRegistry {
         EventKitSchedulingFeatureModule(),
         EmbeddedLlamaFeatureModule(),
         SuggestedQuestionsFeatureModule(),
-        SourceCitationsFeatureModule()
+        SourceCitationsFeatureModule(),
+        PatientMedicationsFeatureModule()
     ]
 }
