@@ -36,9 +36,18 @@ final class BuildTierTests: XCTestCase {
         XCTAssertNil(BuildTier(rawValue: "nonsense"))
     }
 
-    /// The test host sets no `AletheiaBuildTier`, so `current` must fall back to
-    /// the thin product rather than the everything build — the safe default.
-    func testCurrentDefaultsToProductionWhenUnset() {
-        XCTAssertEqual(BuildTier.current, .production)
+    /// The unit tests compile in the Debug config, which defines `ALETHEIA_DEV`,
+    /// so this build's compiled tier is `.dev` — the full feature surface, which
+    /// is exactly what lets the tests exercise every module.
+    func testCompiledTierIsDevUnderTheTestConfig() {
+        XCTAssertEqual(BuildTier.compiled, .dev)
+    }
+
+    /// With no `AletheiaBuildTier` Info.plist override in the test host,
+    /// `current` falls back to the compiled tier (here, `.dev`). A plain Release
+    /// build compiles at `.production` and so ships the thin product.
+    func testCurrentFallsBackToCompiledTierWhenUnset() {
+        XCTAssertEqual(BuildTier.current, .compiled)
+        XCTAssertEqual(BuildTier.current, .dev)
     }
 }

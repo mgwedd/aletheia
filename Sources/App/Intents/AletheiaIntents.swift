@@ -1,3 +1,10 @@
+// Siri / Shortcuts (App Intents) is a `.dev`-tier feature, compiled out of the
+// production and preview builds. App Intents can't be gated at runtime — the
+// shortcut metadata is extracted at build time and `AppShortcutsBuilder` rejects
+// conditionals (`ambiguous use of 'buildOptional'`) — so the entire surface is
+// excluded from the binary with `#if ALETHEIA_DEV`. See BuildTier /
+// AppIntentsFeatureModule.
+#if ALETHEIA_DEV
 import AppIntents
 
 /// "Show today's sessions" — read-only, returns spoken/displayed dialog.
@@ -70,3 +77,4 @@ struct AletheiaShortcuts: AppShortcutsProvider {
         )
     }
 }
+#endif

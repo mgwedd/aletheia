@@ -1,3 +1,6 @@
+// Part of the `.dev`-tier App Intents surface — compiled out of production and
+// preview builds. See AletheiaIntents.swift / AppIntentsFeatureModule.
+#if ALETHEIA_DEV
 import AppIntents
 
 /// A patient exposed to Shortcuts/Siri so intents can take "for [patient]".
@@ -31,3 +34,4 @@ struct PatientEntityQuery: EntityQuery {
         return patients.map { PatientEntity(id: $0.id, name: $0.name) }
     }
 }
+#endif

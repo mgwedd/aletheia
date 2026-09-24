@@ -49,16 +49,26 @@ struct FeatureRegistry {
 }
 
 extension FeatureRegistry {
-    /// Every feature module the app knows about, regardless of build tier.
-    /// `compose(tier:from:)` filters this down to what a given build ships.
+    /// Every feature module compiled into *this* build. `compose(tier:from:)`
+    /// filters it to what the running tier ships. Most modules are listed
+    /// unconditionally and gated at runtime by their `tier`; a module whose code
+    /// is itself compiled out at some tiers (App Intents, which can't be
+    /// runtime-gated) is registered under the same `#if` that guards its code, so
+    /// it's simply absent from a build that doesn't compile it.
     /// Add each new module here as it's peeled out.
-    static let allModules: [FeatureModule] = [
-        SpotlightFeatureModule(),
-        AtRestEncryptionFeatureModule(),
-        EventKitSchedulingFeatureModule(),
-        EmbeddedLlamaFeatureModule(),
-        SuggestedQuestionsFeatureModule(),
-        SourceCitationsFeatureModule(),
-        PatientMedicationsFeatureModule()
-    ]
+    static let allModules: [FeatureModule] = {
+        var modules: [FeatureModule] = [
+            SpotlightFeatureModule(),
+            AtRestEncryptionFeatureModule(),
+            EventKitSchedulingFeatureModule(),
+            EmbeddedLlamaFeatureModule(),
+            SuggestedQuestionsFeatureModule(),
+            SourceCitationsFeatureModule(),
+            PatientMedicationsFeatureModule()
+        ]
+        #if ALETHEIA_DEV
+        modules.append(AppIntentsFeatureModule())
+        #endif
+        return modules
+    }()
 }
