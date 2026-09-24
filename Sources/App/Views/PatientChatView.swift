@@ -200,7 +200,12 @@ struct PatientChatView: View {
                 persist(threadID: threadID)
             },
             onFinish: { finalText in
-                let decorated = Citations.decorate(answer: finalText, sources: context.sources)
+                // Source citations are a .preview-tier module; production shows
+                // the raw answer without the numbered sources footer. See
+                // SourceCitationsFeatureModule.
+                let decorated = appModel.featureRegistry.contains(id: SourceCitationsFeatureModule.id)
+                    ? Citations.decorate(answer: finalText, sources: context.sources)
+                    : finalText
                 messages.upsert(id: assistantID, role: .assistant, text: decorated)
                 isSending = false
                 persist(threadID: threadID)
