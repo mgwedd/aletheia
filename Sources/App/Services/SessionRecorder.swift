@@ -67,6 +67,9 @@ final class SessionRecorder: ObservableObject {
         systemAudio.onError = { [weak self] error in
             self?.state = .error(error.localizedDescription)
         }
+        mic.onDisruption = { [weak self] message in
+            self?.state = .error(message)
+        }
 
         do {
             try mic.start(to: micURL)
