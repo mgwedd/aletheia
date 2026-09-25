@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.20.0] - 2026-09-25
+
+### Added
+- swappable LoRA / fine-tuned adapter seam (fails closed on base mismatch) (#137)
+
 ## [2.19.0] - 2026-09-24
 
 ### Added
