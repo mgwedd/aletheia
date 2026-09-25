@@ -18,13 +18,25 @@ enum LlamaRuntime {
         #endif
     }
 
-    /// On-disk location for a downloaded GGUF, alongside the Whisper models in
+    /// The directory downloaded weights live in, alongside the Whisper models in
     /// Application Support. Weights refresh separately from the app.
-    static func modelURL(for model: LlamaModel) -> URL {
+    static var modelsDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Aletheia", isDirectory: true)
             .appendingPathComponent("Models", isDirectory: true)
-            .appendingPathComponent(model.fileName)
+    }
+
+    /// On-disk location for a downloaded base GGUF.
+    static func modelURL(for model: LlamaModel) -> URL {
+        modelsDirectory.appendingPathComponent(model.fileName)
+    }
+
+    /// On-disk location for a downloaded LoRA adapter, in an `Adapters/`
+    /// subfolder so adapters and base weights don't collide by name.
+    static func adapterURL(for adapter: LoRAAdapter) -> URL {
+        modelsDirectory
+            .appendingPathComponent("Adapters", isDirectory: true)
+            .appendingPathComponent(adapter.fileName)
     }
 
     /// True only when the runtime is linked *and* the model file is present, so
