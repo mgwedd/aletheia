@@ -71,4 +71,35 @@ final class ToolHealthTests: XCTestCase {
         XCTAssertEqual(check.status, .ok)
         XCTAssertTrue(check.detail.contains("llama3.1:8b"))
     }
+
+    // MARK: #111 — installed-but-not-running vs. never-installed
+
+    /// The regression this fixes: unreachable used to always mean "go install
+    /// it", even when Ollama was already on the Mac and had simply quit (e.g.
+    /// after a reboot). Now the two are distinguished so the checklist can
+    /// offer to launch it instead of reopening the download page forever.
+    func testOllamaUnreachableAndInstalledOffersLaunchState() {
+        let check = ToolHealth.classifyOllama(reachable: false, hasModel: false, modelName: "llama3.1:8b", installed: true)
+        XCTAssertEqual(check.status, .failed)
+        XCTAssertEqual(check.ollamaState, .installedNotRunning)
+        XCTAssertTrue(check.detail.localizedCaseInsensitiveContains("launch"))
+    }
+
+    func testOllamaUnreachableAndNotInstalledOffersDownloadState() {
+        let check = ToolHealth.classifyOllama(reachable: false, hasModel: false, modelName: "llama3.1:8b", installed: false)
+        XCTAssertEqual(check.status, .failed)
+        XCTAssertEqual(check.ollamaState, .notInstalled)
+        XCTAssertTrue(check.detail.localizedCaseInsensitiveContains("install"))
+    }
+
+    func testOllamaReachableStatesCarryTheirEngineState() {
+        XCTAssertEqual(
+            ToolHealth.classifyOllama(reachable: true, hasModel: false, modelName: "llama3.1:8b").ollamaState,
+            .modelMissing
+        )
+        XCTAssertEqual(
+            ToolHealth.classifyOllama(reachable: true, hasModel: true, modelName: "llama3.1:8b").ollamaState,
+            .ready
+        )
+    }
 }

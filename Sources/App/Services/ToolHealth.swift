@@ -26,6 +26,19 @@ struct ToolHealthCheck: Identifiable {
     let title: String
     let status: Status
     let detail: String
+    /// Set only for `.kind == .ollama`: distinguishes "never installed" from
+    /// "installed but not running" so `Setup.action(for:)` can offer the
+    /// download page or a one-click launch, respectively. `nil` for every
+    /// other kind, and for an `.ollama` check built without this detail.
+    var ollamaState: OllamaEngineState?
+
+    init(kind: Kind, title: String, status: Status, detail: String, ollamaState: OllamaEngineState? = nil) {
+        self.kind = kind
+        self.title = title
+        self.status = status
+        self.detail = detail
+        self.ollamaState = ollamaState
+    }
 }
 
 /// Everything the Settings screen (and first-run flow) needs to tell the
@@ -194,17 +207,27 @@ enum ToolHealth {
         if reachable {
             hasModel = await assistant.hasModel(settings.ollamaModelName)
         }
-        return classifyOllama(reachable: reachable, hasModel: hasModel, modelName: settings.ollamaModelName)
+        // Only bother probing for the installed app when we actually need to
+        // decide between "install" and "launch" — i.e. when it isn't reachable.
+        let installed = reachable ? true : OllamaAppLocator.isInstalled()
+        return classifyOllama(reachable: reachable, hasModel: hasModel, modelName: settings.ollamaModelName, installed: installed)
     }
 
     /// Pure mapping from Ollama reachability + model presence to a check row.
-    static func classifyOllama(reachable: Bool, hasModel: Bool, modelName: String) -> ToolHealthCheck {
+    /// `installed` only matters when `reachable` is false — it decides whether
+    /// the checklist should offer to download Ollama or to launch it (see
+    /// `OllamaEngineState` and `Setup.action(for:)`).
+    static func classifyOllama(reachable: Bool, hasModel: Bool, modelName: String, installed: Bool = false) -> ToolHealthCheck {
         guard reachable else {
-            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .failed, detail: "Can't reach Ollama, the free local AI engine Aletheia runs on. Install it (once) and keep it running, then this turns green on its own.")
+            let state = OllamaEngineState.classify(installed: installed, isLaunching: false, reachable: false, hasModel: nil)
+            let detail = installed
+                ? "Ollama is installed but isn't running. Click Launch to start it — this turns green on its own."
+                : "Can't reach Ollama, the free local AI engine Aletheia runs on. Install it (once) and keep it running, then this turns green on its own."
+            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .failed, detail: detail, ollamaState: state)
         }
         if hasModel {
-            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .ok, detail: "\(modelName) is ready.")
+            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .ok, detail: "\(modelName) is ready.", ollamaState: .ready)
         }
-        return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .warning, detail: "Ollama is running, but the \(modelName) model isn't downloaded yet. Use “Download” here — it downloads inside Aletheia.")
+        return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .warning, detail: "Ollama is running, but the \(modelName) model isn't downloaded yet. Use “Download” here — it downloads inside Aletheia.", ollamaState: .modelMissing)
     }
 }

@@ -9,6 +9,7 @@ enum SetupAction: Equatable {
     case openScreenRecordingSettings
     case downloadTranscriptionModel
     case installOrOpenOllama
+    case launchOllama
     case downloadOllamaModel
     case enableAppleIntelligence
     case requestCalendarAccess
@@ -23,6 +24,7 @@ enum SetupAction: Equatable {
         case .openScreenRecordingSettings: return "Open Settings"
         case .downloadTranscriptionModel: return "Download"
         case .installOrOpenOllama: return "Get Ollama"
+        case .launchOllama: return "Launch Ollama"
         case .downloadOllamaModel: return "Download Model"
         case .enableAppleIntelligence: return "Open Settings"
         case .requestCalendarAccess: return "Allow"
@@ -63,7 +65,12 @@ enum Setup {
         case (.whisperModel, _):
             return .downloadTranscriptionModel
         case (.ollama, .failed):
-            return .installOrOpenOllama      // not reachable — install/launch it
+            // Not reachable: send to the download page only when it's actually
+            // missing, otherwise launch the already-installed app. An
+            // `.ollama` check built without `ollamaState` (e.g. an older
+            // caller, or a test fixture) falls back to the old "install"
+            // action rather than guessing it's already there.
+            return check.ollamaState == .installedNotRunning ? .launchOllama : .installOrOpenOllama
         case (.ollama, .warning):
             return .downloadOllamaModel      // running, model missing
         case (.appleIntelligence, .failed):
