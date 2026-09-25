@@ -132,8 +132,12 @@ struct SetupChecklistView: View {
             // One explicit system prompt. If already granted or the user grants
             // it now, we're done and the live poll flips the row green without a
             // relaunch. If macOS won't prompt (previously denied), send them to
-            // the exact Settings pane instead.
-            if !SystemAudioCapture.requestPermission() {
+            // the exact Settings pane instead. `requestPermission()` is async
+            // because the underlying system call blocks until the user responds
+            // to the dialog — awaiting it here keeps that wait off the main
+            // thread instead of freezing the wizard step.
+            let granted = await SystemAudioCapture.requestPermission()
+            if !granted {
                 SystemSettingsLinks.openScreenRecordingSettings()
                 await pollForScreenRecordingGrant()
             }
