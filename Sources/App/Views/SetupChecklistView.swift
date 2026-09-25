@@ -62,6 +62,12 @@ struct SetupChecklistView: View {
                     ProgressView(value: ollamaPullProgress)
                     Text(ollamaPullStatus).font(.caption2).foregroundStyle(.secondary)
                 }
+                if item.action == .launchOllama, busyAction == .launchOllama {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Starting Ollama…").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
             }
             Spacer()
             if let action = item.action {
@@ -165,6 +171,16 @@ struct SetupChecklistView: View {
             }
         case .installOrOpenOllama:
             SystemSettingsLinks.openOllamaDownload()
+        case .launchOllama:
+            busyAction = .launchOllama
+            defer { busyAction = nil }
+            do {
+                try await OllamaLauncher.launchAndWaitUntilReachable {
+                    await integrations.makeAssistant().isReachable()
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         case .downloadOllamaModel:
             busyAction = .downloadOllamaModel
             ollamaPullProgress = 0
