@@ -46,6 +46,30 @@ enum AssistantBackend: String, CaseIterable, Identifiable, Codable, Hashable {
     }
 }
 
+extension AssistantBackend {
+    /// The engine choices the Settings picker should offer, given what this
+    /// build actually ships and what this Mac supports. Pure and framework-free
+    /// so the gating is unit-testable without a view or `FeatureRegistry`
+    /// instance — the view just forwards its two facts in.
+    ///
+    /// `.localLlama` ("Built-in model") is withheld unless the embedded
+    /// llama.cpp module is present in this build's `FeatureRegistry` — see
+    /// `EmbeddedLlamaFeatureModule`, `.dev`-tier until proven, so production
+    /// and preview never advertise an engine that would silently fall back to
+    /// Ollama. `.appleIntelligence` is withheld while
+    /// `Integrations.appleIntelligenceBlocked` holds it off (kept provably
+    /// on-device — see project README). Neither flag changes
+    /// `AssistantBackendResolver`'s fallback behavior for an already-selected
+    /// preference.
+    static func selectableOptions(embeddedLlamaAvailable: Bool, appleIntelligenceBlocked: Bool) -> [AssistantBackend] {
+        allCases.filter { backend in
+            if backend == .appleIntelligence && appleIntelligenceBlocked { return false }
+            if backend == .localLlama && !embeddedLlamaAvailable { return false }
+            return true
+        }
+    }
+}
+
 /// Pure decision logic: given what's actually available on this Mac, decides
 /// which concrete backend a preference resolves to. Deliberately free of any
 /// framework or `AppSettings` dependency so it's unit-tested in isolation and
