@@ -165,20 +165,36 @@ compile out otherwise.
 <details>
 <summary>Bringing up the embedded llama.cpp backend (Mac, one-time)</summary>
 
-The binding lives behind `#if canImport(llama)` and compiles out until the
-package is linked, so CI stays green without building the heavy C++.
+The engine (`LlamaEngine`, conforming to the `LocalLLMEngine` seam) and the
+older `LlamaAssistant` reference both live behind `#if canImport(llama)` and
+compile out until the package is linked, so CI stays green without building
+the heavy C++:
 
-1. In `project.yml`, uncomment the `llama` package stanza and the
-   `- package: llama` dependency. The `revision:` is already pinned to a
-   **specific `ggml-org/llama.cpp` commit SHA** — the latest stable release,
-   tag `b11149` (`d2e54583…`) — never a branch. Re-pin to a newer release only
-   after re-verifying the `llama.h` calls below against it.
-2. `./scripts/build.sh` — `LlamaAssistant` now compiles and Settings shows a
-   "Built-in Model" section to download a GGUF.
-3. Verify `LlamaAssistant`'s `llama.h` calls against that pinned revision — the
-   symbols weren't compiler-checked in CI.
-4. Confirm the model download URLs and add a SHA-256 integrity check before
+```mermaid
+flowchart LR
+  A[project.yml: llama package\ncommented / staged] -->|verify-llama-bringup.sh| B[Compile-verify on a Mac\nagainst pinned b11149]
+  B -- green --> C[Commit the package\nenablement yourself]
+  B -- red --> D[Fix LlamaEngine.swift /\nLlamaAssistant.swift, retry]
+  C --> E["canImport(llama) == true\nLlamaEngineFactory returns LlamaEngine"]
+```
+
+1. `./scripts/verify-llama-bringup.sh` — one command, one Mac: it temporarily
+   uncomments the `llama` package stanza in `project.yml` (already pinned to a
+   **specific `ggml-org/llama.cpp` commit SHA**, the latest stable release tag
+   `b11149`/`d2e54583…`, never a branch), runs `xcodegen generate` + a Release
+   `xcodebuild`, then reverts `project.yml` to its committed state either way.
+   A green run means every `llama.h` call in `LlamaEngine.swift` and
+   `LlamaAssistant.swift` compiles clean against the pin — those symbols are
+   otherwise never compiler-checked, since `canImport(llama)` is false in CI.
+2. Green? Uncomment the same two spots in `project.yml` yourself (the package
+   stanza and the `- package: llama` target dependency) and commit that. The
+   factory (`LocalLLMEngineFactory`) then returns the real `LlamaEngine`
+   instead of `UnavailableLocalLLMEngine`, and Settings shows a "Built-in
+   Model" section to download a GGUF.
+3. Confirm the model download URLs and add a SHA-256 integrity check before
    shipping it enabled.
+4. Re-pin to a newer `llama.cpp` release only after re-running step 1 against
+   it — the API has reshuffled significantly release to release.
 </details>
 
 ## Why native Swift/SwiftUI

@@ -105,24 +105,20 @@ final class UnavailableLocalLLMEngine: LocalLLMEngine {
     }
 }
 
-/// Composition root for the local-LLM engine. Returns the real engine only when
-/// the llama runtime is linked (`#if canImport(llama)`); otherwise a graceful
-/// `UnavailableLocalLLMEngine`. The real engine is wired in when the pinned
-/// llama.cpp package is added and Mac-verified — until then both branches return
-/// an unavailable engine, so every current build behaves identically.
+/// Composition root for the local-LLM engine. Returns the real `LlamaEngine`
+/// only when the llama runtime is linked (`#if canImport(llama)`); otherwise a
+/// graceful `UnavailableLocalLLMEngine`. The package stays commented out in
+/// `project.yml` (see README › Embedded llama.cpp), so `canImport(llama)` is
+/// false in CI and production today — both branches keep returning
+/// `UnavailableLocalLLMEngine` there, unchanged. A Mac maintainer flips it on
+/// per `scripts/verify-llama-bringup.sh`.
 enum LocalLLMEngineFactory {
     static func make(
         modelURL: URL,
         sampling: LocalLLMSampling = .deterministic
     ) -> LocalLLMEngine {
         #if canImport(llama)
-        // TODO(llama pin): return the real LlamaEngine(modelURL:sampling:) here,
-        // conforming to LocalLLMEngine, once the pinned package + engine land and
-        // are verified on a Mac. Kept as unavailable until then so enabling the
-        // package can't half-wire the app.
-        return UnavailableLocalLLMEngine(
-            reason: "The built-in model runtime is present but not yet wired to the engine seam."
-        )
+        return LlamaEngine(modelURL: modelURL, sampling: sampling)
         #else
         return UnavailableLocalLLMEngine()
         #endif
@@ -131,18 +127,13 @@ enum LocalLLMEngineFactory {
     /// Build an engine for a `ModelLoadPlan` — a base model, optionally with a LoRA
     /// adapter. Compatibility is already enforced when the plan is constructed, so
     /// this only routes the base weights (and, on-device, the adapter) to the
-    /// runtime. Same staging as `make(modelURL:)`: unavailable until the real
-    /// engine is wired on a Mac.
+    /// runtime. Same staging as `make(modelURL:)`.
     static func make(
         plan: ModelLoadPlan,
         sampling: LocalLLMSampling = .deterministic
     ) -> LocalLLMEngine {
         #if canImport(llama)
-        // TODO(llama pin): return LlamaEngine(modelURL: plan.baseURL,
-        // adapterURL: plan.adapterURL, sampling: sampling) once the runtime lands.
-        return UnavailableLocalLLMEngine(
-            reason: "The built-in model runtime is present but not yet wired to the engine seam."
-        )
+        return LlamaEngine(plan: plan, sampling: sampling)
         #else
         return make(modelURL: plan.baseURL, sampling: sampling)
         #endif
