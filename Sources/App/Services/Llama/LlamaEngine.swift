@@ -332,9 +332,25 @@ final class LlamaEngine: LocalLLMEngine {
         }
 
         var output = ""
-        var batch = llama_batch_get_one(&tokens, Int32(tokens.count))
-        var produced = 0
         let maxTokens = max(1, request.sampling.maxTokens)
+
+        // `llama_batch_get_one` stores the token pointer inside the batch it
+        // returns, and that pointer has to stay valid until the *next*
+        // `llama_decode`. Swift's inout-to-pointer bridging (`&tokens`,
+        // `&next`) only guarantees a pointer for the duration of the single
+        // call it's passed to, so pointing a batch at a local and decoding it
+        // a loop iteration later would read freed stack memory. Back both the
+        // prompt and each subsequent single token with one stable heap buffer
+        // the batch can safely reference across iterations.
+        let promptCount = tokens.count
+        let tokenStore = UnsafeMutablePointer<llama_token>.allocate(capacity: max(promptCount, 1))
+        defer { tokenStore.deallocate() }
+        tokens.withUnsafeBufferPointer { src in
+            tokenStore.update(from: src.baseAddress!, count: promptCount)
+        }
+        var batch = llama_batch_get_one(tokenStore, Int32(promptCount))
+
+        var produced = 0
         while produced < maxTokens {
             if isCancelled() { break }
             guard llama_decode(context, batch) == 0 else {
@@ -344,11 +360,15 @@ final class LlamaEngine: LocalLLMEngine {
             // to the last token's logits, picks one, and feeds it back to
             // every sampler in the chain (including the grammar's own
             // state) in one call — no separate "accept" step needed.
-            var next = llama_sampler_sample(chain, context, -1)
+            let next = llama_sampler_sample(chain, context, -1)
             if llama_vocab_is_eog(vocab, next) { break }
             output += piece(for: next, vocab: vocab)
             onToken?(output)
-            batch = llama_batch_get_one(&next, 1)
+            // Reuse the same stable storage for the single next token, so the
+            // batch keeps pointing at live memory for the decode above on the
+            // following iteration.
+            tokenStore.pointee = next
+            batch = llama_batch_get_one(tokenStore, 1)
             produced += 1
         }
         return output

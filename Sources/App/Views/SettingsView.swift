@@ -74,12 +74,13 @@ struct SettingsView: View {
                     // backends we can prove stay on this Mac. "Built-in model"
                     // (embedded llama.cpp) is a .dev-tier module until stable, so
                     // production/preview don't advertise a backend that today
-                    // falls back to Ollama. See EmbeddedLlamaFeatureModule.
-                    ForEach(AssistantBackend.allCases.filter { backend in
-                        if backend == .appleIntelligence && Integrations.appleIntelligenceBlocked { return false }
-                        if backend == .localLlama && !appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id) { return false }
-                        return true
-                    }) { backend in
+                    // falls back to Ollama. See EmbeddedLlamaFeatureModule and
+                    // AssistantBackend.selectableOptions, which this defers to
+                    // so the gating itself is unit-tested.
+                    ForEach(AssistantBackend.selectableOptions(
+                        embeddedLlamaAvailable: appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id),
+                        appleIntelligenceBlocked: Integrations.appleIntelligenceBlocked
+                    )) { backend in
                         Text(backend.displayName).tag(backend)
                     }
                 }
