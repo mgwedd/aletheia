@@ -31,11 +31,14 @@ final class SetupTests: XCTestCase {
 
     // MARK: #111 — launch vs. install, driven by `ollamaState`
 
+    // `ToolHealth` is main-actor isolated, so these build their checks there.
+    @MainActor
     func testOllamaFailedWithInstalledNotRunningOffersLaunch() {
         let installedNotRunning = ToolHealth.classifyOllama(reachable: false, hasModel: false, modelName: "llama3.1:8b", installed: true)
         XCTAssertEqual(Setup.action(for: installedNotRunning), .launchOllama)
     }
 
+    @MainActor
     func testOllamaFailedWithNotInstalledOffersDownloadPage() {
         let notInstalled = ToolHealth.classifyOllama(reachable: false, hasModel: false, modelName: "llama3.1:8b", installed: false)
         XCTAssertEqual(Setup.action(for: notInstalled), .installOrOpenOllama)
