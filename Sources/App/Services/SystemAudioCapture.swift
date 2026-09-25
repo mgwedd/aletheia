@@ -98,7 +98,9 @@ final class SystemAudioCapture: NSObject {
     /// Pure mapping from "is access granted?" to the error `start()` should
     /// surface before ever touching ScreenCaptureKit — split out so the
     /// fail-fast branch is unit-tested without a live capture attempt.
-    static func permissionError(granted: Bool) -> SystemAudioCaptureError? {
+    /// `nonisolated` because it touches no actor state, so plain (non-`@MainActor`,
+    /// synchronous) test methods can call it directly.
+    nonisolated static func permissionError(granted: Bool) -> SystemAudioCaptureError? {
         granted ? nil : .permissionDenied
     }
 
