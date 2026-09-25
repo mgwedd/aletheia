@@ -2,7 +2,7 @@ import AVFoundation
 import CoreGraphics
 import ScreenCaptureKit
 
-enum SystemAudioCaptureError: LocalizedError {
+enum SystemAudioCaptureError: LocalizedError, Equatable {
     case permissionDenied
     case noDisplayAvailable
 
@@ -79,13 +79,41 @@ final class SystemAudioCapture: NSObject {
     /// to System Settings instead). Because the app never poisons its own TCC
     /// state with a premature capture attempt, a grant takes effect for the
     /// running process — no relaunch required.
+    ///
+    /// `CGRequestScreenCaptureAccess()` is synchronous and blocks its calling
+    /// thread until the user responds to the system dialog, which can take
+    /// several seconds. Calling it on the main actor — as this used to —
+    /// freezes the whole app for as long as the dialog is up (issue #110:
+    /// "Grant appears to hang the wizard step"). `nonisolated` plus
+    /// `Task.detached` moves the actual blocking call off the main thread;
+    /// only the `Bool` result crosses back to the caller.
     /// - Returns: whether access is granted right after the request.
     @discardableResult
-    static func requestPermission() -> Bool {
-        CGRequestScreenCaptureAccess()
+    nonisolated static func requestPermission() async -> Bool {
+        await Task.detached(priority: .userInitiated) {
+            CGRequestScreenCaptureAccess()
+        }.value
+    }
+
+    /// Pure mapping from "is access granted?" to the error `start()` should
+    /// surface before ever touching ScreenCaptureKit — split out so the
+    /// fail-fast branch is unit-tested without a live capture attempt.
+    /// `nonisolated` because it touches no actor state, so plain (non-`@MainActor`,
+    /// synchronous) test methods can call it directly.
+    nonisolated static func permissionError(granted: Bool) -> SystemAudioCaptureError? {
+        granted ? nil : .permissionDenied
     }
 
     func start(to url: URL) async throws {
+        // Fail fast with the friendly message when access isn't granted,
+        // mirroring `MicRecorder.start`'s guard, instead of letting an
+        // unauthorized `SCShareableContent` call surface a raw ScreenCaptureKit
+        // error. Uses the live check (not the cached preflight) so a grant made
+        // moments ago in the setup wizard is recognized immediately.
+        if let permissionError = Self.permissionError(granted: await Self.verifyAccessGranted()) {
+            throw permissionError
+        }
+
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let display = content.displays.first else {
             throw SystemAudioCaptureError.noDisplayAvailable
