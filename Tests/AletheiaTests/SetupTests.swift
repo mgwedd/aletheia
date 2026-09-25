@@ -18,12 +18,30 @@ final class SetupTests: XCTestCase {
         XCTAssertEqual(Setup.action(for: check(.microphone, .failed)), .openMicrophoneSettings)
         XCTAssertEqual(Setup.action(for: check(.screenRecording, .failed)), .requestScreenRecording)
         XCTAssertEqual(Setup.action(for: check(.whisperModel, .failed)), .downloadTranscriptionModel)
+        // No engine-state detail (older/other caller, or a plain fixture like
+        // `check(...)` here) falls back to the pre-#111 "install" action rather
+        // than guessing Ollama is already there.
         XCTAssertEqual(Setup.action(for: check(.ollama, .failed)), .installOrOpenOllama)
         XCTAssertEqual(Setup.action(for: check(.ollama, .warning)), .downloadOllamaModel)
         XCTAssertEqual(Setup.action(for: check(.appleIntelligence, .failed)), .enableAppleIntelligence)
         XCTAssertNil(Setup.action(for: check(.appleIntelligence, .warning)))
         XCTAssertEqual(Setup.action(for: check(.calendar, .warning)), .requestCalendarAccess)
         XCTAssertEqual(Setup.action(for: check(.reminders, .warning)), .requestRemindersAccess)
+    }
+
+    // MARK: #111 — launch vs. install, driven by `ollamaState`
+
+    // `ToolHealth` is main-actor isolated, so these build their checks there.
+    @MainActor
+    func testOllamaFailedWithInstalledNotRunningOffersLaunch() {
+        let installedNotRunning = ToolHealth.classifyOllama(reachable: false, hasModel: false, modelName: "llama3.1:8b", installed: true)
+        XCTAssertEqual(Setup.action(for: installedNotRunning), .launchOllama)
+    }
+
+    @MainActor
+    func testOllamaFailedWithNotInstalledOffersDownloadPage() {
+        let notInstalled = ToolHealth.classifyOllama(reachable: false, hasModel: false, modelName: "llama3.1:8b", installed: false)
+        XCTAssertEqual(Setup.action(for: notInstalled), .installOrOpenOllama)
     }
 
     func testIsReadyIgnoresWarningsButNotFailures() {
