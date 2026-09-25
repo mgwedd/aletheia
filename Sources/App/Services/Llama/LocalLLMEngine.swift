@@ -127,4 +127,24 @@ enum LocalLLMEngineFactory {
         return UnavailableLocalLLMEngine()
         #endif
     }
+
+    /// Build an engine for a `ModelLoadPlan` — a base model, optionally with a LoRA
+    /// adapter. Compatibility is already enforced when the plan is constructed, so
+    /// this only routes the base weights (and, on-device, the adapter) to the
+    /// runtime. Same staging as `make(modelURL:)`: unavailable until the real
+    /// engine is wired on a Mac.
+    static func make(
+        plan: ModelLoadPlan,
+        sampling: LocalLLMSampling = .deterministic
+    ) -> LocalLLMEngine {
+        #if canImport(llama)
+        // TODO(llama pin): return LlamaEngine(modelURL: plan.baseURL,
+        // adapterURL: plan.adapterURL, sampling: sampling) once the runtime lands.
+        return UnavailableLocalLLMEngine(
+            reason: "The built-in model runtime is present but not yet wired to the engine seam."
+        )
+        #else
+        return make(modelURL: plan.baseURL, sampling: sampling)
+        #endif
+    }
 }
