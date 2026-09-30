@@ -171,7 +171,8 @@ migration rewrites the structured DB and small JSON, never the audio. So a
 pre-migration snapshot is a `VACUUM INTO` of the SQLite file plus a copy of the
 patient/session JSON, not a copy of gigabytes of recordings. Snapshots are
 sealed with the same protector as live data (ciphertext at rest) and, per
-[HIPAA-SAFEGUARDS.md], excluded from system backups by default.
+[HIPAA-SAFEGUARDS.md]. (The data folder is included in Time Machine by
+default — keep those backups on an encrypted disk.)
 
 ### Transactional guarantees already in place
 

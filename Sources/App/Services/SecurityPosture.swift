@@ -86,7 +86,7 @@ enum SecurityPosture {
             level: localEncryptedBackup ? .secure : .informational,
             detail: localEncryptedBackup
                 ? "An end-to-end-encrypted backup copy is kept, sealed with your key."
-                : "Consider keeping an encrypted backup copy, safe to sit in Time Machine."))
+                : "Consider keeping an encrypted backup copy, safe to sit in Time Machine. Keep Time Machine backups on an encrypted disk."))
 
         // Off-device copy in the user's private iCloud (CloudKit). Only ever
         // ciphertext leaves the Mac; until a signed build provisions CloudKit the

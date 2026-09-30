@@ -30,7 +30,9 @@ device-remembered copy makes the data unrecoverable. Full design in
 [docs/ENCRYPTION.md](docs/ENCRYPTION.md).
 
 **Backups.** The data folder backs up with zero configuration via macOS Time
-Machine. Settings › Backup also offers an opt-in end-to-end-encrypted backup
+Machine (keep those backups on an encrypted disk — the folder can hold
+unencrypted data; Settings › Backup can exclude it if you prefer). Settings ›
+Backup also offers an opt-in end-to-end-encrypted backup
 archive (`.aletheiabackup`, sealed with your key) written to a local
 `.backups/` folder, plus a staged (not yet live) opt-in encrypted iCloud
 destination for the same archive. Point-in-time database snapshots

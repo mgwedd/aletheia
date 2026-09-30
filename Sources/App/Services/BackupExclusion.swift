@@ -4,12 +4,30 @@ import Foundation
 /// `isExcludedFromBackup` resource value — which keeps it out of Time Machine
 /// and out of iCloud's device backup.
 ///
-/// Aletheia's data folder can hold **plaintext** PHI when at-rest encryption is
-/// off (and audio/transcripts as files regardless), so by default it's kept out
-/// of system backups: the only off-device copy is the app's own opt-in,
-/// end-to-end-encrypted snapshot. A clinician who runs an encrypted Time Machine
-/// target and wants system-backup coverage can turn the exclusion off.
+/// Aletheia writes no backup of its own unless the clinician opts in, so by
+/// default the data folder is **left in** system backups: Time Machine is the
+/// baseline copy, and excluding the folder would leave exactly one copy of
+/// everything. The folder can hold plaintext PHI when at-rest encryption is off,
+/// so Time Machine backups should be on an **encrypted disk**. A clinician who
+/// wants the folder kept out of system backups (and relies on the app's own
+/// encrypted snapshot instead) can turn the exclusion on.
 enum BackupExclusion {
+    /// The `UserDefaults` key holding the user's explicit choice.
+    static let defaultsKey = "keepDataOutOfSystemBackups"
+
+    /// What applies when the user has never chosen: do **not** exclude, so Time
+    /// Machine includes the data folder.
+    static let defaultExcluded = false
+
+    /// The exclusion policy to apply: the user's stored choice if they made one,
+    /// otherwise `defaultExcluded`. An absent key means "never chosen" — the app
+    /// only writes this key when the user flips the Settings toggle, so an unset
+    /// key is distinguishable from an explicit `false` / `true`.
+    static func resolvedExclusion(in defaults: UserDefaults) -> Bool {
+        guard defaults.object(forKey: defaultsKey) != nil else { return defaultExcluded }
+        return defaults.bool(forKey: defaultsKey)
+    }
+
     /// Sets (or clears) the backup-exclusion flag on `url`. Applied to a folder,
     /// it covers the whole subtree. Throws if the flag can't be written (e.g.
     /// the URL isn't currently accessible).
