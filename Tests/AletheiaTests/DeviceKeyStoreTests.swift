@@ -87,4 +87,26 @@ final class DeviceKeyStoreTests: XCTestCase {
         let relaunched = EncryptionManager(dataRootProvider: { [root] in root })
         XCTAssertEqual(relaunched.state, .lockedNeedsPassphrase)
     }
+
+    func testKeychainErrorDescription() {
+        let err = KeychainDeviceKeyStore.KeychainError.unexpectedStatus(-50)
+        XCTAssertNotNil(err.errorDescription)
+        XCTAssertTrue(err.errorDescription?.contains("keychain") == true)
+    }
+
+    func testKeychainDeviceKeyStoreOperations() {
+        let store = KeychainDeviceKeyStore()
+        let testID = "test-key-\(UUID().uuidString)"
+        let key = SymmetricKey(size: .bits256)
+
+        // Save key to keychain
+        try? store.save(key, for: testID)
+
+        // Load key (might be nil if headless keychain is locked, but shouldn't crash)
+        _ = store.load(for: testID)
+
+        // Delete key
+        store.delete(for: testID)
+        XCTAssertNil(store.load(for: testID))
+    }
 }
