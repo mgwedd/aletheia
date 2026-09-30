@@ -344,8 +344,8 @@ struct DoctorRunner {
             }
         }
 
-        // TODO(doctor): the digest check appears only once `WhisperModelPins` is on
-        // main and `LiveDoctorProbes.whisperModelDigest()` is wired to it.
+        // The pinned-digest comparison (`WhisperModelPins`); omitted when the digest
+        // couldn't be computed.
         switch digest {
         case .unavailable:
             break

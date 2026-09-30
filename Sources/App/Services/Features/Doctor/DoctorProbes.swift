@@ -32,9 +32,10 @@ enum KeystoreProbe: Equatable {
     case unreadable
 }
 
-/// The two places Aletheia keeps safety copies of the database inside the data
-/// folder: `.snapshots/` (before updates and encryption changes) and `Backups/`
-/// (before database upgrades).
+/// The two kinds of safety copy of the database kept inside the data folder
+/// (`BackupLayout`): rolling snapshots (before updates and encryption changes)
+/// and pre-migration copies (before database upgrades). Legacy folder names from
+/// older installs are counted too.
 struct SnapshotProbe: Equatable {
     var snapshotCount = 0
     var newestSnapshot: Date?
@@ -45,12 +46,10 @@ struct SnapshotProbe: Equatable {
     var newest: Date? { [newestSnapshot, newestPreUpgrade].compactMap { $0 }.max() }
 }
 
-/// How many patient/session entries on disk couldn't be read.
-///
-/// The `Store` API that reports this is being added on a separate branch
-/// (`claude/session-json-fail-loud`); until it lands the live probe returns
-/// `.notAvailable` and the check is left out of the report rather than shown as a
-/// false "all clear".
+/// How many patient/session entries on disk couldn't be read, from
+/// `Store.scanForUnreadableEntries()`. `.notAvailable` (no store, or an encrypted
+/// folder that's still locked, where every file would look unreadable) leaves the
+/// check out of the report rather than showing a false "all clear" or a false alarm.
 enum UnreadableEntriesProbe: Equatable {
     case notAvailable
     case count(Int)
@@ -66,9 +65,9 @@ struct WhisperModelFileProbe: Equatable {
 
 /// Whether the transcription model's SHA-256 matches its pinned digest.
 ///
-/// TODO(doctor): wire this to `WhisperModelPins` / `ModelDigest.matches` once the
-/// pinned-digest API is on main (it's on `claude/whisper-integrity-check`). Until
-/// then the live probe returns `.unavailable` and no integrity check is shown.
+/// The live probe compares `ModelDigest.sha256` of the file with
+/// `WhisperModel.expectedSHA256` (see `WhisperModelPins`). `.unavailable` means the
+/// digest couldn't be computed (or there's no file), and no integrity check is shown.
 enum WhisperDigestProbe: Equatable {
     case unavailable
     case matches
@@ -109,6 +108,8 @@ struct LiveDoctorProbes: DoctorProbing {
     var whisperModelPath: URL
     var whisperModelName: String
     var whisperExpectedMB: Int
+    /// The pinned SHA-256 for the selected model (`WhisperModel.expectedSHA256`).
+    var whisperExpectedSHA256: String
     var unreadableEntriesProvider: () -> UnreadableEntriesProbe = { .notAvailable }
     var toolHealthProvider: @MainActor () async -> [ToolHealthCheck]
 
@@ -150,8 +151,17 @@ struct LiveDoctorProbes: DoctorProbing {
 
     func snapshots() -> SnapshotProbe {
         guard let root = dataRoot else { return SnapshotProbe() }
-        let live = Self.scan(DatabaseSnapshotManager(root: root).directory)
-        let preUpgrade = Self.scan(MigrationBackup.directory(for: CommentStore.databaseURL(root: root)))
+        // Read-only: look in the current `BackupLayout` folders and also the legacy
+        // ones (`.snapshots/`, `Backups/`) that an older install still has until a
+        // snapshot or migration folds them in. Never moves anything.
+        let live = Self.scan([
+            BackupLayout.directory(.snapshots, dataRoot: root),
+            root.appendingPathComponent(BackupLayout.legacySnapshotsFolderName, isDirectory: true)
+        ])
+        let preUpgrade = Self.scan([
+            BackupLayout.directory(.migrations, dataRoot: root),
+            root.appendingPathComponent(BackupLayout.legacyMigrationsFolderName, isDirectory: true)
+        ])
         return SnapshotProbe(
             snapshotCount: live.count, newestSnapshot: live.newest,
             preUpgradeCount: preUpgrade.count, newestPreUpgrade: preUpgrade.newest
@@ -172,9 +182,13 @@ struct LiveDoctorProbes: DoctorProbing {
     }
 
     func whisperModelDigest() -> WhisperDigestProbe {
-        // TODO(doctor): compare against the pinned digest once `WhisperModelPins`
-        // is on main. See `WhisperDigestProbe`.
-        .unavailable
+        guard FileManager.default.fileExists(atPath: whisperModelPath.path) else { return .unavailable }
+        // Streams the file in 1 MiB chunks, so a multi-gigabyte model never sits
+        // in memory (this runs off the main thread; see `DoctorView.run`).
+        guard let matches = try? ModelDigest.matches(fileAt: whisperModelPath, expected: whisperExpectedSHA256) else {
+            return .unavailable
+        }
+        return matches ? .matches : .mismatch
     }
 
     func toolHealthChecks() async -> [ToolHealthCheck] {
@@ -182,10 +196,13 @@ struct LiveDoctorProbes: DoctorProbing {
     }
 
     /// The `.sqlite` files in `directory` and the newest modification date.
-    private static func scan(_ directory: URL) -> (count: Int, newest: Date?) {
+    private static func scan(_ directories: [URL]) -> (count: Int, newest: Date?) {
         let fm = FileManager.default
-        let entries = (try? fm.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        var entries: [URL] = []
+        for directory in directories {
+            entries += (try? fm.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        }
         let files = entries.filter { $0.pathExtension == "sqlite" }
         let dates = files.compactMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
         return (files.count, dates.max())
@@ -243,6 +260,14 @@ struct LiveDoctorProbes: DoctorProbing {
         integrations: Integrations
     ) -> LiveDoctorProbes {
         let includeScheduling = appModel.featureRegistry.contains(id: EventKitSchedulingFeatureModule.id)
+        let store = appModel.store
+        // A locked encrypted folder makes every record look unreadable; that's the
+        // lock, not damage, so don't report it as such.
+        let folderLocked = appModel.isEncryptionEnabled && !appModel.isEncryptionUnlocked
+        let unreadableProvider: () -> UnreadableEntriesProbe = {
+            guard let store, !folderLocked else { return .notAvailable }
+            return .count(store.scanForUnreadableEntries().count)
+        }
         return LiveDoctorProbes(
             dataRoot: settings.dataRootURL,
             appDatabaseFailure: appModel.databaseState.failure,
@@ -251,7 +276,8 @@ struct LiveDoctorProbes: DoctorProbing {
             whisperModelPath: settings.whisperModelPath,
             whisperModelName: settings.whisperModel.displayName,
             whisperExpectedMB: settings.whisperModel.approximateSizeMB,
-            unreadableEntriesProvider: { .notAvailable }, // TODO(doctor): wire to the Store's unreadable-entries API (claude/session-json-fail-loud)
+            whisperExpectedSHA256: settings.whisperModel.expectedSHA256,
+            unreadableEntriesProvider: unreadableProvider,
             toolHealthProvider: {
                 await LiveDoctorProbes.reusedToolHealthChecks(
                     settings: settings, integrations: integrations, includeScheduling: includeScheduling)

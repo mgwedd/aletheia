@@ -26,8 +26,9 @@ enum DatabaseFailureGuidance {
 
     /// Names used in the steps, so they match what's really on disk.
     static let databaseFileName = "Aletheia.sqlite"
-    static let snapshotsFolderName = ".snapshots"
-    static let preUpgradeFolderName = MigrationBackup.directoryName   // "Backups"
+    /// Relative to the data folder; see `BackupLayout` for the single source of truth.
+    static let snapshotsFolderName = "\(BackupLayout.rootName)/\(BackupLayout.Kind.snapshots.folderName)"
+    static let preUpgradeFolderName = "\(BackupLayout.rootName)/\(BackupLayout.Kind.migrations.folderName)"
 
     /// - Parameter dataFolder: the chosen data folder's path, shown on screen so
     ///   the steps can point at the real location (nil if none is known).
@@ -145,7 +146,7 @@ enum DatabaseFailureGuidance {
     /// Renames, never deletes; copies, never moves.
     private static func restoreSteps(folder: String) -> [String] {
         [
-            "Find a snapshot. Aletheia keeps safety copies of the database in two hidden folders inside the data folder (\(folder)): \(snapshotsFolderName) (taken before updates and encryption changes) and \(preUpgradeFolderName) (taken before database upgrades). In Finder press Command-Shift-. (period) to show hidden folders. The newest .sqlite file is the most recent copy.",
+            "Find a snapshot. Aletheia keeps safety copies of the database in the hidden \(BackupLayout.rootName) folder inside the data folder (\(folder)): \(snapshotsFolderName) (taken before updates and encryption changes) and \(preUpgradeFolderName) (taken before database upgrades). Older versions of Aletheia used folders named \(BackupLayout.legacySnapshotsFolderName) and \(BackupLayout.legacyMigrationsFolderName) instead — check those too. In Finder press Command-Shift-. (period) to show hidden folders. The newest .sqlite file is the most recent copy.",
             "To restore by hand — only after you've copied the whole folder aside and with Aletheia quit: rename \(databaseFileName) to Aletheia-damaged.sqlite (rename it, don't delete it), copy the snapshot into the data folder (copy, don't move), and rename the copy to \(databaseFileName). Then reopen Aletheia. Notes written after that snapshot was taken won't be in it, which is why the damaged file is kept.",
             "If you also keep another backup of this folder (an encrypted backup from Settings, an external drive, or Time Machine if you've included it), restoring \(databaseFileName) from there works the same way."
         ]

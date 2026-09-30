@@ -117,7 +117,9 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertTrue(guidance.steps[1].lowercased().contains("copy the whole data folder aside"))
         let joined = guidance.steps.joined(separator: "\n")
         XCTAssertTrue(joined.contains("/Users/mike/Aletheia"), "names where the data folder is")
-        XCTAssertTrue(joined.contains(".snapshots"))
+        XCTAssertTrue(joined.contains(".backups/snapshots"))
+        XCTAssertTrue(joined.contains(".backups/migrations"))
+        XCTAssertTrue(joined.contains(".snapshots"), "mentions the legacy folder names")
         XCTAssertTrue(joined.contains("Backups"))
         XCTAssertTrue(joined.contains("rename"))
     }
