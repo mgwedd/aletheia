@@ -6,6 +6,8 @@ struct PatientDetailView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
     @State private var sessions: [SessionRecord] = []
+    /// Session folders whose `session.json` couldn't be read (left untouched).
+    @State private var damagedSessions: [UnreadableEntry] = []
     @State private var selectedSession: SessionRecord?
     @State private var notes: String = ""
     @State private var clinicalHistory: String = ""
@@ -61,6 +63,15 @@ struct PatientDetailView: View {
                     } label: {
                         Label("New Session", systemImage: "plus")
                     }
+                }
+
+                if !damagedSessions.isEmpty {
+                    DamagedRecordsNotice(
+                        title: damagedSessions.count == 1
+                            ? "1 session couldn't be read"
+                            : "\(damagedSessions.count) sessions couldn't be read",
+                        entries: damagedSessions
+                    )
                 }
 
                 List(sessions, selection: $selectedSession) { session in
@@ -188,7 +199,9 @@ struct PatientDetailView: View {
     private func refresh() {
         guard let store = appModel.store else { return }
         do {
-            sessions = try store.listSessions(for: patient)
+            let listing = try store.sessionListing(for: patient)
+            sessions = listing.sessions
+            damagedSessions = listing.unreadable
         } catch {
             errorMessage = error.localizedDescription
         }

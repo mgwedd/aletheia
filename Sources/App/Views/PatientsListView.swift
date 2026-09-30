@@ -44,6 +44,15 @@ struct PatientsListView: View {
         // narrow, so adding a patient looked impossible — this never hides.
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
+                if !appModel.unreadablePatients.isEmpty {
+                    DamagedRecordsNotice(
+                        title: appModel.unreadablePatients.count == 1
+                            ? "1 patient couldn't be read"
+                            : "\(appModel.unreadablePatients.count) patients couldn't be read",
+                        entries: appModel.unreadablePatients
+                    )
+                    .padding(8)
+                }
                 Divider()
                 Button {
                     newPatientName = ""
