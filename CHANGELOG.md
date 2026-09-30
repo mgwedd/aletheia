@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.21.10] - 2026-09-30
+
+### Fixed
+- fail loud on an unreadable session.json or patient.json (#154)
+
 ## [2.21.9] - 2026-09-30
 
 ### Fixed
