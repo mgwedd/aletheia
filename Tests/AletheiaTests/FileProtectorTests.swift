@@ -81,6 +81,44 @@ final class FileProtectorTests: XCTestCase {
         XCTAssertEqual(try p.open(sealed), Data("column value".utf8))
     }
 
+    /// Names of decrypted-audio temp copies currently in the temp folder.
+    private static func tempAudioCopies() -> Set<String> {
+        let names = (try? FileManager.default.contentsOfDirectory(
+            atPath: FileManager.default.temporaryDirectory.path)) ?? []
+        return Set(names.filter { $0.hasPrefix("aletheia-") && $0.hasSuffix(".caf") })
+    }
+
+    /// `ChunkedCipher.open` writes plaintext chunks into its destination as it
+    /// goes, so a failure part-way (here: the last chunk is tampered with) used
+    /// to leave a partial plaintext recording behind in the temp folder.
+    func testFailedDecryptedCopyLeavesNoPlaintextTempFile() throws {
+        let plain = url("plain.caf")
+        try Data((0..<3000).map { _ in UInt8.random(in: 0...255) }).write(to: plain)
+        let sealed = url("mic.caf")
+        try ChunkedCipher.seal(fileAt: plain, to: sealed, using: key, chunkSize: 1000)
+        var bytes = try Data(contentsOf: sealed)
+        bytes[bytes.count - 1] ^= 0xFF // corrupt the final chunk's GCM tag
+        try bytes.write(to: sealed)
+
+        let before = Self.tempAudioCopies()
+        XCTAssertThrowsError(try FileProtector(key: key).decryptedCopyOfLargeFile(at: sealed))
+        let leaked = Self.tempAudioCopies().subtracting(before)
+        XCTAssertTrue(leaked.isEmpty, "partial plaintext copy left behind: \(leaked)")
+    }
+
+    func testSuccessfulDecryptedCopyIsStillReturnedAsTemporary() throws {
+        let original = Data((0..<3000).map { _ in UInt8.random(in: 0...255) })
+        let plain = url("plain.caf")
+        try original.write(to: plain)
+        let sealed = url("call.caf")
+        try ChunkedCipher.seal(fileAt: plain, to: sealed, using: key, chunkSize: 1000)
+
+        let (copy, isTemp) = try FileProtector(key: key).decryptedCopyOfLargeFile(at: sealed)
+        defer { try? FileManager.default.removeItem(at: copy) }
+        XCTAssertTrue(isTemp)
+        XCTAssertEqual(try Data(contentsOf: copy), original)
+    }
+
     func testPassthroughSealIsIdentityAndOpenReadsPlaintext() throws {
         let p = FileProtector.passthrough
         let blob = Data("value".utf8)

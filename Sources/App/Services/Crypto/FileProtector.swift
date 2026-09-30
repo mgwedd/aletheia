@@ -117,7 +117,15 @@ struct FileProtector: Sendable {
         guard let key, ChunkedCipher.isEnvelope(fileAt: url) else { return (url, false) }
         let temp = FileManager.default.temporaryDirectory
             .appendingPathComponent("aletheia-\(UUID().uuidString).caf")
-        try ChunkedCipher.open(fileAt: url, to: temp, using: key)
+        do {
+            try ChunkedCipher.open(fileAt: url, to: temp, using: key)
+        } catch {
+            // `open` creates `temp` before it authenticates the first chunk, and
+            // may already have written earlier chunks when a later one fails. Don't
+            // leave that partial plaintext recording behind in the temp folder.
+            try? FileManager.default.removeItem(at: temp)
+            throw error
+        }
         return (temp, true)
     }
 }

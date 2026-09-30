@@ -573,12 +573,14 @@ struct SessionDetailView: View {
             // the resampler (which needs a real, seekable audio file), and clean
             // the plaintext copies up afterwards.
             let protector = appModel.currentProtector
+            // Register cleanup *before* the second decrypt, so a failure there
+            // still removes the first plaintext copy.
+            var tempCopies: [URL] = []
+            defer { for url in tempCopies { try? FileManager.default.removeItem(at: url) } }
             let (micReadURL, micIsTemp) = try protector.decryptedCopyOfLargeFile(at: micURL)
+            if micIsTemp { tempCopies.append(micReadURL) }
             let (callReadURL, callIsTemp) = try protector.decryptedCopyOfLargeFile(at: callURL)
-            defer {
-                if micIsTemp { try? FileManager.default.removeItem(at: micReadURL) }
-                if callIsTemp { try? FileManager.default.removeItem(at: callReadURL) }
-            }
+            if callIsTemp { tempCopies.append(callReadURL) }
             let text = try await transcriber.transcribeSession(micURL: micReadURL, callURL: callReadURL) { progress in
                 Task { @MainActor in transcribeProgress = progress }
             }
