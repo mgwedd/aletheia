@@ -24,8 +24,14 @@ enum BackupExclusion {
     /// only writes this key when the user flips the Settings toggle, so an unset
     /// key is distinguishable from an explicit `false` / `true`.
     static func resolvedExclusion(in defaults: UserDefaults) -> Bool {
-        guard defaults.object(forKey: defaultsKey) != nil else { return defaultExcluded }
+        guard hasExplicitChoice(in: defaults) else { return defaultExcluded }
         return defaults.bool(forKey: defaultsKey)
+    }
+
+    /// Whether the user has ever explicitly chosen (the key is present, `true` or
+    /// `false`). `false` means the default is in effect.
+    static func hasExplicitChoice(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: defaultsKey) != nil
     }
 
     /// Sets (or clears) the backup-exclusion flag on `url`. Applied to a folder,
