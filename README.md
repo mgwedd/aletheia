@@ -115,8 +115,10 @@ launches via a security-scoped bookmark:
 ```
 <dataRoot>/
   Aletheia.sqlite               # notes, inline comments, chat threads (PHI, local)
-  .backups/                    # opt-in end-to-end-encrypted backup archives
-  .snapshots/                  # consistent DB snapshots (VACUUM INTO) for migrations
+  .backups/                    # hidden; the one home for local backups (docs/DATA-SAFETY.md)
+    migrations/                # pre-migration DB pre-images (VACUUM INTO)
+    snapshots/                 # rolling DB snapshots around encryption changes
+    archives/                  # opt-in end-to-end-encrypted backup archives
   Patients/<Patient-Slug>/
     patient.json
     YYYY-MM-DD_Session/

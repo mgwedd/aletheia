@@ -72,7 +72,7 @@ final class DataMigratorTests: XCTestCase {
 
     /// The safety snapshot taken before a bulk rewrite is sealed under the
     /// *source* protector, so enabling encryption used to leave a plaintext copy
-    /// of every note/comment/chat in `.snapshots/` for good. Once the live DB is
+    /// of every note/comment/chat in `.backups/snapshots/` for good. Once the live DB is
     /// converted, that copy must not linger.
     func testEnableDoesNotLeavePlaintextPreImageBehind() throws {
         let (_, session, _) = try seedPlaintextFolder()
