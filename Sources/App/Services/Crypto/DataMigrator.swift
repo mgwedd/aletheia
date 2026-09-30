@@ -62,7 +62,7 @@ enum DataMigrator {
             }
 
             let sessionDirs = (try? fm.contentsOfDirectory(at: patientDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
-            for sessionDir in sessionDirs where sessionDir.lastPathComponent.hasSuffix("_Session") {
+            for sessionDir in sessionDirs where isSessionFolder(sessionDir) {
                 for name in sessionFileNames {
                     migrateFile(sessionDir.appendingPathComponent(name), from: from, to: to, into: &result)
                 }
@@ -90,6 +90,19 @@ enum DataMigrator {
         }
 
         return result
+    }
+
+    /// Whether `url` is a session folder whose files must be converted. Mirrors
+    /// how `Store` recognises sessions: a folder carrying `session.json`, or one
+    /// named `…_Session`. It must also accept `…_Session-2`, `…_Session-3` — the
+    /// names `Store.createSession` gives a second and later session on the same
+    /// day. Matching only the `_Session` *suffix* skipped those folders, so
+    /// turning encryption off removed the keystore while their transcript,
+    /// summary and audio were still sealed: permanent, silent data loss.
+    static func isSessionFolder(_ url: URL) -> Bool {
+        guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { return false }
+        if url.lastPathComponent.contains("_Session") { return true }
+        return FileManager.default.fileExists(atPath: url.appendingPathComponent("session.json").path)
     }
 
     private static func migrateFile(_ url: URL, from: FileProtector, to: FileProtector, into result: inout Result) {
