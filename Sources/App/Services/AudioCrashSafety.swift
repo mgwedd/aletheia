@@ -43,11 +43,11 @@ enum AudioCrashSafety {
 
     private static func updateWAVHeader(handle: FileHandle, fileSize: UInt64, headerData: Data) -> Bool {
         let riffSize = UInt32(min(fileSize - 8, UInt64(UInt32.max)))
-        var riffSizeLE = riffSize.littleEndian
+        let riffSizeLE = riffSize.littleEndian
 
         do {
             try handle.seek(toOffset: 4)
-            try handle.write(contentsOf: Data(bytes: &riffSizeLE, count: 4))
+            try handle.write(contentsOf: dataFrom(riffSizeLE))
 
             var offset = 12
             while offset + 8 <= headerData.count {
@@ -59,9 +59,9 @@ enum AudioCrashSafety {
                     let dataChunkDataOffset = UInt64(offset + 8)
                     if fileSize >= dataChunkDataOffset {
                         let actualDataSize = UInt32(min(fileSize - dataChunkDataOffset, UInt64(UInt32.max)))
-                        var dataSizeLE = actualDataSize.littleEndian
+                        let dataSizeLE = actualDataSize.littleEndian
                         try handle.seek(toOffset: UInt64(offset + 4))
-                        try handle.write(contentsOf: Data(bytes: &dataSizeLE, count: 4))
+                        try handle.write(contentsOf: dataFrom(dataSizeLE))
                         try handle.synchronize()
                         return true
                     }
@@ -89,9 +89,9 @@ enum AudioCrashSafety {
                     let dataChunkDataOffset = UInt64(offset + 12)
                     if fileSize >= dataChunkDataOffset {
                         let actualDataSize = Int64(fileSize - dataChunkDataOffset)
-                        var dataSizeBE = actualDataSize.bigEndian
+                        let dataSizeBE = actualDataSize.bigEndian
                         try handle.seek(toOffset: UInt64(offset + 4))
-                        try handle.write(contentsOf: Data(bytes: &dataSizeBE, count: 8))
+                        try handle.write(contentsOf: dataFrom(dataSizeBE))
                         try handle.synchronize()
                         return true
                     }
@@ -106,6 +106,11 @@ enum AudioCrashSafety {
             return false
         }
         return false
+    }
+
+    private static func dataFrom<T>(_ value: T) -> Data {
+        var temp = value
+        return withUnsafeBytes(of: &temp) { Data($0) }
     }
 
     private static func readUInt32LE(at offset: Int, in data: Data) -> UInt32? {
