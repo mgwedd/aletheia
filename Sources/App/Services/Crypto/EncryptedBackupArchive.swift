@@ -51,8 +51,15 @@ enum EncryptedBackupArchive {
         guard ChunkedCipher.isEnvelope(fileAt: source) else { throw ArchiveError.notAnArchive }
         let temp = FileManager.default.temporaryDirectory
             .appendingPathComponent("restore-\(UUID().uuidString).sqlite")
-        try ChunkedCipher.open(fileAt: source, to: temp, using: key)
-        try replaceItem(at: destination, with: temp)
+        do {
+            try ChunkedCipher.open(fileAt: source, to: temp, using: key)
+            try replaceItem(at: destination, with: temp)
+        } catch {
+            // A wrong key or damaged archive can fail after part of the database
+            // has been written to `temp`; don't leave that plaintext copy behind.
+            try? FileManager.default.removeItem(at: temp)
+            throw error
+        }
     }
 
     /// True when `url` looks like one of our encrypted archives.

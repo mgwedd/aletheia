@@ -57,6 +57,29 @@ final class BackupTests: XCTestCase {
         )
     }
 
+    /// A failed restore must not strand a (partly) plaintext database copy in the
+    /// temp folder.
+    func testFailedRestoreLeavesNoTempDatabaseBehind() throws {
+        let source = try writeSource(String(repeating: "PHI row. ", count: 200))
+        let archive = tempRoot.appendingPathComponent("out.\(EncryptedBackupArchive.fileExtension)")
+        try EncryptedBackupArchive.create(from: source, to: archive, using: SymmetricKey(size: .bits256))
+
+        func tempRestores() -> Set<String> {
+            let names = (try? FileManager.default.contentsOfDirectory(
+                atPath: FileManager.default.temporaryDirectory.path)) ?? []
+            return Set(names.filter { $0.hasPrefix("restore-") && $0.hasSuffix(".sqlite") })
+        }
+        let before = tempRestores()
+        XCTAssertThrowsError(
+            try EncryptedBackupArchive.restore(
+                from: archive,
+                to: tempRoot.appendingPathComponent("nope.sqlite"),
+                using: SymmetricKey(size: .bits256) // different key
+            )
+        )
+        XCTAssertTrue(tempRestores().subtracting(before).isEmpty, "temp restore file left behind")
+    }
+
     func testRestoreRejectsNonArchive() throws {
         let plain = try writeSource("not encrypted", name: "plain.txt")
         XCTAssertThrowsError(
