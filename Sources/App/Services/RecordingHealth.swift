@@ -13,16 +13,27 @@ final class RecordingHealth: @unchecked Sendable {
     private let lock = NSLock()
     private var _writeFailures = 0
     private var _configurationChanges = 0
+    private var _systemAudioDisruptions = 0
     private var _firstFailure: String?
 
     /// An immutable point-in-time view, safe to hand to the UI.
     struct Snapshot: Equatable {
         var writeFailures: Int
         var configurationChanges: Int
+        var systemAudioDisruptions: Int
         var firstFailure: String?
 
-        /// No write has failed and the input configuration hasn't changed.
-        var isHealthy: Bool { writeFailures == 0 && configurationChanges == 0 }
+        init(writeFailures: Int = 0, configurationChanges: Int = 0, systemAudioDisruptions: Int = 0, firstFailure: String? = nil) {
+            self.writeFailures = writeFailures
+            self.configurationChanges = configurationChanges
+            self.systemAudioDisruptions = systemAudioDisruptions
+            self.firstFailure = firstFailure
+        }
+
+        /// No write has failed, configuration hasn't changed, and no system audio disruption occurred.
+        var isHealthy: Bool {
+            writeFailures == 0 && configurationChanges == 0 && systemAudioDisruptions == 0
+        }
     }
 
     init() {}
@@ -48,12 +59,22 @@ final class RecordingHealth: @unchecked Sendable {
         _configurationChanges += 1
     }
 
+    /// Records a system audio stream disruption (e.g. DRM block or permission yank mid-session).
+    func recordSystemAudioDisruption(_ message: String) {
+        lock.lock(); defer { lock.unlock() }
+        _systemAudioDisruptions += 1
+        if _firstFailure == nil {
+            _firstFailure = message
+        }
+    }
+
     /// A consistent snapshot of all counters, safe to read from any thread.
     var snapshot: Snapshot {
         lock.lock(); defer { lock.unlock() }
         return Snapshot(
             writeFailures: _writeFailures,
             configurationChanges: _configurationChanges,
+            systemAudioDisruptions: _systemAudioDisruptions,
             firstFailure: _firstFailure
         )
     }
@@ -63,6 +84,7 @@ final class RecordingHealth: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         _writeFailures = 0
         _configurationChanges = 0
+        _systemAudioDisruptions = 0
         _firstFailure = nil
     }
 }

@@ -44,6 +44,7 @@ final class SessionRecorder: ObservableObject {
     /// view clears it when the user answers.
     @Published var longRunningReminder = false
 
+    let recordingHealth = RecordingHealth()
     private let mic = MicRecorder()
     private let systemAudio = SystemAudioCapture()
     private var reminderTask: Task<Void, Never>?
@@ -65,15 +66,30 @@ final class SessionRecorder: ObservableObject {
         }
 
         systemAudio.onError = { [weak self] error in
-            self?.state = .error(error.localizedDescription)
+            guard let self else { return }
+            self.recordingHealth.recordSystemAudioDisruption(error.localizedDescription)
+            // System audio stream disruption (DRM, permission yank, display disconnect)
+            // is non-fatal to the session if the microphone track is still recording.
+            if !self.mic.isRunning {
+                self.state = .error("Recording interrupted: \(error.localizedDescription)")
+            }
         }
         mic.onDisruption = { [weak self] message in
-            self?.state = .error(message)
+            guard let self else { return }
+            if !self.mic.isRunning && !self.systemAudio.isRunning {
+                self.state = .error(message)
+            }
         }
 
         do {
             try mic.start(to: micURL)
-            try await systemAudio.start(to: callURL)
+            // System audio capture is best-effort — if system audio fails to start,
+            // session recording still continues with the microphone track.
+            do {
+                try await systemAudio.start(to: callURL)
+            } catch {
+                recordingHealth.recordSystemAudioDisruption(error.localizedDescription)
+            }
             self.protector = protector
             self.micURL = micURL
             self.callURL = callURL

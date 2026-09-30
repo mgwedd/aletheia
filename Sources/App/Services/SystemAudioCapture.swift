@@ -104,7 +104,11 @@ final class SystemAudioCapture: NSObject {
         granted ? nil : .permissionDenied
     }
 
+    private(set) var isDisrupted = false
+    var onDisruption: ((Error) -> Void)?
+
     func start(to url: URL) async throws {
+        isDisrupted = false
         // Fail fast with the friendly message when access isn't granted,
         // mirroring `MicRecorder.start`'s guard, instead of letting an
         // unauthorized `SCShareableContent` call surface a raw ScreenCaptureKit
@@ -146,10 +150,15 @@ final class SystemAudioCapture: NSObject {
     func stop() async {
         guard let stream else { return }
         try? await stream.stopCapture()
+        if let fileURL {
+            AudioCrashSafety.flushHeader(at: fileURL)
+        }
         self.stream = nil
         self.file = nil
+        self.fileURL = nil
         isRunning = false
         isPaused = false
+        isDisrupted = false
     }
 
     private func write(_ buffer: AVAudioPCMBuffer) {
@@ -159,8 +168,10 @@ final class SystemAudioCapture: NSObject {
                 file = try AVAudioFile(forWriting: fileURL, settings: buffer.format.settings)
             }
             try file?.write(from: buffer)
+            AudioCrashSafety.flushHeader(at: fileURL)
         } catch {
             onError?(error)
+            onDisruption?(error)
         }
     }
 }
@@ -178,8 +189,10 @@ extension SystemAudioCapture: SCStreamOutput {
 extension SystemAudioCapture: SCStreamDelegate {
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
         Task { @MainActor [weak self] in
-            self?.onError?(error)
+            self?.isDisrupted = true
             self?.isRunning = false
+            self?.onError?(error)
+            self?.onDisruption?(error)
         }
     }
 }
