@@ -1,0 +1,45 @@
+name: Verify Model Pins
+
+# The app refuses any downloaded model whose SHA-256 differs from a pin baked
+# into the source (no unpinned models exist). This job proves the pins are
+# right: it downloads each model at the pinned Hugging Face revision and checks
+# the bytes against the pin, the Hugging Face LFS oid, and the SHA-1 published
+# in whisper.cpp's README. Any disagreement fails the run.
+#
+# Runs only when the pins, the script or this workflow change, plus weekly (to
+# catch upstream drift or a yanked file). Downloads several GB, which a hosted
+# runner handles fine; nothing here touches PHI.
+#
+# First-party only: actions/checkout + a repo script, no third-party actions.
+
+on:
+  pull_request:
+    paths:
+      - Sources/App/Services/WhisperModelPins.swift
+      - scripts/verify-model-pins.sh
+      - .github/workflows/verify-model-pins.yml
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      print:
+        description: "Bootstrap: use the current Hugging Face revision and print the values to pin"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-model-pins-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify model pins
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify pins against Hugging Face and whisper.cpp
+        run: bash scripts/verify-model-pins.sh --print  # TEMP bootstrap
