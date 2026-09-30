@@ -36,6 +36,25 @@ enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
 
     var fileName: String { "ggml-\(rawValue).bin" }
 
+    /// Pinned SHA-256 (lowercase hex) of the exact ggml asset, verified by
+    /// `WhisperModelDownloader` before a download is moved into place.
+    ///
+    /// UNPINNED: every value is currently `nil`, and `nil` means "accepted
+    /// unverified" (the download still proceeds; failing closed would brick the
+    /// production download). Real pins must come from the Hugging Face LFS oid
+    /// (`oid sha256:...` in the file's LFS pointer, or the `x-linked-etag`
+    /// header on the `resolve/main` URL), confirmed against a real download.
+    /// Never fill one in from memory or from the whisper.cpp README, which
+    /// lists SHA-1.
+    var expectedSHA256: String? {
+        switch self {
+        case .baseEn: return nil
+        case .smallEn: return nil
+        case .mediumEn: return nil
+        case .largeV3: return nil
+        }
+    }
+
     var shortName: String {
         switch self {
         case .baseEn: return "Base"

@@ -30,6 +30,10 @@ final class WhisperModelDownloader: NSObject, ObservableObject {
 
     private var continuation: CheckedContinuation<Void, Error>?
     private var destinationURL: URL?
+    /// Digest the finished download must match, captured at download start;
+    /// `nil` means the model isn't pinned yet and is accepted unverified (see
+    /// `WhisperModel.expectedSHA256`).
+    private var expectedSHA256: String?
     private lazy var session: URLSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
 
     @MainActor
@@ -41,6 +45,7 @@ final class WhisperModelDownloader: NSObject, ObservableObject {
 
         try FileManager.default.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         self.destinationURL = destinationURL
+        self.expectedSHA256 = model.expectedSHA256
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             self.continuation = continuation
@@ -69,6 +74,17 @@ extension WhisperModelDownloader: URLSessionDownloadDelegate {
             return
         }
         do {
+            // Verify the temp file BEFORE touching the destination: on mismatch
+            // the bad download is discarded and any existing (good) model is
+            // left as-is. This runs on the URLSession delegate queue (never the
+            // main thread) and must be synchronous, since `location` is deleted
+            // as soon as this method returns. Hashing streams in 1 MiB chunks.
+            do {
+                try ModelDigest.verify(fileAt: location, expectedSHA256: expectedSHA256)
+            } catch {
+                try? FileManager.default.removeItem(at: location)
+                throw error
+            }
             if FileManager.default.fileExists(atPath: destinationURL.path) {
                 try FileManager.default.removeItem(at: destinationURL)
             }
