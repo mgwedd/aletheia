@@ -36,12 +36,10 @@ enum ModelDigest {
     /// from `expectedSHA256` (hex, either case), and rethrows the I/O error when
     /// the file can't be read (missing/unreadable).
     ///
-    /// A `nil` pin means the model isn't pinned yet: the file is accepted
-    /// unverified and is not read at all. That is deliberate — failing closed
-    /// on `nil` would make every unpinned download unusable. Deleting a rejected
-    /// file is the caller's job; this only decides.
-    static func verify(fileAt url: URL, expectedSHA256: String?) throws {
-        guard let expectedSHA256 else { return }
+    /// The pin is deliberately non-optional: there is no "unverified, proceed"
+    /// path, so a model without a pin can't be downloaded at all. Deleting a
+    /// rejected file is the caller's job; this only decides.
+    static func verify(fileAt url: URL, expectedSHA256: String) throws {
         let actual = try sha256(ofFileAt: url)
         guard actual.caseInsensitiveCompare(expectedSHA256) == .orderedSame else {
             throw ModelDownloadError.integrityCheckFailed(expected: expectedSHA256, actual: actual)

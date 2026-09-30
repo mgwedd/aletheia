@@ -42,4 +42,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify pins against Hugging Face and whisper.cpp
-        run: bash scripts/verify-model-pins.sh --print  # TEMP bootstrap
+        run: bash scripts/verify-model-pins.sh ${{ inputs.print && '--print' || '' }}

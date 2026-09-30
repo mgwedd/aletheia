@@ -4,8 +4,8 @@ import XCTest
 /// `ModelDigest.verify` is the pure gate the Whisper downloader runs on the
 /// temp file before moving it into place. These pin its contract: match passes,
 /// mismatch throws `integrityCheckFailed`, a missing file throws an I/O error
-/// (not an integrity error), pin case doesn't matter, and a `nil` pin is
-/// "unverified — proceed" (deliberately not fail-closed).
+/// (not an integrity error), and pin case doesn't matter. There is no unpinned
+/// path: every `WhisperModel` has a pin, checked below.
 final class ModelIntegrityTests: XCTestCase {
     private var dir: URL!
 
@@ -68,27 +68,33 @@ final class ModelIntegrityTests: XCTestCase {
         XCTAssertNoThrow(try ModelDigest.verify(fileAt: url, expectedSHA256: abcDigest.uppercased()))
     }
 
-    func testNilPinAcceptsFileUnverified() throws {
-        let url = try write("anything at all")
-        XCTAssertNoThrow(try ModelDigest.verify(fileAt: url, expectedSHA256: nil))
-    }
-
-    func testNilPinDoesNotReadTheFile() {
-        // Unpinned models proceed even when there's nothing to hash: the gate
-        // is skipped entirely, not failed closed.
-        let missing = dir.appendingPathComponent("nope.bin")
-        XCTAssertNoThrow(try ModelDigest.verify(fileAt: missing, expectedSHA256: nil))
-    }
-
-    /// Guards future pin edits: any pin that gets filled in must be a 64-char
-    /// lowercase hex SHA-256 (not SHA-1, not padded/uppercase). Unpinned (nil)
-    /// entries are allowed and mean "unverified".
-    func testWhisperPinsAreWellFormedWhenPresent() {
+    /// Every model must carry a pin: `expectedSHA256` is a non-optional
+    /// `String` (exhaustive switch, no default), so this also fails if a pin is
+    /// blank, the wrong length (e.g. a SHA-1) or not lowercase hex.
+    func testEveryWhisperModelHasA64CharLowercaseHexPin() {
         for model in WhisperModel.allCases {
-            guard let pin = model.expectedSHA256 else { continue }
+            let pin = model.expectedSHA256
             XCTAssertEqual(pin.count, 64, "\(model.rawValue) pin must be SHA-256 (64 hex chars)")
             XCTAssertNotNil(pin.range(of: "^[0-9a-f]{64}$", options: .regularExpression),
                             "\(model.rawValue) pin must be lowercase hex")
+        }
+    }
+
+    func testWhisperPinsAreDistinct() {
+        let pins = WhisperModel.allCases.map(\.expectedSHA256)
+        XCTAssertEqual(Set(pins).count, pins.count, "two models share a pin")
+    }
+
+    /// The bytes must not be able to change under the pin: downloads come from
+    /// an immutable Hugging Face commit, never a moving branch like `main`.
+    func testWhisperDownloadURLsArePinnedToACommit() {
+        XCTAssertNotNil(WhisperModel.revision.range(of: "^[0-9a-f]{40}$", options: .regularExpression),
+                        "revision must be a 40-char commit sha")
+        for model in WhisperModel.allCases {
+            let url = model.downloadURL.absoluteString
+            XCTAssertTrue(url.contains("/resolve/\(WhisperModel.revision)/"), "\(url) is not revision-pinned")
+            XCTAssertFalse(url.contains("/resolve/main/"))
+            XCTAssertTrue(url.hasSuffix("/\(model.fileName)"))
         }
     }
 }

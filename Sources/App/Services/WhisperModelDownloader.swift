@@ -30,9 +30,9 @@ final class WhisperModelDownloader: NSObject, ObservableObject {
 
     private var continuation: CheckedContinuation<Void, Error>?
     private var destinationURL: URL?
-    /// Digest the finished download must match, captured at download start;
-    /// `nil` means the model isn't pinned yet and is accepted unverified (see
-    /// `WhisperModel.expectedSHA256`).
+    /// Digest the finished download must match, captured at download start
+    /// (`WhisperModel.expectedSHA256`, which every model has). Optional only
+    /// because it's unset while no transfer is in flight.
     private var expectedSHA256: String?
     private lazy var session: URLSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
 
@@ -68,7 +68,7 @@ extension WhisperModelDownloader: URLSessionDownloadDelegate {
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        guard let destinationURL else {
+        guard let destinationURL, let expectedSHA256 else {
             continuation?.resume(throwing: ModelDownloadError.noDestination)
             continuation = nil
             return
