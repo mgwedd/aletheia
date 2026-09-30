@@ -138,6 +138,12 @@ check_model() { # case raw pin(optional; verify mode)
   local file="ggml-${raw}.bin"
   local url="https://huggingface.co/${HF_REPO}/resolve/${REVISION}/${file}"
   local tmp="${WORK}/${file}"
+  # Never let an empty extraction turn into a vacuous pass: in verify mode a
+  # model without a pin from the Swift source is a failure.
+  if [ "$MODE" = "verify" ] && [ -z "$pin" ]; then
+    fail "${raw}: no pin found in ${PINS_FILE}"
+    return
+  fi
   echo "==> ${raw}: downloading ${url}"
   if ! fetch "$url" "$tmp"; then
     fail "${raw}: download failed"
@@ -185,8 +191,8 @@ main() {
   local pins=""
   if [ "$MODE" = "verify" ]; then
     check_swift_shape
-    REVISION=$(extract_revision)
-    pins=$(extract_pins)
+    REVISION=$(extract_revision) || exit 1
+    pins=$(extract_pins) || exit 1
   else
     local info
     info=$(curl --fail --location --silent --show-error --retry 3 --retry-all-errors "https://huggingface.co/api/models/${HF_REPO}") \
