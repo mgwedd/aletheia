@@ -100,11 +100,14 @@ final class SQLitePersistenceCore: PersistenceCore {
     }
 
     /// Writes a consistent pre-migration copy of the database to `destination`
-    /// via `VACUUM INTO`. Creates the `Backups/` directory, and refuses (returns
+    /// via `VACUUM INTO`. Creates the `.backups/migrations/` directory (folding in
+    /// any legacy `Backups/` first, best-effort), and refuses (returns
     /// false) rather than overwrite an existing file — the timestamped name makes
     /// a collision practically impossible, and clobbering an earlier pre-image
     /// would defeat the point. False here aborts the migration.
     private func snapshotBeforeMigration(to destination: URL) -> Bool {
+        // Best-effort: a legacy-folder problem must never block (or fake) a pre-image.
+        BackupLayout.adoptLegacy(dataRoot: url.deletingLastPathComponent())
         try? FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard !FileManager.default.fileExists(atPath: destination.path) else { return false }

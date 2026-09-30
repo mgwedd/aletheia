@@ -24,7 +24,8 @@ protocol BackupService {
     func restoreLatest(to databaseURL: URL) async -> BackupOutcome
 }
 
-/// Keeps end-to-end-encrypted backups on this Mac, under `<dataRoot>/.backups/`.
+/// Keeps end-to-end-encrypted backups on this Mac, under
+/// `<dataRoot>/.backups/archives/` (see `BackupLayout`).
 /// This is always available (no external service), and Time Machine picks the
 /// archives up like any other file — giving "encrypted, and local" without
 /// relying on FileVault alone. Retention keeps the most recent `keep`.
@@ -45,7 +46,7 @@ struct LocalEncryptedBackupService: BackupService {
     /// coordinator.
     static var isWired: Bool { false }
 
-    var directory: URL { root.appendingPathComponent(".backups", isDirectory: true) }
+    var directory: URL { BackupLayout.directory(.archives, dataRoot: root) }
     var isConfigured: Bool { true }
 
     func backUp(databaseURL: URL, reason: String) async -> BackupOutcome {
@@ -54,6 +55,7 @@ struct LocalEncryptedBackupService: BackupService {
 
     /// Date-injectable variant for deterministic tests.
     func backUp(databaseURL: URL, reason: String, at date: Date) async -> BackupOutcome {
+        BackupLayout.adoptLegacy(dataRoot: root, fileManager: fileManager)
         do {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
             let name = "\(Self.stamp(date))-\(Self.slug(reason)).\(EncryptedBackupArchive.fileExtension)"
@@ -79,6 +81,7 @@ struct LocalEncryptedBackupService: BackupService {
     /// Existing archives, newest first (names are UTC-timestamp-prefixed, so a
     /// descending name sort is a time sort).
     func archives() -> [URL] {
+        BackupLayout.adoptLegacy(dataRoot: root, fileManager: fileManager)
         let entries = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         return entries
             .filter { $0.pathExtension == EncryptedBackupArchive.fileExtension }

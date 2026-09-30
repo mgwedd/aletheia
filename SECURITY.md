@@ -32,10 +32,13 @@ device-remembered copy makes the data unrecoverable. Full design in
 **Backups.** The data folder backs up with zero configuration via macOS Time
 Machine. Settings › Backup also offers an opt-in end-to-end-encrypted backup
 archive (`.aletheiabackup`, sealed with your key) written to a local
-`.backups/` folder, plus a staged (not yet live) opt-in encrypted iCloud
+`.backups/archives/` folder, plus a staged (not yet live) opt-in encrypted iCloud
 destination for the same archive. Point-in-time database snapshots
-(`.snapshots/`, via SQLite's `VACUUM INTO`) protect schema migrations and
-encryption on/off changes against a mid-write failure.
+(`.backups/snapshots/` and `.backups/migrations/`, via SQLite's `VACUUM INTO`)
+protect schema migrations and encryption on/off changes against a mid-write
+failure. All of these live in the single hidden `.backups/` folder inside your
+data folder (older versions used `Backups/` and `.snapshots/`; they are moved
+there automatically).
 
 ## Threat model, briefly
 

@@ -64,6 +64,65 @@ final class DatabaseSnapshotTests: XCTestCase {
                       "the two newest survive: \(remaining)")
     }
 
+    func testSnapshotsLiveInTheBackupsSnapshotsFolder() throws {
+        let store = try makeStore()
+        let snapshot = try XCTUnwrap(DatabaseSnapshotManager(root: tempRoot).makeSnapshot(of: store, reason: "where"))
+        XCTAssertEqual(snapshot.deletingLastPathComponent().path,
+                       tempRoot.appendingPathComponent(".backups/snapshots").path)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: tempRoot.appendingPathComponent(".snapshots").path),
+                       "the old .snapshots folder is no longer created")
+    }
+
+    /// The rolling-N prune must only ever see snapshot files: migration
+    /// pre-images and encrypted archives sharing `.backups/` are untouchable.
+    func testPruneNeverTouchesMigrationPreImagesOrArchives() throws {
+        let fm = FileManager.default
+        let migrations = BackupLayout.directory(.migrations, dataRoot: tempRoot)
+        let archives = BackupLayout.directory(.archives, dataRoot: tempRoot)
+        try fm.createDirectory(at: migrations, withIntermediateDirectories: true)
+        try fm.createDirectory(at: archives, withIntermediateDirectories: true)
+        // Older than every snapshot below, and `.sqlite` like a snapshot, so a
+        // prune that listed the wrong folder would take them first.
+        let preImage = migrations.appendingPathComponent("Aletheia-pre-v1-20000101T000000Z.sqlite")
+        let archive = archives.appendingPathComponent("20000101-000000-manual.\(EncryptedBackupArchive.fileExtension)")
+        let oldSqliteInArchives = archives.appendingPathComponent("20000101-000000-stray.sqlite")
+        for url in [preImage, archive, oldSqliteInArchives] { try Data("keep".utf8).write(to: url) }
+
+        let store = try makeStore()
+        var manager = DatabaseSnapshotManager(root: tempRoot)
+        manager.keep = 1
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        for i in 0..<3 {
+            _ = manager.makeSnapshot(of: store, reason: "r\(i)", at: base.addingTimeInterval(Double(i) * 60))
+        }
+
+        XCTAssertEqual(manager.snapshots().count, 1)
+        for url in [preImage, archive, oldSqliteInArchives] {
+            XCTAssertTrue(fm.fileExists(atPath: url.path), "prune must not touch \(url.lastPathComponent)")
+        }
+    }
+
+    /// An upgraded install: snapshots left in the old `.snapshots/` count toward
+    /// (and are pruned by) the rolling window in their new home.
+    func testLegacySnapshotsJoinTheRollingWindow() throws {
+        let fm = FileManager.default
+        let legacy = tempRoot.appendingPathComponent(".snapshots", isDirectory: true)
+        try fm.createDirectory(at: legacy, withIntermediateDirectories: true)
+        try Data("a".utf8).write(to: legacy.appendingPathComponent("20200101-000000-old-a.sqlite"))
+        try Data("b".utf8).write(to: legacy.appendingPathComponent("20200102-000000-old-b.sqlite"))
+
+        let store = try makeStore()
+        var manager = DatabaseSnapshotManager(root: tempRoot)
+        manager.keep = 2
+        _ = manager.makeSnapshot(of: store, reason: "new", at: Date(timeIntervalSince1970: 1_700_000_000))
+
+        let names = manager.snapshots().map(\.lastPathComponent)
+        XCTAssertEqual(names.count, 2)
+        XCTAssertTrue(names[0].hasSuffix("-new.sqlite"), "newest first: \(names)")
+        XCTAssertEqual(names[1], "20200102-000000-old-b.sqlite", "oldest legacy snapshot was pruned")
+        XCTAssertFalse(fm.fileExists(atPath: legacy.path), "old folder removed once emptied")
+    }
+
     func testRestoreReturnsLiveDatabaseToSnapshotState() throws {
         let manager = DatabaseSnapshotManager(root: tempRoot)
         let liveURL = CommentStore.databaseURL(root: tempRoot)

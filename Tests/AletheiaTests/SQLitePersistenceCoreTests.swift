@@ -152,7 +152,7 @@ final class SQLitePersistenceCoreTests: XCTestCase {
     }
 
     /// A fresh (version-0) database has no prior data to protect, so opening it
-    /// takes no pre-migration snapshot — the `Backups/` directory isn't created.
+    /// takes no pre-migration snapshot — the `.backups/migrations/` directory isn't created.
     /// (The snapshot path activates only for a real data-transforming upgrade,
     /// current > 0, once a v2+ migration ships.)
     func testFreshDatabaseTakesNoPreMigrationSnapshot() {
