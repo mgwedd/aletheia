@@ -37,6 +37,14 @@ struct LocalEncryptedBackupService: BackupService {
     var keep: Int = 5
     private let fileManager = FileManager.default
 
+    /// Whether the app actually runs this service. The archive/restore code is
+    /// complete and tested, but nothing in the app calls `BackupCoordinator` yet,
+    /// so the Settings toggle is only a saved preference. The security overview
+    /// reads this so it never reports a backup that isn't being written. Flip it
+    /// to `true` in the change that wires "Back up now"/a schedule to the
+    /// coordinator.
+    static var isWired: Bool { false }
+
     var directory: URL { root.appendingPathComponent(".backups", isDirectory: true) }
     var isConfigured: Bool { true }
 

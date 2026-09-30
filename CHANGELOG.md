@@ -9,6 +9,21 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.21.8] - 2026-09-30
+
+### Fixed
+- stop reporting an encrypted backup that nothing writes (#150)
+
+## [2.21.7] - 2026-09-30
+
+### Fixed
+- drop the plaintext pre-image after enabling encryption (#148)
+
+## [2.21.6] - 2026-09-30
+
+### Fixed
+- mandatory SHA-256 pins and commit-locked downloads for Whisper models (#145)
+
 ## [2.21.5] - 2026-09-30
 
 ### Fixed

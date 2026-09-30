@@ -33,6 +33,7 @@ enum SecurityPosture {
         encryptionUnlocked: Bool,
         auditLogActive: Bool,
         localEncryptedBackup: Bool,
+        localBackupActive: Bool,
         iCloudBackupEnabled: Bool,
         iCloudBackupConfigured: Bool,
         networkOnline: Bool?
@@ -81,12 +82,22 @@ enum SecurityPosture {
                 ? "Security-relevant actions are recorded on this Mac (no names or clinical content)."
                 : "Choose a data folder to begin recording the on-device audit log."))
 
-        // Encrypted backup copy on this Mac.
-        items.append(PostureItem(id: "encryptedBackup", title: "Encrypted backup",
-            level: localEncryptedBackup ? .secure : .informational,
-            detail: localEncryptedBackup
-                ? "An end-to-end-encrypted backup copy is kept, sealed with your key."
-                : "Consider keeping an encrypted backup copy, safe to sit in Time Machine. Keep Time Machine backups on an encrypted disk."))
+        // Encrypted backup copy on this Mac. Like iCloud below, the toggle is only
+        // a saved preference until something actually writes the archives, so it
+        // must not read as "secure" — a clinician who believes a backup exists
+        // won't make their own.
+        if !localBackupActive {
+            items.append(PostureItem(id: "encryptedBackup", title: "Encrypted backup", level: .informational,
+                detail: "This build doesn't write backup copies yet, so nothing is being backed up by Aletheia"
+                    + (localEncryptedBackup ? " even though the option is turned on" : "")
+                    + ". Time Machine includes your data folder by default; keep those backups on an encrypted disk."))
+        } else {
+            items.append(PostureItem(id: "encryptedBackup", title: "Encrypted backup",
+                level: localEncryptedBackup ? .secure : .informational,
+                detail: localEncryptedBackup
+                    ? "An end-to-end-encrypted backup copy is kept, sealed with your key."
+                    : "Consider keeping an encrypted backup copy, safe to sit in Time Machine. Keep Time Machine backups on an encrypted disk."))
+        }
 
         // Off-device copy in the user's private iCloud (CloudKit). Only ever
         // ciphertext leaves the Mac; until a signed build provisions CloudKit the

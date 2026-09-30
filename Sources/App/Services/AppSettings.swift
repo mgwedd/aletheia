@@ -30,10 +30,6 @@ enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
         }
     }
 
-    var downloadURL: URL {
-        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-\(rawValue).bin")!
-    }
-
     var fileName: String { "ggml-\(rawValue).bin" }
 
     var shortName: String {

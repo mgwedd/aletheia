@@ -271,12 +271,12 @@ struct SettingsView: View {
 
             Section("Backup") {
                 Toggle("Keep my data out of Time Machine & iCloud backups", isOn: $settings.keepDataOutOfSystemBackups)
-                Text("Off by default, so Time Machine includes your data folder — Aletheia doesn't make a backup of its own unless you turn one on below, so without this you'd have only one copy. Your data folder can hold unencrypted patient data (and audio/transcript files), so keep your Time Machine backups on an encrypted disk. Turn this on only if you'd rather keep the folder out of macOS system backups and rely on the encrypted snapshot below instead.")
+                Text("Off by default, so Time Machine includes your data folder — Aletheia doesn't make a backup of its own yet, so without this you'd have only one copy. Your data folder can hold unencrypted patient data (and audio/transcript files), so keep your Time Machine backups on an encrypted disk. Turn this on only if you'd rather keep the folder out of macOS system backups and rely on your own copy instead.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Divider()
                 Toggle("Keep an encrypted backup copy on this Mac", isOn: $settings.localEncryptedBackupEnabled)
-                Text("An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it.")
+                Text("An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it. Not active in this build yet: your choice is saved, but no backup copy is written until it is.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Divider()
