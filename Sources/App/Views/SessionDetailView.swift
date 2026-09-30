@@ -449,7 +449,7 @@ struct SessionDetailView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(8)
                 .onChange(of: sessionNote) { _, newValue in
-                    appModel.commentStore?.saveNote(sessionID: session.id, text: newValue)
+                    appModel.saveNote(sessionID: session.id, text: newValue)
                 }
         }
     }
@@ -699,7 +699,7 @@ struct SessionDetailView: View {
             },
             onFinish: { _ in
                 isChatSending = false
-                try? store.saveSessionChat(chatMessages, for: patient, session: session)
+                appModel.attemptSave("chat") { try store.saveSessionChat(chatMessages, for: patient, session: session) }
             }
         )
     }

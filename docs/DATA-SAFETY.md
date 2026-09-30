@@ -230,6 +230,26 @@ the data root, so it follows the data root's system-backup exclusion setting
 - A newer-than-latest database is refused at open rather than rewritten, so an
   older build can never downgrade-corrupt a file a newer build wrote.
 
+### When the database can't open: fail loudly, diagnose, never delete
+
+`SQLitePersistenceCore(opening:)` / `CommentStore(opening:)` throw a typed
+`DatabaseOpenFailure` (`cannotOpen`, `lockedOrDiskFull`, `schemaNewerThanApp`,
+`migrationRefused`, `migrationFailed`, `corrupt`, `unknown`) whose reason text is
+PHI-free. `AppModel.databaseState` publishes it, and the main window shows a
+non-blocking but unmissable banner ("Notes and chat can't be saved right now")
+with numbered steps specific to the failure kind (`DatabaseFailureGuidance`).
+The steps never lead with anything destructive: for a damaged file they say to
+copy the data folder aside first, then restore a snapshot by renaming the damaged
+file and copying the snapshot in. Chat and note saves that fail against an open
+database raise a "couldn't save" notice too, rather than being discarded.
+
+**Aletheia Doctor** (production tier; Help menu, Settings, and the banner) re-checks
+all of this on demand — data folder present/readable/writable and free space,
+database open + schema version + `PRAGMA integrity_check` (count only), keystore,
+snapshot age, transcription-model file, and the existing `ToolHealth` rows — and
+offers a "Copy Report" that contains no patient names, session names, note text or
+file names below the data folder, with the home directory shown as `~`.
+
 ### Interaction with encryption (Part 1)
 
 A snapshot is only useful if it is recoverable. A snapshot taken while

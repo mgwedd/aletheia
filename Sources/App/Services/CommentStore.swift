@@ -85,8 +85,20 @@ final class CommentStore {
         root.appendingPathComponent("Aletheia.sqlite")
     }
 
-    init?(root: URL, protector: FileProtector = .passthrough) {
-        guard let core = SQLitePersistenceCore(url: Self.databaseURL(root: root)) else { return nil }
+    /// Non-throwing convenience kept for existing callers and tests: `nil` on any
+    /// failure. `AppModel` uses `init(opening:)` so it can say *why*.
+    convenience init?(root: URL, protector: FileProtector = .passthrough) {
+        do {
+            try self.init(opening: root, protector: protector)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Opens the database in `root`, or throws a `DatabaseOpenFailure` (newer
+    /// schema, refused/failed migration, corrupt or locked file, …).
+    init(opening root: URL, protector: FileProtector = .passthrough) throws {
+        let core = try SQLitePersistenceCore(opening: Self.databaseURL(root: root))
         self.core = core
         self.protector = protector
         self.annotations = AnnotationRepository(core: core, protector: protector)

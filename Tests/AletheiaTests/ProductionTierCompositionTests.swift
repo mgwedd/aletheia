@@ -36,6 +36,15 @@ final class ProductionTierCompositionTests: XCTestCase {
         XCTAssertTrue(dev.contains(id: EmbeddedLlamaFeatureModule.id))
     }
 
+    /// Aletheia Doctor is a data-safety diagnostic a clinician needs when the
+    /// database won't open, so it ships in production — and therefore in every
+    /// higher tier too.
+    func testDoctorShipsInProduction() {
+        XCTAssertTrue(production.contains(id: DoctorFeatureModule.id))
+        XCTAssertTrue(preview.contains(id: DoctorFeatureModule.id))
+        XCTAssertTrue(dev.contains(id: DoctorFeatureModule.id))
+    }
+
     // MARK: Every non-production module is held out of production, present at its own tier
 
     /// For every module the catalog declares `.preview` or `.dev`: it must not

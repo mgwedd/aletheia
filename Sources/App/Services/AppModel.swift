@@ -14,6 +14,16 @@ final class AppModel: ObservableObject {
     /// Set when the chosen data folder was written by a newer app version, so
     /// this build shouldn't modify it. Surfaced to the user as a warning.
     @Published var schemaWarning: String?
+    /// Whether the SQLite database (notes, comments, chat) opened. When it
+    /// didn't, `.unavailable` carries the typed reason and the main window shows
+    /// an unmissable error with diagnosing steps instead of silently carrying on
+    /// while nothing saves. See `DatabaseUnavailableBanner` and `DoctorFeatureModule`.
+    @Published private(set) var databaseState: DatabaseState = .noDataFolder
+    /// Set when a save reached for the database (chat, notes) failed, so the UI
+    /// can show a small "couldn't save" notice rather than dropping it silently.
+    /// `saveFailureSubject` is what failed ("chat", "note"), so a later
+    /// successful save of the same thing clears it.
+    @Published private(set) var saveFailureSubject: String?
 
     private(set) var store: Store?
     /// Local SQLite store for the therapist's own annotations (inline comments
@@ -64,6 +74,10 @@ final class AppModel: ObservableObject {
     /// (`AudioRetentionPolicy.keepsAudio`).
     var isEncryptionEnabled: Bool { encryption.isEnabled }
 
+    /// Whether at-rest encryption is set up *and* unlocked this session. Read by
+    /// Doctor to describe the keystore's state.
+    var isEncryptionUnlocked: Bool { encryption.isUnlocked }
+
     func rebuildStore() {
         // Recompute encryption state first (the data folder may have just
         // changed), then build the stores around the resulting protector.
@@ -71,9 +85,11 @@ final class AppModel: ObservableObject {
         let dataRoot = settings.dataRootURL
         audit = dataRoot.map(AuditLog.init)
         logEncryptionTransitionIfNeeded()
+        saveFailureSubject = nil
         guard let root = dataRoot else {
             store = nil
             commentStore = nil
+            databaseState = .noDataFolder
             patients = []
             unreadablePatients = []
             schemaWarning = nil
@@ -83,9 +99,22 @@ final class AppModel: ObservableObject {
         // Build the DB store once and share it with the file Store, so chat
         // threads (now DB-backed) and comments/notes all go through one
         // connection rather than two pointed at the same file.
-        let newCommentStore = CommentStore(root: root, protector: protector)
+        let newCommentStore: CommentStore?
+        do {
+            newCommentStore = try CommentStore(opening: root, protector: protector)
+            databaseState = .available
+        } catch let failure as DatabaseOpenFailure {
+            newCommentStore = nil
+            databaseState = .unavailable(failure)
+        } catch {
+            newCommentStore = nil
+            databaseState = .unavailable(DatabaseOpenFailure(
+                kind: .unknown,
+                reason: "Unexpected error while opening the database."
+            ))
+        }
         commentStore = newCommentStore
-        let newStore = Store(root: root, protector: protector, commentStore: newCommentStore)
+        let newStore = Store(root: root, protector: protector, commentStore: newCommentStore, openDatabaseIfMissing: false)
         store = newStore
         if case let .needsNewerApp(dataVersion, appVersion) = newStore.schemaCompatibility {
             schemaWarning = """
@@ -98,6 +127,39 @@ final class AppModel: ObservableObject {
             schemaWarning = nil
         }
         refreshPatients()
+    }
+
+    /// Runs a save that goes to the database and, if it throws, raises the
+    /// "couldn't save" notice instead of discarding the failure (views used to
+    /// call these with `try?`). A later success for the same `subject` clears it.
+    /// - Returns: whether the save succeeded.
+    @discardableResult
+    func attemptSave(_ subject: String, _ work: () throws -> Void) -> Bool {
+        do {
+            try work()
+            if saveFailureSubject == subject { saveFailureSubject = nil }
+            return true
+        } catch {
+            reportSaveFailure(subject)
+            return false
+        }
+    }
+
+    /// Saves a session's freeform note, surfacing a failure (see `attemptSave`).
+    func saveNote(sessionID: UUID, text: String) {
+        attemptSave("note") {
+            guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
+            guard commentStore.saveNote(sessionID: sessionID, text: text) else { throw DatabaseWriteError.writeFailed }
+        }
+    }
+
+    /// Records that saving `subject` failed. See `attemptSave`.
+    func reportSaveFailure(_ subject: String) {
+        saveFailureSubject = subject
+    }
+
+    func dismissSaveFailure() {
+        saveFailureSubject = nil
     }
 
     /// Record an ePHI-affecting action, if a data folder (and thus a log) exists.

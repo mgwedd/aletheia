@@ -7,6 +7,7 @@ struct RootView: View {
     @EnvironmentObject private var updateService: UpdateService
     @EnvironmentObject private var encryption: EncryptionManager
     @ObservedObject private var navigator = AppNavigator.shared
+    @Environment(\.openWindow) private var openWindow
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
     @State private var showSearch = false
@@ -42,6 +43,10 @@ struct RootView: View {
                 )
             }
         }
+        // Data-safety notices: an unopenable database (nothing can be saved) or a
+        // single failed save. Non-blocking, but pinned above everything so it's
+        // never missed. See DatabaseUnavailableBanner / DoctorFeatureModule.
+        .safeAreaInset(edge: .top, spacing: 0) { dataSafetyNotices }
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(settings)
@@ -77,6 +82,33 @@ struct RootView: View {
         }
         .onChange(of: navigator.pendingPatientID) { _, _ in navigateToPendingPatient() }
         .onAppear { navigateToPendingPatient() }
+    }
+
+    private var doctorAvailable: Bool {
+        appModel.featureRegistry.contains(id: DoctorFeatureModule.id)
+    }
+
+    @ViewBuilder
+    private var dataSafetyNotices: some View {
+        VStack(spacing: 0) {
+            if let failure = appModel.databaseState.failure {
+                DatabaseUnavailableBanner(
+                    failure: failure,
+                    dataFolder: settings.dataRootURL,
+                    showDoctorButton: doctorAvailable,
+                    onOpenDoctor: { openWindow(id: DoctorFeatureModule.windowID) }
+                )
+            } else if let subject = appModel.saveFailureSubject {
+                // Only when the database itself is open: an unopenable database is
+                // already covered by the banner above.
+                SaveFailureStrip(
+                    subject: subject,
+                    showDoctorButton: doctorAvailable,
+                    onOpenDoctor: { openWindow(id: DoctorFeatureModule.windowID) },
+                    onDismiss: { appModel.dismissSaveFailure() }
+                )
+            }
+        }
     }
 
     /// Honors a navigation request from an App Intent (Siri/Shortcuts).

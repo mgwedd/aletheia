@@ -150,7 +150,7 @@ struct PatientChatView: View {
     private func startNewThread() {
         guard !isSending, let store = appModel.store else { return }
         let thread = ChatThread()
-        try? store.saveChatThread(thread, for: patient)
+        appModel.attemptSave("chat") { try store.saveChatThread(thread, for: patient) }
         threads = store.loadChatThreads(for: patient)
         selectedThreadID = thread.id
         messages = []
@@ -164,14 +164,14 @@ struct PatientChatView: View {
     private func commitRename() {
         guard let store = appModel.store, var thread = renamingThread else { return }
         thread.title = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-        try? store.saveChatThread(thread, for: patient)
+        appModel.attemptSave("chat") { try store.saveChatThread(thread, for: patient) }
         renamingThread = nil
         reloadThreads(preserving: thread.id)
     }
 
     private func deleteThread(_ thread: ChatThread) {
         guard !isSending, let store = appModel.store else { return }
-        try? store.deleteChatThread(id: thread.id, for: patient)
+        appModel.attemptSave("chat") { try store.deleteChatThread(id: thread.id, for: patient) }
         if selectedThreadID == thread.id { selectedThreadID = nil }
         reloadThreads()
     }
@@ -220,8 +220,12 @@ struct PatientChatView: View {
         var thread = threads.first(where: { $0.id == threadID }) ?? ChatThread(id: threadID)
         thread.messages = messages
         thread.updatedAt = Date()
-        try? store.saveChatThread(thread, for: patient)
-        reloadThreads(preserving: threadID)
+        // On a failed save, keep the conversation on screen (reloading from the
+        // database would replace it with the older stored copy) so the therapist
+        // can still read or copy it while the "couldn't save" notice is showing.
+        if appModel.attemptSave("chat", { try store.saveChatThread(thread, for: patient) }) {
+            reloadThreads(preserving: threadID)
+        }
     }
 }
 

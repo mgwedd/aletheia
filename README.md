@@ -90,6 +90,11 @@ type backs each adapter at runtime.
   comments the AI chat takes into account.
 - 🔔 **Fits the Mac** — Spotlight, Siri/Shortcuts, Reminders, Calendar,
   notifications, and an in-app updater.
+- 🩺 **Aletheia Doctor** — *Help › Aletheia Doctor…* (also in Settings) runs an
+  on-demand health check of the data folder, database, snapshots, permissions and
+  local AI engine, with a PHI-safe "Copy Report". If the database can't be
+  opened, the main window shows an error with step-by-step diagnosis instead of
+  silently failing to save.
 
 ### How a session flows
 
