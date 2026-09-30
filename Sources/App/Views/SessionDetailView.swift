@@ -45,6 +45,9 @@ struct SessionDetailView: View {
     @State private var focusedCommentID: String?
     @State private var isTranscribing = false
     @State private var transcribeProgress: Double = 0
+    /// Set when the last transcription came back blank and the recording was
+    /// kept (see `AudioRetentionPolicy.decision`); shown inline, not as an alert.
+    @State private var noSpeechNotice: String?
     @State private var isChatSending = false
     @StateObject private var chatRunner = ChatStreamRunner()
     @StateObject private var noteRunner = ChatStreamRunner()
@@ -280,6 +283,20 @@ struct SessionDetailView: View {
 
     private var transcriptTab: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if let notice = noSpeechNotice {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "info.circle")
+                    Text(notice)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button("Dismiss") { noSpeechNotice = nil }
+                        .buttonStyle(.borderless)
+                }
+                .font(.callout)
+                .padding(10)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                .padding([.horizontal, .top])
+            }
             if transcriptText.isEmpty && !isEditingTranscript {
                 ContentUnavailableView("No Transcript Yet", systemImage: "text.alignleft", description: Text("Record a session, then tap Transcribe."))
             } else if isEditingTranscript {
@@ -561,6 +578,7 @@ struct SessionDetailView: View {
         guard let store = appModel.store else { return }
         isTranscribing = true
         transcribeProgress = 0
+        noSpeechNotice = nil
         defer { isTranscribing = false }
         // Ask in context: transcription can take minutes, and we want to tell
         // her when it's done if she's stepped away.
@@ -584,25 +602,39 @@ struct SessionDetailView: View {
             let text = try await transcriber.transcribeSession(micURL: micReadURL, callURL: callReadURL) { progress in
                 Task { @MainActor in transcribeProgress = progress }
             }
-            transcriptText = text
-            try store.saveTranscript(text, for: patient, session: session)
-            // Transcript-only by default: discard the raw audio now that the
-            // transcript (the document of record) is saved. Audio is kept only
-            // when the user opted in *and* at-rest encryption is on, so anything
-            // retained on disk is ciphertext, never plaintext PHI. The gate is
-            // enforced here on behavior, not just in the UI, so stale settings or
-            // encryption being turned off can't leave audio in the clear.
-            if AudioRetentionPolicy.discardsAudioAfterTranscription(
+            let decision = AudioRetentionPolicy.decision(
                 optedIn: settings.keepAudioRecordings,
-                encryptionEnabled: appModel.isEncryptionEnabled
-            ) {
-                store.deleteRecordings(for: patient, session: session)
-            }
-            appModel.refreshPatients()
-            onSessionUpdated()
-            await integrations.makeNotifier().post(
-                SessionNotifications.transcriptionComplete(patientName: patient.name, date: session.date)
+                encryptionEnabled: appModel.isEncryptionEnabled,
+                transcript: text
             )
+            if decision == .keepBecauseTranscriptBlank {
+                // Nothing was transcribed, so the recording may be the only copy
+                // of the session: keep it, don't overwrite any existing
+                // transcript with an empty one, and tell the user (inline, not a
+                // blocking alert) what happened and what to do next.
+                noSpeechNotice = AudioRetentionPolicy.blankTranscriptNotice(
+                    encryptionEnabled: appModel.isEncryptionEnabled
+                )
+                appModel.refreshPatients()
+                onSessionUpdated()
+            } else {
+                transcriptText = text
+                try store.saveTranscript(text, for: patient, session: session)
+                // Transcript-only by default: discard the raw audio now that the
+                // transcript (the document of record) is saved. Audio is kept only
+                // when the user opted in *and* at-rest encryption is on, so anything
+                // retained on disk is ciphertext, never plaintext PHI. The gate is
+                // enforced here on behavior, not just in the UI, so stale settings or
+                // encryption being turned off can't leave audio in the clear.
+                if decision == .discard {
+                    store.deleteRecordings(for: patient, session: session)
+                }
+                appModel.refreshPatients()
+                onSessionUpdated()
+                await integrations.makeNotifier().post(
+                    SessionNotifications.transcriptionComplete(patientName: patient.name, date: session.date)
+                )
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

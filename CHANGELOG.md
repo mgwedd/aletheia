@@ -9,6 +9,36 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.21.11] - 2026-09-30
+
+### Fixed
+- keep the audio when the transcript is blank (#153)
+
+## [2.21.10] - 2026-09-30
+
+### Fixed
+- fail loud on an unreadable session.json or patient.json (#154)
+
+## [2.21.9] - 2026-09-30
+
+### Fixed
+- include the data folder in Time Machine by default (#152)
+
+## [2.21.8] - 2026-09-30
+
+### Fixed
+- stop reporting an encrypted backup that nothing writes (#150)
+
+## [2.21.7] - 2026-09-30
+
+### Fixed
+- drop the plaintext pre-image after enabling encryption (#148)
+
+## [2.21.6] - 2026-09-30
+
+### Fixed
+- mandatory SHA-256 pins and commit-locked downloads for Whisper models (#145)
+
 ## [2.21.5] - 2026-09-30
 
 ### Fixed

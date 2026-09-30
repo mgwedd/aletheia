@@ -15,6 +15,7 @@ final class SecurityPostureTests: XCTestCase {
         encryptionUnlocked: Bool = true,
         auditLogActive: Bool = true,
         localEncryptedBackup: Bool = true,
+        localBackupActive: Bool = true,
         iCloudBackupEnabled: Bool = false,
         iCloudBackupConfigured: Bool = false,
         networkOnline: Bool? = nil
@@ -27,6 +28,7 @@ final class SecurityPostureTests: XCTestCase {
             encryptionUnlocked: encryptionUnlocked,
             auditLogActive: auditLogActive,
             localEncryptedBackup: localEncryptedBackup,
+            localBackupActive: localBackupActive,
             iCloudBackupEnabled: iCloudBackupEnabled,
             iCloudBackupConfigured: iCloudBackupConfigured,
             networkOnline: networkOnline
@@ -80,6 +82,36 @@ final class SecurityPostureTests: XCTestCase {
         let items = evaluate(encryptionUnlocked: false, localEncryptedBackup: false)
         XCTAssertFalse(items.contains { $0.level == .actionRecommended })
         XCTAssertEqual(SecurityPosture.overall(items), .secure)
+    }
+
+    func testLocalBackupOnlySecureWhenEnabledAndActuallyWritten() {
+        // Toggle on and the app really writes archives: secure.
+        XCTAssertEqual(
+            item("encryptedBackup", in: evaluate(localEncryptedBackup: true, localBackupActive: true))?.level,
+            .secure)
+        // Toggle on but nothing writes archives (this build): a saved preference
+        // only, so it must not read as a protection that exists.
+        let inactive = item("encryptedBackup", in: evaluate(localEncryptedBackup: true, localBackupActive: false))
+        XCTAssertEqual(inactive?.level, .informational)
+        XCTAssertTrue(inactive?.detail.contains("nothing is being backed up") ?? false)
+        XCTAssertFalse(inactive?.detail.contains("is kept") ?? true)
+        // Toggle off: an option, never secure.
+        XCTAssertEqual(
+            item("encryptedBackup", in: evaluate(localEncryptedBackup: false, localBackupActive: true))?.level,
+            .informational)
+    }
+
+    func testInactiveLocalBackupNeverDrivesActionable() {
+        for enabled in [true, false] {
+            let items = evaluate(localEncryptedBackup: enabled, localBackupActive: false)
+            XCTAssertNotEqual(item("encryptedBackup", in: items)?.level, .actionRecommended)
+        }
+    }
+
+    func testShippedBuildDoesNotClaimLocalBackupIsActive() {
+        // Guards the wiring flag: flipping it to true must come with the change
+        // that actually calls BackupCoordinator, and with this test's update.
+        XCTAssertFalse(LocalEncryptedBackupService.isWired)
     }
 
     func testICloudBackupOnlySecureWhenEnabledAndProvisioned() {

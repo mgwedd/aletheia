@@ -30,10 +30,6 @@ enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
         }
     }
 
-    var downloadURL: URL {
-        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-\(rawValue).bin")!
-    }
-
     var fileName: String { "ggml-\(rawValue).bin" }
 
     var shortName: String {
@@ -101,7 +97,7 @@ final class AppSettings: ObservableObject {
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
-        static let keepDataOutOfSystemBackups = "keepDataOutOfSystemBackups"
+        static let keepDataOutOfSystemBackups = BackupExclusion.defaultsKey
     }
 
     /// Where the app looks for its update manifest. Defaults to the
@@ -184,10 +180,12 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(keepAudioRecordings, forKey: Keys.keepAudioRecordings) }
     }
     /// Keep the data folder out of Time Machine and iCloud's device backup (via
-    /// `isExcludedFromBackup`). On by default: the folder can hold plaintext PHI
-    /// when at-rest encryption is off, so the only off-device copy should be the
-    /// app's own encrypted snapshot. Applied to the folder whenever this changes
-    /// or the data root is set.
+    /// `isExcludedFromBackup`). Off by default: the app writes no backup of its
+    /// own unless opted in, so Time Machine is the baseline copy and excluding
+    /// the folder would leave exactly one copy of everything. The key is only
+    /// written when the user flips the toggle, so an unset key means "use the
+    /// default" (`BackupExclusion.resolvedExclusion`). Applied to the folder
+    /// whenever this changes, at launch, or when the data root is set.
     @Published var keepDataOutOfSystemBackups: Bool {
         didSet {
             defaults.set(keepDataOutOfSystemBackups, forKey: Keys.keepDataOutOfSystemBackups)
@@ -247,11 +245,9 @@ final class AppSettings: ObservableObject {
         localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)
         iCloudEncryptedBackupEnabled = defaults.bool(forKey: Keys.iCloudEncryptedBackupEnabled)
         keepAudioRecordings = defaults.bool(forKey: Keys.keepAudioRecordings)
-        // Default on when never set: keep PHI out of system backups unless the
-        // user opts back in.
-        keepDataOutOfSystemBackups = defaults.object(forKey: Keys.keepDataOutOfSystemBackups) == nil
-            ? true
-            : defaults.bool(forKey: Keys.keepDataOutOfSystemBackups)
+        // Default off when never set; an explicit stored choice is respected.
+        // Assigning in `init` doesn't fire `didSet`, so this never writes the key.
+        keepDataOutOfSystemBackups = BackupExclusion.resolvedExclusion(in: defaults)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
         if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,
@@ -291,8 +287,14 @@ final class AppSettings: ObservableObject {
     /// Applies the current `keepDataOutOfSystemBackups` choice to the data folder,
     /// so it's kept out of (or allowed back into) Time Machine and iCloud's device
     /// backup. Best-effort — a failure to write the flag never blocks the app.
+    ///
+    /// For an install that never chose (key absent) the default applies, so a
+    /// folder excluded under the previous "on by default" policy is cleared back
+    /// into Time Machine; an explicit stored choice is always respected.
     private func applyBackupExclusion() {
         guard let root = dataRootURL else { return }
+        // Skip the write when the folder already matches the policy.
+        guard BackupExclusion.isExcluded(at: root) != keepDataOutOfSystemBackups else { return }
         try? BackupExclusion.setExcluded(keepDataOutOfSystemBackups, at: root)
     }
 

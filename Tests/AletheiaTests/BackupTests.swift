@@ -109,6 +109,41 @@ final class BackupTests: XCTestCase {
         XCTAssertEqual(String(decoding: try Data(contentsOf: db), as: UTF8.self), "original db")
     }
 
+    func testLocalBackupLivesInTheBackupsArchivesFolder() async throws {
+        let db = try writeSource("db")
+        let service = LocalEncryptedBackupService(root: tempRoot, key: SymmetricKey(size: .bits256))
+        guard case let .success(archive) = await service.backUp(databaseURL: db, reason: "manual") else {
+            return XCTFail("backup should succeed")
+        }
+        XCTAssertEqual(archive.deletingLastPathComponent().path,
+                       tempRoot.appendingPathComponent(".backups/archives").path)
+    }
+
+    /// Archive retention only ever counts archives, never the snapshots or
+    /// migration pre-images that share `.backups/`.
+    func testArchivePruneLeavesOtherKindsAlone() async throws {
+        let fm = FileManager.default
+        let snapshots = BackupLayout.directory(.snapshots, dataRoot: tempRoot)
+        let migrations = BackupLayout.directory(.migrations, dataRoot: tempRoot)
+        try fm.createDirectory(at: snapshots, withIntermediateDirectories: true)
+        try fm.createDirectory(at: migrations, withIntermediateDirectories: true)
+        let snap = snapshots.appendingPathComponent("20000101-000000-old.sqlite")
+        let pre = migrations.appendingPathComponent("Aletheia-pre-v1-20000101T000000Z.sqlite")
+        for url in [snap, pre] { try Data("keep".utf8).write(to: url) }
+
+        let db = try writeSource("db")
+        var service = LocalEncryptedBackupService(root: tempRoot, key: SymmetricKey(size: .bits256))
+        service.keep = 1
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        for i in 0..<3 {
+            _ = await service.backUp(databaseURL: db, reason: "r\(i)", at: base.addingTimeInterval(Double(i) * 60))
+        }
+
+        XCTAssertEqual(service.archives().count, 1)
+        XCTAssertTrue(fm.fileExists(atPath: snap.path))
+        XCTAssertTrue(fm.fileExists(atPath: pre.path))
+    }
+
     func testLocalBackupRetainsNewestN() async throws {
         let db = try writeSource("db")
         var service = LocalEncryptedBackupService(root: tempRoot, key: SymmetricKey(size: .bits256))

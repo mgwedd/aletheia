@@ -8,15 +8,18 @@ import Foundation
 /// is running, and compacted. Snapshots inherit the live database's at-rest
 /// form: when encryption is on, the field values in a snapshot are sealed too.
 ///
-/// Location: `<dataRoot>/.snapshots/` — a dot-directory so it stays clear of the
-/// user's transcripts and notes. Retention keeps the most recent `keep` files.
+/// Location: `<dataRoot>/.backups/snapshots/` (see `BackupLayout` — the single
+/// backup home, hidden so it stays clear of the user's transcripts and notes).
+/// Retention keeps the most recent `keep` files and only ever considers this
+/// folder, so it can never prune an encrypted archive or a migration pre-image.
+/// Older builds used `<dataRoot>/.snapshots/`; it is adopted on first use.
 struct DatabaseSnapshotManager {
     let root: URL
     /// How many snapshots to retain; older ones are pruned after each new one.
     var keep: Int = 5
     private let fileManager = FileManager.default
 
-    var directory: URL { root.appendingPathComponent(".snapshots", isDirectory: true) }
+    var directory: URL { BackupLayout.directory(.snapshots, dataRoot: root) }
 
     private static let stampFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -26,12 +29,13 @@ struct DatabaseSnapshotManager {
         return f
     }()
 
-    /// Writes `<.snapshots>/<UTC-stamp>-<reason>.sqlite`, prunes older snapshots
+    /// Writes `<.backups/snapshots>/<UTC-stamp>-<reason>.sqlite`, prunes older snapshots
     /// to `keep`, and returns the new file (nil on failure). `reason` is slugged
     /// into the name for provenance, e.g. "pre-encryption-change" or
     /// "pre-update-1.14.0".
     @discardableResult
     func makeSnapshot(of store: CommentStore, reason: String, at date: Date = Date()) -> URL? {
+        BackupLayout.adoptLegacy(dataRoot: root, fileManager: fileManager)
         do {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         } catch {
@@ -50,6 +54,7 @@ struct DatabaseSnapshotManager {
     /// timestamp, so a descending filename sort is a time sort — and doesn't
     /// depend on filesystem modification-time granularity.
     func snapshots() -> [URL] {
+        BackupLayout.adoptLegacy(dataRoot: root, fileManager: fileManager)
         let entries = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         return entries
             .filter { $0.pathExtension == "sqlite" }

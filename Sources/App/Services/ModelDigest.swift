@@ -30,4 +30,19 @@ enum ModelDigest {
     static func matches(fileAt url: URL, expected: String) throws -> Bool {
         try sha256(ofFileAt: url).caseInsensitiveCompare(expected) == .orderedSame
     }
+
+    /// Pure integrity gate for a downloaded model file: throws
+    /// `ModelDownloadError.integrityCheckFailed` when the file's SHA-256 differs
+    /// from `expectedSHA256` (hex, either case), and rethrows the I/O error when
+    /// the file can't be read (missing/unreadable).
+    ///
+    /// The pin is deliberately non-optional: there is no "unverified, proceed"
+    /// path, so a model without a pin can't be downloaded at all. Deleting a
+    /// rejected file is the caller's job; this only decides.
+    static func verify(fileAt url: URL, expectedSHA256: String) throws {
+        let actual = try sha256(ofFileAt: url)
+        guard actual.caseInsensitiveCompare(expectedSHA256) == .orderedSame else {
+            throw ModelDownloadError.integrityCheckFailed(expected: expectedSHA256, actual: actual)
+        }
+    }
 }

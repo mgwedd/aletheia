@@ -12,7 +12,7 @@ final class MigrationBackupTests: XCTestCase {
         XCTAssertNil(MigrationBackup.snapshotURL(forDatabaseAt: dbURL, fromVersion: -1))
     }
 
-    func testSnapshotURLLivesInBackupsDirWithParseableName() throws {
+    func testSnapshotURLLivesInMigrationsDirWithParseableName() throws {
         let url = try XCTUnwrap(MigrationBackup.snapshotURL(forDatabaseAt: dbURL, fromVersion: 2, now: Self.t0))
         XCTAssertEqual(url.deletingLastPathComponent(), MigrationBackup.directory(for: dbURL))
         XCTAssertEqual(url.pathExtension, MigrationBackup.fileExtension)
@@ -36,8 +36,8 @@ final class MigrationBackupTests: XCTestCase {
 
     func testMetadataRejectsNonSnapshotNames() {
         XCTAssertNil(MigrationBackup.metadata(of: URL(fileURLWithPath: "/data/Aletheia.sqlite")))
-        XCTAssertNil(MigrationBackup.metadata(of: URL(fileURLWithPath: "/data/Backups/random.sqlite")))
-        XCTAssertNil(MigrationBackup.metadata(of: URL(fileURLWithPath: "/data/Backups/x-pre-vNaN-20200913.sqlite")))
+        XCTAssertNil(MigrationBackup.metadata(of: URL(fileURLWithPath: "/data/.backups/migrations/random.sqlite")))
+        XCTAssertNil(MigrationBackup.metadata(of: URL(fileURLWithPath: "/data/.backups/migrations/x-pre-vNaN-20200913.sqlite")))
     }
 
     func testPrunableKeepsNewestAndIgnoresUnparseable() throws {
@@ -46,7 +46,7 @@ final class MigrationBackupTests: XCTestCase {
         let v1 = try XCTUnwrap(MigrationBackup.snapshotURL(forDatabaseAt: dbURL, fromVersion: 1, now: Self.t0))
         let v2 = try XCTUnwrap(MigrationBackup.snapshotURL(forDatabaseAt: dbURL, fromVersion: 2, now: Self.t0 + day))
         let v3 = try XCTUnwrap(MigrationBackup.snapshotURL(forDatabaseAt: dbURL, fromVersion: 3, now: Self.t0 + 2 * day))
-        let stray = URL(fileURLWithPath: "/data/Backups/keep-me.txt")
+        let stray = URL(fileURLWithPath: "/data/.backups/migrations/keep-me.txt")
 
         let prunable = MigrationBackup.prunable([v2, stray, v1, v3], keepMostRecent: 1)
         XCTAssertEqual(Set(prunable), [v1, v2], "keeps the newest one; strays are never pruned")

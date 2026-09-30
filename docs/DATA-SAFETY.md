@@ -135,7 +135,7 @@ and attested it is correct.**
         ├─ .upToDate            → nothing to do
         ├─ .needsNewerApp       → refuse to open; tell the clinician to update
         │                         (never downgrade-rewrite a newer file)
-        └─ .migrate(steps,to)   → 1. SNAPSHOT current data  ──▶  Backups/pre-vN-<ts>
+        └─ .migrate(steps,to)   → 1. SNAPSHOT current data  ──▶  .backups/migrations/<db>-pre-vN-<ts>
                                   2. apply steps in ONE transaction (all-or-nothing)
                                   3. stamp user_version = to
                                   4. keep the snapshot; DO NOT prune
@@ -147,7 +147,7 @@ and attested it is correct.**
                         "Everything looks good"      "Something's wrong"
                                      │                     │
                           prune snapshots older      Restore: close store,
-                          than the last ATTESTED      copy Backups/pre-vN
+                          than the last ATTESTED      copy .backups/migrations/…-pre-vN-…
                           version (keep ≥1 as          over live data, reopen
                           defense in depth)            at the prior version
 ```
@@ -159,19 +159,67 @@ and attested it is correct.**
 | **DB schema version** via `PRAGMA user_version` | **this PR** | `SQLitePersistenceCore` |
 | **Ordered, transactional migration runner**; refuse-newer | **this PR** | `SchemaMigrator` (pure, unit-tested) + core |
 | **File-format version** for the data folder | in place | `DataSchema` / `StoreMetadata` / `SchemaCompatibility` |
-| **Snapshot-before-migrate** (DB via `VACUUM INTO`) — refuse to migrate if the pre-image can't be written | **in place** | `MigrationBackup` (pure policy) + `SQLitePersistenceCore` |
-| **Attest-then-prune** UX + **Restore previous version** | next | `MigrationBackup.prunable` ready; needs Settings + a post-update banner |
+| **Snapshot-before-migrate** (DB via `VACUUM INTO`) — refuse to migrate if the pre-image can't be written | **in place** (dormant until a v2+ migration ships: v1 is the baseline, so no pre-image is taken today) | `MigrationBackup` (pure policy) + `SQLitePersistenceCore` |
+| **Snapshot before an encryption on/off conversion** (rolling window of 5); on a successful *enable* the plaintext pre-image is deleted, on failure it is kept as the way back | **in place** | `DatabaseSnapshotManager` + `DataMigrator` |
+| **One backup home** (`.backups/`, a sub-folder per kind) and one-shot adoption of the older locations | **in place** | `BackupLayout` |
+| **Local end-to-end-encrypted archive** (sealed with the user's key) | service and coordinator built and tested; **not yet invoked from app code** (no "Back up now" UI, no schedule) | `LocalEncryptedBackupService`, `BackupCoordinator`, `EncryptedBackupArchive` |
+| **iCloud encrypted archive** | staged; reports "not configured" until the CloudKit capability is provisioned | `ICloudEncryptedBackupService` |
+| **Attest-then-prune** UX + **Restore previous version** | next | `MigrationBackup.prunable` ready; needs Settings + a post-update banner. Nothing prunes migration pre-images today. |
 | **Snapshot the small JSON** (patient/session) alongside the DB | next | copy referenced JSON into the same pre-image set |
 | **Whole-folder atomicity** across DB + files | Arch v2 (7), #70 | backup archive covers DB + referenced files |
+
+### Where backups live (one layout)
+
+Every local backup lives under one hidden folder in the data root,
+`<dataRoot>/.backups/`, with a sub-folder per kind. `BackupLayout`
+(`Sources/App/Services/BackupLayout.swift`) is the only place these paths are
+defined; no other type hard-codes them.
+
+```
+<dataRoot>/
+  .backups/
+    migrations/   schema-migration pre-images    <db>-pre-v<N>-<UTC>.sqlite
+                  kept until the clinician attests; never auto-pruned
+    snapshots/    rolling DB snapshots           <UTC>-<reason>.sqlite
+                  newest 5 kept (e.g. pre-encryption-change)
+    archives/     end-to-end-encrypted archives  <UTC>-<reason>.aletheiabackup
+                  newest 5 kept
+```
+
+- **Separate folders make retention safe.** The rolling-5 prune lists only
+  `snapshots/`, so it can never delete an archive or a migration pre-image.
+- **Time Machine sees the whole data root**, so `.backups/` is covered (or
+  excluded) by the same data-root setting as everything else; the layout does
+  not change that.
+- **It is hidden.** `.backups/` does not show in Finder (older builds' `Backups/`
+  did; Cmd-Shift-. shows hidden files). The app should say where backups live
+  rather than rely on the user finding the folder.
+- **Older installs are adopted, not rewritten.** On first use,
+  `BackupLayout.adoptLegacy` moves `Backups/*` to `.backups/migrations/`,
+  `.snapshots/*` to `.backups/snapshots/`, and any archive written flat in
+  `.backups/` to `.backups/archives/`. Each file moves with a single rename; a
+  name that already exists at the destination is skipped (never overwritten);
+  nothing is deleted except an old folder that is empty afterwards (a lone
+  Finder `.DS_Store` doesn't count). It never throws, is idempotent, and returns
+  a report of what moved, what was skipped and what failed.
+
+### What is sealed, and what is not
+
+| Copy | At-rest form |
+| --- | --- |
+| Migration pre-images and rolling snapshots | Field values keep the live database's form: sealed under the same DEK when encryption is on, plaintext fields when it is off. |
+| **Pre-encryption-change snapshot when *enabling* encryption** | Taken under the outgoing (plaintext) protector, so it is plaintext PHI. It is deleted as soon as the live DB is re-sealed; if the conversion fails it is kept as the way back. |
+| Encrypted archive | Whole file sealed with the user's key. |
 
 ### Why this is affordable
 
 The expensive PHI (audio, transcripts) is **immutable and referenced by id** — a
 migration rewrites the structured DB and small JSON, never the audio. So a
 pre-migration snapshot is a `VACUUM INTO` of the SQLite file plus a copy of the
-patient/session JSON, not a copy of gigabytes of recordings. Snapshots are
-sealed with the same protector as live data (ciphertext at rest) and, per
-[HIPAA-SAFEGUARDS.md], excluded from system backups by default.
+patient/session JSON, not a copy of gigabytes of recordings. A snapshot keeps
+the live database's at-rest form (see "What is sealed" above), and it sits inside
+the data root, so it follows the data root's system-backup exclusion setting
+([HIPAA-SAFEGUARDS.md]).
 
 ### Transactional guarantees already in place
 
@@ -204,11 +252,14 @@ file names below the data folder, with the home directory shown as `~`.
 
 ### Interaction with encryption (Part 1)
 
-A snapshot is only useful if it is recoverable. Snapshots are sealed under the
-**same DEK** as the live data, so all of Part 1's recovery paths cover them too —
-the backup a clinician might need after a bad update is openable by exactly the
-keys that open everything else. Losing the passphrase must not orphan the safety
-copy, which is another reason the device + escrow paths matter.
+A snapshot is only useful if it is recoverable. A snapshot taken while
+encryption is on is sealed under the **same DEK** as the live data, so all of
+Part 1's recovery paths cover it too — the backup a clinician might need after a
+bad update is openable by exactly the keys that open everything else. Losing the
+passphrase must not orphan the safety copy, which is another reason the device +
+escrow paths matter. (One deliberate exception: the plaintext pre-image taken
+when *enabling* encryption is removed once the conversion succeeds, so no
+readable copy is left beside the keystore.)
 
 ---
 
@@ -216,7 +267,8 @@ copy, which is another reason the device + escrow paths matter.
 
 1. **This PR** — DB `user_version` + `SchemaMigrator` (ordered, transactional,
    refuse-newer). The versioning foundation for everything above.
-2. Snapshot-before-migrate — **done** (`MigrationBackup` + core). Next:
+2. Snapshot-before-migrate — **done** (`MigrationBackup` + core), and all local
+   backups now share one layout (`.backups/`, `BackupLayout`). Next:
    attest-then-prune + Restore UI, and snapshotting the small JSON too.
 3. Device-KEK keyslot hardening (`SecAccessControl` biometrics; promote to a
    `Wrapping`), passphrase-saved confirmation, and the recovery-paths view.

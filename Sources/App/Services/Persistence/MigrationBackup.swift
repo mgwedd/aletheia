@@ -11,19 +11,35 @@ import Foundation
 /// correct.** So snapshots are created here and kept indefinitely; pruning is a
 /// separate, attestation-gated step the UI drives later via `prunable(_:...)`.
 ///
-/// Snapshots live in a `Backups/` sub-directory of the data folder, so #91's
-/// system-backup exclusion (applied to the whole data root) already covers them,
-/// and the same encryption protector that seals live payloads sealed theirs.
+/// Snapshots live in `<dataRoot>/.backups/migrations/` (see `BackupLayout`, the
+/// one place the backup layout is defined), so #91's system-backup exclusion
+/// (applied to the whole data root) already covers them, and the same
+/// encryption protector that seals live payloads sealed theirs. Older builds
+/// used `<dataRoot>/Backups/`; `BackupLayout.adoptLegacy` moves those in.
 enum MigrationBackup {
-    /// Sub-directory, beside the database, that holds pre-migration snapshots.
-    static let directoryName = "Backups"
     static let fileExtension = "sqlite"
     /// Marker in a snapshot's file name, between the base name and the version.
     private static let marker = "-pre-v"
 
-    /// The backups directory for a given database file.
+    /// The migration pre-image directory for a given database file (the data
+    /// root is the database's parent folder). Pure — touches no disk.
     static func directory(for dbURL: URL) -> URL {
-        dbURL.deletingLastPathComponent().appendingPathComponent(directoryName, isDirectory: true)
+        BackupLayout.directory(.migrations, dataRoot: dbURL.deletingLastPathComponent())
+    }
+
+    /// Existing pre-migration snapshots for a database, newest first. Adopts any
+    /// legacy `Backups/` folder first so an upgraded install sees its old
+    /// pre-images. Files that aren't snapshots this type wrote are ignored.
+    static func existing(for dbURL: URL, fileManager: FileManager = .default) -> [URL] {
+        BackupLayout.adoptLegacy(dataRoot: dbURL.deletingLastPathComponent(), fileManager: fileManager)
+        let entries = (try? fileManager.contentsOfDirectory(
+            at: directory(for: dbURL), includingPropertiesForKeys: nil)) ?? []
+        return entries
+            .compactMap { url -> (url: URL, at: Date)? in
+                metadata(of: url).map { (url, $0.createdAt) }
+            }
+            .sorted { $0.at > $1.at }
+            .map(\.url)
     }
 
     /// Where to snapshot a database at `fromVersion` before upgrading it, or nil

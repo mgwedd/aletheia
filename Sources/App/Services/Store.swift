@@ -4,12 +4,30 @@ enum StoreError: LocalizedError {
     case noDataRoot
     case patientNotFound
     case sessionNotFound
+    /// A session folder's `session.json` is present but couldn't be read or
+    /// decoded. The file is **never** rewritten and no replacement identity is
+    /// minted: the session's comments, notes and chat are keyed by the id inside
+    /// it, so inventing a new one would silently orphan them. `folder` is the
+    /// session folder; `underlying` is the read/decode error (kept for
+    /// diagnostics only, and deliberately not part of the user-facing message).
+    case sessionMetadataUnreadable(folder: URL, underlying: Error)
+    /// A session folder has no `session.json` and one couldn't be saved (for
+    /// example a read-only folder), so the session can't be given a stable id.
+    case sessionMetadataUnwritable(folder: URL, underlying: Error)
 
     var errorDescription: String? {
         switch self {
         case .noDataRoot: return "No data folder has been chosen yet. Open Settings to pick one."
         case .patientNotFound: return "That patient couldn't be found on disk."
         case .sessionNotFound: return "That session couldn't be found on disk."
+        // No patient names, note text or paths here: the folder is available
+        // as a structured value on the case for callers that want to show it.
+        case .sessionMetadataUnreadable:
+            return "Aletheia couldn't read this session's identity file (session.json). "
+                + "The original file was left untouched."
+        case .sessionMetadataUnwritable:
+            return "Aletheia couldn't save an identity file (session.json) for this session folder. "
+                + "The folder was left as it was."
         }
     }
 }
@@ -31,7 +49,11 @@ enum StoreError: LocalizedError {
 /// (`CommentStore`) keys comments/notes/chats on those ids, so annotations
 /// follow a session or patient across a rename or move. A folder that turns up
 /// without a `session.json` (created before this scheme, or dropped in by hand)
-/// is minted an id on first listing and stays stable from then on.
+/// is minted an id on first listing and stays stable from then on. A
+/// `session.json` that *is* present but unreadable is different: that is
+/// corruption, so it's reported (`UnreadableEntry`) and never overwritten, and
+/// an undecodable `patient.json` is likewise reported rather than skipped
+/// silently. See `Store.unreadableEntries`.
 ///
 /// Conversations (per-patient chat threads and each session's assistant chat)
 /// used to live in JSON files here (`ChatThreads/`, the legacy single-thread
@@ -67,6 +89,11 @@ final class Store {
     /// when not injected, so direct `Store(root:)` construction (tests) still
     /// gets a working thread store.
     private let commentStore: CommentStore?
+    /// Patient/session records found on disk but unreadable, as of the most
+    /// recent listing of each. Guarded by a lock because listings can run from
+    /// App Intents and background work as well as the UI.
+    private let unreadableLock = NSLock()
+    private var recordedUnreadable: [UnreadableEntry] = []
     private let dateFolderFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
@@ -128,15 +155,82 @@ final class Store {
 
     // MARK: - Patients
 
+    /// Healthy patients only, alphabetically. A patient whose `patient.json`
+    /// can't be read is left out of this list but is **not** silently dropped:
+    /// it's recorded in `unreadableEntries` (use `patientListing()` to get the
+    /// list and the damaged records together).
     func listPatients() throws -> [Patient] {
+        try patientListing().patients
+    }
+
+    /// Patients that read cleanly plus the records that didn't. Never deletes or
+    /// rewrites an unreadable `patient.json`. A file sealed while the folder is
+    /// locked isn't damage (the app's lock screen covers that), so it's skipped
+    /// without being reported.
+    func patientListing() throws -> PatientListing {
         try fileManager.createDirectory(at: patientsDir, withIntermediateDirectories: true)
         let entries = try fileManager.contentsOfDirectory(at: patientsDir, includingPropertiesForKeys: nil)
-        let patients: [Patient] = entries.compactMap { dir in
+        var patients: [Patient] = []
+        var unreadable: [UnreadableEntry] = []
+        for dir in entries {
             let file = dir.appendingPathComponent("patient.json")
-            guard let data = (try? protector.dataIfPresent(at: file)) ?? nil else { return nil }
-            return try? JSONDecoder.aletheia.decode(Patient.self, from: data)
+            let data: Data
+            do {
+                guard let present = try protector.dataIfPresent(at: file) else { continue }
+                data = present
+            } catch FileProtector.ProtectorError.locked {
+                continue
+            } catch {
+                unreadable.append(UnreadableEntry(kind: .patientRecord, reason: .notReadable, folder: dir))
+                continue
+            }
+            do {
+                patients.append(try JSONDecoder.aletheia.decode(Patient.self, from: data))
+            } catch {
+                unreadable.append(UnreadableEntry(kind: .patientRecord, reason: .undecodable, folder: dir))
+            }
         }
-        return patients.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        recordUnreadable(unreadable) { $0.kind == .patientRecord }
+        return PatientListing(
+            patients: patients.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
+            unreadable: unreadable.sorted { $0.id < $1.id }
+        )
+    }
+
+    // MARK: - Unreadable records
+
+    /// Records found unreadable by the most recent listings (patients, plus each
+    /// patient's sessions as they've been listed). A plain snapshot for the UI
+    /// and the Doctor health check; contains no patient names or note text.
+    var unreadableEntries: [UnreadableEntry] {
+        unreadableLock.lock()
+        defer { unreadableLock.unlock() }
+        return recordedUnreadable.sorted { $0.id < $1.id }
+    }
+
+    /// Lists every patient and every patient's sessions, and returns everything
+    /// that couldn't be read. Unlike `unreadableEntries` (which only knows what's
+    /// been listed so far) this is a complete pass, for a health check. Like any
+    /// listing it gives a legacy session folder without a `session.json` its
+    /// identity file; it never touches an unreadable one. The session folders of
+    /// a patient whose own `patient.json` is unreadable can't be scanned.
+    @discardableResult
+    func scanForUnreadableEntries() -> [UnreadableEntry] {
+        recordUnreadable([]) { $0.kind == .sessionRecord }
+        if let listing = try? patientListing() {
+            for patient in listing.patients {
+                _ = try? sessionListing(for: patient)
+            }
+        }
+        return unreadableEntries
+    }
+
+    /// Replaces the recorded entries matching `scope` with `entries`.
+    private func recordUnreadable(_ entries: [UnreadableEntry], replacing scope: (UnreadableEntry) -> Bool) {
+        unreadableLock.lock()
+        defer { unreadableLock.unlock() }
+        recordedUnreadable.removeAll(where: scope)
+        recordedUnreadable.append(contentsOf: entries)
     }
 
     func createPatient(name: String) throws -> Patient {
@@ -181,30 +275,84 @@ final class Store {
 
     // MARK: - Sessions
 
+    /// Healthy sessions only, newest first. A session whose `session.json` is
+    /// present but unreadable is left out of this list but recorded in
+    /// `unreadableEntries` (use `sessionListing(for:)` to get both together).
     func listSessions(for patient: Patient) throws -> [SessionRecord] {
+        try sessionListing(for: patient).sessions
+    }
+
+    /// Sessions that read cleanly plus the folders whose identity file didn't.
+    /// A damaged one is never given a new id and its file is never rewritten.
+    func sessionListing(for patient: Patient) throws -> SessionListing {
         let dir = patientDir(for: patient)
-        guard fileManager.fileExists(atPath: dir.path) else { return [] }
+        let ownsEntry: (UnreadableEntry) -> Bool = { $0.kind == .sessionRecord && $0.patientId == patient.id }
+        guard fileManager.fileExists(atPath: dir.path) else {
+            recordUnreadable([], replacing: ownsEntry)
+            return SessionListing(sessions: [], unreadable: [])
+        }
         let entries = try fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isDirectoryKey])
-        let sessions: [SessionRecord] = entries.compactMap { folder in
-            guard let isDir = try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory, isDir else { return nil }
+        var sessions: [SessionRecord] = []
+        var unreadable: [UnreadableEntry] = []
+        for folder in entries {
+            guard let isDir = try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory, isDir else { continue }
             // A session folder is one carrying a `session.json` identity record,
             // or (legacy / manually created) one named "…_Session". The latter
             // is minted an id on sight so it becomes stable from here on.
             let hasMetadata = fileManager.fileExists(atPath: sessionMetadataURL(for: folder).path)
-            guard hasMetadata || folder.lastPathComponent.hasSuffix("_Session") else { return nil }
-            let meta = sessionMetadata(for: folder)
-            return SessionRecord(
-                id: meta.id,
-                patientId: patient.id,
-                date: meta.date,
-                folderName: folder.lastPathComponent,
-                hasRecording: fileManager.fileExists(atPath: folder.appendingPathComponent("call.caf").path)
-                    || fileManager.fileExists(atPath: folder.appendingPathComponent("mic.caf").path),
-                hasTranscript: fileManager.fileExists(atPath: folder.appendingPathComponent("transcript.txt").path),
-                hasSummary: fileManager.fileExists(atPath: folder.appendingPathComponent("summary.txt").path)
-            )
+            guard hasMetadata || folder.lastPathComponent.hasSuffix("_Session") else { continue }
+            let record: SessionRecord
+            do {
+                record = try makeSessionRecord(for: patient, folder: folder)
+            } catch StoreError.sessionMetadataUnwritable {
+                unreadable.append(UnreadableEntry(
+                    kind: .sessionRecord, reason: .couldNotSaveIdentity, folder: folder, patientId: patient.id))
+                continue
+            } catch StoreError.sessionMetadataUnreadable(_, let underlying) {
+                unreadable.append(UnreadableEntry(
+                    kind: .sessionRecord,
+                    reason: underlying is DecodingError ? .undecodable : .notReadable,
+                    folder: folder,
+                    patientId: patient.id))
+                continue
+            } catch {
+                unreadable.append(UnreadableEntry(
+                    kind: .sessionRecord, reason: .notReadable, folder: folder, patientId: patient.id))
+                continue
+            }
+            sessions.append(record)
         }
-        return sessions.sorted { $0.date > $1.date }
+        recordUnreadable(unreadable, replacing: ownsEntry)
+        return SessionListing(
+            sessions: sessions.sorted { $0.date > $1.date },
+            unreadable: unreadable.sorted { $0.id < $1.id }
+        )
+    }
+
+    /// One session by folder name. Throws `StoreError.sessionNotFound` when the
+    /// folder isn't there and `StoreError.sessionMetadataUnreadable` when its
+    /// `session.json` is present but damaged (the file is left as it was).
+    func loadSession(for patient: Patient, folderName: String) throws -> SessionRecord {
+        let folder = patientDir(for: patient).appendingPathComponent(folderName, isDirectory: true)
+        var isDir: ObjCBool = false
+        guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDir), isDir.boolValue else {
+            throw StoreError.sessionNotFound
+        }
+        return try makeSessionRecord(for: patient, folder: folder)
+    }
+
+    private func makeSessionRecord(for patient: Patient, folder: URL) throws -> SessionRecord {
+        let meta = try sessionMetadata(for: folder)
+        return SessionRecord(
+            id: meta.id,
+            patientId: patient.id,
+            date: meta.date,
+            folderName: folder.lastPathComponent,
+            hasRecording: fileManager.fileExists(atPath: folder.appendingPathComponent("call.caf").path)
+                || fileManager.fileExists(atPath: folder.appendingPathComponent("mic.caf").path),
+            hasTranscript: fileManager.fileExists(atPath: folder.appendingPathComponent("transcript.txt").path),
+            hasSummary: fileManager.fileExists(atPath: folder.appendingPathComponent("summary.txt").path)
+        )
     }
 
     func createSession(for patient: Patient, on date: Date = Date()) throws -> SessionRecord {
@@ -231,10 +379,17 @@ final class Store {
         sessionDir.appendingPathComponent("session.json")
     }
 
-    /// Reads a session folder's persisted identity, minting and persisting one
-    /// the first time a folder is seen without it (a folder from before this
-    /// scheme, or one a therapist created by hand in Finder). The date falls
-    /// back to the folder name's leading `YYYY-MM-DD` for such folders.
+    /// Reads a session folder's persisted identity.
+    ///
+    /// * `session.json` **missing** — a folder from before this scheme (#64), or
+    ///   one a therapist created by hand in Finder. It's minted an id and that is
+    ///   persisted, so it's stable from then on. The date falls back to the folder
+    ///   name's leading `YYYY-MM-DD`.
+    /// * `session.json` **present but unreadable/undecodable** — corruption. Throws
+    ///   `StoreError.sessionMetadataUnreadable` and touches nothing: minting a new
+    ///   id here would orphan the session's comments, notes and chat (keyed by the
+    ///   old id in SQLite), and rewriting the file would destroy the evidence a
+    ///   repair or backup restore needs.
     ///
     /// Written as **plaintext**, not through the `protector`: it carries no name
     /// or note text — only a UUID and the session date, and that date is already
@@ -242,16 +397,26 @@ final class Store {
     /// identity independent of the encryption toggle (`DataMigrator` doesn't
     /// rewrite this file), so turning encryption on/off can never orphan a
     /// session by leaving its id file unreadable.
-    private func sessionMetadata(for sessionDir: URL) -> SessionMetadata {
+    private func sessionMetadata(for sessionDir: URL) throws -> SessionMetadata {
         let url = sessionMetadataURL(for: sessionDir)
-        if let data = try? Data(contentsOf: url),
-           let meta = try? JSONDecoder.aletheia.decode(SessionMetadata.self, from: data) {
-            return meta
+        if fileManager.fileExists(atPath: url.path) {
+            do {
+                let data = try Data(contentsOf: url)
+                return try JSONDecoder.aletheia.decode(SessionMetadata.self, from: data)
+            } catch {
+                throw StoreError.sessionMetadataUnreadable(folder: sessionDir, underlying: error)
+            }
         }
         let dateString = String(sessionDir.lastPathComponent.prefix(10))
         let date = dateFolderFormatter.date(from: dateString) ?? Date.distantPast
         let meta = SessionMetadata(id: UUID(), date: date)
-        try? writeSessionMetadata(meta, to: url)
+        do {
+            try writeSessionMetadata(meta, to: url)
+        } catch {
+            // An id that isn't persisted would change on every listing and
+            // orphan whatever gets attached to it, so don't hand it out.
+            throw StoreError.sessionMetadataUnwritable(folder: sessionDir, underlying: error)
+        }
         return meta
     }
 

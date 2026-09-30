@@ -5,6 +5,11 @@ import Foundation
 /// nothing here does its own persistence beyond what Store already does.
 final class AppModel: ObservableObject {
     @Published var patients: [Patient] = []
+    /// Patient records (`patient.json`) that couldn't be read at the last
+    /// refresh. Not in `patients`, but never deleted or rewritten; the sidebar
+    /// shows them so they don't vanish silently. Session-level damage lives on
+    /// `Store.unreadableEntries` / `Store.sessionListing(for:)`.
+    @Published var unreadablePatients: [UnreadableEntry] = []
     @Published var errorMessage: String?
     /// Set when the chosen data folder was written by a newer app version, so
     /// this build shouldn't modify it. Surfaced to the user as a warning.
@@ -86,6 +91,7 @@ final class AppModel: ObservableObject {
             commentStore = nil
             databaseState = .noDataFolder
             patients = []
+            unreadablePatients = []
             schemaWarning = nil
             return
         }
@@ -189,7 +195,9 @@ final class AppModel: ObservableObject {
     func refreshPatients() {
         guard let store else { return }
         do {
-            patients = try store.listPatients()
+            let listing = try store.patientListing()
+            patients = listing.patients
+            unreadablePatients = listing.unreadable
             reindexSpotlight()
         } catch {
             errorMessage = error.localizedDescription

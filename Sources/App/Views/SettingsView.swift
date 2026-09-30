@@ -272,12 +272,12 @@ struct SettingsView: View {
 
             Section("Backup") {
                 Toggle("Keep my data out of Time Machine & iCloud backups", isOn: $settings.keepDataOutOfSystemBackups)
-                Text("On by default. Your data folder can hold unencrypted patient data (and audio/transcript files), so Aletheia keeps it out of macOS system backups — nothing ends up in Time Machine or iCloud in the clear. Use the encrypted snapshot below for off-device recovery. Turn this off only if you back up to an encrypted Time Machine disk and want it included.")
+                Text("Off by default, so Time Machine includes your data folder — Aletheia doesn't make a backup of its own yet, so without this you'd have only one copy. Your data folder can hold unencrypted patient data (and audio/transcript files), so keep your Time Machine backups on an encrypted disk. Turn this on only if you'd rather keep the folder out of macOS system backups and rely on your own copy instead.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Divider()
                 Toggle("Keep an encrypted backup copy on this Mac", isOn: $settings.localEncryptedBackupEnabled)
-                Text("An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it.")
+                Text("An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it. Not active in this build yet: your choice is saved, but no backup copy is written until it is.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Divider()
@@ -398,9 +398,9 @@ struct SettingsView: View {
     /// at-rest encryption is on — kept audio must be ciphertext, never plaintext.
     private var audioRetentionCaption: String {
         if encryption.isEnabled {
-            return "By default, recordings are deleted the moment a session is transcribed — the transcript is kept as the document of record. Turn this on to keep the original audio too; it stays encrypted at rest with your other data."
+            return "By default, recordings are deleted the moment a session is transcribed — the transcript is kept as the document of record. (If no speech is detected, the recording is kept so nothing is lost.) Turn this on to keep the original audio too; it stays encrypted at rest with your other data."
         } else {
-            return "By default, recordings are deleted the moment a session is transcribed — only the transcript is kept. Keeping the original audio requires \"Extra Encryption\" below, so any retained recording stays encrypted at rest rather than sitting on disk in the clear."
+            return "By default, recordings are deleted the moment a session is transcribed — only the transcript is kept. (If no speech is detected, the recording is kept so nothing is lost, and it isn't encrypted while Extra Encryption is off.) Keeping the original audio requires \"Extra Encryption\" below, so any retained recording stays encrypted at rest rather than sitting on disk in the clear."
         }
     }
 
