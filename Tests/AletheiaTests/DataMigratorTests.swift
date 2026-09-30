@@ -88,6 +88,55 @@ final class DataMigratorTests: XCTestCase {
         XCTAssertEqual(keyedComments.note(sessionID: session.id), "private note")
     }
 
+    /// `Store.createSession` names a second session on the same day
+    /// `<date>_Session-2`. The migrator once matched only the `_Session` suffix,
+    /// so those folders were never sealed on enable and — the dangerous half —
+    /// never decrypted on disable, which then deleted the keystore and left their
+    /// transcripts unreadable forever.
+    func testSameDaySecondSessionIsConvertedBothWays() throws {
+        let store = Store(root: root)
+        let patient = try store.createPatient(name: "Dana Cole")
+        let day = Date()
+        let first = try store.createSession(for: patient, on: day)
+        let second = try store.createSession(for: patient, on: day)
+        XCTAssertTrue(second.folderName.hasSuffix("_Session-2"), "precondition: collision-suffixed folder")
+        try store.saveTranscript("first transcript", for: patient, session: first)
+        try store.saveTranscript("second transcript", for: patient, session: second)
+        let secondURL = store.sessionDir(for: patient, session: second).appendingPathComponent("transcript.txt")
+
+        let enable = DataMigrator.migrate(root: root, from: .passthrough, to: keyed)
+        XCTAssertTrue(enable.isComplete)
+        XCTAssertTrue(DataCipher.isEnvelope(try Data(contentsOf: secondURL)), "second same-day session is sealed on enable")
+
+        let disable = DataMigrator.migrate(root: root, from: keyed, to: .passthrough)
+        XCTAssertTrue(disable.isComplete)
+        XCTAssertFalse(DataCipher.isEnvelope(try Data(contentsOf: secondURL)), "and decrypted on disable")
+        XCTAssertEqual(Store(root: root).transcript(for: patient, session: second), "second transcript")
+        XCTAssertEqual(Store(root: root).transcript(for: patient, session: first), "first transcript")
+    }
+
+    func testIsSessionFolderRecognisesSuffixedNamesAndSessionJSON() throws {
+        let fm = FileManager.default
+        func makeDir(_ name: String, sessionJSON: Bool = false) throws -> URL {
+            let dir = root.appendingPathComponent(name, isDirectory: true)
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            if sessionJSON { try Data("{}".utf8).write(to: dir.appendingPathComponent("session.json")) }
+            return dir
+        }
+        let plain = try makeDir("2026-01-05_Session")
+        let suffixed = try makeDir("2026-01-05_Session-2")
+        let renamed = try makeDir("renamed-by-user", sessionJSON: true)
+        let chatThreads = try makeDir("ChatThreads")
+        XCTAssertTrue(DataMigrator.isSessionFolder(plain))
+        XCTAssertTrue(DataMigrator.isSessionFolder(suffixed))
+        XCTAssertTrue(DataMigrator.isSessionFolder(renamed))
+        XCTAssertFalse(DataMigrator.isSessionFolder(chatThreads))
+        // A plain file is never a session folder, even if it has a matching name.
+        let file = root.appendingPathComponent("2026-01-05_Session-9")
+        try Data("x".utf8).write(to: file)
+        XCTAssertFalse(DataMigrator.isSessionFolder(file))
+    }
+
     func testManagerEnableSealsAndDisableRestores() throws {
         let (patient, session, _) = try seedPlaintextFolder()
         let store = Store(root: root)
