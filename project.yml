@@ -62,6 +62,7 @@ targets:
         excludes:
           - "Resources/Info.plist"
           - "Resources/Aletheia.entitlements"
+          - "Resources/AletheiaDev.entitlements"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.app
@@ -78,7 +79,18 @@ targets:
         # Xcode's default of YES, which expands the $(...) build-setting
         # placeholders in Info.plist (e.g. CFBundleIdentifier) at build time.
         INFOPLIST_FILE: Sources/App/Resources/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Sources/App/Resources/Aletheia.entitlements
+      # Least privilege: entitlements are chosen per config, mirroring the build
+      # tiers. Release (production) omits the calendars entitlement because
+      # EventKit scheduling is a `.dev`-tier feature (EventKitSchedulingFeatureModule);
+      # Debug (dev tier) adds it. Deliberately NOT set in `base`, so a new config
+      # can't silently inherit the wider set. Plain build settings, not the
+      # `entitlements:` key, for the same reason as INFOPLIST_FILE above (#104/#105).
+      # scripts/check-entitlements.sh (CI) guards this wiring and the file contents.
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: Sources/App/Resources/AletheiaDev.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: Sources/App/Resources/Aletheia.entitlements
     dependencies:
       - package: SwiftWhisper
       # - package: llama   # staged: uncomment with the packages stanza above

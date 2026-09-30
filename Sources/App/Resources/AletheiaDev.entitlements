@@ -3,11 +3,9 @@
 <plist version="1.0">
 <dict>
 	<!--
-	PRODUCTION (Release) entitlements — least privilege. Deliberately has no
-	calendars/Reminders entitlement: EventKit scheduling is a `.dev`-tier feature
-	(EventKitSchedulingFeatureModule), so shipped builds never request it. The dev
-	tier uses AletheiaDev.entitlements, which is this file plus that one key.
-	Keep the two in sync; scripts/check-entitlements.sh enforces it in CI.
+	DEV (Debug) entitlements: AletheiaDev.entitlements = Aletheia.entitlements +
+	the calendars key below. Not used by Release/production builds. Keep in sync
+	with Aletheia.entitlements; scripts/check-entitlements.sh enforces it in CI.
 	-->
 	<!--
 	App Sandbox is on. Aletheia never launches an external process
@@ -25,6 +23,14 @@
 
 	<!-- Talking to the locally-running Ollama server on 127.0.0.1. -->
 	<key>com.apple.security.network.client</key>
+	<true/>
+
+	<!--
+	DEV tier only. Adding a follow-up reminder to the user's Reminders (EventKit), only on an
+	explicit action. This is the sandbox entitlement that gates EventKit
+	access; the separate Reminders privacy prompt still applies at runtime.
+	-->
+	<key>com.apple.security.personal-information.calendars</key>
 	<true/>
 
 	<!--

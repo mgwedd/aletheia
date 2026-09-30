@@ -22,6 +22,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Least-privilege guard: production must not request calendar access (EventKit
+  # scheduling is a `.dev` feature), dev must. Pure shell on a cheap Linux runner
+  # — no toolchain needed — so it fails fast, before the macOS matrix spins up.
+  entitlements-guard:
+    name: Entitlements guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check per-tier entitlements
+        run: ./scripts/check-entitlements.sh
+
   build-and-test:
     name: Build & test (${{ matrix.tier }}, ${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
