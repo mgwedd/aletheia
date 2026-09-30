@@ -90,13 +90,13 @@ enum SecurityPosture {
             items.append(PostureItem(id: "encryptedBackup", title: "Encrypted backup", level: .informational,
                 detail: "This build doesn't write backup copies yet, so nothing is being backed up by Aletheia"
                     + (localEncryptedBackup ? " even though the option is turned on" : "")
-                    + ". Keep your own copy of the data folder."))
+                    + ". Time Machine includes your data folder by default; keep those backups on an encrypted disk."))
         } else {
             items.append(PostureItem(id: "encryptedBackup", title: "Encrypted backup",
                 level: localEncryptedBackup ? .secure : .informational,
                 detail: localEncryptedBackup
                     ? "An end-to-end-encrypted backup copy is kept, sealed with your key."
-                    : "Consider keeping an encrypted backup copy, safe to sit in Time Machine."))
+                    : "Consider keeping an encrypted backup copy, safe to sit in Time Machine. Keep Time Machine backups on an encrypted disk."))
         }
 
         // Off-device copy in the user's private iCloud (CloudKit). Only ever

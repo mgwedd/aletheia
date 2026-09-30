@@ -38,6 +38,55 @@ final class BackupExclusionTests: XCTestCase {
         XCTAssertFalse(BackupExclusion.isExcluded(at: dir))
     }
 
+    // MARK: - Default policy (Time Machine includes the data folder)
+
+    /// A throwaway `UserDefaults` suite, so tests never touch the real app
+    /// preferences.
+    private func makeDefaults() -> UserDefaults {
+        let name = "BackupExclusionTests-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        addTeardownBlock { suite.removePersistentDomain(forName: name) }
+        return suite
+    }
+
+    func testDefaultPolicyIsNotExcluded() {
+        XCTAssertFalse(BackupExclusion.defaultExcluded)
+    }
+
+    func testUnsetKeyResolvesToDefaultNotExcluded() {
+        let defaults = makeDefaults()
+        XCTAssertFalse(BackupExclusion.hasExplicitChoice(in: defaults))
+        XCTAssertFalse(BackupExclusion.resolvedExclusion(in: defaults))
+    }
+
+    func testExplicitTrueIsRespected() {
+        let defaults = makeDefaults()
+        defaults.set(true, forKey: BackupExclusion.defaultsKey)
+        XCTAssertTrue(BackupExclusion.hasExplicitChoice(in: defaults))
+        XCTAssertTrue(BackupExclusion.resolvedExclusion(in: defaults))
+    }
+
+    func testExplicitFalseIsRespectedAndDistinctFromUnset() {
+        let defaults = makeDefaults()
+        defaults.set(false, forKey: BackupExclusion.defaultsKey)
+        XCTAssertTrue(BackupExclusion.hasExplicitChoice(in: defaults))
+        XCTAssertFalse(BackupExclusion.resolvedExclusion(in: defaults))
+    }
+
+    func testRemovingStoredChoiceReturnsToDefault() {
+        let defaults = makeDefaults()
+        defaults.set(true, forKey: BackupExclusion.defaultsKey)
+        defaults.removeObject(forKey: BackupExclusion.defaultsKey)
+        XCTAssertFalse(BackupExclusion.hasExplicitChoice(in: defaults))
+        XCTAssertFalse(BackupExclusion.resolvedExclusion(in: defaults))
+    }
+
+    func testDefaultsKeyIsStable() {
+        // Stored user choices are keyed by this string; renaming it would
+        // silently discard every existing choice.
+        XCTAssertEqual(BackupExclusion.defaultsKey, "keepDataOutOfSystemBackups")
+    }
+
     func testExcludeThenIncludeRoundTrips() throws {
         // The write path must always work without throwing, sandbox or not — this
         // exercises `setExcluded` on every runner.
