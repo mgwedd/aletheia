@@ -77,10 +77,14 @@ final class Store {
     /// this build understands, computed once when the store opens.
     let schemaCompatibility: SchemaCompatibility
 
-    init(root: URL, protector: FileProtector = .passthrough, commentStore: CommentStore? = nil) {
+    /// - Parameter openDatabaseIfMissing: when `commentStore` is nil, whether to
+    ///   try opening the database here. `AppModel` passes `false` because it has
+    ///   already tried (and recorded *why* it failed); a second attempt here could
+    ///   disagree with the state it published.
+    init(root: URL, protector: FileProtector = .passthrough, commentStore: CommentStore? = nil, openDatabaseIfMissing: Bool = true) {
         self.root = root
         self.protector = protector
-        self.commentStore = commentStore ?? CommentStore(root: root, protector: protector)
+        self.commentStore = commentStore ?? (openDatabaseIfMissing ? CommentStore(root: root, protector: protector) : nil)
         self.schemaCompatibility = Store.reconcileSchema(at: root)
     }
 
@@ -310,8 +314,11 @@ final class Store {
         return commentStore?.sessionChat(sessionID: session.id) ?? []
     }
 
+    /// Throws `DatabaseWriteError` when the chat could not be written (database
+    /// unavailable, or the write was rejected) instead of dropping it silently.
     func saveSessionChat(_ messages: [ChatMessage], for patient: Patient, session: SessionRecord) throws {
-        commentStore?.saveSessionChat(messages, sessionID: session.id)
+        guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
+        guard commentStore.saveSessionChat(messages, sessionID: session.id) else { throw DatabaseWriteError.writeFailed }
     }
 
     /// One-time move of a session's file-based chat into SQLite, then removes the
@@ -361,12 +368,16 @@ final class Store {
         return commentStore?.chatThreads(patientID: patient.id) ?? []
     }
 
+    /// Throws `DatabaseWriteError` when the thread could not be written.
     func saveChatThread(_ thread: ChatThread, for patient: Patient) throws {
-        commentStore?.saveChatThread(thread, patientID: patient.id)
+        guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
+        guard commentStore.saveChatThread(thread, patientID: patient.id) else { throw DatabaseWriteError.writeFailed }
     }
 
+    /// Throws `DatabaseWriteError` when the thread could not be deleted.
     func deleteChatThread(id: UUID, for patient: Patient) throws {
-        commentStore?.deleteChatThread(id: id, patientID: patient.id)
+        guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
+        guard commentStore.deleteChatThread(id: id, patientID: patient.id) else { throw DatabaseWriteError.writeFailed }
     }
 
     /// One-time move of a patient's file-based chat into SQLite, then removes the

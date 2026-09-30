@@ -31,6 +31,7 @@ struct AletheiaApp: App {
     /// menu-bar control so both drive (and reflect) the same recording.
     @StateObject private var recorder = SessionRecorder()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openWindow) private var openWindow
 
     init() {
         let settings = AppSettings.shared
@@ -114,7 +115,28 @@ struct AletheiaApp: App {
                     Task { await updateService.checkForUpdates() }
                 }
             }
+            // "Aletheia Doctor…" in the Help menu: the on-demand health check
+            // (see DoctorFeatureModule). Also reachable from Settings and from the
+            // database-unavailable banner.
+            CommandGroup(after: .help) {
+                if appModel.featureRegistry.contains(id: DoctorFeatureModule.id) {
+                    Button("Aletheia Doctor…") {
+                        openWindow(id: DoctorFeatureModule.windowID)
+                    }
+                }
+            }
         }
+
+        // The Doctor window (production tier). A separate window, not a sheet, so
+        // it stays reachable when the main window is busy or showing an error.
+        Window("Aletheia Doctor", id: DoctorFeatureModule.windowID) {
+            DoctorView()
+                .environmentObject(settings)
+                .environmentObject(appModel)
+                .environmentObject(integrations)
+                .environmentObject(encryption)
+        }
+        .defaultSize(width: 620, height: 640)
 
         // Gives the standard "Settings…" (⌘,) item in the app menu — the macOS
         // home every Mac user reaches for — backed by the same AppSettings the

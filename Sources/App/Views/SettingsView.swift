@@ -24,6 +24,7 @@ struct SettingsView: View {
     @State private var auditEntries: [AuditEvent] = []
     private let auditPreviewLimit = 15
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Form {
@@ -336,6 +337,9 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
+                    if appModel.featureRegistry.contains(id: DoctorFeatureModule.id) {
+                        Button("Aletheia Doctor…") { openWindow(id: DoctorFeatureModule.windowID) }
+                    }
                     Button("Setup Assistant…") { showSetup = true }
                 }
             }

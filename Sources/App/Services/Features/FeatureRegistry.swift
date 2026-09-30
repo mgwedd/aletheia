@@ -64,7 +64,8 @@ extension FeatureRegistry {
             EmbeddedLlamaFeatureModule(),
             SuggestedQuestionsFeatureModule(),
             SourceCitationsFeatureModule(),
-            PatientMedicationsFeatureModule()
+            PatientMedicationsFeatureModule(),
+            DoctorFeatureModule()
         ]
         #if ALETHEIA_DEV
         modules.append(AppIntentsFeatureModule())
