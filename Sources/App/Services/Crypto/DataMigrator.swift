@@ -78,9 +78,18 @@ enum DataMigrator {
         let dbURL = CommentStore.databaseURL(root: root)
         if fm.fileExists(atPath: dbURL.path) {
             if let store = CommentStore(root: root, protector: from) {
-                DatabaseSnapshotManager(root: root).makeSnapshot(of: store, reason: "pre-encryption-change")
+                let preImage = DatabaseSnapshotManager(root: root).makeSnapshot(of: store, reason: "pre-encryption-change")
                 if store.reencrypt(to: to) {
                     result.converted += 1
+                    // A pre-image is sealed under `from`, so when *enabling*
+                    // encryption it holds every record in plaintext. Now that the
+                    // live database is sealed (and readable — the re-seal is
+                    // per-record and a keyed protector reads both forms) that copy
+                    // is pure exposure: it would sit beside the keystore for good.
+                    // Keep it on failure (below), where it is the way back.
+                    if let preImage, !from.isEncrypting, to.isEncrypting {
+                        try? fm.removeItem(at: preImage)
+                    }
                 } else {
                     result.failures.append("Aletheia.sqlite")
                 }

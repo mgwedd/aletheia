@@ -70,6 +70,24 @@ final class DataMigratorTests: XCTestCase {
         XCTAssertEqual(plainComments.comments(sessionID: session.id).first?.body, "revisit goals")
     }
 
+    /// The safety snapshot taken before a bulk rewrite is sealed under the
+    /// *source* protector, so enabling encryption used to leave a plaintext copy
+    /// of every note/comment/chat in `.snapshots/` for good. Once the live DB is
+    /// converted, that copy must not linger.
+    func testEnableDoesNotLeavePlaintextPreImageBehind() throws {
+        let (_, session, _) = try seedPlaintextFolder()
+
+        let enable = DataMigrator.migrate(root: root, from: .passthrough, to: keyed)
+        XCTAssertTrue(enable.isComplete)
+
+        let leftovers = DatabaseSnapshotManager(root: root).snapshots()
+        XCTAssertTrue(leftovers.isEmpty, "no plaintext pre-image should survive a successful enable")
+
+        // The live DB was converted and is readable under the key.
+        let keyedComments = try XCTUnwrap(CommentStore(root: root, protector: keyed))
+        XCTAssertEqual(keyedComments.note(sessionID: session.id), "private note")
+    }
+
     func testManagerEnableSealsAndDisableRestores() throws {
         let (patient, session, _) = try seedPlaintextFolder()
         let store = Store(root: root)
