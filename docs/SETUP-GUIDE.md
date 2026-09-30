@@ -98,8 +98,8 @@ something doesn't seem to be working.
 Settings also has a **Security** section (Touch ID / password app lock and an
 opt-in "Extra Encryption" that seals your notes, transcripts, and recordings
 with a passphrase — see [SECURITY.md](../SECURITY.md)) and a **Backup**
-section (your data folder already backs up with Time Machine; you can also
-turn on an encrypted backup copy). None of this is required to start
+section (your data folder backs up with Time Machine by default — keep those
+backups on an encrypted disk; you can also turn on an encrypted backup copy). None of this is required to start
 recording — it's there for when you want it.
 
 ## Using the app

@@ -12,8 +12,9 @@ import Foundation
 /// separate, attestation-gated step the UI drives later via `prunable(_:...)`.
 ///
 /// Snapshots live in a `Backups/` sub-directory of the data folder, so #91's
-/// system-backup exclusion (applied to the whole data root) already covers them,
-/// and the same encryption protector that seals live payloads sealed theirs.
+/// system-backup policy (applied to the whole data root — included in Time
+/// Machine by default, excluded if the user opts in) covers them, and the same
+/// encryption protector that seals live payloads sealed theirs.
 enum MigrationBackup {
     /// Sub-directory, beside the database, that holds pre-migration snapshots.
     static let directoryName = "Backups"

@@ -60,12 +60,14 @@ These belong to the practice. Aletheia supports, but cannot satisfy, them:
   policy. On a shared Mac, use separate macOS accounts and enable app lock +
   idle auto-lock.
 - **Contingency plan / data backup (§164.308(a)(7))** — by default the data
-  folder is **excluded from Time Machine and iCloud's device backup**
-  (`isExcludedFromBackup`), so unencrypted PHI never lands in a system backup;
-  the recommended off-device recovery path is the app's opt-in, end-to-end-
-  encrypted snapshot (optionally to the clinician's own iCloud). A clinician who
-  runs an encrypted Time Machine target can re-enable system-backup coverage in
-  Settings › Backup. Test your restores.
+  folder is **included in Time Machine**, because the app writes no backup of
+  its own unless opted in and there would otherwise be a single copy. The folder
+  can hold unencrypted PHI (when at-rest encryption is off), so **Time Machine
+  backups must be on an encrypted disk**. The app's opt-in, end-to-end-encrypted
+  snapshot (optionally to the clinician's own iCloud) is the additional
+  recommended recovery path, and a clinician who prefers to keep the data folder
+  out of system backups (`isExcludedFromBackup`) can turn that on in Settings ›
+  Backup. Test your restores.
 - **Facility & workstation/device controls (§164.310)** — physical security of
   the Mac is the practice's. FileVault + app lock reduce exposure if a device is
   lost or left unattended.
@@ -86,7 +88,7 @@ the app keeps records until the clinician removes them.
 - Settings › Security — app lock, idle auto-lock, FileVault guidance.
 - Settings › Extra Encryption — at-rest encryption (Tier 2) and recovery
   passphrase; see [ENCRYPTION.md](ENCRYPTION.md).
-- Settings › Backup — system-backup exclusion (on by default) and opt-in
+- Settings › Backup — optional system-backup exclusion (off by default) and opt-in
   encrypted snapshot.
 - Settings › Legal — locally recorded acceptance of the current Terms/Privacy.
 
