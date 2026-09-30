@@ -43,4 +43,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify pins against Hugging Face (and whisper.cpp README)
-        run: bash scripts/verify-model-pins.sh --print --only llama  # TEMP bootstrap
+        run: |
+          # TEMP diagnostic: do the unconfirmed llama URLs resolve at all?
+          for u in \
+            https://huggingface.co/ggml-org/Llama-3.2-1B-Instruct-GGUF/resolve/main/llama-3.2-1b-instruct-q4_k_m.gguf \
+            https://huggingface.co/ggml-org/Llama-3.2-3B-Instruct-GGUF/resolve/main/llama-3.2-3b-instruct-q4_k_m.gguf \
+            https://huggingface.co/api/models/ggml-org/Llama-3.2-1B-Instruct-GGUF \
+            https://huggingface.co/api/models/ggml-org/Llama-3.2-3B-Instruct-GGUF \
+            https://huggingface.co/api/models/ggerganov/whisper.cpp \
+            https://huggingface.co/api/models/ggml-org ; do
+            echo "== $u"
+            curl -sS -o /dev/null -w "status=%{http_code}\n" -L "$u"
+          done
+          echo "== ggml-org models (public listing)"
+          curl -sS -L "https://huggingface.co/api/models?author=ggml-org&search=llama-3.2&limit=50" | grep -oE '"id":"[^"]+"' | head -50
