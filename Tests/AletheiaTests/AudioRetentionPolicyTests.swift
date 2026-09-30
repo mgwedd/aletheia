@@ -37,4 +37,61 @@ final class AudioRetentionPolicyTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Blank transcripts
+
+    func testBlankTranscriptDetection() {
+        XCTAssertTrue(AudioRetentionPolicy.isBlankTranscript(""))
+        XCTAssertTrue(AudioRetentionPolicy.isBlankTranscript("   "))
+        XCTAssertTrue(AudioRetentionPolicy.isBlankTranscript("\n\t \r\n"))
+        XCTAssertFalse(AudioRetentionPolicy.isBlankTranscript("hello"))
+        XCTAssertFalse(AudioRetentionPolicy.isBlankTranscript("  hello \n"))
+        XCTAssertFalse(AudioRetentionPolicy.isBlankTranscript("[00:00] Therapist: hi"))
+    }
+
+    func testBlankTranscriptAlwaysKeepsAudio() {
+        // Every opt-in / encryption combination, for empty and whitespace-only
+        // transcripts: the only copy of the audio must never be deleted.
+        for optedIn in [true, false] {
+            for encrypted in [true, false] {
+                for blank in ["", " ", "\n\n", " \t\n "] {
+                    XCTAssertEqual(
+                        AudioRetentionPolicy.decision(optedIn: optedIn, encryptionEnabled: encrypted, transcript: blank),
+                        .keepBecauseTranscriptBlank,
+                        "blank transcript \(blank.debugDescription) must keep audio (optedIn=\(optedIn), encrypted=\(encrypted))"
+                    )
+                }
+            }
+        }
+    }
+
+    func testNonBlankTranscriptFollowsExistingRule() {
+        let text = "[00:01] Therapist: hello"
+        XCTAssertEqual(AudioRetentionPolicy.decision(optedIn: true, encryptionEnabled: true, transcript: text), .keep)
+        XCTAssertEqual(AudioRetentionPolicy.decision(optedIn: true, encryptionEnabled: false, transcript: text), .discard)
+        XCTAssertEqual(AudioRetentionPolicy.decision(optedIn: false, encryptionEnabled: true, transcript: text), .discard)
+        XCTAssertEqual(AudioRetentionPolicy.decision(optedIn: false, encryptionEnabled: false, transcript: text), .discard)
+    }
+
+    func testNonBlankDecisionAgreesWithTwoArgumentPolicy() {
+        for optedIn in [true, false] {
+            for encrypted in [true, false] {
+                let discards = AudioRetentionPolicy.discardsAudioAfterTranscription(optedIn: optedIn, encryptionEnabled: encrypted)
+                let decision = AudioRetentionPolicy.decision(optedIn: optedIn, encryptionEnabled: encrypted, transcript: "some words")
+                XCTAssertEqual(decision == .discard, discards)
+            }
+        }
+    }
+
+    func testBlankTranscriptNoticeExplainsAndSuggestsNextSteps() {
+        let encrypted = AudioRetentionPolicy.blankTranscriptNotice(encryptionEnabled: true)
+        XCTAssertTrue(encrypted.contains("No speech was detected, so the recording was kept"))
+        XCTAssertTrue(encrypted.contains("Transcribe"))
+        XCTAssertTrue(encrypted.contains("delete"))
+        XCTAssertFalse(encrypted.contains("not encrypted"))
+
+        let plaintext = AudioRetentionPolicy.blankTranscriptNotice(encryptionEnabled: false)
+        XCTAssertTrue(plaintext.contains("No speech was detected, so the recording was kept"))
+        XCTAssertTrue(plaintext.contains("not encrypted"))
+    }
 }
