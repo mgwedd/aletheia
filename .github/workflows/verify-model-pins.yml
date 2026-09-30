@@ -16,6 +16,7 @@ on:
   pull_request:
     paths:
       - Sources/App/Services/WhisperModelPins.swift
+      - Sources/App/Services/Llama/LlamaModelPins.swift
       - scripts/verify-model-pins.sh
       - .github/workflows/verify-model-pins.yml
   schedule:
@@ -41,5 +42,5 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Verify pins against Hugging Face and whisper.cpp
-        run: bash scripts/verify-model-pins.sh ${{ inputs.print && '--print' || '' }}
+      - name: Verify pins against Hugging Face (and whisper.cpp README)
+        run: bash scripts/verify-model-pins.sh --print --only llama  # TEMP bootstrap

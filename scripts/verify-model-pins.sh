@@ -1,41 +1,51 @@
 #!/usr/bin/env bash
-# Verifies the SHA-256 pins baked into the app for downloadable Whisper models.
+# Verifies the SHA-256 pins baked into the app for every downloadable model
+# (Whisper ggml models and the embedded-llama GGUF models).
 #
 # Every model must be pinned (non-optional in Swift) AND the pin must be
 # confirmed by independent readings, so a wrong or stale pin can never ship:
 #
-#   1. the pin in Sources/App/Services/WhisperModelPins.swift
-#   2. sha256 of the bytes actually served at the pinned Hugging Face revision
-#   3. the LFS oid (== sha256) the Hugging Face tree API reports for that revision
-#   4. sha1 of the same bytes vs the SHA-1 published in whisper.cpp's models/README.md
+#   1. the pin (and Hugging Face commit) in the Swift source
+#   2. sha256 of the bytes actually served at that pinned Hugging Face commit
+#   3. the LFS oid (== sha256) the Hugging Face tree API reports for that commit
+#   4. Whisper only: sha1 of the same bytes vs the SHA-1 published in
+#      whisper.cpp's models/README.md (the GGUF repos publish no second digest)
 #
 # Any disagreement, missing value, or unexpected shape of the Swift source fails.
 #
 # Usage:
-#   scripts/verify-model-pins.sh           verify the pins in the Swift source
-#   scripts/verify-model-pins.sh --print   bootstrap: use the CURRENT Hugging Face
-#                                          revision and print what to pin (still
-#                                          fails on any cross-source disagreement)
+#   scripts/verify-model-pins.sh                 verify the pins in the Swift source
+#   scripts/verify-model-pins.sh --print         bootstrap: use the CURRENT Hugging
+#                                                Face commit of each repo and print what
+#                                                to pin (still fails on any cross-source
+#                                                disagreement)
+#   scripts/verify-model-pins.sh --only whisper|llama   limit to one model family
 #
-# Needs curl and sha256sum/shasum + sha1sum/shasum. Downloads ~5 GB in total, so
-# it is meant for CI (see .github/workflows/verify-model-pins.yml), not every build.
+# Needs curl and sha256sum/shasum + sha1sum/shasum. Downloads several GB in
+# total, so it is meant for CI (see .github/workflows/verify-model-pins.yml),
+# not every build.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-PINS_FILE="Sources/App/Services/WhisperModelPins.swift"
-SETTINGS_FILE="Sources/App/Services/AppSettings.swift"
-HF_REPO="ggerganov/whisper.cpp"
+WHISPER_PINS_FILE="Sources/App/Services/WhisperModelPins.swift"
+WHISPER_ENUM_FILE="Sources/App/Services/AppSettings.swift"
+LLAMA_PINS_FILE="Sources/App/Services/Llama/LlamaModelPins.swift"
+LLAMA_ENUM_FILE="Sources/App/Services/Llama/LlamaModel.swift"
 README_URL="https://raw.githubusercontent.com/ggerganov/whisper.cpp/master/models/README.md"
-# "<Swift case>|<raw value>" pairs; must mirror `enum WhisperModel` exactly
-# (checked below, so adding a case without updating this script fails).
-WHISPER_MODELS="baseEn|base.en smallEn|small.en mediumEn|medium.en largeV3|large-v3"
-EXPECTED_COUNT=4
-# The one exact line that builds the download URL from the pinned revision.
-DOWNLOAD_URL_LINE='        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/\(Self.revision)/ggml-\(rawValue).bin")!'
+
+# Model tables: "<Swift case>|<enum raw value>|<HF repo>|<file in repo>", space separated.
+# They must mirror the Swift enums exactly (checked below, so adding a case
+# without updating this script fails).
+WHISPER_MODELS="baseEn|base.en|ggerganov/whisper.cpp|ggml-base.en.bin smallEn|small.en|ggerganov/whisper.cpp|ggml-small.en.bin mediumEn|medium.en|ggerganov/whisper.cpp|ggml-medium.en.bin largeV3|large-v3|ggerganov/whisper.cpp|ggml-large-v3.bin"
+LLAMA_MODELS="llama32_1b|llama-3.2-1b-instruct-q4_k_m|ggml-org/Llama-3.2-1B-Instruct-GGUF|llama-3.2-1b-instruct-q4_k_m.gguf llama32_3b|llama-3.2-3b-instruct-q4_k_m|ggml-org/Llama-3.2-3B-Instruct-GGUF|llama-3.2-3b-instruct-q4_k_m.gguf"
+# The one exact line that builds a Whisper download URL from the pinned revision.
+WHISPER_URL_LINE='        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/\(Self.revision)/ggml-\(rawValue).bin")!'
 
 FAILURES=0
 MODE="verify"
+ONLY=""
+README=""
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 fail() { echo "FAIL: $*" >&2; FAILURES=$((FAILURES + 1)); }
@@ -58,57 +68,83 @@ fetch() { # url outfile
     -o "$2" "$1"
 }
 
-# ---- Swift source extraction (strict; anything unexpected is fatal) ---------
+fetch_text() { # url
+  curl --fail --location --silent --show-error --retry 3 --retry-all-errors --retry-delay 5 "$1"
+}
 
 count_lines() { printf '%s\n' "$1" | grep -c . || true; }
 
-extract_revision() {
-  local lines
-  lines=$(grep -E '^    static let revision = ' "$PINS_FILE" || true)
-  [ "$(count_lines "$lines")" -eq 1 ] || die "expected exactly one 'static let revision' line in $PINS_FILE"
-  local rev
+# ---- Swift source extraction (strict; anything unexpected is fatal) ---------
+
+# Prints "<case> <value>" lines from `var <varname>: String { switch self {
+# case .x: return "<hex>" ... } }` in <file>. Fails unless the block consists
+# solely of strict `case .x: return "<lowercase hex of <hexlen> chars>"` lines
+# with exactly one per row of <table> (no nil/default/optional/uppercase).
+extract_switch() { # file varname hexlen table
+  local file="$1" varname="$2" hexlen="$3" table="$4"
+  local block bad values n row c expected
+  expected=$(printf '%s\n' "$table" | tr ' ' '\n' | grep -c .)
+  block=$(awk -v v="$varname" '
+    $0 == "    var " v ": String {" { inblk = 1; next }
+    inblk && /^    \}$/ { inblk = 0 }
+    inblk { print }
+  ' "$file")
+  [ -n "$block" ] || die "no non-optional 'var ${varname}: String' block found in ${file}"
+  bad=$(printf '%s\n' "$block" | grep -vE "^        switch self \{\$|^        \}\$|^        case \.[A-Za-z0-9_]+: return \"[0-9a-f]{${hexlen}}\"\$" || true)
+  [ -z "$bad" ] || die "unexpected line(s) in ${varname} of ${file} (no nil/default/optional/uppercase/wrong length allowed): ${bad}"
+  values=$(printf '%s\n' "$block" | sed -nE "s/^        case \.([A-Za-z0-9_]+): return \"([0-9a-f]{${hexlen}})\"\$/\1 \2/p")
+  n=$(count_lines "$values")
+  [ "$n" -eq "$expected" ] || die "expected exactly ${expected} entries in ${varname} of ${file}, found ${n}"
+  for row in $table; do
+    c=$(printf '%s\n' "$values" | awk -v k="${row%%|*}" '$1 == k' | grep -c . || true)
+    [ "$c" -eq 1 ] || die "expected exactly one ${varname} entry for ${row%%|*} in ${file}, found ${c}"
+  done
+  printf '%s\n' "$values"
+}
+
+extract_whisper_revision() {
+  local lines rev
+  lines=$(grep -E '^    static let revision = ' "$WHISPER_PINS_FILE" || true)
+  [ "$(count_lines "$lines")" -eq 1 ] || die "expected exactly one 'static let revision' line in ${WHISPER_PINS_FILE}"
   rev=$(printf '%s\n' "$lines" | sed -nE 's/^    static let revision = "([0-9a-f]{40})"$/\1/p')
-  [ -n "$rev" ] || die "revision in $PINS_FILE is not a 40-char lowercase hex commit sha"
+  [ -n "$rev" ] || die "revision in ${WHISPER_PINS_FILE} is not a 40-char lowercase hex commit sha"
   printf '%s\n' "$rev"
 }
 
-# Prints "<case> <sha256>" lines, one per pin. Fails unless the expectedSHA256
-# switch consists solely of the strict `case .x: return "<64 hex>"` lines and
-# there is exactly one per expected model with all-distinct digests.
-extract_pins() {
-  local block bad pins n
-  block=$(awk '
-    /^    var expectedSHA256: String \{$/ { inblk = 1; next }
-    inblk && /^    \}$/ { inblk = 0 }
-    inblk { print }
-  ' "$PINS_FILE")
-  [ -n "$block" ] || die "no 'var expectedSHA256: String' block (non-optional) found in $PINS_FILE"
-  bad=$(printf '%s\n' "$block" | grep -vE '^        switch self \{$|^        \}$|^        case \.[A-Za-z0-9]+: return "[0-9a-f]{64}"$' || true)
-  [ -z "$bad" ] || die "unexpected line(s) in expectedSHA256 (no nil/default/optional/uppercase allowed): $bad"
-  pins=$(printf '%s\n' "$block" | sed -nE 's/^        case \.([A-Za-z0-9]+): return "([0-9a-f]{64})"$/\1 \2/p')
-  n=$(count_lines "$pins")
-  [ "$n" -eq "$EXPECTED_COUNT" ] || die "expected exactly $EXPECTED_COUNT pins in $PINS_FILE, found $n"
-  local pair c
-  for pair in $WHISPER_MODELS; do
-    c=$(printf '%s\n' "$pins" | awk -v k="${pair%%|*}" '$1 == k' | grep -c . || true)
-    [ "$c" -eq 1 ] || die "expected exactly one pin for ${pair%%|*}, found $c"
+# The enum in <file> must declare exactly the cases of <table>, with these raw values.
+check_enum() { # file enumname table
+  local file="$1" enum="$2" table="$3" cases row expected
+  expected=$(printf '%s\n' "$table" | tr ' ' '\n' | grep -c .)
+  cases=$(awk -v e="$enum" '$0 ~ "^enum " e "[: ]" { i = 1; next } i && /^}/ { i = 0 } i && /^    case /' "$file")
+  [ "$(count_lines "$cases")" -eq "$expected" ] || die "enum ${enum} in ${file} has a different case count than this script's table"
+  for row in $table; do
+    printf '%s\n' "$cases" | grep -qxF "    case ${row%%|*} = \"$(printf '%s' "$row" | cut -d'|' -f2)\"" \
+      || die "enum ${enum} is missing: case ${row%%|*} = \"$(printf '%s' "$row" | cut -d'|' -f2)\""
   done
-  [ -z "$(printf '%s\n' "$pins" | awk '{print $2}' | sort | uniq -d)" ] || die "two models share the same pin"
-  printf '%s\n' "$pins"
 }
 
-check_swift_shape() {
-  # The script's model table must match the enum exactly.
-  local cases pair
-  cases=$(awk '/^enum WhisperModel/ { i = 1; next } i && /^}/ { i = 0 } i && /^    case /' "$SETTINGS_FILE")
-  [ "$(count_lines "$cases")" -eq "$EXPECTED_COUNT" ] || die "enum WhisperModel in $SETTINGS_FILE has a different case count than this script's table"
-  for pair in $WHISPER_MODELS; do
-    printf '%s\n' "$cases" | grep -qxF "    case ${pair%%|*} = \"${pair##*|}\"" \
-      || die "enum WhisperModel is missing: case ${pair%%|*} = \"${pair##*|}\""
+check_whisper_shape() {
+  check_enum "$WHISPER_ENUM_FILE" WhisperModel "$WHISPER_MODELS"
+  grep -qxF -- "$WHISPER_URL_LINE" "$WHISPER_PINS_FILE" \
+    || die "downloadURL in ${WHISPER_PINS_FILE} must be exactly the revision-pinned URL (resolve/\\(Self.revision), not main)"
+  [ "$(grep -c 'resolve/' "$WHISPER_PINS_FILE" || true)" -eq 1 ] || die "unexpected extra resolve/ URL in ${WHISPER_PINS_FILE}"
+}
+
+# Llama: each case has its own repo, so revision and URL are per-case.
+check_llama_shape() {
+  local row case_name repo file
+  check_enum "$LLAMA_ENUM_FILE" LlamaModel "$LLAMA_MODELS"
+  for row in $LLAMA_MODELS; do
+    case_name=$(printf '%s' "$row" | cut -d'|' -f1)
+    repo=$(printf '%s' "$row" | cut -d'|' -f3)
+    file=$(printf '%s' "$row" | cut -d'|' -f4)
+    grep -qxF -- "            return URL(string: \"https://huggingface.co/${repo}/resolve/\\(revision)/${file}\")!" "$LLAMA_PINS_FILE" \
+      || die "downloadURL for ${case_name} in ${LLAMA_PINS_FILE} must be exactly https://huggingface.co/${repo}/resolve/\\(revision)/${file}"
   done
-  grep -qxF -- "$DOWNLOAD_URL_LINE" "$PINS_FILE" \
-    || die "downloadURL in $PINS_FILE must be exactly the revision-pinned resolve/\\(Self.revision) URL (not resolve/main)"
-  [ "$(grep -c 'resolve/' "$PINS_FILE" || true)" -eq 1 ] || die "unexpected extra resolve/ URL in $PINS_FILE"
+  local n_resolve n_rows
+  n_resolve=$(grep -c 'resolve/' "$LLAMA_PINS_FILE" || true)
+  n_rows=$(printf '%s\n' "$LLAMA_MODELS" | tr ' ' '\n' | grep -c .)
+  [ "$n_resolve" -eq "$n_rows" ] || die "unexpected number of resolve/ URLs in ${LLAMA_PINS_FILE} (${n_resolve}, expected ${n_rows})"
 }
 
 # ---- remote readings --------------------------------------------------------
@@ -131,97 +167,135 @@ readme_sha1_for() { # readme_text raw_name
     | grep -oE '[0-9a-f]{40}'
 }
 
+# Current commit sha of a Hugging Face model repo (print/bootstrap mode only).
+hf_current_revision() { # repo
+  local info
+  info=$(fetch_text "https://huggingface.co/api/models/$1") || return 1
+  printf '%s' "$info" | grep -oE '"sha":"[0-9a-f]{40}"' | head -1 | sed -E 's/.*"([0-9a-f]{40})"/\1/'
+}
+
 # ---- per-model check --------------------------------------------------------
 
-check_model() { # case raw pin(optional; verify mode)
-  local case_name="$1" raw="$2" pin="${3:-}"
-  local file="ggml-${raw}.bin"
-  local url="https://huggingface.co/${HF_REPO}/resolve/${REVISION}/${file}"
-  local tmp="${WORK}/${file}"
+# check_model <family> <case> <raw> <repo> <file> <revision> <pin|""> <use_readme 0|1>
+check_model() {
+  local family="$1" case_name="$2" raw="$3" repo="$4" file="$5" revision="$6" pin="$7" use_readme="$8"
+  local url="https://huggingface.co/${repo}/resolve/${revision}/${file}"
   # Never let an empty extraction turn into a vacuous pass: in verify mode a
-  # model without a pin from the Swift source is a failure.
-  if [ "$MODE" = "verify" ] && [ -z "$pin" ]; then
-    fail "${raw}: no pin found in ${PINS_FILE}"
+  # model without a pin and revision from the Swift source is a failure.
+  if [ "$MODE" = "verify" ] && { [ -z "$pin" ] || [ -z "$revision" ]; }; then
+    fail "${raw}: no pin/revision found in the Swift source"
     return
   fi
-  echo "==> ${raw}: downloading ${url}"
+  local tmp="${WORK}/${file}"
+  echo "==> ${family}/${raw}: downloading ${url}"
   if ! fetch "$url" "$tmp"; then
-    fail "${raw}: download failed"
+    fail "${raw}: download failed (${url})"
     return
   fi
-  local dl256 dl1 size lfs readme1 lfs_n readme_n
+  local tree lfs lfs_n dl256 dl1 size readme1="" readme_n=1
   dl256=$(hash_of 256 "$tmp"); dl1=$(hash_of 1 "$tmp"); size=$(wc -c <"$tmp" | tr -d ' ')
   rm -f "$tmp"
-  lfs=$(lfs_oid_for "$TREE_JSON" "$file"); lfs_n=$(count_lines "$lfs")
-  readme1=$(readme_sha1_for "$README" "$raw"); readme_n=$(count_lines "$readme1")
+  tree=$(fetch_text "https://huggingface.co/api/models/${repo}/tree/${revision}") \
+    || { fail "${raw}: revision ${revision} does not resolve via the HF tree API"; return; }
+  lfs=$(lfs_oid_for "$tree" "$file"); lfs_n=$(count_lines "$lfs")
+  if [ "$use_readme" = "1" ]; then
+    readme1=$(readme_sha1_for "$README" "$raw"); readme_n=$(count_lines "$readme1")
+  fi
 
+  echo "    revision        ${revision}"
   echo "    size            ${size} bytes"
   echo "    sha256 (bytes)  ${dl256}"
   echo "    sha256 (HF LFS) ${lfs:-<missing>}"
-  echo "    sha1   (bytes)  ${dl1}"
-  echo "    sha1   (README) ${readme1:-<missing>}"
+  if [ "$use_readme" = "1" ]; then
+    echo "    sha1   (bytes)  ${dl1}"
+    echo "    sha1   (README) ${readme1:-<missing>}"
+  fi
   [ -z "$pin" ] || echo "    sha256 (pin)    ${pin}"
-  summary "| \`${raw}\` | \`${dl256}\` | \`${lfs:-missing}\` | \`${dl1}\` | \`${readme1:-missing}\` |"
-  echo "PIN|${case_name}|${raw}|${dl256}"
+  summary "| ${family} \`${raw}\` | \`${revision}\` | \`${dl256}\` | \`${lfs:-missing}\` | \`${readme1:-n/a}\` |"
+  echo "PIN|${family}|${case_name}|${raw}|${revision}|${dl256}"
 
   [ "$lfs_n" -eq 1 ] || { fail "${raw}: expected exactly 1 LFS oid from the HF tree API, got ${lfs_n}"; return; }
-  [ "$readme_n" -eq 1 ] || { fail "${raw}: expected exactly 1 SHA-1 row in the whisper.cpp README, got ${readme_n}"; return; }
   [ "$dl256" = "$lfs" ] || fail "${raw}: sha256 of downloaded bytes (${dl256}) != HF LFS oid (${lfs})"
-  [ "$dl1" = "$readme1" ] || fail "${raw}: sha1 of downloaded bytes (${dl1}) != whisper.cpp README (${readme1})"
+  if [ "$use_readme" = "1" ]; then
+    if [ "$readme_n" -ne 1 ]; then
+      fail "${raw}: expected exactly 1 SHA-1 row in the whisper.cpp README, got ${readme_n}"
+    elif [ "$dl1" != "$readme1" ]; then
+      fail "${raw}: sha1 of downloaded bytes (${dl1}) != whisper.cpp README (${readme1})"
+    fi
+  fi
   if [ -n "$pin" ] && [ "$dl256" != "$pin" ]; then
-    fail "${raw}: pin in ${PINS_FILE} (${pin}) != sha256 of bytes at revision (${dl256})"
+    fail "${raw}: pin in the Swift source (${pin}) != sha256 of bytes at revision (${dl256})"
   fi
   return 0
+}
+
+lookup() { # "key value" lines, key
+  printf '%s\n' "$1" | awk -v k="$2" '$1 == k {print $2}'
+}
+
+run_family() { # family table use_readme
+  local family="$1" table="$2" use_readme="$3"
+  local row case_name raw repo file revision pin wrev="" wpins="" lrevs="" lpins=""
+
+  if [ "$MODE" = "verify" ]; then
+    if [ "$family" = "whisper" ]; then
+      check_whisper_shape
+      wrev=$(extract_whisper_revision) || exit 1
+      wpins=$(extract_switch "$WHISPER_PINS_FILE" expectedSHA256 64 "$table") || exit 1
+    else
+      check_llama_shape
+      lrevs=$(extract_switch "$LLAMA_PINS_FILE" revision 40 "$table") || exit 1
+      lpins=$(extract_switch "$LLAMA_PINS_FILE" expectedSHA256 64 "$table") || exit 1
+    fi
+  fi
+
+  for row in $table; do
+    case_name=$(printf '%s' "$row" | cut -d'|' -f1)
+    raw=$(printf '%s' "$row" | cut -d'|' -f2)
+    repo=$(printf '%s' "$row" | cut -d'|' -f3)
+    file=$(printf '%s' "$row" | cut -d'|' -f4)
+    if [ "$MODE" = "print" ]; then
+      revision=$(hf_current_revision "$repo") || revision=""
+      [ -n "$revision" ] || { fail "${raw}: could not read the current commit of ${repo}"; continue; }
+      pin=""
+    elif [ "$family" = "whisper" ]; then
+      revision="$wrev"; pin=$(lookup "$wpins" "$case_name")
+    else
+      revision=$(lookup "$lrevs" "$case_name"); pin=$(lookup "$lpins" "$case_name")
+    fi
+    check_model "$family" "$case_name" "$raw" "$repo" "$file" "$revision" "$pin" "$use_readme"
+  done
 }
 
 # ---- main -------------------------------------------------------------------
 
 main() {
-  case "${1:-}" in
-    "") MODE="verify" ;;
-    --print) MODE="print" ;;
-    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
-    *) die "unknown argument: $1 (use --print or no arguments)" ;;
-  esac
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --print) MODE="print" ;;
+      --only) shift; ONLY="${1:-}"; case "$ONLY" in whisper|llama) ;; *) die "--only takes whisper or llama" ;; esac ;;
+      -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+      *) die "unknown argument: $1" ;;
+    esac
+    shift
+  done
   command -v curl >/dev/null 2>&1 || die "curl is required"
 
   WORK=$(mktemp -d)
   trap 'rm -rf "$WORK"' EXIT
 
-  local pins=""
-  if [ "$MODE" = "verify" ]; then
-    check_swift_shape
-    REVISION=$(extract_revision) || exit 1
-    pins=$(extract_pins) || exit 1
-  else
-    local info
-    info=$(curl --fail --location --silent --show-error --retry 3 --retry-all-errors "https://huggingface.co/api/models/${HF_REPO}") \
-      || die "could not fetch the Hugging Face model info"
-    REVISION=$(printf '%s' "$info" | grep -oE '"sha":"[0-9a-f]{40}"' | head -1 | sed -E 's/.*"([0-9a-f]{40})"/\1/')
-    [ -n "$REVISION" ] || die "no commit sha in the Hugging Face model info"
-  fi
-  echo "Revision: ${REVISION} (mode: ${MODE})"
-
-  TREE_JSON=$(curl --fail --location --silent --show-error --retry 3 --retry-all-errors \
-    "https://huggingface.co/api/models/${HF_REPO}/tree/${REVISION}") \
-    || die "revision ${REVISION} does not resolve on Hugging Face (tree API failed)"
-  README=$(curl --fail --location --silent --show-error --retry 3 --retry-all-errors "$README_URL") \
-    || die "could not fetch the whisper.cpp README from ${README_URL}"
-
-  summary "### Whisper model pins (${MODE}) at \`${REVISION}\`"
+  summary "### Model pins (${MODE})"
   summary ""
-  summary "| model | sha256 (bytes) | sha256 (HF LFS) | sha1 (bytes) | sha1 (README) |"
+  summary "| model | revision | sha256 (bytes) | sha256 (HF LFS) | sha1 (README) |"
   summary "|---|---|---|---|---|"
 
-  local pair case_name raw pin
-  for pair in $WHISPER_MODELS; do
-    case_name="${pair%%|*}"; raw="${pair##*|}"; pin=""
-    if [ "$MODE" = "verify" ]; then
-      pin=$(printf '%s\n' "$pins" | awk -v k="$case_name" '$1 == k {print $2}')
-    fi
-    check_model "$case_name" "$raw" "$pin"
-  done
-  echo "REVISION|${REVISION}"
+  if [ -z "$ONLY" ] || [ "$ONLY" = "whisper" ]; then
+    README=$(fetch_text "$README_URL") || die "could not fetch the whisper.cpp README from ${README_URL}"
+    run_family whisper "$WHISPER_MODELS" 1
+  fi
+  if [ -z "$ONLY" ] || [ "$ONLY" = "llama" ]; then
+    run_family llama "$LLAMA_MODELS" 0
+  fi
 
   if [ "$FAILURES" -gt 0 ]; then
     summary ""
@@ -229,9 +303,9 @@ main() {
     echo "${FAILURES} check(s) failed." >&2
     exit 1
   fi
-  echo "All sources agree for all ${EXPECTED_COUNT} models at ${REVISION}."
+  echo "All sources agree for every checked model (mode: ${MODE})."
   summary ""
-  summary "All sources agree for all ${EXPECTED_COUNT} models."
+  summary "All sources agree for every checked model."
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
