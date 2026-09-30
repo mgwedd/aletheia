@@ -56,6 +56,10 @@ final class WhisperTranscriber: Transcribing {
             lines += try await transcribe(url: callURL, source: "Call audio") { onProgress(0.5 + $0 * 0.5) }
         }
 
+        // Drop segments with no text, so a recording where nothing was said
+        // yields "" (which the caller treats as "no speech") instead of a
+        // transcript of bare "[00:00] Therapist:" labels.
+        lines.removeAll { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         lines.sort { $0.startTime < $1.startTime }
         return lines.map { line in
             let minutes = Int(line.startTime) / 60
