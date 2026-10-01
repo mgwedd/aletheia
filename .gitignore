@@ -224,6 +224,7 @@ __marimo__/
 /build/
 .build/
 .swiftpm/
+Package.resolved
 .DS_Store
 xcuserdata/
 *.xcuserstate
