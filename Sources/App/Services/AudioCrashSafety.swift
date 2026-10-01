@@ -115,21 +115,23 @@ enum AudioCrashSafety {
 
     private static func readUInt32LE(at offset: Int, in data: Data) -> UInt32? {
         guard offset + 4 <= data.count else { return nil }
-        return UInt32(data[offset]) |
-               (UInt32(data[offset + 1]) << 8) |
-               (UInt32(data[offset + 2]) << 16) |
-               (UInt32(data[offset + 3]) << 24)
+        let b0 = UInt32(data[offset])
+        let b1 = UInt32(data[offset + 1]) << 8
+        let b2 = UInt32(data[offset + 2]) << 16
+        let b3 = UInt32(data[offset + 3]) << 24
+        return b0 | b1 | b2 | b3
     }
 
     private static func readInt64BE(at offset: Int, in data: Data) -> Int64? {
         guard offset + 8 <= data.count else { return nil }
-        return Int64(data[offset]) << 56 |
-               Int64(data[offset + 1]) << 48 |
-               Int64(data[offset + 2]) << 40 |
-               Int64(data[offset + 3]) << 32 |
-               Int64(data[offset + 4]) << 24 |
-               Int64(data[offset + 5]) << 16 |
-               Int64(data[offset + 6]) << 8 |
-               Int64(data[offset + 7])
+        let b0 = Int64(data[offset]) << 56
+        let b1 = Int64(data[offset + 1]) << 48
+        let b2 = Int64(data[offset + 2]) << 40
+        let b3 = Int64(data[offset + 3]) << 32
+        let b4 = Int64(data[offset + 4]) << 24
+        let b5 = Int64(data[offset + 5]) << 16
+        let b6 = Int64(data[offset + 6]) << 8
+        let b7 = Int64(data[offset + 7])
+        return b0 | b1 | b2 | b3 | b4 | b5 | b6 | b7
     }
 }
