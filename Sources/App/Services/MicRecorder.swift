@@ -58,6 +58,8 @@ final class MicRecorder {
         AVCaptureDevice.authorizationStatus(for: .audio)
     }
 
+    private var fileURL: URL?
+
     func start(to url: URL) throws {
         guard !isRunning else { throw MicRecorderError.alreadyRunning }
         guard Self.permissionStatus == .authorized else { throw MicRecorderError.permissionDenied }
@@ -68,11 +70,15 @@ final class MicRecorder {
         let format = inputNode.outputFormat(forBus: 0)
         let file = try AVAudioFile(forWriting: url, settings: format.settings)
         self.file = file
+        self.fileURL = url
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
             guard let self, !self.isPaused else { return }
             do {
                 try self.file?.write(from: buffer)
+                if let fileURL = self.fileURL {
+                    AudioCrashSafety.flushHeader(at: fileURL)
+                }
             } catch {
                 // Surface a silent write failure once, on the main actor, so the
                 // therapist learns the recording stopped saving *during* the
@@ -85,13 +91,25 @@ final class MicRecorder {
         }
 
         // An input-device swap or unplug mid-session posts this; capture can
-        // silently stop when it does, so at least record that it happened.
+        // silently stop when it does, so record it and attempt engine recovery.
         configObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: engine,
             queue: nil
         ) { [weak self] _ in
-            self?.health.recordConfigurationChange()
+            guard let self else { return }
+            self.health.recordConfigurationChange()
+            if self.isRunning && !self.engine.isRunning {
+                do {
+                    self.engine.prepare()
+                    try self.engine.start()
+                } catch {
+                    if self.health.recordWriteFailure(error.localizedDescription) {
+                        let msg = "Microphone input changed and couldn't restart: \(error.localizedDescription)"
+                        Task { @MainActor [weak self] in self?.onDisruption?(msg) }
+                    }
+                }
+            }
         }
 
         engine.prepare()
@@ -104,7 +122,11 @@ final class MicRecorder {
         removeConfigObserver()
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        if let fileURL {
+            AudioCrashSafety.flushHeader(at: fileURL)
+        }
         file = nil
+        fileURL = nil
         isRunning = false
         isPaused = false
     }
