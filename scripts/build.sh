@@ -5,7 +5,7 @@
 #
 # What this does:
 #   1. Installs XcodeGen (via Homebrew) if it's missing.
-#   2. Generates SessionNotes.xcodeproj from project.yml.
+#   2. Generates Aletheia.xcodeproj from project.yml.
 #   3. Builds a Release build, ad-hoc code signed with the Hardened Runtime
 #      enabled (no Apple Developer account needed).
 #   4. Copies the finished app to ./dist/Aletheia.app.
@@ -14,7 +14,7 @@
 # isn't notarized by Apple — see docs/SETUP-GUIDE.md.
 
 set -euo pipefail
-cd "$(dirname "$0")/../SessionNotes"
+cd "$(dirname "$0")/.."
 
 # Preflight: the full Xcode app is required. If the active developer directory
 # points at the Command Line Tools (or Xcode isn't installed), xcodebuild fails
@@ -54,8 +54,8 @@ EXTRA_CODE_SIGN_FLAGS="${OTHER_CODE_SIGN_FLAGS:-}"
 # xcodebuild can block on a "trust this package plugin?" prompt on a fresh
 # machine (or in CI), which never gets answered.
 xcodebuild \
-    -project SessionNotes.xcodeproj \
-    -scheme SessionNotes \
+    -project Aletheia.xcodeproj \
+    -scheme Aletheia \
     -configuration Release \
     -derivedDataPath build \
     -skipPackagePluginValidation \
@@ -65,18 +65,15 @@ xcodebuild \
     CODE_SIGNING_ALLOWED=YES \
     build
 
-# The product/target name is "SessionNotes" (no space); the space only appears
-# in the Finder display name (CFBundleDisplayName). So the built bundle is
-# SessionNotes.app — we copy it to the friendlier "Aletheia.app" for dist.
-APP_PATH="build/Build/Products/Release/SessionNotes.app"
+APP_PATH="build/Build/Products/Release/Aletheia.app"
 if [ ! -d "$APP_PATH" ]; then
     echo "Build finished but the .app wasn't found at $APP_PATH" >&2
     exit 1
 fi
 
-mkdir -p ../dist
-rm -rf "../dist/Aletheia.app"
-cp -R "$APP_PATH" "../dist/Aletheia.app"
+mkdir -p dist
+rm -rf "dist/Aletheia.app"
+cp -R "$APP_PATH" "dist/Aletheia.app"
 
 echo
 echo "Done. Aletheia.app is in the dist/ folder at the repo root."

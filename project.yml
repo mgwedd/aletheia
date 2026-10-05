@@ -1,0 +1,123 @@
+name: Aletheia
+options:
+  bundleIdPrefix: com.aletheia
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    # Ad-hoc signed: no Apple Developer account needed. Gatekeeper will
+    # require a right-click > Open the first time it's launched, which
+    # is covered in docs/SETUP-GUIDE.md.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+  configs:
+    Debug:
+      # Debug compiles at the `dev` build tier: every feature module's code is
+      # included, so local runs and the unit tests exercise the full feature
+      # surface. `DEBUG` is Xcode's default Debug condition, preserved here
+      # alongside the tier flags. The tiers nest (production ⊂ preview ⊂ dev),
+      # so a dev build defines ALETHEIA_PREVIEW too. See BuildTier.
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG ALETHEIA_PREVIEW ALETHEIA_DEV
+    Release:
+      # Release ships the `production` tier: no ALETHEIA_* conditions are
+      # defined, so preview/dev-only code (e.g. App Intents) is compiled out of
+      # the shipped binary entirely — not merely hidden at runtime.
+      #
+      # Hardened Runtime only matters for distribution, and it interferes
+      # with XCTest injecting its bundle into the host app, so keep it off
+      # for Debug (where tests run) and on for the Release build that
+      # scripts/build.sh ships.
+      ENABLE_HARDENED_RUNTIME: YES
+
+packages:
+  SwiftWhisper:
+    url: https://github.com/exPHAT/SwiftWhisper.git
+    from: "1.2.0"
+  # Embedded llama.cpp fallback — staged (see README › Embedded llama.cpp).
+  # Uncomment, pin to a verified revision, and add `- package: llama` to the
+  # Aletheia target dependencies below to compile the local LLM backend;
+  # `LlamaAssistant` then activates automatically via `#if canImport(llama)`.
+  # Only the official ggml-org runtime is used (supply-chain constraint).
+  # Pinned to the latest stable ggml-org/llama.cpp release, tag b11149.
+  # Kept commented (staged) so CI/production don't compile the C++ runtime: it's
+  # a single target, so linking it would pull the runtime into every tier. Enable
+  # during the Mac bring-up (see README › Embedded llama.cpp) once the engine-seam
+  # factory gates it per tier and the llama.h calls are compiler-verified.
+  # llama:
+  #   url: https://github.com/ggml-org/llama.cpp.git
+  #   revision: "d2e54583c7452353eb35d40431281f6ee984332f"  # tag b11149
+
+targets:
+  Aletheia:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/App
+        excludes:
+          - "Resources/Info.plist"
+          - "Resources/Aletheia.entitlements"
+          - "Resources/AletheiaDev.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.app
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # `info:`/`entitlements:` target keys tell XcodeGen to *generate* the
+        # file at that path from its own template + `properties:` on every
+        # `xcodegen generate`, overwriting whatever's checked in (see #104).
+        # These two files are hand-maintained (and Info.plist's version keys
+        # are rewritten in place by scripts/apply-release.sh), so point Xcode
+        # straight at them via plain build settings instead — XcodeGen only
+        # rewrites the file content for the `info:`/`entitlements:` keys,
+        # not for these. GENERATE_INFOPLIST_FILE isn't set here, so it keeps
+        # Xcode's default of YES, which expands the $(...) build-setting
+        # placeholders in Info.plist (e.g. CFBundleIdentifier) at build time.
+        INFOPLIST_FILE: Sources/App/Resources/Info.plist
+      # Least privilege: entitlements are chosen per config, mirroring the build
+      # tiers. Release (production) omits the calendars entitlement because
+      # EventKit scheduling is a `.dev`-tier feature (EventKitSchedulingFeatureModule);
+      # Debug (dev tier) adds it. Deliberately NOT set in `base`, so a new config
+      # can't silently inherit the wider set. Plain build settings, not the
+      # `entitlements:` key, for the same reason as INFOPLIST_FILE above (#104/#105).
+      # scripts/check-entitlements.sh (CI) guards this wiring and the file contents.
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: Sources/App/Resources/AletheiaDev.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: Sources/App/Resources/Aletheia.entitlements
+    dependencies:
+      - package: SwiftWhisper
+      # - package: llama   # staged: uncomment with the packages stanza above
+      - sdk: ScreenCaptureKit.framework
+      - sdk: AVFoundation.framework
+
+  AletheiaTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests/AletheiaTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.appTests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Aletheia
+
+schemes:
+  Aletheia:
+    build:
+      targets:
+        Aletheia: all
+        AletheiaTests: [test]
+    test:
+      targets:
+        - AletheiaTests
+    run:
+      config: Debug

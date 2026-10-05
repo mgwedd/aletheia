@@ -1,0 +1,137 @@
+import Foundation
+
+/// Provides crash-safe continuous header flushing for recorded audio files.
+///
+/// When `AVAudioFile` appends audio PCM buffers to disk, the raw PCM sample bytes
+/// are written, but `AVAudioFile` only updates the file header's total frame/chunk
+/// size when `AVAudioFile` is closed (`file = nil`). If the process crashes or is
+/// killed mid-session without closing the file, standard readers (`AVAudioFile(forReading:)`,
+/// `AudioResampler`) see header size = 0 and report 0 frames of audio.
+///
+/// `AudioCrashSafety` inspects the file header on disk after buffer writes and
+/// updates the RIFF (WAV) or CAF `data` chunk size to reflect the actual file size
+/// on disk, syncing the descriptor. Even if SIGKILL or a power loss occurs mid-session,
+/// the file on disk remains a fully valid, readable audio file up to the last frame.
+enum AudioCrashSafety {
+    /// Flushes the underlying audio file header at `url` so that even if the app
+    /// crashes abruptly without closing `AVAudioFile`, the audio file on disk contains
+    /// a valid, readable header length up to the last byte written.
+    @discardableResult
+    static func flushHeader(at url: URL) -> Bool {
+        guard let handle = try? FileHandle(forUpdating: url) else { return false }
+        defer { try? handle.close() }
+
+        do {
+            let fileSize = try handle.seekToEnd()
+            guard fileSize >= 44 else { return false }
+
+            try handle.seek(toOffset: 0)
+            let headerData = try handle.read(upToCount: 16384) ?? Data()
+            guard headerData.count >= 12 else { return false }
+
+            let magic = String(decoding: headerData.prefix(4), as: UTF8.self)
+            if magic == "RIFF" {
+                return updateWAVHeader(handle: handle, fileSize: fileSize, headerData: headerData)
+            } else if magic == "caff" {
+                return updateCAFHeader(handle: handle, fileSize: fileSize, headerData: headerData)
+            }
+            return false
+        } catch {
+            return false
+        }
+    }
+
+    private static func updateWAVHeader(handle: FileHandle, fileSize: UInt64, headerData: Data) -> Bool {
+        let riffSize = UInt32(min(fileSize - 8, UInt64(UInt32.max)))
+        let riffSizeLE = riffSize.littleEndian
+
+        do {
+            try handle.seek(toOffset: 4)
+            try handle.write(contentsOf: dataFrom(riffSizeLE))
+
+            var offset = 12
+            while offset + 8 <= headerData.count {
+                let chunkIDData = headerData[offset..<(offset + 4)]
+                let chunkID = String(decoding: chunkIDData, as: UTF8.self)
+                guard let chunkSize = readUInt32LE(at: offset + 4, in: headerData) else { break }
+
+                if chunkID == "data" {
+                    let dataChunkDataOffset = UInt64(offset + 8)
+                    if fileSize >= dataChunkDataOffset {
+                        let actualDataSize = UInt32(min(fileSize - dataChunkDataOffset, UInt64(UInt32.max)))
+                        let dataSizeLE = actualDataSize.littleEndian
+                        try handle.seek(toOffset: UInt64(offset + 4))
+                        try handle.write(contentsOf: dataFrom(dataSizeLE))
+                        try handle.synchronize()
+                        return true
+                    }
+                }
+                let pad = Int(chunkSize % 2)
+                let nextOffset = offset + 8 + Int(chunkSize) + pad
+                if nextOffset <= offset { break }
+                offset = nextOffset
+            }
+        } catch {
+            return false
+        }
+        return false
+    }
+
+    private static func updateCAFHeader(handle: FileHandle, fileSize: UInt64, headerData: Data) -> Bool {
+        var offset = 8
+        do {
+            while offset + 12 <= headerData.count {
+                let chunkIDData = headerData[offset..<(offset + 4)]
+                let chunkID = String(decoding: chunkIDData, as: UTF8.self)
+                guard let chunkSize = readInt64BE(at: offset + 4, in: headerData) else { break }
+
+                if chunkID == "data" {
+                    let dataChunkDataOffset = UInt64(offset + 12)
+                    if fileSize >= dataChunkDataOffset {
+                        let actualDataSize = Int64(fileSize - dataChunkDataOffset)
+                        let dataSizeBE = actualDataSize.bigEndian
+                        try handle.seek(toOffset: UInt64(offset + 4))
+                        try handle.write(contentsOf: dataFrom(dataSizeBE))
+                        try handle.synchronize()
+                        return true
+                    }
+                }
+
+                if chunkSize < 0 { break }
+                let nextOffset = offset + 12 + Int(chunkSize)
+                if nextOffset <= offset { break }
+                offset = nextOffset
+            }
+        } catch {
+            return false
+        }
+        return false
+    }
+
+    private static func dataFrom<T>(_ value: T) -> Data {
+        var temp = value
+        return withUnsafeBytes(of: &temp) { Data($0) }
+    }
+
+    private static func readUInt32LE(at offset: Int, in data: Data) -> UInt32? {
+        guard offset + 4 <= data.count else { return nil }
+        let b0 = UInt32(data[offset])
+        let b1 = UInt32(data[offset + 1]) << 8
+        let b2 = UInt32(data[offset + 2]) << 16
+        let b3 = UInt32(data[offset + 3]) << 24
+        return b0 | b1 | b2 | b3
+    }
+
+    private static func readInt64BE(at offset: Int, in data: Data) -> Int64? {
+        guard offset + 8 <= data.count else { return nil }
+        let b0 = Int64(data[offset]) << 56
+        let b1 = Int64(data[offset + 1]) << 48
+        let b2 = Int64(data[offset + 2]) << 40
+        let b3 = Int64(data[offset + 3]) << 32
+        let b4 = Int64(data[offset + 4]) << 24
+        let b5 = Int64(data[offset + 5]) << 16
+        let b6 = Int64(data[offset + 6]) << 8
+        let b7 = Int64(data[offset + 7])
+        return b0 | b1 | b2 | b3 | b4 | b5 | b6 | b7
+    }
+}

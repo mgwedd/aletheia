@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	DEV (Debug) entitlements: AletheiaDev.entitlements = Aletheia.entitlements +
+	the calendars key below. Not used by Release/production builds. Keep in sync
+	with Aletheia.entitlements; scripts/check-entitlements.sh enforces it in CI.
+	-->
+	<!--
+	App Sandbox is on. Aletheia never launches an external process
+	(no ffmpeg / whisper-cli / ollama subprocess): transcription runs
+	in-process via whisper.cpp (SwiftWhisper), and Ollama is reached over
+	localhost HTTP, so full sandboxing is possible without giving up any
+	feature.
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- Microphone capture (AVAudioEngine tap on the input node). -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+
+	<!-- Talking to the locally-running Ollama server on 127.0.0.1. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+
+	<!--
+	DEV tier only. Adding a follow-up reminder to the user's Reminders (EventKit), only on an
+	explicit action. This is the sandbox entitlement that gates EventKit
+	access; the separate Reminders privacy prompt still applies at runtime.
+	-->
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+
+	<!--
+	The user picks the data folder (defaults to a folder inside iCloud
+	Drive) via NSOpenPanel on first launch. This entitlement is what lets
+	a sandboxed app keep read/write access to that folder, via a
+	security-scoped bookmark, across future launches.
+	-->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+</dict>
+</plist>

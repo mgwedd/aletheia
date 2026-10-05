@@ -9,6 +9,256 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.24.0] - 2026-10-01
+
+### Added
+- add root Package.swift for fast swift test iteration (#103) (#159)
+
+## [2.23.0] - 2026-10-01
+
+### Added
+- continuous crash-safe header flushing and mic-routing fallback (#127) (#158)
+
+## [2.22.0] - 2026-09-30
+
+### Added
+- diagnose an unopenable database and add Aletheia Doctor (#157)
+
+## [2.21.11] - 2026-09-30
+
+### Fixed
+- keep the audio when the transcript is blank (#153)
+
+## [2.21.10] - 2026-09-30
+
+### Fixed
+- fail loud on an unreadable session.json or patient.json (#154)
+
+## [2.21.9] - 2026-09-30
+
+### Fixed
+- include the data folder in Time Machine by default (#152)
+
+## [2.21.8] - 2026-09-30
+
+### Fixed
+- stop reporting an encrypted backup that nothing writes (#150)
+
+## [2.21.7] - 2026-09-30
+
+### Fixed
+- drop the plaintext pre-image after enabling encryption (#148)
+
+## [2.21.6] - 2026-09-30
+
+### Fixed
+- mandatory SHA-256 pins and commit-locked downloads for Whisper models (#145)
+
+## [2.21.5] - 2026-09-30
+
+### Fixed
+- don't leave plaintext temp copies when a decrypt fails (#149)
+
+## [2.21.4] - 2026-09-30
+
+### Fixed
+- convert same-day second sessions when toggling encryption (#147)
+
+## [2.21.3] - 2026-09-30
+
+### Fixed
+- drop calendars entitlement from production builds (#146)
+
+## [2.21.2] - 2026-09-25
+
+### Fixed
+- stop screen-recording grant from freezing the setup wizard (#141)
+
+## [2.21.1] - 2026-09-25
+
+### Fixed
+- launch Ollama when installed but not running (#140)
+
+## [2.21.0] - 2026-09-25
+
+### Added
+- real llama.cpp engine for the embedded local-LLM seam (#139)
+
+## [2.20.0] - 2026-09-25
+
+### Added
+- swappable LoRA / fine-tuned adapter seam (fails closed on base mismatch) (#137)
+
+## [2.19.0] - 2026-09-24
+
+### Added
+- model-download seam so the distribution source is swappable (#136)
+
+## [2.18.0] - 2026-09-24
+
+### Added
+- make mic recording fail loud and detect input-device changes (#135)
+
+## [2.17.1] - 2026-09-24
+
+### Fixed
+- stop xcodegen from overwriting Info.plist and entitlements (#105)
+
+## [2.17.0] - 2026-09-24
+
+### Added
+- GBNF grammar-constrained decoding for structured notes + GIRP format (#133)
+
+## [2.16.0] - 2026-09-24
+
+### Added
+- encapsulate the local-LLM engine seam (lifecycle + inference contract) (#130)
+
+## [2.15.0] - 2026-09-24
+
+### Added
+- compile-time build tiers; exclude App Intents from the production binary (#120)
+
+## [2.14.0] - 2026-09-24
+
+### Added
+- gate patient medications table behind a preview-tier feature module (#117)
+
+## [2.13.0] - 2026-09-24
+
+### Added
+- gate source citations behind a preview-tier feature module (#116)
+
+## [2.12.0] - 2026-09-24
+
+### Added
+- gate chat suggested questions behind a preview-tier feature module (#115)
+
+## [2.11.0] - 2026-09-24
+
+### Added
+- gate embedded llama.cpp ("Built-in Model") behind a dev-only feature module (#114)
+
+## [2.10.1] - 2026-09-24
+
+### Fixed
+- read backup-exclusion flag fresh, not from a stale URL cache (#118)
+
+## [2.10.0] - 2026-09-24
+
+### Added
+- gate EventKit reminders & calendar behind a dev-only feature module (#113)
+
+## [2.9.0] - 2026-09-23
+
+### Added
+- gate at-rest encryption behind a dev-only feature module (#106)
+
+## [2.8.0] - 2026-09-23
+
+### Added
+- introduce compile-time feature-module composition seam (#101)
+
+## [2.7.0] - 2026-09-20
+
+### Added
+- snapshot the database before a data-transforming migration (#93)
+
+## [2.6.0] - 2026-09-19
+
+### Added
+- consistent snapshot-before-seal for encrypted backups (#97)
+
+## [2.5.0] - 2026-09-19
+
+### Added
+- versioned SQLite schema migrations (PRAGMA user_version) + data-safety model (#92)
+
+## [2.4.0] - 2026-09-19
+
+### Added
+- keep the data folder out of Time Machine & iCloud backups by default (#91)
+
+## [2.3.0] - 2026-09-19
+
+### Added
+- recommend at-rest encryption during first-run setup (#90)
+
+## [2.2.0] - 2026-09-19
+
+### Added
+- SHA-256 integrity verification for on-device model downloads (#89)
+
+## [2.1.0] - 2026-09-19
+
+### Added
+- Google-Docs-style comments margin rail with resolve/reopen (#88)
+
+## [2.0.0] - 2026-09-19
+
+### Changed
+- rename project identity SessionNotes → Aletheia (#87) (breaking)
+
+## [1.23.0] - 2026-09-19
+
+### Added
+- security overview panel in Settings (#86)
+
+## [1.22.0] - 2026-09-19
+
+### Added
+- on-device audit log of ePHI-affecting actions (HIPAA §164.312(b)) (#85)
+
+## [1.21.0] - 2026-09-19
+
+### Added
+- add audio-retention privacy setting (transcript-only by default) (#84)
+
+## [1.20.0] - 2026-09-19
+
+### Added
+- add idle auto-lock timeout (HIPAA automatic logoff)
+
+## [1.19.0] - 2026-09-19
+
+### Added
+- show local AI engine status and active model
+
+## [1.18.0] - 2026-09-19
+
+### Added
+- add SQLite-backed persistence core
+
+## [1.17.0] - 2026-09-19
+
+### Added
+- add domain-neutral persistence-core seam
+
+## [1.16.0] - 2026-09-19
+
+### Added
+- consistent DB snapshots for safe migrations and rollback
+
+## [1.15.0] - 2026-09-19
+
+### Added
+- end-to-end-encrypted backup engine (local + staged iCloud)
+
+## [1.14.0] - 2026-09-18
+
+### Added
+- note format in Settings (default free text) + Settings in app menu
+
+## [1.13.0] - 2026-09-18
+
+### Added
+- inline transcript commenting — select a passage, comment in place
+
+## [1.12.2] - 2026-09-18
+
+### Fixed
+- Aletheia menu name, always-visible New Patient, open Background
+
 ## [1.12.1] - 2026-09-18
 
 ### Fixed

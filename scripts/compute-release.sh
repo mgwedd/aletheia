@@ -61,7 +61,7 @@ only_ignorable_paths() {
         case "$f" in
             *.md) ;;          # markdown (README, CHANGELOG, docs notes, …)
             docs/*) ;;        # the docs tree
-            *Tests/*) ;;      # test sources (SessionNotes/Tests/…)
+            *Tests/*) ;;      # test sources (Tests/…)
             *) return 1 ;;    # a source or config file → releasable
         esac
     done <<EOF
@@ -78,7 +78,7 @@ fi
 
 cd "$(dirname "$0")/.."
 
-INFO_PLIST="SessionNotes/Sources/SessionNotesApp/Resources/Info.plist"
+INFO_PLIST="Sources/App/Resources/Info.plist"
 
 # The version currently declared in the app bundle, normalized to X.Y.Z.
 declared_version() {

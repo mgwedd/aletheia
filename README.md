@@ -1,15 +1,81 @@
 # Aletheia — private therapy session notes
 
-A local-only macOS app for a therapist to record, transcribe, and summarize
-video therapy sessions — Zoom, a browser (Tebra), FaceTime, any call — then
-search, annotate, and ask questions across a patient's history. **Privacy is the
-whole point:** session audio is PHI, so nothing ever leaves the Mac it runs on.
+A local-only macOS app built on a **domain-neutral core** — on-device
+transcription, on-device AI, and local document management — wrapped by a
+**domain adapter** for its first (and currently only) use case: a therapist
+recording, transcribing, and summarizing video therapy sessions, then
+searching, annotating, and asking questions across a patient's history.
+**Privacy is the whole point:** session audio and everything derived from it
+is PHI, so nothing ever leaves the Mac it runs on.
 
 📖 [Setup guide](docs/SETUP-GUIDE.md) · ⚖️ [Consent note](CONSENT.md) · 🔒 [Security](SECURITY.md) · 📝 [Changelog](CHANGELOG.md) · 📄 [License](LICENSE) · 📃 [Terms](TERMS.md) · 🔏 [Privacy](PRIVACY.md)
 
 > **License:** source-available but **not** open source — all rights reserved. The code is public for transparency and evaluation; running or reusing it needs written permission. See [LICENSE](LICENSE).
 
-## What it does
+## Architecture
+
+The app is split into a **generic core** that knows nothing clinical and a
+**domain adapter + views** that give it meaning. The core exposes three
+domain-neutral capabilities; a domain layer wraps them for a specific use
+case:
+
+```mermaid
+flowchart TD
+  UI["SwiftUI views — therapist domain\npatients · sessions · chat"] --> Dom
+
+  subgraph Dom["Domain adapter — therapist-specific"]
+    PR[PatientRepository]
+    SR[SessionRepository]
+    CR["Annotation / Chat repositories"]
+  end
+
+  Dom --> Core
+
+  subgraph Core["Generic core — domain-neutral, no clinical vocabulary"]
+    Trans["Transcription\non-device speech-to-text"]
+    AIB["AI backend\non-device LLM: summarize · retrieve · chat"]
+    Doc["Document management\nstorage · encryption at rest · search · backup/export"]
+  end
+
+  Core --> Store[("SQLite + files\nopaque records keyed by UUID")]
+```
+
+- **Transcription** — on-device speech-to-text of recorded audio
+  (`Transcribing`, backed by [SwiftWhisper](https://github.com/exPHAT/SwiftWhisper)
+  / whisper.cpp), speaker-labeled, in-process.
+- **AI backend** — local LLM inference behind `AssistantService`:
+  summarization, retrieval over stored content, and chat — never a call to a
+  cloud model.
+- **Document management** — durable local storage, encryption at rest,
+  search, backup, and export. The storage seam (`PersistenceCore`) is
+  strictly generic: it stores an opaque `payload` keyed by `(kind, id)`,
+  scoped to an opaque `ownerID`/`itemID`, and never inspects or interprets
+  the bytes. Not even the words "patient" or "session" appear at this layer.
+
+A **domain adapter** sits above the core and decides what the opaque
+primitives mean: `PatientRepository`, `SessionRepository`,
+`AnnotationRepository`, and `ChatRepository` are what decide that `ownerID`
+is a patient, `itemID` is a session, and `kind == "comment"` is a margin
+note. Everything clinical lives in this layer and the views above it — the
+core is reusable as-is for a different single-user, on-device domain (legal
+intake, coaching notes, journaling) by swapping only the adapter and the UI.
+
+### Why therapists, why offline
+
+The first domain built on the core is a therapist managing their patients —
+chosen because clinical session data is PHI, where privacy and security
+aren't a preference but a requirement. That requirement is what drives the
+architecture, not the other way around: no analytics or telemetry, no
+servers, on-device transcription, on-device AI, encryption at rest. A domain
+where a leak is merely embarrassing wouldn't force this design; one where
+it's a compliance and ethical failure does.
+
+Every external integration sits behind a protocol in `Services/Integrations/`
+and `Services/Persistence/`, so a concrete backend swaps without touching the
+domain layer or the UI. The `Integrations` registry decides which concrete
+type backs each adapter at runtime.
+
+## The therapist domain (current application)
 
 - 🎙 **Record** the therapist's mic and the call's audio as two tracks — no
   virtual audio driver. Works with any call app (Zoom, browser, FaceTime), since
@@ -24,8 +90,13 @@ whole point:** session audio is PHI, so nothing ever leaves the Mac it runs on.
   comments the AI chat takes into account.
 - 🔔 **Fits the Mac** — Spotlight, Siri/Shortcuts, Reminders, Calendar,
   notifications, and an in-app updater.
+- 🩺 **Aletheia Doctor** — *Help › Aletheia Doctor…* (also in Settings) runs an
+  on-demand health check of the data folder, database, snapshots, permissions and
+  local AI engine, with a PHI-safe "Copy Report". If the database can't be
+  opened, the main window shows an error with step-by-step diagnosis instead of
+  silently failing to save.
 
-## How a session flows
+### How a session flows
 
 ```mermaid
 flowchart LR
@@ -39,6 +110,99 @@ flowchart LR
   Notes[Notes + comments] --> Chat
   Chat --> Cited[Answer with cited sessions]
 ```
+
+### Storage layout
+
+**Storage is deliberately plain and Finder-browsable** — one folder the user
+picks (defaults inside iCloud Drive, so backup is automatic), reached across
+launches via a security-scoped bookmark:
+
+```
+<dataRoot>/
+  Aletheia.sqlite               # notes, inline comments, chat threads (PHI, local)
+  .backups/                    # hidden; the one home for local backups (docs/DATA-SAFETY.md)
+    migrations/                # pre-migration DB pre-images (VACUUM INTO)
+    snapshots/                 # rolling DB snapshots around encryption changes
+    archives/                  # opt-in end-to-end-encrypted backup archives
+  Patients/<Patient-Slug>/
+    patient.json
+    YYYY-MM-DD_Session/
+      mic.caf / call.caf        # two audio tracks
+      transcript.txt            # merged, timestamped, speaker-labeled
+      summary.txt
+      chat.json
+```
+
+Everything except the SQLite database is plain JSON/text a non-technical user
+can read. The database lives *inside* that same folder, so it backs up with
+everything else and never leaves the Mac — it holds the therapist's inline
+transcript comments, per-session freeform notes, and per-patient chat threads
+(chat threads used to be JSON files under `ChatThreads/`; they migrate into
+the DB the first time a patient is opened). Optional AES-256-GCM at-rest
+encryption (files and DB text columns) and end-to-end-encrypted backup
+archives are opt-in — see [docs/ENCRYPTION.md](docs/ENCRYPTION.md) and
+[SECURITY.md](SECURITY.md).
+
+### AI backend (tiered, on-device first)
+
+The backend is chosen to keep setup as close to zero-install as the hardware
+allows; the user can override it in Settings.
+
+```mermaid
+flowchart TD
+  Start[Automatic] --> Q1{Apple Intelligence available?}
+  Q1 -- yes --> AIB[Apple Intelligence — on-device, no install]
+  Q1 -- no --> Q2{Built-in model ready?}
+  Q2 -- yes --> LlamaB[Built-in llama.cpp]
+  Q2 -- no --> OllamaB[Ollama — one-time install]
+```
+
+Only official/first-party runtimes are used (no third-party LLM wrappers).
+Apple Intelligence and the llama.cpp binding compile in behind
+`#if canImport(...)`, so they light up on a supporting Mac/toolchain and
+compile out otherwise.
+
+> **Apple Intelligence is currently disabled** (`Integrations.appleIntelligenceBlocked`),
+> kept off so the AI backend stays provably on-device: as Apple moves system
+> intelligence toward a cloud (Gemini) backhaul, Aletheia sticks to backends
+> it can prove stay on this Mac — Ollama and the built-in llama.cpp.
+> `Automatic` therefore resolves to a local backend. Flip the flag to
+> re-enable the on-device Foundation Models path.
+
+<details>
+<summary>Bringing up the embedded llama.cpp backend (Mac, one-time)</summary>
+
+The engine (`LlamaEngine`, conforming to the `LocalLLMEngine` seam) and the
+older `LlamaAssistant` reference both live behind `#if canImport(llama)` and
+compile out until the package is linked, so CI stays green without building
+the heavy C++:
+
+```mermaid
+flowchart LR
+  A[project.yml: llama package\ncommented / staged] -->|verify-llama-bringup.sh| B[Compile-verify on a Mac\nagainst pinned b11149]
+  B -- green --> C[Commit the package\nenablement yourself]
+  B -- red --> D[Fix LlamaEngine.swift /\nLlamaAssistant.swift, retry]
+  C --> E["canImport(llama) == true\nLlamaEngineFactory returns LlamaEngine"]
+```
+
+1. `./scripts/verify-llama-bringup.sh` — one command, one Mac: it temporarily
+   uncomments the `llama` package stanza in `project.yml` (already pinned to a
+   **specific `ggml-org/llama.cpp` commit SHA**, the latest stable release tag
+   `b11149`/`d2e54583…`, never a branch), runs `xcodegen generate` + a Release
+   `xcodebuild`, then reverts `project.yml` to its committed state either way.
+   A green run means every `llama.h` call in `LlamaEngine.swift` and
+   `LlamaAssistant.swift` compiles clean against the pin — those symbols are
+   otherwise never compiler-checked, since `canImport(llama)` is false in CI.
+2. Green? Uncomment the same two spots in `project.yml` yourself (the package
+   stanza and the `- package: llama` target dependency) and commit that. The
+   factory (`LocalLLMEngineFactory`) then returns the real `LlamaEngine`
+   instead of `UnavailableLocalLLMEngine`, and Settings shows a "Built-in
+   Model" section to download a GGUF.
+3. Confirm the model download URLs and add a SHA-256 integrity check before
+   shipping it enabled.
+4. Re-pin to a newer `llama.cpp` release only after re-running step 1 against
+   it — the API has reshuffled significantly release to release.
+</details>
 
 ## Why native Swift/SwiftUI
 
@@ -58,97 +222,16 @@ Distribution is ad-hoc signed by default (no Apple Developer account), so the
 first launch needs a right-click → Open — see the setup guide. Tagged releases
 can be Developer ID-signed and notarized (below).
 
-## Architecture
-
-```mermaid
-flowchart TD
-  UI[SwiftUI views] --> Integ[Integrations registry]
-  UI --> Store[Store — Finder-browsable files]
-  UI --> DB[CommentStore — SQLite]
-  Integ --> Transcribing
-  Integ --> AssistantService
-  Transcribing --> Whisper[WhisperTranscriber]
-  AssistantService --> Backend{Assistant backend}
-  Backend --> AI[Apple Intelligence]
-  Backend --> Llama[Built-in llama.cpp]
-  Backend --> Ollama[Ollama]
-```
-
-Every external integration sits behind a protocol in `Services/Integrations/`,
-so a backend swaps without touching the UI. The one registry (`Integrations`)
-decides which concrete type backs each adapter.
-
-**Storage is deliberately plain and Finder-browsable** — one folder the user
-picks (defaults inside iCloud Drive, so backup is automatic), reached across
-launches via a security-scoped bookmark:
-
-```
-<dataRoot>/
-  SessionNotes.sqlite          # therapist's notes + inline comments (PHI, local)
-  Patients/<Patient-Slug>/
-    patient.json
-    patient_chat.json
-    YYYY-MM-DD_Session/
-      mic.caf / call.caf        # two audio tracks
-      transcript.txt            # merged, timestamped, speaker-labeled
-      summary.txt
-      chat.json
-```
-
-Everything except the annotations DB is plain JSON/text a non-technical user
-can read. The one database is SQLite living *inside* that same folder, so it
-backs up with everything else and never leaves the Mac.
-
-## AI backend (tiered, on-device first)
-
-The backend is chosen to keep setup as close to zero-install as the hardware
-allows; the user can override it in Settings.
-
-```mermaid
-flowchart TD
-  Start[Automatic] --> Q1{Apple Intelligence available?}
-  Q1 -- yes --> AIB[Apple Intelligence — on-device, no install]
-  Q1 -- no --> Q2{Built-in model ready?}
-  Q2 -- yes --> LlamaB[Built-in llama.cpp]
-  Q2 -- no --> OllamaB[Ollama — one-time install]
-```
-
-Only official/first-party runtimes are used (no third-party LLM wrappers).
-Apple Intelligence and the llama.cpp binding compile in behind
-`#if canImport(...)`, so they light up on a supporting Mac/toolchain and
-compile out otherwise.
-
-> **Apple Intelligence is currently disabled** (`Integrations.appleIntelligenceBlocked`).
-> As Apple moves system intelligence toward a cloud (Gemini) backhaul, Aletheia
-> sticks to backends it can prove stay on this Mac — Ollama and the built-in
-> llama.cpp. `Automatic` therefore resolves to a local backend. Flip the flag to
-> re-enable the on-device Foundation Models path.
-
-<details>
-<summary>Bringing up the embedded llama.cpp backend (Mac, one-time)</summary>
-
-The binding lives behind `#if canImport(llama)` and compiles out until the
-package is linked, so CI stays green without building the heavy C++.
-
-1. In `SessionNotes/project.yml`, uncomment the `llama` package stanza and the
-   `- package: llama` dependency, and pin `revision:` to a **verified
-   `ggml-org/llama.cpp` commit SHA** (don't track a branch).
-2. `./scripts/build.sh` — `LlamaAssistant` now compiles and Settings shows a
-   "Built-in Model" section to download a GGUF.
-3. Verify `LlamaAssistant`'s `llama.h` calls against that pinned revision — the
-   symbols weren't compiler-checked in CI.
-4. Confirm the model download URLs and add a SHA-256 integrity check before
-   shipping it enabled.
-</details>
-
 ## Build · Test · Release
 
-Requires a Mac with Xcode 16+. The project is generated from
-`SessionNotes/project.yml` (XcodeGen) rather than a checked-in `.xcodeproj`.
+Requires a Mac with Xcode 16+. The project is generated from `project.yml`
+(XcodeGen) rather than a checked-in `.xcodeproj`. Deployment target is
+macOS 14. Product/display name, Xcode target, scheme, and bundle-id prefix
+(`com.aletheia`) are all **Aletheia**.
 
 ```bash
 ./scripts/build.sh          # ad-hoc signed app in dist/
-cd SessionNotes && xcodegen generate && xcodebuild test -scheme SessionNotes -destination 'platform=macOS'
+xcodegen generate && xcodebuild test -scheme Aletheia -destination 'platform=macOS'
 ```
 
 CI/CD runs entirely on GitHub Actions with **only first-party actions plus

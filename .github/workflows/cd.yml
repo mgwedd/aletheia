@@ -39,9 +39,6 @@ jobs:
     name: Build & package (macOS)
     runs-on: macos-15
     timeout-minutes: 40
-    defaults:
-      run:
-        working-directory: SessionNotes
     steps:
       - uses: actions/checkout@v4
 
@@ -53,17 +50,15 @@ jobs:
       - name: Cache Swift packages
         uses: actions/cache@v4
         with:
-          path: SessionNotes/build/SourcePackages
-          key: spm-macos-15-${{ hashFiles('SessionNotes/project.yml') }}
+          path: build/SourcePackages
+          key: spm-macos-15-${{ hashFiles('project.yml') }}
           restore-keys: spm-macos-15-
 
       - name: Build Release app (ad-hoc signed)
-        working-directory: .
         run: ./scripts/build.sh
 
       - name: Package DMG
         id: dmg
-        working-directory: .
         env:
           # On a pull_request event GITHUB_SHA is the ephemeral merge commit;
           # the PR's own head sha is the one a tester can match to a commit.

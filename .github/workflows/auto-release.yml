@@ -80,7 +80,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           ./scripts/apply-release.sh "$NEXT"
-          git add SessionNotes/Sources/SessionNotesApp/Resources/Info.plist CHANGELOG.md
+          git add Sources/App/Resources/Info.plist CHANGELOG.md
           # [skip ci] is belt-and-suspenders: a commit pushed with GITHUB_TOKEN
           # already can't re-trigger this workflow (recursion is suppressed).
           git commit -m "chore(release): v${NEXT} [skip ci]"
