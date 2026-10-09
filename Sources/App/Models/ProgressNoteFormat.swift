@@ -9,15 +9,18 @@ import Foundation
 /// prompt builder turns into instructions, and what the exporter can render as
 /// stable headings. No UI or model calls here, so it's unit-tested in isolation.
 enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
+    // Declaration order is the order pickers show; the unstructured summary
+    // leads. `narrative` stays the case name and raw value so existing note
+    // files (`note.narrative.txt`) keep resolving.
+    case narrative
     case soap
     case dap
     case birp
     case girp
-    case narrative
 
     var id: String { rawValue }
 
-    /// The out-of-box default: free text, no imposed template. A therapist who
+    /// The out-of-box default: a plain summary, no imposed template. A therapist who
     /// wants a payer-ready structure opts into SOAP/DAP/BIRP, per session or as
     /// their Settings default.
     static let `default`: ProgressNoteFormat = .narrative
@@ -37,7 +40,7 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
         case .dap: return "DAP note"
         case .birp: return "BIRP note"
         case .girp: return "GIRP note"
-        case .narrative: return "Free text (no template)"
+        case .narrative: return "Summary (no template)"
         }
     }
 
@@ -48,7 +51,7 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
         case .dap: return "DAP"
         case .birp: return "BIRP"
         case .girp: return "GIRP"
-        case .narrative: return "Free text"
+        case .narrative: return "Summary"
         }
     }
 
