@@ -208,7 +208,8 @@ struct PatientDetailView: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Text(storedPatient.name)
-                    .font(.title2.bold())
+                    .font(Theme.Typography.title)
+                    .foregroundStyle(Theme.text.color)
                     .lineLimit(2)
                     .onTapGesture(perform: onEditProfile)
                 Button(action: onEditProfile) {

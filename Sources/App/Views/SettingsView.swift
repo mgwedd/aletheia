@@ -28,6 +28,15 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Appearance", selection: $settings.appearance) {
+                    ForEach(AppearancePreference.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             Section("Security Overview") {
                 SecurityPostureView()
             }

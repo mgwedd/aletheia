@@ -24,7 +24,7 @@ struct PatientProfileCard: View {
             } else {
                 ForEach(rows, id: \.label) { row in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(row.label).font(.caption).foregroundStyle(.secondary)
+                        Text(row.label).eyebrowStyle()
                         Text(row.text)
                             .font(.callout)
                             .lineLimit(3)
@@ -34,7 +34,7 @@ struct PatientProfileCard: View {
             }
         }
         .padding(12)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+        .themeCard()
         .accessibilityElement(children: .contain)
     }
 }

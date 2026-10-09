@@ -97,6 +97,7 @@ final class AppSettings: ObservableObject {
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
+        static let appearance = "appearance"
         static let keepDataOutOfSystemBackups = BackupExclusion.defaultsKey
     }
 
@@ -179,6 +180,14 @@ final class AppSettings: ObservableObject {
     @Published var keepAudioRecordings: Bool {
         didSet { defaults.set(keepAudioRecordings, forKey: Keys.keepAudioRecordings) }
     }
+    /// Light, Dark, or follow the system. Applied app-wide as soon as it changes
+    /// (and at launch, by `AppDelegate`).
+    @Published var appearance: AppearancePreference {
+        didSet {
+            defaults.set(appearance.rawValue, forKey: Keys.appearance)
+            appearance.apply()
+        }
+    }
     /// Keep the data folder out of Time Machine and iCloud's device backup (via
     /// `isExcludedFromBackup`). Off by default: the app writes no backup of its
     /// own unless opted in, so Time Machine is the baseline copy and excluding
@@ -245,6 +254,8 @@ final class AppSettings: ObservableObject {
         localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)
         iCloudEncryptedBackupEnabled = defaults.bool(forKey: Keys.iCloudEncryptedBackupEnabled)
         keepAudioRecordings = defaults.bool(forKey: Keys.keepAudioRecordings)
+        appearance = defaults.string(forKey: Keys.appearance)
+            .flatMap(AppearancePreference.init(rawValue:)) ?? .default
         // Default off when never set; an explicit stored choice is respected.
         // Assigning in `init` doesn't fire `didSet`, so this never writes the key.
         keepDataOutOfSystemBackups = BackupExclusion.resolvedExclusion(in: defaults)

@@ -41,6 +41,8 @@ struct PatientsListView: View {
                 ContentUnavailableView.search(text: searchText)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Theme.sidebar.color)
         .searchable(text: $searchText, prompt: "Search patients")
         .navigationTitle("Patients")
         // An always-visible bar at the foot of the sidebar. The toolbar "+"
