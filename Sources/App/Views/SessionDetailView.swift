@@ -7,7 +7,26 @@ import AppKit
 /// they live in a margin rail beside the transcript (Google-Docs style), so
 /// the passage and its comments are read together.
 enum SessionTab: Hashable {
-    case transcript, notes, summary, ask
+    case transcript, notes, ask
+}
+
+/// What the Notes tab is showing: the therapist's own free-form notes, or the
+/// AI-drafted note in one of the documentation formats.
+enum NotesPane: Hashable, Identifiable {
+    case mine
+    case format(ProgressNoteFormat)
+
+    var id: Self { self }
+
+    /// Picker order: the drafted formats (Summary first), then the therapist's own.
+    static let all: [NotesPane] = ProgressNoteFormat.allCases.map(NotesPane.format) + [.mine]
+
+    var label: String {
+        switch self {
+        case .mine: return "My Notes"
+        case .format(let format): return format.shortName
+        }
+    }
 }
 
 struct SessionDetailView: View {
@@ -76,6 +95,8 @@ struct SessionDetailView: View {
     @State private var showInlineComposer = false
     @State private var inlineCommentBody = ""
     @State private var selectedTab: SessionTab = .transcript
+    /// Whether the Notes tab shows the therapist's own notes instead of a drafted note.
+    @State private var showingMyNotes = false
     /// The comment currently in focus — drives the two-way highlight between a
     /// transcript passage and its card in the margin rail. Set by clicking
     /// either side.
@@ -107,8 +128,7 @@ struct SessionDetailView: View {
             Divider()
             TabView(selection: $selectedTab) {
                 transcriptTab.tabItem { Label("Transcript", systemImage: "text.alignleft") }.tag(SessionTab.transcript)
-                notesTab.tabItem { Label("Notes", systemImage: "square.and.pencil") }.tag(SessionTab.notes)
-                summaryTab.tabItem { Label("Note", systemImage: "doc.text") }.tag(SessionTab.summary)
+                notesTab.tabItem { Label("Notes", systemImage: "doc.text") }.tag(SessionTab.notes)
                 chatTab.tabItem { Label("Ask", systemImage: "bubble.left.and.bubble.right") }.tag(SessionTab.ask)
             }
         }
@@ -451,10 +471,8 @@ struct SessionDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
                 .background(Color.yellow.opacity(0.18), in: RoundedRectangle(cornerRadius: 6))
-            TextEditor(text: $inlineCommentBody)
-                .font(.body)
-                .frame(minHeight: 90, maxHeight: 160)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
+            EditorField(text: $inlineCommentBody, placeholder: "Add a comment…", minHeight: 90)
+                .frame(maxHeight: 160)
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { showInlineComposer = false }
@@ -571,36 +589,67 @@ struct SessionDetailView: View {
         transcriptDraft = transcriptText
     }
 
-    private var notesTab: some View {
+    private var myNotesView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Your private notes for this session — jot things down during or after the session. Kept separate from the transcript, and included when you ask about this session.")
+            Text("Your own notes for this session — jot things down during or after the session. Kept separate from the transcript, and included when you ask about this session.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding([.horizontal, .top])
-            TextEditor(text: $sessionNote)
-                .font(.body)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(8)
-                .onChange(of: sessionNote) { _, newValue in
-                    guard newValue != persistedSessionNote else { return }
-                    persistedSessionNote = newValue
-                    appModel.saveNote(sessionID: session.id, text: newValue)
-                }
+            EditorField(
+                text: $sessionNote,
+                placeholder: "Jot things down during or after the session…",
+                minHeight: 160,
+                fills: true
+            )
+            .padding([.horizontal, .bottom])
+            .onChange(of: sessionNote) { _, newValue in
+                guard newValue != persistedSessionNote else { return }
+                persistedSessionNote = newValue
+                appModel.saveNote(sessionID: session.id, text: newValue)
+            }
         }
     }
 
-    private var summaryTab: some View {
+    /// The Notes tab: one picker across the drafted formats and the therapist's
+    /// own notes. Switching is locked while a note is generating or being edited.
+    private var notesTab: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Picker("Notes", selection: notesPaneBinding) {
+                ForEach(NotesPane.all) { pane in
+                    Text(pane.label).tag(pane)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .disabled(noteRunner.isStreaming || noteRunner.isQueued || isEditingNote)
+            .padding([.horizontal, .top])
+
+            if showingMyNotes {
+                myNotesView
+            } else {
+                generatedNoteView
+            }
+        }
+    }
+
+    private var notesPaneBinding: Binding<NotesPane> {
+        Binding(
+            get: { showingMyNotes ? .mine : .format(settings.progressNoteFormat) },
+            set: { pane in
+                switch pane {
+                case .mine:
+                    showingMyNotes = true
+                case .format(let format):
+                    showingMyNotes = false
+                    settings.progressNoteFormat = format
+                }
+            }
+        )
+    }
+
+    private var generatedNoteView: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
-                Picker("Format", selection: $settings.progressNoteFormat) {
-                    ForEach(ProgressNoteFormat.allCases) { format in
-                        Text(format.shortName).tag(format)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .disabled(noteRunner.isStreaming || noteRunner.isQueued || isEditingNote)
-
                 HStack(alignment: .firstTextBaseline) {
                     Text(settings.progressNoteFormat.blurb)
                         .font(.caption)
@@ -686,9 +735,8 @@ struct SessionDetailView: View {
                         .disabled(!NoteEditing.canSave(draft: noteDraft, original: summaryText))
                 }
                 .padding(.horizontal)
-                TextEditor(text: $noteDraft)
-                    .font(.body)
-                    .padding(8)
+                EditorField(text: $noteDraft, minHeight: 200, fills: true)
+                    .padding([.horizontal, .bottom])
             } else {
                 ScrollView {
                     MarkdownMessageView(text: summaryText)

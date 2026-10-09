@@ -62,13 +62,18 @@ struct Patient: Identifiable, Codable, Hashable {
     }
 
     /// The always-included background block handed to the AI so it can weigh the
-    /// therapist's summary and the patient's medications. Empty when nothing has
-    /// been entered, so it adds nothing to the prompt. Pure, so it's unit-tested.
+    /// therapist's summary, her notes on the patient and the patient's
+    /// medications. Empty when nothing has been entered, so it adds nothing to
+    /// the prompt. Pure, so it's unit-tested.
     var aiBackgroundBlock: String {
         var lines: [String] = []
         let history = clinicalHistory.trimmingCharacters(in: .whitespacesAndNewlines)
         if !history.isEmpty {
             lines.append("Clinical history (therapist's summary):\n\(history)")
+        }
+        let therapistNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !therapistNotes.isEmpty {
+            lines.append("Therapist's notes on the patient:\n\(therapistNotes)")
         }
         let meds = medications
             .map { ($0.name.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -80,5 +85,40 @@ struct Patient: Identifiable, Codable, Hashable {
         }
         guard !lines.isEmpty else { return "" }
         return "===== Patient background =====\n" + lines.joined(separator: "\n\n")
+    }
+
+    /// A display name from what was typed: trimmed, with inner whitespace runs
+    /// collapsed to one space; nil when nothing is left. Only the display name
+    /// changes on a rename (`slug`, the folder on disk, stays as created).
+    static func normalizedName(_ raw: String) -> String? {
+        let collapsed = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return collapsed.isEmpty ? nil : collapsed
+    }
+
+    /// One labelled line of the profile card.
+    struct ProfileRow: Equatable {
+        let label: String
+        let text: String
+    }
+
+    /// What the profile card shows: only the parts that have content, in the
+    /// order history, medications, notes. Medications are listed only when the
+    /// build has that module (`includeMedications`).
+    func profileRows(includeMedications: Bool) -> [ProfileRow] {
+        var rows: [ProfileRow] = []
+        let history = clinicalHistory.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !history.isEmpty { rows.append(ProfileRow(label: "Clinical history", text: history)) }
+        if includeMedications {
+            let listed = medications.compactMap { med -> String? in
+                let name = med.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let dose = med.dose.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return nil }
+                return dose.isEmpty ? name : "\(name) \(dose)"
+            }
+            if !listed.isEmpty { rows.append(ProfileRow(label: "Medications", text: listed.joined(separator: ", "))) }
+        }
+        let therapistNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !therapistNotes.isEmpty { rows.append(ProfileRow(label: "Notes", text: therapistNotes)) }
+        return rows
     }
 }

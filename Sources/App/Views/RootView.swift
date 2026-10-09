@@ -11,10 +11,13 @@ struct RootView: View {
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
     @State private var showSearch = false
+    /// The patient whose profile is being edited; the sheet is shared by the
+    /// detail view's Edit button and the sidebar's context menu.
+    @State private var editingProfile: Patient?
 
     var body: some View {
         NavigationSplitView {
-            PatientsListView(selectedPatient: $selectedPatient)
+            PatientsListView(selectedPatient: $selectedPatient, onEditProfile: { editingProfile = $0 })
                 .toolbar {
                     ToolbarItem(placement: .automatic) {
                         Button {
@@ -33,7 +36,7 @@ struct RootView: View {
                 }
         } detail: {
             if let selectedPatient, appModel.patients.contains(where: { $0.id == selectedPatient.id }) {
-                PatientDetailView(patient: selectedPatient)
+                PatientDetailView(patient: selectedPatient, onEditProfile: { editingProfile = selectedPatient })
                     .id(selectedPatient.id)
             } else {
                 ContentUnavailableView(
@@ -55,6 +58,13 @@ struct RootView: View {
                 .environmentObject(updateService)
                 .environmentObject(encryption)
                 .frame(minWidth: 560, minHeight: 520)
+        }
+        .sheet(item: $editingProfile) { patient in
+            PatientProfileEditor(
+                patient: appModel.patients.first { $0.id == patient.id } ?? patient,
+                showsMedications: appModel.featureRegistry.contains(id: PatientMedicationsFeatureModule.id)
+            )
+            .environmentObject(appModel)
         }
         .sheet(isPresented: $showSearch) {
             GlobalSearchView(onSelectPatient: { selectedPatient = $0 })
