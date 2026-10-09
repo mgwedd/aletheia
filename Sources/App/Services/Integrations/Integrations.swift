@@ -13,6 +13,9 @@ import Foundation
 @MainActor
 final class Integrations: ObservableObject {
     private let settings: AppSettings
+    /// Serializes every LLM generation (notes and both chats) so a new request
+    /// waits for the running one instead of hanging behind it in the model.
+    let inferenceQueue = InferenceQueue()
 
     init(settings: AppSettings) {
         self.settings = settings

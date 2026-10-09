@@ -518,7 +518,7 @@ struct SessionDetailView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .disabled(noteRunner.isStreaming)
+                .disabled(noteRunner.isStreaming || noteRunner.isQueued)
 
                 HStack(alignment: .firstTextBaseline) {
                     Text(settings.progressNoteFormat.blurb)
@@ -528,6 +528,12 @@ struct SessionDetailView: View {
                     if noteRunner.isStreaming {
                         Button(role: .destructive) { noteRunner.stop() } label: {
                             Label("Stop", systemImage: "stop.fill")
+                        }
+                    } else if noteRunner.isQueued {
+                        // Waiting behind another generation: offer to back out
+                        // rather than a Generate button that looks stuck.
+                        Button(role: .cancel) { noteRunner.stop() } label: {
+                            Label("Cancel", systemImage: "xmark")
                         }
                     } else {
                         Button {
@@ -546,6 +552,11 @@ struct SessionDetailView: View {
                         }
                         .help("Copy the note to paste into your EHR")
                     }
+                }
+                if let status = noteRunner.queuedStatus {
+                    Label(status, systemImage: "clock")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding([.horizontal, .top])
@@ -579,7 +590,7 @@ struct SessionDetailView: View {
     }
 
     private var chatTab: some View {
-        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() })
+        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() }, queuedStatus: chatRunner.queuedStatus)
     }
 
     private func load() {
@@ -711,14 +722,24 @@ struct SessionDetailView: View {
     private func generateNote() {
         guard let store = appModel.store else { return }
         let format = settings.progressNoteFormat
-        let stream = integrations.makeAssistantService().streamProgressNote(
-            format: format,
-            transcript: transcriptText,
-            notes: sessionNote,
-            comments: comments
-        )
+        // Snapshot the inputs now; the request itself is only made when the
+        // queue starts this job (it may be waiting behind a chat answer).
+        let service = integrations.makeAssistantService()
+        let transcript = transcriptText
+        let notes = sessionNote
+        let sessionComments = comments
         noteRunner.start(
-            stream: stream,
+            queue: integrations.inferenceQueue,
+            kind: .note,
+            label: "progress note",
+            makeStream: {
+                service.streamProgressNote(
+                    format: format,
+                    transcript: transcript,
+                    notes: notes,
+                    comments: sessionComments
+                )
+            },
             onReveal: { text in
                 if settings.progressNoteFormat == format { summaryText = text }
             },
@@ -747,19 +768,30 @@ struct SessionDetailView: View {
 
     private func sendChat(_ question: String) {
         guard let store = appModel.store else { return }
-        chatMessages.append(ChatMessage(role: .user, text: question))
+        let userMessage = ChatMessage(role: .user, text: question)
+        chatMessages.append(userMessage)
         isChatSending = true
         let assistantID = UUID()
-        let stream = integrations.makeAssistantService()
-            .streamAnswerAboutSession(
-                transcript: transcriptText,
-                notes: sessionNote,
-                comments: comments,
-                history: chatMessages,
-                question: question
-            )
+        // Snapshot the inputs now; the request itself is only made when the
+        // queue starts this job (it may be waiting behind the note).
+        let service = integrations.makeAssistantService()
+        let transcript = transcriptText
+        let notes = sessionNote
+        let sessionComments = comments
+        let history = chatMessages
         chatRunner.start(
-            stream: stream,
+            queue: integrations.inferenceQueue,
+            kind: .sessionChat,
+            label: "session question",
+            makeStream: {
+                service.streamAnswerAboutSession(
+                    transcript: transcript,
+                    notes: notes,
+                    comments: sessionComments,
+                    history: history,
+                    question: question
+                )
+            },
             onReveal: { text in chatMessages.upsert(id: assistantID, role: .assistant, text: text) },
             onError: { error in
                 isChatSending = false
@@ -768,6 +800,12 @@ struct SessionDetailView: View {
             onFinish: { _ in
                 isChatSending = false
                 appModel.attemptSave("chat") { try store.saveSessionChat(chatMessages, for: patient, session: session) }
+            },
+            // Cancelled while waiting: the question never ran, so take it back
+            // out of the conversation rather than leave it unanswered.
+            onCancelledWhileQueued: {
+                chatMessages.removeAll { $0.id == userMessage.id }
+                isChatSending = false
             }
         )
     }

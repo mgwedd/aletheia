@@ -47,7 +47,8 @@ struct PatientChatView: View {
                         isSending: isSending,
                         suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.patient : [],
                         onSend: send,
-                        onStop: { chatRunner.stop() }
+                        onStop: { chatRunner.stop() },
+                        queuedStatus: chatRunner.queuedStatus
                     )
                     .frame(minWidth: 360)
                 } else {
@@ -183,14 +184,22 @@ struct PatientChatView: View {
         if selectedThreadID == nil { startNewThread() }
         guard let threadID = selectedThreadID else { return }
 
-        messages.append(ChatMessage(role: .user, text: question))
+        let userMessage = ChatMessage(role: .user, text: question)
+        messages.append(userMessage)
         isSending = true
         let assistantID = UUID()
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: question)
-        let stream = integrations.makeAssistantService()
-            .streamAnswerAboutPatient(context: context.text, history: messages, question: question)
+        // Snapshot everything the prompt needs now; the request itself is only
+        // made when the queue starts this job.
+        let service = integrations.makeAssistantService()
+        let history = messages
         chatRunner.start(
-            stream: stream,
+            queue: integrations.inferenceQueue,
+            kind: .patientChat,
+            label: "patient question",
+            makeStream: {
+                service.streamAnswerAboutPatient(context: context.text, history: history, question: question)
+            },
             // Stream the raw answer live; fold in the numbered source footer once
             // the full text is in, so citations don't flicker mid-stream.
             onReveal: { text in messages.upsert(id: assistantID, role: .assistant, text: text) },
@@ -209,6 +218,12 @@ struct PatientChatView: View {
                 messages.upsert(id: assistantID, role: .assistant, text: decorated)
                 isSending = false
                 persist(threadID: threadID)
+            },
+            // Cancelled while waiting: the question never ran, so take it back
+            // out of the thread rather than leave it unanswered.
+            onCancelledWhileQueued: {
+                messages.removeAll { $0.id == userMessage.id }
+                isSending = false
             }
         )
     }
