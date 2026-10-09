@@ -144,9 +144,10 @@ extension ButtonStyle where Self == ThemeIconButtonStyle {
 
 // MARK: - Chip
 
-/// A small capsule tag: a count, "Transcript", "AI draft", "Recording".
+/// A small capsule tag: a count, "Transcript", "AI draft", "Recording", or a
+/// check result ("OK", "Warning", "Problem").
 struct Chip: View {
-    enum Tone { case neutral, accent, recording }
+    enum Tone { case neutral, accent, recording, ok, warn, info }
 
     let text: String
     var tone: Tone = .neutral
@@ -164,6 +165,9 @@ struct Chip: View {
         case .neutral: return Theme.chip.color
         case .accent: return Theme.accentTint.color
         case .recording: return Theme.recordingTint.color
+        case .ok: return Theme.okTint.color
+        case .warn: return Theme.warnTint.color
+        case .info: return Theme.infoTint.color
         }
     }
 
@@ -172,6 +176,9 @@ struct Chip: View {
         case .neutral: return Theme.chipInk.color
         case .accent: return Theme.text.color
         case .recording: return Theme.recording.color
+        case .ok: return Theme.ok.color
+        case .warn: return Theme.warn.color
+        case .info: return Theme.info.color
         }
     }
 
@@ -189,6 +196,97 @@ struct Chip: View {
         .frame(height: 20)
         .background(fill, in: Capsule())
         .fixedSize()
+    }
+}
+
+// MARK: - Filter chip
+
+/// A toggleable capsule for filtering a list ("All 5", "Transcripts 2"). The
+/// selected one takes the accent tint and an accent border.
+struct ThemeFilterChipStyle: ButtonStyle {
+    var isOn: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        FilterChipBody(configuration: configuration, isOn: isOn)
+    }
+
+    private struct FilterChipBody: View {
+        let configuration: ButtonStyleConfiguration
+        let isOn: Bool
+        @Environment(\.isEnabled) private var isEnabled
+        @State private var isHovered = false
+
+        var body: some View {
+            let fill: Color = isOn ? Theme.accentTint.color : (isHovered || configuration.isPressed ? Theme.hover.color : .clear)
+            configuration.label
+                .font(Theme.Typography.control)
+                .lineLimit(1)
+                .foregroundStyle(isEnabled ? Theme.text.color : Theme.muted.color)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(fill, in: Capsule())
+                .overlay(Capsule().strokeBorder(isOn ? Theme.accent.color : Theme.line.color, lineWidth: 1))
+                .contentShape(Capsule())
+                .onHover { isHovered = $0 }
+                .animation(.easeOut(duration: 0.12), value: isHovered)
+                .accessibilityAddTraits(isOn ? .isSelected : [])
+        }
+    }
+}
+
+extension ButtonStyle where Self == ThemeFilterChipStyle {
+    /// `.buttonStyle(.themeFilterChip(isOn: filter == .all))`
+    static func themeFilterChip(isOn: Bool) -> ThemeFilterChipStyle { ThemeFilterChipStyle(isOn: isOn) }
+}
+
+// MARK: - Key cap
+
+/// A keyboard key in a hint ("esc", "↑", "⌘ return"). Decorative: give the
+/// surrounding hint its own accessibility label.
+struct KeyCap: View {
+    let key: String
+
+    init(_ key: String) { self.key = key }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
+        Text(key)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Theme.muted.color)
+            .padding(.horizontal, 6)
+            .frame(minWidth: 22, minHeight: 22)
+            .background(Theme.field.color, in: shape)
+            .overlay(shape.strokeBorder(Theme.line.color, lineWidth: 1))
+            // The design's key cap has a heavier bottom edge.
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Theme.line.color).frame(height: 1).padding(.horizontal, 3)
+            }
+            .fixedSize()
+    }
+}
+
+// MARK: - Progress bar
+
+/// A thin determinate bar: setup progress, transcription, passphrase strength.
+struct ThemeProgressBar: View {
+    /// 0...1; values outside are clamped.
+    let value: Double
+    var tint: Color = Theme.accent.color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.chip.color)
+                Capsule()
+                    .fill(tint)
+                    .frame(width: proxy.size.width * min(max(value, 0), 1))
+            }
+        }
+        .frame(height: 6)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: value)
+        .accessibilityElement()
+        .accessibilityValue(Text("\(Int((min(max(value, 0), 1) * 100).rounded())) percent"))
     }
 }
 
@@ -326,10 +424,41 @@ extension View {
             .overlay(shape.strokeBorder(isEmphasized ? Theme.accent.color : Theme.line.color, lineWidth: 1))
     }
 
+    /// A status banner: the tone's tint behind it and a border in the tone's
+    /// ink. Body text on it uses `Theme.text` / `Theme.muted`.
+    func themeBanner(_ tone: BannerTone) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+        return padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .background(tone.tint, in: shape)
+            .overlay(shape.strokeBorder(tone.ink, lineWidth: 1))
+    }
+
     /// A full-width hairline between regions.
     func themeDivider(_ edge: VerticalEdge = .bottom) -> some View {
         overlay(alignment: edge == .top ? .top : .bottom) {
             Rectangle().fill(Theme.line.color).frame(height: 1)
+        }
+    }
+}
+
+/// The tone of a `themeBanner`.
+enum BannerTone {
+    case info, warn, danger
+
+    var ink: Color {
+        switch self {
+        case .info: return Theme.info.color
+        case .warn: return Theme.warn.color
+        case .danger: return Theme.recording.color
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .info: return Theme.infoTint.color
+        case .warn: return Theme.warnTint.color
+        case .danger: return Theme.recordingTint.color
         }
     }
 }

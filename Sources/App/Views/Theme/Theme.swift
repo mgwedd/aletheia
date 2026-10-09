@@ -21,6 +21,7 @@ import AppKit
 ///   window · sidebar · panel · field     text · muted      accent · accentTint
 ///   raised · hover · line                chipInk           highlight · recording
 ///                                                          bubble · callout · callAudio
+///                                                          ok · warn · info (+ tints)
 enum Theme {
     /// A named color from the asset catalog.
     struct ColorToken: Hashable {
@@ -97,12 +98,29 @@ enum Theme {
     /// Call audio, the second track wherever two are shown.
     static let callAudio = ColorToken("Theme/CallAudio")
 
+    // MARK: Status
+
+    // Check results, banners and status chips. Each ink reads on its own tint;
+    // the danger pair is `recording` / `recordingTint`.
+    //
+    //   ok    "OK", "On", "Installed"         okTint behind it
+    //   warn  "Warning", "Off", "Unreadable"  warnTint behind it
+    //   info  Time Machine, transcription     infoTint behind it
+
+    static let ok = ColorToken("Theme/Ok")
+    static let okTint = ColorToken("Theme/OkTint")
+    static let warn = ColorToken("Theme/Warn")
+    static let warnTint = ColorToken("Theme/WarnTint")
+    static let info = ColorToken("Theme/Info")
+    static let infoTint = ColorToken("Theme/InfoTint")
+
     static let all: [ColorToken] = [
         window, sidebar, panel, raised, hover, line, field,
         text, muted,
         accent, accentInk, accentHover, accentTint, chip, chipInk,
         highlight, highlightInk, recording, recordingFill, recordingInk, recordingTint,
         bubble, callout, callAudio,
+        ok, okTint, warn, warnTint, info, infoTint,
     ]
 
     // MARK: Contrast contract
@@ -148,6 +166,18 @@ enum Theme {
             Pairing(foreground: muted, background: chip, minimum: 4.5),
             Pairing(foreground: recordingInk, background: recordingFill, minimum: 4.5),
         ]
+        // Status chips and banners: the ink on its tint, and body and
+        // secondary text inside a tinted banner.
+        for (ink, tint) in [(ok, okTint), (warn, warnTint), (info, infoTint)] {
+            pairs.append(Pairing(foreground: ink, background: tint, minimum: 4.5))
+            pairs.append(Pairing(foreground: text, background: tint, minimum: 4.5))
+            pairs.append(Pairing(foreground: muted, background: tint, minimum: 4.5))
+        }
+        for surface in [window, panel, field] {
+            for ink in [ok, warn, info] {
+                pairs.append(Pairing(foreground: ink, background: surface, minimum: 4.5))
+            }
+        }
         return pairs
     }()
 
