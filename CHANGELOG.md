@@ -9,6 +9,15 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.30.0] - 2026-10-09
+
+### Added
+- Settings panes use theme colors (#210)
+- banners, lock screen and patient editor use theme colors (#209)
+- Mermaid diagrams use theme colors (#207)
+- live input level meters on the recording panel (#205)
+- serif typography for the generated note (#204)
+
 ## [2.29.0] - 2026-10-09
 
 ### Added
