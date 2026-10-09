@@ -749,11 +749,13 @@ struct SessionDetailView: View {
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 20)
-            EditorField(
-                text: $sessionNote,
+            RichNoteEditor(
+                markdown: $sessionNote,
                 placeholder: "Jot things down during or after the session…",
+                fonts: .sans,
                 minHeight: 160,
-                fills: true
+                fills: true,
+                label: "My notes"
             )
             .padding([.horizontal, .bottom], 20)
             .onChange(of: sessionNote) { _, newValue in
@@ -901,7 +903,7 @@ struct SessionDetailView: View {
                         .disabled(!NoteEditing.canSave(draft: noteDraft, original: summaryText))
                 }
                 .padding(.horizontal, 20)
-                EditorField(text: $noteDraft, minHeight: 200, fills: true)
+                RichNoteEditor(markdown: $noteDraft, fonts: .serif, minHeight: 200, fills: true, label: "Edit note")
                     .padding([.horizontal, .bottom], 20)
             } else {
                 ScrollView {
