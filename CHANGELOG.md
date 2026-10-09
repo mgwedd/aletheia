@@ -9,6 +9,15 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.28.0] - 2026-10-09
+
+### Added
+- edit a comment from its card in the margin rail (#195)
+- profile card and Edit sheet, editable name, one Notes tab, styled text boxes (#193)
+
+### Fixed
+- close the update prompt when the download starts (#194)
+
 ## [2.27.2] - 2026-10-09
 
 ### Fixed
