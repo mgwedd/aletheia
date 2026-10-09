@@ -3,6 +3,7 @@ import SwiftUI
 struct PatientsListView: View {
     @EnvironmentObject private var appModel: AppModel
     @Binding var selectedPatient: Patient?
+    let onEditProfile: (Patient) -> Void
 
     @State private var searchText = ""
     @State private var showAddPatient = false
@@ -19,6 +20,9 @@ struct PatientsListView: View {
                 .font(.headline)
                 .padding(.vertical, 4)
                 .tag(patient)
+                .contextMenu {
+                    Button("Edit Profile…") { onEditProfile(patient) }
+                }
         }
         .overlay {
             if appModel.patients.isEmpty {

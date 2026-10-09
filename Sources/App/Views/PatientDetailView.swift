@@ -2,6 +2,9 @@ import SwiftUI
 
 struct PatientDetailView: View {
     let patient: Patient
+    /// Opens the profile editor (hosted by `RootView`, which the sidebar's
+    /// context menu shares).
+    let onEditProfile: () -> Void
 
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
@@ -21,16 +24,8 @@ struct PatientDetailView: View {
     /// Save / Discard / Cancel prompt is up.
     @State private var pendingSelection: SessionSelection?
     @State private var showUnsavedPrompt = false
-    @State private var notes: String = ""
-    @State private var clinicalHistory: String = ""
-    @State private var medications: [Medication] = []
     @State private var showPatientChat = false
     @State private var errorMessage: String?
-    /// Clinical background (history + medications) is important context, so it
-    /// starts open. Controlled (vs. a bare DisclosureGroup) so the chevron
-    /// reliably toggles it.
-    @State private var showBackground = true
-
     /// The selected session, resolved against the current listing so a session
     /// that has dropped out of it can't leave a dangling selection.
     private var selectedSession: SessionRecord? {
@@ -48,18 +43,13 @@ struct PatientDetailView: View {
     var body: some View {
         HSplitView {
             VStack(alignment: .leading, spacing: 12) {
-                TextEditor(text: $notes)
-                    .font(.body)
-                    .frame(minHeight: 100, maxHeight: 160)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
-                    .onChange(of: notes) { _, newValue in
-                        // Skip the onAppear sync (notes = patient.notes)
-                        // firing this too — only persist actual edits.
-                        guard newValue != storedPatient.notes else { return }
-                        appModel.updatePatient(id: patient.id) { $0.notes = newValue }
-                    }
+                header
 
-                backgroundSection
+                PatientProfileCard(
+                    patient: storedPatient,
+                    showsMedications: showsMedications,
+                    onEdit: onEditProfile
+                )
 
                 HStack {
                     Button {
@@ -140,13 +130,8 @@ struct PatientDetailView: View {
             }
             .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationTitle(patient.name)
-        .onAppear {
-            notes = patient.notes
-            clinicalHistory = patient.clinicalHistory
-            medications = patient.medications
-            refresh()
-        }
+        .navigationTitle(storedPatient.name)
+        .onAppear { refresh() }
         // A transcription finishing changes which sessions have a transcript or
         // recording, even when it isn't the session currently on screen.
         .onChange(of: transcription.outcomes) { _, _ in refresh() }
@@ -213,64 +198,37 @@ struct PatientDetailView: View {
         Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
     }
 
-    /// A collapsible patient background: a free-text clinical-history TL;DR and a
-    /// medications (name | dose) table. Both are saved to the patient and fed to
-    /// the AI's patient context so it can weigh them when relevant.
-    private var backgroundSection: some View {
-        DisclosureGroup("Background", isExpanded: $showBackground) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Clinical history").font(.caption).foregroundStyle(.secondary)
-                TextEditor(text: $clinicalHistory)
-                    .font(.body)
-                    .frame(minHeight: 70, maxHeight: 130)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
-                    .onChange(of: clinicalHistory) { _, v in
-                        guard v != storedPatient.clinicalHistory else { return }
-                        appModel.updatePatient(id: patient.id) { $0.clinicalHistory = v }
-                    }
+    private var showsMedications: Bool {
+        appModel.featureRegistry.contains(id: PatientMedicationsFeatureModule.id)
+    }
 
-                // Medications is a .preview-tier module; the production build
-                // doesn't display or edit the table. Stored medications are left
-                // untouched on the patient record. See PatientMedicationsFeatureModule.
-                if appModel.featureRegistry.contains(id: PatientMedicationsFeatureModule.id) {
-                    HStack {
-                        Text("Medications").font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button { medications.append(Medication()) } label: {
-                            Label("Add Medication", systemImage: "plus")
-                        }
-                        .labelStyle(.iconOnly)
-                        .help("Add a medication")
-                    }
-
-                    if medications.isEmpty {
-                        Text("None recorded.").font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        ForEach($medications) { $med in
-                            HStack(spacing: 6) {
-                                TextField("Medication", text: $med.name)
-                                TextField("Dose", text: $med.dose).frame(width: 110)
-                                Button(role: .destructive) {
-                                    medications.removeAll { $0.id == med.id }
-                                } label: {
-                                    Image(systemName: "trash")
-                                }
-                                .buttonStyle(.borderless)
-                                .help("Remove")
-                            }
-                        }
-                    }
+    /// The patient's name (click or the pencil to rename) with a one-line summary
+    /// of their sessions.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(storedPatient.name)
+                    .font(.title2.bold())
+                    .lineLimit(2)
+                    .onTapGesture(perform: onEditProfile)
+                Button(action: onEditProfile) {
+                    Label("Edit Profile", systemImage: "pencil")
                 }
-
-                Text("Saved with the patient and shared with the AI's patient context.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .help("Edit name and profile")
             }
-            .padding(.top, 4)
-            .onChange(of: medications) { _, v in
-                guard v != storedPatient.medications else { return }
-                appModel.updatePatient(id: patient.id) { $0.medications = v }
-            }
+            Text(sessionSummary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
+    }
+
+    private var sessionSummary: String {
+        guard !sessions.isEmpty else { return "No sessions yet" }
+        let count = sessions.count == 1 ? "1 session" : "\(sessions.count) sessions"
+        guard let latest = sessions.map(\.date).max() else { return count }
+        return "\(count) · last \(latest.formatted(date: .abbreviated, time: .omitted))"
     }
 
     private func refresh() {
