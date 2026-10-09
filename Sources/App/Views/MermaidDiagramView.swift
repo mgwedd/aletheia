@@ -3,9 +3,10 @@ import SwiftUI
 import AppKit
 #endif
 
-/// Colours for drawing a diagram. `adaptive` uses semantic colours so it follows
-/// light/dark mode on screen; `print` is fixed dark-on-white for the copied
-/// picture, which has to read correctly pasted into Word, Mail, or Pages.
+/// Colours for drawing a diagram, all from `Theme`. They are catalog colors, so
+/// `Canvas` resolves them against the environment each time it draws: on screen
+/// they follow Light / Dark / Increase Contrast with no extra plumbing, and the
+/// PNG export (which forces a light environment) gets the light values.
 struct MermaidPalette {
     var nodeFill: Color
     var nodeStroke: Color
@@ -16,32 +17,15 @@ struct MermaidPalette {
     var lifeline: Color
 
     static let adaptive = MermaidPalette(
-        nodeFill: Color.accentColor.opacity(0.14),
-        nodeStroke: Color.accentColor.opacity(0.75),
-        text: Color.primary,
-        edge: Color.secondary,
-        labelFill: adaptiveBackground,
-        labelText: Color.primary,
-        lifeline: Color.secondary.opacity(0.5)
+        nodeFill: Theme.accentTint.color,
+        nodeStroke: Theme.accent.color.opacity(0.75),
+        text: Theme.text.color,
+        edge: Theme.muted.color,
+        // Edge labels sit on the diagram card, which is a `Theme.field` surface.
+        labelFill: Theme.field.color,
+        labelText: Theme.text.color,
+        lifeline: Theme.muted.color.opacity(0.5)
     )
-
-    static let print = MermaidPalette(
-        nodeFill: Color(red: 0.91, green: 0.94, blue: 0.99),
-        nodeStroke: Color(red: 0.25, green: 0.40, blue: 0.70),
-        text: Color(white: 0.1),
-        edge: Color(white: 0.3),
-        labelFill: Color.white,
-        labelText: Color(white: 0.15),
-        lifeline: Color(white: 0.6)
-    )
-
-    private static var adaptiveBackground: Color {
-        #if canImport(AppKit)
-        return Color(nsColor: .textBackgroundColor)
-        #else
-        return Color.white
-        #endif
-    }
 }
 
 /// Draws a `MermaidLayout` with `Canvas`. The layout's own coordinates are
@@ -228,15 +212,16 @@ enum MermaidPainter {
 
 // MARK: - Copy
 
-/// Renders a diagram to a PNG that pastes cleanly into other apps: opaque white
-/// background, dark foreground, 2x scale, regardless of the app's appearance.
+/// Renders a diagram to a PNG that pastes cleanly into other apps: opaque light
+/// `Theme.field` background with the theme's light ink, 2x scale, regardless of
+/// the app's appearance.
 @MainActor
 enum MermaidExport {
     static func pngData(for layout: MermaidLayout) -> Data? {
         guard layout.size.width > 0, layout.size.height > 0 else { return nil }
-        let content = MermaidCanvas(layout: layout, palette: .print)
+        let content = MermaidCanvas(layout: layout, palette: .adaptive)
             .frame(width: layout.size.width, height: layout.size.height)
-            .background(Color.white)
+            .background(Theme.field.color)
             .environment(\.colorScheme, .light)
         let renderer = ImageRenderer(content: content)
         renderer.scale = 2
