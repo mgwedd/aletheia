@@ -1,121 +1,120 @@
-# Aletheia — Setup Guide
+# Aletheia — Setup and Troubleshooting
 
-This is a one-time setup. After this, using the app day-to-day is just:
-open it, pick a patient, hit Record.
+Aletheia has a setup checklist that appears on first launch and walks you
+through the data folder, permissions, and model downloads. This guide does
+not repeat it. It covers what the checklist assumes, what to do when a step
+does not finish, and where to look when something stops working later.
 
-Before you record your first real session, please read **[CONSENT.md](../CONSENT.md)**
-in this repository — recording a therapy session has consent and
-licensing-board requirements that are your responsibility, not something
-this app handles for you.
+Before recording a real session, read **[CONSENT.md](../CONSENT.md)**.
+Consent and licensing-board requirements for recording are your
+responsibility; the app does not handle them for you.
 
-## What you'll install
+## Before you start
 
-| Tool | What it's for | How you get it |
-|---|---|---|
-| Aletheia.app | The app itself | Built from this repository (see below), or provided to you as a ready-made `.app` |
-| Ollama | Runs the local AI model that writes summaries and answers questions | Normal Mac app install from [ollama.com](https://ollama.com) |
+- **macOS 14 or newer.** Apple Silicon with 16 GB of memory gives the best
+  results. 8 GB works with smaller models, which the app picks for you.
+- **Free disk space.** The speech model is roughly 150 MB to 3 GB depending
+  on size, and the AI model is 1 to 5 GB or more. Both download once.
+- **Nothing else to install first.** Speech-to-text runs inside Aletheia, and
+  call audio is captured with a built-in macOS feature, so there is no
+  Homebrew, ffmpeg, or virtual audio driver. The one outside piece is
+  [Ollama](https://ollama.com), which runs the AI model. The checklist links
+  you to it and starts it for you once it is installed.
 
-That's it. Unlike earlier drafts of this app, there's **no Homebrew, no
-ffmpeg, no whisper.cpp command-line tool, and no BlackHole virtual audio
-driver to install** — speech-to-text runs inside Aletheia itself, and
-call audio is captured using a built-in macOS feature (the same permission
-screen recorders use), not a third-party audio driver.
+## Getting the app
 
-## Step 1 — Install Ollama
+- **Ready-made build:** download the `.dmg` from the
+  [Releases page](https://github.com/mgwedd/aletheia/releases) and drag
+  Aletheia to Applications.
+- **From source:** see the Developer quickstart in the [README](../README.md).
 
-1. Go to [ollama.com](https://ollama.com) and download Ollama for Mac.
-2. Open the downloaded file and drag Ollama into your Applications folder,
-   like any other Mac app.
-3. Open Ollama once. You'll see a small icon appear in the menu bar at the
-   top of your screen — that means it's running in the background. Leave
-   it running; Aletheia talks to it automatically.
+### macOS will not open it
 
-## Step 2 — Install Aletheia
+The app is not notarized by Apple, so the first launch is blocked. This is
+expected. In Applications, **right-click Aletheia, choose Open, then confirm
+Open** in the dialog. After that, double-clicking works.
 
-If you were given a ready-made `Aletheia.app`, skip to Step 3.
+If there is no Open button, go to **System Settings → Privacy & Security**,
+scroll to the message about Aletheia, and click **Open Anyway**.
 
-If you're building it yourself from this repository, you'll need Xcode
-(free, from the App Store) installed first. Then, in Terminal:
+## Troubleshooting
 
-```bash
-cd path/to/aletheia
-./scripts/build.sh
-```
+Start with the built-in checks. They are faster than guessing:
 
-This creates `dist/Aletheia.app`. Move it into your Applications
-folder.
+- **Settings → Status** lists in plain language what is ready and what is
+  not.
+- **Help → Aletheia Doctor** runs a health check of the data folder, the
+  database, the encryption key store, snapshots, and whether Ollama is
+  reachable. Its report contains no client information, so it is safe to
+  copy into a support request.
 
-## Step 3 — First launch
+### Recording
 
-macOS will refuse to open the app the normal way the first time, because
-it isn't notarized by Apple (that would require a paid Apple Developer
-account). This is expected and only needs doing once:
+| Symptom | Likely cause and fix |
+|---|---|
+| No microphone input | **System Settings → Privacy & Security → Microphone**, turn Aletheia on. Quit and reopen the app. Also check the input device in **System Settings → Sound**. |
+| The other person's voice is missing (only "Therapist" lines in the transcript) | Aletheia needs **Screen & System Audio Recording**. Turn it on under **Privacy & Security → Screen & System Audio Recording**, then quit and reopen the app. Aletheia records audio only, never video. |
+| Permission is on but still not working | Toggle it off and on again, then restart the app. macOS sometimes keeps a stale grant, especially after an app update or when you move the app to a different location. |
+| Call audio is silent | Call audio is the Mac's system audio. If the call plays through a Bluetooth headset or another output device, switch the output and try a short test recording. |
+| A reminder appears after 90 minutes | This is the long-recording guard. It asks whether you meant to keep recording. |
 
-1. In Finder, find **Aletheia** in Applications.
-2. **Right-click** (or Control-click) it and choose **Open**.
-3. A dialog will warn you it's from an unidentified developer — click
-   **Open** to confirm. macOS will remember this and you can double-click
-   normally from now on.
+### Transcription
 
-## Step 4 — Grant permissions
+| Symptom | Likely cause and fix |
+|---|---|
+| Transcribe is unavailable | The speech model is not downloaded. Open **Settings → Speech-to-Text Model** and download it. |
+| Download fails or stalls | Check your connection and free disk space, then retry. Models are verified against a pinned checksum, so a partial or altered file is rejected rather than used. |
+| Slow on a long session | Expected on smaller Macs. A larger model is slower. A smaller one is faster and a little less accurate; change it in Settings. |
+| Names or terms are wrong | The transcript is editable. Fix errors in place; summaries and chat use your edited text. |
 
-The app will ask for two permissions the first time it needs them:
+### Summaries and chat
 
-- **Microphone** — so it can record your voice.
-- **Screen & System Audio Recording** — so it can capture the other side
-  of your video call. (This is the same permission any screen recorder
-  app uses; Aletheia never records or stores video, only audio.)
+| Symptom | Likely cause and fix |
+|---|---|
+| "AI is unavailable" or nothing is generated | Ollama is not running. Open the Ollama app (its icon appears in the menu bar) or use the **Launch Ollama** step in the setup checklist. |
+| Ollama is installed but not detected | Open it once manually so it finishes its own first-run setup, then check Settings → Status again. Aletheia only talks to Ollama on your own Mac. |
+| Model download is stuck | Models are downloaded through Ollama and are large. Keep the Mac awake and online, and retry. Restarting Ollama also clears most stalls. |
+| Slow or low-quality answers | The model may be too large for this Mac's memory (slow) or too small (shallow). Pick another under **Settings → AI Summaries & Chat**. |
+| A note format looks wrong | Set the format (narrative, SOAP, DAP, BIRP, GIRP) in Settings, then regenerate. |
 
-If you accidentally deny either one, go to **System Settings > Privacy &
-Security**, find the relevant section, and turn Aletheia on there.
-You may need to quit and reopen the app afterward.
+### Data folder and storage
 
-## Step 5 — Choose your data folder
+| Symptom | Likely cause and fix |
+|---|---|
+| Wrong folder chosen | Change it in Settings. Existing data is not moved for you; copy the folder in Finder if you want it at the new location. |
+| "Database cannot be opened" banner | Open Aletheia Doctor from the banner or the Help menu. It names the cause (permissions, a locked or damaged file, a missing key). Pre-migration copies and snapshots live in `<data folder>/.backups/`. |
+| Folder is in iCloud Drive and files seem missing | iCloud may be offloading files. Keep the folder downloaded (Finder → right-click → Keep Downloaded) or use a local folder. See [DATA-SAFETY.md](DATA-SAFETY.md) for how backups treat the data folder. |
+| Moved or renamed the data folder | Pick the new location again in Settings. |
 
-The first time you open Aletheia, it'll ask where to keep your
-patient data. Pick a folder inside **iCloud Drive** if you want it to back
-up automatically — the app will suggest that location for you. All your
-notes are saved there as plain files you can also browse directly in
-Finder if you ever want to.
+### Security and app lock
 
-## Step 6 — Download the AI models
+| Symptom | Likely cause and fix |
+|---|---|
+| Locked out of the app | The lock uses Touch ID or your Mac login password. If Touch ID fails, use the password prompt. |
+| Forgot an encryption passphrase | There is no recovery without the passphrase. See [ENCRYPTION.md](ENCRYPTION.md) for what the key store holds and what a lost passphrase means. |
 
-Open **Settings** inside Aletheia (the gear icon) and:
+## Backups
 
-1. Under **Speech-to-Text Model**, click **Download**. The default
-   ("Small") is a good balance of speed and accuracy on a MacBook Air —
-   about 500 MB.
-2. Under **AI Summaries & Chat**, click **Download llama3.1:8b**. This is
-   a few gigabytes and can take a while depending on your internet
-   connection.
+Aletheia does not yet make backup copies of its own. Your data folder is
+backed up by Time Machine by default; keep those backups on an encrypted
+disk. See [DATA-SAFETY.md](DATA-SAFETY.md) for what is and is not covered.
 
-The **Status** section at the bottom of Settings tells you, in plain
-language, exactly what's ready and what isn't — check back here any time
-something doesn't seem to be working.
+## Updating
 
-### Optional: extra protection
+The app checks for new versions on launch and when you switch back to it.
+The check downloads a small file from GitHub and sends no client data.
+To update, download the new `.dmg` from the Releases page and replace the app in Applications.
 
-Settings also has a **Security** section (Touch ID / password app lock and an
-opt-in "Extra Encryption" that seals your notes, transcripts, and recordings
-with a passphrase — see [SECURITY.md](../SECURITY.md)) and a **Backup**
-section (your data folder backs up with Time Machine by default — keep those
-backups on an encrypted disk; you can also turn on an encrypted backup copy). None of this is required to start
-recording — it's there for when you want it.
+## Still stuck
 
-## Using the app
+1. Run **Aletheia Doctor** and keep the report.
+2. Note your macOS version and Mac model (**Apple menu → About This Mac**).
+3. Open an issue at
+   [github.com/mgwedd/aletheia/issues](https://github.com/mgwedd/aletheia/issues)
+   with the Doctor report. Do not include client names, transcripts, or audio.
 
-1. Add a patient.
-2. Open a patient, click **New Session**.
-3. Click **Record Session** right when your video call starts, **Stop
-   Recording** when it ends. Any call app works — Zoom, a browser (Tebra),
-   FaceTime — because Aletheia captures your Mac's system audio, not one app.
-   You can also Start / Pause / Stop from the menu-bar icon with the call
-   window in front.
-4. Click **Transcribe** — this runs entirely on your Mac and can take a
-   few minutes for a longer session.
-5. Click **Summarize with AI** on the Summary tab.
-6. Use the **Ask** tab to ask questions about that session, or "Ask About
-   All Sessions" on the patient screen to ask across everything you've
-   recorded for that patient.
+## Related
 
-Everything above happens locally. Nothing is uploaded anywhere.
+- [README](../README.md): what the app does and how it works
+- [CONSENT.md](../CONSENT.md), [PRIVACY.md](../PRIVACY.md), [SECURITY.md](../SECURITY.md)
+- [DATA-SAFETY.md](DATA-SAFETY.md), [ENCRYPTION.md](ENCRYPTION.md), [HIPAA-SAFEGUARDS.md](HIPAA-SAFEGUARDS.md)
