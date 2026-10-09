@@ -94,6 +94,7 @@ final class AppSettings: ObservableObject {
         static let acceptedLegalVersion = "acceptedLegalVersion"
         static let acceptedLegalDate = "acceptedLegalDate"
         static let progressNoteFormat = "progressNoteFormat"
+        static let summaryVerbosity = "summaryVerbosity"
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
@@ -157,6 +158,10 @@ final class AppSettings: ObservableObject {
     /// wants a payer-ready structure picks SOAP/DAP/BIRP here or per session.
     @Published var progressNoteFormat: ProgressNoteFormat {
         didSet { defaults.set(progressNoteFormat.rawValue, forKey: Keys.progressNoteFormat) }
+    }
+    /// How long a generated Summary runs (`SummaryVerbosity`). Natural by default.
+    @Published var summaryVerbosity: SummaryVerbosity {
+        didSet { defaults.set(summaryVerbosity.rawValue, forKey: Keys.summaryVerbosity) }
     }
     /// Opt-in: keep an end-to-end-encrypted backup copy of the database on this
     /// Mac (in addition to whatever Time Machine already does). The default is
@@ -272,6 +277,8 @@ final class AppSettings: ObservableObject {
         } else {
             progressNoteFormat = .default
         }
+        summaryVerbosity = defaults.string(forKey: Keys.summaryVerbosity)
+            .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil
