@@ -103,7 +103,7 @@ struct PatientDetailView: View {
                             Text("Start a session to record, transcribe, and summarize it.")
                         } actions: {
                             Button("New Session") { newSession() }
-                                .buttonStyle(.borderedProminent)
+                                .buttonStyle(.themePrimary)
                         }
                     }
                 }

@@ -64,27 +64,24 @@ struct CommentsRailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Label("Comments", systemImage: "bubble.left")
-                    .font(.subheadline.weight(.semibold))
+                Text("Comments").eyebrowStyle()
                 Spacer()
                 if !active.isEmpty {
-                    Text("\(active.count)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                    Chip("\(active.count)")
+                        .accessibilityLabel("\(active.count) open")
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            Divider()
+            .padding(.horizontal, 16)
+            .frame(height: 44)
 
             if comments.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "bubble.left")
+                    Image(systemName: "text.bubble")
                         .font(.title2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.muted.color)
                     Text("Select a passage in the transcript and click “Comment on Selection” to add one here.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -92,7 +89,7 @@ struct CommentsRailView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 8) {
+                        LazyVStack(alignment: .leading, spacing: 10) {
                             ForEach(active) { comment in
                                 card(for: comment)
                             }
@@ -100,48 +97,50 @@ struct CommentsRailView: View {
                                 resolvedSection
                             }
                         }
-                        .padding(10)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 16)
                     }
                     .onChange(of: focusToken) { _, _ in
                         guard let id = focusedCommentID else { return }
-                        withAnimation { proxy.scrollTo(id, anchor: .center) }
+                        withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
                     }
                 }
             }
         }
-        .frame(minWidth: 240, idealWidth: 300, maxWidth: 360)
-        .background(Color.primary.opacity(0.03))
+        .frame(minWidth: 240, idealWidth: 296, maxWidth: 340)
+        .background(Theme.window.color)
     }
 
     @ViewBuilder
     private func card(for comment: SessionComment) -> some View {
         let isFocused = focusedCommentID == comment.id
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             if let anchor = comment.anchorSeconds {
-                Label(TranscriptTimeline.format(Int(anchor)), systemImage: "clock")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Chip(TranscriptTimeline.format(Int(anchor)))
+                    .accessibilityLabel("At \(TranscriptTimeline.format(Int(anchor)))")
             }
             if !comment.quotedText.isEmpty {
                 Text("“\(comment.quotedText)”")
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
                     .italic()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted.color)
                     .lineLimit(3)
                 if unplacedIDs.contains(comment.id) {
-                    Text("Original passage not found")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    Label("Original passage not found", systemImage: "exclamationmark.circle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.muted.color)
                 }
             }
             if editingID == comment.id {
                 editor(for: comment)
             } else {
                 Text(comment.body)
-                    .font(.callout)
+                    .font(Theme.Typography.body)
+                    .lineSpacing(2)
+                    .foregroundStyle(Theme.text.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 4) {
+            HStack(spacing: 2) {
                 Spacer()
                 if editingID != comment.id {
                     Button {
@@ -149,9 +148,8 @@ struct CommentsRailView: View {
                         editingID = comment.id
                         onFocus(comment.id)
                     } label: {
-                        Label("Edit", systemImage: "pencil").labelStyle(.iconOnly)
+                        Label("Edit", systemImage: "pencil")
                     }
-                    .buttonStyle(.borderless)
                     .help("Edit this comment")
                 }
                 Button {
@@ -159,31 +157,23 @@ struct CommentsRailView: View {
                 } label: {
                     Label(comment.resolved ? "Reopen" : "Resolve",
                           systemImage: comment.resolved ? "arrow.uturn.backward.circle" : "checkmark.circle")
-                        .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.borderless)
                 .help(comment.resolved ? "Reopen this comment" : "Mark this comment resolved")
                 Button(role: .destructive) {
                     onDelete(comment)
                 } label: {
-                    Label("Delete", systemImage: "trash").labelStyle(.iconOnly)
+                    Label("Delete", systemImage: "trash")
                 }
-                .buttonStyle(.borderless)
                 .help("Delete this comment")
             }
+            .buttonStyle(.themeIcon)
         }
-        .padding(10)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isFocused ? Color.yellow.opacity(0.22) : Color.primary.opacity(0.04))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isFocused ? Color.yellow.opacity(0.6) : Color.clear, lineWidth: 1)
-        )
+        .themeCard(isEmphasized: isFocused)
         .contentShape(Rectangle())
         .onTapGesture { onFocus(comment.id) }
+        .animation(.easeOut(duration: 0.15), value: isFocused)
         .id(comment.id)
     }
 
@@ -193,11 +183,13 @@ struct CommentsRailView: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { editingID = nil }
+                    .buttonStyle(.themed)
                     .keyboardShortcut(.cancelAction)
                 Button("Save") {
                     onEdit(comment, editDraft.trimmingCharacters(in: .whitespacesAndNewlines))
                     editingID = nil
                 }
+                .buttonStyle(.themePrimary)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!Self.canSaveEdit(draft: editDraft, original: comment.body))
             }
@@ -213,8 +205,8 @@ struct CommentsRailView: View {
             }
         } label: {
             Text("Resolved (\(resolved.count))")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.caption.weight(.medium))
+                .foregroundStyle(Theme.muted.color)
         }
         .padding(.top, 4)
     }

@@ -92,7 +92,7 @@ struct FirstRunView: View {
                     } label: {
                         Label("Set Up Encryption", systemImage: "lock.shield")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.themePrimary)
                     Text("Or turn it on later in Settings. FileVault is recommended either way.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

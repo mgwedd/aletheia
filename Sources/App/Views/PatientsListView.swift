@@ -35,7 +35,7 @@ struct PatientsListView: View {
                         newPatientName = ""
                         showAddPatient = true
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.themePrimary)
                 }
             } else if filteredPatients.isEmpty {
                 ContentUnavailableView.search(text: searchText)
@@ -115,7 +115,7 @@ private struct AddPatientSheet: View {
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)
                 Button("Add", action: onAdd)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.themePrimary)
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }

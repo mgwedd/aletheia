@@ -82,7 +82,7 @@ struct PatientProfileEditor: View {
                 }
                 .keyboardShortcut(.cancelAction)
                 Button("Save", action: save)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.themePrimary)
                     .keyboardShortcut("s", modifiers: .command)
                     .disabled(cleanedName == nil || !hasChanges)
             }

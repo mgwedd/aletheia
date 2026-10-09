@@ -106,4 +106,20 @@ final class TranscriptTimelineTests: XCTestCase {
         XCTAssertEqual(TranscriptTimeline.format(3723), "1:02:03")
         XCTAssertEqual(TranscriptTimeline.format(-5), "0:00")
     }
+
+    func testLastSecondsIsTheLatestStampOnAnyLine() {
+        let text = "[00:05] Therapist: Hi.\nhand-typed line\n[01:24] Call audio: Bye.\n[00:40] Therapist: (moved)"
+        XCTAssertEqual(TranscriptTimeline.lastSeconds(in: text), 84)
+        XCTAssertNil(TranscriptTimeline.lastSeconds(in: "no stamps here"))
+        XCTAssertEqual(TranscriptTimeline.lastSeconds(in: "[1:02:03] Therapist: long"), 3723)
+    }
+
+    func testDurationLabel() {
+        XCTAssertEqual(TranscriptTimeline.durationLabel(24), "24s")
+        XCTAssertEqual(TranscriptTimeline.durationLabel(84), "1m 24s")
+        XCTAssertEqual(TranscriptTimeline.durationLabel(120), "2m")
+        XCTAssertEqual(TranscriptTimeline.durationLabel(52 * 60 + 9), "52m")
+        XCTAssertEqual(TranscriptTimeline.durationLabel(3840), "1h 04m")
+        XCTAssertEqual(TranscriptTimeline.durationLabel(-3), "0s")
+    }
 }

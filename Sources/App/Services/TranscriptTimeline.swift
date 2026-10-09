@@ -72,6 +72,28 @@ enum TranscriptTimeline {
         return chosen
     }
 
+    /// The latest time code on any line: roughly how long the session ran.
+    /// Nil when no line is timestamped.
+    static func lastSeconds(in transcript: String) -> Int? {
+        var latest: Int?
+        transcript.enumerateLines { line, _ in
+            if let seconds = leadingSeconds(of: line) { latest = max(latest ?? 0, seconds) }
+        }
+        return latest
+    }
+
+    /// A length for a badge: `24s`, `1m 24s`, `52m`, `1h 04m`.
+    static func durationLabel(_ seconds: Int) -> String {
+        let clamped = max(0, seconds)
+        let hours = clamped / 3600
+        let minutes = (clamped % 3600) / 60
+        let secs = clamped % 60
+        if hours > 0 { return String(format: "%dh %02dm", hours, minutes) }
+        if minutes >= 10 || (minutes > 0 && secs == 0) { return "\(minutes)m" }
+        if minutes > 0 { return "\(minutes)m \(secs)s" }
+        return "\(secs)s"
+    }
+
     /// Formats seconds as `M:SS` (or `H:MM:SS` past an hour) for display.
     static func format(_ seconds: Int) -> String {
         let clamped = max(0, seconds)
