@@ -247,7 +247,8 @@ docs/                     setup, data safety, encryption, HIPAA safeguards
 flowchart LR
   PR["Pull request"] --> S["Smoke test<br/>build + test × production/preview/dev<br/>entitlements guard · secret/PHI scan"]
   S --> M["Merge to main"]
-  M --> AR["Auto Release<br/>conventional commits → semver"]
+  M --> S2["Smoke test on main"]
+  S2 -- "passes" --> AR["Auto Release<br/>conventional commits → semver"]
   AR --> TAG["v* tag"] --> REL["release.yml<br/>DMG · appcast.json · GitHub Release"]
 ```
 
@@ -279,7 +280,7 @@ The script lists the checks to run before enabling the package and the built-in 
 
 ### Releases
 
-Merging to `main` is enough: Auto Release computes the version, updates the changelog, tags it, and dispatches `release.yml`. A manual release can be dispatched from the Actions tab.
+Merging to `main` is enough once Smoke Test passes on the merge commit: Auto Release then computes the version, updates the changelog, tags it, and dispatches `release.yml`. A failed or cancelled run releases nothing, and if `main` has moved on, the newer commit's run releases the whole range. A manual release can be dispatched from the Actions tab.
 
 ---
 
