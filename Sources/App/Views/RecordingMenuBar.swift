@@ -25,21 +25,27 @@ struct RecordingMenuBar: View {
                     ProgressView().controlSize(.small)
                     Text(status)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
             }
-            Divider()
+            hairline
             if let active = recorder.active {
                 recordingControls(active)
             } else {
                 startControls
             }
-            Divider()
-            Button("Open Aletheia") { NSApp.activate(ignoringOtherApps: true) }
-            Button("Quit Aletheia") { NSApp.terminate(nil) }
+            hairline
+            HStack {
+                Button("Open Aletheia") { NSApp.activate(ignoringOtherApps: true) }
+                Spacer()
+                Button("Quit Aletheia") { NSApp.terminate(nil) }
+            }
+            .buttonStyle(.themed)
+            .controlSize(.small)
         }
         .padding(14)
         .frame(width: 280)
+        .background(Theme.panel.color)
         // Every time the menu is opened (this view is re-created) and every
         // 5s while it's open — cheap enough for the local-only health check
         // this reuses, and nothing here is data anyone would need faster.
@@ -57,71 +63,69 @@ struct RecordingMenuBar: View {
     private var engineStatusRow: some View {
         let presentation = EngineStatusPresentation.present(engineState)
         return Label(presentation.label, systemImage: presentation.symbolName)
-            .font(.caption)
+            .font(Theme.Typography.caption)
             .foregroundStyle(presentation.tint.color)
+    }
+
+    private var hairline: some View {
+        Rectangle().fill(Theme.line.color).frame(height: 1)
     }
 
     // MARK: Recording
 
     @ViewBuilder
     private func recordingControls(_ active: SessionRecorder.ActiveRecording) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: recorder.isPaused ? "pause.circle.fill" : "record.circle.fill")
-                .foregroundStyle(recorder.isPaused ? .orange : .red)
-                .symbolEffect(.pulse, options: recorder.isPaused ? .nonRepeating : .repeating)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(recorder.isPaused ? "Paused" : "Recording")
-                    .font(.headline)
-                Text(active.patientName)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+        HStack(alignment: .center, spacing: 8) {
+            Chip(recorder.isPaused ? "Paused" : "Recording", tone: .recording, showsDot: true)
+            Text(active.patientName)
+                .font(Theme.Typography.body.weight(.semibold))
+                .foregroundStyle(Theme.text.color)
+                .lineLimit(1)
         }
         elapsedLabel
 
-        HStack {
+        HStack(spacing: 8) {
             if recorder.isPaused {
                 Button { recorder.resume() } label: {
                     Label("Resume", systemImage: "play.fill")
                 }
+                .buttonStyle(.themed)
             } else {
                 Button { recorder.pause() } label: {
                     Label("Pause", systemImage: "pause.fill")
                 }
+                .buttonStyle(.themed)
             }
             Button(role: .destructive) {
                 Task { await recorder.stop() }
             } label: {
                 Label("Stop", systemImage: "stop.fill")
             }
+            .buttonStyle(.themeRecording)
         }
-        .buttonStyle(.themePrimary)
 
         Button("Show this session") {
             NSApp.activate(ignoringOtherApps: true)
             AppNavigator.shared.requestOpen(patientID: active.patientID)
         }
-        .font(.callout)
+        .buttonStyle(.themed)
+        .controlSize(.small)
     }
 
-    /// Live elapsed time. TimelineView drives the per-second refresh; the paused
-    /// span is still counted as wall-clock, which is fine for a "how long has
-    /// this been open" cue.
+    /// Live elapsed time, in the same form as the session screen. TimelineView
+    /// drives the per-second refresh; the paused span is still counted as
+    /// wall-clock, which is fine for a "how long has this been open" cue.
     private var elapsedLabel: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             Text(elapsedString(now: context.date))
-                .font(.system(.title3, design: .monospaced))
-                .monospacedDigit()
+                .font(Theme.Typography.display.monospacedDigit())
+                .foregroundStyle(recorder.isPaused ? Theme.muted.color : Theme.text.color)
         }
     }
 
     private func elapsedString(now: Date) -> String {
-        guard let started = recorder.startedAt else { return "00:00" }
-        let total = Int(max(0, now.timeIntervalSince(started)))
-        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
-        return h > 0
-            ? String(format: "%d:%02d:%02d", h, m, s)
-            : String(format: "%02d:%02d", m, s)
+        guard let started = recorder.startedAt else { return TranscriptTimeline.format(0) }
+        return TranscriptTimeline.format(Int(max(0, now.timeIntervalSince(started))))
     }
 
     // MARK: Start
@@ -129,21 +133,25 @@ struct RecordingMenuBar: View {
     @ViewBuilder
     private var startControls: some View {
         Text("Start a recording")
-            .font(.headline)
+            .font(Theme.Typography.headline)
+            .foregroundStyle(Theme.text.color)
         if appModel.patients.isEmpty {
             Text("Add a patient in the main window first.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.muted.color)
         } else {
             Text("Records a new session. Make sure your client has consented first.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
             ForEach(appModel.patients) { patient in
                 Button {
                     Task { await start(for: patient) }
                 } label: {
                     Label(patient.name, systemImage: "record.circle")
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .buttonStyle(.themed)
             }
         }
     }
@@ -168,15 +176,15 @@ struct RecordingMenuBar: View {
 }
 
 private extension EngineStatusTint {
-    /// Matches the green/yellow/red convention `SettingsView.statusIcon`
-    /// already uses for `ToolHealthCheck.Status`, so this reads as the same
-    /// status language elsewhere in the app.
+    /// Running reads as the accent, starting/warning as the amber used for the
+    /// call track, stopped as the recording red; unknown is muted. All have
+    /// readable contrast on the panel in light, dark and Increase Contrast.
     var color: Color {
         switch self {
-        case .green: return .green
-        case .yellow: return .yellow
-        case .red: return .red
-        case .gray: return .secondary
+        case .green: return Theme.accent.color
+        case .yellow: return Theme.callAudio.color
+        case .red: return Theme.recording.color
+        case .gray: return Theme.muted.color
         }
     }
 }

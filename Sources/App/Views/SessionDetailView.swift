@@ -384,6 +384,48 @@ struct SessionDetailView: View {
         .padding(.leading, 4)
     }
 
+    /// This session is recording and has no transcript yet: the pane is the
+    /// clock, large enough to read from across the room.
+    private var recordingPanel: some View {
+        VStack(spacing: 14) {
+            Chip(recorder.isPaused ? "Paused" : "Recording", tone: .recording, showsDot: true)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(recordingElapsed(at: context.date))
+                    .font(Theme.Typography.timer)
+                    .foregroundStyle(recorder.isPaused ? Theme.muted.color : Theme.text.color)
+                    .accessibilityLabel("Elapsed \(recordingElapsed(at: context.date))")
+            }
+            Text(recorder.isPaused
+                 ? "Paused. Nothing is being recorded until you resume."
+                 : "Recording on this Mac. Stop when the session ends, then transcribe.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.muted.color)
+                .multilineTextAlignment(.center)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeOut(duration: 0.15), value: recorder.isPaused)
+    }
+
+    private var noTranscriptPlaceholder: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "waveform")
+                .font(.system(size: 26))
+                .foregroundStyle(Theme.muted.color)
+            Text("No transcript yet")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
+            Text(hasAnyRecording
+                 ? "Transcribe the recording to see it here."
+                 : "Record the session, then transcribe it.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.muted.color)
+                .multilineTextAlignment(.center)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     /// Wall-clock time since recording began (a paused span still counts, as
     /// in the menu bar).
     private func recordingElapsed(at now: Date) -> String {
@@ -480,8 +522,10 @@ struct SessionDetailView: View {
             }
             if transcriptText.isEmpty && transcriptDraft.isEmpty && !hasTranscript {
                 // While transcribing, the progress card above is the pane.
-                if !isTranscribing {
-                    ContentUnavailableView("No Transcript Yet", systemImage: "text.alignleft", description: Text("Record a session, then tap Transcribe."))
+                if isRecordingThisSession {
+                    recordingPanel
+                } else if !isTranscribing {
+                    noTranscriptPlaceholder
                 }
             } else {
                 if let readError = transcriptReadError {
