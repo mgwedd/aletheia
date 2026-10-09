@@ -12,10 +12,14 @@ protocol Transcribing {
     var isReady: Bool { get }
 
     /// Transcribe a session's mic and/or call recordings into one merged,
-    /// timestamped, speaker-labeled transcript. Progress is reported 0...1.
+    /// timestamped, speaker-labeled transcript. Progress (stage plus overall
+    /// 0...1 completion) may be reported from any thread.
+    ///
+    /// Honors task cancellation: cancelling the calling task stops the work
+    /// promptly and throws `CancellationError`, returning no partial text.
     func transcribeSession(
         micURL: URL?,
         callURL: URL?,
-        onProgress: @escaping (Double) -> Void
+        onProgress: @escaping (TranscriptionProgress) -> Void
     ) async throws -> String
 }

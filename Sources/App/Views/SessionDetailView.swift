@@ -25,6 +25,8 @@ struct SessionDetailView: View {
     // Shared with the menu-bar control (injected at app level) so both drive the
     // same recording. "Recording" in this view means *this* session specifically.
     @EnvironmentObject private var recorder: SessionRecorder
+    // App-level so a transcription survives leaving this screen.
+    @EnvironmentObject private var transcription: TranscriptionCoordinator
 
     @State private var transcriptText: String = ""
     @State private var isEditingTranscript = false
@@ -62,8 +64,6 @@ struct SessionDetailView: View {
     /// Bumped on every focus request so the scroll-and-flash is an event, not a
     /// state: re-clicking the already-focused card still jumps to its passage.
     @State private var focusToken = 0
-    @State private var isTranscribing = false
-    @State private var transcribeProgress: Double = 0
     /// Set when the last transcription came back blank and the recording was
     /// kept (see `AudioRetentionPolicy.decision`); shown inline, not as an alert.
     @State private var noSpeechNotice: String?
@@ -94,7 +94,14 @@ struct SessionDetailView: View {
             }
         }
         .navigationTitle(Self.dateFormatter.string(from: session.date))
-        .onAppear(perform: load)
+        .onAppear {
+            load()
+            // A transcription that finished while this screen was away.
+            consumeTranscriptionOutcome()
+        }
+        .onChange(of: transcription.outcomes[session.id]) { _, outcome in
+            if outcome != nil { consumeTranscriptionOutcome() }
+        }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -185,23 +192,27 @@ struct SessionDetailView: View {
                 } label: {
                     Label("Record Session", systemImage: "record.circle")
                 }
-                .help("Record this session's audio")
+                .help(isTranscribing ? "Finish transcribing first" : "Record this session's audio")
                 .disabled(isTranscribing)
             }
 
             Divider().frame(height: 20)
 
+            // The label stays put; a spinner beside it shows work is under way
+            // (the progress itself lives in the Transcript tab).
             Button {
-                Task { await transcribe() }
+                noSpeechNotice = nil
+                transcription.start(patient: patient, session: session)
             } label: {
-                if isTranscribing {
-                    Label("Transcribing… \(Int(transcribeProgress * 100))%", systemImage: "waveform")
-                } else {
-                    Label("Transcribe", systemImage: "waveform")
-                }
+                Label("Transcribe", systemImage: "waveform")
             }
-            .help("Transcribe the recorded audio on-device")
-            .disabled(recorder.isRecording || isTranscribing || !hasAnyRecording)
+            .help(transcription.isBusy && !isTranscribing
+                  ? "Another session is being transcribed"
+                  : "Transcribe the recorded audio on-device")
+            .disabled(recorder.isRecording || transcription.isBusy || !hasAnyRecording)
+            if isTranscribing {
+                ProgressView().controlSize(.small)
+            }
 
             Button {
                 exportSession()
@@ -302,6 +313,11 @@ struct SessionDetailView: View {
 
     private var transcriptTab: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if let job = transcription.job(for: session.id) {
+                TranscriptionProgressView(job: job, compact: !transcriptText.isEmpty) {
+                    transcription.cancel(sessionID: session.id)
+                }
+            }
             if let notice = noSpeechNotice {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle")
@@ -317,7 +333,10 @@ struct SessionDetailView: View {
                 .padding([.horizontal, .top])
             }
             if transcriptText.isEmpty && !isEditingTranscript {
-                ContentUnavailableView("No Transcript Yet", systemImage: "text.alignleft", description: Text("Record a session, then tap Transcribe."))
+                // While transcribing, the progress card above is the pane.
+                if !isTranscribing {
+                    ContentUnavailableView("No Transcript Yet", systemImage: "text.alignleft", description: Text("Record a session, then tap Transcribe."))
+                }
             } else if isEditingTranscript {
                 HStack {
                     Label("Editing the transcript — this is the source of truth used for summaries and chat.", systemImage: "pencil")
@@ -687,7 +706,7 @@ struct SessionDetailView: View {
 
     private func load() {
         guard let store = appModel.store else { return }
-        transcriptText = store.transcript(for: patient, session: session) ?? ""
+        reloadTranscript()
         summaryText = savedNote(for: settings.progressNoteFormat)
         isEditingNote = false
         refreshHasPreviousNote()
@@ -744,70 +763,36 @@ struct SessionDetailView: View {
         onSessionUpdated()
     }
 
-    private func transcribe() async {
-        guard let store = appModel.store else { return }
-        isTranscribing = true
-        transcribeProgress = 0
-        noSpeechNotice = nil
-        defer { isTranscribing = false }
-        // Ask in context: transcription can take minutes, and we want to tell
-        // her when it's done if she's stepped away.
-        await integrations.makeNotifier().requestAuthorization()
-        do {
-            let transcriber = integrations.makeTranscriber()
-            let micURL = store.micRecordingURL(for: patient, session: session)
-            let callURL = store.callRecordingURL(for: patient, session: session)
-            // If the recordings are sealed, decrypt them to temporary files for
-            // the resampler (which needs a real, seekable audio file), and clean
-            // the plaintext copies up afterwards.
-            let protector = appModel.currentProtector
-            // Register cleanup *before* the second decrypt, so a failure there
-            // still removes the first plaintext copy.
-            var tempCopies: [URL] = []
-            defer { for url in tempCopies { try? FileManager.default.removeItem(at: url) } }
-            let (micReadURL, micIsTemp) = try protector.decryptedCopyOfLargeFile(at: micURL)
-            if micIsTemp { tempCopies.append(micReadURL) }
-            let (callReadURL, callIsTemp) = try protector.decryptedCopyOfLargeFile(at: callURL)
-            if callIsTemp { tempCopies.append(callReadURL) }
-            let text = try await transcriber.transcribeSession(micURL: micReadURL, callURL: callReadURL) { progress in
-                Task { @MainActor in transcribeProgress = progress }
-            }
-            let decision = AudioRetentionPolicy.decision(
-                optedIn: settings.keepAudioRecordings,
-                encryptionEnabled: appModel.isEncryptionEnabled,
-                transcript: text
-            )
-            if decision == .keepBecauseTranscriptBlank {
-                // Nothing was transcribed, so the recording may be the only copy
-                // of the session: keep it, don't overwrite any existing
-                // transcript with an empty one, and tell the user (inline, not a
-                // blocking alert) what happened and what to do next.
-                noSpeechNotice = AudioRetentionPolicy.blankTranscriptNotice(
-                    encryptionEnabled: appModel.isEncryptionEnabled
-                )
-                appModel.refreshPatients()
-                onSessionUpdated()
-            } else {
-                transcriptText = text
-                try store.saveTranscript(text, for: patient, session: session)
-                // Transcript-only by default: discard the raw audio now that the
-                // transcript (the document of record) is saved. Audio is kept only
-                // when the user opted in *and* at-rest encryption is on, so anything
-                // retained on disk is ciphertext, never plaintext PHI. The gate is
-                // enforced here on behavior, not just in the UI, so stale settings or
-                // encryption being turned off can't leave audio in the clear.
-                if decision == .discard {
-                    store.deleteRecordings(for: patient, session: session)
-                }
-                appModel.refreshPatients()
-                onSessionUpdated()
-                await integrations.makeNotifier().post(
-                    SessionNotifications.transcriptionComplete(patientName: patient.name, date: session.date)
-                )
-            }
-        } catch {
-            errorMessage = error.localizedDescription
+    /// Whether this session is being transcribed right now (the state lives in
+    /// the app-level coordinator, so it survives leaving and returning).
+    private var isTranscribing: Bool {
+        transcription.job(for: session.id) != nil
+    }
+
+    /// Picks up how this session's last transcription ended: reloads the text
+    /// and raises the inline notice or the error. Runs both when one finishes
+    /// while this screen is up and when the screen appears after one finished.
+    private func consumeTranscriptionOutcome() {
+        guard let outcome = transcription.takeOutcome(for: session.id) else { return }
+        switch outcome {
+        case .completed:
+            noSpeechNotice = nil
+            reloadTranscript()
+            onSessionUpdated()
+        case .blank(let notice):
+            // Nothing was transcribed; any existing transcript is untouched.
+            noSpeechNotice = notice
+            onSessionUpdated()
+        case .cancelled:
+            break
+        case .failed(let message):
+            errorMessage = message
         }
+    }
+
+    private func reloadTranscript() {
+        guard let store = appModel.store else { return }
+        transcriptText = store.transcript(for: patient, session: session) ?? ""
     }
 
     /// Streams a clinical progress note (in the selected format) into the
