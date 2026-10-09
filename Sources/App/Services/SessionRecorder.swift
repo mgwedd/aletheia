@@ -21,7 +21,7 @@ enum RecordingLimit {
 /// Coordinates the two audio captures (mic + call) that make up a session
 /// recording. They're kept as two separate files rather than mixed down to
 /// one, which has a nice side effect: the transcript can label lines by
-/// source ("You" vs "Call audio") instead of a single blended track.
+/// source ("Therapist" vs "Call audio") instead of a single blended track.
 @MainActor
 final class SessionRecorder: ObservableObject {
     /// Which session a recording is writing into. Held so a global control (the
