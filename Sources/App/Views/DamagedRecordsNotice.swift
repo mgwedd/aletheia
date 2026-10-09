@@ -14,25 +14,26 @@ struct DamagedRecordsNotice: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(title, systemImage: "exclamationmark.triangle.fill")
-                .font(.subheadline.bold())
-                .foregroundStyle(.orange)
+                .font(Theme.Typography.control)
+                .foregroundStyle(Theme.callAudio.color)
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(entries) { entry in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(entry.message)
-                                .font(.caption)
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(Theme.text.color)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(entry.fileURL.path)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
+                                .font(Theme.Typography.caption.monospaced())
+                                .foregroundStyle(Theme.muted.color)
                                 .textSelection(.enabled)
                             #if canImport(AppKit)
                             Button("Show in Finder") {
                                 NSWorkspace.shared.activateFileViewerSelecting([entry.folder])
                             }
                             .buttonStyle(.link)
-                            .font(.caption)
+                            .font(Theme.Typography.caption)
                             #endif
                         }
                     }
@@ -42,7 +43,7 @@ struct DamagedRecordsNotice: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.4)))
+        .background(Theme.callout.color, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).strokeBorder(Theme.callAudio.color.opacity(0.4)))
     }
 }

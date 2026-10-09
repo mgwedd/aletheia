@@ -10,12 +10,13 @@ struct LockView: View {
         VStack(spacing: 20) {
             Image(systemName: "lock.shield")
                 .font(.system(size: 56))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted.color)
             Text("Aletheia is locked")
-                .font(.title2.weight(.semibold))
+                .font(Theme.Typography.title)
+                .foregroundStyle(Theme.text.color)
             Text("Your patients' notes are protected. Unlock with Touch ID or your Mac password.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.muted.color)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
 
@@ -25,13 +26,14 @@ struct LockView: View {
                 Label("Unlock", systemImage: "touchid")
                     .frame(minWidth: 140)
             }
+            .buttonStyle(.themePrimary)
             .keyboardShortcut(.defaultAction)
             .controlSize(.large)
 
             if let error = appLock.lastError {
                 Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.recording.color)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
             }

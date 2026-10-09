@@ -33,19 +33,22 @@ struct TranscriptionProgressView: View {
         VStack(spacing: 14) {
             Image(systemName: "waveform")
                 .font(.system(size: 36))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted.color)
             Text("Transcribing this session")
-                .font(.title3)
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
             ProgressView(value: job.progress.fraction)
+                .tint(Theme.accent.color)
                 .frame(maxWidth: 360)
             Text("\(percent)%")
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.body.monospacedDigit())
+                .foregroundStyle(Theme.muted.color)
             Text(detail)
-                .font(.callout)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.text.color)
             Text("Runs entirely on this Mac. You can leave this screen — transcription keeps going.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.muted.color)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
             cancelButton
@@ -57,20 +60,24 @@ struct TranscriptionProgressView: View {
     private var banner: some View {
         HStack(spacing: 10) {
             ProgressView(value: job.progress.fraction)
+                .tint(Theme.accent.color)
                 .frame(maxWidth: 200)
             Text("\(percent)% · \(detail)")
-                .font(.callout)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.text.color)
                 .lineLimit(1)
             Spacer(minLength: 0)
             cancelButton
         }
         .padding(10)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.chip.color, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         .padding([.horizontal, .top])
     }
 
     private var cancelButton: some View {
         Button("Cancel", role: .cancel, action: onCancel)
+            .buttonStyle(.themed)
+            .controlSize(compact ? .small : .regular)
             .disabled(!job.canCancel)
             .help("Stop transcribing. Nothing is saved and the recordings are kept.")
     }
