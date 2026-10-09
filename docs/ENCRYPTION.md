@@ -94,7 +94,7 @@ a third-party SQLite build.
 
 | Data | How |
 |------|-----|
-| transcript.txt, summary.txt, chat.json, patient.json, patient_chat.json | one-shot `DataCipher` envelope, via `FileProtector` in `Store` |
+| transcript.txt, summary.txt, note.<format>.txt, chat.json, patient.json, patient_chat.json | one-shot `DataCipher` envelope, via `FileProtector` in `Store` |
 | comment quote/body, note body (Aletheia.sqlite) | field-level (`FieldCipher`, base64 envelope per value); DB file, schema, keys, timestamps stay a normal SQLite file — no SQLCipher |
 | mic.caf, call.caf | streaming `ChunkedCipher` (bounded memory), sealed on stop, decrypted to a temp file for transcription |
 

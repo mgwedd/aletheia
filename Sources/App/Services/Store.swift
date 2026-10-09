@@ -40,7 +40,8 @@ enum StoreError: LocalizedError {
 ///       mic.caf            (therapist's microphone)
 ///       call.caf            (the other side of the call, captured system audio)
 ///       transcript.txt
-///       summary.txt
+///       summary.txt        (the most recently generated note, any format)
+///       note.<format>.txt  (one progress note per format, e.g. note.soap.txt)
 ///
 /// Identity is a persisted `UUID`, never the path. A patient's id lives in
 /// `patient.json`, a session's in `session.json` — both assigned once at
@@ -467,6 +468,52 @@ final class Store {
     func saveSummary(_ text: String, for patient: Patient, session: SessionRecord) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("summary.txt")
         try protector.write(text, to: url)
+    }
+
+    // MARK: - Per-format progress notes
+
+    /// The file holding a session's note in `format`. Each format keeps its own
+    /// note, so switching SOAP → BIRP doesn't overwrite or hide the SOAP one.
+    static func noteFileName(for format: ProgressNoteFormat) -> String {
+        "note.\(format.rawValue).txt"
+    }
+
+    /// Whether `name` is a per-format note file (`note.<format>.txt`). Matched by
+    /// shape rather than from `ProgressNoteFormat.allCases` so a file written for
+    /// a since-removed format is still recognised (and migrated/sealed with the
+    /// rest of the session) instead of being orphaned.
+    static func isNoteFileName(_ name: String) -> Bool {
+        name.hasPrefix("note.") && name.hasSuffix(".txt") && name.count > "note..txt".count
+    }
+
+    /// The session's saved note in `format`, or nil if that format has none yet.
+    ///
+    /// Legacy adoption: before per-format notes a session had one `summary.txt`
+    /// and no way to tell which format produced it. If the session has no
+    /// `note.*.txt` at all but does have a `summary.txt`, that text is adopted as
+    /// the note for whichever `format` is asked for first (the one the user has
+    /// selected) and persisted as that format's file. After that the per-format
+    /// files exist, so the other formats correctly read as "no note yet".
+    func note(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) -> String? {
+        let dir = sessionDir(for: patient, session: session)
+        let url = dir.appendingPathComponent(Store.noteFileName(for: format))
+        if let text = (try? protector.stringIfPresent(at: url)) ?? nil { return text }
+
+        let hasAnyFormatNote = ProgressNoteFormat.allCases.contains {
+            fileManager.fileExists(atPath: dir.appendingPathComponent(Store.noteFileName(for: $0)).path)
+        }
+        guard !hasAnyFormatNote, let legacy = summary(for: patient, session: session) else { return nil }
+        try? protector.write(legacy, to: url)
+        return legacy
+    }
+
+    /// Saves `text` as the session's note in `format`, and mirrors it to
+    /// `summary.txt` so "the latest note" (export, search, chat context, the
+    /// session-list badge) keeps working off that one file.
+    func saveNote(_ text: String, for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) throws {
+        let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
+        try protector.write(text, to: url)
+        try saveSummary(text, for: patient, session: session)
     }
 
     // MARK: - Chat

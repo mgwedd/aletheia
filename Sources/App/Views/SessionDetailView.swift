@@ -507,7 +507,7 @@ struct SessionDetailView: View {
                 ContentUnavailableView(
                     "No Note Yet",
                     systemImage: "doc.text",
-                    description: Text("Transcribe the session, pick a format, then generate a \(settings.progressNoteFormat.shortName) note.")
+                    description: Text("There's no \(settings.progressNoteFormat.shortName) note for this session yet. Transcribe the session, then generate one.")
                 )
             } else {
                 ScrollView {
@@ -518,6 +518,10 @@ struct SessionDetailView: View {
                 }
             }
         }
+        // Each format keeps its own note, so the pane follows the picker.
+        .onChange(of: settings.progressNoteFormat) { _, newFormat in
+            summaryText = savedNote(for: newFormat)
+        }
     }
 
     private var chatTab: some View {
@@ -527,12 +531,17 @@ struct SessionDetailView: View {
     private func load() {
         guard let store = appModel.store else { return }
         transcriptText = store.transcript(for: patient, session: session) ?? ""
-        summaryText = store.summary(for: patient, session: session) ?? ""
+        summaryText = savedNote(for: settings.progressNoteFormat)
         chatMessages = store.loadSessionChat(for: patient, session: session)
         if let commentStore = appModel.commentStore {
             sessionNote = commentStore.note(sessionID: session.id)
             comments = commentStore.comments(sessionID: session.id)
         }
+    }
+
+    /// The saved note for `format` (empty if that format has none yet).
+    private func savedNote(for format: ProgressNoteFormat) -> String {
+        appModel.store?.note(for: patient, session: session, format: format) ?? ""
     }
 
     private func deleteComment(_ comment: SessionComment) {
@@ -641,25 +650,30 @@ struct SessionDetailView: View {
     }
 
     /// Streams a clinical progress note (in the selected format) into the
-    /// summary view as it writes, then persists the finished note. Reuses the
-    /// same calm word-by-word reveal as chat, with a working Stop.
+    /// summary view as it writes, then persists the finished note under that
+    /// format. Reuses the same calm word-by-word reveal as chat, with a working
+    /// Stop. The format is captured up front so a picker change mid-stream can't
+    /// misfile the result into another format's note.
     private func generateNote() {
         guard let store = appModel.store else { return }
+        let format = settings.progressNoteFormat
         let stream = integrations.makeAssistantService().streamProgressNote(
-            format: settings.progressNoteFormat,
+            format: format,
             transcript: transcriptText,
             notes: sessionNote,
             comments: comments
         )
         noteRunner.start(
             stream: stream,
-            onReveal: { text in summaryText = text },
+            onReveal: { text in
+                if settings.progressNoteFormat == format { summaryText = text }
+            },
             onError: { error in errorMessage = error.localizedDescription },
             onFinish: { final in
                 let trimmed = final.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return }
-                summaryText = final
-                try? store.saveSummary(final, for: patient, session: session)
+                if settings.progressNoteFormat == format { summaryText = final }
+                try? store.saveNote(final, for: patient, session: session, format: format)
                 onSessionUpdated()
                 Task {
                     await integrations.makeNotifier().post(

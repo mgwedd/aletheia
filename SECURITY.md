@@ -59,7 +59,7 @@ The repo must never contain credentials or patient data. Two layers enforce it:
   runs on every PR and push and **fails the build** if a commit contains secret
   content (private keys, cloud/API tokens) or a sensitive/PHI filename
   (`.p12`/`.pem`/`.env`/… or the app's runtime artifacts — `*.caf`, `*.sqlite`,
-  `transcript.txt`, `summary.txt`, `patient.json`, …). Pure git + grep, no
+  `transcript.txt`, `summary.txt`, `note.<format>.txt`, `patient.json`, …). Pure git + grep, no
   third-party scanner; it fails closed on any scanner error.
 - **Local pre-commit hook** (`scripts/hooks/pre-commit`): same check before a
   commit is even created. Opt in once with

@@ -127,7 +127,7 @@ sequenceDiagram
   Patients/<Patient-Slug>/
     patient.json
     YYYY-MM-DD_Session/
-      session.json  mic.caf  call.caf  transcript.txt  summary.txt
+      session.json  mic.caf  call.caf  transcript.txt  summary.txt  note.<format>.txt
 ```
 
 Schema changes are append-only migrations, and a pre-migration copy of the database is written to `.backups/migrations` before each one runs. The SQLite file is a single `records` table of `(kind, id, owner, item, payload)`; the patient and session layer sits on top of that store.

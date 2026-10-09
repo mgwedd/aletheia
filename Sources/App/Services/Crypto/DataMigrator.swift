@@ -11,7 +11,7 @@ import Foundation
 ///   Patients/<slug>/patient.json, patient_chat.json
 ///   Patients/<slug>/ChatThreads/<id>.json
 ///   Patients/<slug>/<…_Session>/{transcript.txt, summary.txt, chat.json,
-///                                 mic.caf, call.caf}
+///                                 note.<format>.txt, mic.caf, call.caf}
 ///   Aletheia.sqlite  (the comment/notes DB, field-level)
 ///
 /// `session.json` (a session's id + date) is deliberately **not** in this list:
@@ -27,7 +27,8 @@ import Foundation
 enum DataMigrator {
     /// The `.caf` recordings, migrated with the streaming cipher.
     private static let audioNames = ["mic.caf", "call.caf"]
-    /// The one-shot-sealed text/JSON files in a session folder.
+    /// The fixed one-shot-sealed text/JSON files in a session folder. The
+    /// per-format notes (`note.<format>.txt`) are added by `sessionFiles(in:)`.
     private static let sessionFileNames = ["transcript.txt", "summary.txt", "chat.json"]
     /// The one-shot-sealed files directly under a patient folder.
     private static let patientFileNames = ["patient.json", "patient_chat.json"]
@@ -63,7 +64,7 @@ enum DataMigrator {
 
             let sessionDirs = (try? fm.contentsOfDirectory(at: patientDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
             for sessionDir in sessionDirs where isSessionFolder(sessionDir) {
-                for name in sessionFileNames {
+                for name in sessionFiles(in: sessionDir) {
                     migrateFile(sessionDir.appendingPathComponent(name), from: from, to: to, into: &result)
                 }
                 for name in audioNames {
@@ -112,6 +113,14 @@ enum DataMigrator {
         guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { return false }
         if url.lastPathComponent.contains("_Session") { return true }
         return FileManager.default.fileExists(atPath: url.appendingPathComponent("session.json").path)
+    }
+
+    /// The fixed session files plus whichever `note.<format>.txt` files are in
+    /// `sessionDir`. Enumerated rather than generated from the format list so a
+    /// note for a format that no longer exists is still converted, not stranded.
+    static func sessionFiles(in sessionDir: URL) -> [String] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: sessionDir.path)) ?? []
+        return sessionFileNames + names.filter(Store.isNoteFileName).sorted()
     }
 
     private static func migrateFile(_ url: URL, from: FileProtector, to: FileProtector, into result: inout Result) {
