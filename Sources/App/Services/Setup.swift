@@ -84,6 +84,24 @@ enum Setup {
         }
     }
 
+    /// Done rows out of all rows, and the step to highlight: the first row
+    /// that isn't done and has something to click.
+    struct Progress: Equatable {
+        let done: Int
+        let total: Int
+        let currentID: UUID?
+
+        var fraction: Double { total == 0 ? 0 : Double(done) / Double(total) }
+    }
+
+    static func progress(_ items: [SetupItem]) -> Progress {
+        Progress(
+            done: items.filter { $0.status == .ok }.count,
+            total: items.count,
+            currentID: items.first { $0.status != .ok && $0.action != nil }?.id
+        )
+    }
+
     static func items(from checks: [ToolHealthCheck]) -> [SetupItem] {
         checks.map { SetupItem(id: $0.id, check: $0, action: action(for: $0)) }
     }

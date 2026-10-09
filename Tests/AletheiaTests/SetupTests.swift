@@ -63,4 +63,29 @@ final class SetupTests: XCTestCase {
         XCTAssertNil(items[1].action)
         XCTAssertEqual(items[2].action, .downloadOllamaModel)
     }
+
+    func testProgressCountsDoneRowsAndHighlightsTheFirstActionableOne() {
+        let items = Setup.items(from: [
+            check(.dataFolder, .ok),
+            check(.appleIntelligence, .warning),   // nothing to click
+            check(.microphone, .warning),
+            check(.ollama, .failed),
+        ])
+        let progress = Setup.progress(items)
+        XCTAssertEqual(progress.done, 1)
+        XCTAssertEqual(progress.total, 4)
+        XCTAssertEqual(progress.currentID, items[2].id)
+        XCTAssertEqual(progress.fraction, 0.25, accuracy: 0.0001)
+    }
+
+    func testProgressWhenEverythingIsDoneOrEmpty() {
+        let done = Setup.progress(Setup.items(from: [check(.dataFolder, .ok), check(.microphone, .ok)]))
+        XCTAssertEqual(done.done, 2)
+        XCTAssertNil(done.currentID)
+        XCTAssertEqual(done.fraction, 1, accuracy: 0.0001)
+
+        let empty = Setup.progress([])
+        XCTAssertEqual(empty.total, 0)
+        XCTAssertEqual(empty.fraction, 0)
+    }
 }
