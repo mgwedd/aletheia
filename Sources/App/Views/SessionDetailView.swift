@@ -28,6 +28,8 @@ struct SessionDetailView: View {
     // Shared with the menu-bar control (injected at app level) so both drive the
     // same recording. "Recording" in this view means *this* session specifically.
     @EnvironmentObject private var recorder: SessionRecorder
+    // App-level so a transcription survives leaving this screen.
+    @EnvironmentObject private var transcription: TranscriptionCoordinator
 
     /// The transcript as saved on disk. Generated notes, chat and staleness all
     /// key off this, never off the draft.
@@ -51,6 +53,11 @@ struct SessionDetailView: View {
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
     @State private var sessionNote: String = ""
+    // Editing the generated note (selected format only; Save/Cancel, no autosave).
+    @State private var isEditingNote = false
+    @State private var noteDraft = ""
+    @State private var confirmRegenerate = false
+    @State private var hasPreviousNote = false
     /// The note text as last read from / written to the store. `load()` assigns
     /// `sessionNote` programmatically, which fires `onChange`; comparing against
     /// this keeps that echo (and any no-op change) from being saved back.
@@ -76,8 +83,6 @@ struct SessionDetailView: View {
     /// Bumped on every focus request so the scroll-and-flash is an event, not a
     /// state: re-clicking the already-focused card still jumps to its passage.
     @State private var focusToken = 0
-    @State private var isTranscribing = false
-    @State private var transcribeProgress: Double = 0
     /// Set when the last transcription came back blank and the recording was
     /// kept (see `AudioRetentionPolicy.decision`); shown inline, not as an alert.
     @State private var noSpeechNotice: String?
@@ -108,7 +113,11 @@ struct SessionDetailView: View {
             }
         }
         .navigationTitle(Self.dateFormatter.string(from: session.date))
-        .onAppear(perform: load)
+        .onAppear {
+            load()
+            // A transcription that finished while this screen was away.
+            consumeTranscriptionOutcome()
+        }
         .onDisappear {
             // Navigation that couldn't ask first (another patient, a search hit):
             // keep the unsaved edits for the next time this session opens.
@@ -120,6 +129,9 @@ struct SessionDetailView: View {
             // A new saved transcript (e.g. a fresh transcription) replaces the
             // draft only if there were no unsaved edits to lose.
             if restoredDraft { restoredDraft = false } else if transcriptDraft == old { transcriptDraft = new }
+        }
+        .onChange(of: transcription.outcomes[session.id]) { _, outcome in
+            if outcome != nil { consumeTranscriptionOutcome() }
         }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -211,23 +223,27 @@ struct SessionDetailView: View {
                 } label: {
                     Label("Record Session", systemImage: "record.circle")
                 }
-                .help("Record this session's audio")
+                .help(isTranscribing ? "Finish transcribing first" : "Record this session's audio")
                 .disabled(isTranscribing)
             }
 
             Divider().frame(height: 20)
 
+            // The label stays put; a spinner beside it shows work is under way
+            // (the progress itself lives in the Transcript tab).
             Button {
-                Task { await transcribe() }
+                noSpeechNotice = nil
+                transcription.start(patient: patient, session: session)
             } label: {
-                if isTranscribing {
-                    Label("Transcribing… \(Int(transcribeProgress * 100))%", systemImage: "waveform")
-                } else {
-                    Label("Transcribe", systemImage: "waveform")
-                }
+                Label("Transcribe", systemImage: "waveform")
             }
-            .help("Transcribe the recorded audio on-device")
-            .disabled(recorder.isRecording || isTranscribing || !hasAnyRecording)
+            .help(transcription.isBusy && !isTranscribing
+                  ? "Another session is being transcribed"
+                  : "Transcribe the recorded audio on-device")
+            .disabled(recorder.isRecording || transcription.isBusy || !hasAnyRecording)
+            if isTranscribing {
+                ProgressView().controlSize(.small)
+            }
 
             Button {
                 exportSession()
@@ -328,6 +344,11 @@ struct SessionDetailView: View {
 
     private var transcriptTab: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if let job = transcription.job(for: session.id) {
+                TranscriptionProgressView(job: job, compact: !transcriptText.isEmpty) {
+                    transcription.cancel(sessionID: session.id)
+                }
+            }
             if let notice = noSpeechNotice {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle")
@@ -343,7 +364,10 @@ struct SessionDetailView: View {
                 .padding([.horizontal, .top])
             }
             if transcriptText.isEmpty && transcriptDraft.isEmpty && !hasTranscript {
-                ContentUnavailableView("No Transcript Yet", systemImage: "text.alignleft", description: Text("Record a session, then tap Transcribe."))
+                // While transcribing, the progress card above is the pane.
+                if !isTranscribing {
+                    ContentUnavailableView("No Transcript Yet", systemImage: "text.alignleft", description: Text("Record a session, then tap Transcribe."))
+                }
             } else {
                 if let readError = transcriptReadError {
                     Label("This transcript couldn't be read, so editing is turned off to avoid overwriting it. \(readError)", systemImage: "lock")
@@ -575,7 +599,7 @@ struct SessionDetailView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .disabled(noteRunner.isStreaming || noteRunner.isQueued)
+                .disabled(noteRunner.isStreaming || noteRunner.isQueued || isEditingNote)
 
                 HStack(alignment: .firstTextBaseline) {
                     Text(settings.progressNoteFormat.blurb)
@@ -594,14 +618,30 @@ struct SessionDetailView: View {
                         }
                     } else {
                         Button {
-                            generateNote()
+                            requestGenerateNote()
                         } label: {
                             Label(summaryText.isEmpty ? "Generate note" : "Regenerate", systemImage: "sparkles")
                         }
                         .keyboardShortcut("g", modifiers: .command)
-                        .disabled(transcriptText.isEmpty)
+                        .disabled(transcriptText.isEmpty || isEditingNote)
                     }
                     if !summaryText.isEmpty && !noteRunner.isStreaming {
+                        if hasPreviousNote && !isEditingNote && !noteRunner.isQueued {
+                            Button { restorePreviousNote() } label: {
+                                Label("Restore Previous", systemImage: "arrow.uturn.backward")
+                            }
+                            .help("Swap back to the version you edited before the last regenerate")
+                        }
+                        if !isEditingNote {
+                            Button {
+                                noteDraft = summaryText
+                                isEditingNote = true
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .disabled(noteRunner.isQueued)
+                            .help("Edit this note before it goes in the record")
+                        }
                         Button {
                             copyToPasteboard(summaryText)
                         } label: {
@@ -635,6 +675,20 @@ struct SessionDetailView: View {
                     systemImage: "doc.text",
                     description: Text("There's no \(settings.progressNoteFormat.shortName) note for this session yet. Transcribe the session, then generate one.")
                 )
+            } else if isEditingNote {
+                HStack {
+                    Label("Editing the \(settings.progressNoteFormat.shortName) note. Regenerating asks before replacing your edits.", systemImage: "pencil")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Cancel") { isEditingNote = false }
+                    Button("Save") { saveEditedNote() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!NoteEditing.canSave(draft: noteDraft, original: summaryText))
+                }
+                .padding(.horizontal)
+                TextEditor(text: $noteDraft)
+                    .font(.body)
+                    .padding(8)
             } else {
                 ScrollView {
                     MarkdownMessageView(text: summaryText)
@@ -646,9 +700,60 @@ struct SessionDetailView: View {
         }
         // Each format keeps its own note, so the pane follows the picker.
         .onChange(of: settings.progressNoteFormat) { _, newFormat in
+            isEditingNote = false
             summaryText = savedNote(for: newFormat)
             noteFingerprint = savedFingerprint(for: newFormat)
+            refreshHasPreviousNote()
         }
+        .alert("Replace your edited note?", isPresented: $confirmRegenerate) {
+            Button("Regenerate", role: .destructive) { generateNote() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You edited this \(settings.progressNoteFormat.shortName) note. Regenerating replaces it; your edited version is kept and can be brought back with Restore Previous.")
+        }
+    }
+
+    private func saveEditedNote() {
+        guard let store = appModel.store else { return }
+        guard NoteEditing.canSave(draft: noteDraft, original: summaryText) else { return }
+        do {
+            try store.saveEditedNote(noteDraft, for: patient, session: session, format: settings.progressNoteFormat)
+            summaryText = noteDraft
+            isEditingNote = false
+            onSessionUpdated()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Regenerate asks first when it would replace the user's edits; an
+    /// untouched generated note is replaced straight away. (The Store keeps the
+    /// edited text as the previous version either way.)
+    private func requestGenerateNote() {
+        guard let store = appModel.store else { return }
+        let state = store.noteEditState(for: patient, session: session, format: settings.progressNoteFormat)
+        if NoteEditing.shouldArchiveBeforeReplacing(state) {
+            confirmRegenerate = true
+        } else {
+            generateNote()
+        }
+    }
+
+    private func restorePreviousNote() {
+        guard let store = appModel.store else { return }
+        do {
+            if let restored = try store.restorePreviousNote(for: patient, session: session, format: settings.progressNoteFormat) {
+                summaryText = restored
+                onSessionUpdated()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshHasPreviousNote() {
+        guard let store = appModel.store else { hasPreviousNote = false; return }
+        hasPreviousNote = store.previousNote(for: patient, session: session, format: settings.progressNoteFormat) != nil
     }
 
     private var chatTab: some View {
@@ -657,16 +762,7 @@ struct SessionDetailView: View {
 
     private func load() {
         guard let store = appModel.store else { return }
-        do {
-            let saved = try store.readTranscript(for: patient, session: session)
-            transcriptText = saved ?? ""
-            hasTranscript = saved != nil
-            transcriptReadError = nil
-        } catch {
-            transcriptText = ""
-            hasTranscript = true
-            transcriptReadError = error.localizedDescription
-        }
+        reloadTranscript()
         transcriptDraft = transcriptText
         if transcriptReadError == nil, let restored = UnsavedTranscriptDrafts.take(for: session.id) {
             transcriptDraft = restored
@@ -679,6 +775,8 @@ struct SessionDetailView: View {
         )
         summaryText = savedNote(for: settings.progressNoteFormat)
         noteFingerprint = savedFingerprint(for: settings.progressNoteFormat)
+        isEditingNote = false
+        refreshHasPreviousNote()
         chatMessages = store.loadSessionChat(for: patient, session: session)
         if let commentStore = appModel.commentStore {
             let storedNote = commentStore.note(sessionID: session.id)
@@ -744,69 +842,51 @@ struct SessionDetailView: View {
         onSessionUpdated()
     }
 
-    private func transcribe() async {
+    /// Whether this session is being transcribed right now (the state lives in
+    /// the app-level coordinator, so it survives leaving and returning).
+    private var isTranscribing: Bool {
+        transcription.job(for: session.id) != nil
+    }
+
+    /// Picks up how this session's last transcription ended: reloads the text
+    /// and raises the inline notice or the error. Runs both when one finishes
+    /// while this screen is up and when the screen appears after one finished.
+    private func consumeTranscriptionOutcome() {
+        guard let outcome = transcription.takeOutcome(for: session.id) else { return }
+        switch outcome {
+        case .completed:
+            noSpeechNotice = nil
+            reloadTranscript()
+            // Re-transcribing was the user's choice: the new text wins over any
+            // unsaved edits to the old one, so a later Save can't put the old
+            // text back.
+            transcriptDraft = transcriptText
+            onSessionUpdated()
+        case .blank(let notice):
+            // Nothing was transcribed; any existing transcript is untouched.
+            noSpeechNotice = notice
+            onSessionUpdated()
+        case .cancelled:
+            break
+        case .failed(let message):
+            errorMessage = message
+        }
+    }
+
+    /// Reads the saved transcript. A file that exists but can't be read turns
+    /// editing off (and blocks Save) rather than being treated as empty, so it is
+    /// never overwritten.
+    private func reloadTranscript() {
         guard let store = appModel.store else { return }
-        isTranscribing = true
-        transcribeProgress = 0
-        noSpeechNotice = nil
-        defer { isTranscribing = false }
-        // Ask in context: transcription can take minutes, and we want to tell
-        // her when it's done if she's stepped away.
-        await integrations.makeNotifier().requestAuthorization()
         do {
-            let transcriber = integrations.makeTranscriber()
-            let micURL = store.micRecordingURL(for: patient, session: session)
-            let callURL = store.callRecordingURL(for: patient, session: session)
-            // If the recordings are sealed, decrypt them to temporary files for
-            // the resampler (which needs a real, seekable audio file), and clean
-            // the plaintext copies up afterwards.
-            let protector = appModel.currentProtector
-            // Register cleanup *before* the second decrypt, so a failure there
-            // still removes the first plaintext copy.
-            var tempCopies: [URL] = []
-            defer { for url in tempCopies { try? FileManager.default.removeItem(at: url) } }
-            let (micReadURL, micIsTemp) = try protector.decryptedCopyOfLargeFile(at: micURL)
-            if micIsTemp { tempCopies.append(micReadURL) }
-            let (callReadURL, callIsTemp) = try protector.decryptedCopyOfLargeFile(at: callURL)
-            if callIsTemp { tempCopies.append(callReadURL) }
-            let text = try await transcriber.transcribeSession(micURL: micReadURL, callURL: callReadURL) { progress in
-                Task { @MainActor in transcribeProgress = progress }
-            }
-            let decision = AudioRetentionPolicy.decision(
-                optedIn: settings.keepAudioRecordings,
-                encryptionEnabled: appModel.isEncryptionEnabled,
-                transcript: text
-            )
-            if decision == .keepBecauseTranscriptBlank {
-                // Nothing was transcribed, so the recording may be the only copy
-                // of the session: keep it, don't overwrite any existing
-                // transcript with an empty one, and tell the user (inline, not a
-                // blocking alert) what happened and what to do next.
-                noSpeechNotice = AudioRetentionPolicy.blankTranscriptNotice(
-                    encryptionEnabled: appModel.isEncryptionEnabled
-                )
-                appModel.refreshPatients()
-                onSessionUpdated()
-            } else {
-                transcriptText = text
-                try store.saveTranscript(text, for: patient, session: session)
-                // Transcript-only by default: discard the raw audio now that the
-                // transcript (the document of record) is saved. Audio is kept only
-                // when the user opted in *and* at-rest encryption is on, so anything
-                // retained on disk is ciphertext, never plaintext PHI. The gate is
-                // enforced here on behavior, not just in the UI, so stale settings or
-                // encryption being turned off can't leave audio in the clear.
-                if decision == .discard {
-                    store.deleteRecordings(for: patient, session: session)
-                }
-                appModel.refreshPatients()
-                onSessionUpdated()
-                await integrations.makeNotifier().post(
-                    SessionNotifications.transcriptionComplete(patientName: patient.name, date: session.date)
-                )
-            }
+            let saved = try store.readTranscript(for: patient, session: session)
+            transcriptText = saved ?? ""
+            hasTranscript = saved != nil
+            transcriptReadError = nil
         } catch {
-            errorMessage = error.localizedDescription
+            transcriptText = ""
+            hasTranscript = true
+            transcriptReadError = error.localizedDescription
         }
     }
 
@@ -839,15 +919,26 @@ struct SessionDetailView: View {
             onReveal: { text in
                 if settings.progressNoteFormat == format { summaryText = text }
             },
-            onError: { error in errorMessage = error.localizedDescription },
+            onError: { error in
+                errorMessage = error.localizedDescription
+                // The reveal blanked the pane; put back what is actually saved.
+                if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
+            },
             onFinish: { final in
                 let trimmed = final.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return }
                 if settings.progressNoteFormat == format { summaryText = final }
+                do {
+                    try store.saveGeneratedNote(final, for: patient, session: session, format: format, generatedFromTranscript: transcript)
+                } catch {
+                    errorMessage = error.localizedDescription
+                    if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
+                    return
+                }
                 // Record which transcript this note came from (the snapshot the
                 // request used, not whatever the transcript is by now).
-                if (try? store.saveNote(final, for: patient, session: session, format: format, generatedFromTranscript: transcript)) != nil,
-                   settings.progressNoteFormat == format {
+                if settings.progressNoteFormat == format {
+                    refreshHasPreviousNote()
                     noteFingerprint = NoteFreshness.fingerprint(of: transcript)
                 }
                 onSessionUpdated()

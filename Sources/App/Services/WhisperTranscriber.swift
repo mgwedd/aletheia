@@ -35,28 +35,35 @@ final class WhisperTranscriber: Transcribing {
     func transcribeSession(
         micURL: URL?,
         callURL: URL?,
-        onProgress: @escaping (Double) -> Void
+        onProgress: @escaping (TranscriptionProgress) -> Void
     ) async throws -> String {
         guard FileManager.default.fileExists(atPath: modelPath.path) else {
             throw WhisperTranscriberError.modelNotDownloaded
         }
 
-        var tracks: [(url: URL, source: String)] = []
+        var tracks: [(url: URL, source: String, stage: TranscriptionStage)] = []
         if let micURL, FileManager.default.fileExists(atPath: micURL.path) {
-            tracks.append((url: micURL, source: "Therapist"))
+            tracks.append((url: micURL, source: "Therapist", stage: .transcribingMic))
         }
         if let callURL, FileManager.default.fileExists(atPath: callURL.path) {
-            tracks.append((url: callURL, source: "Call audio"))
+            tracks.append((url: callURL, source: "Call audio", stage: .transcribingCall))
         }
 
         // Progress spans only the tracks that exist, so a single-track
         // session still runs 0-100%.
         var lines: [TranscribedLine] = []
-        let span = 1.0 / Double(tracks.count)
+        let trackCount = tracks.count
         for (index, track) in tracks.enumerated() {
-            let base = Double(index) * span
-            let found = try await transcribe(url: track.url, source: track.source) { onProgress(base + $0 * span) }
-            onProgress(base + span)
+            // Cancelling between tracks must not start the next one.
+            try Task.checkCancellation()
+            let report: (TranscriptionStage, Double) -> Void = { stage, trackFraction in
+                onProgress(TranscriptionProgress(
+                    stage: stage,
+                    fraction: TranscriptionProgressMath.overall(trackIndex: index, trackCount: trackCount, trackFraction: trackFraction)
+                ))
+            }
+            let found = try await transcribe(url: track.url, source: track.source, stage: track.stage, report: report)
+            report(track.stage, 1)
             // Drop non-speech tags and silence artifacts, so a recording where
             // nothing was said yields "" (which the caller treats as "no
             // speech") instead of a transcript of bare "[00:00] Therapist:"
@@ -73,16 +80,40 @@ final class WhisperTranscriber: Transcribing {
         }.joined(separator: "\n")
     }
 
-    private func transcribe(url: URL, source: String, onProgress: @escaping (Double) -> Void) async throws -> [TranscribedLine] {
+    private func transcribe(
+        url: URL,
+        source: String,
+        stage: TranscriptionStage,
+        report: @escaping (TranscriptionStage, Double) -> Void
+    ) async throws -> [TranscribedLine] {
+        report(.preparing, 0)
         let samples = try AudioResampler.loadWhisperSamples(from: url)
+        try Task.checkCancellation()
         // Whisper hallucinates tags and filler on silence, so skip it.
         guard !AudioResampler.isEssentiallySilent(samples) else { return [] }
 
         let whisper = Whisper(fromFileURL: modelPath)
-        let forwarder = ProgressForwarder(onProgress: onProgress)
+        let forwarder = ProgressForwarder(onProgress: { report(stage, $0) })
         whisper.delegate = forwarder
+        report(stage, 0)
 
-        let segments = try await whisper.transcribe(audioFrames: samples)
+        // whisper.cpp can't be interrupted mid-window, but SwiftWhisper checks a
+        // cancel flag before each ~30 s window and then throws `.cancelled`, so
+        // cancelling the task stops the work within a few seconds.
+        let canceller = WhisperCanceller(whisper)
+        let segments: [Segment]
+        do {
+            segments = try await withTaskCancellationHandler {
+                try await whisper.transcribe(audioFrames: samples)
+            } onCancel: {
+                canceller.cancel()
+            }
+        } catch WhisperError.cancelled {
+            throw CancellationError()
+        }
+        // Cancel can land before whisper has started (nothing to flag yet);
+        // never hand back text for a cancelled run.
+        try Task.checkCancellation()
         // SwiftWhisper holds `delegate` weakly; nothing else retains
         // `forwarder`, so without this the optimizer could release it right
         // after the assignment above and silently drop every progress
@@ -92,6 +123,22 @@ final class WhisperTranscriber: Transcribing {
         return segments.map { segment in
             TranscribedLine(source: source, startTime: TimeInterval(segment.startTime) / 1000.0, text: segment.text)
         }
+    }
+}
+
+/// Lets the task-cancellation handler (a `@Sendable` closure on an arbitrary
+/// thread) ask a `Whisper` instance to stop. `Whisper.cancel` only sets a flag
+/// that its C callback polls, and throws when nothing is running; both are fine
+/// to ignore here.
+private final class WhisperCanceller: @unchecked Sendable {
+    private let whisper: Whisper
+
+    init(_ whisper: Whisper) {
+        self.whisper = whisper
+    }
+
+    func cancel() {
+        try? whisper.cancel(completionHandler: {})
     }
 }
 

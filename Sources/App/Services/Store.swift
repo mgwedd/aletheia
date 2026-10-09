@@ -492,6 +492,31 @@ final class Store {
     /// rest of the session) instead of being orphaned.
     static func isNoteFileName(_ name: String) -> Bool {
         name.hasPrefix("note.") && name.hasSuffix(".txt") && name.count > "note..txt".count
+            && !isNoteSidecarFileName(name)
+    }
+
+    /// Companion files kept beside a note, one per format.
+    enum NoteSidecar: String, CaseIterable {
+        /// What the assistant last generated; edits are detected against it.
+        case generated
+        /// The user's edited text, kept when a regenerate replaced it.
+        case previous
+    }
+
+    /// The companion file for `format`, e.g. `note.soap.generated.txt`.
+    static func noteSidecarFileName(for format: ProgressNoteFormat, _ kind: NoteSidecar) -> String {
+        "note.\(format.rawValue).\(kind.rawValue).txt"
+    }
+
+    /// Whether `name` is a note companion file. These match the `note.*.txt`
+    /// shape but are not notes: `isNoteFileName` excludes them (so patient chat
+    /// context doesn't read them as extra notes), while `DataMigrator` includes
+    /// them so they are sealed and unsealed with the rest of the session.
+    static func isNoteSidecarFileName(_ name: String) -> Bool {
+        guard name.hasPrefix("note."), name.hasSuffix(".txt") else { return false }
+        let stem = name.dropFirst("note.".count).dropLast(".txt".count)
+        guard let dot = stem.lastIndex(of: "."), dot != stem.startIndex else { return false }
+        return NoteSidecar(rawValue: String(stem[stem.index(after: dot)...])) != nil
     }
 
     /// The sidecar recording which transcript a generated note came from
@@ -543,6 +568,79 @@ final class Store {
             let record = try NoteFreshness.encode(fingerprint: NoteFreshness.fingerprint(of: transcript))
             try protector.write(record, to: dir.appendingPathComponent(Store.noteMetaFileName(for: format)))
         }
+    }
+
+    // MARK: - Editing generated notes
+
+    private func noteSidecarURL(_ kind: NoteSidecar, patient: Patient, session: SessionRecord, format: ProgressNoteFormat) -> URL {
+        sessionDir(for: patient, session: session)
+            .appendingPathComponent(Store.noteSidecarFileName(for: format, kind))
+    }
+
+    /// The text the assistant last generated for `format`, nil if none was recorded.
+    func generatedNoteBaseline(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) -> String? {
+        let url = noteSidecarURL(.generated, patient: patient, session: session, format: format)
+        return (try? protector.stringIfPresent(at: url)) ?? nil
+    }
+
+    /// The edited text a regenerate replaced for `format`, nil if there is none.
+    func previousNote(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) -> String? {
+        let url = noteSidecarURL(.previous, patient: patient, session: session, format: format)
+        return (try? protector.stringIfPresent(at: url)) ?? nil
+    }
+
+    /// Whether the saved `format` note is untouched generated text, the user's
+    /// edit, or absent. Read-only (unlike `note(for:...)`).
+    func noteEditState(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) -> NoteEditState {
+        let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
+        let current = (try? protector.stringIfPresent(at: url)) ?? nil
+        return NoteEditing.state(
+            current: current,
+            baseline: generatedNoteBaseline(for: patient, session: session, format: format)
+        )
+    }
+
+    /// Saves a note the assistant just generated. If the note it replaces was
+    /// edited by hand, that text is first kept as the previous version; should
+    /// that fail, this throws *before* touching the note, so an edit is never
+    /// lost to a regenerate. The new text also becomes the baseline that later
+    /// edits are measured against.
+    func saveGeneratedNote(
+        _ text: String,
+        for patient: Patient,
+        session: SessionRecord,
+        format: ProgressNoteFormat,
+        generatedFromTranscript transcript: String? = nil
+    ) throws {
+        let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
+        if NoteEditing.shouldArchiveBeforeReplacing(noteEditState(for: patient, session: session, format: format)),
+           let edited = (try? protector.stringIfPresent(at: url)) ?? nil {
+            try protector.write(edited, to: noteSidecarURL(.previous, patient: patient, session: session, format: format))
+        }
+        try saveNote(text, for: patient, session: session, format: format, generatedFromTranscript: transcript)
+        try protector.write(text, to: noteSidecarURL(.generated, patient: patient, session: session, format: format))
+    }
+
+    /// Saves the user's hand-edited note. The generated baseline is left as it
+    /// was, so the note now reads as edited.
+    func saveEditedNote(_ text: String, for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) throws {
+        try saveNote(text, for: patient, session: session, format: format)
+    }
+
+    /// Swaps the saved note with its previous version, so restoring is itself
+    /// reversible. Returns the restored text, or nil when there is no previous
+    /// version.
+    @discardableResult
+    func restorePreviousNote(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) throws -> String? {
+        guard let previous = previousNote(for: patient, session: session, format: format),
+              !NoteEditing.normalized(previous).isEmpty else { return nil }
+        let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
+        let current = (try? protector.stringIfPresent(at: url)) ?? nil
+        if let current {
+            try protector.write(current, to: noteSidecarURL(.previous, patient: patient, session: session, format: format))
+        }
+        try saveNote(previous, for: patient, session: session, format: format)
+        return previous
     }
 
     // MARK: - Chat

@@ -11,6 +11,7 @@ import AppKit
 /// the same recording the session view drives.
 struct RecordingMenuBar: View {
     @EnvironmentObject private var recorder: SessionRecorder
+    @EnvironmentObject private var transcription: TranscriptionCoordinator
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var integrations: Integrations
@@ -19,6 +20,14 @@ struct RecordingMenuBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             engineStatusRow
+            if let status = transcription.statusLine {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(status)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
             Divider()
             if let active = recorder.active {
                 recordingControls(active)
