@@ -74,8 +74,8 @@ final class PatientBackgroundTests: XCTestCase {
     func testBackgroundBlockIncludesTherapistNotes() {
         let patient = Patient(
             name: "Jane",
-            slug: "Jane",
             notes: "  Prefers morning sessions.  ",
+            slug: "Jane",
             clinicalHistory: "GAD"
         )
         let block = patient.aiBackgroundBlock
@@ -87,12 +87,12 @@ final class PatientBackgroundTests: XCTestCase {
     }
 
     func testBackgroundBlockWithOnlyNotesIsNotEmpty() {
-        let patient = Patient(name: "Jane", slug: "Jane", notes: "Allergic to cats")
+        let patient = Patient(name: "Jane", notes: "Allergic to cats", slug: "Jane")
         XCTAssertTrue(patient.aiBackgroundBlock.contains("Allergic to cats"))
     }
 
     func testBlankNotesAddNothing() {
-        let patient = Patient(name: "Jane", slug: "Jane", notes: "  \n ")
+        let patient = Patient(name: "Jane", notes: "  \n ", slug: "Jane")
         XCTAssertEqual(patient.aiBackgroundBlock, "")
     }
 
@@ -113,15 +113,15 @@ final class PatientBackgroundTests: XCTestCase {
     func testProfileRowsListOnlyFilledPartsInOrder() {
         let patient = Patient(
             name: "Jane",
-            slug: "Jane",
             notes: "Prefers mornings",
+            slug: "Jane",
             clinicalHistory: "GAD",
             medications: [Medication(name: "Sertraline", dose: "50mg"), Medication(name: "Aspirin", dose: "")]
         )
         XCTAssertEqual(patient.profileRows(includeMedications: true), [
-            .init(label: "Clinical history", text: "GAD"),
-            .init(label: "Medications", text: "Sertraline 50mg, Aspirin"),
-            .init(label: "Notes", text: "Prefers mornings"),
+            Patient.ProfileRow(label: "Clinical history", text: "GAD"),
+            Patient.ProfileRow(label: "Medications", text: "Sertraline 50mg, Aspirin"),
+            Patient.ProfileRow(label: "Notes", text: "Prefers mornings"),
         ])
     }
 
