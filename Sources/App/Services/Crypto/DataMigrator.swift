@@ -11,7 +11,8 @@ import Foundation
 ///   Patients/<slug>/patient.json, patient_chat.json
 ///   Patients/<slug>/ChatThreads/<id>.json
 ///   Patients/<slug>/<…_Session>/{transcript.txt, summary.txt, chat.json,
-///                                 note.<format>.txt, mic.caf, call.caf}
+///                                 note.<format>.txt, note.<format>.meta.json,
+///                                 mic.caf, call.caf}
 ///   Aletheia.sqlite  (the comment/notes DB, field-level)
 ///
 /// `session.json` (a session's id + date) is deliberately **not** in this list:
@@ -115,12 +116,13 @@ enum DataMigrator {
         return FileManager.default.fileExists(atPath: url.appendingPathComponent("session.json").path)
     }
 
-    /// The fixed session files plus whichever `note.<format>.txt` files are in
-    /// `sessionDir`. Enumerated rather than generated from the format list so a
-    /// note for a format that no longer exists is still converted, not stranded.
+    /// The fixed session files plus whichever `note.<format>.txt` files (and their
+    /// `.meta.json` sidecars) are in `sessionDir`. Enumerated rather than
+    /// generated from the format list so a note for a format that no longer
+    /// exists is still converted, not stranded.
     static func sessionFiles(in sessionDir: URL) -> [String] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: sessionDir.path)) ?? []
-        return sessionFileNames + names.filter(Store.isNoteFileName).sorted()
+        return sessionFileNames + names.filter { Store.isNoteFileName($0) || Store.isNoteMetaFileName($0) }.sorted()
     }
 
     private static func migrateFile(_ url: URL, from: FileProtector, to: FileProtector, into result: inout Result) {

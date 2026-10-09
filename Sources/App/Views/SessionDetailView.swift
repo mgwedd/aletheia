@@ -45,6 +45,9 @@ struct SessionDetailView: View {
     /// changed" sync below replace it.
     @State private var restoredDraft = false
     @State private var showDiscardConfirm = false
+    /// Fingerprint of the transcript the displayed format's note was generated
+    /// from, if one was recorded. See `NoteFreshness`.
+    @State private var noteFingerprint: String?
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
     @State private var sessionNote: String = ""
@@ -609,6 +612,10 @@ struct SessionDetailView: View {
             }
             .padding([.horizontal, .top])
 
+            if noteIsOutdated {
+                OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: generateNote)
+            }
+
             if !summaryText.isEmpty {
                 Text("AI-drafted from the transcript and your notes. Review and edit before it goes in the record.")
                     .font(.caption)
@@ -634,6 +641,7 @@ struct SessionDetailView: View {
         // Each format keeps its own note, so the pane follows the picker.
         .onChange(of: settings.progressNoteFormat) { _, newFormat in
             summaryText = savedNote(for: newFormat)
+            noteFingerprint = savedFingerprint(for: newFormat)
         }
     }
 
@@ -664,6 +672,7 @@ struct SessionDetailView: View {
             discard: { discardTranscriptEdits() }
         )
         summaryText = savedNote(for: settings.progressNoteFormat)
+        noteFingerprint = savedFingerprint(for: settings.progressNoteFormat)
         chatMessages = store.loadSessionChat(for: patient, session: session)
         if let commentStore = appModel.commentStore {
             sessionNote = commentStore.note(sessionID: session.id)
@@ -674,6 +683,18 @@ struct SessionDetailView: View {
     /// The saved note for `format` (empty if that format has none yet).
     private func savedNote(for format: ProgressNoteFormat) -> String {
         appModel.store?.note(for: patient, session: session, format: format) ?? ""
+    }
+
+    /// The fingerprint recorded when `format`'s note was generated, if any.
+    private func savedFingerprint(for format: ProgressNoteFormat) -> String? {
+        appModel.store?.noteTranscriptFingerprint(for: patient, session: session, format: format)
+    }
+
+    /// The displayed note was generated from an earlier version of the saved
+    /// transcript. Hidden while a (re)generation is running.
+    private var noteIsOutdated: Bool {
+        !summaryText.isEmpty && !noteRunner.isStreaming && !noteRunner.isQueued
+            && NoteFreshness.isOutdated(recorded: noteFingerprint, transcript: transcriptText)
     }
 
     private func deleteComment(_ comment: SessionComment) {
@@ -815,7 +836,12 @@ struct SessionDetailView: View {
                 let trimmed = final.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return }
                 if settings.progressNoteFormat == format { summaryText = final }
-                try? store.saveNote(final, for: patient, session: session, format: format)
+                // Record which transcript this note came from (the snapshot the
+                // request used, not whatever the transcript is by now).
+                if (try? store.saveNote(final, for: patient, session: session, format: format, generatedFromTranscript: transcript)) != nil,
+                   settings.progressNoteFormat == format {
+                    noteFingerprint = NoteFreshness.fingerprint(of: transcript)
+                }
                 onSessionUpdated()
                 Task {
                     await integrations.makeNotifier().post(
