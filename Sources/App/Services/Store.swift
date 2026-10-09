@@ -451,8 +451,15 @@ final class Store {
     }
 
     func transcript(for patient: Patient, session: SessionRecord) -> String? {
+        (try? readTranscript(for: patient, session: session)) ?? nil
+    }
+
+    /// Like `transcript(for:session:)`, but a transcript that exists and can't be
+    /// read (locked, tampered, I/O error) throws instead of reading as "no
+    /// transcript". nil still means there is no transcript file.
+    func readTranscript(for patient: Patient, session: SessionRecord) throws -> String? {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
-        return (try? protector.stringIfPresent(at: url)) ?? nil
+        return try protector.stringIfPresent(at: url)
     }
 
     func saveTranscript(_ text: String, for patient: Patient, session: SessionRecord) throws {
@@ -764,35 +771,153 @@ final class Store {
         return PatientContextRetriever.context(for: documents, question: question)
     }
 
+    /// Cap, in characters, on the material added under one session's header besides
+    /// its transcript excerpt: the therapist's notes and comments and the
+    /// generated notes, combined. These bypass the retriever's ranking, so the
+    /// cap keeps one long note from crowding out the transcripts.
+    static let patientChatSessionExtrasLimit = 3_000
+
+    /// Shown under a session's header when its transcript exists but couldn't be
+    /// read, so the model doesn't take the gap for "never discussed".
+    static let unreadableTranscriptMarker = "[transcript could not be read]"
+
     /// Like `gatherPatientContext(for:relevantTo:)`, but also assigns each
     /// session a short citation tag (`S1` newest first) embedded in its header,
     /// and returns the tag→session mapping. This is what lets the chat show
     /// which sessions an answer drew from (see `Citations`).
+    ///
+    /// Under each header go the retriever's transcript excerpt (if the ranker
+    /// kept one), then that session's generated notes, the therapist's own
+    /// notes and her transcript comments. `sources` lists only the sessions
+    /// that appear in the text.
     func gatherCitedPatientContext(for patient: Patient, relevantTo question: String) -> PatientContext {
         let sessions = ((try? listSessions(for: patient)) ?? []).sorted { $0.date > $1.date }
+        // Same-day sessions share a date key (the retriever groups by date too),
+        // so they share one tag and cite as one source.
         var labels: [Date: String] = [:]
-        var sources: [CitationSource] = []
+        var dates: [Date] = []
+        var firstFolder: [Date: String] = [:]
+        var extras: [Date: [String]] = [:]
         var documents: [TranscriptDocument] = []
+        var unreadable = 0
         var index = 1
         for session in sessions {
-            guard let transcript = transcript(for: patient, session: session), !transcript.isEmpty else { continue }
-            let tag = "S\(index)"
-            index += 1
-            // Same-day sessions share a date key; the retriever groups by date
-            // too, so they cite as one source — consistent with how it renders.
-            labels[session.date] = tag
-            sources.append(CitationSource(tag: tag, date: session.date, folderName: session.folderName))
-            documents.append(TranscriptDocument(date: session.date, text: transcript))
+            var material = sessionMaterial(for: patient, session: session)
+            var transcript: String?
+            do {
+                transcript = try readTranscript(for: patient, session: session)
+            } catch {
+                unreadable += 1
+                material.insert(Store.unreadableTranscriptMarker, at: 0)
+            }
+            let transcriptText = transcript ?? ""
+            guard !transcriptText.isEmpty || !material.isEmpty else { continue }
+
+            if labels[session.date] == nil {
+                labels[session.date] = "S\(index)"
+                index += 1
+                dates.append(session.date)
+                firstFolder[session.date] = session.folderName
+            }
+            if !transcriptText.isEmpty {
+                documents.append(TranscriptDocument(date: session.date, text: transcriptText))
+            }
+            extras[session.date, default: []].append(contentsOf: material)
         }
-        let transcriptsText = PatientContextRetriever.context(for: documents, question: question, labels: labels)
+
+        let excerpts = PatientContextRetriever.excerpts(for: documents, question: question, labels: labels)
+        let excerptsByDate = Dictionary(grouping: excerpts, by: { $0.date })
+        var blocks: [String] = []
+        var sources: [CitationSource] = []
+        for date in dates {
+            let parts = (excerptsByDate[date] ?? []).map { $0.text } + (extras[date] ?? [])
+            // Nothing from this session made it into the context: don't cite it.
+            guard !parts.isEmpty, let tag = labels[date], let folderName = firstFolder[date] else { continue }
+            let header = PatientContextRetriever.header(date, labels: labels)
+            blocks.append("\(header)\n\(parts.joined(separator: "\n\n"))")
+            sources.append(CitationSource(tag: tag, date: date, folderName: folderName))
+        }
+        let sessionsText = blocks.joined(separator: "\n\n")
         // Always prepend the patient's background (clinical history + meds) so the
         // assistant can draw on it whenever it's relevant, without it having to be
         // requested. Empty when nothing has been entered.
         let background = patient.aiBackgroundBlock
-        let text = [background, transcriptsText]
+        let text = [background, sessionsText]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n\n")
-        return PatientContext(text: text, sources: sources)
+        return PatientContext(text: text, sources: sources, unreadableSessions: unreadable)
+    }
+
+    /// The blocks the patient-wide chat adds under a session's header besides the
+    /// transcript, capped to `patientChatSessionExtrasLimit` in total. Order is
+    /// the therapist's own words first (her notes, then her comments, as the
+    /// single-session chat renders them), then generated notes, so a long
+    /// generated note is what gets cut. Unreadable notes are skipped.
+    private func sessionMaterial(for patient: Patient, session: SessionRecord) -> [String] {
+        var blocks: [String] = []
+
+        let notes = commentStore?.note(sessionID: session.id) ?? ""
+        let comments = AssistantService.formatComments(commentStore?.comments(sessionID: session.id) ?? [])
+        let therapistSections = [
+            Prompts.therapistMaterial(notes: notes, comments: []),
+            Prompts.therapistMaterial(notes: "", comments: comments),
+        ]
+        for section in therapistSections {
+            let trimmed = section.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { blocks.append(trimmed) }
+        }
+
+        for (label, text) in generatedNotes(for: patient, session: session) {
+            blocks.append("Generated progress note (\(label)):\n\(text)")
+        }
+        return Store.capped(blocks, limit: Store.patientChatSessionExtrasLimit)
+    }
+
+    /// A session's generated notes, one per format that has been generated, as
+    /// (format label, text). Falls back to the legacy `summary.txt` when no
+    /// per-format file exists. Reads files directly rather than through
+    /// `note(for:session:format:)`, which adopts a legacy summary by writing.
+    private func generatedNotes(for patient: Patient, session: SessionRecord) -> [(String, String)] {
+        let dir = sessionDir(for: patient, session: session)
+        let names = ((try? fileManager.contentsOfDirectory(atPath: dir.path)) ?? [])
+            .filter { Store.isNoteFileName($0) }
+            .sorted()
+        var result: [(String, String)] = []
+        for name in names {
+            let url = dir.appendingPathComponent(name)
+            let text = ((try? protector.stringIfPresent(at: url)) ?? nil) ?? ""
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            // "note.soap.txt" -> "soap"
+            let raw = String(name.dropFirst("note.".count).dropLast(".txt".count))
+            let label = ProgressNoteFormat(rawValue: raw)?.shortName ?? raw
+            result.append((label, trimmed))
+        }
+        if names.isEmpty, let legacy = summary(for: patient, session: session) {
+            let trimmed = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { result.append(("earlier format", trimmed)) }
+        }
+        return result
+    }
+
+    /// Keeps as many of `blocks` as fit in `limit` characters, cutting the block
+    /// that crosses the limit with a marker and noting if later ones were left out.
+    static func capped(_ blocks: [String], limit: Int) -> [String] {
+        var remaining = limit
+        var kept: [String] = []
+        for block in blocks {
+            if remaining <= 0 {
+                kept.append("[further notes omitted]")
+                break
+            }
+            if block.count > remaining {
+                kept.append(String(block.prefix(remaining)) + "… [truncated]")
+            } else {
+                kept.append(block)
+            }
+            remaining -= block.count
+        }
+        return kept
     }
 }
 

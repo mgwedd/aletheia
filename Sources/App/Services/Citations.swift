@@ -12,10 +12,20 @@ struct CitationSource: Equatable, Identifiable {
 }
 
 /// The relevance-selected context handed to the model, plus the table that maps
-/// each session's citation tag back to its real date/folder.
+/// each session's citation tag back to its real date/folder. `sources` lists
+/// only sessions that actually appear in `text`. `unreadableSessions` counts
+/// sessions whose transcript exists but could not be read (locked, damaged), so
+/// the UI can warn that an answer may be incomplete.
 struct PatientContext {
     let text: String
     let sources: [CitationSource]
+    let unreadableSessions: Int
+
+    init(text: String, sources: [CitationSource], unreadableSessions: Int = 0) {
+        self.text = text
+        self.sources = sources
+        self.unreadableSessions = unreadableSessions
+    }
 }
 
 /// Turns the model's inline `[S1]`-style citations into something a therapist
