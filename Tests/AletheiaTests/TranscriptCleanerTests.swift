@@ -72,6 +72,75 @@ final class TranscriptCleanerTests: XCTestCase {
         XCTAssertEqual(Set(cleaned.map(\.source)), ["Therapist", "Call audio"])
     }
 
+    func testTurnMarkerPreventsCoalescingWithinWindow() {
+        let cleaned = TranscriptCleaner.clean([
+            line("- Hello, how are you doing today?", at: 10),
+            line("- Hey, honey.", at: 12),
+        ])
+        XCTAssertEqual(cleaned.map(\.text), ["- Hello, how are you doing today?", "- Hey, honey."])
+        XCTAssertEqual(cleaned.map(\.startTime), [10, 12])
+    }
+
+    func testTurnMarkerWithSurroundingWhitespaceIsDetected() {
+        let cleaned = TranscriptCleaner.clean([
+            line("Hello there.", at: 10),
+            line("  - Hi.  ", at: 11),
+        ])
+        XCTAssertEqual(cleaned.map(\.text), ["Hello there.", "- Hi."])
+    }
+
+    func testFirstLineMarkerIsKeptUnchanged() {
+        let cleaned = TranscriptCleaner.clean([line("- Hello.", at: 0)])
+        XCTAssertEqual(cleaned.map(\.text), ["- Hello."])
+    }
+
+    func testNonMarkerLineMergesIntoMarkerLine() {
+        let cleaned = TranscriptCleaner.clean([
+            line("- Hello, how are you", at: 10),
+            line("doing today?", at: 11),
+        ])
+        XCTAssertEqual(cleaned.map(\.text), ["- Hello, how are you doing today?"])
+    }
+
+    func testNegativeNumberAndHyphenatedWordAreNotMarkers() {
+        let cleaned = TranscriptCleaner.clean([
+            line("It dropped to", at: 10),
+            line("-5 degrees", at: 11),
+            line("-ish", at: 12),
+        ])
+        XCTAssertEqual(cleaned.map(\.text), ["It dropped to -5 degrees -ish"])
+    }
+
+    func testMarkerLineAbsorbsFollowingCloseLine() {
+        let cleaned = TranscriptCleaner.clean([
+            line("- Hello.", at: 10),
+            line("- Hey, honey.", at: 11),
+            line("How was your day?", at: 12),
+        ])
+        XCTAssertEqual(cleaned.map(\.text), ["- Hello.", "- Hey, honey. How was your day?"])
+        XCTAssertEqual(cleaned.map(\.startTime), [10, 11])
+    }
+
+    func testMarkerAfterDroppedNonSpeechIsStillDetected() {
+        let cleaned = TranscriptCleaner.clean([
+            line("Hello.", at: 10),
+            line("[BLANK_AUDIO]", at: 11),
+            line(" - Hey.", at: 11.5),
+        ])
+        XCTAssertEqual(cleaned.map(\.text), ["Hello.", "- Hey."])
+    }
+
+    func testMarkersOnDifferentSourcesAreUnaffected() {
+        let cleaned = TranscriptCleaner.clean([
+            line("- How are you?", at: 10, source: "Therapist"),
+            line("- Fine, thanks.", at: 11, source: "Call audio"),
+            line("and you?", at: 12, source: "Call audio"),
+        ])
+        XCTAssertEqual(cleaned.count, 2)
+        XCTAssertEqual(cleaned.first { $0.source == "Therapist" }?.text, "- How are you?")
+        XCTAssertEqual(cleaned.first { $0.source == "Call audio" }?.text, "- Fine, thanks. and you?")
+    }
+
     func testAllJunkInputYieldsEmpty() {
         let cleaned = TranscriptCleaner.clean([
             line("[", at: 0),
