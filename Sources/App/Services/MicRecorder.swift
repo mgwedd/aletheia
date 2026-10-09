@@ -36,6 +36,11 @@ final class MicRecorder {
     /// anywhere (lock-guarded).
     let health = RecordingHealth()
 
+    /// Latest input level (0...1), published from the tap for the live meter.
+    /// Read-only metering of the buffer the tap already receives; it does not
+    /// affect what is written.
+    let levelSource = LevelMeterSource()
+
     /// Called once, on the main actor, the first time a buffer write fails — so a
     /// silent audio-write failure (full disk, I/O error) becomes a visible error
     /// instead of a truncated file discovered after the session. Mirrors
@@ -65,6 +70,7 @@ final class MicRecorder {
         guard Self.permissionStatus == .authorized else { throw MicRecorderError.permissionDenied }
 
         health.reset()
+        levelSource.reset()
 
         let inputNode = engine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
@@ -78,7 +84,9 @@ final class MicRecorder {
         // file was opened with. Speaker bleed is handled at the text level
         // instead (see SpeakerLeakageFilter); headphones avoid it entirely.
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            guard let self, !self.isPaused else { return }
+            guard let self else { return }
+            if let level = AudioLevel.level(of: buffer) { self.levelSource.publish(level) }
+            guard !self.isPaused else { return }
             do {
                 try self.file?.write(from: buffer)
                 if let fileURL = self.fileURL {
@@ -134,6 +142,7 @@ final class MicRecorder {
         fileURL = nil
         isRunning = false
         isPaused = false
+        levelSource.reset()
     }
 
     private func removeConfigObserver() {
