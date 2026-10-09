@@ -42,7 +42,9 @@ struct PatientProfileEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Edit Profile").font(.title2.bold())
+            Text("Edit Profile")
+                .font(Theme.Typography.title)
+                .foregroundStyle(Theme.text.color)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -50,7 +52,9 @@ struct PatientProfileEditor: View {
                         TextField("Patient name", text: $name)
                             .textFieldStyle(.roundedBorder)
                         if cleanedName == nil {
-                            Text("A name is required.").font(.caption).foregroundStyle(.red)
+                            Text("A name is required.")
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(Theme.recording.color)
                         }
                     }
 
@@ -80,6 +84,7 @@ struct PatientProfileEditor: View {
                 Button("Cancel", role: .cancel) {
                     if hasChanges { confirmDiscard = true } else { dismiss() }
                 }
+                .buttonStyle(.themed)
                 .keyboardShortcut(.cancelAction)
                 Button("Save", action: save)
                     .buttonStyle(.themePrimary)
@@ -118,10 +123,14 @@ struct PatientProfileEditor: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.headline)
+            Text(title)
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
             content()
             if let caption {
-                Text(caption).font(.caption).foregroundStyle(.secondary)
+                Text(caption)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
             }
         }
     }
@@ -129,7 +138,9 @@ struct PatientProfileEditor: View {
     private var medicationsField: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Medications").font(.headline)
+                Text("Medications")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.text.color)
                 Spacer()
                 Button { medications.append(Medication()) } label: {
                     Label("Add Medication", systemImage: "plus")
@@ -138,7 +149,9 @@ struct PatientProfileEditor: View {
                 .help("Add a medication")
             }
             if medications.isEmpty {
-                Text("None recorded.").font(.callout).foregroundStyle(.secondary)
+                Text("None recorded.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.muted.color)
             } else {
                 ForEach($medications) { $med in
                     HStack(spacing: 6) {
