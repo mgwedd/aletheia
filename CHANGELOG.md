@@ -9,6 +9,19 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.27.0] - 2026-10-09
+
+### Added
+- edit the transcript in place; flag generated notes as outdated (#186)
+- keep interjections in place and mark overlapping speech (#188)
+- add unwired SpeakerLeakageFilter and document speaker labelling in code (#184)
+- edit generated notes in place, keep edits across regenerate (#187)
+
+### Fixed
+- show progress card, add real cancel, keep state across navigation (#185)
+- opening a session no longer writes its note (#181)
+- keep "- " turn markers from being coalesced away (#180)
+
 ## [2.26.1] - 2026-10-09
 
 ### Fixed
