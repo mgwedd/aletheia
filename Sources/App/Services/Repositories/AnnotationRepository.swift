@@ -36,6 +36,11 @@ final class AnnotationRepository {
         var quotedText: String
         var body: String
         var anchorSeconds: Double?
+        /// UTF-16 offset of the quote in the transcript at creation time.
+        /// Optional so comments written before it existed decode unchanged
+        /// (the synthesized decoder treats a missing key as nil); those fall
+        /// back to anchoring by quoted text alone.
+        var quoteStart: Int?
         /// Google-Docs-style resolution. Optional in the payload so comments
         /// written before this field existed decode cleanly (treated as
         /// unresolved); `makeComment` maps a missing/`nil` value to `false`.
@@ -52,9 +57,13 @@ final class AnnotationRepository {
         quotedText: String,
         body: String,
         anchorSeconds: Double? = nil,
+        quoteStart: Int? = nil,
         now: Date = Date()
     ) -> SessionComment? {
-        let payload = CommentPayload(quotedText: quotedText, body: body, anchorSeconds: anchorSeconds, resolved: false)
+        let payload = CommentPayload(
+            quotedText: quotedText, body: body, anchorSeconds: anchorSeconds,
+            quoteStart: quoteStart, resolved: false
+        )
         guard let data = RecordPayloadCodec.encode(payload, using: protector) else { return nil }
         let record = PersistedRecord(
             id: UUID().uuidString, kind: Self.commentKind, itemID: sessionID,
@@ -64,9 +73,9 @@ final class AnnotationRepository {
         return makeComment(record)
     }
 
-    /// Edits a comment's body only — `quotedText` and `anchorSeconds` are
-    /// carried over unchanged, matching the original SQL's `UPDATE ... SET
-    /// body = ?, updated_at = ?`.
+    /// Edits a comment's body only — `quotedText`, `anchorSeconds` and
+    /// `quoteStart` are carried over unchanged, matching the original SQL's
+    /// `UPDATE ... SET body = ?, updated_at = ?`.
     @discardableResult
     func updateComment(id: String, body: String, now: Date = Date()) -> Bool {
         guard
@@ -109,7 +118,8 @@ final class AnnotationRepository {
             return SessionComment(
                 id: record.id, quotedText: payload.quotedText, body: payload.body,
                 createdAt: record.createdAt, updatedAt: record.updatedAt,
-                anchorSeconds: payload.anchorSeconds, resolved: payload.resolved ?? false
+                anchorSeconds: payload.anchorSeconds, quoteStart: payload.quoteStart,
+                resolved: payload.resolved ?? false
             )
         }
         let garbled = RecordPayloadCodec.openedText(from: record.payload, using: protector)

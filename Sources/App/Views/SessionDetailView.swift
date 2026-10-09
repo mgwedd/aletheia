@@ -36,6 +36,13 @@ struct SessionDetailView: View {
     /// The passage currently selected in the transcript view (empty = just a
     /// caret), driving the "Comment on selection" affordance.
     @State private var transcriptSelection = ""
+    /// Where that selection sits in the transcript (UTF-16), nil for a caret.
+    @State private var transcriptSelectionRange: NSRange?
+    /// The passage and its start offset, frozen when the comment is begun so
+    /// the composer sheet opening (or the selection changing) can't move what
+    /// the comment gets anchored to.
+    @State private var pendingQuote = ""
+    @State private var pendingQuoteStart: Int?
     @State private var showInlineComposer = false
     @State private var inlineCommentBody = ""
     @State private var selectedTab: SessionTab = .transcript
@@ -43,6 +50,9 @@ struct SessionDetailView: View {
     /// transcript passage and its card in the margin rail. Set by clicking
     /// either side.
     @State private var focusedCommentID: String?
+    /// Bumped on every focus request so the scroll-and-flash is an event, not a
+    /// state: re-clicking the already-focused card still jumps to its passage.
+    @State private var focusToken = 0
     @State private var isTranscribing = false
     @State private var transcribeProgress: Double = 0
     /// Set when the last transcription came back blank and the recording was
@@ -339,16 +349,21 @@ struct SessionDetailView: View {
                 HStack(spacing: 0) {
                     TranscriptTextView(
                         transcript: transcriptText,
-                        comments: comments.filter { !$0.resolved }.map { (id: $0.id, quote: $0.quotedText) },
+                        comments: activeAnchors,
                         selection: $transcriptSelection,
+                        selectionRange: $transcriptSelectionRange,
                         onOpenComment: openComment,
-                        focusedCommentID: focusedCommentID
+                        focusedCommentID: focusedCommentID,
+                        focusToken: focusToken
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     Divider()
                     CommentsRailView(
                         comments: comments,
                         focusedCommentID: $focusedCommentID,
+                        unplacedIDs: TranscriptHighlighter.unplacedIDs(in: transcriptText, comments: activeAnchors),
+                        focusToken: focusToken,
+                        onFocus: focusComment,
                         onResolve: resolveComment,
                         onDelete: deleteComment
                     )
@@ -363,7 +378,7 @@ struct SessionDetailView: View {
     private var inlineComposer: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Comment on passage").font(.headline)
-            Text("“\(transcriptSelection)”")
+            Text("“\(pendingQuote)”")
                 .font(.callout)
                 .italic()
                 .foregroundStyle(.secondary)
@@ -389,33 +404,72 @@ struct SessionDetailView: View {
         .frame(width: 440)
     }
 
+    /// The unresolved comments as the highlighter sees them: id, quote, and the
+    /// offset the quote started at (nil for comments from before positions were
+    /// stored). Resolved comments carry no highlight.
+    private var activeAnchors: [TranscriptHighlighter.Anchor] {
+        comments.filter { !$0.resolved }.map { (id: $0.id, quote: $0.quotedText, start: $0.quoteStart) }
+    }
+
     private func beginInlineComment() {
+        // Freeze the quote and where it sits now. The start offset is of the
+        // whitespace-trimmed quote (what gets stored), so a selection that
+        // swept up a trailing newline still anchors on the right character.
+        if let range = transcriptSelectionRange,
+           let trimmed = TranscriptHighlighter.trimmed(range, in: transcriptText) {
+            pendingQuote = (transcriptText as NSString).substring(with: trimmed)
+            pendingQuoteStart = trimmed.location
+        } else {
+            pendingQuote = transcriptSelection.trimmingCharacters(in: .whitespacesAndNewlines)
+            pendingQuoteStart = nil
+        }
         inlineCommentBody = ""
         showInlineComposer = true
     }
 
     private func saveInlineComment() {
         guard let commentStore = appModel.commentStore else { return }
-        let quote = transcriptSelection.trimmingCharacters(in: .whitespacesAndNewlines)
+        let quote = pendingQuote
         let body = inlineCommentBody.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !quote.isEmpty, !body.isEmpty else { return }
-        let anchor = TranscriptTimeline.seconds(forQuote: quote, in: transcriptText).map { Double($0) }
+        // Time-stamp from the exact line selected when we know where it was;
+        // searching for the quote text would land on its first occurrence.
+        let anchorSecs: Int?
+        if let start = pendingQuoteStart {
+            anchorSecs = TranscriptTimeline.seconds(atOffset: start, in: transcriptText)
+        } else {
+            anchorSecs = TranscriptTimeline.seconds(forQuote: quote, in: transcriptText)
+        }
         let created = commentStore.addComment(
             sessionID: session.id,
             quotedText: quote,
             body: body,
-            anchorSeconds: anchor
+            anchorSeconds: anchorSecs.map { Double($0) },
+            quoteStart: pendingQuoteStart
         )
         comments = commentStore.comments(sessionID: session.id)
         showInlineComposer = false
         // Bring the new card into view in the rail.
-        focusedCommentID = created?.id
+        if let id = created?.id {
+            focusComment(id)
+        } else {
+            focusedCommentID = nil
+        }
+    }
+
+    /// Requests focus on a comment: highlights its card, scrolls the card into
+    /// view in the rail, and scrolls-and-flashes its passage in the transcript.
+    /// Bumping the token makes each request an event, so asking for the
+    /// already-focused comment again (after scrolling away) works too.
+    private func focusComment(_ id: String) {
+        focusedCommentID = id
+        focusToken += 1
     }
 
     /// Clicking a highlighted passage focuses its card in the margin rail (and
     /// scrolls it into view) — no tab change, since the rail is right there.
     private func openComment(_ id: String) {
-        focusedCommentID = id
+        focusComment(id)
     }
 
     private func resolveComment(_ comment: SessionComment, _ resolved: Bool) {

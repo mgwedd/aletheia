@@ -29,4 +29,18 @@ final class CommentAnchorTests: XCTestCase {
         XCTAssertEqual(comments.first?.anchorSeconds, 42)
         XCTAssertNil(comments.last?.anchorSeconds)
     }
+
+    /// The position of the quote round-trips through SQLite, so two comments on
+    /// the same repeated word keep distinct anchors; absent it stays nil.
+    func testQuoteStartRoundTripsAndDefaultsToNil() throws {
+        let store = try XCTUnwrap(CommentStore(root: tempRoot))
+        let session = UUID()
+        let t0 = Date(timeIntervalSince1970: 1000)
+        store.addComment(sessionID: session, quotedText: "Therapist", body: "first", anchorSeconds: 0, quoteStart: 8, now: t0)
+        store.addComment(sessionID: session, quotedText: "Therapist", body: "second", anchorSeconds: 40, quoteStart: 83, now: t0.addingTimeInterval(1))
+        store.addComment(sessionID: session, quotedText: "Therapist", body: "legacy-style", now: t0.addingTimeInterval(2))
+
+        let comments = store.comments(sessionID: session)
+        XCTAssertEqual(comments.map(\.quoteStart), [8, 83, nil])
+    }
 }
