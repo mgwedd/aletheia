@@ -18,6 +18,9 @@ struct SessionDetailView: View {
     /// time in the split view) can refresh its "has recording/transcript/
     /// summary" badges without the therapist needing to click away and back.
     var onSessionUpdated: () -> Void = {}
+    /// Lets the session list ask this view about unsaved transcript edits before
+    /// switching to another session.
+    var editGuard: UnsavedTranscriptGuard? = nil
 
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
@@ -26,9 +29,22 @@ struct SessionDetailView: View {
     // same recording. "Recording" in this view means *this* session specifically.
     @EnvironmentObject private var recorder: SessionRecorder
 
+    /// The transcript as saved on disk. Generated notes, chat and staleness all
+    /// key off this, never off the draft.
     @State private var transcriptText: String = ""
-    @State private var isEditingTranscript = false
+    /// What the transcript view shows and edits. Differs from `transcriptText`
+    /// until the user presses Save (or Discard).
     @State private var transcriptDraft = ""
+    /// A transcript file exists (possibly empty), so the editor stays available
+    /// after everything is deleted instead of reverting to the empty state.
+    @State private var hasTranscript = false
+    /// Set when the transcript exists but couldn't be read. Editing is then off:
+    /// saving would overwrite a file we never managed to open.
+    @State private var transcriptReadError: String?
+    /// The draft was restored from an earlier visit; don't let the "saved text
+    /// changed" sync below replace it.
+    @State private var restoredDraft = false
+    @State private var showDiscardConfirm = false
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
     @State private var sessionNote: String = ""
@@ -86,6 +102,18 @@ struct SessionDetailView: View {
         }
         .navigationTitle(Self.dateFormatter.string(from: session.date))
         .onAppear(perform: load)
+        .onDisappear {
+            // Navigation that couldn't ask first (another patient, a search hit):
+            // keep the unsaved edits for the next time this session opens.
+            UnsavedTranscriptDrafts.stash(transcriptDraft, saved: transcriptText, for: session.id)
+            editGuard?.detach()
+        }
+        .onChange(of: transcriptText) { old, new in
+            if !new.isEmpty { hasTranscript = true; transcriptReadError = nil }
+            // A new saved transcript (e.g. a fresh transcription) replaces the
+            // draft only if there were no unsaved edits to lose.
+            if restoredDraft { restoredDraft = false } else if transcriptDraft == old { transcriptDraft = new }
+        }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -307,48 +335,48 @@ struct SessionDetailView: View {
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
                 .padding([.horizontal, .top])
             }
-            if transcriptText.isEmpty && !isEditingTranscript {
+            if transcriptText.isEmpty && transcriptDraft.isEmpty && !hasTranscript {
                 ContentUnavailableView("No Transcript Yet", systemImage: "text.alignleft", description: Text("Record a session, then tap Transcribe."))
-            } else if isEditingTranscript {
-                HStack {
-                    Label("Editing the transcript — this is the source of truth used for summaries and chat.", systemImage: "pencil")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Cancel") { isEditingTranscript = false }
-                    Button("Save") { saveEditedTranscript() }
-                        .keyboardShortcut(.defaultAction)
-                }
-                .padding([.horizontal, .top])
-                TextEditor(text: $transcriptDraft)
-                    .font(.body.monospaced())
-                    .padding(8)
             } else {
+                if let readError = transcriptReadError {
+                    Label("This transcript couldn't be read, so editing is turned off to avoid overwriting it. \(readError)", systemImage: "lock")
+                        .font(.callout)
+                        .padding([.horizontal, .top])
+                }
                 HStack(spacing: 8) {
                     Button {
                         beginInlineComment()
                     } label: {
                         Label("Comment on Selection", systemImage: "text.bubble")
                     }
-                    .disabled(transcriptSelection.isEmpty)
-                    .help(transcriptSelection.isEmpty
+                    .disabled(transcriptSelection.isEmpty || transcriptIsDirty)
+                    .help(transcriptIsDirty
+                          ? "Save or discard your transcript edits before adding a comment"
+                          : transcriptSelection.isEmpty
                           ? "Select a passage in the transcript to comment on it"
                           : "Add a comment on the selected passage")
                     Spacer()
-                    Button {
-                        transcriptDraft = transcriptText
-                        isEditingTranscript = true
-                    } label: {
-                        Label("Edit", systemImage: "pencil")
+                    if transcriptIsDirty {
+                        Label("Unsaved changes", systemImage: "pencil")
+                            .font(.caption).foregroundStyle(.orange)
                     }
-                    .help("Correct the transcript or remove sensitive content")
+                    Button("Discard") { showDiscardConfirm = true }
+                        .disabled(!transcriptIsDirty)
+                        .help("Throw away your unsaved edits")
+                    Button("Save") { saveTranscriptDraft() }
+                        .keyboardShortcut("s", modifiers: .command)
+                        .disabled(!transcriptIsDirty || transcriptReadError != nil)
+                        .help("Save your edits to the transcript")
                 }
                 .padding([.horizontal, .top])
                 // Google-Docs layout: the transcript on the left, its comments in
                 // a margin rail on the right. Only *unresolved* comments carry a
                 // highlight in the text; the rail keeps resolved ones tucked away.
+                // The view edits the draft, and highlights follow it.
                 HStack(spacing: 0) {
                     TranscriptTextView(
-                        transcript: transcriptText,
+                        text: $transcriptDraft,
+                        isEditable: transcriptReadError == nil,
                         comments: activeAnchors,
                         selection: $transcriptSelection,
                         selectionRange: $transcriptSelectionRange,
@@ -361,7 +389,7 @@ struct SessionDetailView: View {
                     CommentsRailView(
                         comments: comments,
                         focusedCommentID: $focusedCommentID,
-                        unplacedIDs: TranscriptHighlighter.unplacedIDs(in: transcriptText, comments: activeAnchors),
+                        unplacedIDs: TranscriptHighlighter.unplacedIDs(in: transcriptDraft, comments: activeAnchors),
                         focusToken: focusToken,
                         onFocus: focusComment,
                         onResolve: resolveComment,
@@ -369,6 +397,12 @@ struct SessionDetailView: View {
                     )
                 }
             }
+        }
+        .confirmationDialog("Discard your unsaved edits?", isPresented: $showDiscardConfirm, titleVisibility: .visible) {
+            Button("Discard Edits", role: .destructive) { discardTranscriptEdits() }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text("The transcript goes back to the last saved version.")
         }
         .sheet(isPresented: $showInlineComposer) { inlineComposer }
     }
@@ -480,16 +514,30 @@ struct SessionDetailView: View {
         if resolved, focusedCommentID == comment.id { focusedCommentID = nil }
     }
 
-    private func saveEditedTranscript() {
-        guard let store = appModel.store else { return }
+    /// True when the draft differs from the saved transcript.
+    private var transcriptIsDirty: Bool { transcriptDraft != transcriptText }
+
+    /// Writes the draft as the transcript. On failure the draft is kept as it is
+    /// and the error is shown; nothing is lost. Returns whether it was saved.
+    @discardableResult
+    private func saveTranscriptDraft() -> Bool {
+        guard transcriptReadError == nil else { return false }
+        guard let store = appModel.store else { return false }
+        let text = transcriptDraft
         do {
-            try store.saveTranscript(transcriptDraft, for: patient, session: session)
-            transcriptText = transcriptDraft
-            isEditingTranscript = false
-            onSessionUpdated()
+            try store.saveTranscript(text, for: patient, session: session)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn't save the transcript. Your edits are still here and nothing was lost. \(error.localizedDescription)"
+            return false
         }
+        transcriptText = text
+        hasTranscript = true
+        onSessionUpdated()
+        return true
+    }
+
+    private func discardTranscriptEdits() {
+        transcriptDraft = transcriptText
     }
 
     private var notesTab: some View {
@@ -595,7 +643,26 @@ struct SessionDetailView: View {
 
     private func load() {
         guard let store = appModel.store else { return }
-        transcriptText = store.transcript(for: patient, session: session) ?? ""
+        do {
+            let saved = try store.readTranscript(for: patient, session: session)
+            transcriptText = saved ?? ""
+            hasTranscript = saved != nil
+            transcriptReadError = nil
+        } catch {
+            transcriptText = ""
+            hasTranscript = true
+            transcriptReadError = error.localizedDescription
+        }
+        transcriptDraft = transcriptText
+        if transcriptReadError == nil, let restored = UnsavedTranscriptDrafts.take(for: session.id) {
+            transcriptDraft = restored
+            restoredDraft = true
+        }
+        editGuard?.attach(
+            dirty: { transcriptIsDirty },
+            save: { saveTranscriptDraft() },
+            discard: { discardTranscriptEdits() }
+        )
         summaryText = savedNote(for: settings.progressNoteFormat)
         chatMessages = store.loadSessionChat(for: patient, session: session)
         if let commentStore = appModel.commentStore {

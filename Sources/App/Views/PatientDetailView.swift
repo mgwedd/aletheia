@@ -13,6 +13,13 @@ struct PatientDetailView: View {
     /// refresh() a stored copy would no longer equal the row's tag and the
     /// highlight would be lost.
     @State private var selectedSessionID: UUID?
+    /// Asks the open session whether it has unsaved transcript edits before the
+    /// selection moves to another session.
+    @StateObject private var editGuard = UnsavedTranscriptGuard()
+    /// The selection the user asked for while edits were unsaved, held while the
+    /// Save / Discard / Cancel prompt is up.
+    @State private var pendingSelection: SessionSelection?
+    @State private var showUnsavedPrompt = false
     @State private var notes: String = ""
     @State private var clinicalHistory: String = ""
     @State private var medications: [Medication] = []
@@ -90,7 +97,7 @@ struct PatientDetailView: View {
                     )
                 }
 
-                List(sessions, selection: $selectedSessionID) { session in
+                List(sessions, selection: guardedSelection) { session in
                     SessionRow(session: session).tag(session.id)
                 }
                 .listStyle(.inset)
@@ -114,7 +121,7 @@ struct PatientDetailView: View {
             .frame(minWidth: 320, idealWidth: 380)
 
             if let selectedSession {
-                SessionDetailView(patient: patient, session: selectedSession, onSessionUpdated: refresh)
+                SessionDetailView(patient: patient, session: selectedSession, onSessionUpdated: refresh, editGuard: editGuard)
                     .id(selectedSession.id)
             } else {
                 ContentUnavailableView(
@@ -142,6 +149,43 @@ struct PatientDetailView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .confirmationDialog("Save your transcript edits?", isPresented: $showUnsavedPrompt, titleVisibility: .visible) {
+            Button("Save") {
+                if editGuard.save() { applyPendingSelection() } else { pendingSelection = nil }
+            }
+            Button("Discard Edits", role: .destructive) {
+                editGuard.discard()
+                applyPendingSelection()
+            }
+            Button("Cancel", role: .cancel) { pendingSelection = nil }
+        } message: {
+            Text("This session's transcript has changes you haven't saved.")
+        }
+    }
+
+    private struct SessionSelection {
+        let id: UUID?
+    }
+
+    /// The session list's selection, routed through `requestSelection` so a
+    /// click on another session can't silently drop unsaved transcript edits.
+    private var guardedSelection: Binding<UUID?> {
+        Binding(get: { selectedSessionID }, set: { requestSelection($0) })
+    }
+
+    private func requestSelection(_ id: UUID?) {
+        guard id != selectedSessionID else { return }
+        if editGuard.hasUnsavedEdits {
+            pendingSelection = SessionSelection(id: id)
+            showUnsavedPrompt = true
+        } else {
+            selectedSessionID = id
+        }
+    }
+
+    private func applyPendingSelection() {
+        if let pendingSelection { selectedSessionID = pendingSelection.id }
+        pendingSelection = nil
     }
 
     private var errorBinding: Binding<Bool> {
@@ -228,7 +272,7 @@ struct PatientDetailView: View {
         do {
             let session = try store.createSession(for: patient)
             refresh()
-            selectedSessionID = session.id
+            requestSelection(session.id)
         } catch {
             errorMessage = error.localizedDescription
         }
