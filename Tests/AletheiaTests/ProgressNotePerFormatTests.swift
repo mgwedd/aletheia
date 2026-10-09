@@ -78,54 +78,11 @@ final class ProgressNotePerFormatTests: XCTestCase {
         return result
     }
 
-    func testLegacySummaryIsShownForAnyFormatWithoutBeingRewritten() throws {
-        let store = Store(root: root)
-        let (patient, session) = try makeSession(store)
-        try store.saveSummary("legacy note", for: patient, session: session)
-        let dir = store.sessionDir(for: patient, session: session)
-        let before = try snapshot(dir)
-
-        XCTAssertEqual(store.note(for: patient, session: session, format: .dap), "legacy note")
-        XCTAssertEqual(store.note(for: patient, session: session, format: .soap), "legacy note",
-                       "with no per-format note yet, the legacy text is the fallback for every format")
-
-        for format in ProgressNoteFormat.allCases {
-            XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent(Store.noteFileName(for: format)).path),
-                           "reading must not adopt the legacy note as note.\(format.rawValue).txt")
-        }
-        XCTAssertEqual(try snapshot(dir), before, "listing and modification dates are unchanged")
-        XCTAssertEqual(store.summary(for: patient, session: session), "legacy note", "summary.txt is untouched")
-    }
-
-    func testLegacySummaryReadIsNonDestructiveWhenSealed() throws {
-        let store = Store(root: root, protector: keyed)
-        let (patient, session) = try makeSession(store)
-        try store.saveSummary("sealed legacy", for: patient, session: session)
-        let dir = store.sessionDir(for: patient, session: session)
-        let before = try snapshot(dir)
-
-        XCTAssertEqual(store.note(for: patient, session: session, format: .birp), "sealed legacy")
-        XCTAssertEqual(try snapshot(dir), before)
-    }
-
-    func testRegeneratingAfterLegacyFallbackPersistsThatFormatOnly() throws {
-        let store = Store(root: root)
-        let (patient, session) = try makeSession(store)
-        try store.saveSummary("legacy note", for: patient, session: session)
-        XCTAssertEqual(store.note(for: patient, session: session, format: .dap), "legacy note")
-
-        try store.saveNote("new dap", for: patient, session: session, format: .dap)
-
-        XCTAssertEqual(store.note(for: patient, session: session, format: .dap), "new dap")
-        XCTAssertNil(store.note(for: patient, session: session, format: .soap),
-                     "once a format has a note, the legacy fallback no longer applies to the others")
-    }
-
     func testOpeningASessionReadsWithoutWriting() throws {
         let store = Store(root: root)
         let (patient, session) = try makeSession(store)
         try store.saveTranscript("transcript", for: patient, session: session)
-        try store.saveSummary("legacy note", for: patient, session: session)
+        try store.saveNote("a note", for: patient, session: session, format: .soap)
         let dir = store.sessionDir(for: patient, session: session)
         let before = try snapshot(dir)
 
@@ -135,16 +92,6 @@ final class ProgressNotePerFormatTests: XCTestCase {
         _ = store.loadSessionChat(for: patient, session: session)
 
         XCTAssertEqual(try snapshot(dir), before)
-    }
-
-    func testLegacySummaryIsNotAdoptedOnceAnyFormatHasANote() throws {
-        let store = Store(root: root)
-        let (patient, session) = try makeSession(store)
-        try store.saveSummary("legacy note", for: patient, session: session)
-        try store.saveNote("birp text", for: patient, session: session, format: .birp)
-
-        // summary.txt now mirrors the BIRP note; SOAP must not inherit it.
-        XCTAssertNil(store.note(for: patient, session: session, format: .soap))
     }
 
     func testNoNotesAtAllReadsAsNil() throws {
