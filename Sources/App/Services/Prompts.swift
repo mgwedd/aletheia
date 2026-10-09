@@ -145,7 +145,7 @@ enum Prompts {
     /// Renders the therapist's own notes/comments as a clearly-labeled block,
     /// or nothing when she hasn't written any. Kept distinct from the
     /// transcript so the model never confuses her words with the session's.
-    private static func therapistMaterial(notes: String, comments: [String]) -> String {
+    static func therapistMaterial(notes: String, comments: [String]) -> String {
         var sections: [String] = []
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedNotes.isEmpty {
@@ -158,20 +158,31 @@ enum Prompts {
     }
 
     static func patientChat(context: String, history: [ChatMessage], question: String) -> String {
-        """
+        // The question is sent once, in its own line below. If the caller's
+        // history already ends with it (the chat view appends it before
+        // sending), leave it out of the recent-conversation block.
+        var prior = history
+        if let last = prior.last, last.role == .user, last.text == question { prior.removeLast() }
+        return """
         You are helping a therapist ask questions across all of one \
-        patient's past session transcripts, given below (most recent \
-        first). Each session header carries a short tag in brackets next \
-        to its date, like "===== Session [S1] March 5, 2026 =====". Answer \
-        only using these transcripts — if the answer isn't in them, say you \
-        don't see that in the recorded sessions. When you use something \
-        from a session, cite it inline with its tag exactly as written, \
-        e.g. [S1]; cite every session you drew from. Never speculate and \
-        never invent a tag that isn't listed.
+        patient's past sessions, given below (most recent first). Each \
+        session header carries a short tag in brackets next to its date, \
+        like "===== Session [S1] March 5, 2026 =====". Under a header, the \
+        timestamped lines are the session transcript. Blocks labelled \
+        "Generated progress note" were drafted by the assistant from that \
+        transcript; blocks labelled "Therapist's session notes" and \
+        "Therapist's margin comments" are the therapist's own words and \
+        carry her clinical judgment. Answer only from this material — if \
+        the answer isn't in it, say you don't see that in the recorded \
+        sessions. A line saying a transcript could not be read means that \
+        session is missing, not that nothing was discussed. When you use \
+        something from a session, cite it inline with its tag exactly as \
+        written, e.g. [S1]; cite every session you drew from. Never \
+        speculate and never invent a tag that isn't listed.
 
         \(context)
 
-        \(formatHistory(history))
+        \(formatHistory(prior))
         Therapist's question: \(question)
         """
     }

@@ -26,14 +26,38 @@ enum PatientContextRetriever {
         let score: Double
     }
 
+    /// The transcript text kept for one session date, before any header is put
+    /// on it. Exposed so a caller that adds its own per-session material (see
+    /// `Store.gatherCitedPatientContext`) can tell which sessions the ranker
+    /// kept and put everything under one header.
+    struct Excerpt {
+        let date: Date
+        let text: String
+    }
+
     static func context(
         for documents: [TranscriptDocument],
         question: String,
         characterBudget: Int = 6000,
         labels: [Date: String] = [:]
     ) -> String {
+        let kept = excerpts(for: documents, question: question, characterBudget: characterBudget, labels: labels)
+        return kept
+            .map { "\(header($0.date, labels: labels))\n\($0.text)" }
+            .joined(separator: "\n\n")
+    }
+
+    /// The selection step behind `context`: which transcript text survives the
+    /// budget, newest session first. `labels` is only used to measure header
+    /// length against the budget, exactly as the rendered context does.
+    static func excerpts(
+        for documents: [TranscriptDocument],
+        question: String,
+        characterBudget: Int = 6000,
+        labels: [Date: String] = [:]
+    ) -> [Excerpt] {
         let usable = documents.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard !usable.isEmpty else { return "" }
+        guard !usable.isEmpty else { return [] }
 
         let totalChars = usable.reduce(0) { $0 + $1.text.count }
         let terms = TextSearch.queryTerms(question)
@@ -41,7 +65,7 @@ enum PatientContextRetriever {
         // Small enough, or no usable query terms to rank on: return the whole
         // history, newest first — identical to the naive path.
         if terms.isEmpty || totalChars <= characterBudget {
-            return formatWhole(usable, labels: labels)
+            return wholeExcerpts(usable, labels: labels)
         }
 
         var chunks: [(date: Date, order: Int, text: String)] = []
@@ -60,7 +84,7 @@ enum PatientContextRetriever {
 
         // No passage mentions the question: hand back the most recent history
         // that fits, rather than nothing.
-        guard !scored.isEmpty else { return formatWhole(usable, budget: characterBudget, labels: labels) }
+        guard !scored.isEmpty else { return wholeExcerpts(usable, budget: characterBudget, labels: labels) }
 
         var selected: [ScoredChunk] = []
         var used = 0
@@ -70,7 +94,7 @@ enum PatientContextRetriever {
             used += chunk.text.count
             if used >= characterBudget { break }
         }
-        return formatSelected(selected, labels: labels)
+        return selectedExcerpts(selected)
     }
 
     // MARK: - Chunking
@@ -137,7 +161,7 @@ enum PatientContextRetriever {
 
     /// A session header. When a citation `label` is supplied (e.g. "S1"), it's
     /// embedded so the model can cite that session inline as `[S1]`.
-    private static func header(_ date: Date, labels: [Date: String]) -> String {
+    static func header(_ date: Date, labels: [Date: String]) -> String {
         let dateString = headerFormatter.string(from: date)
         if let tag = labels[date] {
             return "===== Session [\(tag)] \(dateString) ====="
@@ -145,29 +169,26 @@ enum PatientContextRetriever {
         return "===== Session \(dateString) ====="
     }
 
-    private static func formatWhole(_ documents: [TranscriptDocument], budget: Int? = nil, labels: [Date: String] = [:]) -> String {
+    private static func wholeExcerpts(_ documents: [TranscriptDocument], budget: Int? = nil, labels: [Date: String] = [:]) -> [Excerpt] {
         let sorted = documents.sorted { $0.date > $1.date }
-        var blocks: [String] = []
+        var result: [Excerpt] = []
         var used = 0
         for doc in sorted {
-            let block = "\(header(doc.date, labels: labels))\n\(doc.text)"
-            if let budget, !blocks.isEmpty, used + block.count > budget { break }
-            blocks.append(block)
-            used += block.count
+            let blockLength = "\(header(doc.date, labels: labels))\n\(doc.text)".count
+            if let budget, !result.isEmpty, used + blockLength > budget { break }
+            result.append(Excerpt(date: doc.date, text: doc.text))
+            used += blockLength
         }
-        return blocks.joined(separator: "\n\n")
+        return result
     }
 
-    private static func formatSelected(_ chunks: [ScoredChunk], labels: [Date: String] = [:]) -> String {
+    private static func selectedExcerpts(_ chunks: [ScoredChunk]) -> [Excerpt] {
         let byDate = Dictionary(grouping: chunks, by: { $0.date })
-        let orderedDates = byDate.keys.sorted(by: >)
-        var blocks: [String] = []
-        for date in orderedDates {
+        return byDate.keys.sorted(by: >).map { date in
             let passages = byDate[date]!
                 .sorted { $0.order < $1.order }
                 .map(\.text)
-            blocks.append("\(header(date, labels: labels))\n\(passages.joined(separator: "\n…\n"))")
+            return Excerpt(date: date, text: passages.joined(separator: "\n…\n"))
         }
-        return blocks.joined(separator: "\n\n")
     }
 }
