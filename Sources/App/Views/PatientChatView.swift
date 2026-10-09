@@ -8,9 +8,10 @@ import SwiftUI
 /// encrypt like any other PHI, and a legacy single-thread `patient_chat.json`
 /// is imported on first open (see `Store.loadChatThreads`).
 ///
-/// This chat covers every session's transcript, generated notes, and the
-/// therapist's own notes and comments; each session's own chat lives inside
-/// that session.
+/// This chat covers every session's generated notes and the therapist's own
+/// notes and comments in full (per-session cap), but only a ranked ~6,000
+/// characters of transcript per question (see docs/DESIGN-DECISIONS.md). Each
+/// session's own chat lives inside that session.
 struct PatientChatView: View {
     let patient: Patient
     var onDone: () -> Void
@@ -30,6 +31,9 @@ struct PatientChatView: View {
     /// Sessions whose transcript couldn't be read when the last question was
     /// asked; non-zero shows a caption that answers may be incomplete.
     @State private var unreadableSessions = 0
+    /// How much transcript text the last question's context held; nil until a
+    /// question is asked or when everything fit.
+    @State private var coverageNotice: String?
 
     @StateObject private var chatRunner = ChatStreamRunner()
 
@@ -38,7 +42,7 @@ struct PatientChatView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Ask About All of \(patient.name)'s Sessions").font(.headline)
-                    Text("Searches every session's transcript, notes and comments. To ask about one session, open it and use its chat.")
+                    Text("Reads notes and comments from every session, but only about \(PatientContextRetriever.defaultCharacterBudget.formatted()) characters of transcript per question. To ask about one session in full, open it and use its chat.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -63,6 +67,14 @@ struct PatientChatView: View {
                             onStop: { chatRunner.stop() },
                             queuedStatus: chatRunner.queuedStatus
                         )
+                        if let coverageNotice {
+                            Text(coverageNotice)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal)
+                                .padding(.vertical, 6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         if unreadableSessions > 0 {
                             Text("\(unreadableSessions) session(s) could not be read; answers may be incomplete.")
                                 .font(.caption)
@@ -89,7 +101,10 @@ struct PatientChatView: View {
         .onAppear { reloadThreads() }
         .onChange(of: selectedThreadID) { _, newID in
             // The notice belongs to the question just asked, not to other threads.
-            if !isSending { unreadableSessions = 0 }
+            if !isSending {
+                unreadableSessions = 0
+                coverageNotice = nil
+            }
             // Load the newly-selected thread's messages, but never clobber an
             // in-flight working copy (persist() re-selects the same id).
             guard !isSending, let newID, let thread = threads.first(where: { $0.id == newID }) else { return }
@@ -222,6 +237,7 @@ struct PatientChatView: View {
         let assistantID = UUID()
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: question)
         unreadableSessions = context.unreadableSessions
+        coverageNotice = context.coverage.notice
         // Snapshot everything the prompt needs now; the request itself is only
         // made when the queue starts this job.
         let service = integrations.makeAssistantService()

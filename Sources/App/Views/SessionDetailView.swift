@@ -51,6 +51,10 @@ struct SessionDetailView: View {
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
     @State private var sessionNote: String = ""
+    /// The note text as last read from / written to the store. `load()` assigns
+    /// `sessionNote` programmatically, which fires `onChange`; comparing against
+    /// this keeps that echo (and any no-op change) from being saved back.
+    @State private var persistedSessionNote: String = ""
     @State private var comments: [SessionComment] = []
     /// The passage currently selected in the transcript view (empty = just a
     /// caret), driving the "Comment on selection" affordance.
@@ -554,6 +558,8 @@ struct SessionDetailView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(8)
                 .onChange(of: sessionNote) { _, newValue in
+                    guard newValue != persistedSessionNote else { return }
+                    persistedSessionNote = newValue
                     appModel.saveNote(sessionID: session.id, text: newValue)
                 }
         }
@@ -675,7 +681,9 @@ struct SessionDetailView: View {
         noteFingerprint = savedFingerprint(for: settings.progressNoteFormat)
         chatMessages = store.loadSessionChat(for: patient, session: session)
         if let commentStore = appModel.commentStore {
-            sessionNote = commentStore.note(sessionID: session.id)
+            let storedNote = commentStore.note(sessionID: session.id)
+            persistedSessionNote = storedNote
+            sessionNote = storedNote
             comments = commentStore.comments(sessionID: session.id)
         }
     }

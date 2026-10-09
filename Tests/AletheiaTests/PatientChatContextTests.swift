@@ -179,6 +179,46 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertFalse(footer.contains("February"))
     }
 
+    // MARK: - Transcript coverage
+
+    func testCoverageReportsSessionsAndCharactersTheRankerLeftOut() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        _ = try makeRankedHistory(patient)
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking")
+
+        // Three sessions have transcripts; the 60-line filler ones are mostly
+        // dropped, and February has no passage at all.
+        XCTAssertEqual(context.coverage.sessions, 3)
+        XCTAssertGreaterThanOrEqual(context.coverage.sessionsWithoutPassages, 1)
+        XCTAssertLessThan(context.coverage.includedCharacters, context.coverage.totalCharacters)
+        XCTAssertTrue(context.coverage.isPartial)
+        let notice = try XCTUnwrap(context.coverage.notice)
+        XCTAssertTrue(notice.contains("% of the transcript text"))
+    }
+
+    func testCoverageHasNoNoticeWhenEverythingFits() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let jan = try store.createSession(for: patient, on: date(2026, 1, 5))
+        try store.saveTranscript("Short transcript.", for: patient, session: jan)
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "anything")
+
+        XCTAssertEqual(context.coverage.sessions, 1)
+        XCTAssertEqual(context.coverage.sessionsWithoutPassages, 0)
+        XCTAssertFalse(context.coverage.isPartial)
+        XCTAssertNil(context.coverage.notice)
+    }
+
+    func testCoveragePercentRoundsDownAndNeverShowsFullWhenPartial() {
+        let coverage = TranscriptCoverage(
+            sessions: 2, sessionsWithoutPassages: 1, totalCharacters: 1000, includedCharacters: 999
+        )
+        XCTAssertEqual(coverage.percentIncluded, 99)
+        XCTAssertEqual(TranscriptCoverage().percentIncluded, 100)
+        XCTAssertNil(TranscriptCoverage().notice)
+    }
+
     // MARK: - Per-session cap
 
     func testExtrasAreCappedPerSessionWithAMarkerAndTranscriptsSurvive() throws {

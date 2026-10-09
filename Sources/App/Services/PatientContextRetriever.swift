@@ -35,10 +35,14 @@ enum PatientContextRetriever {
         let text: String
     }
 
+    /// Transcript characters the patient-wide chat sends per question. Also the
+    /// figure quoted in the chat sheet and docs/DESIGN-DECISIONS.md.
+    static let defaultCharacterBudget = 6000
+
     static func context(
         for documents: [TranscriptDocument],
         question: String,
-        characterBudget: Int = 6000,
+        characterBudget: Int = PatientContextRetriever.defaultCharacterBudget,
         labels: [Date: String] = [:]
     ) -> String {
         let kept = excerpts(for: documents, question: question, characterBudget: characterBudget, labels: labels)
@@ -53,7 +57,7 @@ enum PatientContextRetriever {
     static func excerpts(
         for documents: [TranscriptDocument],
         question: String,
-        characterBudget: Int = 6000,
+        characterBudget: Int = PatientContextRetriever.defaultCharacterBudget,
         labels: [Date: String] = [:]
     ) -> [Excerpt] {
         let usable = documents.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
