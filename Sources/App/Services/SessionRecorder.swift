@@ -18,6 +18,15 @@ enum RecordingLimit {
     }
 }
 
+/// The smoothed live input levels (0...1) shown on the recording panel. A
+/// separate observable object, so the ~15 Hz updates redraw only the meters
+/// rather than every view that observes the recorder.
+@MainActor
+final class RecordingLevels: ObservableObject {
+    @Published fileprivate(set) var mic: Float = 0
+    @Published fileprivate(set) var call: Float = 0
+}
+
 /// Coordinates the two audio captures (mic + call) that make up a session
 /// recording. They're kept as two separate files rather than mixed down to
 /// one, which has a nice side effect: the transcript can label lines by
@@ -45,9 +54,16 @@ final class SessionRecorder: ObservableObject {
     @Published var longRunningReminder = false
 
     let recordingHealth = RecordingHealth()
+    /// Live mic / call-audio levels for the meters; zero unless actively recording.
+    let levels = RecordingLevels()
     private let mic = MicRecorder()
     private let systemAudio = SystemAudioCapture()
     private var reminderTask: Task<Void, Never>?
+    private var levelTask: Task<Void, Never>?
+    private var micSmoother = AudioLevelSmoother()
+    private var callSmoother = AudioLevelSmoother()
+    /// Meter refresh rate: polled on a timer, never per audio buffer.
+    private static let levelPollInterval: TimeInterval = 1.0 / 15.0
 
     /// Seals the finished recordings when encryption is on. Captured at
     /// `start()` and applied in `stop()` so the audio never lands as plaintext
@@ -97,6 +113,7 @@ final class SessionRecorder: ObservableObject {
             active = context
             state = .recording(startedAt: Date())
             startReminderTimer()
+            startLevelPolling()
         } catch {
             mic.stop()
             await systemAudio.stop()
@@ -113,6 +130,7 @@ final class SessionRecorder: ObservableObject {
         mic.isPaused = true
         systemAudio.isPaused = true
         isPaused = true
+        resetLevels()
     }
 
     /// Resume writing after a `pause()`.
@@ -126,6 +144,7 @@ final class SessionRecorder: ObservableObject {
     func stop() async {
         reminderTask?.cancel()
         reminderTask = nil
+        stopLevelPolling()
         mic.stop()
         await systemAudio.stop()
         isPaused = false
@@ -164,6 +183,52 @@ final class SessionRecorder: ObservableObject {
             guard let self, !Task.isCancelled else { return }
             if self.isRecording { self.longRunningReminder = true }
         }
+    }
+
+    /// Starts the ~15 Hz poll that turns the recorders' latest raw levels into
+    /// the smoothed values the meters show. `stop()` cancels it.
+    private func startLevelPolling() {
+        levelTask?.cancel()
+        resetLevels()
+        let interval = Self.levelPollInterval
+        levelTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                guard !Task.isCancelled, let self else { return }
+                self.updateLevels(dt: Float(interval))
+            }
+        }
+    }
+
+    private func stopLevelPolling() {
+        levelTask?.cancel()
+        levelTask = nil
+        resetLevels()
+    }
+
+    /// Paused shows the meters at zero; otherwise smooths the latest raw levels.
+    private func updateLevels(dt: Float) {
+        guard isRecording else {
+            // Recording ended some other way (e.g. a capture error): stop polling.
+            stopLevelPolling()
+            return
+        }
+        guard !isPaused else {
+            resetLevels()
+            return
+        }
+        let micValue = micSmoother.update(target: mic.levelSource.latest(), dt: dt)
+        let callValue = callSmoother.update(target: systemAudio.levelSource.latest(), dt: dt)
+        // Skip identical values (e.g. steady silence) so idle meters don't republish.
+        if levels.mic != micValue { levels.mic = micValue }
+        if levels.call != callValue { levels.call = callValue }
+    }
+
+    private func resetLevels() {
+        micSmoother.reset()
+        callSmoother.reset()
+        if levels.mic != 0 { levels.mic = 0 }
+        if levels.call != 0 { levels.call = 0 }
     }
 
     var isRecording: Bool {

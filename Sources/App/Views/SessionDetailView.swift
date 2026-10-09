@@ -395,6 +395,7 @@ struct SessionDetailView: View {
                     .foregroundStyle(recorder.isPaused ? Theme.muted.color : Theme.text.color)
                     .accessibilityLabel("Elapsed \(recordingElapsed(at: context.date))")
             }
+            InputLevelMeters(levels: recorder.levels, isPaused: recorder.isPaused)
             Text(recorder.isPaused
                  ? "Paused. Nothing is being recorded until you resume."
                  : "Recording on this Mac. Stop when the session ends, then transcribe.")

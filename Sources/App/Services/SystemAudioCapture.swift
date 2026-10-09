@@ -38,6 +38,10 @@ final class SystemAudioCapture: NSObject {
     /// When true, the SCStream keeps running but incoming buffers are dropped,
     /// so the call track skips the paused span in step with the mic track.
     var isPaused = false
+    /// Latest call-audio level (0...1), published from the stream's sample
+    /// handler for the live meter. Read-only metering; it does not affect what
+    /// is written.
+    nonisolated let levelSource = LevelMeterSource()
 
     /// Whether Screen Recording (which gates ScreenCaptureKit audio) is granted —
     /// checked *without* prompting. Using the CoreGraphics preflight instead of
@@ -109,6 +113,7 @@ final class SystemAudioCapture: NSObject {
 
     func start(to url: URL) async throws {
         isDisrupted = false
+        levelSource.reset()
         // Fail fast with the friendly message when access isn't granted,
         // mirroring `MicRecorder.start`'s guard, instead of letting an
         // unauthorized `SCShareableContent` call surface a raw ScreenCaptureKit
@@ -159,6 +164,7 @@ final class SystemAudioCapture: NSObject {
         isRunning = false
         isPaused = false
         isDisrupted = false
+        levelSource.reset()
     }
 
     private func write(_ buffer: AVAudioPCMBuffer) {
@@ -180,6 +186,7 @@ extension SystemAudioCapture: SCStreamOutput {
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
         guard outputType == .audio, sampleBuffer.isValid else { return }
         guard let pcmBuffer = sampleBuffer.asPCMBuffer else { return }
+        if let level = AudioLevel.level(of: pcmBuffer) { levelSource.publish(level) }
         Task { @MainActor [weak self] in
             self?.write(pcmBuffer)
         }
