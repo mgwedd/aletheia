@@ -4,7 +4,7 @@
 
 Aletheia records a video-call therapy session, transcribes it, drafts a progress note, and lets you search and ask questions across a client's history. The speech recognition and the AI both run on your computer. Client data is never sent to a server, and there is no analytics or telemetry.
 
-[Quickstart](#quickstart-for-non-engineers) · [How it works](#how-it-works) · [Developer quickstart](#developer-quickstart) · [Setup guide](docs/SETUP-GUIDE.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
+[Quickstart](#quickstart) · [How it works](#how-it-works) · [Developer quickstart](#developer-quickstart) · [Setup guide](docs/SETUP-GUIDE.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
 > **License:** source-available, not open source. All rights reserved; see [LICENSE](LICENSE), [Terms](TERMS.md) and [Privacy](PRIVACY.md).
 
@@ -36,7 +36,7 @@ Aletheia is a tool, not legal or clinical advice. Read [CONSENT.md](CONSENT.md) 
 
 ---
 
-## Quickstart for non-engineers
+## Quickstart
 
 You need a Mac running **macOS 14 or newer**. Apple Silicon with 16 GB of memory gives the best results; 8 GB works with smaller models.
 
