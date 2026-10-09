@@ -444,7 +444,8 @@ struct SessionDetailView: View {
                         focusToken: focusToken,
                         onFocus: focusComment,
                         onResolve: resolveComment,
-                        onDelete: deleteComment
+                        onDelete: deleteComment,
+                        onEdit: editComment
                     )
                 }
             }
@@ -849,6 +850,13 @@ struct SessionDetailView: View {
     private var noteIsOutdated: Bool {
         !summaryText.isEmpty && !noteRunner.isStreaming && !noteRunner.isQueued
             && NoteFreshness.isOutdated(recorded: noteFingerprint, transcript: transcriptText)
+    }
+
+    private func editComment(_ comment: SessionComment, _ body: String) {
+        guard let commentStore = appModel.commentStore,
+              CommentsRailView.canSaveEdit(draft: body, original: comment.body) else { return }
+        commentStore.updateComment(id: comment.id, body: body)
+        comments = commentStore.comments(sessionID: session.id)
     }
 
     private func deleteComment(_ comment: SessionComment) {

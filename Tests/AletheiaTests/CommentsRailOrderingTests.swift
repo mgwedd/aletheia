@@ -43,4 +43,12 @@ final class CommentsRailOrderingTests: XCTestCase {
         ]
         XCTAssertEqual(sorted(comments), ["first", "second"])
     }
+
+    func testCanSaveEditRequiresARealChange() {
+        XCTAssertTrue(CommentsRailView.canSaveEdit(draft: "new text", original: "old text"))
+        XCTAssertFalse(CommentsRailView.canSaveEdit(draft: "old text", original: "old text"))
+        XCTAssertFalse(CommentsRailView.canSaveEdit(draft: "  old text \n", original: "old text"))
+        XCTAssertFalse(CommentsRailView.canSaveEdit(draft: "   \n", original: "old text"))
+        XCTAssertFalse(CommentsRailView.canSaveEdit(draft: "", original: "old text"))
+    }
 }
