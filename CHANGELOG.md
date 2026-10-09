@@ -9,6 +9,16 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.29.0] - 2026-10-09
+
+### Added
+- setup checklist and first-run screen on the new design (#202)
+- recording panel and menu bar on the new design (#201)
+- Ask chat on the new design (#200)
+- patient sidebar and patient column on the new design (#199)
+- session screen on the new design (#198)
+- asset-catalog palette, Light/Dark/System setting, control kit (#196)
+
 ## [2.28.0] - 2026-10-09
 
 ### Added
