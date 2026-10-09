@@ -11,17 +11,19 @@ struct OutdatedNoteBanner: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
             Text("Outdated: the transcript has changed since this note was generated.")
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button("Regenerate", action: onRegenerate)
+                .buttonStyle(.themed)
+                .controlSize(.small)
                 .disabled(!canRegenerate)
         }
-        .font(.callout)
-        .padding(10)
-        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal)
+        .font(Theme.Typography.body)
+        .foregroundStyle(Theme.highlightInk.color)
+        .padding(12)
+        .background(Theme.highlight.color, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .padding(.horizontal, 20)
         .accessibilityElement(children: .combine)
     }
 }

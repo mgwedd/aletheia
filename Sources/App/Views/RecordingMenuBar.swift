@@ -95,7 +95,7 @@ struct RecordingMenuBar: View {
                 Label("Stop", systemImage: "stop.fill")
             }
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.themePrimary)
 
         Button("Show this session") {
             NSApp.activate(ignoringOtherApps: true)

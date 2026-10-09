@@ -58,7 +58,7 @@ struct TranscriptTextView: NSViewRepresentable {
         scroll.hasHorizontalScroller = false
         scroll.autohidesScrollers = true
         scroll.drawsBackground = true
-        scroll.backgroundColor = .textBackgroundColor
+        scroll.backgroundColor = Theme.panel.nsColor
 
         let contentSize = scroll.contentSize
         let textView = ClickReportingTextView(frame: NSRect(origin: .zero, size: contentSize))
@@ -89,10 +89,13 @@ struct TranscriptTextView: NSViewRepresentable {
         textView.isEditable = isEditable
         textView.isSelectable = true
         textView.drawsBackground = true
-        textView.backgroundColor = .textBackgroundColor
+        textView.backgroundColor = Theme.panel.nsColor
         textView.font = Coordinator.font
-        textView.textColor = .labelColor
-        textView.textContainerInset = NSSize(width: 12, height: 12)
+        textView.textColor = Theme.text.nsColor
+        textView.insertionPointColor = Theme.accent.nsColor
+        textView.selectedTextAttributes = [.backgroundColor: Theme.accentTint.nsColor, .foregroundColor: Theme.text.nsColor]
+        // 24pt from the pane's edge, less the text container's own 5pt padding.
+        textView.textContainerInset = NSSize(width: 19, height: 14)
         textView.delegate = context.coordinator
         textView.onPlainClick = { [weak coordinator = context.coordinator] index in
             coordinator?.handleClick(at: index)
@@ -128,11 +131,58 @@ struct TranscriptTextView: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
-        static let font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        static let baseAttributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor.labelColor,
-        ]
+        static let font = NSFont.systemFont(ofSize: 15)
+        static let timestampFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        /// Where the words start: time stamps sit in a column to the left, and a
+        /// line that wraps continues at this indent, so each turn reads as a block.
+        static let textColumn: CGFloat = 64
+        static let paragraphStyle: NSParagraphStyle = {
+            let style = NSMutableParagraphStyle()
+            style.lineSpacing = 5
+            style.paragraphSpacing = 14
+            style.headIndent = textColumn
+            return style
+        }()
+        static var baseAttributes: [NSAttributedString.Key: Any] {
+            [
+                .font: font,
+                .foregroundColor: Theme.text.nsColor,
+                .paragraphStyle: paragraphStyle,
+            ]
+        }
+
+        /// Time stamps recede; speaker labels carry the track's colour (the
+        /// microphone green, the call amber). Attributes only: the characters
+        /// are the stored transcript and are never rewritten.
+        static func attributes(for role: TranscriptStyler.Role) -> [NSAttributedString.Key: Any] {
+            switch role {
+            case .timestamp:
+                return [
+                    .font: timestampFont,
+                    .foregroundColor: Theme.muted.nsColor,
+                ]
+            case .speaker(let label):
+                let color: NSColor
+                switch TranscriptStyler.tone(for: label) {
+                case .therapist: color = Theme.accent.nsColor
+                case .callAudio: color = Theme.callAudio.nsColor
+                case .other: color = Theme.muted.nsColor
+                }
+                return [
+                    .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+                    .foregroundColor: color,
+                ]
+            }
+        }
+
+        /// Extra space after a time stamp so the speaker starts at `textColumn`.
+        /// Set as kerning on the stamp's last character: the gap is drawn, but
+        /// no character is added to the transcript.
+        static func columnKern(forTimestamp stamp: String, trailingSpaces: String) -> CGFloat {
+            let stampWidth = (stamp as NSString).size(withAttributes: [.font: timestampFont]).width
+            let spaceWidth = (trailingSpaces as NSString).size(withAttributes: [.font: font]).width
+            return max(0, textColumn - stampWidth - spaceWidth)
+        }
         /// How long the text must sit still before highlights are re-resolved.
         private static let rehighlightDelay: TimeInterval = 0.2
 
@@ -186,7 +236,7 @@ struct TranscriptTextView: NSViewRepresentable {
         }
 
         /// Re-resolves every comment against the current text and repaints the
-        /// highlight attribute in place. Only the background attribute changes —
+        /// styling and highlight attributes in place. Only attributes change —
         /// never the characters — so the caret, selection and undo history are
         /// untouched.
         private func applyHighlights(to textView: NSTextView) {
@@ -195,7 +245,8 @@ struct TranscriptTextView: NSViewRepresentable {
             appliedAnchorsSignature = Self.signature(of: anchors)
             spans = TranscriptHighlighter.spans(in: storage.string, comments: anchors)
 
-            let highlight = NSColor.systemYellow.withAlphaComponent(0.28)
+            let highlight = Theme.highlight.nsColor
+            let highlightInk = Theme.highlightInk.nsColor
             // Overlapping highlights are fine (a later attribute simply replaces
             // an earlier one), but apply longest first so the most specific
             // passage owns the overlap — matching how clicks are resolved.
@@ -208,11 +259,31 @@ struct TranscriptTextView: NSViewRepresentable {
             isApplyingProgrammaticChange = true
             defer { isApplyingProgrammaticChange = false }
             storage.beginEditing()
-            storage.removeAttribute(.backgroundColor, range: NSRange(location: 0, length: storage.length))
+            // Reset to the base look (this also clears old highlights), then lay
+            // the time stamp / speaker styling and the comment highlights on top.
+            storage.setAttributes(Self.baseAttributes, range: NSRange(location: 0, length: storage.length))
+            let string = storage.string as NSString
+            for styled in TranscriptStyler.spans(in: storage.string) where NSMaxRange(styled.range) <= storage.length {
+                storage.addAttributes(Self.attributes(for: styled.role), range: styled.range)
+                if styled.role == .timestamp, styled.range.length > 0 {
+                    let spaces = Self.whitespace(after: styled.range, in: string)
+                    let kern = Self.columnKern(forTimestamp: string.substring(with: styled.range), trailingSpaces: spaces)
+                    storage.addAttribute(.kern, value: kern, range: NSRange(location: NSMaxRange(styled.range) - 1, length: 1))
+                }
+            }
             for span in layers where NSMaxRange(span.range) <= storage.length {
-                storage.addAttribute(.backgroundColor, value: highlight, range: span.range)
+                storage.addAttributes([.backgroundColor: highlight, .foregroundColor: highlightInk], range: span.range)
             }
             storage.endEditing()
+        }
+
+        /// The spaces and tabs directly after `range`.
+        private static func whitespace(after range: NSRange, in string: NSString) -> String {
+            var end = NSMaxRange(range)
+            while end < string.length, let scalar = UnicodeScalar(string.character(at: end)), scalar == " " || scalar == "\t" {
+                end += 1
+            }
+            return string.substring(with: NSRange(location: NSMaxRange(range), length: end - NSMaxRange(range)))
         }
 
         private func scheduleRehighlight(for textView: NSTextView) {
@@ -264,7 +335,7 @@ struct TranscriptTextView: NSViewRepresentable {
             else { return }
 
             textView.scrollRangeToVisible(span.range)
-            let flash = NSColor.systemYellow.withAlphaComponent(0.55)
+            let flash = Theme.accentTint.nsColor
             layoutManager.addTemporaryAttributes([.backgroundColor: flash], forCharacterRange: span.range)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak layoutManager] in
                 layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: span.range)

@@ -92,7 +92,7 @@ struct PatientChatView: View {
                         Text("Start a new chat to ask questions across all of \(patient.name)'s sessions: transcripts, notes and comments. Chats about a single session live inside that session.")
                     } actions: {
                         Button("New Chat") { startNewThread() }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.themePrimary)
                     }
                     .frame(minWidth: 360)
                 }

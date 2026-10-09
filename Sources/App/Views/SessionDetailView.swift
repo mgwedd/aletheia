@@ -122,17 +122,43 @@ struct SessionDetailView: View {
         return f
     }()
 
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        return f
+    }()
+
+    private static let tabs: [ThemeTab<SessionTab>] = [
+        ThemeTab(value: .transcript, title: "Transcript"),
+        ThemeTab(value: .notes, title: "Notes"),
+        ThemeTab(value: .ask, title: "Ask"),
+    ]
+
+    //   header      date · time/duration chip
+    //   action bar  record / pause / timer | transcribe | export
+    //   tab bar     Transcript  Notes  Ask
+    //   content     the selected tab, on the panel surface
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider()
-            TabView(selection: $selectedTab) {
-                transcriptTab.tabItem { Label("Transcript", systemImage: "text.alignleft") }.tag(SessionTab.transcript)
-                notesTab.tabItem { Label("Notes", systemImage: "doc.text") }.tag(SessionTab.notes)
-                chatTab.tabItem { Label("Ask", systemImage: "bubble.left.and.bubble.right") }.tag(SessionTab.ask)
+            actionBar
+            UnderlineTabBar(tabs: Self.tabs, selection: $selectedTab)
+                .padding(.horizontal, 20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.window.color)
+                .themeDivider(.bottom)
+            Group {
+                switch selectedTab {
+                case .transcript: transcriptTab
+                case .notes: notesTab
+                case .ask: chatTab
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Theme.panel.color)
         }
         .navigationTitle(Self.dateFormatter.string(from: session.date))
+        .background(Theme.window.color)
         .onAppear {
             load()
             // A transcription that finished while this screen was away.
@@ -152,6 +178,15 @@ struct SessionDetailView: View {
         }
         .onChange(of: transcription.outcomes[session.id]) { _, outcome in
             if outcome != nil { consumeTranscriptionOutcome() }
+        }
+        // Each format keeps its own note, so the pane follows the picker. Here
+        // rather than on the Notes pane so a change made while another tab (or
+        // My Notes) is showing still swaps the note.
+        .onChange(of: settings.progressNoteFormat) { _, newFormat in
+            isEditingNote = false
+            summaryText = savedNote(for: newFormat)
+            noteFingerprint = savedFingerprint(for: newFormat)
+            refreshHasPreviousNote()
         }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -193,49 +228,76 @@ struct SessionDetailView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 16) {
-            // Show full labels when the window is wide enough; fall back to
-            // icon-only buttons (each keeps a .help tooltip) when it isn't, so
-            // the labels never overflow or truncate. ViewThatFits picks the
-            // first layout whose ideal width fits the available space.
-            ViewThatFits(in: .horizontal) {
-                headerControls.labelStyle(.titleAndIcon)
-                headerControls.labelStyle(.iconOnly)
+        HStack(spacing: 10) {
+            Text(Self.dateFormatter.string(from: session.date))
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityAddTraits(.isHeader)
+            if isRecordingThisSession {
+                Chip(recorder.isPaused ? "Paused" : "Recording", tone: .recording, showsDot: true)
+            } else {
+                Chip(headerDetail)
             }
             Spacer(minLength: 0)
         }
-        .padding()
+        .padding(.horizontal, 20)
+        .frame(height: 52)
+        .background(Theme.window.color)
     }
 
-    private var headerControls: some View {
-        HStack(spacing: 16) {
+    /// "2:14 PM · 1m 24s": when the session started and, once there is a
+    /// transcript, roughly how long it ran (its last time stamp).
+    private var headerDetail: String {
+        let time = Self.timeFormatter.string(from: session.date)
+        guard let seconds = TranscriptTimeline.lastSeconds(in: transcriptText), seconds > 0 else { return time }
+        return "\(time) · \(TranscriptTimeline.durationLabel(seconds))"
+    }
+
+    /// The session's actions on one strip. Full labels when the window is wide
+    /// enough, icons (each with a tooltip) when it isn't, so nothing truncates.
+    private var actionBar: some View {
+        ViewThatFits(in: .horizontal) {
+            actionControls.labelStyle(.titleAndIcon)
+            actionControls.labelStyle(.iconOnly)
+        }
+        .buttonStyle(.themed)
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        .background(Theme.panel.color)
+        .themeDivider(.top)
+        .themeDivider(.bottom)
+    }
+
+    private var actionControls: some View {
+        HStack(spacing: 10) {
             if isRecordingThisSession {
-                Button(role: .destructive) {
+                Button {
                     Task { await stopRecording() }
                 } label: {
-                    Label("Stop Recording", systemImage: "stop.circle.fill")
+                    Label("Stop Recording", systemImage: "stop.fill")
                 }
+                .buttonStyle(.themeRecording)
                 .help("Stop recording this session")
                 if recorder.isPaused {
                     Button { recorder.resume() } label: {
-                        Label("Resume", systemImage: "play.circle")
+                        Label("Resume", systemImage: "play.fill")
                     }
                     .help("Resume recording")
                 } else {
                     Button { recorder.pause() } label: {
-                        Label("Pause", systemImage: "pause.circle")
+                        Label("Pause", systemImage: "pause.fill")
                     }
                     .help("Pause recording")
                 }
-                Image(systemName: recorder.isPaused ? "pause.circle.fill" : "record.circle.fill")
-                    .foregroundStyle(recorder.isPaused ? .orange : .red)
-                    .symbolEffect(.pulse, options: recorder.isPaused ? .nonRepeating : .repeating)
-                    .help(recorder.isPaused ? "Paused" : "Recording…")
+                recordingTimer
             } else if recorder.isRecording {
                 // A different session is recording (via the menu bar); don't let
                 // this view start a second one or stop the other by surprise.
                 Label("Recording another session", systemImage: "record.circle")
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.control)
+                    .foregroundStyle(Theme.muted.color)
                     .help("Stop the current recording from the menu bar first")
             } else {
                 Button {
@@ -247,7 +309,10 @@ struct SessionDetailView: View {
                 .disabled(isTranscribing)
             }
 
-            Divider().frame(height: 20)
+            Rectangle()
+                .fill(Theme.line.color)
+                .frame(width: 1, height: 20)
+                .padding(.horizontal, 4)
 
             // The label stays put; a spinner beside it shows work is under way
             // (the progress itself lives in the Transcript tab).
@@ -298,6 +363,32 @@ struct SessionDetailView: View {
                 .help("Add the next session to your Calendar")
             }
         }
+    }
+
+    /// Red dot and elapsed time while this session records; the dot holds
+    /// still while paused.
+    private var recordingTimer: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Theme.recording.color)
+                    .frame(width: 8, height: 8)
+                    .opacity(recorder.isPaused ? 0.5 : 1)
+                Text(recordingElapsed(at: context.date))
+                    .font(Theme.Typography.control.monospacedDigit())
+                    .foregroundStyle(Theme.recording.color)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(recorder.isPaused ? "Paused" : "Recording, \(recordingElapsed(at: context.date))")
+        }
+        .padding(.leading, 4)
+    }
+
+    /// Wall-clock time since recording began (a paused span still counts, as
+    /// in the menu bar).
+    private func recordingElapsed(at now: Date) -> String {
+        guard let started = recorder.startedAt else { return TranscriptTimeline.format(0) }
+        return TranscriptTimeline.format(Int(max(0, now.timeIntervalSince(started))))
     }
 
     private func scheduleReminder(_ leadTime: ReminderLeadTime) async {
@@ -372,16 +463,20 @@ struct SessionDetailView: View {
             if let notice = noSpeechNotice {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle")
+                        .foregroundStyle(Theme.muted.color)
                     Text(notice)
+                        .foregroundStyle(Theme.text.color)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     Button("Dismiss") { noSpeechNotice = nil }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
                 }
-                .font(.callout)
-                .padding(10)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-                .padding([.horizontal, .top])
+                .font(Theme.Typography.body)
+                .padding(12)
+                .background(Theme.callout.color, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.line.color))
+                .padding([.horizontal, .top], 20)
             }
             if transcriptText.isEmpty && transcriptDraft.isEmpty && !hasTranscript {
                 // While transcribing, the progress card above is the pane.
@@ -391,10 +486,11 @@ struct SessionDetailView: View {
             } else {
                 if let readError = transcriptReadError {
                     Label("This transcript couldn't be read, so editing is turned off to avoid overwriting it. \(readError)", systemImage: "lock")
-                        .font(.callout)
-                        .padding([.horizontal, .top])
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.text.color)
+                        .padding([.horizontal, .top], 20)
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     Button {
                         beginInlineComment()
                     } label: {
@@ -408,8 +504,11 @@ struct SessionDetailView: View {
                           : "Add a comment on the selected passage")
                     Spacer()
                     if transcriptIsDirty {
-                        Label("Unsaved changes", systemImage: "pencil")
-                            .font(.caption).foregroundStyle(.orange)
+                        Text("Edits to the transcript are not saved yet")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.muted.color)
+                            .lineLimit(1)
+                            .transition(.opacity)
                     }
                     Button("Discard") { showDiscardConfirm = true }
                         .disabled(!transcriptIsDirty)
@@ -419,7 +518,11 @@ struct SessionDetailView: View {
                         .disabled(!transcriptIsDirty || transcriptReadError != nil)
                         .help("Save your edits to the transcript")
                 }
-                .padding([.horizontal, .top])
+                .buttonStyle(.themed)
+                .padding(.horizontal, 20)
+                .frame(height: 52)
+                .themeDivider(.bottom)
+                .animation(.easeOut(duration: 0.15), value: transcriptIsDirty)
                 // Google-Docs layout: the transcript on the left, its comments in
                 // a margin rail on the right. Only *unresolved* comments carry a
                 // highlight in the text; the rail keeps resolved ones tucked away.
@@ -436,7 +539,7 @@ struct SessionDetailView: View {
                         focusToken: focusToken
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    Divider()
+                    Rectangle().fill(Theme.line.color).frame(width: 1)
                     CommentsRailView(
                         comments: comments,
                         focusedCommentID: $focusedCommentID,
@@ -463,22 +566,25 @@ struct SessionDetailView: View {
     /// is fixed (it's what you selected), you just write the note.
     private var inlineComposer: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Comment on passage").font(.headline)
+            Text("Comment on passage")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
             Text("“\(pendingQuote)”")
-                .font(.callout)
+                .font(Theme.Typography.body)
                 .italic()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.highlightInk.color)
                 .lineLimit(4)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-                .background(Color.yellow.opacity(0.18), in: RoundedRectangle(cornerRadius: 6))
+                .padding(10)
+                .background(Theme.highlight.color, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
             EditorField(text: $inlineCommentBody, placeholder: "Add a comment…", minHeight: 90)
                 .frame(maxHeight: 160)
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { showInlineComposer = false }
+                    .buttonStyle(.themed)
                 Button("Add Comment") { saveInlineComment() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.themePrimary)
                     .keyboardShortcut(.defaultAction)
                     .disabled(inlineCommentBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -486,6 +592,7 @@ struct SessionDetailView: View {
         }
         .padding(20)
         .frame(width: 440)
+        .background(Theme.panel.color)
     }
 
     /// The unresolved comments as the highlighter sees them: id, quote, and the
@@ -593,16 +700,17 @@ struct SessionDetailView: View {
     private var myNotesView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Your own notes for this session — jot things down during or after the session. Kept separate from the transcript, and included when you ask about this session.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding([.horizontal, .top])
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 20)
             EditorField(
                 text: $sessionNote,
                 placeholder: "Jot things down during or after the session…",
                 minHeight: 160,
                 fills: true
             )
-            .padding([.horizontal, .bottom])
+            .padding([.horizontal, .bottom], 20)
             .onChange(of: sessionNote) { _, newValue in
                 guard newValue != persistedSessionNote else { return }
                 persistedSessionNote = newValue
@@ -614,16 +722,17 @@ struct SessionDetailView: View {
     /// The Notes tab: one picker across the drafted formats and the therapist's
     /// own notes. Switching is locked while a note is generating or being edited.
     private var notesTab: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Picker("Notes", selection: notesPaneBinding) {
-                ForEach(NotesPane.all) { pane in
-                    Text(pane.label).tag(pane)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .disabled(noteRunner.isStreaming || noteRunner.isQueued || isEditingNote)
-            .padding([.horizontal, .top])
+        let locked = noteRunner.isStreaming || noteRunner.isQueued || isEditingNote
+        return VStack(alignment: .leading, spacing: 14) {
+            ThemeSegmentedControl(
+                options: NotesPane.all.map { ThemeTab(value: $0, title: $0.label) },
+                selection: notesPaneBinding
+            )
+            .frame(maxWidth: 560)
+            .disabled(locked)
+            .opacity(locked ? 0.55 : 1)
+            .accessibilityLabel("Note")
+            .padding([.horizontal, .top], 20)
 
             if showingMyNotes {
                 myNotesView
@@ -649,12 +758,13 @@ struct SessionDetailView: View {
     }
 
     private var generatedNoteView: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline) {
+                HStack(alignment: .center, spacing: 8) {
                     Text(settings.progressNoteFormat.blurb)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 12)
                     if noteRunner.isStreaming {
                         Button(role: .destructive) { noteRunner.stop() } label: {
@@ -666,11 +776,13 @@ struct SessionDetailView: View {
                         Button(role: .cancel) { noteRunner.stop() } label: {
                             Label("Cancel", systemImage: "xmark")
                         }
-                    } else {
+                    } else if !summaryText.isEmpty {
+                        // With no note yet, the empty-state card below holds the
+                        // Generate button (and ⌘G).
                         Button {
                             requestGenerateNote()
                         } label: {
-                            Label(summaryText.isEmpty ? "Generate note" : "Regenerate", systemImage: "sparkles")
+                            Label("Regenerate", systemImage: "sparkles")
                         }
                         .keyboardShortcut("g", modifiers: .command)
                         .disabled(transcriptText.isEmpty || isEditingNote)
@@ -702,57 +814,60 @@ struct SessionDetailView: View {
                 }
                 if let status = noteRunner.queuedStatus {
                     Label(status, systemImage: "clock")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
                 }
             }
-            .padding([.horizontal, .top])
+            .buttonStyle(.themed)
+            .padding(.horizontal, 20)
 
             if noteIsOutdated {
                 OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: generateNote)
             }
 
             if !summaryText.isEmpty {
-                Text("AI-drafted from the transcript and your notes. Review and edit before it goes in the record.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal)
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Chip("AI draft", tone: .accent)
+                    Text("Drafted from the transcript and your notes. Review and edit before it goes in the record.")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.text.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.callout.color, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.line.color))
+                .padding(.horizontal, 20)
             }
 
             if summaryText.isEmpty && !noteRunner.isStreaming {
-                ContentUnavailableView(
-                    "No Note Yet",
-                    systemImage: "doc.text",
-                    description: Text("There's no \(settings.progressNoteFormat.shortName) note for this session yet. Transcribe the session, then generate one.")
-                )
+                emptyNoteCard
             } else if isEditingNote {
-                HStack {
+                HStack(spacing: 8) {
                     Label("Editing the \(settings.progressNoteFormat.shortName) note. Regenerating asks before replacing your edits.", systemImage: "pencil")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
                     Spacer()
                     Button("Cancel") { isEditingNote = false }
+                        .buttonStyle(.themed)
                     Button("Save") { saveEditedNote() }
+                        .buttonStyle(.themePrimary)
                         .keyboardShortcut(.defaultAction)
                         .disabled(!NoteEditing.canSave(draft: noteDraft, original: summaryText))
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 20)
                 EditorField(text: $noteDraft, minHeight: 200, fills: true)
-                    .padding([.horizontal, .bottom])
+                    .padding([.horizontal, .bottom], 20)
             } else {
                 ScrollView {
                     MarkdownMessageView(text: summaryText)
                         .textSelection(.enabled)
+                        .frame(maxWidth: 720, alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
                 }
             }
-        }
-        // Each format keeps its own note, so the pane follows the picker.
-        .onChange(of: settings.progressNoteFormat) { _, newFormat in
-            isEditingNote = false
-            summaryText = savedNote(for: newFormat)
-            noteFingerprint = savedFingerprint(for: newFormat)
-            refreshHasPreviousNote()
         }
         .alert("Replace your edited note?", isPresented: $confirmRegenerate) {
             Button("Regenerate", role: .destructive) { generateNote() }
@@ -760,6 +875,42 @@ struct SessionDetailView: View {
         } message: {
             Text("You edited this \(settings.progressNoteFormat.shortName) note. Regenerating replaces it; your edited version is kept and can be brought back with Restore Previous.")
         }
+    }
+
+    /// No note in this format yet: say why, and offer the one action.
+    private var emptyNoteCard: some View {
+        let format = settings.progressNoteFormat.shortName
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+        return VStack(spacing: 12) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 22))
+                .foregroundStyle(Theme.muted.color)
+            Text("No \(format) note yet")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
+            Text(transcriptText.isEmpty
+                 ? "Transcribe the session first, then draft the note from it."
+                 : "Draft one from the transcript and your notes. You can edit it before it goes in the record.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.muted.color)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                requestGenerateNote()
+            } label: {
+                Label("Generate \(format) note", systemImage: "sparkles")
+            }
+            .buttonStyle(.themePrimary)
+            .keyboardShortcut("g", modifiers: .command)
+            .disabled(transcriptText.isEmpty || noteRunner.isQueued)
+            .help(transcriptText.isEmpty ? "Transcribe the session first" : "Draft a \(format) note from the transcript")
+        }
+        .padding(28)
+        .frame(maxWidth: 520)
+        .overlay(shape.strokeBorder(Theme.line.color, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
     }
 
     private func saveEditedNote() {
