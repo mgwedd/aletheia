@@ -2,7 +2,6 @@ import SwiftUI
 
 struct PatientsListView: View {
     @EnvironmentObject private var appModel: AppModel
-    @EnvironmentObject private var settings: AppSettings
     @Binding var selectedPatient: Patient?
     let onEditProfile: (Patient) -> Void
 
@@ -102,17 +101,6 @@ struct PatientsListView: View {
             .buttonStyle(.themed)
             .keyboardShortcut("n", modifiers: .command)
             .help("Add a new patient (⌘N)")
-
-            HStack(spacing: 8) {
-                Image(systemName: "lock")
-                    .font(.system(size: 11, weight: .medium))
-                    .accessibilityHidden(true)
-                Text(settings.appLockEnabled ? "On this Mac only · App lock on" : "On this Mac only")
-                    .lineLimit(1)
-            }
-            .font(Theme.Typography.caption)
-            .foregroundStyle(Theme.muted.color)
-            .accessibilityElement(children: .combine)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
