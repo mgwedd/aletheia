@@ -850,7 +850,7 @@ struct SessionDetailView: View {
                             .help("Edit this note before it goes in the record")
                         }
                         Button {
-                            copyToPasteboard(summaryText)
+                            copyToPasteboard(NoteMarkdown.tidy(summaryText))
                         } label: {
                             Label("Copy", systemImage: "doc.on.doc")
                         }
@@ -1176,9 +1176,11 @@ struct SessionDetailView: View {
                 // The reveal blanked the pane; put back what is actually saved.
                 if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
             },
-            onFinish: { final in
-                let trimmed = final.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return }
+            onFinish: { raw in
+                // Save the tidied text, so copy, export and edit see the same
+                // paragraphs and labels the pane shows.
+                let final = NoteMarkdown.tidy(raw)
+                guard !final.isEmpty else { return }
                 if settings.progressNoteFormat == format { summaryText = final }
                 do {
                     try store.saveGeneratedNote(final, for: patient, session: session, format: format, generatedFromTranscript: transcript)

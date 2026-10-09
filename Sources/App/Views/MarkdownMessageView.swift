@@ -27,26 +27,30 @@ enum MarkdownTextStyle: Equatable {
         }
     }
 
-    /// Gap between top-level blocks.
+    /// Gap between top-level blocks. A note's paragraph gap is clearly larger
+    /// than its line spacing, so paragraphs read as paragraphs.
     var blockSpacing: CGFloat {
         switch self {
         case .reading: return 8
-        case .note: return 6
+        case .note: return 14
         }
     }
 
-    /// Gap between the rows of a list.
+    /// Gap between the rows of a list. In a note it's a little more than the
+    /// line spacing, so a wrapped item doesn't run into the next one.
     var listSpacing: CGFloat {
         switch self {
         case .reading: return 4
-        case .note: return 0
+        case .note: return 8
         }
     }
 
     func headingFont(_ level: Int) -> Font {
         switch self {
         case .note:
-            return Theme.Typography.noteHeading
+            // Section headings (`##`) take the note heading; the smaller labels
+            // `NoteMarkdown` makes (`###`) are semibold body text.
+            return level <= 2 ? Theme.Typography.noteHeading : Theme.Typography.noteBody.weight(.semibold)
         case .reading:
             switch level {
             case 1: return .title2.bold()
@@ -61,7 +65,26 @@ enum MarkdownTextStyle: Equatable {
     func headingTopPadding(_ level: Int) -> CGFloat {
         switch self {
         case .reading: return level <= 2 ? 2 : 0
-        case .note: return 12
+        case .note: return level <= 2 ? 12 : 4
+        }
+    }
+
+    /// Pulls the block after a heading closer than the normal block gap, so a
+    /// heading groups with what it introduces. Zero for chat answers.
+    var headingBottomPadding: CGFloat {
+        switch self {
+        case .reading: return 0
+        case .note: return -6
+        }
+    }
+
+    /// The text actually rendered: a note is tidied first (preamble dropped,
+    /// paragraphs and labels made explicit; see `NoteMarkdown`). Chat answers
+    /// render as written.
+    func prepared(_ text: String) -> String {
+        switch self {
+        case .reading: return text
+        case .note: return NoteMarkdown.tidy(text)
         }
     }
 }
@@ -104,7 +127,7 @@ struct MarkdownMessageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: style.blockSpacing) {
-            let blocks = MarkdownParser.parse(text)
+            let blocks = MarkdownParser.parse(style.prepared(text))
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 view(for: block)
             }
@@ -118,6 +141,7 @@ struct MarkdownMessageView: View {
         case let .heading(level, text):
             inline(text, font: style.headingFont(level))
                 .padding(.top, style.headingTopPadding(level))
+                .padding(.bottom, style.headingBottomPadding)
 
         case let .paragraph(text):
             inline(text, font: style.bodyFont)

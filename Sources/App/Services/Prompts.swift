@@ -132,6 +132,8 @@ enum Prompts {
         it plainly in the Assessment/appropriate section.
         - Do not add a diagnosis that isn't already in the material.
 
+        \(noteFormattingRules)
+
         \(transcriptLegend)
 
         Transcript:
@@ -139,6 +141,18 @@ enum Prompts {
         \(therapistMaterial(notes: notes, comments: comments))
         """
     }
+
+    /// Layout rules shared by every note format, so the draft reads as a set
+    /// document rather than a chat reply. `NoteMarkdown.tidy` repairs the same
+    /// things after the fact when a model ignores them.
+    static let noteFormattingRules = """
+    Formatting:
+    - Start directly with the note itself. No opening line such as "Here is \
+    a summary", and no closing remarks.
+    - Separate paragraphs with a blank line.
+    - Use the therapist's notes and comments as context. Don't quote, discuss, \
+    or speculate about them, and leave out any that are unclear.
+    """
 
     /// The narrative-format path of `progressNote`: a prose summary that still
     /// folds in the therapist's own notes and comments.
@@ -151,6 +165,11 @@ enum Prompts {
         notes and comments where they fit, treating them as her clinical \
         judgment. Do not invent details that aren't in the material. If the \
         material is too short or unclear to summarize, say so plainly.
+
+        \(noteFormattingRules)
+        - Write short paragraphs. Where a topic needs a label, start its \
+        paragraph with a bold lead-in, e.g. **Mood and affect:**, and put \
+        follow-ups in a bulleted list under a **Follow-ups:** lead-in.
 
         \(transcriptLegend)
 
