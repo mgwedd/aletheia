@@ -30,7 +30,7 @@ struct UpdatePromptView: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.1)))
             }
 
-            Text("Update opens the download. Quit Aletheia, then drag the new version into your Applications folder to replace this one.")
+            Text("Update starts the download and closes this window. Aletheia stays open so you can finish and save your work; quit it when you're ready, then drag the new version into your Applications folder to replace this one.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

@@ -13,8 +13,9 @@ private final class FakeChecker: UpdateChecking, @unchecked Sendable {
     }
 }
 
-private struct NoopInstaller: UpdateInstalling {
-    @MainActor func install(_ release: ReleaseInfo) {}
+private final class RecordingInstaller: UpdateInstalling {
+    private(set) var installed: [String] = []
+    @MainActor func install(_ release: ReleaseInfo) { installed.append(release.version) }
 }
 
 private func makeRelease(_ version: String) -> ReleaseInfo {
@@ -41,10 +42,10 @@ final class UpdateServiceTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
     }
 
-    private func makeService(checker: UpdateChecking) -> UpdateService {
+    private func makeService(checker: UpdateChecking, installer: UpdateInstalling = RecordingInstaller()) -> UpdateService {
         UpdateService(
             checker: checker,
-            installer: NoopInstaller(),
+            installer: installer,
             currentVersion: SemanticVersion(major: 1, minor: 0, patch: 0),
             defaults: defaults,
             minimumInterval: 1800
@@ -95,5 +96,44 @@ final class UpdateServiceTests: XCTestCase {
 
         await service.checkForUpdates(force: true)   // forced, refetches
         XCTAssertEqual(checker.fetchCount, 2)
+    }
+
+    func testInstallStartsTheDownloadAndClosesThePrompt() async {
+        let installer = RecordingInstaller()
+        let service = makeService(checker: FakeChecker(.success(makeRelease("1.1.0"))), installer: installer)
+        await service.checkForUpdates(force: true)
+        XCTAssertNotNil(service.available)
+
+        service.installAvailableUpdate()
+
+        XCTAssertEqual(installer.installed, ["1.1.0"])
+        XCTAssertNil(service.available, "the prompt closes so the app can be quit")
+    }
+
+    func testDownloadedVersionIsNotOfferedAgainThisRun() async {
+        let service = makeService(checker: FakeChecker(.success(makeRelease("1.1.0"))))
+        await service.checkForUpdates(force: true)
+        service.installAvailableUpdate()
+
+        await service.checkForUpdates(force: true)
+        XCTAssertNil(service.available)
+    }
+
+    func testNewerVersionAfterADownloadIsStillOffered() async {
+        let checker = FakeChecker(.success(makeRelease("1.1.0")))
+        let service = makeService(checker: checker)
+        await service.checkForUpdates(force: true)
+        service.installAvailableUpdate()
+
+        checker.result = .success(makeRelease("1.2.0"))
+        await service.checkForUpdates(force: true)
+        XCTAssertEqual(service.available?.version, "1.2.0")
+    }
+
+    func testInstallWithNothingAvailableDoesNothing() {
+        let installer = RecordingInstaller()
+        let service = makeService(checker: FakeChecker(.success(makeRelease("1.1.0"))), installer: installer)
+        service.installAvailableUpdate()
+        XCTAssertTrue(installer.installed.isEmpty)
     }
 }
