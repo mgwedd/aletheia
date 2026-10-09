@@ -33,7 +33,9 @@ struct SecurityPostureView: View {
             HStack(spacing: 8) {
                 Image(systemName: Self.icon(for: overall))
                     .foregroundStyle(Self.color(for: overall))
-                Text(Self.headline(for: overall)).font(.body.weight(.semibold))
+                Text(Self.headline(for: overall))
+                    .font(Theme.Typography.body.weight(.semibold))
+                    .foregroundStyle(Theme.text.color)
             }
             ForEach(items) { item in
                 HStack(alignment: .top, spacing: 8) {
@@ -42,8 +44,12 @@ struct SecurityPostureView: View {
                         .accessibilityHidden(true)
                         .frame(width: 16)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(item.title).font(.callout.weight(.medium))
-                        Text(item.detail).font(.caption).foregroundStyle(.secondary)
+                        Text(item.title)
+                            .font(Theme.Typography.caption.weight(.medium))
+                            .foregroundStyle(Theme.text.color)
+                        Text(item.detail)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.muted.color)
                     }
                 }
             }
@@ -60,9 +66,9 @@ struct SecurityPostureView: View {
 
     private static func color(for level: PostureLevel) -> Color {
         switch level {
-        case .secure: return .green
-        case .actionRecommended: return .orange
-        case .informational: return .secondary
+        case .secure: return Theme.accent.color
+        case .actionRecommended: return Theme.callAudio.color
+        case .informational: return Theme.muted.color
         }
     }
 

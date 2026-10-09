@@ -22,15 +22,17 @@ struct EncryptionSetupSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Turn On Extra Encryption").font(.title3.bold())
+            Text("Turn On Extra Encryption")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
 
             Text("Encrypts your notes, transcripts, summaries, chat, patient records and recordings on disk with a passphrase — on top of the app lock. It protects your data folder even if it's on an external drive, in a backup, or in a synced folder like iCloud or Dropbox.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
 
             Label("If you forget this passphrase, your data cannot be recovered. There is no reset and no backdoor — keep it somewhere safe.", systemImage: "exclamationmark.triangle.fill")
-                .font(.callout)
-                .foregroundStyle(.orange)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.callAudio.color)
                 .fixedSize(horizontal: false, vertical: true)
 
             SecureField("Recovery passphrase", text: $passphrase)
@@ -38,7 +40,7 @@ struct EncryptionSetupSheet: View {
             SecureField("Confirm passphrase", text: $confirm)
                 .textFieldStyle(.roundedBorder)
             if !confirm.isEmpty && confirm != passphrase {
-                Text("The passphrases don't match.").font(.caption).foregroundStyle(.red)
+                Text("The passphrases don't match.").font(Theme.Typography.caption).foregroundStyle(Theme.recording.color)
             }
 
             Toggle("I understand my data can't be recovered if I lose this passphrase.", isOn: $acknowledged)
@@ -47,20 +49,24 @@ struct EncryptionSetupSheet: View {
                 .help("Stores the key in this Mac's login keychain so you won't be asked for the passphrase on later launches. Leave off for maximum security.")
 
             if let warning {
-                Text(warning).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                Text(warning).font(Theme.Typography.caption).foregroundStyle(Theme.callAudio.color).fixedSize(horizontal: false, vertical: true)
             }
 
             HStack {
                 Spacer()
                 if didEnable {
-                    Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+                    Button("Done") { dismiss() }
+                        .buttonStyle(.themePrimary)
+                        .keyboardShortcut(.defaultAction)
                 } else {
                     Button("Cancel") { dismiss() }
+                        .buttonStyle(.themed)
                     Button {
                         enable()
                     } label: {
                         if working { ProgressView().controlSize(.small) } else { Text("Turn On") }
                     }
+                    .buttonStyle(.themePrimary)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canEnable || working)
                 }
@@ -68,6 +74,8 @@ struct EncryptionSetupSheet: View {
         }
         .padding(24)
         .frame(width: 480)
+        .background(Theme.window.color)
+        .tint(Theme.accent.color)
         .alert("Couldn't turn on encryption", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -110,12 +118,14 @@ struct EncryptionUnlockView: View {
 
     var body: some View {
         ZStack {
-            Rectangle().fill(.regularMaterial).ignoresSafeArea()
+            Rectangle().fill(Theme.window.color).ignoresSafeArea()
             VStack(spacing: 16) {
-                Image(systemName: "lock.doc.fill").font(.system(size: 44)).foregroundStyle(.tint)
-                Text("This data folder is encrypted").font(.title2.bold())
+                Image(systemName: "lock.doc.fill").font(.system(size: 44)).foregroundStyle(Theme.accent.color)
+                Text("This data folder is encrypted")
+                    .font(Theme.Typography.title)
+                    .foregroundStyle(Theme.text.color)
                 Text("Enter your recovery passphrase to unlock your notes for this session.")
-                    .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .font(Theme.Typography.caption).foregroundStyle(Theme.muted.color).multilineTextAlignment(.center)
 
                 SecureField("Recovery passphrase", text: $passphrase)
                     .textFieldStyle(.roundedBorder)
@@ -127,19 +137,21 @@ struct EncryptionUnlockView: View {
                     .help("Stores the key in this Mac's login keychain so you won't be asked next launch. Leave off for maximum security.")
 
                 if let errorMessage {
-                    Text(errorMessage).font(.caption).foregroundStyle(.red)
+                    Text(errorMessage).font(Theme.Typography.caption).foregroundStyle(Theme.recording.color)
                 }
 
                 Button("Unlock", action: unlock)
+                    .buttonStyle(.themePrimary)
                     .keyboardShortcut(.defaultAction)
                     .disabled(passphrase.isEmpty)
 
                 Button("Use a different data folder…", action: chooseDifferentFolder)
                     .buttonStyle(.link)
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
             }
             .padding(32)
             .frame(maxWidth: 420)
+            .tint(Theme.accent.color)
         }
     }
 
