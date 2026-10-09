@@ -42,6 +42,7 @@ enum StoreError: LocalizedError {
 ///       transcript.txt
 ///       summary.txt        (the most recently generated note, any format)
 ///       note.<format>.txt  (one progress note per format, e.g. note.soap.txt)
+///       note.<format>.meta.json  (fingerprint of the transcript that note was generated from)
 ///
 /// Identity is a persisted `UUID`, never the path. A patient's id lives in
 /// `patient.json`, a session's in `session.json` — both assigned once at
@@ -518,6 +519,25 @@ final class Store {
         return NoteSidecar(rawValue: String(stem[stem.index(after: dot)...])) != nil
     }
 
+    /// The sidecar recording which transcript a generated note came from
+    /// (`note.<format>.meta.json`). See `NoteFreshness`.
+    static func noteMetaFileName(for format: ProgressNoteFormat) -> String {
+        "note.\(format.rawValue).meta.json"
+    }
+
+    /// Whether `name` is a note sidecar. Matched by shape, like `isNoteFileName`.
+    static func isNoteMetaFileName(_ name: String) -> Bool {
+        name.hasPrefix("note.") && name.hasSuffix(".meta.json") && name.count > "note..meta.json".count
+    }
+
+    /// Fingerprint of the transcript the session's `format` note was generated
+    /// from, or nil if none was recorded (or it can't be read).
+    func noteTranscriptFingerprint(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) -> String? {
+        let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteMetaFileName(for: format))
+        guard let data = (try? protector.dataIfPresent(at: url)) ?? nil else { return nil }
+        return NoteFreshness.decodeFingerprint(from: data)
+    }
+
     /// The session's saved note in `format`, or nil if that format has none yet.
     ///
     /// Read-only: never writes, so opening a session leaves its folder untouched.
@@ -529,10 +549,25 @@ final class Store {
     /// Saves `text` as the session's note in `format`, and mirrors it to
     /// `summary.txt` so "the latest note" (export, search, chat context, the
     /// session-list badge) keeps working off that one file.
-    func saveNote(_ text: String, for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) throws {
-        let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
-        try protector.write(text, to: url)
+    ///
+    /// Pass `generatedFromTranscript` when the note was generated from that
+    /// transcript text; its fingerprint is recorded beside the note so a later
+    /// edit to the transcript can be detected. Omit it for any other save (the
+    /// recorded fingerprint, if any, is left as it was).
+    func saveNote(
+        _ text: String,
+        for patient: Patient,
+        session: SessionRecord,
+        format: ProgressNoteFormat,
+        generatedFromTranscript transcript: String? = nil
+    ) throws {
+        let dir = sessionDir(for: patient, session: session)
+        try protector.write(text, to: dir.appendingPathComponent(Store.noteFileName(for: format)))
         try saveSummary(text, for: patient, session: session)
+        if let transcript {
+            let record = try NoteFreshness.encode(fingerprint: NoteFreshness.fingerprint(of: transcript))
+            try protector.write(record, to: dir.appendingPathComponent(Store.noteMetaFileName(for: format)))
+        }
     }
 
     // MARK: - Editing generated notes
@@ -570,13 +605,19 @@ final class Store {
     /// that fail, this throws *before* touching the note, so an edit is never
     /// lost to a regenerate. The new text also becomes the baseline that later
     /// edits are measured against.
-    func saveGeneratedNote(_ text: String, for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) throws {
+    func saveGeneratedNote(
+        _ text: String,
+        for patient: Patient,
+        session: SessionRecord,
+        format: ProgressNoteFormat,
+        generatedFromTranscript transcript: String? = nil
+    ) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
         if NoteEditing.shouldArchiveBeforeReplacing(noteEditState(for: patient, session: session, format: format)),
            let edited = (try? protector.stringIfPresent(at: url)) ?? nil {
             try protector.write(edited, to: noteSidecarURL(.previous, patient: patient, session: session, format: format))
         }
-        try saveNote(text, for: patient, session: session, format: format)
+        try saveNote(text, for: patient, session: session, format: format, generatedFromTranscript: transcript)
         try protector.write(text, to: noteSidecarURL(.generated, patient: patient, session: session, format: format))
     }
 
