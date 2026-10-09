@@ -128,12 +128,52 @@ struct DoctorReport: Equatable {
     }
 
     /// Checks grouped by category, in display order, empty categories dropped.
-    var grouped: [DoctorGroup] {
+    var grouped: [DoctorGroup] { grouped(onlyIssues: false) }
+
+    /// As `grouped`, optionally keeping only the checks that aren't `.ok`
+    /// (categories left empty by the filter are dropped).
+    func grouped(onlyIssues: Bool) -> [DoctorGroup] {
         DoctorCategory.allCases.compactMap { category -> DoctorGroup? in
-            let inCategory = checks.filter { $0.category == category }
+            let inCategory = checks.filter { $0.category == category && (!onlyIssues || $0.status != .ok) }
             guard !inCategory.isEmpty else { return nil }
             return DoctorGroup(category: category, checks: inCategory)
         }
+    }
+
+    /// The window's title: "1 problem, 2 warnings", "3 warnings", or
+    /// "All checks passed".
+    var headline: String {
+        let problems = count(.failed)
+        let warnings = count(.warning)
+        var parts: [String] = []
+        if problems > 0 { parts.append("\(problems) problem\(problems == 1 ? "" : "s")") }
+        if warnings > 0 { parts.append("\(warnings) warning\(warnings == 1 ? "" : "s")") }
+        return parts.isEmpty ? "All checks passed" : parts.joined(separator: ", ")
+    }
+
+    /// One sentence under the headline saying what the result means.
+    var explanation: String {
+        switch overall {
+        case .ok:
+            return "Everything checked looks healthy."
+        case .warning:
+            return "Nothing is broken, but these are worth a look."
+        case .failed:
+            return "Problems can stop notes, chat or transcription from working. Each one says what to do next."
+        }
+    }
+
+    /// "13 checks" / "1 check".
+    var checkCountDescription: String {
+        "\(checks.count) check\(checks.count == 1 ? "" : "s")"
+    }
+
+    /// "just now", "2 minutes ago", "yesterday" — relative to `now`.
+    func lastRunDescription(now: Date) -> String {
+        if now.timeIntervalSince(generatedAt) < 60 { return "just now" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: generatedAt, relativeTo: now)
     }
 
     /// A PHI-safe plain-text report for pasting into an email or support note.
