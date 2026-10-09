@@ -265,4 +265,16 @@ final class AppModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
+
+    /// Applies a field-level change to the *current* stored copy of a patient
+    /// (looked up by id) and saves it. Views hold a snapshot of the patient that
+    /// can be older than what's on disk; saving that snapshot whole would roll
+    /// back every field except the one just edited, so each edit goes through
+    /// here and only changes what `mutate` touches. Failures surface the same
+    /// way as `savePatientNotes`.
+    func updatePatient(id: UUID, _ mutate: (inout Patient) -> Void) {
+        guard var current = patients.first(where: { $0.id == id }) else { return }
+        mutate(&current)
+        savePatientNotes(current)
+    }
 }
