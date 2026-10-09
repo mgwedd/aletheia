@@ -25,11 +25,29 @@ final class MarkdownTextStyleTests: XCTestCase {
     func testNoteStyleUsesTheSerifThemeTokens() {
         XCTAssertEqual(MarkdownTextStyle.note.bodyFont, Theme.Typography.noteBody)
         XCTAssertEqual(MarkdownTextStyle.note.lineSpacing, Theme.Typography.noteLineSpacing)
-        XCTAssertEqual(MarkdownTextStyle.note.blockSpacing, 6)
-        XCTAssertEqual(MarkdownTextStyle.note.listSpacing, 0)
-        for level in 1...4 {
+        for level in 1...2 {
             XCTAssertEqual(MarkdownTextStyle.note.headingFont(level), Theme.Typography.noteHeading)
             XCTAssertEqual(MarkdownTextStyle.note.headingTopPadding(level), 12)
         }
+        for level in 3...6 {
+            XCTAssertEqual(MarkdownTextStyle.note.headingFont(level), Theme.Typography.noteBody.weight(.semibold))
+            XCTAssertEqual(MarkdownTextStyle.note.headingTopPadding(level), 4)
+        }
+    }
+
+    func testNoteParagraphGapIsClearlyLargerThanLineSpacing() {
+        let note = MarkdownTextStyle.note
+        XCTAssertGreaterThanOrEqual(note.blockSpacing, 2 * Theme.Typography.noteLineSpacing)
+        XCTAssertGreaterThan(note.listSpacing, Theme.Typography.noteLineSpacing)
+        XCTAssertLessThan(note.listSpacing, note.blockSpacing)
+        // A heading sits closer to what it introduces than to what came before.
+        XCTAssertLessThan(note.blockSpacing + note.headingBottomPadding, note.blockSpacing + note.headingTopPadding(2))
+    }
+
+    func testOnlyTheNoteStyleTidiesText() {
+        let raw = "Here is the note:\nOne.\nTwo."
+        XCTAssertEqual(MarkdownTextStyle.reading.prepared(raw), raw)
+        XCTAssertEqual(MarkdownTextStyle.note.prepared(raw), "One.\n\nTwo.")
+        XCTAssertEqual(MarkdownTextStyle.reading.headingBottomPadding, 0)
     }
 }

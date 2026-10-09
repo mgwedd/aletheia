@@ -24,6 +24,15 @@ final class ProgressNotePromptTests: XCTestCase {
         XCTAssertTrue(prompt.contains(transcript))
     }
 
+    func testEveryFormatCarriesTheFormattingRules() {
+        for format in ProgressNoteFormat.allCases {
+            let prompt = Prompts.progressNote(format: format, transcript: transcript)
+            XCTAssertTrue(prompt.contains(Prompts.noteFormattingRules), "\(format) should carry the formatting rules")
+        }
+        XCTAssertTrue(Prompts.noteFormattingRules.contains("blank line"))
+        XCTAssertTrue(Prompts.noteFormattingRules.contains("Here is"))
+    }
+
     func testTherapistNotesAndCommentsAppearInPrompt() {
         let prompt = Prompts.progressNote(
             format: .birp,
