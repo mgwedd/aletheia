@@ -1150,6 +1150,7 @@ struct SessionDetailView: View {
     private func generateNote() {
         guard let store = appModel.store else { return }
         let format = settings.progressNoteFormat
+        let verbosity = settings.summaryVerbosity
         // Snapshot the inputs now; the request itself is only made when the
         // queue starts this job (it may be waiting behind a chat answer).
         let service = integrations.makeAssistantService()
@@ -1165,7 +1166,8 @@ struct SessionDetailView: View {
                     format: format,
                     transcript: transcript,
                     notes: notes,
-                    comments: sessionComments
+                    comments: sessionComments,
+                    verbosity: verbosity
                 )
             },
             onReveal: { text in

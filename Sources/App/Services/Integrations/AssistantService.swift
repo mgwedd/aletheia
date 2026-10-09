@@ -22,7 +22,8 @@ struct AssistantService {
         format: ProgressNoteFormat,
         transcript: String,
         notes: String = "",
-        comments: [SessionComment] = []
+        comments: [SessionComment] = [],
+        verbosity: SummaryVerbosity = .default
     ) async throws -> String {
         try await assistant.generate(
             model: model,
@@ -31,7 +32,8 @@ struct AssistantService {
                 format: format,
                 transcript: transcript,
                 notes: notes,
-                comments: Self.formatComments(comments)
+                comments: Self.formatComments(comments),
+                verbosity: verbosity
             )
         )
     }
@@ -42,7 +44,8 @@ struct AssistantService {
         format: ProgressNoteFormat,
         transcript: String,
         notes: String = "",
-        comments: [SessionComment] = []
+        comments: [SessionComment] = [],
+        verbosity: SummaryVerbosity = .default
     ) -> AsyncThrowingStream<String, Error> {
         assistant.stream(
             model: model,
@@ -51,7 +54,8 @@ struct AssistantService {
                 format: format,
                 transcript: transcript,
                 notes: notes,
-                comments: Self.formatComments(comments)
+                comments: Self.formatComments(comments),
+                verbosity: verbosity
             )
         )
     }

@@ -73,6 +73,7 @@ extension LocalLLMRequest {
         transcript: String,
         notes: String = "",
         comments: [String] = [],
+        verbosity: SummaryVerbosity = .default,
         system: String = ""
     ) -> LocalLLMRequest {
         LocalLLMRequest(
@@ -81,7 +82,8 @@ extension LocalLLMRequest {
                 format: format,
                 transcript: transcript,
                 notes: notes,
-                comments: comments
+                comments: comments,
+                verbosity: verbosity
             ),
             sampling: .deterministic,
             grammar: format.grammar

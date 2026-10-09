@@ -97,10 +97,11 @@ enum Prompts {
         format: ProgressNoteFormat,
         transcript: String,
         notes: String = "",
-        comments: [String] = []
+        comments: [String] = [],
+        verbosity: SummaryVerbosity = .default
     ) -> String {
         guard !format.sections.isEmpty else {
-            return summarizeNarrative(transcript: transcript, notes: notes, comments: comments)
+            return summarizeNarrative(transcript: transcript, notes: notes, comments: comments, verbosity: verbosity)
         }
 
         let sectionSpec = format.sections
@@ -155,16 +156,25 @@ enum Prompts {
     """
 
     /// The narrative-format path of `progressNote`: a prose summary that still
-    /// folds in the therapist's own notes and comments.
-    private static func summarizeNarrative(transcript: String, notes: String, comments: [String]) -> String {
+    /// folds in the therapist's own notes and comments, at the length the
+    /// therapist chose in Settings.
+    private static func summarizeNarrative(
+        transcript: String,
+        notes: String,
+        comments: [String],
+        verbosity: SummaryVerbosity
+    ) -> String {
         """
         You are helping a therapist review her own session notes. Write a \
-        concise narrative clinical summary of the following therapy session: \
+        narrative clinical summary of the following therapy session: \
         presenting topics, notable statements, mood/affect observations, and \
         any follow-ups to revisit next session. Fold in the therapist's own \
         notes and comments where they fit, treating them as her clinical \
         judgment. Do not invent details that aren't in the material. If the \
         material is too short or unclear to summarize, say so plainly.
+
+        \(verbosity.promptGuidance)
+        \(SummaryVerbosity.clarityRule)
 
         \(noteFormattingRules)
         - Write short paragraphs. Where a topic needs a label, start its \

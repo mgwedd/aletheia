@@ -171,6 +171,15 @@ struct SettingsView: View {
                 Text("The format new session notes start in. You can still switch formats for any single session on its Note tab.")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
+                Picker("Summary length", selection: $settings.summaryVerbosity) {
+                    ForEach(SummaryVerbosity.allCases) { level in
+                        Text(level.displayName).tag(level)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Text(settings.summaryVerbosity.blurb + " Clarity comes first at every length.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
             }
 
             // The .dev-tier "Built-in Model" (embedded llama.cpp) management UI —
