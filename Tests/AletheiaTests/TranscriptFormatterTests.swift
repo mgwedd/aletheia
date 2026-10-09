@@ -126,7 +126,8 @@ final class TranscriptFormatterTests: XCTestCase {
             line("d", 75 * 60 + 12, 75 * 60 + 13),
             line("e", 3723, 3724),
         ])
-        XCTAssertEqual(out.map { String($0.prefix(7)) }, ["[00:00]", "[00:59]", "[01:01]", "[75:12]", "[62:03]"])
+        // Printed in time order, whatever order the lines come in.
+        XCTAssertEqual(out.map { String($0.prefix(7)) }, ["[00:00]", "[00:59]", "[01:01]", "[62:03]", "[75:12]"])
     }
 
     func testTextIsTrimmedOfSurroundingSpaces() {
