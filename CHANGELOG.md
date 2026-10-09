@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.31.0] - 2026-10-09
+
+### Added
+- Doctor, update prompt and search use theme colors (#208)
+
 ## [2.30.0] - 2026-10-09
 
 ### Added
