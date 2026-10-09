@@ -12,6 +12,12 @@ don't edit it in pull requests. Write a good commit subject (`feat: …`,
 ## [2.25.0] - 2026-10-09
 
 ### Added
+- render Mermaid diagrams natively (#167)
+- keep a separate progress note per format (#166)
+
+## [2.25.0] - 2026-10-09
+
+### Added
 - keep a separate progress note per format (#166)
 
 ## [2.24.2] - 2026-10-09
