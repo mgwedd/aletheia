@@ -80,6 +80,16 @@ struct RootView: View {
         } message: {
             Text(appModel.schemaWarning ?? "")
         }
+        // `selectedPatient` is a snapshot; keep it in step with saves (matched by
+        // id) so the detail view and sidebar selection never hold a stale copy.
+        // The detail view's identity is keyed on the id alone, so this refresh
+        // doesn't recreate it or drop in-progress edits.
+        .onChange(of: appModel.patients) { _, patients in
+            guard let current = selectedPatient,
+                  let fresh = patients.first(where: { $0.id == current.id }),
+                  fresh != current else { return }
+            selectedPatient = fresh
+        }
         .onChange(of: navigator.pendingPatientID) { _, _ in navigateToPendingPatient() }
         .onAppear { navigateToPendingPatient() }
     }

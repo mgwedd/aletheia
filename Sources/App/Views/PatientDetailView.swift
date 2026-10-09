@@ -8,7 +8,11 @@ struct PatientDetailView: View {
     @State private var sessions: [SessionRecord] = []
     /// Session folders whose `session.json` couldn't be read (left untouched).
     @State private var damagedSessions: [UnreadableEntry] = []
-    @State private var selectedSession: SessionRecord?
+    /// Selection is tracked by id, not by `SessionRecord`: the record is
+    /// Hashable over every field (hasTranscript, hasSummary, ...), so after a
+    /// refresh() a stored copy would no longer equal the row's tag and the
+    /// highlight would be lost.
+    @State private var selectedSessionID: UUID?
     @State private var notes: String = ""
     @State private var clinicalHistory: String = ""
     @State private var medications: [Medication] = []
@@ -18,6 +22,20 @@ struct PatientDetailView: View {
     /// starts open. Controlled (vs. a bare DisclosureGroup) so the chevron
     /// reliably toggles it.
     @State private var showBackground = true
+
+    /// The selected session, resolved against the current listing so a session
+    /// that has dropped out of it can't leave a dangling selection.
+    private var selectedSession: SessionRecord? {
+        guard let selectedSessionID else { return nil }
+        return sessions.first { $0.id == selectedSessionID }
+    }
+
+    /// The patient as currently stored. `patient` is a snapshot handed in by the
+    /// parent and can lag behind a save, so change-detection guards compare
+    /// against this instead (falling back to the snapshot if it's not listed).
+    private var storedPatient: Patient {
+        appModel.patients.first { $0.id == patient.id } ?? patient
+    }
 
     var body: some View {
         HSplitView {
@@ -29,10 +47,8 @@ struct PatientDetailView: View {
                     .onChange(of: notes) { _, newValue in
                         // Skip the onAppear sync (notes = patient.notes)
                         // firing this too — only persist actual edits.
-                        guard newValue != patient.notes else { return }
-                        var updated = patient
-                        updated.notes = newValue
-                        appModel.savePatientNotes(updated)
+                        guard newValue != storedPatient.notes else { return }
+                        appModel.updatePatient(id: patient.id) { $0.notes = newValue }
                     }
 
                 backgroundSection
@@ -74,10 +90,13 @@ struct PatientDetailView: View {
                     )
                 }
 
-                List(sessions, selection: $selectedSession) { session in
-                    SessionRow(session: session).tag(session)
+                List(sessions, selection: $selectedSessionID) { session in
+                    SessionRow(session: session).tag(session.id)
                 }
                 .listStyle(.inset)
+                // Never let the list collapse to a sliver when the editors above
+                // it claim the space; it takes whatever is left, at least 180pt.
+                .frame(minHeight: 180, maxHeight: .infinity)
                 .overlay {
                     if sessions.isEmpty {
                         ContentUnavailableView {
@@ -92,7 +111,7 @@ struct PatientDetailView: View {
                 }
             }
             .padding()
-            .frame(minWidth: 320)
+            .frame(minWidth: 320, idealWidth: 380)
 
             if let selectedSession {
                 SessionDetailView(patient: patient, session: selectedSession, onSessionUpdated: refresh)
@@ -141,8 +160,8 @@ struct PatientDetailView: View {
                     .frame(minHeight: 70, maxHeight: 130)
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
                     .onChange(of: clinicalHistory) { _, v in
-                        guard v != patient.clinicalHistory else { return }
-                        saveBackground()
+                        guard v != storedPatient.clinicalHistory else { return }
+                        appModel.updatePatient(id: patient.id) { $0.clinicalHistory = v }
                     }
 
                 // Medications is a .preview-tier module; the production build
@@ -183,17 +202,10 @@ struct PatientDetailView: View {
             }
             .padding(.top, 4)
             .onChange(of: medications) { _, v in
-                guard v != patient.medications else { return }
-                saveBackground()
+                guard v != storedPatient.medications else { return }
+                appModel.updatePatient(id: patient.id) { $0.medications = v }
             }
         }
-    }
-
-    private func saveBackground() {
-        var updated = patient
-        updated.clinicalHistory = clinicalHistory
-        updated.medications = medications
-        appModel.savePatientNotes(updated)
     }
 
     private func refresh() {
@@ -202,6 +214,10 @@ struct PatientDetailView: View {
             let listing = try store.sessionListing(for: patient)
             sessions = listing.sessions
             damagedSessions = listing.unreadable
+            // Drop a selection whose session is no longer listed.
+            if let id = selectedSessionID, !listing.sessions.contains(where: { $0.id == id }) {
+                selectedSessionID = nil
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -212,7 +228,7 @@ struct PatientDetailView: View {
         do {
             let session = try store.createSession(for: patient)
             refresh()
-            selectedSession = session
+            selectedSessionID = session.id
         } catch {
             errorMessage = error.localizedDescription
         }
