@@ -495,23 +495,10 @@ final class Store {
 
     /// The session's saved note in `format`, or nil if that format has none yet.
     ///
-    /// Legacy adoption: before per-format notes a session had one `summary.txt`
-    /// and no way to tell which format produced it. If the session has no
-    /// `note.*.txt` at all but does have a `summary.txt`, that text is adopted as
-    /// the note for whichever `format` is asked for first (the one the user has
-    /// selected) and persisted as that format's file. After that the per-format
-    /// files exist, so the other formats correctly read as "no note yet".
+    /// Read-only: never writes, so opening a session leaves its folder untouched.
     func note(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) -> String? {
-        let dir = sessionDir(for: patient, session: session)
-        let url = dir.appendingPathComponent(Store.noteFileName(for: format))
-        if let text = (try? protector.stringIfPresent(at: url)) ?? nil { return text }
-
-        let hasAnyFormatNote = ProgressNoteFormat.allCases.contains {
-            fileManager.fileExists(atPath: dir.appendingPathComponent(Store.noteFileName(for: $0)).path)
-        }
-        guard !hasAnyFormatNote, let legacy = summary(for: patient, session: session) else { return nil }
-        try? protector.write(legacy, to: url)
-        return legacy
+        let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
+        return (try? protector.stringIfPresent(at: url)) ?? nil
     }
 
     /// Saves `text` as the session's note in `format`, and mirrors it to
