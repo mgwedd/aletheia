@@ -64,20 +64,15 @@ final class WhisperTranscriber: Transcribing {
             }
             let found = try await transcribe(url: track.url, source: track.source, stage: track.stage, report: report)
             report(track.stage, 1)
-            // Drop non-speech tags and silence artifacts, so a recording where
-            // nothing was said yields "" (which the caller treats as "no
-            // speech") instead of a transcript of bare "[00:00] Therapist:"
-            // labels.
-            lines += TranscriptCleaner.clean(found)
+            lines += found
         }
 
-        lines.sort { $0.startTime < $1.startTime }
-        return lines.map { line in
-            let minutes = Int(line.startTime) / 60
-            let seconds = Int(line.startTime) % 60
-            let timestamp = String(format: "%02d:%02d", minutes, seconds)
-            return "[\(timestamp)] \(line.source): \(line.text.trimmingCharacters(in: .whitespaces))"
-        }.joined(separator: "\n")
+        // Clean across both tracks at once (coalescing needs the merged
+        // timeline), then print. Dropping non-speech tags and silence
+        // artifacts means a recording where nothing was said yields "" (which
+        // the caller treats as "no speech") instead of a transcript of bare
+        // "[00:00] Therapist:" labels.
+        return TranscriptFormatter.format(TranscriptCleaner.clean(lines))
     }
 
     private func transcribe(
@@ -121,7 +116,12 @@ final class WhisperTranscriber: Transcribing {
         // the whole transcription.
         withExtendedLifetime(forwarder) {}
         return segments.map { segment in
-            TranscribedLine(source: source, startTime: TimeInterval(segment.startTime) / 1000.0, text: segment.text)
+            TranscribedLine(
+                source: source,
+                startTime: TimeInterval(segment.startTime) / 1000.0,
+                endTime: TimeInterval(segment.endTime) / 1000.0,
+                text: segment.text
+            )
         }
     }
 }

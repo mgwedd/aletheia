@@ -36,6 +36,21 @@ enum Prompts {
     """
 
 
+    /// How to read a transcript line (`[MM:SS] Label: text`, as printed by
+    /// `TranscriptFormatter`). Embedded in every prompt that includes a
+    /// transcript so the model does not over-read the labels or the ordering.
+    /// Keep in step with the labels in `WhisperTranscriber` and the
+    /// "(overlapping)" suffix in `TranscriptFormatter`.
+    static let transcriptLegend = """
+    How to read the transcript: each line is "[MM:SS] Label: text". The \
+    label comes from which audio track the words were recorded on, not from \
+    voice analysis. "Call audio" is normally the client. In a session \
+    recorded with the microphone only, both people may appear as \
+    "Therapist". "(overlapping)" after a label means both tracks had speech \
+    at the same time, so the two people spoke over each other. Line order is \
+    approximate to within a few seconds.
+    """
+
     static func summarize(transcript: String) -> String {
         """
         You are helping a therapist review her own session notes. Summarize \
@@ -44,6 +59,8 @@ enum Prompts {
         any follow-ups to revisit next session. Do not invent details that \
         aren't in the transcript. If the transcript is too short or unclear \
         to summarize, say so plainly.
+
+        \(transcriptLegend)
 
         Transcript:
         \(transcript)
@@ -95,6 +112,8 @@ enum Prompts {
         it plainly in the Assessment/appropriate section.
         - Do not add a diagnosis that isn't already in the material.
 
+        \(transcriptLegend)
+
         Transcript:
         \(transcript)
         \(therapistMaterial(notes: notes, comments: comments))
@@ -112,6 +131,8 @@ enum Prompts {
         notes and comments where they fit, treating them as her clinical \
         judgment. Do not invent details that aren't in the material. If the \
         material is too short or unclear to summarize, say so plainly.
+
+        \(transcriptLegend)
 
         Transcript:
         \(transcript)
@@ -133,6 +154,8 @@ enum Prompts {
         comments are her clinical judgment and should be given weight. If the \
         answer isn't in any of that material, say you don't see it in this \
         session. Never speculate.
+
+        \(transcriptLegend)
 
         Transcript:
         \(transcript)
@@ -179,6 +202,8 @@ enum Prompts {
         something from a session, cite it inline with its tag exactly as \
         written, e.g. [S1]; cite every session you drew from. Never \
         speculate and never invent a tag that isn't listed.
+
+        \(transcriptLegend)
 
         \(context)
 
