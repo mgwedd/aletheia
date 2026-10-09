@@ -18,7 +18,7 @@ Aletheia records a video-call therapy session, transcribes it, drafts a progress
 | **Transcribe** | On-device Whisper. Lines are labeled "Therapist" and "Call audio" and merged by timestamp. |
 | **Write the note** | A draft progress note from the transcript, your notes and your comments: narrative (default), SOAP, DAP, BIRP or GIRP. |
 | **Annotate** | Free-form session notes and inline comments on specific transcript lines. |
-| **Ask** | Chat about one session, or about all of a client's sessions together. |
+| **Ask** | Chat about one session, or about all of a client's sessions together. Asking across sessions reads notes and comments from every session but only about 6,000 characters of transcript per question; the chat shows how much was included ([details](docs/DESIGN-DECISIONS.md)). |
 | **Search** | Full-text search across clients and sessions. |
 | **Export** | A session or a client's full history as Markdown. |
 | **Protect** | Optional app lock (Touch ID or password) with idle auto-lock, a PHI-free audit log, and an in-app health check (Aletheia Doctor). |

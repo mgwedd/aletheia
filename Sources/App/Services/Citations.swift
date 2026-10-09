@@ -20,11 +20,53 @@ struct PatientContext {
     let text: String
     let sources: [CitationSource]
     let unreadableSessions: Int
+    let coverage: TranscriptCoverage
 
-    init(text: String, sources: [CitationSource], unreadableSessions: Int = 0) {
+    init(
+        text: String,
+        sources: [CitationSource],
+        unreadableSessions: Int = 0,
+        coverage: TranscriptCoverage = TranscriptCoverage()
+    ) {
         self.text = text
         self.sources = sources
         self.unreadableSessions = unreadableSessions
+        self.coverage = coverage
+    }
+}
+
+/// How much of the readable transcript text reached the model for one patient
+/// chat question. Informational only: it describes what the retriever kept and
+/// never changes what is sent. Notes and comments are not counted here; they
+/// are added per session on top, up to their own cap.
+struct TranscriptCoverage: Equatable {
+    /// Sessions (by date) that have readable transcript text.
+    var sessions: Int = 0
+    /// Of those, how many have no transcript passage in the context.
+    var sessionsWithoutPassages: Int = 0
+    /// Characters of readable transcript text across `sessions`.
+    var totalCharacters: Int = 0
+    /// Characters of transcript text kept for the model.
+    var includedCharacters: Int = 0
+
+    /// True when part of the readable transcript text was left out.
+    var isPartial: Bool { totalCharacters > 0 && includedCharacters < totalCharacters }
+
+    /// Whole percent of transcript text included, rounded down, so a partial
+    /// read never shows as 100%.
+    var percentIncluded: Int {
+        guard totalCharacters > 0 else { return 100 }
+        return min(100, Int(Double(includedCharacters) / Double(totalCharacters) * 100))
+    }
+
+    /// A plain-language line for the chat sheet, or nil when everything fit.
+    var notice: String? {
+        guard isPartial else { return nil }
+        var line = "Last answer was built from about \(percentIncluded)% of the transcript text"
+        if sessionsWithoutPassages > 0 {
+            line += "; \(sessionsWithoutPassages) of \(sessions) session(s) had no transcript passage included"
+        }
+        return line + ". Check important details in the session itself."
     }
 }
 
