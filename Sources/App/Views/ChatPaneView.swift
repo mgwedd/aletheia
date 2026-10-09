@@ -12,6 +12,10 @@ struct ChatPaneView: View {
     /// When provided, a Stop button appears while `isSending` so the user can
     /// halt a long generation and keep whatever streamed in so far.
     var onStop: (() -> Void)? = nil
+    /// Set while the question is waiting behind another generation (see
+    /// `InferenceQueue`). Replaces the "Thinking…" spinner with this calm
+    /// status and a Cancel button (which calls `onStop`).
+    var queuedStatus: String? = nil
 
     @State private var draft: String = ""
 
@@ -50,9 +54,22 @@ struct ChatPaneView: View {
                             ChatBubble(message: message).id(message.id)
                         }
                         if isWaitingForFirstToken {
-                            HStack { ProgressView().controlSize(.small); Text("Thinking…").foregroundStyle(.secondary) }
+                            if let queuedStatus {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "clock").foregroundStyle(.secondary)
+                                    Text(queuedStatus).foregroundStyle(.secondary)
+                                    if let onStop {
+                                        Button("Cancel", action: onStop)
+                                            .buttonStyle(.borderless)
+                                    }
+                                }
                                 .padding(.leading, 4)
                                 .id("sending-indicator")
+                            } else {
+                                HStack { ProgressView().controlSize(.small); Text("Thinking…").foregroundStyle(.secondary) }
+                                    .padding(.leading, 4)
+                                    .id("sending-indicator")
+                            }
                         }
                     }
                     .padding()
