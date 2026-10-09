@@ -140,6 +140,12 @@ enum Theme {
             Pairing(foreground: chipInk, background: chip, minimum: 4.5),
             Pairing(foreground: highlightInk, background: highlight, minimum: 4.5),
             Pairing(foreground: recording, background: recordingTint, minimum: 4.5),
+            // Error and warning banners, the Doctor database card, and the
+            // compact transcription banner put body and secondary text on these.
+            Pairing(foreground: text, background: recordingTint, minimum: 4.5),
+            Pairing(foreground: muted, background: recordingTint, minimum: 4.5),
+            Pairing(foreground: callAudio, background: callout, minimum: 4.5),
+            Pairing(foreground: muted, background: chip, minimum: 4.5),
             Pairing(foreground: recordingInk, background: recordingFill, minimum: 4.5),
         ]
         return pairs

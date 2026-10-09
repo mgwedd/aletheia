@@ -33,6 +33,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check per-tier entitlements
         run: ./scripts/check-entitlements.sh
+      # Screens take every color from Theme (CLAUDE.md, Conventions).
+      - name: Self-test the theme color guard
+        run: ./scripts/check-theme-colors.sh --self-test
+      - name: Check screens use theme colors
+        run: ./scripts/check-theme-colors.sh
 
   build-and-test:
     name: Build & test (${{ matrix.tier }}, ${{ matrix.runner }})
