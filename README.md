@@ -1,303 +1,292 @@
-# Aletheia — private therapy session notes
+# Aletheia
 
-A local-only macOS app built on a **domain-neutral core** — on-device
-transcription, on-device AI, and local document management — wrapped by a
-**domain adapter** for its first (and currently only) use case: a therapist
-recording, transcribing, and summarizing video therapy sessions, then
-searching, annotating, and asking questions across a patient's history.
-**Privacy is the whole point:** session audio and everything derived from it
-is PHI, so nothing ever leaves the Mac it runs on.
+**Session notes for therapists, written on your Mac and kept on your Mac.**
 
-📖 [Setup guide](docs/SETUP-GUIDE.md) · ⚖️ [Consent note](CONSENT.md) · 🔒 [Security](SECURITY.md) · 📝 [Changelog](CHANGELOG.md) · 📄 [License](LICENSE) · 📃 [Terms](TERMS.md) · 🔏 [Privacy](PRIVACY.md)
+Aletheia records a video-call therapy session, transcribes it, drafts a progress note, and lets you search and ask questions across a client's history. The speech recognition and the AI both run on your computer. Client data is never sent to a server, and there is no analytics or telemetry.
 
-> **License:** source-available but **not** open source — all rights reserved. The code is public for transparency and evaluation; running or reusing it needs written permission. See [LICENSE](LICENSE).
+[Quickstart](#quickstart) · [How it works](#how-it-works) · [Developer quickstart](#developer-quickstart) · [Setup guide](docs/SETUP-GUIDE.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
-## Architecture
+> **License:** source-available, not open source. All rights reserved; see [LICENSE](LICENSE), [Terms](TERMS.md) and [Privacy](PRIVACY.md).
 
-The app is split into a **generic core** that knows nothing clinical and a
-**domain adapter + views** that give it meaning. The core exposes three
-domain-neutral capabilities; a domain layer wraps them for a specific use
-case:
+---
 
-```mermaid
-flowchart TD
-  UI["SwiftUI views — therapist domain\npatients · sessions · chat"] --> Dom
+## What it does
 
-  subgraph Dom["Domain adapter — therapist-specific"]
-    PR[PatientRepository]
-    SR[SessionRepository]
-    CR["Annotation / Chat repositories"]
-  end
+| | |
+|---|---|
+| **Record** | Your microphone and the other side of the call, captured as two separate tracks. No virtual audio driver. Start and stop from the window or the menu bar. |
+| **Transcribe** | On-device Whisper. Lines are labeled "Therapist" and "Call audio" and merged by timestamp. |
+| **Write the note** | A draft progress note from the transcript, your notes and your comments: narrative (default), SOAP, DAP, BIRP or GIRP. |
+| **Annotate** | Free-form session notes and inline comments on specific transcript lines. |
+| **Ask** | Chat about one session, or about all of a client's sessions together. |
+| **Search** | Full-text search across clients and sessions. |
+| **Export** | A session or a client's full history as Markdown. |
+| **Protect** | Optional app lock (Touch ID or password) with idle auto-lock, a PHI-free audit log, and an in-app health check (Aletheia Doctor). |
 
-  Dom --> Core
+### Privacy, stated precisely
 
-  subgraph Core["Generic core — domain-neutral, no clinical vocabulary"]
-    Trans["Transcription\non-device speech-to-text"]
-    AIB["AI backend\non-device LLM: summarize · retrieve · chat"]
-    Doc["Document management\nstorage · encryption at rest · search · backup/export"]
-  end
+- No client content leaves the Mac. Recording, transcription, summarizing and chat are all local.
+- The app does make a few requests that carry no client data: a check for new versions (a plain download of a small file from GitHub), and downloads of the speech and AI models you choose to install.
+- The app runs in the macOS App Sandbox, spawns no subprocesses, and its only network entitlement is outbound client connections.
+- Raw audio is deleted after transcription unless you opt in to keeping it and encryption is on.
+- Apple Intelligence is deliberately disabled so every AI path is provably on-device.
+- The app does not make its own backup copies yet. Time Machine includes the data folder by default. See [docs/DATA-SAFETY.md](docs/DATA-SAFETY.md).
 
-  Core --> Store[("SQLite + files\nopaque records keyed by UUID")]
-```
+Aletheia is a tool, not legal or clinical advice. Read [CONSENT.md](CONSENT.md) before recording anyone.
 
-- **Transcription** — on-device speech-to-text of recorded audio
-  (`Transcribing`, backed by [SwiftWhisper](https://github.com/exPHAT/SwiftWhisper)
-  / whisper.cpp), speaker-labeled, in-process.
-- **AI backend** — local LLM inference behind `AssistantService`:
-  summarization, retrieval over stored content, and chat — never a call to a
-  cloud model.
-- **Document management** — durable local storage, encryption at rest,
-  search, backup, and export. The storage seam (`PersistenceCore`) is
-  strictly generic: it stores an opaque `payload` keyed by `(kind, id)`,
-  scoped to an opaque `ownerID`/`itemID`, and never inspects or interprets
-  the bytes. Not even the words "patient" or "session" appear at this layer.
+---
 
-A **domain adapter** sits above the core and decides what the opaque
-primitives mean: `PatientRepository`, `SessionRepository`,
-`AnnotationRepository`, and `ChatRepository` are what decide that `ownerID`
-is a patient, `itemID` is a session, and `kind == "comment"` is a margin
-note. Everything clinical lives in this layer and the views above it — the
-core is reusable as-is for a different single-user, on-device domain (legal
-intake, coaching notes, journaling) by swapping only the adapter and the UI.
+## Quickstart
 
-### Why therapists, why offline
+You need a Mac running **macOS 14 or newer**. Apple Silicon with 16 GB of memory gives the best results; 8 GB works with smaller models.
 
-The first domain built on the core is a therapist managing their patients —
-chosen because clinical session data is PHI, where privacy and security
-aren't a preference but a requirement. That requirement is what drives the
-architecture, not the other way around: no analytics or telemetry, no
-servers, on-device transcription, on-device AI, encryption at rest. A domain
-where a leak is merely embarrassing wouldn't force this design; one where
-it's a compliance and ethical failure does.
+### 1. Get the app
 
-Every external integration sits behind a protocol in `Services/Integrations/`
-and `Services/Persistence/`, so a concrete backend swaps without touching the
-domain layer or the UI. The `Integrations` registry decides which concrete
-type backs each adapter at runtime.
+Download the latest `Aletheia-<version>.dmg` from the [Releases page](https://github.com/mgwedd/aletheia/releases), open it, and drag **Aletheia** into **Applications**.
 
-## The therapist domain (current application)
+### 2. Open it the first time
 
-- 🎙 **Record** the therapist's mic and the call's audio as two tracks — no
-  virtual audio driver. Works with any call app (Zoom, browser, FaceTime), since
-  it captures system audio. Start/pause/stop from the window or the menu bar.
-- ✍️ **Transcribe** on-device (Whisper), speaker-labeled, then **summarize**
-  with a local LLM.
-- 🔎 **Search** across every patient and session; **export** a session or a
-  whole history to Markdown.
-- 💬 **Ask across sessions** — chat grounded in the transcripts, with the
-  session date cited as its source.
-- 🗒 **Notes & comments** — freeform per-session notes and inline transcript
-  comments the AI chat takes into account.
-- 🔔 **Fits the Mac** — Spotlight, Siri/Shortcuts, Reminders, Calendar,
-  notifications, and an in-app updater.
-- 🩺 **Aletheia Doctor** — *Help › Aletheia Doctor…* (also in Settings) runs an
-  on-demand health check of the data folder, database, snapshots, permissions and
-  local AI engine, with a PHI-safe "Copy Report". If the database can't be
-  opened, the main window shows an error with step-by-step diagnosis instead of
-  silently failing to save.
+The app is not yet notarized by Apple, so macOS will hesitate. In **Applications**, **right-click Aletheia and choose Open**, then confirm. You only do this once.
 
-### How a session flows
+### 3. Follow the setup screen
+
+On first launch Aletheia walks you through a checklist:
+
+1. **Choose a folder for your data.** Everything lives here. If you use iCloud Drive, the picker starts there; any folder works.
+2. **Allow the microphone.**
+3. **Allow Screen Recording.** macOS calls it that, but Aletheia only uses it to hear the audio of your video call. It does not capture the screen.
+4. **Download the speech model.** The app picks a size suited to your Mac.
+5. **Install Ollama and download an AI model.** [Ollama](https://ollama.com) is a free app that runs the AI on your Mac. Aletheia links you to it and starts it for you.
+6. **Accept the Terms and Privacy notice.**
+
+Downloads are a few hundred megabytes to several gigabytes and happen once.
+
+### 4. Your first session
+
+1. Add a client from the client list.
+2. Open your video call as usual, then press **Record** in Aletheia (or use the menu bar icon).
+3. Press **Stop** when finished. Choose **Transcribe**, then **Summarize** to draft the note.
+4. Edit the note, add comments, and use **Ask** for questions about the session.
+
+For step-by-step help and troubleshooting, see the [Setup guide](docs/SETUP-GUIDE.md). If something looks wrong, open **Help → Aletheia Doctor** for a health report that contains no client information.
+
+---
+
+## How it works
+
+### System overview
 
 ```mermaid
 flowchart LR
-  Mic[🎙 Microphone] --> Rec[Session Recorder]
-  Call[🔊 Call audio via ScreenCaptureKit] --> Rec
-  Rec --> Files[mic.caf + call.caf]
-  Files --> Whisper[On-device Whisper]
-  Whisper --> Transcript[transcript.txt]
-  Transcript --> Summary[AI summary]
-  Transcript --> Chat[Ask / cross-session chat]
-  Notes[Notes + comments] --> Chat
-  Chat --> Cited[Answer with cited sessions]
+  subgraph Mac["Your Mac (sandboxed app)"]
+    UI["SwiftUI app<br/>window · menu bar · Doctor"]
+    REC["Recorder<br/>AVAudioEngine + ScreenCaptureKit"]
+    STT["Transcription<br/>Whisper (in-process)"]
+    AI["Assistant<br/>notes · chat"]
+    DB[("Local data folder<br/>SQLite + files")]
+    LLM["Ollama<br/>127.0.0.1:11434"]
+    UI --> REC --> STT --> DB
+    UI --> AI --> LLM
+    AI <--> DB
+    UI <--> DB
+  end
+  NET(["Internet"])
+  Mac -. "update check · model downloads<br/>(no client data)" .-> NET
 ```
 
-### Storage layout
+### A session, end to end
 
-**Storage is deliberately plain and Finder-browsable** — one folder the user
-picks (defaults inside iCloud Drive, so backup is automatic), reached across
-launches via a security-scoped bookmark:
+```mermaid
+sequenceDiagram
+  participant T as Therapist
+  participant R as SessionRecorder
+  participant W as WhisperTranscriber
+  participant A as AssistantService
+  participant S as Store / SQLite
+  T->>R: Record
+  R->>S: mic.caf + call.caf
+  T->>W: Transcribe
+  W->>S: transcript.txt (audio then deleted by default)
+  T->>A: Summarize (format, notes, comments)
+  A->>A: local model via Ollama
+  A->>S: summary.txt
+  T->>A: Ask a question
+  A->>S: read transcript, notes, comments
+  A-->>T: streamed answer, thread saved
+```
+
+### Where data lives
 
 ```
-<dataRoot>/
-  Aletheia.sqlite               # notes, inline comments, chat threads (PHI, local)
-  .backups/                    # hidden; the one home for local backups (docs/DATA-SAFETY.md)
-    migrations/                # pre-migration DB pre-images (VACUUM INTO)
-    snapshots/                 # rolling DB snapshots around encryption changes
-    archives/                  # opt-in end-to-end-encrypted backup archives
+<data folder>/
+  .aletheia.json                  schema version stamp
+  Aletheia.sqlite                 notes, comments and chat threads
+  audit.log                       PHI-free event log
+  .aletheia-keystore.json         only when encryption is on
+  .backups/{migrations,snapshots,archives}/
   Patients/<Patient-Slug>/
     patient.json
     YYYY-MM-DD_Session/
-      mic.caf / call.caf        # two audio tracks
-      transcript.txt            # merged, timestamped, speaker-labeled
-      summary.txt
-      chat.json
+      session.json  mic.caf  call.caf  transcript.txt  summary.txt
 ```
 
-Everything except the SQLite database is plain JSON/text a non-technical user
-can read. The database lives *inside* that same folder, so it backs up with
-everything else and never leaves the Mac — it holds the therapist's inline
-transcript comments, per-session freeform notes, and per-patient chat threads
-(chat threads used to be JSON files under `ChatThreads/`; they migrate into
-the DB the first time a patient is opened). Optional AES-256-GCM at-rest
-encryption (files and DB text columns) and end-to-end-encrypted backup
-archives are opt-in — see [docs/ENCRYPTION.md](docs/ENCRYPTION.md) and
-[SECURITY.md](SECURITY.md).
+Schema changes are append-only migrations, and a pre-migration copy of the database is written to `.backups/migrations` before each one runs. The SQLite file is a single `records` table of `(kind, id, owner, item, payload)`; the patient and session layer sits on top of that store.
 
-### AI backend (tiered, on-device first)
-
-The backend is chosen to keep setup as close to zero-install as the hardware
-allows; the user can override it in Settings.
+### AI backends
 
 ```mermaid
 flowchart TD
-  Start[Automatic] --> Q1{Apple Intelligence available?}
-  Q1 -- yes --> AIB[Apple Intelligence — on-device, no install]
-  Q1 -- no --> Q2{Built-in model ready?}
-  Q2 -- yes --> LlamaB[Built-in llama.cpp]
-  Q2 -- no --> OllamaB[Ollama — one-time install]
+  Q["Summarize / chat request"] --> R{"Backend: Automatic"}
+  R -->|today| O["Ollama (local, loopback only)"]
+  R -.->|blocked by design| AI["Apple Intelligence"]
+  R -.->|staged, not compiled in| L["Embedded llama.cpp"]
 ```
 
-Only official/first-party runtimes are used (no third-party LLM wrappers).
-Apple Intelligence and the llama.cpp binding compile in behind
-`#if canImport(...)`, so they light up on a supporting Mac/toolchain and
-compile out otherwise.
+- **Ollama** is the runtime in use. The app talks to it on `127.0.0.1` only.
+- **Embedded llama.cpp** has a complete engine in the source, behind `canImport(llama)`, but the package is not linked in shipping builds. Bring-up steps are in [Bringing up llama.cpp](#bringing-up-embedded-llamacpp).
+- **Apple Intelligence** is disabled via `Integrations.appleIntelligenceBlocked = true`.
 
-> **Apple Intelligence is currently disabled** (`Integrations.appleIntelligenceBlocked`),
-> kept off so the AI backend stays provably on-device: as Apple moves system
-> intelligence toward a cloud (Gemini) backhaul, Aletheia sticks to backends
-> it can prove stay on this Mac — Ollama and the built-in llama.cpp.
-> `Automatic` therefore resolves to a local backend. Flip the flag to
-> re-enable the on-device Foundation Models path.
+Default model sizes are chosen from your hardware:
 
-<details>
-<summary>Bringing up the embedded llama.cpp backend (Mac, one-time)</summary>
+| Mac | Speech model | AI model |
+|---|---|---|
+| Apple Silicon, 16 GB+ | medium.en | llama3.1:8b |
+| Apple Silicon, 8 GB+ | small.en | llama3.2:3b |
+| Intel, 16 GB+ | small.en | llama3.1:8b |
+| Other, 8 GB+ | base.en | llama3.2:3b |
+| Under 8 GB | base.en | llama3.2:1b |
 
-The engine (`LlamaEngine`, conforming to the `LocalLLMEngine` seam) and the
-older `LlamaAssistant` reference both live behind `#if canImport(llama)` and
-compile out until the package is linked, so CI stays green without building
-the heavy C++:
+### Build tiers
+
+Features are grouped into tiers that are chosen at compile time. Each tier includes the one before it, and the released DMG is the **production** tier.
 
 ```mermaid
 flowchart LR
-  A[project.yml: llama package\ncommented / staged] -->|verify-llama-bringup.sh| B[Compile-verify on a Mac\nagainst pinned b11149]
-  B -- green --> C[Commit the package\nenablement yourself]
-  B -- red --> D[Fix LlamaEngine.swift /\nLlamaAssistant.swift, retry]
-  C --> E["canImport(llama) == true\nLlamaEngineFactory returns LlamaEngine"]
+  P["production<br/>recording · transcription · notes · chat<br/>search · export · app lock · audit log · Doctor"]
+  V["preview<br/>+ Spotlight · source citations<br/>medications · suggested questions"]
+  D["dev<br/>+ built-in model · Reminders/Calendar<br/>extra encryption · App Intents"]
+  P --> V --> D
 ```
 
-1. `./scripts/verify-llama-bringup.sh` — one command, one Mac: it temporarily
-   uncomments the `llama` package stanza in `project.yml` (already pinned to a
-   **specific `ggml-org/llama.cpp` commit SHA**, the latest stable release tag
-   `b11149`/`d2e54583…`, never a branch), runs `xcodegen generate` + a Release
-   `xcodebuild`, then reverts `project.yml` to its committed state either way.
-   A green run means every `llama.h` call in `LlamaEngine.swift` and
-   `LlamaAssistant.swift` compiles clean against the pin — those symbols are
-   otherwise never compiler-checked, since `canImport(llama)` is false in CI.
-2. Green? Uncomment the same two spots in `project.yml` yourself (the package
-   stanza and the `- package: llama` target dependency) and commit that. The
-   factory (`LocalLLMEngineFactory`) then returns the real `LlamaEngine`
-   instead of `UnavailableLocalLLMEngine`, and Settings shows a "Built-in
-   Model" section to download a GGUF.
-3. Confirm the model download URLs and add a SHA-256 integrity check before
-   shipping it enabled.
-4. Re-pin to a newer `llama.cpp` release only after re-running step 1 against
-   it — the API has reshuffled significantly release to release.
-</details>
+Debug builds are `dev`; Release builds are `production`. Tiers are set by Swift compilation conditions in `project.yml` (`ALETHEIA_PREVIEW`, `ALETHEIA_DEV`).
 
-## Why native Swift/SwiftUI
+### Storage protection
 
-An earlier draft shelled out to `ffmpeg`/`whisper-cli`/`ollama` from a
-Python/Tkinter wrapper. This is a ground-up native rewrite so the app can be a
-**real sandboxed macOS app** — App Sandbox + Hardened Runtime on — which is
-possible only because it never spawns an external process:
+- **Sandbox, lock, audit:** App Sandbox is on; the optional app lock uses LocalAuthentication; the audit log records events (unlock, export, delete) without content.
+- **Encryption (dev tier today):** AES-256-GCM in 1 MiB chunks, with a random data key wrapped by a passphrase (PBKDF2-HMAC-SHA256, 600,000 iterations). Details in [docs/ENCRYPTION.md](docs/ENCRYPTION.md).
+- **Backups:** snapshot and migration copies exist; the encrypted backup archive service is not wired into the app yet. Time Machine is the supported backup today.
 
-- **Transcription in-process** via [SwiftWhisper](https://github.com/exPHAT/SwiftWhisper)
-  (whisper.cpp), not a CLI.
-- **Call audio via ScreenCaptureKit** in audio-only mode — one system
-  permission, no BlackHole/virtual driver.
-- **Local LLM** reached in-process or over `127.0.0.1`, never by spawning a
-  binary.
+### Why native Swift
 
-Distribution is ad-hoc signed by default (no Apple Developer account), so the
-first launch needs a right-click → Open — see the setup guide. Tagged releases
-can be Developer ID-signed and notarized (below).
+A sandboxed native app can capture call audio with ScreenCaptureKit and run Whisper in-process, which keeps the privacy boundary small enough to audit. The only third-party dependency is SwiftWhisper.
 
-## Build · Test · Release
+---
 
-Requires a Mac with Xcode 16+. The project is generated from `project.yml`
-(XcodeGen) rather than a checked-in `.xcodeproj`. Deployment target is
-macOS 14. Product/display name, Xcode target, scheme, and bundle-id prefix
-(`com.aletheia`) are all **Aletheia**.
+## Developer quickstart
+
+### Prerequisites
+
+- A Mac with full **Xcode 16+**
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`
+
+There is no checked-in `.xcodeproj`. `project.yml` is the source of truth.
+
+### Build and run
 
 ```bash
-./scripts/build.sh          # ad-hoc signed app in dist/
-xcodegen generate && xcodebuild test -scheme Aletheia -destination 'platform=macOS'
+git clone https://github.com/mgwedd/aletheia.git
+cd aletheia
+./scripts/build.sh            # generates the project, Release build, ad-hoc signed → dist/Aletheia.app
 ```
 
-CI/CD runs entirely on GitHub Actions with **only first-party actions plus
-Apple/Homebrew CLIs** — no third-party marketplace actions:
+Or work in Xcode:
+
+```bash
+xcodegen generate && open Aletheia.xcodeproj
+```
+
+### Test
+
+```bash
+xcodegen generate
+xcodebuild test -scheme Aletheia -destination 'platform=macOS'
+```
+
+To build a specific tier, pass the compilation conditions:
+
+```bash
+# production | preview | dev
+xcodebuild test -scheme Aletheia -destination 'platform=macOS' SWIFT_ACTIVE_COMPILATION_CONDITIONS="DEBUG"
+# "DEBUG ALETHEIA_PREVIEW"   or   "DEBUG ALETHEIA_PREVIEW ALETHEIA_DEV"
+```
+
+The root `Package.swift` also supports `swift test`, always at the dev tier.
+
+### Repository map
+
+```
+Sources/App/
+  AletheiaApp.swift       entry point: main window, Doctor, Settings, menu bar
+  Models/                 Patient, SessionRecord, ChatThread, …
+  Views/                  SwiftUI views
+  Services/               recorder, transcriber, assistant, store, app lock, settings
+    Persistence/          SQLite core, schema migrator, migration backup
+    Repositories/         annotation and chat repositories
+    Crypto/               encryption, keystore, snapshots, backup
+    Integrations/         assistant/transcriber factory, backend selection
+    Features/             build tiers, feature registry, Doctor
+    Llama/                embedded llama.cpp backend (staged)
+Tests/AletheiaTests/      XCTest suite
+scripts/                  build, release, secret scan, entitlement and pin checks
+docs/                     setup, data safety, encryption, HIPAA safeguards
+```
+
+### Continuous integration
 
 ```mermaid
 flowchart LR
-  PRs[push / PR] --> CI[CI — build + tests<br/>macos-15 required · macos-26 canary]
-  Main[merge to main] --> Auto[Auto Release — read commits<br/>bump · changelog · tag]
-  Main --> CD[CD — DMG artifact per commit]
-  Auto -->|releasable| Rel[Release — DMG + appcast + GitHub Release]
-  Auto -->|chore/docs only| Skip[no-op]
-  Rel --> Gate{signing secrets set?}
-  Gate -- yes --> Note[Developer ID + notarize + staple]
-  Gate -- no --> Adhoc[ad-hoc signed]
+  PR["Pull request"] --> S["Smoke test<br/>build + test × production/preview/dev<br/>entitlements guard · secret/PHI scan"]
+  S --> M["Merge to main"]
+  M --> AR["Auto Release<br/>conventional commits → semver"]
+  AR --> TAG["v* tag"] --> REL["release.yml<br/>DMG · appcast.json · GitHub Release"]
 ```
 
-Unit/integration tests cover the platform-independent logic (storage, search,
-retrieval/citations, prompt building, annotations) against a temp directory;
-audio/transcription/LLM round-trips need a hands-on pass on a real Mac.
-Signing & notarization are optional and secret-gated (see
-`.github/workflows/release.yml` for the exact secret names).
+CI runs on macOS runners (the only place the Swift code compiles). Developer ID signing and notarization run only when the signing secrets are configured; otherwise the DMG is ad-hoc signed. Model downloads are pinned by commit and SHA-256, checked weekly by `verify-model-pins`.
 
-### Releasing
+### Conventions
 
-Releases are **automated from [Conventional Commits](https://www.conventionalcommits.org/)** —
-no manual version bumping. On every merge to `main`, the `Auto Release` workflow
-reads the commits since the last `v*` tag and decides the bump:
+- **Conventional Commits** drive releases: `feat` → minor; `fix`, `perf`, `revert` → patch; `!` or `BREAKING CHANGE` → major; everything else → no release. Squash-merge with the PR title as the subject.
+- **`CHANGELOG.md` is generated.** Do not edit it by hand.
+- **Privacy invariants:** PHI never leaves the Mac; no analytics; the only outbound calls are the update check, opt-in model downloads, and loopback Ollama. Apple Intelligence stays disabled.
+- **Dependencies:** first-party and pinned. GitHub Actions are first-party only.
+- **Settings** follow the `AppSettings` pattern: UserDefaults-backed, `private enum Keys`, values loaded in `init`.
+- Enable the pre-commit hook: `git config core.hooksPath scripts/hooks`. It runs `scripts/scan-secrets.sh`, a fail-closed check for secrets and PHI-like filenames.
 
-| Commit type | Example | Result |
-| --- | --- | --- |
-| `feat!:` / `BREAKING CHANGE:` | `feat!: drop macOS 13` | **major** (`1.4.2 → 2.0.0`) |
-| `feat:` | `feat: streaming chat` | **minor** (`1.4.2 → 1.5.0`) |
-| `fix:` / `perf:` / `revert:` | `fix: crash on empty note` | **patch** (`1.4.2 → 1.4.3`) |
-| `chore:` / `docs:` / `test:` / … | `docs: tweak README` | **no release** |
+### Bringing up embedded llama.cpp
 
-When a bump is warranted it **generates the `CHANGELOG.md` section from the
-commit subjects** since the last tag (grouped into Added/Fixed/Changed), sets the
-app version in `Info.plist`, tags `main` HEAD, and hands off to `release.yml` to
-build the DMG, generate the updater's `appcast.json`, and publish the GitHub
-Release. Merges with only chore/docs commits are a quiet no-op, so routine work
-doesn't cut versions. **Don't hand-edit `CHANGELOG.md` in a PR** — it's produced
-at release time, so editing it just creates merge conflicts.
+<details>
+<summary>Steps</summary>
 
-The bump is read from **commit subjects on `main`**, so the merge commits need to
-carry the convention: use **squash-merge with the PR title as the subject** (e.g.
-`feat: streaming chat`) rather than the default `Merge pull request #NN …`, which
-is never releasable. A merge whose commits don't match any rule is a no-op.
+The engine (`LlamaEngine`, pinned to llama.cpp b11149) is written but the `llama` package is commented out in `project.yml`, and the model download has no checksum yet. To try it on a Mac:
 
-Releases also require a **source or config change**: a merge that touches only
-markdown, `docs/`, or test files never rebuilds, even with a `feat:`/`fix:`
-subject. (A later code change still ships those docs along with it.) A manual
-dispatch overrides this.
+```bash
+./scripts/verify-llama-bringup.sh
+```
 
-**Cut a release by hand** (e.g. to force a level, for the first tag, or when the
-commit subjects weren't conventional) from the Actions tab → **Auto Release** →
-**Run workflow**: pick a bump level, or enable **dry run** to preview the
-computed version without tagging. To skip the automation entirely, pushing a
-`v*` tag yourself still triggers `release.yml` directly.
+The script lists the checks to run before enabling the package and the built-in backend. Ollama stays the default until that work lands.
+
+</details>
+
+### Releases
+
+Merging to `main` is enough: Auto Release computes the version, updates the changelog, tags it, and dispatches `release.yml`. A manual release can be dispatched from the Actions tab.
+
+---
 
 ## Known limitations
 
-- **Runtime paths need manual verification.** CI compiles the app and runs the
-  logic tests, but microphone/screen-audio capture, on-device Whisper, and LLM
-  round-trips need a real Mac.
-- **Mic/call sync isn't sample-accurate** — the two tracks start a few ms apart;
-  fine for who-said-what, not frame-accurate lip sync.
-- **CPU/Metal inference, no bundled CoreML encoder** — larger Whisper models are
-  slower on an Air; the default (Small) is chosen for that.
+- The Swift code compiles only on macOS CI, and the recording and transcription paths on real hardware need manual verification before each release.
+- Mic and call tracks are not sample-accurate with each other, so interleaved lines can be off by a short interval.
+- No CoreML encoder is bundled; transcription uses CPU/Metal.
+- Automatic encrypted backup is not wired in, and encryption is not yet in the production tier.
+- Release builds are not notarized until signing secrets are configured.
