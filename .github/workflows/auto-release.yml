@@ -1,14 +1,20 @@
 name: Auto Release
 
 # Semantic, first-party release automation — semantic-release's behavior without
-# its dependency tree. On every merge to main it reads the Conventional Commits
-# since the last `v*` tag, decides the semver bump, stamps CHANGELOG.md and
-# Info.plist, tags main HEAD, and hands off to release.yml to build and publish
-# the DMG + appcast.
+# its dependency tree. Once Smoke Test passes on a push to main it reads the
+# Conventional Commits since the last `v*` tag, decides the semver bump, stamps
+# CHANGELOG.md and Info.plist, tags main HEAD, and hands off to release.yml to
+# build and publish the DMG + appcast.
 #
 # Bump rules (see scripts/compute-release.sh):
 #   feat!/BREAKING CHANGE → major · feat → minor · fix/perf/revert → patch
 #   only chore/docs/style/refactor/test/ci/build → no release (a quiet no-op).
+#
+# Releases wait for CI: this runs on a *successful* Smoke Test run for a push to
+# main, never on the push itself, so a red or cancelled build is never tagged.
+# Smoke Test cancels superseded runs, so the newest passing run releases the
+# whole range since the last tag. If main has moved past the tested commit the
+# run steps aside and the newer commit's run releases instead.
 #
 # Nothing releasable since the last tag ⇒ the job succeeds and does nothing, so
 # routine merges don't cut versions. Use the manual "Run workflow" button to
@@ -17,16 +23,14 @@ name: Auto Release
 # Supply chain: only git + gh (pre-installed) — no third-party actions, no npm.
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Smoke Test"]
+    types: [completed]
     branches: [main]
-    # Skip the run outright when a merge touches only docs/tests/markdown —
-    # nothing that affects the built app. compute-release.sh applies the same
-    # rule over the whole tag range as the authoritative gate (so a later code
-    # push still releases the docs that rode along).
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - '**/Tests/**'
+  # Docs-only merges never start Smoke Test (it ignores markdown and docs/), so
+  # they never reach here. compute-release.sh applies the same rule over the whole
+  # tag range as the authoritative gate (so a later code push still releases the
+  # docs that rode along).
   workflow_dispatch:
     inputs:
       bump:
@@ -51,19 +55,42 @@ jobs:
   release:
     name: Tag and hand off
     runs-on: ubuntu-latest   # pure git work; the macOS build lives in release.yml
+    # A pull_request run of Smoke Test can also report here; only a green push
+    # run on main, or a manual dispatch, may release.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # full history + tags for version math
+          # Release exactly the commit that passed (manual dispatch: its own ref).
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Check main has not moved past the tested commit
+        id: tip
+        if: github.event_name == 'workflow_run'
+        env:
+          TESTED: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          git fetch --no-tags origin main
+          if [ "$(git rev-parse FETCH_HEAD)" = "$TESTED" ]; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "main has moved past $TESTED; the run for the newer commit will release."
+          fi
 
       - name: Compute next version
         id: version
+        if: steps.tip.outputs.stale != 'true'
         env:
           FORCE_BUMP: ${{ github.event.inputs.bump || 'auto' }}
         run: ./scripts/compute-release.sh
 
       - name: Nothing to release
-        if: steps.version.outputs.release != 'true'
+        if: steps.tip.outputs.stale != 'true' && steps.version.outputs.release != 'true'
         run: echo "No releasable commits since the last tag — nothing to do."
 
       - name: Dry run summary
