@@ -44,7 +44,7 @@ fi
 # Credentials & keys, plus this app's PHI runtime artifacts (audio, transcripts,
 # summaries, the annotations DB, patient/chat JSON) — those live only in the
 # user's data folder, never in git.
-FILENAME_PATTERN='(\.p12|\.pfx|\.pem|\.key|\.p8|\.cer|\.mobileprovision|\.keychain[a-z-]*|\.env|\.env\..*|id_rsa|id_dsa|\.caf|\.wav|\.sqlite[0-9]?|transcript\.txt|summary\.txt|patient\.json|patient_chat\.json|chat\.json)$'
+FILENAME_PATTERN='(\.p12|\.pfx|\.pem|\.key|\.p8|\.cer|\.mobileprovision|\.keychain[a-z-]*|\.env|\.env\..*|id_rsa|id_dsa|\.caf|\.wav|\.sqlite[0-9]?|transcript\.txt|summary\.txt|note\.[a-z]+\.txt|patient\.json|patient_chat\.json|chat\.json)$'
 
 FILES="$(git ls-files)"
 NAME_HITS="$(printf '%s\n' "$FILES" | grep -iE "$FILENAME_PATTERN" || true)"
