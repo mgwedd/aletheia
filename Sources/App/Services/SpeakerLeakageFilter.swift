@@ -2,17 +2,35 @@ import Foundation
 
 /// Text-level guard against the call audio bleeding into the therapist's mic.
 ///
-/// When the remote party plays through speakers, the mic picks them up, so the
-/// same words are transcribed twice: once on the call track (correct) and once
-/// on the mic track (wrongly labelled "Therapist"). This drops a mic line when
-/// its words are, in order, nearly all contained in call-track lines that start
-/// around the same time (see docs/SPEAKER-ATTRIBUTION.md).
+/// Speaker labels are the audio track a line came from, not voice analysis:
+/// `mic.caf` is "Therapist", `call.caf` is "Call audio".
+///
+/// ```
+///  therapist ─► mic ───────────────────────────────► mic.caf   "Therapist"
+///                 ▲ bleed (speakers): the call re-enters the mic
+///  patient ─► call app ─► speakers ─► system audio ─► call.caf  "Call audio"
+/// ```
+///
+/// With speakers (not headphones) the same words are transcribed twice: once on
+/// the call track (correct) and once on the mic track (wrongly labelled
+/// "Therapist"). This drops a mic line when its words are, in order, nearly all
+/// contained in call-track lines that start around the same time.
+///
+/// What it does not fix: in-person or shared-mic sessions (every line is
+/// "Therapist"), a call track that carries non-patient system audio, and track
+/// clocks that drift apart.
 ///
 /// Pure and independent of Whisper and AVFoundation so it is unit tested
 /// directly. **Not wired into `WhisperTranscriber` yet**: the thresholds are
 /// unvalidated against a real two-party recording, and a false positive deletes
 /// something the therapist actually said from the clinical record. It is biased
 /// to keep: short lines and partial overlaps are never dropped.
+///
+/// Rule for wiring it: never drop a line only because it overlaps the other
+/// track in time. An interruption is real simultaneous speech; only drop when
+/// the words match too. Run it on the mic lines after cleaning and before the
+/// tracks are merged and sorted, which needs the per-track loop in
+/// `transcribeSession` split so the two tracks stay separate until then.
 enum SpeakerLeakageFilter {
     /// A call line counts as simultaneous when its start time is within this
     /// many seconds of the mic line's. Segments carry only a start time, and

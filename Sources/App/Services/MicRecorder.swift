@@ -72,6 +72,11 @@ final class MicRecorder {
         self.file = file
         self.fileURL = url
 
+        // Plain tap, deliberately without Apple voice processing (echo
+        // cancellation): it suppresses the near-end speaker during double-talk,
+        // which is exactly an interruption, and it changes the input format this
+        // file was opened with. Speaker bleed is handled at the text level
+        // instead (see SpeakerLeakageFilter); headphones avoid it entirely.
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
             guard let self, !self.isPaused else { return }
             do {
