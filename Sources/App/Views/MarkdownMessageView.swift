@@ -62,10 +62,10 @@ struct MarkdownMessageView: View {
         case let .quote(lines):
             HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 1.5)
-                    .fill(Color.secondary.opacity(0.4))
+                    .fill(Theme.muted.color.opacity(0.45))
                     .frame(width: 3)
                 inline(lines.joined(separator: "\n"))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -77,7 +77,10 @@ struct MarkdownMessageView: View {
             }
 
         case .rule:
-            Divider().padding(.vertical, 2)
+            Rectangle()
+                .fill(Theme.line.color)
+                .frame(height: 1)
+                .padding(.vertical, 2)
         }
     }
 
@@ -85,7 +88,7 @@ struct MarkdownMessageView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             marker
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted.color)
             inline(content)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -136,7 +139,7 @@ private struct CodeCard: View {
             HStack {
                 Label(caption, systemImage: isMermaid ? "point.3.connected.trianglepath.dotted" : "chevron.left.forwardslash.chevron.right")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted.color)
                 Spacer()
                 Button {
                     copy()
@@ -145,28 +148,30 @@ private struct CodeCard: View {
                         .font(.caption2)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted.color)
                 .help("Copy to clipboard")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(Color.secondary.opacity(0.10))
+            .background(Theme.window.color)
 
-            Divider()
+            Theme.line.color.frame(height: 1)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(code.isEmpty ? " " : code)
                     .font(.system(.callout, design: .monospaced))
+                    .lineSpacing(0)
+                    .foregroundStyle(Theme.text.color)
                     .textSelection(.enabled)
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .background(Color.secondary.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(Theme.field.color)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .strokeBorder(Theme.line.color, lineWidth: 1)
         )
     }
 
@@ -199,7 +204,7 @@ private struct DiagramCard: View {
             HStack {
                 Label("Diagram", systemImage: "point.3.connected.trianglepath.dotted")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted.color)
                 Spacer()
                 Menu {
                     Button("Copy Mermaid source") {
@@ -213,23 +218,23 @@ private struct DiagramCard: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted.color)
                 .help("Copies a picture of the diagram, and its source as text for plain-text editors")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(Color.secondary.opacity(0.10))
+            .background(Theme.window.color)
 
-            Divider()
+            Theme.line.color.frame(height: 1)
 
             MermaidDiagramView(layout: layout, summary: diagram.accessibilityDescription)
                 .padding(10)
         }
-        .background(Color.secondary.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(Theme.field.color)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .strokeBorder(Theme.line.color, lineWidth: 1)
         )
     }
 
