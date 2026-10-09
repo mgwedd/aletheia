@@ -46,9 +46,11 @@ struct SettingsView: View {
                     Text(settings.dataRootURL?.path ?? "Not chosen yet")
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .foregroundStyle(settings.dataRootURL == nil ? .secondary : .primary)
+                        .foregroundStyle(settings.dataRootURL == nil ? Theme.muted.color : Theme.text.color)
                     Spacer()
                     Button("Change…", action: chooseFolder)
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
                 }
             }
 
@@ -59,20 +61,24 @@ struct SettingsView: View {
                     }
                 }
                 Text("Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.whisperModel.shortName).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
                 HStack {
                     if whisperDownloader.isDownloading {
                         ProgressView(value: whisperDownloader.progress)
                         Text("\(Int(whisperDownloader.progress * 100))%")
                     } else if FileManager.default.fileExists(atPath: settings.whisperModelPath.path) {
-                        Label("Downloaded", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        Label("Downloaded", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.accent.color)
                         Spacer()
                         Button("Re-download") { Task { await downloadWhisperModel() } }
+                            .buttonStyle(.themed)
+                            .controlSize(.small)
                     } else {
-                        Text("Not downloaded (~\(settings.whisperModel.approximateSizeMB) MB)").foregroundStyle(.secondary)
+                        Text("Not downloaded (~\(settings.whisperModel.approximateSizeMB) MB)").foregroundStyle(Theme.muted.color)
                         Spacer()
                         Button("Download") { Task { await downloadWhisperModel() } }
+                            .buttonStyle(.themed)
+                            .controlSize(.small)
                     }
                 }
             }
@@ -95,10 +101,10 @@ struct SettingsView: View {
                     }
                 }
                 Text(settings.assistantBackend.summary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
                 LabeledContent("In use now", value: integrations.effectiveAssistantBackend.displayName)
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
 
                 if integrations.effectiveAssistantBackend == .ollama {
                     Divider()
@@ -110,41 +116,45 @@ struct SettingsView: View {
                         Text("Custom…").tag(OllamaCatalog.customTag)
                     }
                     if let option = OllamaCatalog.option(for: settings.ollamaModelName) {
-                        Text(option.blurb).font(.caption).foregroundStyle(.secondary)
+                        Text(option.blurb).font(Theme.Typography.caption).foregroundStyle(Theme.muted.color)
                     }
                     Text("Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.ollamaModel).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
                     if !OllamaCatalog.contains(settings.ollamaModelName) {
                         TextField("Ollama model tag (e.g. qwen2.5:7b)", text: $settings.ollamaModelName)
                     }
                     Text("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
                     HStack {
                         if isPullingOllamaModel {
                             ProgressView(value: ollamaPullProgress)
-                            Text(ollamaPullStatus).font(.caption).foregroundStyle(.secondary)
+                            Text(ollamaPullStatus).font(Theme.Typography.caption).foregroundStyle(Theme.muted.color)
                         } else {
                             Button("Download \(settings.ollamaModelName)") { Task { await pullOllamaModel() } }
+                                .buttonStyle(.themed)
+                                .controlSize(.small)
                                 .disabled(settings.ollamaModelName.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                     }
                 } else if integrations.effectiveAssistantBackend == .appleIntelligence {
                     Label("Runs on your Mac with Apple Intelligence — nothing to install or download.", systemImage: "apple.logo")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
                 }
             }
 
             Section("AI Instructions") {
                 Text("The standing instructions sent with every AI request — the assistant's voice and rules. Editing this changes how summaries and chat behave.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
                 EditorField(text: $settings.systemPrompt, minHeight: 140)
                 HStack {
                     Spacer()
                     Button("Reset to Default") { settings.systemPrompt = Prompts.defaultSystemPrompt }
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
                         .disabled(settings.systemPrompt == Prompts.defaultSystemPrompt)
                 }
             }
@@ -156,11 +166,11 @@ struct SettingsView: View {
                     }
                 }
                 Text(settings.progressNoteFormat.blurb)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
                 Text("The format new session notes start in. You can still switch formats for any single session on its Note tab.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
             }
 
             // The .dev-tier "Built-in Model" (embedded llama.cpp) management UI —
@@ -177,13 +187,17 @@ struct SettingsView: View {
                             ProgressView(value: llamaDownloader.progress)
                             Text("\(Int(llamaDownloader.progress * 100))%")
                         } else if FileManager.default.fileExists(atPath: LlamaRuntime.modelURL(for: settings.llamaModel).path) {
-                            Label("Downloaded", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                            Label("Downloaded", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.accent.color)
                             Spacer()
                             Button("Re-download") { Task { await downloadLlamaModel() } }
+                                .buttonStyle(.themed)
+                                .controlSize(.small)
                         } else {
-                            Text("Not downloaded (~\(settings.llamaModel.approximateSizeMB) MB)").foregroundStyle(.secondary)
+                            Text("Not downloaded (~\(settings.llamaModel.approximateSizeMB) MB)").foregroundStyle(Theme.muted.color)
                             Spacer()
                             Button("Download") { Task { await downloadLlamaModel() } }
+                                .buttonStyle(.themed)
+                                .controlSize(.small)
                         }
                     }
                 }
@@ -194,8 +208,8 @@ struct SettingsView: View {
                     Toggle("Find patients in Spotlight", isOn: $settings.spotlightIndexingEnabled)
                         .onChange(of: settings.spotlightIndexingEnabled) { _, _ in appModel.reindexSpotlight() }
                     Text("Lets you open a patient or session straight from macOS Spotlight. Only names and dates are indexed — never transcripts or summaries. Anyone using this Mac can see indexed names, so leave this off on a shared computer.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
                 }
             }
 
@@ -203,15 +217,15 @@ struct SettingsView: View {
                 Toggle("Keep audio recordings after transcription", isOn: $settings.keepAudioRecordings)
                     .disabled(!encryption.isEnabled)
                 Text(audioRetentionCaption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
             }
 
             Section("Security") {
                 Toggle("Require Touch ID or password to open", isOn: $settings.appLockEnabled)
                 Text("Locks the app when it opens and whenever it's hidden, so your patients' notes stay behind your Touch ID or Mac password.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
                 Divider()
                 Picker("Auto-lock after", selection: idleAutoLockSelection) {
                     ForEach(IdleAutoLockTimeout.allCases) { timeout in
@@ -220,19 +234,21 @@ struct SettingsView: View {
                 }
                 .disabled(!settings.appLockEnabled)
                 Text("Automatically re-locks after this much time with no activity — HIPAA's required \"automatic logoff.\" Needs \"Require Touch ID or password to open\" turned on above.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
                 Divider()
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Encrypt this Mac's disk with FileVault")
-                            .font(.body.weight(.medium))
+                            .font(Theme.Typography.body.weight(.medium))
                         Text("Recommended. FileVault encrypts everything on this Mac at rest so patient data can't be read if the computer is lost or stolen. macOS manages it; it doesn't affect your backups.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.muted.color)
                     }
                     Spacer()
                     Button("Open Settings") { SystemSettingsLinks.openFileVaultSettings() }
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
                 }
             }
 
@@ -248,31 +264,35 @@ struct SettingsView: View {
 
             Section("Security Audit Log") {
                 Text("An on-device record of actions that touch patient data — app unlocks, encryption changes, exports and deletions. It holds no names or clinical content, never leaves this Mac, and satisfies HIPAA's audit-control requirement (§164.312(b)).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
                 if auditEntries.isEmpty {
                     Text("No activity recorded yet.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
                 } else {
                     ForEach(Array(auditEntries.prefix(auditPreviewLimit).enumerated()), id: \.offset) { item in
                         HStack {
                             Text(item.element.action.displayName)
                             Spacer()
-                            Text(auditTimestamp(item.element)).foregroundStyle(.secondary)
+                            Text(auditTimestamp(item.element)).foregroundStyle(Theme.muted.color)
                         }
-                        .font(.caption)
+                        .font(Theme.Typography.caption)
                     }
                     if auditEntries.count > auditPreviewLimit {
                         Text("Showing the \(auditPreviewLimit) most recent of \(auditEntries.count) entries.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.muted.color)
                     }
                 }
                 HStack {
                     Button("Refresh", action: loadAuditEntries)
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
                     Spacer()
                     Button("Export…", action: exportAuditLog)
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
                         .disabled(auditEntries.isEmpty)
                 }
             }
@@ -280,18 +300,18 @@ struct SettingsView: View {
             Section("Backup") {
                 Toggle("Keep my data out of Time Machine & iCloud backups", isOn: $settings.keepDataOutOfSystemBackups)
                 Text("Off by default, so Time Machine includes your data folder — Aletheia doesn't make a backup of its own yet, so without this you'd have only one copy. Your data folder can hold unencrypted patient data (and audio/transcript files), so keep your Time Machine backups on an encrypted disk. Turn this on only if you'd rather keep the folder out of macOS system backups and rely on your own copy instead.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
                 Divider()
                 Toggle("Keep an encrypted backup copy on this Mac", isOn: $settings.localEncryptedBackupEnabled)
                 Text("An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it. Not active in this build yet: your choice is saved, but no backup copy is written until it is.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
                 Divider()
                 Toggle("Also back up to iCloud (end-to-end encrypted)", isOn: $settings.iCloudEncryptedBackupEnabled)
                 Text("Uploads the same encrypted snapshot to your private iCloud. It's sealed with your key before it leaves this Mac, so Apple only ever stores data it can't read. Activates in a signed build with iCloud configured; your choice is saved until then.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
             }
 
             Section("Legal") {
@@ -301,11 +321,11 @@ struct SettingsView: View {
                 }
                 if let accepted = settings.acceptedLegalDate, settings.hasAcceptedCurrentLegal {
                     LabeledContent("Accepted", value: legalAcceptanceStamp(version: settings.acceptedLegalVersion, at: accepted))
-                        .font(.caption)
+                        .font(Theme.Typography.caption)
                 }
                 Text("Your acceptance of the terms is recorded only on this Mac. It is never sent anywhere.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
             }
 
             Section("Software Update") {
@@ -313,17 +333,19 @@ struct SettingsView: View {
                 HStack {
                     if updateService.isChecking {
                         ProgressView().controlSize(.small)
-                        Text("Checking…").foregroundStyle(.secondary)
+                        Text("Checking…").foregroundStyle(Theme.muted.color)
                     } else {
                         Button("Check for Updates") {
                             Task { await updateService.checkForUpdates(force: true) }
                         }
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
                     }
                     Spacer()
                 }
                 Text("Aletheia checks for a new version on launch and lets you know when one is ready.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
             }
 
             Section("Status") {
@@ -334,24 +356,29 @@ struct SettingsView: View {
                     HStack(alignment: .top) {
                         statusIcon(check.status)
                         VStack(alignment: .leading) {
-                            Text(check.title).font(.body.weight(.medium))
-                            Text(check.detail).font(.caption).foregroundStyle(.secondary)
+                            Text(check.title).font(Theme.Typography.body.weight(.medium))
+                            Text(check.detail).font(Theme.Typography.caption).foregroundStyle(Theme.muted.color)
                         }
                     }
                 }
                 HStack {
                     Label("Updates automatically", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
                     Spacer()
                     if appModel.featureRegistry.contains(id: DoctorFeatureModule.id) {
                         Button("Aletheia Doctor…") { openWindow(id: DoctorFeatureModule.windowID) }
+                            .buttonStyle(.themed)
+                            .controlSize(.small)
                     }
                     Button("Setup Assistant…") { showSetup = true }
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
                 }
             }
         }
         .formStyle(.grouped)
+        .tint(Theme.accent.color)
         .navigationTitle("Settings")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -361,15 +388,19 @@ struct SettingsView: View {
         .sheet(isPresented: $showSetup) {
             VStack(spacing: 0) {
                 HStack {
-                    Text("Setup Assistant").font(.headline)
+                    Text("Setup Assistant")
+                        .font(Theme.Typography.headline)
+                        .foregroundStyle(Theme.text.color)
                     Spacer()
                     Button("Done") { showSetup = false }
+                        .buttonStyle(.themed)
                 }
                 .padding()
-                Divider()
+                Rectangle().fill(Theme.line.color).frame(height: 1)
                 ScrollView { SetupChecklistView().padding() }
             }
             .frame(width: 560, height: 560)
+            .background(Theme.window.color)
             .environmentObject(settings)
             .environmentObject(appModel)
             .environmentObject(integrations)
@@ -471,21 +502,23 @@ struct SettingsView: View {
         case .disabled:
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Off").font(.body.weight(.medium))
+                    Text("Off").font(Theme.Typography.body.weight(.medium))
                     Text("Encrypt your notes, transcripts, summaries, chat, patient records and recordings on disk with a passphrase — protecting them even on an external drive, a backup, or a synced folder. FileVault is still recommended as the baseline.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
                 }
                 Spacer()
                 Button("Turn On…") { showEncryptionSetup = true }
+                    .buttonStyle(.themed)
+                    .controlSize(.small)
                     .disabled(settings.dataRootURL == nil)
             }
         case .unlocked:
             Label("On — unlocked for this session", systemImage: "lock.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(Theme.accent.color)
             Text("Your data folder is encrypted at rest with your recovery passphrase.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
             Toggle("Unlock automatically on this Mac", isOn: $rememberOnDevice)
                 .onChange(of: rememberOnDevice) { _, on in
                     do {
@@ -496,23 +529,25 @@ struct SettingsView: View {
                     }
                 }
             Text("Stores the key in this Mac's login keychain so you don't retype your passphrase each launch. Turn off for maximum security — Aletheia will always ask.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
             HStack {
                 if isDisablingEncryption {
                     ProgressView().controlSize(.small)
-                    Text("Decrypting…").font(.caption).foregroundStyle(.secondary)
+                    Text("Decrypting…").font(Theme.Typography.caption).foregroundStyle(Theme.muted.color)
                 } else {
                     Button("Turn Off Encryption…", role: .destructive) { confirmDisableEncryption = true }
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
                 }
                 Spacer()
             }
         case .lockedNeedsPassphrase:
             Label("On — locked", systemImage: "lock")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted.color)
             Text("Unlock from the main window to manage encryption.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
         }
     }
 
@@ -531,9 +566,9 @@ struct SettingsView: View {
     @ViewBuilder
     private func statusIcon(_ status: ToolHealthCheck.Status) -> some View {
         switch status {
-        case .ok: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-        case .warning: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
-        case .failed: Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+        case .ok: Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent.color)
+        case .warning: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.callAudio.color)
+        case .failed: Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.recording.color)
         }
     }
 
