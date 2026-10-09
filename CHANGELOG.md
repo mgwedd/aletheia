@@ -9,6 +9,16 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.32.0] - 2026-10-09
+
+### Added
+- formatted editor for My Notes and note edits (#215)
+- Concise / Natural / Detailed summary length (#214)
+
+### Fixed
+- drop the "On this Mac only" footer (#213)
+- readable paragraphs and labels in generated notes (#212)
+
 ## [2.31.0] - 2026-10-09
 
 ### Added
