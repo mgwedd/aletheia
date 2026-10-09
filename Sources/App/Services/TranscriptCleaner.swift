@@ -12,7 +12,8 @@ struct TranscribedLine: Equatable {
 /// binding so it can be unit tested directly.
 enum TranscriptCleaner {
     /// Consecutive kept lines from one source whose start times are this
-    /// close together are merged into a single line.
+    /// close together are merged into a single line, unless the later line
+    /// opens with a "- " turn marker (see `startsNewTurn`).
     static let coalesceWindow: TimeInterval = 2.0
 
     /// Most segments a split tag is allowed to span before giving up.
@@ -104,7 +105,9 @@ enum TranscriptCleaner {
         var result: [TranscribedLine] = []
         var previousStart: TimeInterval = 0
         for line in lines {
-            if let last = result.last, line.startTime - previousStart <= coalesceWindow {
+            if let last = result.last,
+               line.startTime - previousStart <= coalesceWindow,
+               !startsNewTurn(line.text) {
                 result[result.count - 1] = TranscribedLine(
                     source: last.source,
                     startTime: last.startTime,
@@ -119,6 +122,15 @@ enum TranscriptCleaner {
     }
 
     // MARK: - Helpers
+
+    /// True if the text opens with Whisper's "- " turn-change marker: a hyphen
+    /// followed by whitespace. "-5" and "-ish" are not markers. Trims first so
+    /// the check does not depend on earlier steps having already done so.
+    private static func startsNewTurn(_ text: String) -> Bool {
+        let trimmed = text.drop(while: { $0.isWhitespace })
+        guard trimmed.first == "-" else { return false }
+        return trimmed.dropFirst().first?.isWhitespace ?? false
+    }
 
     private static func hasUnclosedTag(_ text: String) -> Bool {
         occurrences(of: "[", in: text) > occurrences(of: "]", in: text)
