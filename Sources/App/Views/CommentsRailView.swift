@@ -6,12 +6,24 @@ import SwiftUI
 /// at the bottom so they're kept but out of the way.
 ///
 /// The rail is the "text ← → cards" half of the two-way focus: tapping a card
-/// sets `focusedCommentID`, which the transcript view watches to scroll-and-
-/// flash the passage; clicking a highlighted passage sets the same binding,
-/// which scrolls the matching card into view here.
+/// asks the owner to focus it (`onFocus`), which sets `focusedCommentID` and
+/// bumps `focusToken` so the transcript view scroll-and-flashes the passage —
+/// every time, even for the already-focused card. Clicking a highlighted
+/// passage does the same from the other side, which scrolls the matching card
+/// into view here.
 struct CommentsRailView: View {
     let comments: [SessionComment]
     @Binding var focusedCommentID: String?
+    /// Comments whose quoted passage couldn't be placed in the transcript (it
+    /// was edited away, or a legacy comment quoted text that repeats). They
+    /// still show here, just with a note, and clicking one doesn't scroll.
+    var unplacedIDs: Set<String> = []
+    /// Bumped by the owner on every focus request, so the rail re-scrolls to the
+    /// focused card even when the same card is focused again.
+    var focusToken: Int = 0
+    /// A card was clicked. The owner sets `focusedCommentID` and bumps
+    /// `focusToken`, so this works as a repeatable event rather than a state.
+    var onFocus: (String) -> Void = { _ in }
     var onResolve: (SessionComment, Bool) -> Void
     var onDelete: (SessionComment) -> Void
 
@@ -76,8 +88,8 @@ struct CommentsRailView: View {
                         }
                         .padding(10)
                     }
-                    .onChange(of: focusedCommentID) { _, id in
-                        guard let id else { return }
+                    .onChange(of: focusToken) { _, _ in
+                        guard let id = focusedCommentID else { return }
                         withAnimation { proxy.scrollTo(id, anchor: .center) }
                     }
                 }
@@ -102,6 +114,11 @@ struct CommentsRailView: View {
                     .italic()
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
+                if unplacedIDs.contains(comment.id) {
+                    Text("Original passage not found")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             Text(comment.body)
                 .font(.callout)
@@ -137,7 +154,7 @@ struct CommentsRailView: View {
                 .stroke(isFocused ? Color.yellow.opacity(0.6) : Color.clear, lineWidth: 1)
         )
         .contentShape(Rectangle())
-        .onTapGesture { focusedCommentID = comment.id }
+        .onTapGesture { onFocus(comment.id) }
         .id(comment.id)
     }
 

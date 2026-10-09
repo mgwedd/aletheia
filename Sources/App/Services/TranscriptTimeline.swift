@@ -46,6 +46,32 @@ enum TranscriptTimeline {
         return chosen
     }
 
+    /// The time code of the transcript line containing the character at
+    /// `offset` (a UTF-16 / `NSRange` offset) — the timestamp of the last
+    /// timestamped line at or before it. Unlike `seconds(forQuote:in:)` this
+    /// doesn't search for text, so it stays right when the same words (a speaker
+    /// label, "yes") appear on many lines. Returns nil if `offset` is outside
+    /// the transcript or no line up to it carries a time code.
+    static func seconds(atOffset offset: Int, in transcript: String) -> Int? {
+        let text = transcript as NSString
+        guard offset >= 0, offset <= text.length else { return nil }
+
+        var chosen: Int?
+        var lineStart = 0
+        while lineStart <= offset {
+            let rest = NSRange(location: lineStart, length: text.length - lineStart)
+            let newline = text.range(of: "\n", options: [.literal], range: rest)
+            let lineEnd = newline.location == NSNotFound ? text.length : newline.location
+            let line = text.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
+            if let seconds = leadingSeconds(of: line) {
+                chosen = seconds
+            }
+            if newline.location == NSNotFound { break }
+            lineStart = lineEnd + 1
+        }
+        return chosen
+    }
+
     /// Formats seconds as `M:SS` (or `H:MM:SS` past an hour) for display.
     static func format(_ seconds: Int) -> String {
         let clamped = max(0, seconds)

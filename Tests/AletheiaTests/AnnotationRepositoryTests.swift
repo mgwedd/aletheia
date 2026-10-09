@@ -66,6 +66,46 @@ final class AnnotationRepositoryTests: XCTestCase {
         XCTAssertEqual(updated.createdAt, t0, "createdAt never changes")
     }
 
+    /// A comment stored before `quoteStart` existed has no such key in its JSON;
+    /// it must still decode (quoteStart nil) and keep its other fields.
+    func testLegacyCommentPayloadWithoutQuoteStartStillDecodes() throws {
+        let session = UUID()
+        let json = #"{"quotedText":"Therapist","body":"old note","anchorSeconds":0}"#
+        let record = PersistedRecord(
+            id: "legacy", kind: "comment", itemID: session,
+            payload: Data(json.utf8), createdAt: Date(timeIntervalSince1970: 1), updatedAt: Date(timeIntervalSince1970: 1)
+        )
+        XCTAssertTrue(core.put(record))
+
+        let comment = try XCTUnwrap(repository.comments(sessionID: session).first)
+        XCTAssertEqual(comment.quotedText, "Therapist")
+        XCTAssertEqual(comment.body, "old note")
+        XCTAssertEqual(comment.anchorSeconds, 0)
+        XCTAssertNil(comment.quoteStart)
+        XCTAssertFalse(comment.resolved)
+    }
+
+    func testQuoteStartRoundTripsAndSurvivesEditAndResolve() throws {
+        let session = UUID()
+        let created = try XCTUnwrap(
+            repository.addComment(sessionID: session, quotedText: "Therapist", body: "b", anchorSeconds: 40, quoteStart: 83)
+        )
+        XCTAssertEqual(created.quoteStart, 83)
+        XCTAssertTrue(repository.updateComment(id: created.id, body: "edited"))
+        XCTAssertTrue(repository.setCommentResolved(id: created.id, resolved: true))
+
+        let reloaded = try XCTUnwrap(repository.comments(sessionID: session).first)
+        XCTAssertEqual(reloaded.quoteStart, 83)
+        XCTAssertEqual(reloaded.anchorSeconds, 40)
+        XCTAssertEqual(reloaded.body, "edited")
+    }
+
+    func testQuoteStartDefaultsToNil() throws {
+        let session = UUID()
+        let created = try XCTUnwrap(repository.addComment(sessionID: session, quotedText: "q", body: "b"))
+        XCTAssertNil(created.quoteStart)
+    }
+
     func testUpdateUnknownCommentFails() {
         XCTAssertFalse(repository.updateComment(id: "does-not-exist", body: "x"))
     }

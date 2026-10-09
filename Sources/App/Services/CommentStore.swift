@@ -13,6 +13,12 @@ struct SessionComment: Identifiable, Equatable {
     /// from the transcript's time codes when the comment is created. nil when the
     /// passage couldn't be located (e.g. no quote, or a hand-typed passage).
     var anchorSeconds: Double?
+    /// UTF-16 offset (`NSRange.location`) of the start of `quotedText` in the
+    /// transcript when the comment was created. Quoted text alone can't tell
+    /// apart two selections of a word that repeats (every line starts with the
+    /// speaker label), so this pins the comment to the occurrence the therapist
+    /// actually selected. nil on comments written before this field existed.
+    var quoteStart: Int?
     /// Google-Docs-style resolution: a resolved comment drops its transcript
     /// highlight and collapses into the rail's "Resolved" section, but is kept
     /// (never silently deleted) so the therapist can reopen it. Defaults to
@@ -27,6 +33,7 @@ struct SessionComment: Identifiable, Equatable {
         createdAt: Date,
         updatedAt: Date,
         anchorSeconds: Double? = nil,
+        quoteStart: Int? = nil,
         resolved: Bool = false
     ) {
         self.id = id
@@ -35,6 +42,7 @@ struct SessionComment: Identifiable, Equatable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.anchorSeconds = anchorSeconds
+        self.quoteStart = quoteStart
         self.resolved = resolved
     }
 }
@@ -112,8 +120,8 @@ final class CommentStore {
     }
 
     @discardableResult
-    func addComment(sessionID: UUID, quotedText: String, body: String, anchorSeconds: Double? = nil, now: Date = Date()) -> SessionComment? {
-        annotations.addComment(sessionID: sessionID, quotedText: quotedText, body: body, anchorSeconds: anchorSeconds, now: now)
+    func addComment(sessionID: UUID, quotedText: String, body: String, anchorSeconds: Double? = nil, quoteStart: Int? = nil, now: Date = Date()) -> SessionComment? {
+        annotations.addComment(sessionID: sessionID, quotedText: quotedText, body: body, anchorSeconds: anchorSeconds, quoteStart: quoteStart, now: now)
     }
 
     @discardableResult
