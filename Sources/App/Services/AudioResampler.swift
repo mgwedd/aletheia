@@ -50,4 +50,16 @@ enum AudioResampler {
         guard let channelData = outputBuffer.floatChannelData else { return [] }
         return Array(UnsafeBufferPointer(start: channelData[0], count: Int(outputBuffer.frameLength)))
     }
+
+    /// True if the samples' overall RMS is at or below `rmsThreshold` (or
+    /// there are none). The default is about -54 dBFS, well under quiet speech.
+    static func isEssentiallySilent(_ samples: [Float], rmsThreshold: Float = 0.002) -> Bool {
+        guard !samples.isEmpty else { return true }
+        var sumOfSquares = 0.0
+        for sample in samples {
+            sumOfSquares += Double(sample) * Double(sample)
+        }
+        let rms = (sumOfSquares / Double(samples.count)).squareRoot()
+        return Float(rms) <= rmsThreshold
+    }
 }

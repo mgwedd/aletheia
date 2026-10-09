@@ -9,12 +9,6 @@ enum WhisperTranscriberError: LocalizedError {
     }
 }
 
-private struct TranscribedLine {
-    let source: String
-    let startTime: TimeInterval
-    let text: String
-}
-
 /// Wraps SwiftWhisper — an in-process Swift binding for whisper.cpp — so
 /// transcription never needs a Homebrew install or a shelled-out CLI tool;
 /// it runs inside the sandboxed app itself, entirely offline.
@@ -47,19 +41,29 @@ final class WhisperTranscriber: Transcribing {
             throw WhisperTranscriberError.modelNotDownloaded
         }
 
-        var lines: [TranscribedLine] = []
-
+        var tracks: [(url: URL, source: String)] = []
         if let micURL, FileManager.default.fileExists(atPath: micURL.path) {
-            lines += try await transcribe(url: micURL, source: "Therapist") { onProgress($0 * 0.5) }
+            tracks.append((url: micURL, source: "Therapist"))
         }
         if let callURL, FileManager.default.fileExists(atPath: callURL.path) {
-            lines += try await transcribe(url: callURL, source: "Call audio") { onProgress(0.5 + $0 * 0.5) }
+            tracks.append((url: callURL, source: "Call audio"))
         }
 
-        // Drop segments with no text, so a recording where nothing was said
-        // yields "" (which the caller treats as "no speech") instead of a
-        // transcript of bare "[00:00] Therapist:" labels.
-        lines.removeAll { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        // Progress spans only the tracks that exist, so a single-track
+        // session still runs 0-100%.
+        var lines: [TranscribedLine] = []
+        let span = 1.0 / Double(tracks.count)
+        for (index, track) in tracks.enumerated() {
+            let base = Double(index) * span
+            let found = try await transcribe(url: track.url, source: track.source) { onProgress(base + $0 * span) }
+            onProgress(base + span)
+            // Drop non-speech tags and silence artifacts, so a recording where
+            // nothing was said yields "" (which the caller treats as "no
+            // speech") instead of a transcript of bare "[00:00] Therapist:"
+            // labels.
+            lines += TranscriptCleaner.clean(found)
+        }
+
         lines.sort { $0.startTime < $1.startTime }
         return lines.map { line in
             let minutes = Int(line.startTime) / 60
@@ -71,7 +75,8 @@ final class WhisperTranscriber: Transcribing {
 
     private func transcribe(url: URL, source: String, onProgress: @escaping (Double) -> Void) async throws -> [TranscribedLine] {
         let samples = try AudioResampler.loadWhisperSamples(from: url)
-        guard !samples.isEmpty else { return [] }
+        // Whisper hallucinates tags and filler on silence, so skip it.
+        guard !AudioResampler.isEssentiallySilent(samples) else { return [] }
 
         let whisper = Whisper(fromFileURL: modelPath)
         let forwarder = ProgressForwarder(onProgress: onProgress)
