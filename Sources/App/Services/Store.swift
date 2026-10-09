@@ -845,7 +845,14 @@ final class Store {
         let text = [background, sessionsText]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n\n")
-        return PatientContext(text: text, sources: sources, unreadableSessions: unreadable)
+        let transcriptDates = Set(documents.map { $0.date })
+        let coverage = TranscriptCoverage(
+            sessions: transcriptDates.count,
+            sessionsWithoutPassages: transcriptDates.subtracting(excerptsByDate.keys).count,
+            totalCharacters: documents.reduce(0) { $0 + $1.text.count },
+            includedCharacters: excerpts.reduce(0) { $0 + $1.text.count }
+        )
+        return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)
     }
 
     /// The blocks the patient-wide chat adds under a session's header besides the
