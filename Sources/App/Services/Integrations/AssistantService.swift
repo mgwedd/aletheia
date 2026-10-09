@@ -65,7 +65,7 @@ struct AssistantService {
     ) async throws -> String {
         return try await assistant.generate(
             model: model,
-            system: systemPrompt,
+            system: Prompts.chatSystemPrompt(systemPrompt, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
                 notes: notes,
@@ -79,7 +79,7 @@ struct AssistantService {
     func answerAboutPatient(context: String, history: [ChatMessage], question: String) async throws -> String {
         try await assistant.generate(
             model: model,
-            system: systemPrompt,
+            system: Prompts.chatSystemPrompt(systemPrompt, question: question),
             prompt: Prompts.patientChat(context: context, history: history, question: question)
         )
     }
@@ -98,7 +98,7 @@ struct AssistantService {
     ) -> AsyncThrowingStream<String, Error> {
         assistant.stream(
             model: model,
-            system: systemPrompt,
+            system: Prompts.chatSystemPrompt(systemPrompt, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
                 notes: notes,
@@ -117,7 +117,7 @@ struct AssistantService {
     ) -> AsyncThrowingStream<String, Error> {
         assistant.stream(
             model: model,
-            system: systemPrompt,
+            system: Prompts.chatSystemPrompt(systemPrompt, question: question),
             prompt: Prompts.patientChat(context: context, history: history, question: question)
         )
     }

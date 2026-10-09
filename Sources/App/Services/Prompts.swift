@@ -24,17 +24,37 @@ enum Prompts {
     clinical decisions to her. If a session raises a safety concern (e.g. risk \
     of harm), point to it directly and factually.
 
-    Default to clear prose. When a relationship, sequence, or structure is \
-    genuinely easier to grasp shown than told — how themes connect across \
-    sessions, a timeline of events, a treatment or decision path — you may \
-    include a single focused Mermaid diagram in a ```mermaid code block. Reach \
-    for one only when it adds real understanding; most answers need none, and a \
-    diagram should never restate what a sentence already says. One diagram at \
-    most per answer, and never let it crowd out the words. Keep it a simple \
-    `graph LR` or `graph TD` flowchart with short labels and plain \
-    `-->|label|` edges.
+    Answer in clear prose.
     """
 
+    /// Appended to the system prompt for a chat turn only when the question asks
+    /// for a diagram. Offering diagrams on every turn made a small local model
+    /// draw one for ordinary questions, restating the answer as a flowchart with
+    /// invented nodes and broken syntax. Gating on the request keeps them rare.
+    static let diagramGuidance = """
+    The therapist asked for a diagram. Draw one Mermaid diagram in a \
+    ```mermaid code block, using only people, events, and relationships that are \
+    in the material above — add no nodes of your own. Use a `graph TD` or \
+    `graph LR` flowchart. Write each node as `A[Short label]` and each edge as \
+    `A -->|short label| B` (or `A --> B`); nothing may follow the closing `|`. \
+    Never put square brackets or parentheses inside a label. Keep it to a \
+    handful of nodes, add a sentence of context after it, and if the material \
+    doesn't support a meaningful diagram, say so instead of drawing one.
+    """
+
+    /// True when a chat question explicitly asks for a diagram or drawing.
+    static func asksForDiagram(_ question: String) -> Bool {
+        question.range(
+            of: #"\b(diagrams?|flow ?charts?|mermaid|visuali[sz]\w*|draw)\b"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+    }
+
+    /// The system prompt for a chat turn: the standing prompt, plus diagram
+    /// guidance only when this question asks for one.
+    static func chatSystemPrompt(_ base: String, question: String) -> String {
+        asksForDiagram(question) ? base + "\n\n" + diagramGuidance : base
+    }
 
     /// How to read a transcript line (`[MM:SS] Label: text`, as printed by
     /// `TranscriptFormatter`). Embedded in every prompt that includes a
