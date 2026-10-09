@@ -26,6 +26,13 @@ struct CommentsRailView: View {
     var onFocus: (String) -> Void = { _ in }
     var onResolve: (SessionComment, Bool) -> Void
     var onDelete: (SessionComment) -> Void
+    /// The comment's new body, after Save in the card's editor.
+    var onEdit: (SessionComment, String) -> Void = { _, _ in }
+
+    /// The card being edited, and its text so far. One at a time; nothing is
+    /// written until Save.
+    @State private var editingID: String?
+    @State private var editDraft = ""
 
     /// Active comments, ordered by their position in the session (anchored
     /// first, in time order; un-anchored after, in creation order) so the rail
@@ -36,6 +43,13 @@ struct CommentsRailView: View {
 
     private var resolved: [SessionComment] {
         comments.filter(\.resolved).sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// Whether an edited comment can be saved: not blank, and different from what
+    /// is stored (ignoring surrounding whitespace).
+    static func canSaveEdit(draft: String, original: String) -> Bool {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed != original.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func byTranscriptPosition(_ a: SessionComment, _ b: SessionComment) -> Bool {
@@ -120,11 +134,26 @@ struct CommentsRailView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Text(comment.body)
-                .font(.callout)
-                .fixedSize(horizontal: false, vertical: true)
+            if editingID == comment.id {
+                editor(for: comment)
+            } else {
+                Text(comment.body)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack(spacing: 4) {
                 Spacer()
+                if editingID != comment.id {
+                    Button {
+                        editDraft = comment.body
+                        editingID = comment.id
+                        onFocus(comment.id)
+                    } label: {
+                        Label("Edit", systemImage: "pencil").labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Edit this comment")
+                }
                 Button {
                     onResolve(comment, !comment.resolved)
                 } label: {
@@ -156,6 +185,24 @@ struct CommentsRailView: View {
         .contentShape(Rectangle())
         .onTapGesture { onFocus(comment.id) }
         .id(comment.id)
+    }
+
+    private func editor(for comment: SessionComment) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            EditorField(text: $editDraft, placeholder: "Comment", minHeight: 70)
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { editingID = nil }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    onEdit(comment, editDraft.trimmingCharacters(in: .whitespacesAndNewlines))
+                    editingID = nil
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!Self.canSaveEdit(draft: editDraft, original: comment.body))
+            }
+            .controlSize(.small)
+        }
     }
 
     private var resolvedSection: some View {
