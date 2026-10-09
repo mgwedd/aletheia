@@ -7,14 +7,25 @@ name: Release
 # Signing/notarization is OPTIONAL and gated on repository secrets — with none
 # set, this produces the same ad-hoc-signed build as before (first launch needs
 # right-click → Open). Add the secrets below to get a Developer ID-signed,
-# notarized, stapled DMG that opens with a double-click:
+# notarized, stapled DMG that opens with a double-click. Run
+# scripts/setup-signing-secrets.sh on your Mac to set all of them without the
+# values passing through anything but `gh`.
 #   MACOS_CERTIFICATE            base64 of your Developer ID Application .p12
 #   MACOS_CERTIFICATE_PWD        password for that .p12
 #   MACOS_SIGN_IDENTITY          e.g. "Developer ID Application: Jane (TEAMID)"
 #   KEYCHAIN_PASSWORD            any strong throwaway string
 #   APPLE_ID                     Apple ID email for notarization
-#   APPLE_TEAM_ID                 10-char team id
+#   APPLE_TEAM_ID                10-char team id
 #   APPLE_APP_SPECIFIC_PASSWORD  app-specific password for that Apple ID
+#
+#   signing secrets only        -> signed app and DMG, not notarized
+#   signing + notarization      -> signed, notarized, stapled DMG
+#   notarization without signing is skipped (Apple rejects ad-hoc code)
+#
+# Dry run: Actions -> Release -> Run workflow on any branch. Everything runs
+# (build, sign, verify, notarize, staple) but nothing is published; the DMG is
+# attached to the run as an artifact. Use it to prove the secrets before
+# tagging a real release. Only a tag publishes.
 #
 # Supply-chain note: no third-party actions — signing uses the built-in
 # `security`/`codesign`, notarization uses `xcrun notarytool`/`stapler`,
@@ -43,6 +54,8 @@ jobs:
     env:
       HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
       HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
+      # Only a tag publishes. Dispatching from a branch is a dry run.
+      IS_TAG: ${{ github.ref_type == 'tag' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,6 +70,10 @@ jobs:
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
+          if [ -z "$MACOS_CERTIFICATE_PWD" ] || [ -z "$KEYCHAIN_PASSWORD" ]; then
+            echo "::error::MACOS_CERTIFICATE_PWD and KEYCHAIN_PASSWORD must be set when signing."
+            exit 1
+          fi
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
           KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
 
@@ -67,25 +84,57 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PWD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          rm -f "$CERT_PATH"
           # Put our keychain first on the search list, keeping the existing ones.
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+          echo "Signing identities in the temporary keychain:"
+          security find-identity -v -p codesigning "$KEYCHAIN"
 
       - name: Build Release app
         env:
           SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           if [ "${HAS_SIGNING}" = "true" ]; then
             export CODE_SIGN_IDENTITY="$SIGN_IDENTITY"
             export OTHER_CODE_SIGN_FLAGS="--timestamp"
+          else
+            unset DEVELOPMENT_TEAM
           fi
           ./scripts/build.sh
+
+      # Fail here, with a readable message, rather than after a slow
+      # notarization round trip. Notarization requires all four.
+      - name: Verify Developer ID signature
+        if: env.HAS_SIGNING == 'true'
+        run: |
+          set -euo pipefail
+          APP="dist/Aletheia.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          INFO="$(codesign -dvv "$APP" 2>&1)"
+          echo "$INFO"
+          echo "$INFO" | grep -q 'Authority=Developer ID Application' \
+            || { echo "::error::Not signed with a Developer ID Application certificate"; exit 1; }
+          echo "$INFO" | grep -Eq 'flags=0x[0-9a-f]+\([^)]*runtime' \
+            || { echo "::error::Hardened Runtime is not enabled"; exit 1; }
+          echo "$INFO" | grep -q 'Timestamp=' \
+            || { echo "::error::No secure timestamp on the signature"; exit 1; }
+          if codesign -d --entitlements :- "$APP" 2>&1 | grep -q 'get-task-allow'; then
+            echo "::error::get-task-allow is set; Apple rejects debuggable builds"
+            exit 1
+          fi
 
       - name: Package DMG and appcast
         id: package
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "${IS_TAG}" = "true" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0-dryrun"
+          fi
           APP="dist/Aletheia.app"
           test -d "$APP"
 
@@ -112,28 +161,71 @@ jobs:
           echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Sign DMG
+        if: env.HAS_SIGNING == 'true'
+        env:
+          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          codesign --force --sign "$SIGN_IDENTITY" --timestamp "${{ steps.package.outputs.dmg }}"
+          codesign --verify --verbose=2 "${{ steps.package.outputs.dmg }}"
+
       - name: Notarize and staple
-        if: env.HAS_NOTARIZATION == 'true'
+        if: env.HAS_SIGNING == 'true' && env.HAS_NOTARIZATION == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
           set -euo pipefail
-          xcrun notarytool submit "${{ steps.package.outputs.dmg }}" \
+          DMG="${{ steps.package.outputs.dmg }}"
+
+          # notarytool exits 0 even when Apple rejects the build, so read the
+          # status, and print Apple's log (the only place the reason appears).
+          set +e
+          OUT="$(xcrun notarytool submit "$DMG" \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --wait
-          xcrun stapler staple "${{ steps.package.outputs.dmg }}"
+            --wait 2>&1)"
+          STATUS=$?
+          set -e
+          echo "$OUT"
+          if [ "$STATUS" -ne 0 ] || ! echo "$OUT" | grep -q 'status: Accepted'; then
+            SUB_ID="$(echo "$OUT" | awk '/^ *id:/ {print $2; exit}')"
+            if [ -n "$SUB_ID" ]; then
+              xcrun notarytool log "$SUB_ID" \
+                --apple-id "$APPLE_ID" \
+                --team-id "$APPLE_TEAM_ID" \
+                --password "$APPLE_APP_SPECIFIC_PASSWORD" || true
+            fi
+            echo "::error::Notarization was not accepted; see the log above."
+            exit 1
+          fi
+
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+
+          # Gatekeeper's verdict on the DMG, and on the app inside it as a
+          # user would first open it.
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+          MOUNT="$(mktemp -d)"
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT" >/dev/null
+          spctl --assess --type execute --verbose=2 "$MOUNT/Aletheia.app" || { hdiutil detach "$MOUNT" >/dev/null; exit 1; }
+          hdiutil detach "$MOUNT" >/dev/null
+
+          echo "NOTARIZED=true" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
+        if: env.IS_TAG == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [ "${HAS_NOTARIZATION}" = "true" ]; then
+          if [ "${NOTARIZED:-false}" = "true" ]; then
             LAUNCH_NOTE="Signed with Developer ID and notarized — opens with a double-click."
+          elif [ "${HAS_SIGNING}" = "true" ]; then
+            LAUNCH_NOTE="Signed with Developer ID but not notarized: first launch, right-click the app and choose Open."
           else
             LAUNCH_NOTE="First launch: right-click the app and choose Open (ad-hoc signed, not notarized)."
           fi
@@ -143,3 +235,11 @@ jobs:
             --title "Aletheia ${{ steps.package.outputs.version }}" \
             --notes "Automated release for ${GITHUB_REF_NAME}. ${LAUNCH_NOTE}" \
             --verify-tag
+
+      - name: Attach dry-run DMG
+        if: env.IS_TAG != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aletheia-dryrun-dmg
+          path: ${{ steps.package.outputs.dmg }}
+          retention-days: 3
