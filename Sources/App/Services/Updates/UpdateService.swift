@@ -15,6 +15,10 @@ final class UpdateService: ObservableObject {
     private let defaults: UserDefaults
     private let minimumInterval: TimeInterval
     private var lastCheck: Date?
+    /// The version whose download the user already started in this run. It isn't
+    /// offered again until the app relaunches (by then it's installed, or the
+    /// user chose to keep working), so the prompt doesn't come back mid-session.
+    private var downloadStartedVersion: String?
 
     private static let skipKey = "skippedUpdateVersion"
 
@@ -55,7 +59,8 @@ final class UpdateService: ObservableObject {
                 available = nil
                 return
             }
-            if defaults.string(forKey: Self.skipKey) == release.version {
+            if defaults.string(forKey: Self.skipKey) == release.version
+                || downloadStartedVersion == release.version {
                 available = nil
                 return
             }
@@ -65,8 +70,13 @@ final class UpdateService: ObservableObject {
         }
     }
 
+    /// Starts the download and closes the prompt. The app is deliberately not
+    /// quit: the therapist may have unsaved work, and a still-open prompt would
+    /// block quitting (and so replacing the app from the downloaded disk image).
     func installAvailableUpdate() {
         guard let release = available else { return }
+        downloadStartedVersion = release.version
+        available = nil
         installer.install(release)
     }
 
