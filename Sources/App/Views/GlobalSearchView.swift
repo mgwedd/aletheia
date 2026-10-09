@@ -19,14 +19,17 @@ struct GlobalSearchView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted.color)
                 TextField("Search patients, transcripts, and summaries", text: $query)
                     .textFieldStyle(.plain)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
                     .onChange(of: query) { _, _ in runSearch() }
                 Button("Done") { dismiss() }
+                    .buttonStyle(.themed)
             }
             .padding()
-            Divider()
+            Rectangle().fill(Theme.line.color).frame(height: 1)
 
             if query.trimmingCharacters(in: .whitespaces).isEmpty {
                 ContentUnavailableView("Search Your Notes", systemImage: "magnifyingglass", description: Text("Find a patient by name, or any word said in a session."))
@@ -41,12 +44,16 @@ struct GlobalSearchView: View {
                                 dismiss()
                             } label: {
                                 HStack {
-                                    Text(result.patient.name).font(.headline)
+                                    Text(result.patient.name)
+                                        .font(Theme.Typography.headline)
+                                        .foregroundStyle(Theme.text.color)
                                     if result.nameMatched {
-                                        Text("name match").font(.caption).foregroundStyle(.secondary)
+                                        Text("name match")
+                                            .font(Theme.Typography.caption)
+                                            .foregroundStyle(Theme.muted.color)
                                     }
                                     Spacer()
-                                    Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                                    Image(systemName: "chevron.right").foregroundStyle(Theme.muted.color)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -54,19 +61,28 @@ struct GlobalSearchView: View {
                             ForEach(result.sessionResults) { hit in
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 6) {
-                                        Text(Self.dateFormatter.string(from: hit.session.date)).font(.subheadline)
-                                        Text(hit.matchedIn.label).font(.caption2).foregroundStyle(.secondary)
+                                        Text(Self.dateFormatter.string(from: hit.session.date))
+                                            .font(Theme.Typography.body)
+                                            .foregroundStyle(Theme.text.color)
+                                        Text(hit.matchedIn.label)
+                                            .font(Theme.Typography.caption)
+                                            .foregroundStyle(Theme.muted.color)
                                     }
-                                    Text(hit.snippet).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    Text(hit.snippet)
+                                        .font(Theme.Typography.caption)
+                                        .foregroundStyle(Theme.muted.color)
+                                        .lineLimit(2)
                                 }
                                 .padding(.leading, 8)
                             }
                         }
                     }
                 }
+                .scrollContentBackground(.hidden)
             }
         }
         .frame(minWidth: 520, minHeight: 480)
+        .background(Theme.window.color)
     }
 
     private func runSearch() {
