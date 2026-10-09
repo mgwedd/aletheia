@@ -32,27 +32,69 @@ final class ThemeTests: XCTestCase {
         return try XCTUnwrap(rgb, "\(token.name) has no sRGB value")
     }
 
-    private struct Variant {
-        let label: String
-        let appearance: NSAppearance
-        let isHighContrast: Bool
+    // MARK: Asset catalog source
+
+    /// The asset catalog in the source tree. Increase Contrast values are read
+    /// from here: an `NSAppearance` built by name for the high-contrast
+    /// appearances resolves to the standard entries outside a real Increase
+    /// Contrast session, so it can't be used to check them.
+    private static let catalog = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Sources/App/Resources/Assets.xcassets")
+
+    private func requireCatalog() throws {
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: Self.catalog.path), "source tree not available to the test runner")
     }
 
-    /// Light and dark always; the Increase Contrast variants when this macOS
-    /// can construct them by name.
-    private func variants() throws -> [Variant] {
-        var out = [
-            Variant(label: "light", appearance: try XCTUnwrap(NSAppearance(named: .aqua)), isHighContrast: false),
-            Variant(label: "dark", appearance: try XCTUnwrap(NSAppearance(named: .darkAqua)), isHighContrast: false),
-        ]
-        if let hc = NSAppearance(named: .accessibilityHighContrastAqua) {
-            out.append(Variant(label: "light, increased contrast", appearance: hc, isHighContrast: true))
+    /// The token's value as written in its colorset for the given luminosity
+    /// and contrast, falling back the way the catalog does: a missing
+    /// high-contrast entry uses the standard one, a missing dark entry the
+    /// light one.
+    private func catalogValue(_ token: Theme.ColorToken, dark: Bool, highContrast: Bool) throws -> RGB {
+        let url = Self.catalog.appendingPathComponent(token.name + ".colorset/Contents.json")
+        let data = try Data(contentsOf: url)
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let entries = try XCTUnwrap(root["colors"] as? [[String: Any]], "\(token.name) has no colors")
+
+        func traits(_ entry: [String: Any]) -> (dark: Bool, high: Bool) {
+            let appearances = entry["appearances"] as? [[String: String]] ?? []
+            return (
+                appearances.contains { $0["appearance"] == "luminosity" && $0["value"] == "dark" },
+                appearances.contains { $0["appearance"] == "contrast" && $0["value"] == "high" }
+            )
         }
-        if let hc = NSAppearance(named: .accessibilityHighContrastDarkAqua) {
-            out.append(Variant(label: "dark, increased contrast", appearance: hc, isHighContrast: true))
+        func component(_ value: Any?) throws -> Double {
+            let text = try XCTUnwrap(value as? String, "\(token.name) has a non-string component")
+            if text.hasPrefix("0x") {
+                return Double(try XCTUnwrap(Int(text.dropFirst(2), radix: 16))) / 255
+            }
+            return try XCTUnwrap(Double(text))
         }
-        return out
+
+        let wanted: [(Bool, Bool)] = [(dark, highContrast), (dark, false), (false, highContrast), (false, false)]
+        for (d, h) in wanted {
+            if let entry = entries.first(where: { let t = traits($0); return t.dark == d && t.high == h }) {
+                let color = try XCTUnwrap(entry["color"] as? [String: Any])
+                XCTAssertEqual(color["color-space"] as? String, "srgb", "\(token.name) is not sRGB")
+                let parts = try XCTUnwrap(color["components"] as? [String: Any])
+                return RGB(r: try component(parts["red"]), g: try component(parts["green"]), b: try component(parts["blue"]))
+            }
+        }
+        throw XCTSkip("\(token.name) has no usable entry")
     }
+
+    private struct Variant {
+        let label: String
+        let dark: Bool
+        let highContrast: Bool
+    }
+
+    private static let variants: [Variant] = [
+        Variant(label: "light", dark: false, highContrast: false),
+        Variant(label: "dark", dark: true, highContrast: false),
+        Variant(label: "light, increased contrast", dark: false, highContrast: true),
+        Variant(label: "dark, increased contrast", dark: true, highContrast: true),
+    ]
 
     func testContrastHelperMatchesKnownValues() {
         let black = RGB(r: 0, g: 0, b: 0), white = RGB(r: 1, g: 1, b: 1)
@@ -60,10 +102,28 @@ final class ThemeTests: XCTestCase {
         XCTAssertEqual(contrast(white, white), 1, accuracy: 0.001)
     }
 
-    func testEveryTokenResolvesInEveryAppearance() throws {
-        for variant in try variants() {
+    func testEveryTokenResolvesInLightAndDark() throws {
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try XCTUnwrap(NSAppearance(named: name))
             for token in Theme.all {
-                XCTAssertNoThrow(try resolve(token, in: variant.appearance), "\(token.name) (\(variant.label))")
+                XCTAssertNoThrow(try resolve(token, in: appearance), "\(token.name) (\(name.rawValue))")
+            }
+        }
+    }
+
+    func testCatalogSourceMatchesWhatTheAppLoads() throws {
+        // Ties the JSON reader below to the compiled catalog, so the Increase
+        // Contrast checks read the same colors the app draws.
+        try requireCatalog()
+        let pairs: [(NSAppearance.Name, Bool)] = [(.aqua, false), (.darkAqua, true)]
+        for (name, dark) in pairs {
+            let appearance = try XCTUnwrap(NSAppearance(named: name))
+            for token in Theme.all {
+                let loaded = try resolve(token, in: appearance)
+                let source = try catalogValue(token, dark: dark, highContrast: false)
+                XCTAssertEqual(loaded.r, source.r, accuracy: 1.5 / 255, "\(token.name) red (\(name.rawValue))")
+                XCTAssertEqual(loaded.g, source.g, accuracy: 1.5 / 255, "\(token.name) green (\(name.rawValue))")
+                XCTAssertEqual(loaded.b, source.b, accuracy: 1.5 / 255, "\(token.name) blue (\(name.rawValue))")
             }
         }
     }
@@ -79,11 +139,12 @@ final class ThemeTests: XCTestCase {
     }
 
     func testEveryPairingMeetsItsContrast() throws {
-        for variant in try variants() {
-            for pairing in Theme.pairings where variant.isHighContrast || !pairing.highContrastOnly {
+        try requireCatalog()
+        for variant in Self.variants {
+            for pairing in Theme.pairings where variant.highContrast || !pairing.highContrastOnly {
                 let ratio = contrast(
-                    try resolve(pairing.foreground, in: variant.appearance),
-                    try resolve(pairing.background, in: variant.appearance)
+                    try catalogValue(pairing.foreground, dark: variant.dark, highContrast: variant.highContrast),
+                    try catalogValue(pairing.background, dark: variant.dark, highContrast: variant.highContrast)
                 )
                 XCTAssertGreaterThanOrEqual(
                     ratio, pairing.minimum,
@@ -104,35 +165,24 @@ final class ThemeTests: XCTestCase {
     }
 
     func testIncreaseContrastStrengthensBordersAndSecondaryText() throws {
-        guard let hcDark = NSAppearance(named: .accessibilityHighContrastDarkAqua),
-              let hcLight = NSAppearance(named: .accessibilityHighContrastAqua) else {
-            throw XCTSkip("Increase Contrast appearances can't be constructed on this macOS")
-        }
-        let dark = try XCTUnwrap(NSAppearance(named: .darkAqua))
-        let light = try XCTUnwrap(NSAppearance(named: .aqua))
+        try requireCatalog()
         for token in [Theme.line, Theme.muted] {
-            let panelDark = try resolve(Theme.panel, in: dark)
-            XCTAssertGreaterThan(
-                contrast(try resolve(token, in: hcDark), panelDark),
-                contrast(try resolve(token, in: dark), panelDark),
-                "\(token.name) (dark)"
-            )
-            let panelLight = try resolve(Theme.panel, in: light)
-            XCTAssertGreaterThan(
-                contrast(try resolve(token, in: hcLight), panelLight),
-                contrast(try resolve(token, in: light), panelLight),
-                "\(token.name) (light)"
-            )
+            for dark in [false, true] {
+                let panel = try catalogValue(Theme.panel, dark: dark, highContrast: false)
+                XCTAssertGreaterThan(
+                    contrast(try catalogValue(token, dark: dark, highContrast: true), panel),
+                    contrast(try catalogValue(token, dark: dark, highContrast: false), panel),
+                    "\(token.name) (\(dark ? "dark" : "light"))"
+                )
+            }
         }
     }
 
     func testTokenListCoversTheCatalog() throws {
         // Every colorset in Assets.xcassets/Theme is reachable through `Theme`,
         // so the contrast tests see the whole palette.
-        let folder = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/App/Resources/Assets.xcassets/Theme")
-        try XCTSkipUnless(FileManager.default.fileExists(atPath: folder.path), "source tree not available to the test runner")
+        try requireCatalog()
+        let folder = Self.catalog.appendingPathComponent("Theme")
         let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
             .filter { $0.hasSuffix(".colorset") }
             .map { "Theme/" + $0.replacingOccurrences(of: ".colorset", with: "") }
