@@ -3,11 +3,11 @@ import XCTest
 
 final class SpeakerLeakageFilterTests: XCTestCase {
     private func mic(_ text: String, at start: TimeInterval) -> TranscribedLine {
-        TranscribedLine(source: "Therapist", startTime: start, text: text)
+        TranscribedLine(source: "Therapist", startTime: start, endTime: start + 1, text: text)
     }
 
     private func call(_ text: String, at start: TimeInterval) -> TranscribedLine {
-        TranscribedLine(source: "Call audio", startTime: start, text: text)
+        TranscribedLine(source: "Call audio", startTime: start, endTime: start + 1, text: text)
     }
 
     private let spoken = "So I have been feeling really overwhelmed at work lately."
