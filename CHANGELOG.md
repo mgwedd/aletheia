@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.33.0] - 2026-10-09
+
+### Added
+- status tokens and kit pieces for the new artboards (#217)
+
 ## [2.32.0] - 2026-10-09
 
 ### Added
