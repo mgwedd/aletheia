@@ -48,6 +48,11 @@ Concise, non-obvious rules for this repo. (Obvious stuff omitted on purpose.)
   Its `git grep` uses `-e "$PATTERN"` because patterns start with `-----BEGIN`.
 
 ## Conventions
+- **Colors come from `Theme`** (`Sources/App/Views/Theme`), backed by named
+  colors in `Assets.xcassets/Theme` (light, dark, Increase Contrast). No color
+  literals or system colors in screens; add a colorset + `Theme` token +
+  `Theme.all` entry (and a `pairings` entry if text sits on it). Controls use
+  the kit in `ThemeComponents.swift`. Light/Dark/System is `NSApp.appearance`.
 - `AppSettings` pattern: UserDefaults-backed, `private enum Keys`,
   `@Published var x { didSet { defaults.set(...) } }`, all loaded in `init`.
 - Repo **auto-deletes head branches on merge**; merging a base branch closes its

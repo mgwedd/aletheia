@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 #if canImport(CoreSpotlight)
 import CoreSpotlight
 #endif
@@ -17,8 +18,18 @@ private extension View {
     }
 }
 
+/// Launch-time setup that has to happen before the first window exists.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Before any window is created, so a forced Light or Dark appearance
+        // never flashes the system one first.
+        AppSettings.shared.appearance.apply()
+    }
+}
+
 @main
 struct AletheiaApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var settings = AppSettings.shared
     @StateObject private var appModel: AppModel
     @StateObject private var integrations: Integrations

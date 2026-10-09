@@ -38,12 +38,14 @@ struct RootView: View {
             if let selectedPatient, appModel.patients.contains(where: { $0.id == selectedPatient.id }) {
                 PatientDetailView(patient: selectedPatient, onEditProfile: { editingProfile = selectedPatient })
                     .id(selectedPatient.id)
+                    .background(Theme.window.color)
             } else {
                 ContentUnavailableView(
                     "Select a Patient",
                     systemImage: "person.text.rectangle",
                     description: Text("Choose a patient on the left, or add a new one.")
                 )
+                .background(Theme.window.color)
             }
         }
         // Data-safety notices: an unopenable database (nothing can be saved) or a
