@@ -10,9 +10,12 @@ import AppKit
 /// Block structure comes from `MarkdownParser` (pure, tested); inline markup is
 /// handed to Apple's own `AttributedString(markdown:)`, so there's no
 /// third-party Markdown engine and nothing to keep in sync with a spec. Fenced
-/// code — including the ```mermaid diagrams the system prompt invites — renders
-/// as a copyable code card; a Mermaid block is labeled as a diagram so its
-/// source reads as intentional rather than as leaked markup.
+/// code renders as a copyable code card. A ```mermaid block the system prompt
+/// invites is drawn as a real diagram — flowcharts and sequence diagrams, laid
+/// out and painted natively (see `MermaidDiagram`), with no web view or script —
+/// on a card that copies the diagram as a picture (plus its source as text). One
+/// that can't be drawn (unsupported type, malformed, still streaming in) falls
+/// back to the source in a code card, labeled as a diagram, with no error text.
 ///
 /// It re-parses on each streamed update; parsing is cheap and a partial document
 /// is always valid input (see `MarkdownParser`), so the answer formats live as
@@ -67,7 +70,11 @@ struct MarkdownMessageView: View {
             }
 
         case let .code(language, code):
-            CodeCard(language: language, code: code, isMermaid: block.isMermaid)
+            if block.isMermaid, let diagram = MermaidDiagram.parse(code) {
+                DiagramCard(source: code, diagram: diagram)
+            } else {
+                CodeCard(language: language, code: code, isMermaid: block.isMermaid)
+            }
 
         case .rule:
             Divider().padding(.vertical, 2)
@@ -109,7 +116,7 @@ struct MarkdownMessageView: View {
     }
 }
 
-/// A fenced code (or Mermaid diagram) block: monospaced body on a subtle card,
+/// A fenced code (or unrenderable Mermaid) block: monospaced body on a subtle card,
 /// with a caption row that names the language and offers one-click copy. Mermaid
 /// blocks are captioned as a diagram so their source reads as intentional.
 private struct CodeCard: View {
@@ -168,6 +175,83 @@ private struct CodeCard: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(code, forType: .string)
         #endif
+        copied = true
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            copied = false
+        }
+    }
+}
+
+/// A rendered Mermaid diagram on the same card as `CodeCard`. "Copy" puts a
+/// picture on the clipboard (with the source alongside as text); the menu also
+/// offers the source alone for anyone who wants the Mermaid text.
+private struct DiagramCard: View {
+    let source: String
+    let diagram: MermaidDiagram
+
+    @State private var copied = false
+
+    var body: some View {
+        // Cached by source, so a streaming re-render doesn't redo the layout.
+        let layout = MermaidDiagram.cachedLayout(for: source, diagram: diagram)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label("Diagram", systemImage: "point.3.connected.trianglepath.dotted")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Menu {
+                    Button("Copy Mermaid source") {
+                        copySource()
+                    }
+                } label: {
+                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .font(.caption2)
+                } primaryAction: {
+                    copyPicture(layout)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .foregroundStyle(.secondary)
+                .help("Copies a picture of the diagram, and its source as text for plain-text editors")
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.secondary.opacity(0.10))
+
+            Divider()
+
+            MermaidDiagramView(layout: layout, summary: diagram.accessibilityDescription)
+                .padding(10)
+        }
+        .background(Color.secondary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+        )
+    }
+
+    // Button actions run on the main thread; `assumeIsolated` states that for
+    // the main-actor pasteboard helpers without making the whole view main-actor.
+    private func copyPicture(_ layout: MermaidLayout) {
+        let source = self.source
+        MainActor.assumeIsolated {
+            MermaidPasteboard.copyDiagram(layout: layout, source: source)
+        }
+        flashCopied()
+    }
+
+    private func copySource() {
+        let source = self.source
+        MainActor.assumeIsolated {
+            MermaidPasteboard.copySource(source)
+        }
+        flashCopied()
+    }
+
+    private func flashCopied() {
         copied = true
         Task {
             try? await Task.sleep(nanoseconds: 1_500_000_000)

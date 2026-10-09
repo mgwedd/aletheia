@@ -30,7 +30,9 @@ enum Prompts {
     include a single focused Mermaid diagram in a ```mermaid code block. Reach \
     for one only when it adds real understanding; most answers need none, and a \
     diagram should never restate what a sentence already says. One diagram at \
-    most per answer, and never let it crowd out the words.
+    most per answer, and never let it crowd out the words. Keep it a simple \
+    `graph LR` or `graph TD` flowchart with short labels and plain \
+    `-->|label|` edges.
     """
 
 
