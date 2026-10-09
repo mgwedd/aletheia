@@ -24,8 +24,8 @@ final class ProgressNoteFormatTests: XCTestCase {
         }
     }
 
-    func testDefaultIsFreeText() {
-        // The app ships defaulting to free text — a therapist opts into a
+    func testDefaultIsSummary() {
+        // The app ships defaulting to a plain summary — a therapist opts into a
         // structured payer format, it isn't imposed. Guards the regression where
         // the default was silently SOAP.
         XCTAssertEqual(ProgressNoteFormat.default, .narrative)
@@ -38,5 +38,12 @@ final class ProgressNoteFormatTests: XCTestCase {
         XCTAssertEqual(shorts.count, ProgressNoteFormat.allCases.count)
         let displays = Set(ProgressNoteFormat.allCases.map(\.displayName))
         XCTAssertEqual(displays.count, ProgressNoteFormat.allCases.count)
+    }
+
+    func testSummaryIsFirstAndNamedSummary() {
+        XCTAssertEqual(ProgressNoteFormat.allCases.first, .narrative)
+        XCTAssertEqual(ProgressNoteFormat.allCases.map(\.shortName), ["Summary", "SOAP", "DAP", "BIRP", "GIRP"])
+        // The raw value is the on-disk note file name; renaming the label must not move it.
+        XCTAssertEqual(ProgressNoteFormat.narrative.rawValue, "narrative")
     }
 }

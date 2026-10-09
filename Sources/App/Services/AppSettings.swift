@@ -152,7 +152,7 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(idleAutoLockMinutes, forKey: Keys.idleAutoLockMinutes) }
     }
     /// The clinical documentation format the "Generate note" action defaults to.
-    /// Free text out of the box (`ProgressNoteFormat.default`); a therapist who
+    /// A plain summary out of the box (`ProgressNoteFormat.default`); a therapist who
     /// wants a payer-ready structure picks SOAP/DAP/BIRP here or per session.
     @Published var progressNoteFormat: ProgressNoteFormat {
         didSet { defaults.set(progressNoteFormat.rawValue, forKey: Keys.progressNoteFormat) }

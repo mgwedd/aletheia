@@ -119,18 +119,26 @@ struct PatientDetailView: View {
                 }
             }
             .padding()
-            .frame(minWidth: 320, idealWidth: 380)
+            // Capped so the list column can't swallow the split when the right
+            // pane is momentarily small, and pinned to the top so a short column
+            // isn't centred in a tall window.
+            .frame(minWidth: 320, idealWidth: 380, maxWidth: 600, maxHeight: .infinity, alignment: .top)
 
-            if let selectedSession {
-                SessionDetailView(patient: patient, session: selectedSession, onSessionUpdated: refresh, editGuard: editGuard)
-                    .id(selectedSession.id)
-            } else {
-                ContentUnavailableView(
-                    "Select a Session",
-                    systemImage: "waveform",
-                    description: Text("Choose a session on the left, or start a new one.")
-                )
+            // One frame for both states: swapping a session for the placeholder
+            // must not change the pane's size, or the split view re-lays out.
+            Group {
+                if let selectedSession {
+                    SessionDetailView(patient: patient, session: selectedSession, onSessionUpdated: refresh, editGuard: editGuard)
+                        .id(selectedSession.id)
+                } else {
+                    ContentUnavailableView(
+                        "Select a Session",
+                        systemImage: "waveform",
+                        description: Text("Choose a session on the left, or start a new one.")
+                    )
+                }
             }
+            .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle(patient.name)
         .onAppear {
@@ -168,16 +176,25 @@ struct PatientDetailView: View {
     }
 
     private struct SessionSelection {
-        let id: UUID?
+        let id: UUID
     }
 
     /// The session list's selection, routed through `requestSelection` so a
     /// click on another session can't silently drop unsaved transcript edits.
+    /// A click on the list's empty space reports `nil`; that is ignored so it
+    /// doesn't close the open session (selection only clears when the session
+    /// itself disappears, see `refresh`).
     private var guardedSelection: Binding<UUID?> {
-        Binding(get: { selectedSessionID }, set: { requestSelection($0) })
+        Binding(
+            get: { selectedSessionID },
+            set: { newValue in
+                guard let newValue else { return }
+                requestSelection(newValue)
+            }
+        )
     }
 
-    private func requestSelection(_ id: UUID?) {
+    private func requestSelection(_ id: UUID) {
         guard id != selectedSessionID else { return }
         if editGuard.hasUnsavedEdits {
             pendingSelection = SessionSelection(id: id)
