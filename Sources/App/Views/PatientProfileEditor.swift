@@ -41,16 +41,14 @@ struct PatientProfileEditor: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Edit Profile")
-                .font(Theme.Typography.title)
-                .foregroundStyle(Theme.text.color)
+        VStack(spacing: 0) {
+            header
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 18) {
                     field("Name") {
-                        TextField("Patient name", text: $name)
-                            .textFieldStyle(.roundedBorder)
+                        ProfileTextField(placeholder: "Patient name", label: "Name", text: $name)
+                            .frame(height: 40)
                         if cleanedName == nil {
                             Text("A name is required.")
                                 .font(Theme.Typography.caption)
@@ -58,48 +56,92 @@ struct PatientProfileEditor: View {
                         }
                     }
 
-                    field("Clinical history", caption: "A short summary of the background. Shared with the AI.") {
+                    field("Patient notes") {
+                        EditorField(
+                            text: $notes,
+                            placeholder: "Anything worth remembering about this patient…",
+                            minHeight: 84
+                        )
+                        infoCaption("Your own notes about this patient. Shared with the AI and included in exports.")
+                    }
+
+                    field("Clinical history") {
                         EditorField(
                             text: $clinicalHistory,
                             placeholder: "Presenting concerns, diagnoses, prior treatment…",
                             minHeight: 100
                         )
+                        infoCaption("A short summary of the background. Saved with the patient and shared with the AI's patient context. It stays on this Mac.")
                     }
 
                     if showsMedications { medicationsField }
-
-                    field("Notes", caption: "Your own notes about this patient. Shared with the AI and included in exports.") {
-                        EditorField(
-                            text: $notes,
-                            placeholder: "Anything worth remembering about this patient…",
-                            minHeight: 120
-                        )
-                    }
                 }
-                .padding(.trailing, 4)
+                .padding(.horizontal, 28)
+                .padding(.top, 4)
+                .padding(.bottom, 20)
             }
 
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) {
-                    if hasChanges { confirmDiscard = true } else { dismiss() }
-                }
-                .buttonStyle(.themed)
-                .keyboardShortcut(.cancelAction)
-                Button("Save", action: save)
-                    .buttonStyle(.themePrimary)
-                    .keyboardShortcut("s", modifiers: .command)
-                    .disabled(cleanedName == nil || !hasChanges)
-            }
-            .controlSize(.large)
+            footer
         }
-        .padding(24)
-        .frame(minWidth: 520, minHeight: 560)
+        .frame(width: 560, height: 640)
+        .background(Theme.panel.color)
+        .tint(Theme.accent.color)
         .interactiveDismissDisabled(hasChanges)
         .confirmationDialog("Discard your changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Discard Changes", role: .destructive) { dismiss() }
             Button("Keep Editing", role: .cancel) {}
         }
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Edit patient")
+                .font(Theme.Typography.title)
+                .foregroundStyle(Theme.text.color)
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            Button(action: requestClose) {
+                Label("Close", systemImage: "xmark")
+            }
+            .buttonStyle(.themeIcon)
+            .keyboardShortcut(.cancelAction)
+            .help("Close")
+        }
+        .padding(.horizontal, 28)
+        .padding(.top, 22)
+        .padding(.bottom, 14)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 8) {
+            Spacer()
+            Button("Cancel", role: .cancel, action: requestClose)
+                .buttonStyle(.themed)
+                .keyboardShortcut(.cancelAction)
+            Button("Save changes", action: save)
+                .buttonStyle(.themePrimary)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canSave)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 14)
+        .background(Theme.sidebar.color)
+        .themeDivider(.top)
+        // Keeps Command-S working now that Return is the default action.
+        .background {
+            Button("Save", action: save)
+                .keyboardShortcut("s", modifiers: .command)
+                .disabled(!canSave)
+                .opacity(0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var canSave: Bool { cleanedName != nil && hasChanges }
+
+    private func requestClose() {
+        if hasChanges { confirmDiscard = true } else { dismiss() }
     }
 
     private func save() {
@@ -119,33 +161,39 @@ struct PatientProfileEditor: View {
     @ViewBuilder
     private func field<Content: View>(
         _ title: String,
-        caption: String? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.text.color)
+            Text(title).eyebrowStyle()
             content()
-            if let caption {
-                Text(caption)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-            }
         }
+    }
+
+    /// A muted note under a field, led by an info glyph.
+    private func infoCaption(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 12))
+                .padding(.top, 1)
+                .accessibilityHidden(true)
+            Text(text)
+                .font(Theme.Typography.caption)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(Theme.muted.color)
+        .accessibilityElement(children: .combine)
     }
 
     private var medicationsField: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Medications")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.text.color)
+                Text("Medications").eyebrowStyle()
                 Spacer()
                 Button { medications.append(Medication()) } label: {
-                    Label("Add Medication", systemImage: "plus")
+                    Label("Add medication", systemImage: "plus")
                 }
-                .labelStyle(.iconOnly)
+                .buttonStyle(.themeIcon)
+                .controlSize(.small)
                 .help("Add a medication")
             }
             if medications.isEmpty {
@@ -154,19 +202,42 @@ struct PatientProfileEditor: View {
                     .foregroundStyle(Theme.muted.color)
             } else {
                 ForEach($medications) { $med in
-                    HStack(spacing: 6) {
-                        TextField("Medication", text: $med.name)
-                        TextField("Dose", text: $med.dose).frame(width: 130)
-                        Button(role: .destructive) {
+                    HStack(spacing: 8) {
+                        ProfileTextField(placeholder: "Medication", label: "Medication name", text: $med.name)
+                        ProfileTextField(placeholder: "Dose", label: "Dose", text: $med.dose)
+                            .frame(width: 130)
+                        Button {
                             medications.removeAll { $0.id == med.id }
                         } label: {
-                            Image(systemName: "trash")
+                            Label("Remove medication", systemImage: "trash")
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.themeIcon)
                         .help("Remove")
                     }
+                    .frame(height: 38)
                 }
             }
         }
+    }
+}
+
+/// A single-line text field in the design's field box (field fill, hairline
+/// border, accent border while focused).
+private struct ProfileTextField: View {
+    let placeholder: String
+    let label: String
+    @Binding var text: String
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .textFieldStyle(.plain)
+            .font(Theme.Typography.body)
+            .foregroundStyle(Theme.text.color)
+            .focused($focused)
+            .padding(.horizontal, 12)
+            .frame(maxHeight: .infinity)
+            .themeField(isFocused: focused)
+            .accessibilityLabel(label)
     }
 }
