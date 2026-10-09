@@ -37,67 +37,48 @@ struct PatientChatView: View {
 
     @StateObject private var chatRunner = ChatStreamRunner()
 
+    //   header      title · Done
+    //   sidebar     CHATS eyebrow · new chat · thread rows
+    //   pane        the shared ChatPaneView, or an empty state with New Chat
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Ask About All of \(patient.name)'s Sessions").font(.headline)
-                    Text("Reads notes and comments from every session, but only about \(PatientContextRetriever.defaultCharacterBudget.formatted()) characters of transcript per question. To ask about one session in full, open it and use its chat.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Ask About All of \(patient.name)'s Sessions")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.text.color)
                 Spacer()
                 Button("Done", action: onDone)
+                    .buttonStyle(.themed)
             }
-            .padding()
-            Divider()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(Theme.window.color)
+            .themeDivider(.bottom)
 
             HSplitView {
                 threadSidebar
                     .frame(minWidth: 200, idealWidth: 230, maxWidth: 320)
 
                 if selectedThreadID != nil {
-                    VStack(spacing: 0) {
-                        ChatPaneView(
-                            title: "all sessions",
-                            messages: $messages,
-                            isSending: isSending,
-                            suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.patient : [],
-                            onSend: send,
-                            onStop: { chatRunner.stop() },
-                            queuedStatus: chatRunner.queuedStatus
-                        )
-                        if let coverageNotice {
-                            Text(coverageNotice)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal)
-                                .padding(.vertical, 6)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        if unreadableSessions > 0 {
-                            Text("\(unreadableSessions) session(s) could not be read; answers may be incomplete.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal)
-                                .padding(.vertical, 6)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
+                    ChatPaneView(
+                        title: "all sessions",
+                        messages: $messages,
+                        isSending: isSending,
+                        suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.patient : [],
+                        onSend: send,
+                        onStop: { chatRunner.stop() },
+                        queuedStatus: chatRunner.queuedStatus,
+                        scopeNote: scopeNote,
+                        notices: notices
+                    )
                     .frame(minWidth: 360)
                 } else {
-                    ContentUnavailableView {
-                        Label("No Chat Selected", systemImage: "bubble.left.and.bubble.right")
-                    } description: {
-                        Text("Start a new chat to ask questions across all of \(patient.name)'s sessions: transcripts, notes and comments. Chats about a single session live inside that session.")
-                    } actions: {
-                        Button("New Chat") { startNewThread() }
-                            .buttonStyle(.themePrimary)
-                    }
-                    .frame(minWidth: 360)
+                    noChatSelected
+                        .frame(minWidth: 360)
                 }
             }
         }
+        .background(Theme.window.color)
         .onAppear { reloadThreads() }
         .onChange(of: selectedThreadID) { _, newID in
             // The notice belongs to the question just asked, not to other threads.
@@ -122,45 +103,115 @@ struct PatientChatView: View {
         }
     }
 
+    /// What the answers draw on, matching what `gatherCitedPatientContext`
+    /// sends: every session's generated notes, notes and comments, and a ranked
+    /// slice of transcript within the character budget.
+    private var scopeNote: String {
+        "Answers come from every session's generated notes, your notes and comments, plus about \(PatientContextRetriever.defaultCharacterBudget.formatted()) characters of transcript chosen for each question. To ask about one session in full, open it and use its Ask tab."
+    }
+
+    /// Caveats about the last question's context, shown above the composer.
+    private var notices: [String] {
+        var lines: [String] = []
+        if let coverageNotice { lines.append(coverageNotice) }
+        if unreadableSessions > 0 {
+            lines.append("\(unreadableSessions) session(s) could not be read; answers may be incomplete.")
+        }
+        return lines
+    }
+
+    private var noChatSelected: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.system(size: 28, weight: .regular))
+                .foregroundStyle(Theme.muted.color)
+                .accessibilityHidden(true)
+            Text("No Chat Selected")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
+            Text("Start a new chat to ask questions across all of \(patient.name)'s sessions: transcripts, notes and comments. Chats about a single session live inside that session.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.muted.color)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            Button("New Chat") { startNewThread() }
+                .buttonStyle(.themePrimary)
+                .padding(.top, 8)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.panel.color)
+    }
+
     private var threadSidebar: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Chats").font(.subheadline.bold()).foregroundStyle(.secondary)
+                Text("Chats").eyebrowStyle()
                 Spacer()
                 Button { startNewThread() } label: {
                     Label("New Chat", systemImage: "square.and.pencil")
                 }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
+                .buttonStyle(.themeIcon)
                 .help("New chat")
                 .disabled(isSending)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-
-            Divider()
+            .padding(.leading, 14)
+            .padding(.trailing, 8)
+            .padding(.vertical, 6)
+            .themeDivider(.bottom)
 
             if threads.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("No chats yet").font(.callout.bold())
+                VStack(spacing: 6) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundStyle(Theme.muted.color)
+                        .accessibilityHidden(true)
+                    Text("No chats yet")
+                        .font(Theme.Typography.control)
+                        .foregroundStyle(Theme.text.color)
                     Text("Chats here cover all of \(patient.name)'s sessions. Per-session chats live inside each session.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
+                        .multilineTextAlignment(.center)
                 }
-                .padding(10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(threads, selection: $selectedThreadID) { thread in
-                    ThreadRow(thread: thread)
-                        .contextMenu {
-                            Button("Rename") { beginRename(thread) }
-                            Button("Delete", role: .destructive) { deleteThread(thread) }
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(threads) { thread in
+                            ThreadRow(thread: thread, isSelected: thread.id == selectedThreadID) {
+                                selectedThreadID = thread.id
+                            }
+                            .contextMenu {
+                                Button("Rename") { beginRename(thread) }
+                                Button("Delete", role: .destructive) { deleteThread(thread) }
+                            }
                         }
+                    }
+                    .padding(8)
                 }
-                .listStyle(.sidebar)
+                // Up / Down move the selection, as in a native list.
+                .focusable()
+                .focusEffectDisabled()
+                .onMoveCommand { direction in moveSelection(direction) }
                 // Switching threads mid-generation would cross the streams.
                 .disabled(isSending)
             }
+        }
+        .background(Theme.sidebar.color)
+    }
+
+    private func moveSelection(_ direction: MoveCommandDirection) {
+        guard !threads.isEmpty else { return }
+        let current = threads.firstIndex(where: { $0.id == selectedThreadID })
+        switch direction {
+        case .up:
+            selectedThreadID = threads[max((current ?? 1) - 1, 0)].id
+        case .down:
+            selectedThreadID = threads[min((current ?? -1) + 1, threads.count - 1)].id
+        default:
+            break
         }
     }
 
@@ -292,8 +343,14 @@ struct PatientChatView: View {
     }
 }
 
+/// One thread in the sidebar: title and relative time, the accent tint when
+/// selected, the hover fill under the pointer.
 private struct ThreadRow: View {
     let thread: ChatThread
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
 
     private static let relative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
@@ -301,14 +358,34 @@ private struct ThreadRow: View {
         return f
     }()
 
+    private var fill: Color {
+        if isSelected { return Theme.accentTint.color }
+        return isHovered ? Theme.hover.color : .clear
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(thread.displayTitle)
-                .lineLimit(1)
-            Text(Self.relative.localizedString(for: thread.updatedAt, relativeTo: Date()))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
+        Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(thread.displayTitle)
+                    .font(Theme.Typography.control)
+                    .foregroundStyle(Theme.text.color)
+                    .lineLimit(1)
+                Text(Self.relative.localizedString(for: thread.updatedAt, relativeTo: Date()))
+                    .font(Theme.Typography.caption)
+                    // Muted ink has no contrast pairing on the selected tint.
+                    .foregroundStyle(isSelected ? Theme.text.color : Theme.muted.color)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(fill, in: shape)
+            .contentShape(shape)
         }
-        .padding(.vertical, 2)
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
