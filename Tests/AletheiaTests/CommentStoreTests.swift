@@ -39,6 +39,32 @@ final class CommentStoreTests: XCTestCase {
         XCTAssertEqual(store.comments(sessionID: sessionC).map(\.body), ["C"])
     }
 
+    /// Opening a session reads its private note; a session that has none must
+    /// read as empty without a row being created for it.
+    func testReadingAMissingNoteDoesNotInsertARow() throws {
+        let store = try XCTUnwrap(CommentStore(root: tempRoot))
+        let session = UUID()
+
+        XCTAssertEqual(store.note(sessionID: session), "")
+        XCTAssertEqual(store.note(sessionID: session), "")
+
+        let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
+        XCTAssertTrue(core.allRecords(kind: "note").isEmpty, "a read must not upsert an empty note")
+    }
+
+    func testReadingAnExistingNoteLeavesItUntouched() throws {
+        let store = try XCTUnwrap(CommentStore(root: tempRoot))
+        let session = UUID()
+        let t0 = Date(timeIntervalSince1970: 1000)
+        store.saveNote(sessionID: session, text: "kept", now: t0)
+
+        XCTAssertEqual(store.note(sessionID: session), "kept")
+
+        let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
+        let record = try XCTUnwrap(core.allRecords(kind: "note").first)
+        XCTAssertEqual(record.updatedAt, t0, "reading must not bump updatedAt")
+    }
+
     func testUpdateAndDeleteComment() throws {
         let store = try XCTUnwrap(CommentStore(root: tempRoot))
         let session = UUID()
