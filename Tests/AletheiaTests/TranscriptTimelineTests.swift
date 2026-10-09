@@ -84,6 +84,22 @@ final class TranscriptTimelineTests: XCTestCase {
         XCTAssertEqual(TranscriptTimeline.seconds(atOffset: offset, in: transcript), 9)
     }
 
+    /// The formatter marks talking-over with " (overlapping)" after the label;
+    /// the time code is all the parser reads, so every lookup must still work.
+    func testOverlappingLabelDoesNotAffectParsing() {
+        let transcript = """
+        [00:10] Therapist (overlapping): Let me finish.
+        [00:12] Call audio (overlapping): But I think so.
+        [00:30] Therapist: Go on.
+        """
+        XCTAssertEqual(TranscriptTimeline.leadingSeconds(of: "[00:12] Call audio (overlapping): But I think so."), 12)
+        XCTAssertEqual(TranscriptTimeline.seconds(forQuote: "But I think so", in: transcript), 12)
+        XCTAssertEqual(TranscriptTimeline.seconds(forQuote: "Let me finish", in: transcript), 10)
+        let label = (transcript as NSString).range(of: "Call audio (overlapping)")
+        XCTAssertEqual(TranscriptTimeline.seconds(atOffset: label.location + label.length - 1, in: transcript), 12)
+        XCTAssertEqual(TranscriptTimeline.seconds(atOffset: (transcript as NSString).range(of: "Go on").location, in: transcript), 30)
+    }
+
     func testFormat() {
         XCTAssertEqual(TranscriptTimeline.format(15), "0:15")
         XCTAssertEqual(TranscriptTimeline.format(125), "2:05")

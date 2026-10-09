@@ -30,4 +30,29 @@ final class PromptsTests: XCTestCase {
         XCTAssertTrue(prompt.contains("Session January 1, 2026"))
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("cite"))
     }
+
+    // MARK: - Transcript legend
+
+    func testLegendExplainsLabelsOverlapAndOrdering() {
+        let legend = Prompts.transcriptLegend
+        XCTAssertTrue(legend.contains("not from voice analysis"))
+        XCTAssertTrue(legend.contains("\"Call audio\" is normally the client"))
+        XCTAssertTrue(legend.contains("both people may appear as \"Therapist\""))
+        XCTAssertTrue(legend.contains("(overlapping)"))
+        XCTAssertTrue(legend.contains("approximate"))
+    }
+
+    func testEveryTranscriptPromptContainsTheLegend() {
+        let history: [ChatMessage] = []
+        let prompts = [
+            Prompts.summarize(transcript: "T."),
+            Prompts.progressNote(format: .soap, transcript: "T."),
+            Prompts.progressNote(format: .narrative, transcript: "T."),
+            Prompts.sessionChat(transcript: "T.", history: history, question: "Q?"),
+            Prompts.patientChat(context: "===== Session [S1] January 1, 2026 =====\nT.", history: history, question: "Q?"),
+        ]
+        for prompt in prompts {
+            XCTAssertTrue(prompt.contains(Prompts.transcriptLegend))
+        }
+    }
 }
