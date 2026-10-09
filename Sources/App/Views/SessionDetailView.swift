@@ -32,6 +32,11 @@ struct SessionDetailView: View {
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
     @State private var sessionNote: String = ""
+    // Editing the generated note (selected format only; Save/Cancel, no autosave).
+    @State private var isEditingNote = false
+    @State private var noteDraft = ""
+    @State private var confirmRegenerate = false
+    @State private var hasPreviousNote = false
     /// The note text as last read from / written to the store. `load()` assigns
     /// `sessionNote` programmatically, which fires `onChange`; comparing against
     /// this keeps that echo (and any no-op change) from being saved back.
@@ -524,7 +529,7 @@ struct SessionDetailView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .disabled(noteRunner.isStreaming || noteRunner.isQueued)
+                .disabled(noteRunner.isStreaming || noteRunner.isQueued || isEditingNote)
 
                 HStack(alignment: .firstTextBaseline) {
                     Text(settings.progressNoteFormat.blurb)
@@ -543,14 +548,30 @@ struct SessionDetailView: View {
                         }
                     } else {
                         Button {
-                            generateNote()
+                            requestGenerateNote()
                         } label: {
                             Label(summaryText.isEmpty ? "Generate note" : "Regenerate", systemImage: "sparkles")
                         }
                         .keyboardShortcut("g", modifiers: .command)
-                        .disabled(transcriptText.isEmpty)
+                        .disabled(transcriptText.isEmpty || isEditingNote)
                     }
                     if !summaryText.isEmpty && !noteRunner.isStreaming {
+                        if hasPreviousNote && !isEditingNote && !noteRunner.isQueued {
+                            Button { restorePreviousNote() } label: {
+                                Label("Restore Previous", systemImage: "arrow.uturn.backward")
+                            }
+                            .help("Swap back to the version you edited before the last regenerate")
+                        }
+                        if !isEditingNote {
+                            Button {
+                                noteDraft = summaryText
+                                isEditingNote = true
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .disabled(noteRunner.isQueued)
+                            .help("Edit this note before it goes in the record")
+                        }
                         Button {
                             copyToPasteboard(summaryText)
                         } label: {
@@ -580,6 +601,20 @@ struct SessionDetailView: View {
                     systemImage: "doc.text",
                     description: Text("There's no \(settings.progressNoteFormat.shortName) note for this session yet. Transcribe the session, then generate one.")
                 )
+            } else if isEditingNote {
+                HStack {
+                    Label("Editing the \(settings.progressNoteFormat.shortName) note. Regenerating asks before replacing your edits.", systemImage: "pencil")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Cancel") { isEditingNote = false }
+                    Button("Save") { saveEditedNote() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!NoteEditing.canSave(draft: noteDraft, original: summaryText))
+                }
+                .padding(.horizontal)
+                TextEditor(text: $noteDraft)
+                    .font(.body)
+                    .padding(8)
             } else {
                 ScrollView {
                     MarkdownMessageView(text: summaryText)
@@ -591,8 +626,59 @@ struct SessionDetailView: View {
         }
         // Each format keeps its own note, so the pane follows the picker.
         .onChange(of: settings.progressNoteFormat) { _, newFormat in
+            isEditingNote = false
             summaryText = savedNote(for: newFormat)
+            refreshHasPreviousNote()
         }
+        .alert("Replace your edited note?", isPresented: $confirmRegenerate) {
+            Button("Regenerate", role: .destructive) { generateNote() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You edited this \(settings.progressNoteFormat.shortName) note. Regenerating replaces it; your edited version is kept and can be brought back with Restore Previous.")
+        }
+    }
+
+    private func saveEditedNote() {
+        guard let store = appModel.store else { return }
+        guard NoteEditing.canSave(draft: noteDraft, original: summaryText) else { return }
+        do {
+            try store.saveEditedNote(noteDraft, for: patient, session: session, format: settings.progressNoteFormat)
+            summaryText = noteDraft
+            isEditingNote = false
+            onSessionUpdated()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Regenerate asks first when it would replace the user's edits; an
+    /// untouched generated note is replaced straight away. (The Store keeps the
+    /// edited text as the previous version either way.)
+    private func requestGenerateNote() {
+        guard let store = appModel.store else { return }
+        let state = store.noteEditState(for: patient, session: session, format: settings.progressNoteFormat)
+        if NoteEditing.shouldArchiveBeforeReplacing(state) {
+            confirmRegenerate = true
+        } else {
+            generateNote()
+        }
+    }
+
+    private func restorePreviousNote() {
+        guard let store = appModel.store else { return }
+        do {
+            if let restored = try store.restorePreviousNote(for: patient, session: session, format: settings.progressNoteFormat) {
+                summaryText = restored
+                onSessionUpdated()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshHasPreviousNote() {
+        guard let store = appModel.store else { hasPreviousNote = false; return }
+        hasPreviousNote = store.previousNote(for: patient, session: session, format: settings.progressNoteFormat) != nil
     }
 
     private var chatTab: some View {
@@ -603,6 +689,8 @@ struct SessionDetailView: View {
         guard let store = appModel.store else { return }
         transcriptText = store.transcript(for: patient, session: session) ?? ""
         summaryText = savedNote(for: settings.progressNoteFormat)
+        isEditingNote = false
+        refreshHasPreviousNote()
         chatMessages = store.loadSessionChat(for: patient, session: session)
         if let commentStore = appModel.commentStore {
             let storedNote = commentStore.note(sessionID: session.id)
@@ -751,12 +839,23 @@ struct SessionDetailView: View {
             onReveal: { text in
                 if settings.progressNoteFormat == format { summaryText = text }
             },
-            onError: { error in errorMessage = error.localizedDescription },
+            onError: { error in
+                errorMessage = error.localizedDescription
+                // The reveal blanked the pane; put back what is actually saved.
+                if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
+            },
             onFinish: { final in
                 let trimmed = final.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return }
                 if settings.progressNoteFormat == format { summaryText = final }
-                try? store.saveNote(final, for: patient, session: session, format: format)
+                do {
+                    try store.saveGeneratedNote(final, for: patient, session: session, format: format)
+                } catch {
+                    errorMessage = error.localizedDescription
+                    if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
+                    return
+                }
+                if settings.progressNoteFormat == format { refreshHasPreviousNote() }
                 onSessionUpdated()
                 Task {
                     await integrations.makeNotifier().post(
