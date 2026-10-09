@@ -55,13 +55,21 @@ struct PatientProfileEditor: View {
                     }
 
                     field("Clinical history", caption: "A short summary of the background. Shared with the AI.") {
-                        editor($clinicalHistory, minHeight: 90)
+                        EditorField(
+                            text: $clinicalHistory,
+                            placeholder: "Presenting concerns, diagnoses, prior treatment…",
+                            minHeight: 100
+                        )
                     }
 
                     if showsMedications { medicationsField }
 
                     field("Notes", caption: "Your own notes about this patient. Shared with the AI and included in exports.") {
-                        editor($notes, minHeight: 110)
+                        EditorField(
+                            text: $notes,
+                            placeholder: "Anything worth remembering about this patient…",
+                            minHeight: 120
+                        )
                     }
                 }
                 .padding(.trailing, 4)
@@ -116,13 +124,6 @@ struct PatientProfileEditor: View {
                 Text(caption).font(.caption).foregroundStyle(.secondary)
             }
         }
-    }
-
-    private func editor(_ text: Binding<String>, minHeight: CGFloat) -> some View {
-        TextEditor(text: text)
-            .font(.body)
-            .frame(minHeight: minHeight)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
     }
 
     private var medicationsField: some View {

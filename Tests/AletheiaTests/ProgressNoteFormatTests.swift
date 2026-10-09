@@ -46,4 +46,9 @@ final class ProgressNoteFormatTests: XCTestCase {
         // The raw value is the on-disk note file name; renaming the label must not move it.
         XCTAssertEqual(ProgressNoteFormat.narrative.rawValue, "narrative")
     }
+
+    func testNotesPaneOrderPutsMyNotesLast() {
+        XCTAssertEqual(NotesPane.all.map(\.label), ["Summary", "SOAP", "DAP", "BIRP", "GIRP", "My Notes"])
+        XCTAssertEqual(Set(NotesPane.all).count, NotesPane.all.count)
+    }
 }

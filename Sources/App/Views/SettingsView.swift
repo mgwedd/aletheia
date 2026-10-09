@@ -132,9 +132,7 @@ struct SettingsView: View {
                 Text("The standing instructions sent with every AI request — the assistant's voice and rules. Editing this changes how summaries and chat behave.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextEditor(text: $settings.systemPrompt)
-                    .font(.callout)
-                    .frame(minHeight: 120)
+                EditorField(text: $settings.systemPrompt, minHeight: 140)
                 HStack {
                     Spacer()
                     Button("Reset to Default") { settings.systemPrompt = Prompts.defaultSystemPrompt }
