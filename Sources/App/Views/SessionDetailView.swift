@@ -904,9 +904,9 @@ struct SessionDetailView: View {
                     .padding([.horizontal, .bottom], 20)
             } else {
                 ScrollView {
-                    MarkdownMessageView(text: summaryText)
+                    MarkdownMessageView(text: summaryText, style: .note)
                         .textSelection(.enabled)
-                        .frame(maxWidth: 720, alignment: .leading)
+                        .frame(maxWidth: 680, alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
                         .padding(.bottom, 20)
