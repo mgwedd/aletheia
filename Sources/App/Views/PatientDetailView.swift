@@ -5,6 +5,7 @@ struct PatientDetailView: View {
 
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
+    @EnvironmentObject private var transcription: TranscriptionCoordinator
     @State private var sessions: [SessionRecord] = []
     /// Session folders whose `session.json` couldn't be read (left untouched).
     @State private var damagedSessions: [UnreadableEntry] = []
@@ -91,7 +92,7 @@ struct PatientDetailView: View {
                 }
 
                 List(sessions, selection: $selectedSessionID) { session in
-                    SessionRow(session: session).tag(session.id)
+                    SessionRow(session: session, isTranscribing: transcription.job(for: session.id) != nil).tag(session.id)
                 }
                 .listStyle(.inset)
                 // Never let the list collapse to a sliver when the editors above
@@ -131,6 +132,9 @@ struct PatientDetailView: View {
             medications = patient.medications
             refresh()
         }
+        // A transcription finishing changes which sessions have a transcript or
+        // recording, even when it isn't the session currently on screen.
+        .onChange(of: transcription.outcomes) { _, _ in refresh() }
         .sheet(isPresented: $showPatientChat) {
             PatientChatSheet(patient: patient)
                 .environmentObject(appModel)
@@ -244,6 +248,7 @@ struct PatientDetailView: View {
 
 private struct SessionRow: View {
     let session: SessionRecord
+    var isTranscribing = false
 
     private static let formatter: DateFormatter = {
         let f = DateFormatter()
@@ -262,6 +267,12 @@ private struct SessionRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            }
+            if isTranscribing {
+                Spacer()
+                ProgressView()
+                    .controlSize(.small)
+                    .help("Transcribing…")
             }
         }
         .padding(.vertical, 2)

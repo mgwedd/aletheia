@@ -115,12 +115,13 @@ enum DataMigrator {
         return FileManager.default.fileExists(atPath: url.appendingPathComponent("session.json").path)
     }
 
-    /// The fixed session files plus whichever `note.<format>.txt` files are in
+    /// The fixed session files plus whichever `note.<format>.txt` files (and their
+    /// `.generated` / `.previous` companions) are in
     /// `sessionDir`. Enumerated rather than generated from the format list so a
     /// note for a format that no longer exists is still converted, not stranded.
     static func sessionFiles(in sessionDir: URL) -> [String] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: sessionDir.path)) ?? []
-        return sessionFileNames + names.filter(Store.isNoteFileName).sorted()
+        return sessionFileNames + names.filter { Store.isNoteFileName($0) || Store.isNoteSidecarFileName($0) }.sorted()
     }
 
     private static func migrateFile(_ url: URL, from: FileProtector, to: FileProtector, into result: inout Result) {

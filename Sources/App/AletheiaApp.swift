@@ -30,6 +30,9 @@ struct AletheiaApp: App {
     /// One recorder for the whole app, shared by the session view and the
     /// menu-bar control so both drive (and reflect) the same recording.
     @StateObject private var recorder = SessionRecorder()
+    /// App-level transcription runner, so progress survives leaving the session
+    /// screen and shows in the sidebar and menu bar.
+    @StateObject private var transcription: TranscriptionCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
 
@@ -40,7 +43,13 @@ struct AletheiaApp: App {
         _encryption = StateObject(wrappedValue: encryption)
         let appModel = AppModel(settings: settings, encryption: encryption)
         _appModel = StateObject(wrappedValue: appModel)
-        _integrations = StateObject(wrappedValue: Integrations(settings: settings))
+        let integrations = Integrations(settings: settings)
+        _integrations = StateObject(wrappedValue: integrations)
+        _transcription = StateObject(wrappedValue: TranscriptionCoordinator(
+            appModel: appModel,
+            integrations: integrations,
+            settings: settings
+        ))
         _updateService = StateObject(wrappedValue: UpdateService(
             checker: AppcastUpdateChecker(feedURL: settings.updateFeedURL),
             currentVersion: UpdateService.bundleVersion()
@@ -60,6 +69,7 @@ struct AletheiaApp: App {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(recorder)
+                .environmentObject(transcription)
                 .environmentObject(encryption)
                 .sheet(isPresented: showFirstRun) {
                     FirstRunView()
@@ -154,6 +164,7 @@ struct AletheiaApp: App {
         MenuBarExtra("Aletheia Recording", systemImage: menuBarSymbol) {
             RecordingMenuBar()
                 .environmentObject(recorder)
+                .environmentObject(transcription)
                 .environmentObject(appModel)
                 .environmentObject(settings)
                 .environmentObject(integrations)
