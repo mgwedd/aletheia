@@ -9,6 +9,9 @@ struct PatientDetailView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
     @EnvironmentObject private var transcription: TranscriptionCoordinator
+    /// Shared with the session view and the menu bar, to mark the row that is
+    /// being recorded right now.
+    @EnvironmentObject private var recorder: SessionRecorder
     @State private var sessions: [SessionRecord] = []
     /// Session folders whose `session.json` couldn't be read (left untouched).
     @State private var damagedSessions: [UnreadableEntry] = []
@@ -42,73 +45,64 @@ struct PatientDetailView: View {
 
     var body: some View {
         HSplitView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
                 header
+                    .padding(.horizontal, 20)
+                    .frame(minHeight: 52)
 
-                PatientProfileCard(
-                    patient: storedPatient,
-                    showsMedications: showsMedications,
-                    onEdit: onEditProfile
-                )
-
-                HStack {
-                    Button {
-                        showPatientChat = true
-                    } label: {
-                        Label("Ask About All Sessions", systemImage: "bubble.left.and.bubble.right")
-                    }
-                    .disabled(sessions.isEmpty)
-                    Spacer()
-                    Button {
-                        exportHistory()
-                    } label: {
-                        Label("Export History", systemImage: "square.and.arrow.up")
-                    }
-                    .disabled(sessions.isEmpty)
-                }
-
-                Divider()
-
-                HStack {
-                    Text("Sessions").font(.headline)
-                    Spacer()
-                    Button {
-                        newSession()
-                    } label: {
-                        Label("New Session", systemImage: "plus")
-                    }
-                }
-
-                if !damagedSessions.isEmpty {
-                    DamagedRecordsNotice(
-                        title: damagedSessions.count == 1
-                            ? "1 session couldn't be read"
-                            : "\(damagedSessions.count) sessions couldn't be read",
-                        entries: damagedSessions
+                VStack(alignment: .leading, spacing: 22) {
+                    PatientProfileCard(
+                        patient: storedPatient,
+                        showsMedications: showsMedications,
+                        onEdit: onEditProfile
                     )
-                }
 
-                List(sessions, selection: guardedSelection) { session in
-                    SessionRow(session: session, isTranscribing: transcription.job(for: session.id) != nil).tag(session.id)
-                }
-                .listStyle(.inset)
-                // Never let the list collapse to a sliver when the editors above
-                // it claim the space; it takes whatever is left, at least 180pt.
-                .frame(minHeight: 180, maxHeight: .infinity)
-                .overlay {
-                    if sessions.isEmpty {
-                        ContentUnavailableView {
-                            Label("No Sessions Yet", systemImage: "waveform")
-                        } description: {
-                            Text("Start a session to record, transcribe, and summarize it.")
-                        } actions: {
-                            Button("New Session") { newSession() }
-                                .buttonStyle(.themePrimary)
+                    // Side by side when they fit, stacked when the column is narrow.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            askAllButton
+                            exportButton
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            askAllButton
+                            exportButton
                         }
                     }
+
+                    Rectangle()
+                        .fill(Theme.line.color)
+                        .frame(height: 1)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Sessions").eyebrowStyle()
+                            Spacer()
+                            Button {
+                                newSession()
+                            } label: {
+                                Label("New session", systemImage: "plus")
+                            }
+                            .buttonStyle(.themed)
+                        }
+
+                        if !damagedSessions.isEmpty {
+                            DamagedRecordsNotice(
+                                title: damagedSessions.count == 1
+                                    ? "1 session couldn't be read"
+                                    : "\(damagedSessions.count) sessions couldn't be read",
+                                entries: damagedSessions
+                            )
+                        }
+
+                        sessionList
+                    }
+                    .frame(maxHeight: .infinity)
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 20)
             }
-            .padding()
+            .background(Theme.panel.color)
             // Capped so the list column can't swallow the split when the right
             // pane is momentarily small, and pinned to the top so a short column
             // isn't centred in a tall window.
@@ -202,34 +196,93 @@ struct PatientDetailView: View {
         appModel.featureRegistry.contains(id: PatientMedicationsFeatureModule.id)
     }
 
-    /// The patient's name (click or the pencil to rename) with a one-line summary
-    /// of their sessions.
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Text(storedPatient.name)
-                    .font(Theme.Typography.title)
-                    .foregroundStyle(Theme.text.color)
-                    .lineLimit(2)
-                    .onTapGesture(perform: onEditProfile)
-                Button(action: onEditProfile) {
-                    Label("Edit Profile", systemImage: "pencil")
+    private var askAllButton: some View {
+        Button {
+            showPatientChat = true
+        } label: {
+            Label("Ask about all sessions", systemImage: "bubble.left.and.bubble.right")
+        }
+        .buttonStyle(.themed)
+        .disabled(sessions.isEmpty)
+    }
+
+    private var exportButton: some View {
+        Button {
+            exportHistory()
+        } label: {
+            Label("Export history", systemImage: "square.and.arrow.up")
+        }
+        .buttonStyle(.themed)
+        .disabled(sessions.isEmpty)
+    }
+
+    /// The session list. Selection is by id and goes through `guardedSelection`,
+    /// so the unsaved-transcript prompt still guards every switch.
+    private var sessionList: some View {
+        List(sessions, selection: guardedSelection) { session in
+            SessionRow(
+                session: session,
+                isSelected: session.id == selectedSessionID,
+                isTranscribing: transcription.job(for: session.id) != nil,
+                isRecording: isRecording(session)
+            )
+            .tag(session.id)
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        // Never let the list collapse to a sliver when the editors above
+        // it claim the space; it takes whatever is left, at least 180pt.
+        .frame(minHeight: 180, maxHeight: .infinity)
+        // Rows carry their own 8pt inset, so the list reaches 8pt past the
+        // column's gutter and the selected fill lines up with the fields above.
+        .padding(.horizontal, -8)
+        .overlay {
+            if sessions.isEmpty {
+                ContentUnavailableView {
+                    Label("No Sessions Yet", systemImage: "waveform")
+                } description: {
+                    Text("Start a session to record, transcribe, and summarize it.")
+                } actions: {
+                    Button("New session") { newSession() }
+                        .buttonStyle(.themePrimary)
                 }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .help("Edit name and profile")
             }
-            Text(sessionSummary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Whether the app-wide recorder is recording into this session's folder.
+    private func isRecording(_ session: SessionRecord) -> Bool {
+        recorder.isRecording
+            && recorder.active?.patientSlug == patient.slug
+            && recorder.active?.sessionFolder == session.folderName
+    }
+
+    /// The patient's name (click or the pencil to rename) with a count of their
+    /// sessions.
+    private var header: some View {
+        HStack(spacing: 6) {
+            Text(storedPatient.name)
+                .font(Theme.Typography.title)
+                .foregroundStyle(Theme.text.color)
+                .lineLimit(2)
+                .onTapGesture(perform: onEditProfile)
+            Button(action: onEditProfile) {
+                Label("Edit Profile", systemImage: "pencil")
+            }
+            .buttonStyle(.themeIcon)
+            .controlSize(.small)
+            .help("Edit name and profile")
+            Spacer(minLength: 8)
+            Chip(sessionSummary)
         }
     }
 
     private var sessionSummary: String {
-        guard !sessions.isEmpty else { return "No sessions yet" }
-        let count = sessions.count == 1 ? "1 session" : "\(sessions.count) sessions"
-        guard let latest = sessions.map(\.date).max() else { return count }
-        return "\(count) · last \(latest.formatted(date: .abbreviated, time: .omitted))"
+        switch sessions.count {
+        case 0: return "No sessions"
+        case 1: return "1 session"
+        default: return "\(sessions.count) sessions"
+        }
     }
 
     private func refresh() {
@@ -268,34 +321,56 @@ struct PatientDetailView: View {
 
 private struct SessionRow: View {
     let session: SessionRecord
+    var isSelected = false
     var isTranscribing = false
+    var isRecording = false
 
-    private static let formatter: DateFormatter = {
+    private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium
         return f
     }()
 
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        return f
+    }()
+
+    private var detail: String {
+        if isRecording { return "Recording in progress" }
+        if isTranscribing { return "Transcribing…" }
+        var parts = [Self.timeFormatter.string(from: session.date)]
+        if session.hasRecording { parts.append("Audio") }
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text(Self.formatter.string(from: session.date)).font(.body)
-                HStack(spacing: 6) {
-                    if session.hasRecording { Label("Recording", systemImage: "waveform").labelStyle(.iconOnly) }
-                    if session.hasTranscript { Label("Transcript", systemImage: "text.alignleft").labelStyle(.iconOnly) }
-                    if session.hasSummary { Label("Summary", systemImage: "doc.text").labelStyle(.iconOnly) }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Self.dateFormatter.string(from: session.date))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.text.color)
+                    .lineLimit(1)
+                Text(detail)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                    .lineLimit(1)
             }
+            Spacer(minLength: 4)
             if isTranscribing {
-                Spacer()
                 ProgressView()
                     .controlSize(.small)
                     .help("Transcribing…")
             }
+            HStack(spacing: 4) {
+                if isRecording { Chip("Recording", tone: .recording, showsDot: true) }
+                if session.hasTranscript { Chip("Transcript") }
+                if session.hasSummary { Chip("Note") }
+            }
         }
-        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .themeListRow(isSelected: isSelected, surface: Theme.panel)
     }
 }
 
