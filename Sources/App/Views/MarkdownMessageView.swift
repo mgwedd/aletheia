@@ -3,6 +3,84 @@ import SwiftUI
 import AppKit
 #endif
 
+/// How `MarkdownMessageView` sets its text. `.reading` is the sans chat-answer
+/// look; `.note` is the serif look of a generated progress note. Code and
+/// diagram cards are unaffected by the style and stay monospaced.
+enum MarkdownTextStyle: Equatable {
+    case reading
+    case note
+
+    /// Font for paragraphs, list rows and quotes. `nil` leaves the font the
+    /// surrounding view provides (the chat look, unchanged).
+    var bodyFont: Font? {
+        switch self {
+        case .reading: return nil
+        case .note: return Theme.Typography.noteBody
+        }
+    }
+
+    /// Extra line spacing for text blocks. `nil` leaves the inherited value.
+    var lineSpacing: CGFloat? {
+        switch self {
+        case .reading: return nil
+        case .note: return Theme.Typography.noteLineSpacing
+        }
+    }
+
+    /// Gap between top-level blocks.
+    var blockSpacing: CGFloat {
+        switch self {
+        case .reading: return 8
+        case .note: return 6
+        }
+    }
+
+    /// Gap between the rows of a list.
+    var listSpacing: CGFloat {
+        switch self {
+        case .reading: return 4
+        case .note: return 0
+        }
+    }
+
+    func headingFont(_ level: Int) -> Font {
+        switch self {
+        case .note:
+            return Theme.Typography.noteHeading
+        case .reading:
+            switch level {
+            case 1: return .title2.bold()
+            case 2: return .title3.bold()
+            case 3: return .headline
+            default: return .subheadline.bold()
+            }
+        }
+    }
+
+    /// Space above a heading.
+    func headingTopPadding(_ level: Int) -> CGFloat {
+        switch self {
+        case .reading: return level <= 2 ? 2 : 0
+        case .note: return 12
+        }
+    }
+}
+
+/// Applies `lineSpacing` only when a value is given, so the chat style inherits
+/// whatever the surrounding view set rather than overriding it with zero.
+private struct OptionalLineSpacing: ViewModifier {
+    let value: CGFloat?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let value {
+            content.lineSpacing(value)
+        } else {
+            content
+        }
+    }
+}
+
 /// Renders a Markdown string (an assistant chat answer) as native SwiftUI, so a
 /// local model's headings, emphasis, lists, quotes, and code read like a
 /// well-set document instead of raw ``` fences and `**stars**`.
@@ -22,9 +100,10 @@ import AppKit
 /// it streams in.
 struct MarkdownMessageView: View {
     let text: String
+    var style: MarkdownTextStyle = .reading
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: style.blockSpacing) {
             let blocks = MarkdownParser.parse(text)
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 view(for: block)
@@ -37,23 +116,23 @@ struct MarkdownMessageView: View {
     private func view(for block: MarkdownBlock) -> some View {
         switch block {
         case let .heading(level, text):
-            inline(text)
-                .font(headingFont(level))
-                .padding(.top, level <= 2 ? 2 : 0)
+            inline(text, font: style.headingFont(level))
+                .padding(.top, style.headingTopPadding(level))
 
         case let .paragraph(text):
-            inline(text)
+            inline(text, font: style.bodyFont)
+                .modifier(OptionalLineSpacing(value: style.lineSpacing))
                 .fixedSize(horizontal: false, vertical: true)
 
         case let .bulleted(items):
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: style.listSpacing) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     listRow(marker: Text("•"), content: item)
                 }
             }
 
         case let .numbered(items):
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: style.listSpacing) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     listRow(marker: Text("\(index + 1)."), content: item)
                 }
@@ -64,7 +143,8 @@ struct MarkdownMessageView: View {
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(Theme.muted.color.opacity(0.45))
                     .frame(width: 3)
-                inline(lines.joined(separator: "\n"))
+                inline(lines.joined(separator: "\n"), font: style.bodyFont)
+                    .modifier(OptionalLineSpacing(value: style.lineSpacing))
                     .foregroundStyle(Theme.muted.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -86,36 +166,34 @@ struct MarkdownMessageView: View {
 
     private func listRow(marker: Text, content: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            marker
+            styled(marker, font: style.bodyFont)
                 .monospacedDigit()
                 .foregroundStyle(Theme.muted.color)
-            inline(content)
+            inline(content, font: style.bodyFont)
+                .modifier(OptionalLineSpacing(value: style.lineSpacing))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private func headingFont(_ level: Int) -> Font {
-        switch level {
-        case 1: return .title2.bold()
-        case 2: return .title3.bold()
-        case 3: return .headline
-        default: return .subheadline.bold()
-        }
+    /// Sets `font` on a run of text, or leaves the inherited font when `nil`.
+    private func styled(_ text: Text, font: Font?) -> Text {
+        guard let font else { return text }
+        return text.font(font)
     }
 
     /// Inline markup (bold, italic, inline code, links) via Apple's own parser,
     /// preserving soft line breaks. Falls back to the raw string if it can't be
     /// interpreted — a half-streamed `**bold` shows its literal text rather than
     /// vanishing.
-    private func inline(_ string: String) -> Text {
+    private func inline(_ string: String, font: Font? = nil) -> Text {
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace
         )
         if let attributed = try? AttributedString(markdown: string, options: options) {
-            return Text(attributed)
+            return styled(Text(attributed), font: font)
         }
-        return Text(string)
+        return styled(Text(string), font: font)
     }
 }
 
