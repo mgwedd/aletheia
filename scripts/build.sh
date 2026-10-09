@@ -6,12 +6,14 @@
 # What this does:
 #   1. Installs XcodeGen (via Homebrew) if it's missing.
 #   2. Generates Aletheia.xcodeproj from project.yml.
-#   3. Builds a Release build, ad-hoc code signed with the Hardened Runtime
-#      enabled (no Apple Developer account needed).
+#   3. Builds a Release build with the Hardened Runtime enabled, ad-hoc code
+#      signed by default (no Apple Developer account needed). Set
+#      CODE_SIGN_IDENTITY (and DEVELOPMENT_TEAM) to sign with a Developer ID;
+#      release.yml does this when the signing secrets are configured.
 #   4. Copies the finished app to ./dist/Aletheia.app.
 #
-# First launch on any Mac will still need a right-click > Open, since this
-# isn't notarized by Apple — see docs/SETUP-GUIDE.md.
+# An ad-hoc build isn't notarized by Apple, so first launch on any Mac needs a
+# right-click > Open — see docs/SETUP-GUIDE.md.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -49,6 +51,7 @@ echo "Building (Release)…"
 # add a secure timestamp via OTHER_CODE_SIGN_FLAGS="--timestamp".
 IDENTITY="${CODE_SIGN_IDENTITY:--}"
 EXTRA_CODE_SIGN_FLAGS="${OTHER_CODE_SIGN_FLAGS:-}"
+TEAM="${DEVELOPMENT_TEAM:-}"
 
 # -skipPackagePluginValidation keeps the build non-interactive: without it,
 # xcodebuild can block on a "trust this package plugin?" prompt on a fresh
@@ -60,6 +63,7 @@ xcodebuild \
     -derivedDataPath build \
     -skipPackagePluginValidation \
     CODE_SIGN_IDENTITY="$IDENTITY" \
+    DEVELOPMENT_TEAM="$TEAM" \
     OTHER_CODE_SIGN_FLAGS="$EXTRA_CODE_SIGN_FLAGS" \
     CODE_SIGNING_REQUIRED=YES \
     CODE_SIGNING_ALLOWED=YES \
@@ -77,4 +81,6 @@ cp -R "$APP_PATH" "dist/Aletheia.app"
 
 echo
 echo "Done. Aletheia.app is in the dist/ folder at the repo root."
-echo "First launch: right-click the app > Open, since it isn't notarized."
+if [ "$IDENTITY" = "-" ]; then
+    echo "First launch: right-click the app > Open, since it isn't notarized."
+fi
