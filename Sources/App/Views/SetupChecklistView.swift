@@ -31,7 +31,7 @@ struct SetupChecklistView: View {
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.text.color)
                 Spacer()
-                if isChecking { ProgressView().controlSize(.small) }
+                ProgressView().controlSize(.small).opacity(isChecking ? 1 : 0)
                 if progress.total > 0 {
                     Text("\(progress.done) of \(progress.total) done")
                         .font(Theme.Typography.caption)
@@ -182,13 +182,16 @@ struct SetupChecklistView: View {
         guard !isChecking else { return }
         isChecking = true
         defer { isChecking = false }
-        items = Setup.items(from: await ToolHealth.runAllChecks(
+        let latest = Setup.items(from: await ToolHealth.runAllChecks(
             settings: settings,
             backend: integrations.effectiveAssistantBackend,
             assistant: integrations.makeAssistant(),
             authoritative: authoritative,
             includeScheduling: appModel.featureRegistry.contains(id: EventKitSchedulingFeatureModule.id)
         ))
+        // Unchanged results leave the list alone, so the periodic refresh
+        // doesn't redraw it.
+        if latest.map(\.check) != items.map(\.check) { items = latest }
     }
 
     /// After sending the therapist to grant Screen Recording, watch for the grant
@@ -199,7 +202,11 @@ struct SetupChecklistView: View {
         for _ in 0..<60 { // ~30s at 0.5s intervals
             if Task.isCancelled { return }
             try? await Task.sleep(nanoseconds: 500_000_000)
-            if await SystemAudioCapture.verifyAccessGranted() {
+            // Non-prompting check only: probing ScreenCaptureKit twice a second
+            // re-showed the system dialog each time. When the user comes back
+            // from System Settings, the activation refresh runs the one live
+            // probe (see `ScreenAccessProbeGate`).
+            if SystemAudioCapture.checkPermission() {
                 await refresh()
                 return
             }
@@ -231,10 +238,12 @@ struct SetupChecklistView: View {
             // thread instead of freezing the wizard step.
             let granted = await SystemAudioCapture.requestPermission()
             if !granted {
+                ScreenAccessProbeGate.arm()
                 SystemSettingsLinks.openScreenRecordingSettings()
                 await pollForScreenRecordingGrant()
             }
         case .openScreenRecordingSettings:
+            ScreenAccessProbeGate.arm()
             SystemSettingsLinks.openScreenRecordingSettings()
             await pollForScreenRecordingGrant()
         case .downloadTranscriptionModel:

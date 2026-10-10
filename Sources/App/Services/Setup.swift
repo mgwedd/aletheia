@@ -34,7 +34,7 @@ enum SetupAction: Equatable {
 }
 
 struct SetupItem: Identifiable {
-    let id: UUID
+    let id: ToolHealthCheck.Kind
     let check: ToolHealthCheck
     let action: SetupAction?
 
@@ -89,7 +89,7 @@ enum Setup {
     struct Progress: Equatable {
         let done: Int
         let total: Int
-        let currentID: UUID?
+        let currentID: ToolHealthCheck.Kind?
 
         var fraction: Double { total == 0 ? 0 : Double(done) / Double(total) }
     }

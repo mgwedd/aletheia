@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-struct ToolHealthCheck: Identifiable {
+struct ToolHealthCheck: Identifiable, Equatable {
     enum Status {
         case ok
         case warning
@@ -21,7 +21,9 @@ struct ToolHealthCheck: Identifiable {
         case reminders
     }
 
-    let id = UUID()
+    /// Stable per check kind. A fresh UUID per run made every periodic refresh
+    /// look like all-new rows to SwiftUI, which rebuilt the list (visible jitter).
+    var id: Kind { kind }
     let kind: Kind
     let title: String
     let status: Status
@@ -107,7 +109,10 @@ enum ToolHealth {
         // possibly-prompting SCShareableContent probe on an authoritative refresh
         // (which is exactly when the user has just come back from granting it).
         var granted = SystemAudioCapture.checkPermission()
-        if !granted && authoritative {
+        // The live probe can show the system dialog, so it runs only once after
+        // the user has acted on the permission (see `ScreenAccessProbeGate`),
+        // never on plain appear/activation refreshes.
+        if !granted && authoritative && ScreenAccessProbeGate.consume() {
             granted = await SystemAudioCapture.verifyAccessGranted()
         }
         return classifyScreenRecording(granted: granted)

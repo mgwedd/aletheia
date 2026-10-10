@@ -358,7 +358,9 @@ struct SettingsView: View {
             }
 
             Section("Status") {
-                if isCheckingHealth {
+                // Only on the very first load; later refreshes are silent so the
+                // list doesn't gain and lose a row every few seconds.
+                if isCheckingHealth && healthChecks.isEmpty {
                     ProgressView("Checking…")
                 }
                 ForEach(healthChecks) { check in
@@ -669,12 +671,15 @@ struct SettingsView: View {
         guard !isCheckingHealth else { return }
         isCheckingHealth = true
         defer { isCheckingHealth = false }
-        healthChecks = await ToolHealth.runAllChecks(
+        let latest = await ToolHealth.runAllChecks(
             settings: settings,
             backend: integrations.effectiveAssistantBackend,
             assistant: integrations.makeAssistant(),
             authoritative: authoritative,
             includeScheduling: appModel.featureRegistry.contains(id: EventKitSchedulingFeatureModule.id)
         )
+        // Only touch the view when something changed, so the 2.5 s refresh
+        // doesn't re-render (and shift) an unchanged list.
+        if latest != healthChecks { healthChecks = latest }
     }
 }
