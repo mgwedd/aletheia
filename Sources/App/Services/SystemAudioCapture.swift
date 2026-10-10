@@ -16,6 +16,33 @@ enum SystemAudioCaptureError: LocalizedError, Equatable {
     }
 }
 
+/// Allows the possibly-prompting `SCShareableContent` probe only after the user
+/// has acted on call-audio permission (clicked Allow, or opened System Settings
+/// to grant it). Without this, every background refresh and every app
+/// re-activation re-ran the probe; with a permission macOS no longer recognizes
+/// (for example one granted to an earlier ad-hoc-signed build) each probe showed
+/// the system dialog again, and dismissing the dialog re-activated the app,
+/// which probed again, in a loop.
+///
+/// One `arm()` buys one probe: `consume()` returns true once and then false
+/// until armed again.
+enum ScreenAccessProbeGate {
+    private static let lock = NSLock()
+    private static var armed = false
+
+    static func arm() {
+        lock.lock(); defer { lock.unlock() }
+        armed = true
+    }
+
+    static func consume() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let wasArmed = armed
+        armed = false
+        return wasArmed
+    }
+}
+
 /// Captures the *other side* of the video call — whatever is coming out of
 /// the Mac's speakers/headphones during the session — using ScreenCaptureKit
 /// in audio-only mode. It captures system audio, so it's app-agnostic: Zoom, a
@@ -94,7 +121,8 @@ final class SystemAudioCapture: NSObject {
     /// - Returns: whether access is granted right after the request.
     @discardableResult
     nonisolated static func requestPermission() async -> Bool {
-        await Task.detached(priority: .userInitiated) {
+        ScreenAccessProbeGate.arm()
+        return await Task.detached(priority: .userInitiated) {
             CGRequestScreenCaptureAccess()
         }.value
     }

@@ -245,7 +245,8 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Status").eyebrowStyle()
             SettingsRowsCard {
-                if isCheckingHealth {
+                // First load only; later refreshes are silent so rows don't shift.
+                if isCheckingHealth && healthChecks.isEmpty {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
                         SettingsCaption("Checking…")
@@ -971,12 +972,14 @@ struct SettingsView: View {
         guard !isCheckingHealth else { return }
         isCheckingHealth = true
         defer { isCheckingHealth = false }
-        healthChecks = await ToolHealth.runAllChecks(
+        let latest = await ToolHealth.runAllChecks(
             settings: settings,
             backend: integrations.effectiveAssistantBackend,
             assistant: integrations.makeAssistant(),
             authoritative: authoritative,
             includeScheduling: appModel.featureRegistry.contains(id: EventKitSchedulingFeatureModule.id)
         )
+        // Only touch the view when something changed.
+        if latest != healthChecks { healthChecks = latest }
     }
 }

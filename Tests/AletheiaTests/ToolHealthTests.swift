@@ -103,3 +103,20 @@ final class ToolHealthTests: XCTestCase {
         )
     }
 }
+
+final class ScreenAccessProbeGateTests: XCTestCase {
+    func testOneArmBuysExactlyOneProbe() {
+        _ = ScreenAccessProbeGate.consume() // start from a known state
+        XCTAssertFalse(ScreenAccessProbeGate.consume(), "no probe without a user action")
+        ScreenAccessProbeGate.arm()
+        XCTAssertTrue(ScreenAccessProbeGate.consume())
+        XCTAssertFalse(ScreenAccessProbeGate.consume(), "the probe is spent until armed again")
+    }
+
+    func testCheckIdentityIsStableAcrossRuns() {
+        let a = ToolHealthCheck(kind: .microphone, title: "Microphone access", status: .ok, detail: "x")
+        let b = ToolHealthCheck(kind: .microphone, title: "Microphone access", status: .ok, detail: "x")
+        XCTAssertEqual(a.id, b.id)
+        XCTAssertEqual(a, b)
+    }
+}

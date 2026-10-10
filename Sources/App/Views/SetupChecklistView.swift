@@ -37,7 +37,7 @@ struct SetupChecklistView: View {
                         .foregroundStyle(Theme.muted.color)
                         .monospacedDigit()
                 }
-                if isChecking { ProgressView().controlSize(.small) }
+                ProgressView().controlSize(.small).opacity(isChecking ? 1 : 0)
                 Spacer(minLength: 0)
             }
 
@@ -178,13 +178,15 @@ struct SetupChecklistView: View {
         guard !isChecking else { return }
         isChecking = true
         defer { isChecking = false }
-        items = Setup.items(from: await ToolHealth.runAllChecks(
+        let latest = Setup.items(from: await ToolHealth.runAllChecks(
             settings: settings,
             backend: integrations.effectiveAssistantBackend,
             assistant: integrations.makeAssistant(),
             authoritative: authoritative,
             includeScheduling: appModel.featureRegistry.contains(id: EventKitSchedulingFeatureModule.id)
         ))
+        // Unchanged results leave the list alone.
+        if latest.map(\.check) != items.map(\.check) { items = latest }
     }
 
     /// After sending the therapist to grant Screen Recording, watch for the grant
@@ -195,7 +197,9 @@ struct SetupChecklistView: View {
         for _ in 0..<60 { // ~30s at 0.5s intervals
             if Task.isCancelled { return }
             try? await Task.sleep(nanoseconds: 500_000_000)
-            if await SystemAudioCapture.verifyAccessGranted() {
+            // Non-prompting check only; the activation refresh runs the one live
+            // probe (see `ScreenAccessProbeGate`).
+            if SystemAudioCapture.checkPermission() {
                 await refresh()
                 return
             }
@@ -227,10 +231,12 @@ struct SetupChecklistView: View {
             // thread instead of freezing the wizard step.
             let granted = await SystemAudioCapture.requestPermission()
             if !granted {
+                ScreenAccessProbeGate.arm()
                 SystemSettingsLinks.openScreenRecordingSettings()
                 await pollForScreenRecordingGrant()
             }
         case .openScreenRecordingSettings:
+            ScreenAccessProbeGate.arm()
             SystemSettingsLinks.openScreenRecordingSettings()
             await pollForScreenRecordingGrant()
         case .downloadTranscriptionModel:
