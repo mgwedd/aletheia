@@ -58,7 +58,7 @@ struct PatientProfileEditor: View {
                         }
                     }
 
-                    field("Clinical history", caption: "A short summary of the background. Shared with the AI.") {
+                    field("Clinical history", caption: "A short summary of the background. Available to the local AI model.") {
                         EditorField(
                             text: $clinicalHistory,
                             placeholder: "Presenting concerns, diagnoses, prior treatment…",
@@ -68,7 +68,7 @@ struct PatientProfileEditor: View {
 
                     if showsMedications { medicationsField }
 
-                    field("Notes", caption: "Your own notes about this patient. Shared with the AI and included in exports.") {
+                    field("Notes", caption: "Your own notes about this patient. Available to the local AI model and included in exports.") {
                         EditorField(
                             text: $notes,
                             placeholder: "Anything worth remembering about this patient…",
