@@ -77,7 +77,13 @@ enum CaretPlacement {
     /// A single-line `TextField` edits through the window's field editor, which
     /// is also an `NSTextView`, so one path covers both.
     static func moveToEnd() {
-        guard let textView = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
+        moveToEnd(in: NSApp.keyWindow?.firstResponder as? NSTextView)
+    }
+
+    /// The part that is unit-tested: place the caret after the last character.
+    /// Uses the UTF-16 length, which is what `NSRange` counts.
+    static func moveToEnd(in textView: NSTextView?) {
+        guard let textView else { return }
         let end = (textView.string as NSString).length
         textView.setSelectedRange(NSRange(location: end, length: 0))
     }

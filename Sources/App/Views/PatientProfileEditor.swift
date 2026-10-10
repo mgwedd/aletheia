@@ -14,6 +14,12 @@ enum ProfileField: Equatable {
         default: self = .name
         }
     }
+
+    /// The medication row to focus when the editor opens on Medications: the
+    /// first one. `nil` for any other box, or when there are no medications.
+    func medicationToFocus(in medications: [Medication]) -> UUID? {
+        self == .medications ? medications.first?.id : nil
+    }
 }
 
 /// Sheet for editing a patient's name, clinical history, medications and notes.
@@ -227,7 +233,7 @@ struct PatientProfileEditor: View {
                             placeholder: "Medication",
                             label: "Medication name",
                             text: $med.name,
-                            autofocus: initialFocus == .medications && med.id == medications.first?.id
+                            autofocus: initialFocus.medicationToFocus(in: medications) == med.id
                         )
                         ProfileTextField(placeholder: "Dose", label: "Dose", text: $med.dose)
                             .frame(width: 130)
