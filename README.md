@@ -162,8 +162,8 @@ Features are grouped into tiers that are chosen at compile time. Each tier inclu
 
 ```mermaid
 flowchart LR
-  P["production<br/>recording · transcription · notes · chat<br/>search · export · app lock · audit log · Doctor"]
-  V["preview<br/>+ Spotlight · source citations<br/>medications · suggested questions"]
+  P["production<br/>recording · transcription · notes · chat · source citations<br/>search · export · app lock · audit log · Doctor"]
+  V["preview<br/>+ Spotlight<br/>medications · suggested questions"]
   D["dev<br/>+ built-in model · Reminders/Calendar<br/>extra encryption · App Intents"]
   P --> V --> D
 ```
@@ -172,7 +172,7 @@ Debug builds are `dev`; Release builds are `production`. Tiers are set by Swift 
 
 ### Storage protection
 
-- **Sandbox, lock, audit:** App Sandbox is on; the optional app lock uses LocalAuthentication; the audit log records events (unlock, export, delete) without content.
+- **Sandbox, lock, audit:** App Sandbox is on; the optional app lock uses LocalAuthentication; the audit log records events (unlock, encryption changes, export) without content; deletions are not recorded yet.
 - **Encryption (dev tier today):** AES-256-GCM in 1 MiB chunks, with a random data key wrapped by a passphrase (PBKDF2-HMAC-SHA256, 600,000 iterations). Details in [docs/ENCRYPTION.md](docs/ENCRYPTION.md).
 - **Backups:** snapshot and migration copies exist; the encrypted backup archive service is not wired into the app yet. Time Machine is the supported backup today.
 
