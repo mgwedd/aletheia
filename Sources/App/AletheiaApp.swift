@@ -107,25 +107,7 @@ struct AletheiaApp: App {
                     }
                 }
                 .spotlightContinuation(enabled: appModel.featureRegistry.contains(id: SpotlightFeatureModule.id))
-                // Tier-1 protection: cover everything until the user authenticates.
-                .overlay {
-                    if appLock.isLocked {
-                        LockView()
-                            .environmentObject(appLock)
-                            .transition(.opacity)
-                    }
-                }
-                // Tier-2: an encrypted folder needs its passphrase once per launch
-                // before its notes can be read or written.
-                .overlay {
-                    if settings.dataRootURL != nil && encryption.state == .lockedNeedsPassphrase {
-                        EncryptionUnlockView()
-                            .environmentObject(encryption)
-                            .environmentObject(settings)
-                            .environmentObject(appModel)
-                            .transition(.opacity)
-                    }
-                }
+                .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
@@ -155,6 +137,18 @@ struct AletheiaApp: App {
                 }
             }
         }
+
+        // The patient-wide chat. A window, not a sheet, so it resizes, goes full
+        // screen and closes with ⌘W. It carries the same lock covers as the main
+        // window, since it shows patient data.
+        WindowGroup("Ask About All Sessions", id: PatientChatWindow.windowID, for: UUID.self) { $patientID in
+            PatientChatWindow(patientID: patientID)
+                .environmentObject(settings)
+                .environmentObject(appModel)
+                .environmentObject(integrations)
+                .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
+        }
+        .defaultSize(width: 920, height: 720)
 
         // The Doctor window (production tier). A separate window, not a sheet, so
         // it stays reachable when the main window is busy or showing an error.
@@ -211,5 +205,38 @@ struct AletheiaApp: App {
             },
             set: { _ in }
         )
+    }
+}
+
+/// Covers a window's content until the user is allowed to see patient data:
+/// the app lock (Touch ID / password), then the passphrase for an encrypted
+/// folder. Applied to every window that shows patient data.
+private struct LockCover: ViewModifier {
+    @ObservedObject var appLock: AppLock
+    @ObservedObject var encryption: EncryptionManager
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var appModel: AppModel
+
+    func body(content: Content) -> some View {
+        content
+            // Tier-1 protection: cover everything until the user authenticates.
+            .overlay {
+                if appLock.isLocked {
+                    LockView()
+                        .environmentObject(appLock)
+                        .transition(.opacity)
+                }
+            }
+            // Tier-2: an encrypted folder needs its passphrase once per launch
+            // before its notes can be read or written.
+            .overlay {
+                if settings.dataRootURL != nil && encryption.state == .lockedNeedsPassphrase {
+                    EncryptionUnlockView()
+                        .environmentObject(encryption)
+                        .environmentObject(settings)
+                        .environmentObject(appModel)
+                        .transition(.opacity)
+                }
+            }
     }
 }
