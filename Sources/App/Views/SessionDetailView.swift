@@ -486,7 +486,9 @@ struct SessionDetailView: View {
         let markdown = store.exportSessionMarkdown(patient: patient, session: session)
         let dateStr = String(session.folderName.prefix(10))
         let name = FileSaver.fileName(patient.name, dateStr) + ".md"
-        FileSaver.saveText(markdown, suggestedName: name)
+        if FileSaver.saveText(markdown, suggestedName: name) {
+            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, Markdown")
+        }
     }
 
     private var hasAnyRecording: Bool {
