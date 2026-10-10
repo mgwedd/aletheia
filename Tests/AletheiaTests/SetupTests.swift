@@ -88,4 +88,22 @@ final class SetupTests: XCTestCase {
         XCTAssertEqual(empty.total, 0)
         XCTAssertEqual(empty.fraction, 0)
     }
+
+    // A periodic refresh rebuilds every row from scratch. Rows must keep their
+    // identity and compare equal, or SwiftUI rebuilds the list (visible jitter)
+    // and the "skip unchanged results" check never skips.
+    func testRefreshingUnchangedChecksKeepsIdentityAndEquality() {
+        let first = Setup.items(from: [check(.dataFolder, .ok), check(.microphone, .warning), check(.ollama, .failed)])
+        let second = Setup.items(from: [check(.dataFolder, .ok), check(.microphone, .warning), check(.ollama, .failed)])
+        XCTAssertEqual(first.map(\.id), second.map(\.id))
+        XCTAssertEqual(first.map(\.check), second.map(\.check))
+        XCTAssertEqual(Setup.progress(first).currentID, Setup.progress(second).currentID)
+    }
+
+    func testAChangedStatusIsDetectedAsDifferent() {
+        let before = Setup.items(from: [check(.microphone, .warning)])
+        let after = Setup.items(from: [check(.microphone, .ok)])
+        XCTAssertEqual(before.map(\.id), after.map(\.id))
+        XCTAssertNotEqual(before.map(\.check), after.map(\.check))
+    }
 }
