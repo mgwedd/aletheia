@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// The "Security overview" shown at the top of Settings: an at-a-glance,
+/// The "Security posture" card in Settings → Security: an at-a-glance,
 /// plain-language read of how well protected the data is right now. It only
-/// reflects state — every fix lives in the sections below (app lock, encryption,
-/// backup) — so it reads without changing anything.
+/// reflects state — every fix lives in the other panes (app lock, encryption,
+/// backups) — so it reads without changing anything.
 struct SecurityPostureView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appModel: AppModel
@@ -30,45 +30,49 @@ struct SecurityPostureView: View {
         let items = postureItems
         let overall = SecurityPosture.overall(items)
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: Self.icon(for: overall))
-                    .foregroundStyle(Self.color(for: overall))
-                Text(Self.headline(for: overall))
-                    .font(Theme.Typography.body.weight(.semibold))
-                    .foregroundStyle(Theme.text.color)
-            }
-            ForEach(items) { item in
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: Self.icon(for: item.level))
-                        .foregroundStyle(Self.color(for: item.level))
-                        .accessibilityHidden(true)
-                        .frame(width: 16)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(item.title)
-                            .font(Theme.Typography.caption.weight(.medium))
-                            .foregroundStyle(Theme.text.color)
-                        Text(item.detail)
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.muted.color)
+            Text(Self.headline(for: overall))
+                .font(Theme.Typography.body.weight(.semibold))
+                .foregroundStyle(Theme.text.color)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                    if index > 0 { SettingsHairline() }
+                    HStack(alignment: .center, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title)
+                                .font(Theme.Typography.body.weight(.medium))
+                                .foregroundStyle(Theme.text.color)
+                            Text(item.detail)
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(Theme.muted.color)
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 12)
+                        Chip(Self.chipText(for: item.level), tone: Self.chipTone(for: item.level))
                     }
+                    .padding(.vertical, 11)
+                    .accessibilityElement(children: .combine)
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .themeCard()
         }
     }
 
-    private static func icon(for level: PostureLevel) -> String {
+    private static func chipText(for level: PostureLevel) -> String {
         switch level {
-        case .secure: return "checkmark.shield.fill"
-        case .actionRecommended: return "exclamationmark.shield.fill"
-        case .informational: return "shield"
+        case .secure: return "OK"
+        case .actionRecommended: return "Review"
+        case .informational: return "Info"
         }
     }
 
-    private static func color(for level: PostureLevel) -> Color {
+    private static func chipTone(for level: PostureLevel) -> Chip.Tone {
         switch level {
-        case .secure: return Theme.accent.color
-        case .actionRecommended: return Theme.callAudio.color
-        case .informational: return Theme.muted.color
+        case .secure: return .ok
+        case .actionRecommended: return .warn
+        case .informational: return .neutral
         }
     }
 

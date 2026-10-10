@@ -1,5 +1,18 @@
+import AppKit
 import SwiftUI
 
+/// Settings: a sidebar of panes on the left, the selected pane on the right.
+///
+///   ┌──────────────┬──────────────────────────────────────┐
+///   │ General      │ <pane title>                          │
+///   │ AI and models├──────────────────────────────────────┤
+///   │ Note format  │ cards and rows, scrolling             │
+///   │ Encryption   │                                       │
+///   │ Backups      │                                       │
+///   │ Security     │                                       │
+///   └──────────────┴──────────────────────────────────────┘
+///
+/// Shown both as the in-window sheet and as the app's Settings scene.
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appModel: AppModel
@@ -22,373 +35,28 @@ struct SettingsView: View {
     /// Audit-log entries for the viewer, newest first. Loaded on appear and after
     /// an export; a snapshot, not a live binding (the log is append-only on disk).
     @State private var auditEntries: [AuditEvent] = []
+    /// The pane last shown, so Settings reopens where it was left.
+    @AppStorage("settings.selectedPane") private var selectedPaneRaw: String = SettingsPane.default.rawValue
     private let auditPreviewLimit = 15
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
 
+    private var pane: SettingsPane { SettingsPane(rawValue: selectedPaneRaw) ?? .default }
+
+    private var paneSelection: Binding<SettingsPane> {
+        Binding(get: { pane }, set: { selectedPaneRaw = $0.rawValue })
+    }
+
     var body: some View {
-        Form {
-            Section("Appearance") {
-                Picker("Appearance", selection: $settings.appearance) {
-                    ForEach(AppearancePreference.allCases) { option in
-                        Text(option.title).tag(option)
-                    }
-                }
-                .pickerStyle(.segmented)
+        HStack(spacing: 0) {
+            SettingsSidebar(selection: paneSelection)
+            SettingsPaneContainer(title: pane.title) {
+                paneContent
             }
-
-            Section("Security Overview") {
-                SecurityPostureView()
-            }
-
-            Section("Data Folder") {
-                HStack {
-                    Text(settings.dataRootURL?.path ?? "Not chosen yet")
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .foregroundStyle(settings.dataRootURL == nil ? Theme.muted.color : Theme.text.color)
-                    Spacer()
-                    Button("Change…", action: chooseFolder)
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
-                }
-            }
-
-            Section("Speech-to-Text Model") {
-                Picker("Model", selection: $settings.whisperModel) {
-                    ForEach(WhisperModel.allCases) { model in
-                        Text(model.displayName).tag(model)
-                    }
-                }
-                Text("Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.whisperModel.shortName).")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                HStack {
-                    if whisperDownloader.isDownloading {
-                        ProgressView(value: whisperDownloader.progress)
-                        Text("\(Int(whisperDownloader.progress * 100))%")
-                    } else if FileManager.default.fileExists(atPath: settings.whisperModelPath.path) {
-                        Label("Downloaded", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.accent.color)
-                        Spacer()
-                        Button("Re-download") { Task { await downloadWhisperModel() } }
-                            .buttonStyle(.themed)
-                            .controlSize(.small)
-                    } else {
-                        Text("Not downloaded (~\(settings.whisperModel.approximateSizeMB) MB)").foregroundStyle(Theme.muted.color)
-                        Spacer()
-                        Button("Download") { Task { await downloadWhisperModel() } }
-                            .buttonStyle(.themed)
-                            .controlSize(.small)
-                    }
-                }
-            }
-
-            Section("AI Summaries & Chat") {
-                Picker("Engine", selection: $settings.assistantBackend) {
-                    // Apple Intelligence is intentionally hidden for now (see
-                    // Integrations.appleIntelligenceBlocked) — keep AI fully on
-                    // backends we can prove stay on this Mac. "Built-in model"
-                    // (embedded llama.cpp) is a .dev-tier module until stable, so
-                    // production/preview don't advertise a backend that today
-                    // falls back to Ollama. See EmbeddedLlamaFeatureModule and
-                    // AssistantBackend.selectableOptions, which this defers to
-                    // so the gating itself is unit-tested.
-                    ForEach(AssistantBackend.selectableOptions(
-                        embeddedLlamaAvailable: appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id),
-                        appleIntelligenceBlocked: Integrations.appleIntelligenceBlocked
-                    )) { backend in
-                        Text(backend.displayName).tag(backend)
-                    }
-                }
-                Text(settings.assistantBackend.summary)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                LabeledContent("In use now", value: integrations.effectiveAssistantBackend.displayName)
-                    .font(Theme.Typography.caption)
-
-                if integrations.effectiveAssistantBackend == .ollama {
-                    Divider()
-                    Picker("Model", selection: ollamaModelSelection) {
-                        ForEach(OllamaCatalog.options) { option in
-                            Text("\(option.label) (~\(String(format: "%.1f", option.approxSizeGB)) GB)")
-                                .tag(option.tag)
-                        }
-                        Text("Custom…").tag(OllamaCatalog.customTag)
-                    }
-                    if let option = OllamaCatalog.option(for: settings.ollamaModelName) {
-                        Text(option.blurb).font(Theme.Typography.caption).foregroundStyle(Theme.muted.color)
-                    }
-                    Text("Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.ollamaModel).")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
-                    if !OllamaCatalog.contains(settings.ollamaModelName) {
-                        TextField("Ollama model tag (e.g. qwen2.5:7b)", text: $settings.ollamaModelName)
-                    }
-                    Text("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
-                    HStack {
-                        if isPullingOllamaModel {
-                            ProgressView(value: ollamaPullProgress)
-                            Text(ollamaPullStatus).font(Theme.Typography.caption).foregroundStyle(Theme.muted.color)
-                        } else {
-                            Button("Download \(settings.ollamaModelName)") { Task { await pullOllamaModel() } }
-                                .buttonStyle(.themed)
-                                .controlSize(.small)
-                                .disabled(settings.ollamaModelName.trimmingCharacters(in: .whitespaces).isEmpty)
-                        }
-                    }
-                } else if integrations.effectiveAssistantBackend == .appleIntelligence {
-                    Label("Runs on your Mac with Apple Intelligence — nothing to install or download.", systemImage: "apple.logo")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
-                }
-            }
-
-            Section("AI Instructions") {
-                Text("The standing instructions sent with every AI request — the assistant's voice and rules. Editing this changes how summaries and chat behave.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                EditorField(text: $settings.systemPrompt, minHeight: 140)
-                HStack {
-                    Spacer()
-                    Button("Reset to Default") { settings.systemPrompt = Prompts.defaultSystemPrompt }
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
-                        .disabled(settings.systemPrompt == Prompts.defaultSystemPrompt)
-                }
-            }
-
-            Section("Note-Taking Format") {
-                Picker("Default format", selection: $settings.progressNoteFormat) {
-                    ForEach(ProgressNoteFormat.allCases) { format in
-                        Text(format.displayName).tag(format)
-                    }
-                }
-                Text(settings.progressNoteFormat.blurb)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                Text("The format new session notes start in. You can still switch formats for any single session on its Note tab.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                Picker("Summary length", selection: $settings.summaryVerbosity) {
-                    ForEach(SummaryVerbosity.allCases) { level in
-                        Text(level.displayName).tag(level)
-                    }
-                }
-                .pickerStyle(.segmented)
-                Text(settings.summaryVerbosity.blurb + " Clarity comes first at every length.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-            }
-
-            // The .dev-tier "Built-in Model" (embedded llama.cpp) management UI —
-            // offered only when the module ships AND the runtime is linked.
-            if LlamaRuntime.isBuilt && appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id) {
-                Section("Built-in Model (llama.cpp)") {
-                    Picker("Model", selection: $settings.llamaModel) {
-                        ForEach(LlamaModel.allCases) { model in
-                            Text(model.displayName).tag(model)
-                        }
-                    }
-                    HStack {
-                        if llamaDownloader.isDownloading {
-                            ProgressView(value: llamaDownloader.progress)
-                            Text("\(Int(llamaDownloader.progress * 100))%")
-                        } else if FileManager.default.fileExists(atPath: LlamaRuntime.modelURL(for: settings.llamaModel).path) {
-                            Label("Downloaded", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.accent.color)
-                            Spacer()
-                            Button("Re-download") { Task { await downloadLlamaModel() } }
-                                .buttonStyle(.themed)
-                                .controlSize(.small)
-                        } else {
-                            Text("Not downloaded (~\(settings.llamaModel.approximateSizeMB) MB)").foregroundStyle(Theme.muted.color)
-                            Spacer()
-                            Button("Download") { Task { await downloadLlamaModel() } }
-                                .buttonStyle(.themed)
-                                .controlSize(.small)
-                        }
-                    }
-                }
-            }
-
-            if appModel.featureRegistry.contains(id: SpotlightFeatureModule.id) {
-                Section("Spotlight Search") {
-                    Toggle("Find patients in Spotlight", isOn: $settings.spotlightIndexingEnabled)
-                        .onChange(of: settings.spotlightIndexingEnabled) { _, _ in appModel.reindexSpotlight() }
-                    Text("Lets you open a patient or session straight from macOS Spotlight. Only names and dates are indexed — never transcripts or summaries. Anyone using this Mac can see indexed names, so leave this off on a shared computer.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
-                }
-            }
-
-            Section("Privacy") {
-                Toggle("Keep audio recordings after transcription", isOn: $settings.keepAudioRecordings)
-                    .disabled(!encryption.isEnabled)
-                Text(audioRetentionCaption)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-            }
-
-            Section("Security") {
-                Toggle("Require Touch ID or password to open", isOn: $settings.appLockEnabled)
-                Text("Locks the app when it opens and whenever it's hidden, so your patients' notes stay behind your Touch ID or Mac password.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                Divider()
-                Picker("Auto-lock after", selection: idleAutoLockSelection) {
-                    ForEach(IdleAutoLockTimeout.allCases) { timeout in
-                        Text(timeout.displayName).tag(timeout)
-                    }
-                }
-                .disabled(!settings.appLockEnabled)
-                Text("Automatically re-locks after this much time with no activity — HIPAA's required \"automatic logoff.\" Needs \"Require Touch ID or password to open\" turned on above.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                Divider()
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Encrypt this Mac's disk with FileVault")
-                            .font(Theme.Typography.body.weight(.medium))
-                        Text("Recommended. FileVault encrypts everything on this Mac at rest so patient data can't be read if the computer is lost or stolen. macOS manages it; it doesn't affect your backups.")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.muted.color)
-                    }
-                    Spacer()
-                    Button("Open Settings") { SystemSettingsLinks.openFileVaultSettings() }
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
-                }
-            }
-
-            // Hidden only when there's nothing to manage: encryption is off and this
-            // build doesn't offer turning it on. Once a folder is encrypted — by
-            // this build or an earlier one — the section (and its unlock/manage
-            // affordances) stays unconditional regardless of build tier.
-            if encryption.isEnabled || appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id) {
-                Section("Extra Encryption") {
-                    encryptionSection
-                }
-            }
-
-            Section("Security Audit Log") {
-                Text("An on-device record of actions that touch patient data — app unlocks, encryption changes, exports and deletions. It holds no names or clinical content, never leaves this Mac, and satisfies HIPAA's audit-control requirement (§164.312(b)).")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                if auditEntries.isEmpty {
-                    Text("No activity recorded yet.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
-                } else {
-                    ForEach(Array(auditEntries.prefix(auditPreviewLimit).enumerated()), id: \.offset) { item in
-                        HStack {
-                            Text(item.element.action.displayName)
-                            Spacer()
-                            Text(auditTimestamp(item.element)).foregroundStyle(Theme.muted.color)
-                        }
-                        .font(Theme.Typography.caption)
-                    }
-                    if auditEntries.count > auditPreviewLimit {
-                        Text("Showing the \(auditPreviewLimit) most recent of \(auditEntries.count) entries.")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.muted.color)
-                    }
-                }
-                HStack {
-                    Button("Refresh", action: loadAuditEntries)
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
-                    Spacer()
-                    Button("Export…", action: exportAuditLog)
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
-                        .disabled(auditEntries.isEmpty)
-                }
-            }
-
-            Section("Backup") {
-                Toggle("Keep my data out of Time Machine & iCloud backups", isOn: $settings.keepDataOutOfSystemBackups)
-                Text("Off by default, so Time Machine includes your data folder — Aletheia doesn't make a backup of its own yet, so without this you'd have only one copy. Your data folder can hold unencrypted patient data (and audio/transcript files), so keep your Time Machine backups on an encrypted disk. Turn this on only if you'd rather keep the folder out of macOS system backups and rely on your own copy instead.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                Divider()
-                Toggle("Keep an encrypted backup copy on this Mac", isOn: $settings.localEncryptedBackupEnabled)
-                Text("An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it. Not active in this build yet: your choice is saved, but no backup copy is written until it is.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                Divider()
-                Toggle("Also back up to iCloud (end-to-end encrypted)", isOn: $settings.iCloudEncryptedBackupEnabled)
-                Text("Uploads the same encrypted snapshot to your private iCloud. It's sealed with your key before it leaves this Mac, so Apple only ever stores data it can't read. Activates in a signed build with iCloud configured; your choice is saved until then.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-            }
-
-            Section("Legal") {
-                HStack(spacing: 16) {
-                    Link("Terms of Service", destination: Legal.termsURL)
-                    Link("Privacy Policy", destination: Legal.privacyURL)
-                }
-                if let accepted = settings.acceptedLegalDate, settings.hasAcceptedCurrentLegal {
-                    LabeledContent("Accepted", value: legalAcceptanceStamp(version: settings.acceptedLegalVersion, at: accepted))
-                        .font(Theme.Typography.caption)
-                }
-                Text("Your acceptance of the terms is recorded only on this Mac. It is never sent anywhere.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-            }
-
-            Section("Software Update") {
-                LabeledContent("Current version", value: appVersionString)
-                HStack {
-                    if updateService.isChecking {
-                        ProgressView().controlSize(.small)
-                        Text("Checking…").foregroundStyle(Theme.muted.color)
-                    } else {
-                        Button("Check for Updates") {
-                            Task { await updateService.checkForUpdates(force: true) }
-                        }
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
-                    }
-                    Spacer()
-                }
-                Text("Aletheia checks for a new version on launch and lets you know when one is ready.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-            }
-
-            Section("Status") {
-                // Only on the very first load; later refreshes are silent so the
-                // list doesn't gain and lose a row every few seconds.
-                if isCheckingHealth && healthChecks.isEmpty {
-                    ProgressView("Checking…")
-                }
-                ForEach(healthChecks) { check in
-                    HStack(alignment: .top) {
-                        statusIcon(check.status)
-                        VStack(alignment: .leading) {
-                            Text(check.title).font(Theme.Typography.body.weight(.medium))
-                            Text(check.detail).font(Theme.Typography.caption).foregroundStyle(Theme.muted.color)
-                        }
-                    }
-                }
-                HStack {
-                    Label("Updates automatically", systemImage: "arrow.triangle.2.circlepath")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
-                    Spacer()
-                    if appModel.featureRegistry.contains(id: DoctorFeatureModule.id) {
-                        Button("Aletheia Doctor…") { openWindow(id: DoctorFeatureModule.windowID) }
-                            .buttonStyle(.themed)
-                            .controlSize(.small)
-                    }
-                    Button("Setup Assistant…") { showSetup = true }
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
-                }
-            }
+            .id(pane)
         }
-        .formStyle(.grouped)
+        .frame(minWidth: 900, idealWidth: 960, minHeight: 640, idealHeight: 680)
+        .background(Theme.window.color)
         .tint(Theme.accent.color)
         .navigationTitle("Settings")
         .toolbar {
@@ -443,13 +111,710 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private var paneContent: some View {
+        switch pane {
+        case .general: generalPane
+        case .ai: aiPane
+        case .format: formatPane
+        case .encryption: encryptionPane
+        case .backups: backupsPane
+        case .security: securityPane
+        }
+    }
+
+    // MARK: - General
+
+    @ViewBuilder
+    private var generalPane: some View {
+        dataFolderSection
+        SettingsHairline()
+        SettingsSwitchRow(
+            title: "Keep raw audio after transcription",
+            detail: audioRetentionCaption,
+            isOn: $settings.keepAudioRecordings
+        )
+        .disabled(!encryption.isEnabled)
+        SettingsRow(title: "Appearance") {
+            ThemeSegmentedControl(
+                options: [AppearancePreference.light, .system, .dark].map { ThemeTab(value: $0, title: $0.title) },
+                selection: $settings.appearance
+            )
+            .frame(width: 240)
+            .accessibilityLabel("Appearance")
+        }
+        if appModel.featureRegistry.contains(id: SpotlightFeatureModule.id) {
+            SettingsSwitchRow(
+                title: "Find patients in Spotlight",
+                detail: "Lets you open a patient or session straight from macOS Spotlight. Only names and dates are indexed — never transcripts or summaries. Anyone using this Mac can see indexed names, so leave this off on a shared computer.",
+                isOn: $settings.spotlightIndexingEnabled
+            )
+            .onChange(of: settings.spotlightIndexingEnabled) { _, _ in appModel.reindexSpotlight() }
+        }
+        softwareUpdateSection
+        legalSection
+        statusSection
+    }
+
+    private var dataFolderSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Data folder").eyebrowStyle()
+            HStack(spacing: 8) {
+                Text(settings.dataRootURL?.path ?? "Not chosen yet")
+                    .font(Theme.Typography.body)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(settings.dataRootURL == nil ? Theme.muted.color : Theme.text.color)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                    .themeField()
+                    .accessibilityLabel("Data folder")
+                Button("Choose…", action: chooseFolder)
+                    .buttonStyle(.themed)
+                Button("Show in Finder") {
+                    if let url = settings.dataRootURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                }
+                .buttonStyle(.themed)
+                .disabled(settings.dataRootURL == nil)
+            }
+            SettingsCaption("Everything lives here. Changing it moves nothing; point it at an existing Aletheia folder to switch.")
+        }
+    }
+
+    private var softwareUpdateSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Software update").eyebrowStyle()
+            SettingsRowsCard {
+                SettingsRow(title: "Current version") {
+                    Text(appVersionString)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.muted.color)
+                }
+                .padding(.vertical, 12)
+                SettingsHairline()
+                SettingsRow(
+                    title: "Check for updates",
+                    detail: "Aletheia checks for a new version on launch and lets you know when one is ready."
+                ) {
+                    if updateService.isChecking {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Checking…").font(Theme.Typography.caption).foregroundStyle(Theme.muted.color)
+                        }
+                    } else {
+                        Button("Check for Updates") {
+                            Task { await updateService.checkForUpdates(force: true) }
+                        }
+                        .buttonStyle(.themed)
+                    }
+                }
+                .padding(.vertical, 12)
+            }
+        }
+    }
+
+    private var legalSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Legal").eyebrowStyle()
+            SettingsRowsCard {
+                HStack(spacing: 16) {
+                    Link("Terms of Service", destination: Legal.termsURL)
+                    Link("Privacy Policy", destination: Legal.privacyURL)
+                    Spacer()
+                }
+                .font(Theme.Typography.body)
+                .padding(.vertical, 12)
+                if let accepted = settings.acceptedLegalDate, settings.hasAcceptedCurrentLegal {
+                    SettingsHairline()
+                    SettingsRow(title: "Accepted") {
+                        Text(legalAcceptanceStamp(version: settings.acceptedLegalVersion, at: accepted))
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.muted.color)
+                    }
+                    .padding(.vertical, 12)
+                }
+                SettingsHairline()
+                SettingsCaption("Your acceptance of the terms is recorded only on this Mac. It is never sent anywhere.")
+                    .padding(.vertical, 12)
+            }
+        }
+    }
+
+    private var statusSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Status").eyebrowStyle()
+            SettingsRowsCard {
+                // First load only; later refreshes are silent so rows don't shift.
+                if isCheckingHealth && healthChecks.isEmpty {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        SettingsCaption("Checking…")
+                        Spacer()
+                    }
+                    .padding(.vertical, 12)
+                    SettingsHairline()
+                }
+                ForEach(healthChecks) { check in
+                    SettingsRow(title: check.title, detail: check.detail) {
+                        statusChip(check.status)
+                    }
+                    .padding(.vertical, 12)
+                    SettingsHairline()
+                }
+                HStack(spacing: 8) {
+                    Label("Updates automatically", systemImage: "arrow.triangle.2.circlepath")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
+                    Spacer()
+                    if appModel.featureRegistry.contains(id: DoctorFeatureModule.id) {
+                        Button("Aletheia Doctor…") { openWindow(id: DoctorFeatureModule.windowID) }
+                            .buttonStyle(.themed)
+                    }
+                    Button("Setup Assistant…") { showSetup = true }
+                        .buttonStyle(.themed)
+                }
+                .padding(.vertical, 12)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func statusChip(_ status: ToolHealthCheck.Status) -> some View {
+        switch status {
+        case .ok: Chip("OK", tone: .ok)
+        case .warning: Chip("Warning", tone: .warn)
+        case .failed: Chip("Problem", tone: .recording)
+        }
+    }
+
     /// Explains the audio-retention toggle, and why it's unavailable until
     /// at-rest encryption is on — kept audio must be ciphertext, never plaintext.
     private var audioRetentionCaption: String {
         if encryption.isEnabled {
             return "By default, recordings are deleted the moment a session is transcribed — the transcript is kept as the document of record. (If no speech is detected, the recording is kept so nothing is lost.) Turn this on to keep the original audio too; it stays encrypted at rest with your other data."
         } else {
-            return "By default, recordings are deleted the moment a session is transcribed — only the transcript is kept. (If no speech is detected, the recording is kept so nothing is lost, and it isn't encrypted while Extra Encryption is off.) Keeping the original audio requires \"Extra Encryption\" below, so any retained recording stays encrypted at rest rather than sitting on disk in the clear."
+            return "By default, recordings are deleted the moment a session is transcribed — only the transcript is kept. (If no speech is detected, the recording is kept so nothing is lost, and it isn't encrypted while Extra Encryption is off.) Keeping the original audio requires turning on encryption (Encryption pane), so any retained recording stays encrypted at rest rather than sitting on disk in the clear."
+        }
+    }
+
+    // MARK: - AI and models
+
+    @ViewBuilder
+    private var aiPane: some View {
+        speechCard
+        languageCard
+        if Integrations.appleIntelligenceBlocked {
+            HStack(alignment: .top, spacing: 10) {
+                Chip("Off")
+                SettingsCaption("Apple Intelligence is blocked on purpose, so every AI path is on-device.")
+            }
+        }
+        // The .dev-tier "Built-in Model" (embedded llama.cpp) management UI —
+        // offered only when the module ships AND the runtime is linked.
+        if LlamaRuntime.isBuilt && appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id) {
+            builtInModelCard
+        }
+        instructionsCard
+    }
+
+    private var whisperInstalled: Bool {
+        FileManager.default.fileExists(atPath: settings.whisperModelPath.path)
+    }
+
+    private var speechCard: some View {
+        SettingsCard {
+            SettingsCardHeader(title: "Speech recognition") {
+                if whisperDownloader.isDownloading {
+                    Chip("Downloading", tone: .info)
+                } else if whisperInstalled {
+                    Chip("Installed", tone: .ok)
+                } else {
+                    Chip("Not downloaded", tone: .warn)
+                }
+            }
+            SettingsRow(
+                title: "Whisper \(settings.whisperModel.rawValue)",
+                detail: "Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.whisperModel.shortName)."
+            ) {
+                Picker("Speech model", selection: $settings.whisperModel) {
+                    ForEach(WhisperModel.allCases) { model in
+                        Text(model.displayName).tag(model)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 280)
+            }
+            if whisperDownloader.isDownloading {
+                downloadProgress(whisperDownloader.progress)
+            } else if whisperInstalled {
+                HStack {
+                    SettingsCaption("Downloaded to this Mac.")
+                    Spacer()
+                    Button("Re-download") { Task { await downloadWhisperModel() } }
+                        .buttonStyle(.themed)
+                }
+            } else {
+                HStack {
+                    SettingsCaption("Not downloaded (~\(settings.whisperModel.approximateSizeMB) MB)")
+                    Spacer()
+                    Button("Download") { Task { await downloadWhisperModel() } }
+                        .buttonStyle(.themePrimary)
+                }
+            }
+        }
+    }
+
+    private func downloadProgress(_ value: Double) -> some View {
+        HStack(spacing: 12) {
+            ThemeProgressBar(value: value)
+            Text("\(Int(value * 100))%")
+                .font(Theme.Typography.caption)
+                .monospacedDigit()
+                .foregroundStyle(Theme.muted.color)
+        }
+    }
+
+    /// The Ollama engine's state as the last health check saw it, if known.
+    private var ollamaEngineState: OllamaEngineState? {
+        healthChecks.first { $0.kind == .ollama }?.ollamaState
+    }
+
+    @ViewBuilder
+    private var ollamaChip: some View {
+        if integrations.effectiveAssistantBackend == .ollama, let state = ollamaEngineState {
+            switch state {
+            case .notInstalled: Chip("Ollama not installed", tone: .warn)
+            case .installedNotRunning: Chip("Ollama not running", tone: .warn)
+            case .starting: Chip("Ollama starting", tone: .info)
+            case .running, .modelMissing, .ready: Chip("Ollama running", tone: .ok)
+            }
+        }
+    }
+
+    private var languageCard: some View {
+        SettingsCard {
+            SettingsCardHeader(title: "Language model") { ollamaChip }
+            SettingsRow(title: "Engine", detail: settings.assistantBackend.summary) {
+                Picker("Engine", selection: $settings.assistantBackend) {
+                    // Apple Intelligence is intentionally hidden for now (see
+                    // Integrations.appleIntelligenceBlocked) — keep AI fully on
+                    // backends we can prove stay on this Mac. "Built-in model"
+                    // (embedded llama.cpp) is a .dev-tier module until stable, so
+                    // production/preview don't advertise a backend that today
+                    // falls back to Ollama. See EmbeddedLlamaFeatureModule and
+                    // AssistantBackend.selectableOptions, which this defers to
+                    // so the gating itself is unit-tested.
+                    ForEach(AssistantBackend.selectableOptions(
+                        embeddedLlamaAvailable: appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id),
+                        appleIntelligenceBlocked: Integrations.appleIntelligenceBlocked
+                    )) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 220)
+            }
+            HStack(spacing: 6) {
+                Text("In use now")
+                    .foregroundStyle(Theme.muted.color)
+                Text(integrations.effectiveAssistantBackend.displayName)
+                    .foregroundStyle(Theme.text.color)
+                Spacer()
+            }
+            .font(Theme.Typography.caption)
+            .accessibilityElement(children: .combine)
+
+            if integrations.effectiveAssistantBackend == .ollama {
+                SettingsHairline()
+                ollamaControls
+            } else if integrations.effectiveAssistantBackend == .appleIntelligence {
+                Label("Runs on your Mac with Apple Intelligence — nothing to install or download.", systemImage: "apple.logo")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var ollamaControls: some View {
+        SettingsRow(
+            title: "Model",
+            detail: OllamaCatalog.option(for: settings.ollamaModelName)?.blurb
+        ) {
+            Picker("Model", selection: ollamaModelSelection) {
+                ForEach(OllamaCatalog.options) { option in
+                    Text("\(option.label) (~\(String(format: "%.1f", option.approxSizeGB)) GB)")
+                        .tag(option.tag)
+                }
+                Text("Custom…").tag(OllamaCatalog.customTag)
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 280)
+        }
+        SettingsCaption("Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.ollamaModel).")
+        if !OllamaCatalog.contains(settings.ollamaModelName) {
+            TextField("Ollama model tag (e.g. qwen2.5:7b)", text: $settings.ollamaModelName)
+                .textFieldStyle(.plain)
+                .font(Theme.Typography.body)
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .themeField()
+        }
+        SettingsCaption("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com. Talks to Ollama on this Mac only.")
+        HStack(spacing: 8) {
+            if isPullingOllamaModel {
+                ThemeProgressBar(value: ollamaPullProgress)
+                Text(ollamaPullStatus)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                    .lineLimit(1)
+            } else {
+                Button("Download \(settings.ollamaModelName)") { Task { await pullOllamaModel() } }
+                    .buttonStyle(.themed)
+                    .disabled(settings.ollamaModelName.trimmingCharacters(in: .whitespaces).isEmpty)
+                if ollamaEngineState == .notInstalled {
+                    Button("Get Ollama") { SystemSettingsLinks.openOllamaDownload() }
+                        .buttonStyle(.themed)
+                }
+                Spacer()
+            }
+        }
+    }
+
+    private var builtInModelCard: some View {
+        let installed = FileManager.default.fileExists(atPath: LlamaRuntime.modelURL(for: settings.llamaModel).path)
+        return SettingsCard {
+            SettingsCardHeader(title: "Built-in model (llama.cpp)") {
+                if llamaDownloader.isDownloading {
+                    Chip("Downloading", tone: .info)
+                } else if installed {
+                    Chip("Installed", tone: .ok)
+                } else {
+                    Chip("Not downloaded", tone: .warn)
+                }
+            }
+            SettingsRow(title: "Model") {
+                Picker("Model", selection: $settings.llamaModel) {
+                    ForEach(LlamaModel.allCases) { model in
+                        Text(model.displayName).tag(model)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 280)
+            }
+            if llamaDownloader.isDownloading {
+                downloadProgress(llamaDownloader.progress)
+            } else if installed {
+                HStack {
+                    SettingsCaption("Downloaded to this Mac.")
+                    Spacer()
+                    Button("Re-download") { Task { await downloadLlamaModel() } }
+                        .buttonStyle(.themed)
+                }
+            } else {
+                HStack {
+                    SettingsCaption("Not downloaded (~\(settings.llamaModel.approximateSizeMB) MB)")
+                    Spacer()
+                    Button("Download") { Task { await downloadLlamaModel() } }
+                        .buttonStyle(.themePrimary)
+                }
+            }
+        }
+    }
+
+    private var instructionsCard: some View {
+        SettingsCard {
+            SettingsCardHeader(title: "AI instructions") { EmptyView() }
+            SettingsCaption("The standing instructions sent with every AI request — the assistant's voice and rules. Editing this changes how summaries and chat behave.")
+            EditorField(text: $settings.systemPrompt, minHeight: 140)
+            HStack {
+                Spacer()
+                Button("Reset to Default") { settings.systemPrompt = Prompts.defaultSystemPrompt }
+                    .buttonStyle(.themed)
+                    .disabled(settings.systemPrompt == Prompts.defaultSystemPrompt)
+            }
+        }
+    }
+
+    // MARK: - Note format
+
+    @ViewBuilder
+    private var formatPane: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Default progress note format").eyebrowStyle()
+            ThemeSegmentedControl(
+                options: ProgressNoteFormat.allCases.map { ThemeTab(value: $0, title: $0.shortName) },
+                selection: $settings.progressNoteFormat
+            )
+            .accessibilityLabel("Default progress note format")
+            SettingsCaption(settings.progressNoteFormat.blurb)
+            SettingsCaption("The format new session notes start in. You can still switch formats for any single session on its Note tab.")
+        }
+        SettingsHairline()
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Summary length").eyebrowStyle()
+            ThemeSegmentedControl(
+                options: SummaryVerbosity.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
+                selection: $settings.summaryVerbosity
+            )
+            .accessibilityLabel("Summary length")
+            SettingsCaption(settings.summaryVerbosity.blurb + " Clarity comes first at every length.")
+        }
+    }
+
+    // MARK: - Encryption
+
+    /// Hidden controls only when there's nothing to manage: encryption is off and
+    /// this build doesn't offer turning it on. Once a folder is encrypted — by
+    /// this build or an earlier one — the unlock/manage affordances stay
+    /// unconditional regardless of build tier.
+    private var encryptionOffered: Bool {
+        encryption.isEnabled || appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
+    }
+
+    @ViewBuilder
+    private var encryptionPane: some View {
+        switch encryption.state {
+        case .disabled:
+            HStack(alignment: .center, spacing: 14) {
+                Chip("Off", tone: .warn)
+                Text("Encryption is not on. Notes, transcripts and audio are stored unencrypted in your data folder.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .themeBanner(.warn)
+        case .unlocked:
+            HStack(alignment: .center, spacing: 14) {
+                Chip("On", tone: .ok)
+                Text("Unlocked for this session. Your data folder is encrypted at rest with your recovery passphrase.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .themeBanner(.info)
+        case .lockedNeedsPassphrase:
+            HStack(alignment: .center, spacing: 14) {
+                Chip("On — locked")
+                Text("Unlock from the main window to manage encryption.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .themeBanner(.info)
+        }
+        SettingsCard(spacing: 10) {
+            Text("AES-256-GCM, passphrase-protected")
+                .font(Theme.Typography.body.weight(.semibold))
+                .foregroundStyle(Theme.text.color)
+            Text(encryptionSchemeDescription)
+                .font(Theme.Typography.control.weight(.regular))
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
+            if encryption.state == .disabled {
+                SettingsCaption("Encrypt your notes, transcripts, summaries, chat, patient records and recordings on disk with a passphrase — protecting them even on an external drive, a backup, or a synced folder. FileVault is still recommended as the baseline.")
+            }
+            encryptionActions
+        }
+        if encryption.state == .unlocked {
+            SettingsRowsCard {
+                SettingsRow(
+                    title: "Unlock automatically on this Mac",
+                    detail: "Stores the key in this Mac's login keychain so you don't retype your passphrase each launch. Turn off for maximum security — Aletheia will always ask."
+                ) {
+                    Toggle("Unlock automatically on this Mac", isOn: $rememberOnDevice)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .tint(Theme.accent.color)
+                        .onChange(of: rememberOnDevice) { _, on in
+                            do {
+                                if on { try encryption.rememberOnDevice() } else { encryption.forgetOnDevice() }
+                            } catch {
+                                errorMessage = error.localizedDescription
+                                rememberOnDevice = false
+                            }
+                        }
+                }
+                .padding(.vertical, 12)
+            }
+        }
+        if !encryptionOffered {
+            SettingsCaption("Encryption isn't offered in this build.")
+        }
+    }
+
+    /// Only states what the crypto code does: see `DataCipher`, `ChunkedCipher`,
+    /// `Keystore` and `PassphraseKDF`.
+    private var encryptionSchemeDescription: String {
+        let chunkMiB = ChunkedCipher.defaultChunkSize / (1 << 20)
+        let iterations = PassphraseKDF.defaultIterations.formatted()
+        return "A random data key seals each file with AES-256-GCM; long recordings are sealed in \(chunkMiB) MiB chunks. Your passphrase wraps that key (PBKDF2-HMAC-SHA256, \(iterations) iterations). If you forget the passphrase, your data cannot be recovered."
+    }
+
+    @ViewBuilder
+    private var encryptionActions: some View {
+        switch encryption.state {
+        case .disabled:
+            if appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id) {
+                HStack(spacing: 8) {
+                    Button("Turn On…") { showEncryptionSetup = true }
+                        .buttonStyle(.themePrimary)
+                        .disabled(settings.dataRootURL == nil)
+                    if settings.dataRootURL == nil {
+                        SettingsCaption("Choose a data folder in General first.")
+                    }
+                }
+                .padding(.top, 4)
+            }
+        case .unlocked:
+            HStack(spacing: 8) {
+                if isDisablingEncryption {
+                    ProgressView().controlSize(.small)
+                    SettingsCaption("Decrypting…")
+                } else {
+                    Button("Turn Off Encryption…", role: .destructive) { confirmDisableEncryption = true }
+                        .buttonStyle(.themed)
+                }
+            }
+            .padding(.top, 4)
+        case .lockedNeedsPassphrase:
+            EmptyView()
+        }
+    }
+
+    // MARK: - Backups
+
+    @ViewBuilder
+    private var backupsPane: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Chip("Time Machine", tone: .info)
+            Text(settings.keepDataOutOfSystemBackups
+                 ? "Your data folder is kept out of Time Machine and iCloud backups. Aletheia does not make its own backup copies yet, so keep a copy of your own."
+                 : "Aletheia does not make its own backup copies yet. Time Machine includes the data folder by default.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.text.color)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .themeBanner(.info)
+        SettingsRowsCard {
+            SettingsSwitchRow(
+                title: "Keep my data out of Time Machine & iCloud backups",
+                detail: "Off by default, so Time Machine includes your data folder — without it you'd have only one copy. Your data folder can hold unencrypted patient data (and audio/transcript files), so keep your Time Machine backups on an encrypted disk. Turn this on only if you'd rather keep the folder out of macOS system backups and rely on your own copy instead.",
+                isOn: $settings.keepDataOutOfSystemBackups
+            )
+            .padding(.vertical, 12)
+            SettingsHairline()
+            SettingsSwitchRow(
+                title: "Keep an encrypted backup copy on this Mac",
+                detail: "An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it. Not active in this build yet: your choice is saved, but no backup copy is written until it is.",
+                isOn: $settings.localEncryptedBackupEnabled
+            )
+            .padding(.vertical, 12)
+            SettingsHairline()
+            SettingsSwitchRow(
+                title: "Also back up to iCloud (end-to-end encrypted)",
+                detail: "Uploads the same encrypted snapshot to your private iCloud. It's sealed with your key before it leaves this Mac, so Apple only ever stores data it can't read. Activates in a signed build with iCloud configured; your choice is saved until then.",
+                isOn: $settings.iCloudEncryptedBackupEnabled
+            )
+            .padding(.vertical, 12)
+        }
+        SettingsCaption("Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder.")
+        Button("Show backups folder in Finder", action: showBackupsFolder)
+            .buttonStyle(.themed)
+            .disabled(settings.dataRootURL == nil)
+    }
+
+    /// Reveals `.backups` in Finder, or the data folder itself when no backup
+    /// has been written yet.
+    private func showBackupsFolder() {
+        guard let root = settings.dataRootURL else { return }
+        let backups = BackupLayout.root(dataRoot: root)
+        let target = FileManager.default.fileExists(atPath: backups.path) ? backups : root
+        NSWorkspace.shared.activateFileViewerSelecting([target])
+    }
+
+    // MARK: - Security
+
+    @ViewBuilder
+    private var securityPane: some View {
+        SettingsSwitchRow(
+            title: "App lock",
+            detail: "Require Touch ID or your Mac password to open. Locks the app when it opens and whenever it's hidden, so your patients' notes stay behind it.",
+            isOn: $settings.appLockEnabled
+        )
+        SettingsRow(
+            title: "Lock after inactivity",
+            detail: "Automatically re-locks after this much time with no activity — HIPAA's required \"automatic logoff.\" Needs App lock turned on."
+        ) {
+            Picker("Auto-lock after", selection: idleAutoLockSelection) {
+                ForEach(IdleAutoLockTimeout.allCases) { timeout in
+                    Text(timeout.displayName).tag(timeout)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 180)
+            .disabled(!settings.appLockEnabled)
+        }
+        SettingsRow(
+            title: "Encrypt this Mac's disk with FileVault",
+            detail: "Recommended. FileVault encrypts everything on this Mac at rest so patient data can't be read if the computer is lost or stolen. macOS manages it; it doesn't affect your backups."
+        ) {
+            Button("Open Settings") { SystemSettingsLinks.openFileVaultSettings() }
+                .buttonStyle(.themed)
+        }
+        SettingsHairline()
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Security posture").eyebrowStyle()
+            SecurityPostureView()
+        }
+        auditLogSection
+    }
+
+    private var auditLogSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Security audit log").eyebrowStyle()
+            SettingsCaption("An on-device record of actions that touch patient data — app unlocks, encryption changes, exports and deletions. It holds no names or clinical content, never leaves this Mac, and satisfies HIPAA's audit-control requirement (§164.312(b)).")
+            if auditEntries.isEmpty {
+                SettingsCard {
+                    SettingsCaption("No activity recorded yet.")
+                }
+            } else {
+                SettingsRowsCard {
+                    ForEach(Array(auditEntries.prefix(auditPreviewLimit).enumerated()), id: \.offset) { item in
+                        if item.offset > 0 { SettingsHairline() }
+                        HStack {
+                            Text(item.element.action.displayName)
+                                .foregroundStyle(Theme.text.color)
+                            Spacer()
+                            Text(auditTimestamp(item.element))
+                                .foregroundStyle(Theme.muted.color)
+                        }
+                        .font(Theme.Typography.caption)
+                        .padding(.vertical, 9)
+                    }
+                }
+                if auditEntries.count > auditPreviewLimit {
+                    SettingsCaption("Showing the \(auditPreviewLimit) most recent of \(auditEntries.count) entries.")
+                }
+            }
+            HStack(spacing: 8) {
+                Button("Refresh", action: loadAuditEntries)
+                    .buttonStyle(.themed)
+                Button("Export…", action: exportAuditLog)
+                    .buttonStyle(.themed)
+                    .disabled(auditEntries.isEmpty)
+                Spacer()
+            }
         }
     }
 
@@ -507,61 +872,6 @@ struct SettingsView: View {
         return f.string(from: Date())
     }
 
-    @ViewBuilder
-    private var encryptionSection: some View {
-        switch encryption.state {
-        case .disabled:
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Off").font(Theme.Typography.body.weight(.medium))
-                    Text("Encrypt your notes, transcripts, summaries, chat, patient records and recordings on disk with a passphrase — protecting them even on an external drive, a backup, or a synced folder. FileVault is still recommended as the baseline.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
-                }
-                Spacer()
-                Button("Turn On…") { showEncryptionSetup = true }
-                    .buttonStyle(.themed)
-                    .controlSize(.small)
-                    .disabled(settings.dataRootURL == nil)
-            }
-        case .unlocked:
-            Label("On — unlocked for this session", systemImage: "lock.fill")
-                .foregroundStyle(Theme.accent.color)
-            Text("Your data folder is encrypted at rest with your recovery passphrase.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.muted.color)
-            Toggle("Unlock automatically on this Mac", isOn: $rememberOnDevice)
-                .onChange(of: rememberOnDevice) { _, on in
-                    do {
-                        if on { try encryption.rememberOnDevice() } else { encryption.forgetOnDevice() }
-                    } catch {
-                        errorMessage = error.localizedDescription
-                        rememberOnDevice = false
-                    }
-                }
-            Text("Stores the key in this Mac's login keychain so you don't retype your passphrase each launch. Turn off for maximum security — Aletheia will always ask.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.muted.color)
-            HStack {
-                if isDisablingEncryption {
-                    ProgressView().controlSize(.small)
-                    Text("Decrypting…").font(Theme.Typography.caption).foregroundStyle(Theme.muted.color)
-                } else {
-                    Button("Turn Off Encryption…", role: .destructive) { confirmDisableEncryption = true }
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
-                }
-                Spacer()
-            }
-        case .lockedNeedsPassphrase:
-            Label("On — locked", systemImage: "lock")
-                .foregroundStyle(Theme.muted.color)
-            Text("Unlock from the main window to manage encryption.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.muted.color)
-        }
-    }
-
     private func disableEncryption() {
         isDisablingEncryption = true
         Task { @MainActor in
@@ -571,15 +881,6 @@ struct SettingsView: View {
                 errorMessage = error.localizedDescription
             }
             isDisablingEncryption = false
-        }
-    }
-
-    @ViewBuilder
-    private func statusIcon(_ status: ToolHealthCheck.Status) -> some View {
-        switch status {
-        case .ok: Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent.color)
-        case .warning: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.callAudio.color)
-        case .failed: Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.recording.color)
         }
     }
 
@@ -678,8 +979,7 @@ struct SettingsView: View {
             authoritative: authoritative,
             includeScheduling: appModel.featureRegistry.contains(id: EventKitSchedulingFeatureModule.id)
         )
-        // Only touch the view when something changed, so the 2.5 s refresh
-        // doesn't re-render (and shift) an unchanged list.
+        // Only touch the view when something changed.
         if latest != healthChecks { healthChecks = latest }
     }
 }

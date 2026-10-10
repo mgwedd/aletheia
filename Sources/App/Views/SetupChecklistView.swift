@@ -15,40 +15,47 @@ struct SetupChecklistView: View {
     @State private var ollamaPullProgress: Double = 0
     @State private var ollamaPullStatus = ""
     @State private var errorMessage: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    //   Setup checklist                         3 of 6 done
-    //   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────────────────────
+    //   ━━━━━━━━━━━━━━━━━━━━━━──────────────  2 of 6 done
     //   ┌──────────────────────────────────────────────────┐
     //   │ ✓  Data folder                              Done │
-    //   │ 2  Microphone                     [Allow access] │  ← current: tinted, primary
-    //   │ 3  Transcription model               [Download]  │
+    //   │ ✓  Microphone                               Done │
+    //   │ 3  Screen Recording              [Allow]         │  ← current: tinted, primary
+    //   │ 4  Transcription model           [Download]      │
     //   └──────────────────────────────────────────────────┘
     var body: some View {
         let progress = Setup.progress(items)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Setup checklist")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.text.color)
-                Spacer()
-                ProgressView().controlSize(.small).opacity(isChecking ? 1 : 0)
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                ThemeProgressBar(value: progress.fraction)
+                    .frame(maxWidth: 280)
+                    .accessibilityLabel("Setup progress")
                 if progress.total > 0 {
                     Text("\(progress.done) of \(progress.total) done")
-                        .font(Theme.Typography.caption)
+                        .font(.system(size: 13))
                         .foregroundStyle(Theme.muted.color)
                         .monospacedDigit()
                 }
+                ProgressView().controlSize(.small).opacity(isChecking ? 1 : 0)
+                Spacer(minLength: 0)
             }
-            progressBar(progress.fraction)
 
-            VStack(spacing: 2) {
+            VStack(spacing: 0) {
                 ForEach(Array(items.enumerated()), id: \.element.check.kind) { index, item in
+                    if index > 0 {
+                        Rectangle().fill(Theme.line.color).frame(height: 1)
+                    }
                     row(item, number: index + 1, isCurrent: item.id == progress.currentID)
                 }
             }
-            .padding(6)
-            .themeCard()
-            .animation(.easeOut(duration: 0.2), value: progress)
+            .background(Theme.window.color)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                    .strokeBorder(Theme.line.color, lineWidth: 1)
+            )
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: progress)
 
             Label(settings.recommendation.summary, systemImage: "cpu")
                 .font(Theme.Typography.caption)
@@ -67,31 +74,15 @@ struct SetupChecklistView: View {
         }
     }
 
-    private func progressBar(_ fraction: Double) -> some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Theme.chip.color)
-                Capsule()
-                    .fill(Theme.accent.color)
-                    .frame(width: geometry.size.width * min(max(fraction, 0), 1))
-            }
-        }
-        .frame(height: 6)
-        .animation(.easeOut(duration: 0.25), value: fraction)
-        .accessibilityElement()
-        .accessibilityLabel("Setup progress")
-        .accessibilityValue("\(Int((fraction * 100).rounded())) percent")
-    }
-
     private func row(_ item: SetupItem, number: Int, isCurrent: Bool) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            marker(item.status, number: number)
+        HStack(alignment: .center, spacing: 16) {
+            marker(item.status, number: number, isCurrent: isCurrent)
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
-                    .font(Theme.Typography.body.weight(.medium))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.text.color)
                 Text(item.detail)
-                    .font(Theme.Typography.caption)
+                    .font(.system(size: 13))
                     .foregroundStyle(Theme.muted.color)
                     .fixedSize(horizontal: false, vertical: true)
                 if item.action == .downloadTranscriptionModel, whisperDownloader.isDownloading {
@@ -117,19 +108,16 @@ struct SetupChecklistView: View {
             Spacer(minLength: 8)
             if item.status == .ok {
                 Text("Done")
-                    .font(Theme.Typography.caption.weight(.semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.accent.color)
-                    .padding(.top, 2)
             } else if let action = item.action {
                 actionButton(action, isCurrent: isCurrent)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            isCurrent ? Theme.accentTint.color : .clear,
-            in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
-        )
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isCurrent ? Theme.accentTint.color : .clear)
         .accessibilityElement(children: .contain)
     }
 
@@ -145,30 +133,38 @@ struct SetupChecklistView: View {
         }
     }
 
-    /// A filled check when done; the step's number otherwise (a warning keeps
-    /// its triangle so "needs attention" still reads at a glance).
+    /// The 26pt step marker. Done: accent fill with a check. Current: accent
+    /// ring with the number. Pending: hairline ring with a muted number. A
+    /// warning that isn't the current step keeps its "!" so "needs attention"
+    /// still reads at a glance.
     @ViewBuilder
-    private func marker(_ status: ToolHealthCheck.Status, number: Int) -> some View {
-        switch status {
-        case .ok:
+    private func marker(_ status: ToolHealthCheck.Status, number: Int, isCurrent: Bool) -> some View {
+        if status == .ok {
             Image(systemName: "checkmark")
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(Theme.accentInk.color)
-                .frame(width: 22, height: 22)
+                .frame(width: 26, height: 26)
                 .background(Theme.accent.color, in: Circle())
                 .accessibilityLabel("Done")
-        case .warning:
+        } else if isCurrent {
+            Text("\(number)")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.accent.color)
+                .frame(width: 26, height: 26)
+                .overlay(Circle().strokeBorder(Theme.accent.color, lineWidth: 1.5))
+                .accessibilityLabel("Step \(number), current")
+        } else if status == .warning {
             Image(systemName: "exclamationmark")
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(Theme.callAudio.color)
-                .frame(width: 22, height: 22)
+                .frame(width: 26, height: 26)
                 .overlay(Circle().strokeBorder(Theme.callAudio.color, lineWidth: 1.5))
                 .accessibilityLabel("Needs attention")
-        case .failed:
+        } else {
             Text("\(number)")
-                .font(Theme.Typography.caption.weight(.semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.muted.color)
-                .frame(width: 22, height: 22)
+                .frame(width: 26, height: 26)
                 .overlay(Circle().strokeBorder(Theme.line.color, lineWidth: 1.5))
                 .accessibilityLabel("Step \(number), not done")
         }
@@ -189,8 +185,7 @@ struct SetupChecklistView: View {
             authoritative: authoritative,
             includeScheduling: appModel.featureRegistry.contains(id: EventKitSchedulingFeatureModule.id)
         ))
-        // Unchanged results leave the list alone, so the periodic refresh
-        // doesn't redraw it.
+        // Unchanged results leave the list alone.
         if latest.map(\.check) != items.map(\.check) { items = latest }
     }
 
@@ -202,9 +197,7 @@ struct SetupChecklistView: View {
         for _ in 0..<60 { // ~30s at 0.5s intervals
             if Task.isCancelled { return }
             try? await Task.sleep(nanoseconds: 500_000_000)
-            // Non-prompting check only: probing ScreenCaptureKit twice a second
-            // re-showed the system dialog each time. When the user comes back
-            // from System Settings, the activation refresh runs the one live
+            // Non-prompting check only; the activation refresh runs the one live
             // probe (see `ScreenAccessProbeGate`).
             if SystemAudioCapture.checkPermission() {
                 await refresh()

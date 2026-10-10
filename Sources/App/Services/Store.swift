@@ -831,6 +831,95 @@ final class Store {
         return results
     }
 
+    /// The flat list behind global search: every place `query` matches, across
+    /// all patients. Patients come alphabetically (as `listPatients`), their
+    /// sessions newest first. Per patient: a name match, then for each session
+    /// its transcript, generated progress notes, session notes, and comments.
+    ///
+    /// Everything is read through the same accessors the rest of the app uses
+    /// (`transcript`, `note(for:session:format:)`, the comment store), so content
+    /// that can't be opened right now (locked, unreadable) simply doesn't match.
+    func searchHits(query: String, snippetRadius: Int = 40) -> [SearchHit] {
+        guard !TextSearch.queryTerms(query).isEmpty else { return [] }
+        let patients = (try? listPatients()) ?? []
+        var hits: [SearchHit] = []
+
+        func snippet(_ text: String) -> String {
+            TextSearch.snippet(from: text, query: query, radius: snippetRadius) ?? ""
+        }
+
+        for patient in patients {
+            if TextSearch.matches(patient.name, query: query) {
+                let sessionCount = ((try? listSessions(for: patient)) ?? []).count
+                hits.append(SearchHit(
+                    id: "patient-\(patient.id.uuidString)",
+                    kind: .patient,
+                    patient: patient,
+                    session: nil,
+                    noteLabel: nil,
+                    commentSeconds: nil,
+                    snippet: sessionCount == 1 ? "1 session" : "\(sessionCount) sessions"
+                ))
+            }
+
+            for session in (try? listSessions(for: patient)) ?? [] {
+                func hit(_ kind: SearchKind, _ idSuffix: String, text: String, noteLabel: String? = nil, seconds: Double? = nil) -> SearchHit {
+                    SearchHit(
+                        id: "\(kind.rawValue)-\(session.id.uuidString)\(idSuffix)",
+                        kind: kind,
+                        patient: patient,
+                        session: session,
+                        noteLabel: noteLabel,
+                        commentSeconds: seconds,
+                        snippet: snippet(text)
+                    )
+                }
+
+                if let transcript = transcript(for: patient, session: session),
+                   TextSearch.matches(transcript, query: query) {
+                    hits.append(hit(.transcript, "", text: transcript))
+                }
+
+                // Generated notes, one per format. A session from before
+                // per-format notes only has `summary.txt`, so that's searched
+                // when no per-format note exists (otherwise it just mirrors
+                // the latest one).
+                var hasFormatNote = false
+                for format in ProgressNoteFormat.allCases {
+                    guard let text = note(for: patient, session: session, format: format) else { continue }
+                    hasFormatNote = true
+                    if TextSearch.matches(text, query: query) {
+                        hits.append(hit(.note, "-\(format.rawValue)", text: text, noteLabel: format.shortName))
+                    }
+                }
+                if !hasFormatNote, let text = summary(for: patient, session: session),
+                   TextSearch.matches(text, query: query) {
+                    hits.append(hit(.note, "-summary", text: text, noteLabel: ProgressNoteFormat.narrative.shortName))
+                }
+
+                if let commentStore {
+                    let notes = commentStore.note(sessionID: session.id)
+                    if TextSearch.matches(notes, query: query) {
+                        hits.append(hit(.session, "", text: notes))
+                    }
+                    for comment in commentStore.comments(sessionID: session.id) {
+                        // Prefer what the therapist wrote; fall back to the passage it's on.
+                        let text: String
+                        if TextSearch.matches(comment.body, query: query) {
+                            text = comment.body
+                        } else if TextSearch.matches(comment.quotedText, query: query) {
+                            text = comment.quotedText
+                        } else {
+                            continue
+                        }
+                        hits.append(hit(.comment, "-\(comment.id)", text: text, seconds: comment.anchorSeconds))
+                    }
+                }
+            }
+        }
+        return hits
+    }
+
     // MARK: - Export
 
     func exportSessionMarkdown(patient: Patient, session: SessionRecord) -> String {

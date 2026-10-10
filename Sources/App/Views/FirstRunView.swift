@@ -6,26 +6,36 @@ struct FirstRunView: View {
     @EnvironmentObject private var encryption: EncryptionManager
 
     /// Set once the user ticks the acceptance box. Not persisted until they
-    /// press "Get Started" — that's the moment acceptance is recorded on disk.
+    /// press "Finish setup" — that's the moment acceptance is recorded on disk.
     @State private var agreedToLegal = false
     @State private var showEncryptionSetup = false
 
+    //   Set up Aletheia
+    //   Recording, transcription and the AI all run on this Mac…
+    //   ━━━━━━━━━━━━━━━━━━━━──────────  2 of 6 done
+    //   ┌─ checklist card (SetupChecklistView) ────────────┐
+    //   └──────────────────────────────────────────────────┘
+    //   About · Protect your data · Terms & Privacy       (scrolls)
+    //  ─────────────────────────────────────────────────────
+    //   disclaimer / hint                      [Finish setup]
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("Set up Aletheia")
-                        .font(Theme.Typography.display)
-                        .foregroundStyle(Theme.text.color)
-                        .accessibilityAddTraits(.isHeader)
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Set up Aletheia")
+                            .font(Theme.Typography.display)
+                            .foregroundStyle(Theme.text.color)
+                            .accessibilityAddTraits(.isHeader)
 
-                    Text("""
-                    Everything Aletheia does — recording, transcription, and \
-                    AI summaries — happens on this Mac. Nothing is uploaded anywhere.
-                    """)
-                    .font(Theme.Typography.reading)
-                    .foregroundStyle(Theme.muted.color)
-                    .fixedSize(horizontal: false, vertical: true)
+                        Text("Recording, transcription and the AI all run on this Mac. Client data is never sent to a server. Downloads happen once.")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Theme.muted.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 600, alignment: .leading)
+                    }
+
+                    SetupChecklistView()
 
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Recordings, transcripts, and summaries are saved as plain files you can open in Finder.", systemImage: "folder")
@@ -37,10 +47,6 @@ struct FirstRunView: View {
                     .foregroundStyle(Theme.text.color)
                     .labelStyle(AccentIconLabelStyle())
 
-                    hairline
-
-                    SetupChecklistView()
-
                     if appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id) {
                         hairline
 
@@ -51,30 +57,55 @@ struct FirstRunView: View {
 
                     legalSection
                 }
-                .padding(32)
+                .padding(.horizontal, 48)
+                .padding(.top, 40)
+                .padding(.bottom, 28)
             }
 
-            HStack {
-                Text(footerHint)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                Spacer()
-                Button("Get Started") {
-                    // Record acceptance locally (version + timestamp) at the
-                    // exact moment the user proceeds, then unlock the app.
-                    settings.recordLegalAcceptance()
-                    settings.hasCompletedFirstRun = true
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Aletheia is a tool, not legal or clinical advice. Get your client's consent before recording, and follow your licensing board's rules.")
+                    Text(footerHint)
                 }
-                .buttonStyle(.themePrimary)
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canContinue)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 460, alignment: .leading)
+                Spacer(minLength: 8)
+                finishButton
             }
-            .padding(20)
+            .padding(.horizontal, 48)
+            .padding(.vertical, 20)
             .background(Theme.panel.color)
             .themeDivider(.top)
         }
-        .frame(width: 600, height: 680)
-        .background(Theme.window.color)
+        .frame(width: 720, height: 720)
+        .background(Theme.panel.color)
+    }
+
+    /// Primary once the required steps are done; the standard (disabled) style
+    /// until then. Recording acceptance happens at the moment it is pressed.
+    @ViewBuilder
+    private var finishButton: some View {
+        if canContinue {
+            Button("Finish setup", action: finish)
+                .buttonStyle(.themePrimary)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+        } else {
+            Button("Finish setup", action: finish)
+                .buttonStyle(.themed)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+                .disabled(true)
+        }
+    }
+
+    private func finish() {
+        // Record acceptance locally (version + timestamp) at the exact moment
+        // the user proceeds, then unlock the app.
+        settings.recordLegalAcceptance()
+        settings.hasCompletedFirstRun = true
     }
 
     private var hairline: some View {
@@ -83,7 +114,7 @@ struct FirstRunView: View {
 
     /// Recommends turning on at-rest encryption as part of setup — Aletheia's
     /// default posture. Shown as an opt-out step: the therapist can set it up now
-    /// or proceed and turn it on later in Settings; it never blocks "Get Started".
+    /// or proceed and turn it on later in Settings; it never blocks "Finish setup".
     @ViewBuilder
     private var encryptionSection: some View {
         VStack(alignment: .leading, spacing: 10) {

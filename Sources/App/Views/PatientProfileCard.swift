@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The patient's profile at a glance: a short read-only preview of clinical
-/// history, medications and notes, with an Edit button. Editing happens in
+/// history, medications and notes, with an Edit button. Clicking any field
+/// opens the editor too. Editing happens in
 /// `PatientProfileEditor`, which saves only on an explicit Save.
 struct PatientProfileCard: View {
     let patient: Patient
@@ -34,14 +35,23 @@ struct PatientProfileCard: View {
                 ForEach(rows, id: \.label) { row in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(displayLabel(row.label)).eyebrowStyle()
-                        Text(row.text)
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.text.color)
-                            .lineLimit(3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .themeField()
+                        // A single click opens the editor, like the Edit button.
+                        Button(action: onEdit) {
+                            Text(row.text)
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.text.color)
+                                .multilineTextAlignment(.leading)
+                                .lineLimit(3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .themeField()
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Click to edit")
+                        .accessibilityLabel("\(displayLabel(row.label)): \(row.text)")
+                        .accessibilityHint("Opens the editor")
                     }
                 }
             }
