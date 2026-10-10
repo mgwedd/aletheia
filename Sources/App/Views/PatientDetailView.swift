@@ -332,7 +332,9 @@ struct PatientDetailView: View {
         guard let store = appModel.store else { return }
         let markdown = store.exportPatientHistoryMarkdown(patient: patient)
         let name = FileSaver.fileName(patient.name, "Session History") + ".md"
-        FileSaver.saveText(markdown, suggestedName: name)
+        if FileSaver.saveText(markdown, suggestedName: name) {
+            appModel.recordAudit(.recordExported, subjectID: patient.id.uuidString, detail: "Patient history, Markdown")
+        }
     }
 }
 
