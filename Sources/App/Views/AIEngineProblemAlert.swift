@@ -5,7 +5,7 @@ import SwiftUI
 /// the caller can retry the request that failed.
 @MainActor
 enum AIEngineRecovery {
-    static func perform(_ problem: AIEngineProblem, integrations: Integrations, settings: AppSettings) async throws {
+    static func perform(_ problem: AIEngineProblem, integrations: Integrations) async throws {
         switch problem.action {
         case .getOllama:
             SystemSettingsLinks.openOllamaDownload()
@@ -25,7 +25,6 @@ private struct AIEngineProblemAlert: ViewModifier {
     let retry: () -> Void
 
     @EnvironmentObject private var integrations: Integrations
-    @EnvironmentObject private var settings: AppSettings
     @State private var working = false
     @State private var failure: String?
 
@@ -63,7 +62,7 @@ private struct AIEngineProblemAlert: ViewModifier {
         Task {
             defer { working = false }
             do {
-                try await AIEngineRecovery.perform(current, integrations: integrations, settings: settings)
+                try await AIEngineRecovery.perform(current, integrations: integrations)
                 if current.retriesAfterAction { retry() }
             } catch {
                 failure = error.localizedDescription
