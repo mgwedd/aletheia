@@ -93,6 +93,12 @@ struct SessionDetailView: View {
     @State private var pendingQuote = ""
     @State private var pendingQuoteStart: Int?
     @State private var showInlineComposer = false
+    /// "0:31": the time stamp of the line the pending comment is on.
+    @State private var pendingTimeLabel: String?
+    /// Where the pending passage's last line sits in the transcript pane, as
+    /// reported by the text view (nil until it has been placed).
+    @State private var composerAnchor: CGRect?
+    @State private var composerHeight: CGFloat = 230
     @State private var inlineCommentBody = ""
     @State private var selectedTab: SessionTab = .transcript
     /// Whether the Notes tab shows the therapist's own notes instead of a drafted note.
@@ -463,20 +469,14 @@ struct SessionDetailView: View {
     }
 
     private var scheduleSheet: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Schedule Next Session").font(.headline)
-            DatePicker("Date & time", selection: $scheduleStart)
-                .datePickerStyle(.compact)
-            Stepper("Duration: \(scheduleDurationMinutes) minutes", value: $scheduleDurationMinutes, in: 15...120, step: 5)
-            HStack {
-                Spacer()
-                Button("Cancel") { showScheduleSheet = false }
-                Button("Add to Calendar") { Task { await scheduleEvent() } }
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding()
-        .frame(width: 400)
+        ScheduleNextSessionSheet(
+            patientName: patient.name,
+            lastSessionDate: session.date,
+            start: $scheduleStart,
+            durationMinutes: $scheduleDurationMinutes,
+            onCancel: { showScheduleSheet = false },
+            onSchedule: { Task { await scheduleEvent() } }
+        )
     }
 
     private func exportSession() {
@@ -537,7 +537,7 @@ struct SessionDetailView: View {
                     Button {
                         beginInlineComment()
                     } label: {
-                        Label("Comment on Selection", systemImage: "text.bubble")
+                        Label("Comment on selection", systemImage: "text.bubble")
                     }
                     .disabled(transcriptSelection.isEmpty || transcriptIsDirty)
                     .help(transcriptIsDirty
@@ -545,12 +545,19 @@ struct SessionDetailView: View {
                           : transcriptSelection.isEmpty
                           ? "Select a passage in the transcript to comment on it"
                           : "Add a comment on the selected passage")
-                    Spacer()
+                    Spacer(minLength: 12)
                     if transcriptIsDirty {
                         Text("Edits to the transcript are not saved yet")
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.muted.color)
                             .lineLimit(1)
+                            .transition(.opacity)
+                    } else if transcriptSelection.isEmpty && !showInlineComposer {
+                        Text("Select any part of the transcript to comment")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.muted.color)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                             .transition(.opacity)
                     }
                     Button("Discard") { showDiscardConfirm = true }
@@ -579,9 +586,14 @@ struct SessionDetailView: View {
                         selectionRange: $transcriptSelectionRange,
                         onOpenComment: openComment,
                         focusedCommentID: focusedCommentID,
-                        focusToken: focusToken
+                        focusToken: focusToken,
+                        composingRange: composingRange,
+                        onComposingRectChange: { composerAnchor = $0 }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // The comment composer sits on the transcript, just under the
+                    // passage being commented on.
+                    .overlay { composerOverlay }
                     Rectangle().fill(Theme.line.color).frame(width: 1)
                     CommentsRailView(
                         comments: comments,
@@ -602,40 +614,67 @@ struct SessionDetailView: View {
         } message: {
             Text("The transcript goes back to the last saved version.")
         }
-        .sheet(isPresented: $showInlineComposer) { inlineComposer }
+        // The composer is tied to the saved transcript's offsets, so new text
+        // (a fresh transcription) or unsaved edits close it.
+        .onChange(of: transcriptText) { _, _ in showInlineComposer = false }
+        .onChange(of: transcriptIsDirty) { _, dirty in if dirty { showInlineComposer = false } }
     }
 
-    /// The composer shown after selecting a transcript passage: the quoted text
-    /// is fixed (it's what you selected), you just write the note.
-    private var inlineComposer: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Comment on passage")
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.text.color)
-            Text("“\(pendingQuote)”")
-                .font(Theme.Typography.body)
-                .italic()
-                .foregroundStyle(Theme.highlightInk.color)
-                .lineLimit(4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
-                .background(Theme.highlight.color, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-            EditorField(text: $inlineCommentBody, placeholder: "Add a comment…", minHeight: 90)
-                .frame(maxHeight: 160)
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { showInlineComposer = false }
-                    .buttonStyle(.themed)
-                Button("Add Comment") { saveInlineComment() }
-                    .buttonStyle(.themePrimary)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(inlineCommentBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    // Space around the composer card: it lines up with the transcript's text
+    // column on the left and keeps the same gutter as the text on the right.
+    private static let composerLeading: CGFloat = 88
+    private static let composerTrailing: CGFloat = 24
+    private static let composerMargin: CGFloat = 8
+    private static let composerGap: CGFloat = 6
+
+    /// The passage being commented on, as a range in the transcript.
+    private var composingRange: NSRange? {
+        guard showInlineComposer, let start = pendingQuoteStart else { return nil }
+        let length = (pendingQuote as NSString).length
+        return length > 0 ? NSRange(location: start, length: length) : nil
+    }
+
+    /// The inline composer: a card directly under the line holding the passage
+    /// (above it when there is no room below, pinned inside the pane when the
+    /// passage has scrolled away). The quoted text is fixed; you just write the
+    /// note.
+    @ViewBuilder
+    private var composerOverlay: some View {
+        if showInlineComposer {
+            GeometryReader { proxy in
+                InlineCommentComposerCard(
+                    timeLabel: pendingTimeLabel,
+                    quote: pendingQuote,
+                    text: $inlineCommentBody,
+                    onCancel: { showInlineComposer = false },
+                    onSave: saveInlineComment
+                )
+                .frame(width: max(300, proxy.size.width - Self.composerLeading - Self.composerTrailing))
+                .background(
+                    GeometryReader { card in
+                        Color.clear.preference(key: ComposerHeightKey.self, value: card.size.height)
+                    }
+                )
+                // Hidden for the instant before the text view has placed the
+                // passage, so the card doesn't flash at the top and jump.
+                .opacity(composerAnchor == nil && composingRange != nil ? 0 : 1)
+                .offset(x: Self.composerLeading, y: composerY(in: proxy.size.height))
             }
-            .controlSize(.large)
+            .onPreferenceChange(ComposerHeightKey.self) { composerHeight = $0 }
         }
-        .padding(20)
-        .frame(width: 440)
-        .background(Theme.panel.color)
+    }
+
+    /// Top edge for the composer card: below the passage's last line if it fits,
+    /// else above it, else pinned to the bottom of the pane.
+    private func composerY(in paneHeight: CGFloat) -> CGFloat {
+        let margin = Self.composerMargin
+        let gap = Self.composerGap
+        guard let anchor = composerAnchor else { return margin }
+        let below = anchor.maxY + gap
+        if below + composerHeight <= paneHeight - margin { return max(margin, below) }
+        let above = anchor.minY - gap - composerHeight
+        if above >= margin { return above }
+        return max(margin, paneHeight - composerHeight - margin)
     }
 
     /// The unresolved comments as the highlighter sees them: id, quote, and the
@@ -657,8 +696,20 @@ struct SessionDetailView: View {
             pendingQuote = transcriptSelection.trimmingCharacters(in: .whitespacesAndNewlines)
             pendingQuoteStart = nil
         }
+        pendingTimeLabel = anchorSeconds(quote: pendingQuote, start: pendingQuoteStart).map { TranscriptTimeline.format($0) }
         inlineCommentBody = ""
+        composerAnchor = nil
         showInlineComposer = true
+    }
+
+    /// The time stamp (seconds) of the line a quote sits on: from the exact
+    /// offset when we know where it was, since searching for the quote text
+    /// would land on its first occurrence.
+    private func anchorSeconds(quote: String, start: Int?) -> Int? {
+        if let start {
+            return TranscriptTimeline.seconds(atOffset: start, in: transcriptText)
+        }
+        return TranscriptTimeline.seconds(forQuote: quote, in: transcriptText)
     }
 
     private func saveInlineComment() {
@@ -666,14 +717,7 @@ struct SessionDetailView: View {
         let quote = pendingQuote
         let body = inlineCommentBody.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !quote.isEmpty, !body.isEmpty else { return }
-        // Time-stamp from the exact line selected when we know where it was;
-        // searching for the quote text would land on its first occurrence.
-        let anchorSecs: Int?
-        if let start = pendingQuoteStart {
-            anchorSecs = TranscriptTimeline.seconds(atOffset: start, in: transcriptText)
-        } else {
-            anchorSecs = TranscriptTimeline.seconds(forQuote: quote, in: transcriptText)
-        }
+        let anchorSecs = anchorSeconds(quote: quote, start: pendingQuoteStart)
         let created = commentStore.addComment(
             sessionID: session.id,
             quotedText: quote,
@@ -1256,5 +1300,99 @@ struct SessionDetailView: View {
                 isChatSending = false
             }
         )
+    }
+}
+
+/// Carries the composer card's measured height up to the overlay that places it.
+private struct ComposerHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 230
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// The card the inline comment composer shows under a transcript passage: the
+/// line's time stamp, the quoted passage, a multi-line editor (focused on open)
+/// and Cancel / Save. Return adds a new line; Command-Return saves; Esc cancels.
+private struct InlineCommentComposerCard: View {
+    let timeLabel: String?
+    let quote: String
+    @Binding var text: String
+    var onCancel: () -> Void
+    var onSave: () -> Void
+
+    @FocusState private var focused: Bool
+
+    private var canSave: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                if let timeLabel { Chip(timeLabel) }
+                Text("Comment on selected text")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+            }
+            Text("“\(quote)”")
+                .font(.system(size: 13).italic())
+                .foregroundStyle(Theme.muted.color)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            editor
+            HStack(alignment: .center, spacing: 12) {
+                Text("Comments are included when the progress note is drafted.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 300, alignment: .leading)
+                Spacer(minLength: 0)
+                HStack(spacing: 8) {
+                    KeyCap("⌘ return")
+                        .accessibilityHidden(true)
+                    Button("Cancel", action: onCancel)
+                        .buttonStyle(.themed)
+                        .keyboardShortcut(.cancelAction)
+                    Button("Save comment", action: onSave)
+                        .buttonStyle(.themePrimary)
+                        .keyboardShortcut(.return, modifiers: .command)
+                        .disabled(!canSave)
+                        .help("Save this comment (Command-Return)")
+                }
+                .fixedSize()
+            }
+        }
+        .padding(14)
+        .background(Theme.window.color, in: shape)
+        .overlay(shape.strokeBorder(Theme.accent.color, lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Comment on selected text")
+        .onExitCommand(perform: onCancel)
+        .onAppear { DispatchQueue.main.async { focused = true } }
+    }
+
+    private var editor: some View {
+        TextEditor(text: $text)
+            .font(Theme.Typography.body)
+            .lineSpacing(4)
+            .foregroundStyle(Theme.text.color)
+            .scrollContentBackground(.hidden)
+            .focused($focused)
+            // TextEditor insets its text by 5pt; this brings it to the design's
+            // 12 x 10 padding.
+            .padding(.horizontal, 7)
+            .padding(.vertical, 10)
+            .frame(height: 84)
+            .overlay(alignment: .topLeading) {
+                if text.isEmpty {
+                    Text("Add a comment…")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.muted.color)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .allowsHitTesting(false)
+                }
+            }
+            .themeField(isFocused: focused)
+            .accessibilityLabel("Comment")
     }
 }

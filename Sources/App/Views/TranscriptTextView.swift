@@ -49,6 +49,16 @@ struct TranscriptTextView: NSViewRepresentable {
     /// `focusedCommentID` is the same one as last time, so clicking the same
     /// card again after scrolling away jumps back to its passage.
     var focusToken: Int = 0
+    /// The passage a comment is being written for (UTF-16, in this view's text).
+    /// While set, the passage is shown highlighted and scrolled into view, the
+    /// caret is cleared so nothing competes with the highlight, and
+    /// `onComposingRectChange` reports where the passage's last line sits.
+    var composingRange: NSRange? = nil
+    /// The last line of `composingRange` in this view's own visible area
+    /// (top-left origin, so it can be used directly by a SwiftUI overlay on this
+    /// view). Reported again as the text scrolls or re-wraps; nil when there is
+    /// no passage or it can't be placed.
+    var onComposingRectChange: (CGRect?) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -101,6 +111,20 @@ struct TranscriptTextView: NSViewRepresentable {
             coordinator?.handleClick(at: index)
         }
 
+        context.coordinator.textView = textView
+        // Tell the coordinator when the visible area moves or the text re-wraps,
+        // so a composer anchored under a passage follows it.
+        scroll.contentView.postsBoundsChangedNotifications = true
+        textView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            context.coordinator, selector: #selector(Coordinator.viewportChanged(_:)),
+            name: NSView.boundsDidChangeNotification, object: scroll.contentView
+        )
+        NotificationCenter.default.addObserver(
+            context.coordinator, selector: #selector(Coordinator.viewportChanged(_:)),
+            name: NSView.frameDidChangeNotification, object: textView
+        )
+
         context.coordinator.sync(into: textView)
         return scroll
     }
@@ -114,6 +138,7 @@ struct TranscriptTextView: NSViewRepresentable {
         // user's caret and selection.
         context.coordinator.sync(into: textView)
         context.coordinator.flashIfNeeded(in: textView, focusedCommentID: focusedCommentID, focusToken: focusToken)
+        context.coordinator.syncComposing(in: textView)
     }
 
     /// An `NSTextView` that reports a plain click (single click, no drag, so an
@@ -340,6 +365,83 @@ struct TranscriptTextView: NSViewRepresentable {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak layoutManager] in
                 layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: span.range)
             }
+        }
+
+        // MARK: Composing (highlight, scroll, anchor rect)
+
+        /// The passage the composing highlight was last applied to.
+        private var appliedComposingRange: NSRange?
+        private var lastReportedRect: CGRect?
+        weak var textView: NSTextView?
+
+        /// Keeps the composing highlight, scroll position and reported anchor in
+        /// line with the owner's `composingRange`. Cheap when nothing changed.
+        func syncComposing(in textView: NSTextView) {
+            self.textView = textView
+            let length = (textView.string as NSString).length
+            var target = parent.composingRange
+            if let range = target, range.length == 0 || NSMaxRange(range) > length { target = nil }
+
+            if target != appliedComposingRange {
+                if let layoutManager = textView.layoutManager {
+                    if let old = appliedComposingRange, NSMaxRange(old) <= length {
+                        layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: old)
+                        layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: old)
+                    }
+                    if let range = target {
+                        layoutManager.addTemporaryAttributes(
+                            [.backgroundColor: Theme.highlight.nsColor, .foregroundColor: Theme.highlightInk.nsColor],
+                            forCharacterRange: range
+                        )
+                    }
+                }
+                appliedComposingRange = target
+                if let range = target {
+                    // The passage is shown highlighted instead of selected: drop
+                    // the selection to a caret after it, and bring it into view.
+                    isApplyingProgrammaticChange = true
+                    textView.setSelectedRange(NSRange(location: NSMaxRange(range), length: 0))
+                    isApplyingProgrammaticChange = false
+                    textView.scrollRangeToVisible(range)
+                }
+            }
+            reportComposingRect(for: textView)
+        }
+
+        @objc func viewportChanged(_ notification: Notification) {
+            guard let textView else { return }
+            reportComposingRect(for: textView)
+        }
+
+        /// The last line of the composing passage in the scroll view's visible
+        /// area, top-left origin.
+        private func composingRect(in textView: NSTextView) -> CGRect? {
+            guard
+                let range = appliedComposingRange,
+                let layoutManager = textView.layoutManager,
+                let clip = textView.enclosingScrollView?.contentView
+            else { return nil }
+            layoutManager.ensureLayout(forCharacterRange: range)
+            let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            guard glyphs.length > 0 else { return nil }
+            var line = layoutManager.lineFragmentUsedRect(forGlyphAt: NSMaxRange(glyphs) - 1, effectiveRange: nil)
+            let origin = textView.textContainerOrigin
+            line.origin.x += origin.x
+            line.origin.y += origin.y
+            // The clip view is flipped like its document view, so this is
+            // top-left. Its bounds origin is the scroll offset; subtract it to
+            // get the position within the visible area.
+            let inClip = textView.convert(line, to: clip)
+            return inClip.offsetBy(dx: -clip.bounds.origin.x, dy: -clip.bounds.origin.y)
+        }
+
+        private func reportComposingRect(for textView: NSTextView) {
+            let rect = composingRect(in: textView).map { $0.integral }
+            guard rect != lastReportedRect else { return }
+            lastReportedRect = rect
+            // Always deferred: this can run inside a SwiftUI update pass (or a
+            // scroll that one triggered), where the owner's state can't be written.
+            DispatchQueue.main.async { [weak self] in self?.parent.onComposingRectChange(rect) }
         }
 
         // MARK: NSTextViewDelegate

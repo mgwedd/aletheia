@@ -8,13 +8,18 @@ struct DatabaseGuidanceView: View {
     let guidance: DatabaseGuidance
     let failure: DatabaseOpenFailure
     let dataFolder: URL?
+    /// The banner already shows the explanation above its buttons, so it turns
+    /// this off to avoid saying it twice; the Doctor window keeps the default.
+    var showsExplanation = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(guidance.explanation)
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.text.color)
-                .fixedSize(horizontal: false, vertical: true)
+            if showsExplanation {
+                Text(guidance.explanation)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(guidance.steps.enumerated()), id: \.offset) { index, step in
@@ -49,10 +54,12 @@ struct DatabaseGuidanceView: View {
     }
 }
 
-/// The unmissable, non-blocking error strip shown across the top of the main
-/// window when the database couldn't be opened. Notes and chat can't be saved
-/// until it's fixed, so it must never be silent — but the app stays usable for
-/// reading transcripts and summaries, so it's a banner, not a modal.
+/// The unmissable error card shown across the top of the main window when the
+/// database couldn't be opened: a round red database mark, the headline in the
+/// serif title face, the plain-words explanation, and the actions. Notes and
+/// chat can't be saved until it's fixed, so it must never be silent — but the
+/// app stays usable for reading transcripts and summaries, so it's a card above
+/// the content, not a modal.
 struct DatabaseUnavailableBanner: View {
     let failure: DatabaseOpenFailure
     let dataFolder: URL?
@@ -66,41 +73,69 @@ struct DatabaseUnavailableBanner: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "exclamationmark.octagon.fill")
+        HStack(alignment: .top, spacing: 20) {
+            ZStack {
+                Circle().fill(Theme.recordingTint.color)
+                Image(systemName: "cylinder.split.1x2")
+                    .font(.system(size: 24, weight: .regular))
                     .foregroundStyle(Theme.recording.color)
+            }
+            .frame(width: 56, height: 56)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 10) {
                 Text(guidance.headline)
-                    .font(Theme.Typography.headline)
+                    .font(Theme.Typography.title)
                     .foregroundStyle(Theme.text.color)
-                Spacer()
-                Button(showSteps ? "Hide Steps" : "Show Steps") {
-                    withAnimation { showSteps.toggle() }
-                }
-                .buttonStyle(.themed)
-                .controlSize(.small)
-                if showDoctorButton {
-                    Button("Open Aletheia Doctor…", action: onOpenDoctor)
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
-                }
-            }
-            if showSteps {
-                ScrollView {
-                    DatabaseGuidanceView(guidance: guidance, failure: failure, dataFolder: dataFolder)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 240)
-            } else {
-                Text(guidance.shortNextStep)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(guidance.explanation)
                     .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.text.color)
+                    .foregroundStyle(Theme.muted.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                HStack(spacing: 8) {
+                    Button(showSteps ? "Hide Steps" : "Show Steps") {
+                        withAnimation(.easeOut(duration: 0.15)) { showSteps.toggle() }
+                    }
+                    .buttonStyle(.themed)
+                    if showDoctorButton {
+                        Button("Open Aletheia Doctor…", action: onOpenDoctor)
+                            .buttonStyle(.plain)
+                            .font(Theme.Typography.control)
+                            .foregroundStyle(Theme.muted.color)
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: 34)
+                            .contentShape(Rectangle())
+                    }
+                }
+                .padding(.top, 2)
+                if showSteps {
+                    ScrollView {
+                        DatabaseGuidanceView(
+                            guidance: guidance,
+                            failure: failure,
+                            dataFolder: dataFolder,
+                            showsExplanation: false
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 240)
+                } else {
+                    Text(guidance.shortNextStep)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.text.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .frame(maxWidth: 620, alignment: .leading)
+            Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.recordingTint.color)
-        .themeDivider(.bottom)
+        .themeCard()
+        .padding(12)
+        .background(Theme.window.color)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Error: \(guidance.headline)")
     }
