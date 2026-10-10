@@ -29,7 +29,7 @@ struct PatientDetailView: View {
     /// Save / Discard / Cancel prompt is up.
     @State private var pendingSelection: SessionSelection?
     @State private var showUnsavedPrompt = false
-    @State private var showPatientChat = false
+    @Environment(\.openWindow) private var openWindow
     @State private var errorMessage: String?
     /// The selected session, resolved against the current listing so a session
     /// that has dropped out of it can't leave a dangling selection.
@@ -135,12 +135,6 @@ struct PatientDetailView: View {
         // A transcription finishing changes which sessions have a transcript or
         // recording, even when it isn't the session currently on screen.
         .onChange(of: transcription.outcomes) { _, _ in refresh() }
-        .sheet(isPresented: $showPatientChat) {
-            PatientChatSheet(patient: patient)
-                .environmentObject(appModel)
-                .environmentObject(integrations)
-                .frame(minWidth: 560, minHeight: 500)
-        }
         .alert("Something went wrong", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -204,7 +198,7 @@ struct PatientDetailView: View {
 
     private var askAllButton: some View {
         Button {
-            showPatientChat = true
+            openWindow(id: PatientChatWindow.windowID, value: patient.id)
         } label: {
             Label("Ask about all sessions", systemImage: "bubble.left.and.bubble.right")
         }
@@ -390,18 +384,5 @@ private struct SessionRow: View {
         }
         .accessibilityElement(children: .combine)
         .themeListRow(isSelected: isSelected, surface: Theme.panel)
-    }
-}
-
-private struct PatientChatSheet: View {
-    let patient: Patient
-    @EnvironmentObject private var appModel: AppModel
-    @EnvironmentObject private var integrations: Integrations
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        PatientChatView(patient: patient) { dismiss() }
-            .environmentObject(appModel)
-            .environmentObject(integrations)
     }
 }
