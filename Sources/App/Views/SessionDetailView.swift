@@ -427,11 +427,9 @@ struct SessionDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Wall-clock time since recording began (a paused span still counts, as
-    /// in the menu bar).
+    /// Recorded time so far; the clock holds still while paused.
     private func recordingElapsed(at now: Date) -> String {
-        guard let started = recorder.startedAt else { return TranscriptTimeline.format(0) }
-        return TranscriptTimeline.format(Int(max(0, now.timeIntervalSince(started))))
+        TranscriptTimeline.format(Int(recorder.elapsed(at: now)))
     }
 
     private func scheduleReminder(_ leadTime: ReminderLeadTime) async {

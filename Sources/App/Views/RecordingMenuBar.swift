@@ -124,8 +124,7 @@ struct RecordingMenuBar: View {
     }
 
     private func elapsedString(now: Date) -> String {
-        guard let started = recorder.startedAt else { return TranscriptTimeline.format(0) }
-        return TranscriptTimeline.format(Int(max(0, now.timeIntervalSince(started))))
+        TranscriptTimeline.format(Int(recorder.elapsed(at: now)))
     }
 
     // MARK: Start

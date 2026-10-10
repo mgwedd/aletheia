@@ -18,6 +18,31 @@ enum RecordingLimit {
     }
 }
 
+/// Elapsed recording time that stops while paused: the time since start,
+/// minus every paused span (including one still open).
+struct RecordingClock: Equatable {
+    private(set) var startedAt: Date
+    private var pausedTotal: TimeInterval = 0
+    private var pausedAt: Date?
+
+    init(startedAt: Date) { self.startedAt = startedAt }
+
+    mutating func pause(at now: Date) {
+        if pausedAt == nil { pausedAt = now }
+    }
+
+    mutating func resume(at now: Date) {
+        guard let pausedAt else { return }
+        pausedTotal += max(0, now.timeIntervalSince(pausedAt))
+        self.pausedAt = nil
+    }
+
+    func elapsed(at now: Date) -> TimeInterval {
+        let end = pausedAt ?? now
+        return max(0, end.timeIntervalSince(startedAt) - pausedTotal)
+    }
+}
+
 /// The smoothed live input levels (0...1) shown on the recording panel. A
 /// separate observable object, so the ~15 Hz updates redraw only the meters
 /// rather than every view that observes the recorder.
@@ -46,6 +71,8 @@ final class SessionRecorder: ObservableObject {
     @Published private(set) var state: RecordingState = .idle
     /// True while recording is paused (captures still running, buffers dropped).
     @Published private(set) var isPaused = false
+    /// Drives the elapsed-time display; frozen while paused.
+    private var clock: RecordingClock?
     /// The session currently being recorded, or nil when idle.
     @Published private(set) var active: ActiveRecording?
     /// Set once when a recording has run past `RecordingLimit.reminderThreshold`,
@@ -111,7 +138,9 @@ final class SessionRecorder: ObservableObject {
             self.callURL = callURL
             isPaused = false
             active = context
-            state = .recording(startedAt: Date())
+            let started = Date()
+            clock = RecordingClock(startedAt: started)
+            state = .recording(startedAt: started)
             startReminderTimer()
             startLevelPolling()
         } catch {
@@ -130,6 +159,7 @@ final class SessionRecorder: ObservableObject {
         mic.isPaused = true
         systemAudio.isPaused = true
         isPaused = true
+        clock?.pause(at: Date())
         resetLevels()
     }
 
@@ -139,6 +169,7 @@ final class SessionRecorder: ObservableObject {
         mic.isPaused = false
         systemAudio.isPaused = false
         isPaused = false
+        clock?.resume(at: Date())
     }
 
     func stop() async {
@@ -148,6 +179,7 @@ final class SessionRecorder: ObservableObject {
         mic.stop()
         await systemAudio.stop()
         isPaused = false
+        clock = nil
         let sealError = await sealRecordingsIfNeeded()
         active = nil
         micURL = nil
@@ -234,6 +266,11 @@ final class SessionRecorder: ObservableObject {
     var isRecording: Bool {
         if case .recording = state { return true }
         return false
+    }
+
+    /// Recorded time so far, not counting paused spans (0 when not recording).
+    func elapsed(at now: Date = Date()) -> TimeInterval {
+        clock?.elapsed(at: now) ?? 0
     }
 
     /// When the active recording began (for an elapsed-time display), or nil.
