@@ -1,5 +1,21 @@
 import SwiftUI
 
+/// The boxes in the profile editor. Opening the editor from a field on the
+/// patient view focuses that box.
+enum ProfileField: Equatable {
+    case name, clinicalHistory, medications, notes
+
+    /// The box for a row of the profile card (`Patient.profileRows` labels).
+    init(rowLabel: String) {
+        switch rowLabel {
+        case "Clinical history": self = .clinicalHistory
+        case "Medications": self = .medications
+        case "Notes": self = .notes
+        default: self = .name
+        }
+    }
+}
+
 /// Sheet for editing a patient's name, clinical history, medications and notes.
 /// Nothing is written until Save; Cancel with unsaved changes asks first. The
 /// whole profile is saved in one `updatePatient` call.
@@ -7,6 +23,7 @@ struct PatientProfileEditor: View {
     private let patientID: UUID
     private let original: Patient
     private let showsMedications: Bool
+    private let initialFocus: ProfileField
 
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -17,7 +34,8 @@ struct PatientProfileEditor: View {
     @State private var medications: [Medication]
     @State private var confirmDiscard = false
 
-    init(patient: Patient, showsMedications: Bool) {
+    init(patient: Patient, showsMedications: Bool, initialFocus: ProfileField = .name) {
+        self.initialFocus = initialFocus
         patientID = patient.id
         original = patient
         self.showsMedications = showsMedications
@@ -47,7 +65,7 @@ struct PatientProfileEditor: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     field("Name") {
-                        ProfileTextField(placeholder: "Patient name", label: "Name", text: $name)
+                        ProfileTextField(placeholder: "Patient name", label: "Name", text: $name, autofocus: initialFocus == .name)
                             .frame(height: 40)
                         if cleanedName == nil {
                             Text("A name is required.")
@@ -60,7 +78,8 @@ struct PatientProfileEditor: View {
                         EditorField(
                             text: $notes,
                             placeholder: "Anything worth remembering about this patient…",
-                            minHeight: 84
+                            minHeight: 84,
+                            autofocus: initialFocus == .notes
                         )
                         infoCaption("Your own notes about this patient. Available to the local AI model and included in exports.")
                     }
@@ -69,7 +88,8 @@ struct PatientProfileEditor: View {
                         EditorField(
                             text: $clinicalHistory,
                             placeholder: "Presenting concerns, diagnoses, prior treatment…",
-                            minHeight: 100
+                            minHeight: 100,
+                            autofocus: initialFocus == .clinicalHistory
                         )
                         infoCaption("A short summary of the background. Saved with the patient and available to the local AI model. It stays on this Mac.")
                     }
@@ -203,7 +223,12 @@ struct PatientProfileEditor: View {
             } else {
                 ForEach($medications) { $med in
                     HStack(spacing: 8) {
-                        ProfileTextField(placeholder: "Medication", label: "Medication name", text: $med.name)
+                        ProfileTextField(
+                            placeholder: "Medication",
+                            label: "Medication name",
+                            text: $med.name,
+                            autofocus: initialFocus == .medications && med.id == medications.first?.id
+                        )
                         ProfileTextField(placeholder: "Dose", label: "Dose", text: $med.dose)
                             .frame(width: 130)
                         Button {
@@ -227,6 +252,7 @@ private struct ProfileTextField: View {
     let placeholder: String
     let label: String
     @Binding var text: String
+    var autofocus = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -235,6 +261,7 @@ private struct ProfileTextField: View {
             .font(Theme.Typography.body)
             .foregroundStyle(Theme.text.color)
             .focused($focused)
+            .autofocusAtEnd(autofocus, focus: $focused)
             .padding(.horizontal, 12)
             .frame(maxHeight: .infinity)
             .themeField(isFocused: focused)

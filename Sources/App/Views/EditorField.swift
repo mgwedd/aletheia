@@ -11,6 +11,8 @@ struct EditorField: View {
     var minHeight: CGFloat = 90
     /// Grow to fill the space offered (a full-pane editor) instead of sizing to `minHeight`.
     var fills = false
+    /// Take focus when it appears, with the caret at the end of the text.
+    var autofocus = false
 
     @FocusState private var focused: Bool
 
@@ -21,6 +23,7 @@ struct EditorField: View {
             .foregroundStyle(Theme.text.color)
             .scrollContentBackground(.hidden)
             .focused($focused)
+            .autofocusAtEnd(autofocus, focus: $focused)
             // TextEditor insets its text by 5pt; this brings it to the design's
             // 12 × 10 padding.
             .padding(.horizontal, 7)
@@ -37,5 +40,45 @@ struct EditorField: View {
                 }
             }
             .themeField(isFocused: focused)
+    }
+}
+
+/// Moves keyboard focus to a field when its view appears and puts the caret
+/// after the last character. SwiftUI's `TextField` and `TextEditor` select all
+/// of their text on focus, and macOS 14 has no API to place the caret, so this
+/// reaches the underlying text view.
+private struct AutofocusAtEnd: ViewModifier {
+    let enabled: Bool
+    var focus: FocusState<Bool>.Binding
+
+    func body(content: Content) -> some View {
+        content.onAppear {
+            guard enabled else { return }
+            // The sheet needs a beat to become the key window before focus sticks.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                focus.wrappedValue = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    CaretPlacement.moveToEnd()
+                }
+            }
+        }
+    }
+}
+
+extension View {
+    /// See `AutofocusAtEnd`.
+    func autofocusAtEnd(_ enabled: Bool, focus: FocusState<Bool>.Binding) -> some View {
+        modifier(AutofocusAtEnd(enabled: enabled, focus: focus))
+    }
+}
+
+enum CaretPlacement {
+    /// Collapses the focused text view's selection to the end of its text.
+    /// A single-line `TextField` edits through the window's field editor, which
+    /// is also an `NSTextView`, so one path covers both.
+    static func moveToEnd() {
+        guard let textView = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
+        let end = (textView.string as NSString).length
+        textView.setSelectedRange(NSRange(location: end, length: 0))
     }
 }

@@ -7,7 +7,8 @@ import SwiftUI
 struct PatientProfileCard: View {
     let patient: Patient
     let showsMedications: Bool
-    let onEdit: () -> Void
+    /// Opens the editor with the given box focused.
+    let onEdit: (ProfileField) -> Void
 
     /// The model calls the therapist's own notes "Notes"; in this column they
     /// are set apart from the session notes as "Patient notes".
@@ -21,7 +22,7 @@ struct PatientProfileCard: View {
             HStack {
                 Text("Profile").eyebrowStyle()
                 Spacer()
-                Button("Edit", action: onEdit)
+                Button("Edit") { onEdit(.name) }
                     .buttonStyle(.themed)
                     .controlSize(.small)
                     .help("Edit name, clinical history, medications and notes")
@@ -36,7 +37,7 @@ struct PatientProfileCard: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(displayLabel(row.label)).eyebrowStyle()
                         // A single click opens the editor, like the Edit button.
-                        Button(action: onEdit) {
+                        Button { onEdit(ProfileField(rowLabel: row.label)) } label: {
                             Text(row.text)
                                 .font(Theme.Typography.body)
                                 .foregroundStyle(Theme.text.color)
