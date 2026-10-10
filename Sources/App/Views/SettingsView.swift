@@ -24,6 +24,7 @@ struct SettingsView: View {
     @State private var ollamaPullProgress: Double = 0
     @State private var ollamaPullStatus: String = ""
     @State private var isPullingOllamaModel = false
+    @State private var isStartingOllama = false
     @State private var healthChecks: [ToolHealthCheck] = []
     @State private var isCheckingHealth = false
     @State private var showSetup = false
@@ -480,6 +481,11 @@ struct SettingsView: View {
                     Button("Get Ollama") { SystemSettingsLinks.openOllamaDownload() }
                         .buttonStyle(.themed)
                 }
+                if ollamaEngineState == .installedNotRunning {
+                    Button(isStartingOllama ? "Starting…" : "Start Ollama") { Task { await startOllama() } }
+                        .buttonStyle(.themePrimary)
+                        .disabled(isStartingOllama)
+                }
                 Spacer()
             }
         }
@@ -908,6 +914,19 @@ struct SettingsView: View {
     private func downloadLlamaModel() async {
         do {
             try await llamaDownloader.download(settings.llamaModel, to: LlamaRuntime.modelURL(for: settings.llamaModel))
+            await runHealthChecks()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Launches the installed Ollama and waits until it answers, then refreshes
+    /// the status chip.
+    private func startOllama() async {
+        isStartingOllama = true
+        defer { isStartingOllama = false }
+        do {
+            try await AIEngineRecovery.perform(.notRunning, integrations: integrations, settings: settings)
             await runHealthChecks()
         } catch {
             errorMessage = error.localizedDescription
