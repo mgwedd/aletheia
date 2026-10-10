@@ -4,7 +4,7 @@
 
 Aletheia records a video-call therapy session, transcribes it, drafts a progress note, and lets you search and ask questions across a client's history. The speech recognition and the AI both run on your computer. Client data is never sent to a server, and there is no analytics or telemetry.
 
-[Quickstart](#quickstart) · [How it works](#how-it-works) · [Developer quickstart](#developer-quickstart) · [Setup guide](docs/SETUP-GUIDE.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
+[Quickstart](#quickstart) · [How it works](#how-it-works) · [Developer quickstart](#developer-quickstart) · [Setup guide](docs/SETUP-GUIDE.md) · [Signing](docs/SIGNING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
 > **License:** source-available, not open source. All rights reserved; see [LICENSE](LICENSE), [Terms](TERMS.md) and [Privacy](PRIVACY.md).
 
@@ -238,7 +238,7 @@ Sources/App/
     Llama/                embedded llama.cpp backend (staged)
 Tests/AletheiaTests/      XCTest suite
 scripts/                  build, release, secret scan, entitlement and pin checks
-docs/                     setup, data safety, encryption, HIPAA safeguards
+docs/                     setup, signing, data safety, encryption, HIPAA safeguards
 ```
 
 ### Continuous integration
@@ -290,4 +290,4 @@ Merging to `main` is enough once Smoke Test passes on the merge commit: Auto Rel
 - Mic and call tracks are not sample-accurate with each other, so interleaved lines can be off by a short interval.
 - No CoreML encoder is bundled; transcription uses CPU/Metal.
 - Automatic encrypted backup is not wired in, and encryption is not yet in the production tier.
-- Release builds are not notarized until signing secrets are configured.
+- Release builds are not notarized until signing secrets are configured. See [docs/SIGNING.md](docs/SIGNING.md).
