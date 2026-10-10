@@ -106,6 +106,7 @@ struct AIEngineProgressView: View {
     }
 }
 
+@MainActor
 private func copyDetails(_ incident: AIEngineIncident, integrations: Integrations) {
     let text = AIEngineSupportReport.text(
         incident: incident,
