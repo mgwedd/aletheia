@@ -1,25 +1,40 @@
 import SwiftUI
 import AppKit
 
-/// Runs the one-click fix for an `AIEngineProblem`: open the download page,
-/// launch Ollama and wait for it, or pull the model.
-@MainActor
+/// The side effects a recovery can perform, as closures so the routing from a
+/// problem to its fix is unit-tested with fakes.
+struct AIEngineActions {
+    var openDownloadPage: () -> Void
+    var startOllama: () async throws -> Void
+    var pullModel: (_ name: String, _ onProgress: @escaping (Double, String) -> Void) async throws -> Void
+
+    @MainActor
+    static func live(integrations: Integrations) -> AIEngineActions {
+        AIEngineActions(
+            openDownloadPage: { SystemSettingsLinks.openOllamaDownload() },
+            startOllama: {
+                let assistant = integrations.makeAssistant()
+                try await OllamaLauncher.launchAndWaitUntilReachable { await assistant.isReachable() }
+            },
+            pullModel: { name, onProgress in
+                try await integrations.makeAssistant().pullModel(name, onProgress: onProgress)
+            }
+        )
+    }
+}
+
+/// Runs the one-click fix for an `AIEngineProblem`.
 enum AIEngineRecovery {
     static func perform(
         _ problem: AIEngineProblem,
-        integrations: Integrations,
+        actions: AIEngineActions,
         onProgress: @escaping (Double, String) -> Void = { _, _ in }
     ) async throws {
         switch problem.action {
-        case .getOllama:
-            SystemSettingsLinks.openOllamaDownload()
-        case .startOllama:
-            let assistant = integrations.makeAssistant()
-            try await OllamaLauncher.launchAndWaitUntilReachable { await assistant.isReachable() }
-        case .downloadModel(let name):
-            try await integrations.makeAssistant().pullModel(name, onProgress: onProgress)
-        case .retry:
-            break
+        case .getOllama: actions.openDownloadPage()
+        case .startOllama: try await actions.startOllama()
+        case .downloadModel(let name): try await actions.pullModel(name, onProgress)
+        case .retry: break
         }
     }
 }
@@ -27,32 +42,38 @@ enum AIEngineRecovery {
 /// Drives one recovery at a time and publishes what the progress UI shows.
 @MainActor
 final class AIEngineRecoveryController: ObservableObject {
+    typealias Perform = @MainActor (_ problem: AIEngineProblem, _ onProgress: @escaping (Double, String) -> Void) async throws -> Void
+
     @Published private(set) var isWorking = false
     /// 0...1 while a model downloads; nil when the work has no measurable progress.
     @Published private(set) var progress: Double?
     @Published private(set) var status = ""
     @Published var failure: String?
 
-    /// Returns true when the fix succeeded.
-    func run(_ problem: AIEngineProblem, integrations: Integrations) async -> Bool {
+    /// Returns true when the fix succeeded. A second call while one is running
+    /// does nothing and returns false.
+    func run(_ problem: AIEngineProblem, perform: Perform) async -> Bool {
         guard !isWorking else { return false }
         isWorking = true
+        failure = nil
         progress = nil
         status = Self.startingStatus(for: problem)
         if case .downloadModel = problem.action { progress = 0 }
         defer { isWorking = false }
         do {
-            try await AIEngineRecovery.perform(problem, integrations: integrations) { [weak self] fraction, text in
-                Task { @MainActor in
-                    self?.progress = fraction
-                    if !text.isEmpty { self?.status = text }
-                }
+            try await perform(problem) { [weak self] fraction, text in
+                Task { @MainActor in self?.report(fraction: fraction, text: text) }
             }
             return true
         } catch {
             failure = error.localizedDescription
             return false
         }
+    }
+
+    func report(fraction: Double, text: String) {
+        progress = min(max(fraction, 0), 1)
+        if !text.isEmpty { status = text }
     }
 
     static func startingStatus(for problem: AIEngineProblem) -> String {
@@ -135,9 +156,10 @@ private struct AIEngineAlert: ViewModifier {
 
     private func run(_ problem: AIEngineProblem) {
         Task {
-            if await controller.run(problem, integrations: integrations), problem.retriesAfterAction {
-                retry()
+            let fixed = await controller.run(problem) { problem, onProgress in
+                try await AIEngineRecovery.perform(problem, actions: .live(integrations: integrations), onProgress: onProgress)
             }
+            if fixed, problem.retriesAfterAction { retry() }
         }
     }
 }
@@ -220,7 +242,9 @@ struct AIEngineBanner: View {
 
     private func fix(_ current: AIEngineProblem) {
         Task {
-            _ = await controller.run(current, integrations: integrations)
+            _ = await controller.run(current) { problem, onProgress in
+                try await AIEngineRecovery.perform(problem, actions: .live(integrations: integrations), onProgress: onProgress)
+            }
             await check()
         }
     }
@@ -231,14 +255,13 @@ struct AIEngineBanner: View {
 @MainActor
 enum AIEngineHealth {
     static func problem(integrations: Integrations) async -> AIEngineProblem? {
-        guard integrations.effectiveAssistantBackend == .ollama else { return nil }
         let assistant = integrations.makeAssistant()
-        let model = integrations.ollamaModelName
-        let reachable = await assistant.isReachable()
-        let hasModel: Bool? = reachable ? await assistant.hasModel(model) : nil
-        // A running Ollama counts as installed even if the app bundle isn't found.
-        let installed = reachable ? true : OllamaAppLocator.isInstalled()
-        let state = OllamaEngineState.classify(installed: installed, isLaunching: false, reachable: reachable, hasModel: hasModel)
-        return AIEngineProblem.from(state: state, modelName: model)
+        return await AIEngineProbe(
+            isOllamaBackend: integrations.effectiveAssistantBackend == .ollama,
+            modelName: integrations.ollamaModelName,
+            isReachable: { await assistant.isReachable() },
+            hasModel: { await assistant.hasModel($0) },
+            isInstalled: { OllamaAppLocator.isInstalled() }
+        ).problem()
     }
 }

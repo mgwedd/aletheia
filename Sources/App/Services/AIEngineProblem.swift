@@ -132,3 +132,46 @@ enum AIEngineSupportReport {
         ].joined(separator: "\n")
     }
 }
+
+/// What the banner asks the engine, as closures so the decision is unit-tested.
+struct AIEngineProbe {
+    var isOllamaBackend: Bool
+    var modelName: String
+    var isReachable: () async -> Bool
+    var hasModel: (String) async -> Bool
+    var isInstalled: () -> Bool
+
+    /// The problem to show, or nil when the engine is fine or isn't Ollama.
+    func problem() async -> AIEngineProblem? {
+        guard isOllamaBackend else { return nil }
+        let reachable = await isReachable()
+        var model: Bool?
+        if reachable { model = await hasModel(modelName) }
+        // A running Ollama counts as installed even if the app bundle isn't found.
+        let installed = reachable ? true : isInstalled()
+        let state = OllamaEngineState.classify(installed: installed, isLaunching: false, reachable: reachable, hasModel: model)
+        return AIEngineProblem.from(state: state, modelName: modelName)
+    }
+}
+
+/// A request to re-run once, after the user fixes the engine. Taking it clears
+/// it, so a dismissed alert can't re-run a stale request later.
+struct PendingRetry<Value> {
+    private var value: Value?
+
+    mutating func set(_ value: Value) { self.value = value }
+
+    mutating func take() -> Value? {
+        defer { value = nil }
+        return value
+    }
+}
+
+extension Array where Element == ChatMessage {
+    /// Removes the message with `id` and everything after it (the question and
+    /// any partial answer), so a retry asks the question once.
+    mutating func removeTurn(startingAt id: UUID) {
+        guard let index = firstIndex(where: { $0.id == id }) else { return }
+        removeSubrange(index...)
+    }
+}

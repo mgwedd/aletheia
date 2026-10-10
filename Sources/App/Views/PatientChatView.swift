@@ -27,9 +27,9 @@ struct PatientChatView: View {
     @State private var isSending = false
     @State private var errorMessage: String?
     /// Set when a request failed because the local AI engine is down or missing
-    /// its model; the alert offers a one-click fix and then re-asks `retryQuestion`.
+    /// its model; the alert offers a one-click fix and then re-asks the pending question.
     @State private var engineIncident: AIEngineIncident?
-    @State private var retryQuestion: String?
+    @State private var pendingRetry = PendingRetry<String>()
     @State private var renamingThread: ChatThread?
     @State private var renameText = ""
     /// Sessions whose transcript couldn't be read when the last question was
@@ -108,10 +108,7 @@ struct PatientChatView: View {
             Text(errorMessage ?? "")
         }
         .aiEngineAlert($engineIncident) {
-            if let question = retryQuestion {
-                retryQuestion = nil
-                send(question)
-            }
+            if let question = pendingRetry.take() { send(question) }
         }
     }
 
@@ -318,10 +315,8 @@ struct PatientChatView: View {
                 isSending = false
                 if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
                     // Take the unanswered question back out so a retry asks it once.
-                    if let index = messages.firstIndex(where: { $0.id == userMessage.id }) {
-                        messages.removeSubrange(index...)
-                    }
-                    retryQuestion = question
+                    messages.removeTurn(startingAt: userMessage.id)
+                    pendingRetry.set(question)
                     engineIncident = incident
                 } else {
                     errorMessage = error.localizedDescription

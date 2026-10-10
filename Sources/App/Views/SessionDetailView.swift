@@ -120,7 +120,7 @@ struct SessionDetailView: View {
     /// Set when note generation or a chat answer failed because the local AI
     /// engine is down; `engineRetry` re-runs whatever failed after the fix.
     @State private var engineIncident: AIEngineIncident?
-    @State private var engineRetry: (() -> Void)?
+    @State private var engineRetry = PendingRetry<() -> Void>()
     @State private var confirmationMessage: String?
     @State private var showScheduleSheet = false
     @State private var scheduleStart = Date()
@@ -208,9 +208,7 @@ struct SessionDetailView: View {
             Text(errorMessage ?? "")
         }
         .aiEngineAlert($engineIncident) {
-            let retry = engineRetry
-            engineRetry = nil
-            retry?()
+            engineRetry.take()?()
         }
         .alert("Done", isPresented: Binding(get: { confirmationMessage != nil }, set: { if !$0 { confirmationMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -1234,7 +1232,7 @@ struct SessionDetailView: View {
             },
             onError: { error in
                 if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
-                    engineRetry = { generateNote() }
+                    engineRetry.set { generateNote() }
                     engineIncident = incident
                 } else {
                     errorMessage = error.localizedDescription
@@ -1309,10 +1307,8 @@ struct SessionDetailView: View {
                 isChatSending = false
                 if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
                     // Take the unanswered question back out so a retry asks it once.
-                    if let index = chatMessages.firstIndex(where: { $0.id == userMessage.id }) {
-                        chatMessages.removeSubrange(index...)
-                    }
-                    engineRetry = { sendChat(question) }
+                    chatMessages.removeTurn(startingAt: userMessage.id)
+                    engineRetry.set { sendChat(question) }
                     engineIncident = incident
                 } else {
                     errorMessage = error.localizedDescription

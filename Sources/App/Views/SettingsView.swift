@@ -926,7 +926,7 @@ struct SettingsView: View {
         isStartingOllama = true
         defer { isStartingOllama = false }
         do {
-            try await AIEngineRecovery.perform(.notRunning, integrations: integrations)
+            try await AIEngineRecovery.perform(.notRunning, actions: .live(integrations: integrations))
             await runHealthChecks()
         } catch {
             errorMessage = error.localizedDescription
