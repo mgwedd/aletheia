@@ -129,6 +129,14 @@ struct AletheiaApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
+            // Stock File > Close Window (⌘W). Stated explicitly so it's always
+            // present and works for the main, Doctor and Settings windows alike.
+            CommandGroup(replacing: .saveItem) {
+                Button("Close Window") {
+                    NSApp.keyWindow?.performClose(nil)
+                }
+                .keyboardShortcut("w", modifiers: .command)
+            }
             // Put a real "Check for Updates…" in the app menu, next to About,
             // so updates aren't only a silent on-launch check.
             CommandGroup(after: .appInfo) {
