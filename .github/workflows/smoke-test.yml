@@ -38,6 +38,11 @@ jobs:
         run: ./scripts/check-theme-colors.sh --self-test
       - name: Check screens use theme colors
         run: ./scripts/check-theme-colors.sh
+      # Every AuditAction must be recorded somewhere (an unwired one leaves the log empty).
+      - name: Self-test the audit wiring guard
+        run: ./scripts/check-audit-wiring.sh --self-test
+      - name: Check audit actions are recorded
+        run: ./scripts/check-audit-wiring.sh
 
   build-and-test:
     name: Build & test (${{ matrix.tier }}, ${{ matrix.runner }})
