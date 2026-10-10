@@ -9,6 +9,18 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.34.0] - 2026-10-10
+
+### Added
+- open the editor with a single click on a profile field (#235)
+- inline comment composer, schedule sheet and menu-bar panel redesign (#224)
+- redesign first-launch checklist and Mermaid diagram card (#223)
+- restyle Edit patient and encryption setup/unlock to the artboards (#222)
+- redesign the Doctor window to the artboard (#221)
+- sidebar layout with General, AI, Note format, Encryption, Backups and Security panes (#220)
+- restyle transcription, damaged-records, database, lock and update screens to the artboards (#219)
+- flat global search with filters and keyboard navigation (#218)
+
 ## [2.33.0] - 2026-10-09
 
 ### Added
