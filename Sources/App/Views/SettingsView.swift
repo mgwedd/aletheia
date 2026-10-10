@@ -715,16 +715,18 @@ struct SettingsView: View {
             SettingsHairline()
             SettingsSwitchRow(
                 title: "Keep an encrypted backup copy on this Mac",
-                detail: "An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it. Not active in this build yet: your choice is saved, but no backup copy is written until it is.",
-                isOn: $settings.localEncryptedBackupEnabled
+                detail: "An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it. Coming soon: nothing is written yet, so this stays off.",
+                isOn: .constant(false)
             )
+            .disabled(true)
             .padding(.vertical, 12)
             SettingsHairline()
             SettingsSwitchRow(
                 title: "Also back up to iCloud (end-to-end encrypted)",
-                detail: "Uploads the same encrypted snapshot to your private iCloud. It's sealed with your key before it leaves this Mac, so Apple only ever stores data it can't read. Activates in a signed build with iCloud configured; your choice is saved until then.",
-                isOn: $settings.iCloudEncryptedBackupEnabled
+                detail: "Uploads the same encrypted snapshot to your private iCloud. It's sealed with your key before it leaves this Mac, so Apple only ever stores data it can't read. Coming soon: it needs a signed build with iCloud configured, so this stays off.",
+                isOn: .constant(false)
             )
+            .disabled(true)
             .padding(.vertical, 12)
         }
         SettingsCaption("Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder.")
@@ -783,10 +785,10 @@ struct SettingsView: View {
     private var auditLogSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Security audit log").eyebrowStyle()
-            SettingsCaption("An on-device record of actions that touch patient data — app unlocks, encryption changes, exports and deletions. It holds no names or clinical content, never leaves this Mac, and satisfies HIPAA's audit-control requirement (§164.312(b)).")
+            SettingsCaption("An on-device record of app unlocks (when app lock is on), encryption changes and exports. Deletions and backups are not recorded yet. It holds no names or clinical content and never leaves this Mac. It supports, but does not by itself satisfy, HIPAA's audit-control requirement (§164.312(b)).")
             if auditEntries.isEmpty {
                 SettingsCard {
-                    SettingsCaption("No activity recorded yet.")
+                    SettingsCaption("No activity recorded yet. App unlocks are only logged when app lock is on.")
                 }
             } else {
                 SettingsRowsCard {
