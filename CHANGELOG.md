@@ -9,6 +9,12 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.34.2] - 2026-10-10
+
+### Fixed
+- match backup toggles and audit log copy to what the app does (#248)
+- explicit File > Close Window (⌘W) command (#242)
+
 ## [2.34.1] - 2026-10-10
 
 ### Fixed
