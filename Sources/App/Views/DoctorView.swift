@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The Aletheia Doctor window: runs the health checks on demand, lists each
 /// with a plain-language result and next step, and offers a PHI-safe "Copy
-/// report". Nothing runs until this window is opened or Re-run is pressed.
+/// report". Nothing runs until this window is opened or "Run checks again" is pressed.
 struct DoctorView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appModel: AppModel
@@ -12,23 +12,23 @@ struct DoctorView: View {
     @State private var report: DoctorReport?
     @State private var isRunning = false
     @State private var justCopied = false
+    @State private var showOnlyIssues = false
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Rectangle().fill(Theme.line.color).frame(height: 1)
+            if let report { metaRow(report) }
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 18) {
                     if let failure = appModel.databaseState.failure {
                         databaseProblemCard(failure)
                     }
                     if let report {
-                        ForEach(report.grouped) { group in
+                        let groups = report.grouped(onlyIssues: showOnlyIssues)
+                        ForEach(groups) { group in
                             section(group.category, group.checks)
                         }
-                        Text("This report contains check names, statuses, counts and versions only — never patient names, session names or note text. Everything is checked on this Mac.")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.muted.color)
+                        if groups.isEmpty { noIssuesCard(report) }
                     } else {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
@@ -36,9 +36,11 @@ struct DoctorView: View {
                         }
                     }
                 }
-                .padding()
+                .padding(.horizontal, 32)
+                .padding(.bottom, 20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            footer
         }
         .frame(minWidth: 560, minHeight: 480)
         .background(Theme.window.color)
@@ -48,28 +50,78 @@ struct DoctorView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            if let report {
-                statusIcon(report.overall).font(Theme.Typography.headline)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Aletheia Doctor")
-                    .font(Theme.Typography.title)
+        HStack(alignment: .top, spacing: 24) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(report?.headline ?? "Checking your setup…")
+                    .font(.system(size: 30, weight: .regular, design: .serif))
                     .foregroundStyle(Theme.text.color)
-                Text(report?.summary ?? "Checking your setup…")
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                if let report {
+                    Text(report.explanation)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.muted.color)
+                        .lineSpacing(3)
+                        .frame(maxWidth: 520, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                if isRunning { ProgressView().controlSize(.small) }
+                Button("Run checks again") { Task { await run() } }
+                    .buttonStyle(.themed)
+                    .disabled(isRunning)
+                Button(justCopied ? "Copied" : "Copy report") { copyReport() }
+                    .buttonStyle(.themePrimary)
+                    .disabled(report == nil)
+            }
+            .fixedSize()
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 24)
+        .padding(.bottom, 20)
+    }
+
+    private func metaRow(_ report: DoctorReport) -> some View {
+        HStack {
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                Text("Last run \(report.lastRunDescription(now: context.date)). \(report.checkCountDescription).")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
             }
             Spacer()
-            if isRunning { ProgressView().controlSize(.small) }
-            Button("Re-run") { Task { await run() } }
-                .buttonStyle(.themed)
-                .disabled(isRunning)
-            Button(justCopied ? "Copied" : "Copy Report") { copyReport() }
-                .buttonStyle(.themed)
-                .disabled(report == nil)
+            HStack(spacing: 10) {
+                Toggle("Show only issues", isOn: $showOnlyIssues)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .tint(Theme.accent.color)
+                Text("Show only issues")
+                    .font(Theme.Typography.control)
+                    .foregroundStyle(Theme.text.color)
+                    .onTapGesture { showOnlyIssues.toggle() }
+                    .accessibilityHidden(true)
+            }
         }
-        .padding()
+        .padding(.horizontal, 32)
+        .padding(.bottom, 12)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock")
+                .font(.system(size: 12))
+                .accessibilityHidden(true)
+            Text("This report contains check names, statuses, counts and versions only — never patient names, session names or note text. Everything is checked on this Mac.")
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(Theme.Typography.caption)
+        .foregroundStyle(Theme.muted.color)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 32)
+        .padding(.vertical, 14)
+        .background(Theme.sidebar.color)
+        .themeDivider(.top)
     }
 
     // MARK: - Rows
@@ -84,54 +136,64 @@ struct DoctorView: View {
                 .foregroundStyle(Theme.recording.color)
             DatabaseGuidanceView(guidance: guidance, failure: failure, dataFolder: folder)
         }
-        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.recordingTint.color, in: RoundedRectangle(cornerRadius: 8))
+        .themeBanner(.danger)
     }
 
     private func section(_ category: DoctorCategory, _ checks: [DoctorCheck]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(category.title)
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.text.color)
-            ForEach(checks) { check in
-                row(check)
-                if check.id != checks.last?.id { Rectangle().fill(Theme.line.color).frame(height: 1) }
+                .eyebrowStyle()
+            VStack(spacing: 0) {
+                ForEach(checks) { check in
+                    row(check)
+                    if check.id != checks.last?.id {
+                        Rectangle().fill(Theme.line.color).frame(height: 1)
+                    }
+                }
             }
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .themeCard()
         }
     }
 
+    private func noIssuesCard(_ report: DoctorReport) -> some View {
+        Text(report.overall == .ok ? "No issues. All \(report.checkCountDescription) passed." : "No issues to show.")
+            .font(Theme.Typography.body)
+            .foregroundStyle(Theme.muted.color)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 20)
+            .themeCard()
+    }
+
     private func row(_ check: DoctorCheck) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            statusIcon(check.status)
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .top, spacing: 14) {
+            Chip(check.status.label, tone: check.status.chipTone)
+                .frame(width: 72)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
                 Text(check.title)
                     .font(Theme.Typography.body.weight(.medium))
                     .foregroundStyle(Theme.text.color)
                 Text(check.detail)
-                    .font(Theme.Typography.caption)
+                    .font(Theme.Typography.control.weight(.regular))
                     .foregroundStyle(Theme.muted.color)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
                 if let next = check.nextStep {
                     Text("Next: \(next)")
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.control.weight(.regular))
                         .foregroundStyle(Theme.text.color)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
+                        .padding(.top, 2)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.vertical, 13)
         .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder
-    private func statusIcon(_ status: DoctorStatus) -> some View {
-        switch status {
-        case .ok: Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent.color)
-        case .warning: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.callAudio.color)
-        case .failed: Image(systemName: "xmark.octagon.fill").foregroundStyle(Theme.recording.color)
-        }
     }
 
     // MARK: - Actions
@@ -158,6 +220,17 @@ struct DoctorView: View {
         Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             justCopied = false
+        }
+    }
+}
+
+private extension DoctorStatus {
+    /// The chip colour for this result.
+    var chipTone: Chip.Tone {
+        switch self {
+        case .ok: return .ok
+        case .warning: return .warn
+        case .failed: return .recording
         }
     }
 }

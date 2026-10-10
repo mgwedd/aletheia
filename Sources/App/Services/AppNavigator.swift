@@ -9,7 +9,22 @@ final class AppNavigator: ObservableObject {
 
     @Published var pendingPatientID: UUID?
 
+    /// A session to open once its patient is on screen (set by global search).
+    /// `PatientDetailView` consumes it when its patient matches.
+    struct PendingSession: Equatable {
+        let patientID: UUID
+        let sessionID: UUID
+    }
+
+    @Published var pendingSession: PendingSession?
+
     private init() {}
+
+    /// Asks the patient view for `patientID` to select `sessionID`. The caller
+    /// selects the patient itself; this only carries the session through.
+    func requestOpenSession(patientID: UUID, sessionID: UUID) {
+        pendingSession = PendingSession(patientID: patientID, sessionID: sessionID)
+    }
 
     func requestOpen(patientID: UUID) {
         pendingPatientID = patientID

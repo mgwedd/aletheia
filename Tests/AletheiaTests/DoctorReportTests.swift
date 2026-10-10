@@ -93,6 +93,37 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertEqual(report(checks: [t, d]).grouped.map(\.category), [.dataFolder, .tools])
     }
 
+    func testHeadlineCountsProblemsAndWarningsWithCorrectPlurals() {
+        func check(_ id: String, _ status: DoctorStatus) -> DoctorCheck {
+            DoctorCheck(id: id, category: .tools, title: id, status: status, detail: "")
+        }
+        XCTAssertEqual(report(checks: []).headline, "All checks passed")
+        XCTAssertEqual(report(checks: [check("a", .ok)]).headline, "All checks passed")
+        XCTAssertEqual(report(checks: [check("a", .failed), check("b", .warning), check("c", .warning)]).headline, "1 problem, 2 warnings")
+        XCTAssertEqual(report(checks: [check("a", .failed), check("b", .failed), check("c", .warning)]).headline, "2 problems, 1 warning")
+        XCTAssertEqual(report(checks: [check("a", .warning)]).headline, "1 warning")
+        XCTAssertEqual(report(checks: [check("a", .failed), check("b", .ok)]).headline, "1 problem")
+    }
+
+    func testGroupedOnlyIssuesDropsOkChecksAndEmptyCategories() {
+        let okTool = DoctorCheck(id: "t", category: .tools, title: "t", status: .ok, detail: "")
+        let warnData = DoctorCheck(id: "d", category: .dataFolder, title: "d", status: .warning, detail: "")
+        let okData = DoctorCheck(id: "d2", category: .dataFolder, title: "d2", status: .ok, detail: "")
+        let groups = report(checks: [okTool, warnData, okData]).grouped(onlyIssues: true)
+        XCTAssertEqual(groups.map(\.category), [.dataFolder])
+        XCTAssertEqual(groups.first?.checks.map(\.id), ["d"])
+        XCTAssertEqual(report(checks: [okTool, warnData, okData]).grouped(onlyIssues: false).count, 2)
+    }
+
+    func testCheckCountAndLastRunDescriptions() {
+        let c = DoctorCheck(id: "a", category: .tools, title: "a", status: .ok, detail: "")
+        XCTAssertEqual(report(checks: [c]).checkCountDescription, "1 check")
+        XCTAssertEqual(report(checks: [c, c]).checkCountDescription, "2 checks")
+        let r = report(checks: [c])
+        XCTAssertEqual(r.lastRunDescription(now: r.generatedAt.addingTimeInterval(10)), "just now")
+        XCTAssertNotEqual(r.lastRunDescription(now: r.generatedAt.addingTimeInterval(600)), "just now")
+    }
+
     // MARK: Guidance: never destructive first
 
     func testEveryKindHasStepsAndNoneLeadWithADestructiveVerb() {

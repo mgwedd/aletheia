@@ -79,7 +79,7 @@ struct CommentsRailView: View {
                     Image(systemName: "text.bubble")
                         .font(.title2)
                         .foregroundStyle(Theme.muted.color)
-                    Text("Select a passage in the transcript and click “Comment on Selection” to add one here.")
+                    Text("Select a passage in the transcript and click “Comment on selection” to add one here.")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.muted.color)
                         .multilineTextAlignment(.center)
