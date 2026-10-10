@@ -144,7 +144,7 @@ private struct AIEngineAlert: ViewModifier {
             .overlay {
                 if controller.isWorking {
                     ZStack {
-                        Color.black.opacity(0.15)
+                        Theme.text.color.opacity(0.12)
                         AIEngineProgressView(controller: controller)
                             .padding(16)
                             .frame(width: 320)
