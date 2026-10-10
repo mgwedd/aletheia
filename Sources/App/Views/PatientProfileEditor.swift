@@ -62,7 +62,7 @@ struct PatientProfileEditor: View {
                             placeholder: "Anything worth remembering about this patient…",
                             minHeight: 84
                         )
-                        infoCaption("Your own notes about this patient. Shared with the AI and included in exports.")
+                        infoCaption("Your own notes about this patient. Available to the local AI model and included in exports.")
                     }
 
                     field("Clinical history") {
@@ -71,7 +71,7 @@ struct PatientProfileEditor: View {
                             placeholder: "Presenting concerns, diagnoses, prior treatment…",
                             minHeight: 100
                         )
-                        infoCaption("A short summary of the background. Saved with the patient and shared with the AI's patient context. It stays on this Mac.")
+                        infoCaption("A short summary of the background. Saved with the patient and available to the local AI model. It stays on this Mac.")
                     }
 
                     if showsMedications { medicationsField }
