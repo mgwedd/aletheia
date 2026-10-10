@@ -9,6 +9,13 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.34.1] - 2026-10-10
+
+### Fixed
+- stop the screen-recording prompt loop and the status list jitter (#241)
+- record an entry when a session or patient history export is saved (#240)
+- stop the elapsed clock while paused (#236)
+
 ## [2.34.0] - 2026-10-10
 
 ### Added
