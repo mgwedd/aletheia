@@ -167,8 +167,7 @@ struct RecordingMenuBar: View {
 
     /// `HH:MM:SS`, as in the design.
     private func elapsedString(now: Date) -> String {
-        guard let started = recorder.startedAt else { return "00:00:00" }
-        let total = Int(max(0, now.timeIntervalSince(started)))
+        let total = Int(max(0, recorder.elapsed(at: now)))
         return String(format: "%02d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
     }
 
