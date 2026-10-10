@@ -308,12 +308,13 @@ struct PatientChatView: View {
                 persist(threadID: threadID)
             },
             onFinish: { finalText in
-                // Source citations are a .preview-tier module; production shows
-                // the raw answer without the numbered sources footer. See
-                // SourceCitationsFeatureModule.
-                let decorated = appModel.featureRegistry.contains(id: SourceCitationsFeatureModule.id)
-                    ? Citations.decorate(answer: finalText, sources: context.sources)
-                    : finalText
+                // Builds without the SourceCitationsFeatureModule show the raw
+                // answer, without the sources footer.
+                let decorated = Citations.display(
+                    answer: finalText,
+                    sources: context.sources,
+                    enabled: appModel.featureRegistry.contains(id: SourceCitationsFeatureModule.id)
+                )
                 messages.upsert(id: assistantID, role: .assistant, text: decorated)
                 isSending = false
                 persist(threadID: threadID)

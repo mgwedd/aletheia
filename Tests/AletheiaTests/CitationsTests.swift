@@ -52,6 +52,101 @@ final class CitationsTests: XCTestCase {
     }
 }
 
+extension CitationsTests {
+    private func day(_ y: Int, _ m: Int, _ d: Int) -> Date {
+        Calendar(identifier: .gregorian).date(from: DateComponents(year: y, month: m, day: d))!
+    }
+
+    private func twelve() -> [CitationSource] {
+        (1...12).map { CitationSource(tag: "S\($0)", date: day(2026, 12 - ($0 - 1), 1), folderName: "f\($0)") }
+    }
+
+    // A tag must match whole: "[S1]" is not inside "[S10]".
+    func testTagMatchingIsExactSoS1DoesNotMatchS10() {
+        let all = twelve()
+        XCTAssertEqual(Citations.citedSources(in: "See [S10].", from: all).map(\.tag), ["S10"])
+        let out = Citations.decorate(answer: "See [S10].", sources: all)
+        XCTAssertTrue(out.contains("(Mar 1, 2026)"), "S10 is March 1")
+        XCTAssertFalse(out.contains("Dec 1, 2026"), "S1's date must not appear")
+    }
+
+    func testRepeatedTagIsReplacedEverywhereAndListedOnce() {
+        let out = Citations.decorate(answer: "Yes [S1]. Again [S1].", sources: sources())
+        XCTAssertFalse(out.contains("[S1]"))
+        XCTAssertEqual(out.components(separatedBy: "(Mar 5, 2026)").count - 1, 2)
+        XCTAssertEqual(out.components(separatedBy: "March 5, 2026").count - 1, 1, "footer lists the session once")
+    }
+
+    func testFooterIsNewestFirstEvenWhenTheAnswerCitesOlderFirst() {
+        let out = Citations.decorate(answer: "Earlier [S2], later [S1].", sources: sources())
+        let footer = out.components(separatedBy: "Sources: ").last ?? ""
+        XCTAssertEqual(footer, "March 5, 2026; January 5, 2026")
+    }
+
+    func testAdjacentTagsAreBothResolved() {
+        let out = Citations.decorate(answer: "Noted [S1][S2].", sources: sources())
+        XCTAssertTrue(out.contains("(Mar 5, 2026)(Jan 5, 2026)"))
+    }
+
+    func testTagsAreCaseSensitive() {
+        let out = Citations.decorate(answer: "Maybe [s1]?", sources: sources())
+        XCTAssertEqual(out, "Maybe [s1]?")
+    }
+
+    func testEmptyInputs() {
+        XCTAssertEqual(Citations.decorate(answer: "", sources: sources()), "")
+        XCTAssertEqual(Citations.decorate(answer: "Per [S1].", sources: []), "Per [S1].")
+        XCTAssertTrue(Citations.citedSources(in: "", from: sources()).isEmpty)
+    }
+
+    func testDecorateIsStableWhenRunTwice() {
+        let once = Citations.decorate(answer: "Per [S1].", sources: sources())
+        XCTAssertEqual(Citations.decorate(answer: once, sources: sources()), once, "already-decorated text has no tags left to rewrite")
+    }
+
+    // The gate the chat view applies: without the module the answer is untouched.
+    func testDisplayShowsRawAnswerWhenModuleIsAbsent() {
+        let raw = "Her sleep improved [S1]."
+        XCTAssertEqual(Citations.display(answer: raw, sources: sources(), enabled: false), raw)
+    }
+
+    func testDisplayDecoratesWhenModuleIsPresent() {
+        let out = Citations.display(answer: "Her sleep improved [S1].", sources: sources(), enabled: true)
+        XCTAssertTrue(out.contains("Sources: March 5, 2026"))
+    }
+
+    func testDisplayFollowsTheRegistryForEachTier() {
+        for tier in [BuildTier.production, .preview, .dev] {
+            let registry = FeatureRegistry.compose(tier: tier, from: FeatureRegistry.allModules)
+            let enabled = registry.contains(id: SourceCitationsFeatureModule.id)
+            let out = Citations.display(answer: "x [S1]", sources: sources(), enabled: enabled)
+            XCTAssertTrue(out.contains("Sources:"), "citations footer expected at \(tier)")
+        }
+    }
+}
+
+final class TranscriptCoverageEdgeTests: XCTestCase {
+    func testNothingReadableIsNotPartialAndShowsFull() {
+        let c = TranscriptCoverage()
+        XCTAssertFalse(c.isPartial)
+        XCTAssertEqual(c.percentIncluded, 100)
+        XCTAssertNil(c.notice)
+    }
+
+    func testIncludedAboveTotalIsCappedAt100AndNotPartial() {
+        let c = TranscriptCoverage(sessions: 1, sessionsWithoutPassages: 0, totalCharacters: 100, includedCharacters: 150)
+        XCTAssertFalse(c.isPartial)
+        XCTAssertEqual(c.percentIncluded, 100)
+    }
+
+    func testNoticeMentionsSessionsWithoutPassagesOnlyWhenThereAreSome() {
+        let none = TranscriptCoverage(sessions: 3, sessionsWithoutPassages: 0, totalCharacters: 1000, includedCharacters: 500)
+        XCTAssertEqual(none.notice?.contains("session(s) had no transcript passage"), false)
+        let some = TranscriptCoverage(sessions: 3, sessionsWithoutPassages: 2, totalCharacters: 1000, includedCharacters: 500)
+        XCTAssertEqual(some.notice?.contains("2 of 3 session(s) had no transcript passage included"), true)
+    }
+}
+
 final class CitedContextTests: XCTestCase {
     private var tempRoot: URL!
     private var store: Store!
