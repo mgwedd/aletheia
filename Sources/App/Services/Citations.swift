@@ -113,4 +113,11 @@ enum Citations {
         let list = cited.map { footerFormatter.string(from: $0.date) }.joined(separator: "; ")
         return result + "\n\nSources: " + list
     }
+
+    /// What the chat shows for a finished answer: decorated when the citations
+    /// module is in this build, the raw answer otherwise. Pulled out of the view
+    /// so the gate is testable.
+    static func display(answer: String, sources: [CitationSource], enabled: Bool) -> String {
+        enabled ? decorate(answer: answer, sources: sources) : answer
+    }
 }
