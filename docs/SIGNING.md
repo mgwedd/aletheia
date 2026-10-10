@@ -150,6 +150,39 @@ Release tags are cut by `auto-release.yml` (conventional commits → semver). Th
 next release after the secrets exist is signed and notarized automatically.
 Nothing else to change.
 
+## Credential safety
+
+**App-specific password.** It cannot sign in to your Apple account, change
+settings or reach iCloud. It only authenticates tools like `notarytool`, which
+can submit builds for notarization under your team. Revoke it any time at
+account.apple.com → Sign-In and Security → App-Specific Passwords. Changing
+your Apple ID password revokes all of them.
+
+**Where the real risk is.** Anyone who can push a workflow to this repo can
+write a job that prints its secrets. Secrets are not exposed to fork PRs, but
+they are not protected from a workflow with write access. The .p12 is the more
+damaging leak: it lets someone sign software as you.
+
+Reduce it:
+
+1. **GitHub Environment.** Settings → Environments → New environment
+   `release`, add yourself as a required reviewer, and store the secrets there
+   instead of at repo level. Each run that reads them then waits for your
+   approval. (The workflow would need `environment: release` on the job.)
+2. **App Store Connect API key instead of Apple ID + password.** `notarytool`
+   accepts `--key`, `--key-id` and `--issuer`. Create the key at
+   <https://appstoreconnect.apple.com/access/integrations/api> (Team Keys),
+   with the lowest role that allows notarization. It is separate from your
+   Apple ID password and revocable on its own. The workflow does not use it
+   yet.
+3. **Dedicated Apple ID** for the developer team, with a unique password and
+   two-factor authentication.
+4. Keep the number of people with write access to the repo small.
+
+If you suspect a leak: revoke the app-specific password, revoke the
+certificate at <https://developer.apple.com/account/resources/certificates/list>,
+and reissue (steps 2–5).
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
