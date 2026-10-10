@@ -12,6 +12,8 @@ struct PatientDetailView: View {
     /// Shared with the session view and the menu bar, to mark the row that is
     /// being recorded right now.
     @EnvironmentObject private var recorder: SessionRecorder
+    /// Carries a session chosen in global search to this patient's view.
+    @ObservedObject private var navigator = AppNavigator.shared
     @State private var sessions: [SessionRecord] = []
     /// Session folders whose `session.json` couldn't be read (left untouched).
     @State private var damagedSessions: [UnreadableEntry] = []
@@ -125,7 +127,11 @@ struct PatientDetailView: View {
             .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle(storedPatient.name)
-        .onAppear { refresh() }
+        .onAppear {
+            refresh()
+            openPendingSession()
+        }
+        .onChange(of: navigator.pendingSession) { _, _ in openPendingSession() }
         // A transcription finishing changes which sessions have a transcript or
         // recording, even when it isn't the session currently on screen.
         .onChange(of: transcription.outcomes) { _, _ in refresh() }
@@ -297,6 +303,17 @@ struct PatientDetailView: View {
             }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Selects the session global search asked for, if it belongs to this
+    /// patient. Goes through `requestSelection`, so unsaved transcript edits
+    /// are still guarded.
+    private func openPendingSession() {
+        guard let pending = navigator.pendingSession, pending.patientID == patient.id else { return }
+        navigator.pendingSession = nil
+        if sessions.contains(where: { $0.id == pending.sessionID }) {
+            requestSelection(pending.sessionID)
         }
     }
 

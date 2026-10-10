@@ -69,7 +69,12 @@ struct RootView: View {
             .environmentObject(appModel)
         }
         .sheet(isPresented: $showSearch) {
-            GlobalSearchView(onSelectPatient: { selectedPatient = $0 })
+            GlobalSearchView(onOpen: { patient, session in
+                selectedPatient = patient
+                if let session {
+                    navigator.requestOpenSession(patientID: patient.id, sessionID: session.id)
+                }
+            })
                 .environmentObject(appModel)
         }
         .sheet(isPresented: updatePresented) {

@@ -24,4 +24,13 @@ final class AppNavigatorTests: XCTestCase {
         navigator.open(.session(patientID: patientID, folderName: folderName))
         XCTAssertEqual(navigator.pendingPatientID, patientID)
     }
+
+    func testRequestOpenSessionCarriesPatientAndSession() {
+        let navigator = AppNavigator.shared
+        let patientID = UUID()
+        let sessionID = UUID()
+        navigator.requestOpenSession(patientID: patientID, sessionID: sessionID)
+        XCTAssertEqual(navigator.pendingSession, AppNavigator.PendingSession(patientID: patientID, sessionID: sessionID))
+        navigator.pendingSession = nil
+    }
 }
