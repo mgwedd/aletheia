@@ -17,8 +17,8 @@ struct MermaidPalette {
     var lifeline: Color
 
     static let adaptive = MermaidPalette(
-        nodeFill: Theme.accentTint.color,
-        nodeStroke: Theme.accent.color.opacity(0.75),
+        nodeFill: Theme.raised.color,
+        nodeStroke: Theme.line.color,
         text: Theme.text.color,
         edge: Theme.muted.color,
         // Edge labels sit on the diagram card, which is a `Theme.field` surface.
@@ -51,6 +51,9 @@ struct MermaidDiagramView: View {
     let layout: MermaidLayout
     /// Short plain-language description for VoiceOver.
     let summary: String
+    /// How far past its natural size the diagram may grow. 1 keeps the inline
+    /// look; the expanded sheet passes a larger value to fill its width.
+    var maxScale: CGFloat = 1
 
     @State private var availableWidth: CGFloat = 0
 
@@ -67,7 +70,7 @@ struct MermaidDiagramView: View {
                 if scale >= minimumScale {
                     MermaidCanvas(layout: layout, palette: .adaptive)
                         .aspectRatio(natural, contentMode: .fit)
-                        .frame(maxWidth: natural.width)
+                        .frame(maxWidth: natural.width * max(maxScale, 1))
                 } else {
                     ScrollView(.horizontal, showsIndicators: true) {
                         MermaidCanvas(layout: layout, palette: .adaptive)
@@ -93,6 +96,253 @@ private struct MermaidWidthKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+// MARK: - Card
+
+/// Where a diagram card appears; it decides the caption under the card and
+/// whether the card offers Expand.
+enum MermaidCardContext {
+    case ask
+    case note
+
+    var caption: String {
+        switch self {
+        case .ask:
+            return "Drawn by the on-device model from this session. Check it against the transcript."
+        case .note:
+            return "Diagrams are kept in the note as text. Copy and Export include the Mermaid source."
+        }
+    }
+}
+
+/// A Mermaid block as a card: a header with the chip, a Diagram / Source toggle
+/// and icon buttons, then the drawn diagram or the monospaced source, with a
+/// muted caption under it.
+///
+///   ┌────────────────────────────────────────────────┐
+///   │ (Mermaid diagram)      [Diagram|Source]  ⧉  ⤢  │
+///   ├────────────────────────────────────────────────┤
+///   │                  rendered diagram              │
+///   └────────────────────────────────────────────────┘
+///    caption
+///
+/// With no `diagram` (unsupported type, malformed, or still streaming in) the
+/// card shows the source only, with no toggle and no error text.
+struct MermaidCard: View {
+    private enum Mode: Hashable { case diagram, source }
+
+    let source: String
+    let diagram: MermaidDiagram?
+    let context: MermaidCardContext
+
+    @State private var mode: Mode = .diagram
+    @State private var copied = false
+    @State private var isExpanded = false
+
+    var body: some View {
+        // Cached by source, so a streaming re-render doesn't redo the layout.
+        let layout = diagram.map { MermaidDiagram.cachedLayout(for: source, diagram: $0) }
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
+                header(layout)
+                Rectangle().fill(Theme.line.color).frame(height: 1)
+                content(layout)
+            }
+            .background(Theme.field.color)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                    .strokeBorder(Theme.line.color, lineWidth: 1)
+            )
+
+            Text(context.caption)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .sheet(isPresented: $isExpanded) {
+            if let layout, let diagram {
+                MermaidExpandedSheet(source: source, layout: layout, summary: diagram.accessibilityDescription)
+            }
+        }
+    }
+
+    private func header(_ layout: MermaidLayout?) -> some View {
+        HStack(spacing: 6) {
+            Chip("Mermaid diagram")
+            Spacer(minLength: 8)
+            if layout != nil {
+                ThemeSegmentedControl(
+                    options: [
+                        ThemeTab(value: Mode.diagram, title: "Diagram"),
+                        ThemeTab(value: Mode.source, title: "Source")
+                    ],
+                    selection: $mode
+                )
+                .frame(width: 160)
+            }
+            CopyMenu(source: source, layout: layout, copied: $copied)
+            if context == .ask, layout != nil {
+                Button {
+                    isExpanded = true
+                } label: {
+                    Label("Expand diagram", systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+                .buttonStyle(.themeIcon)
+                .controlSize(.small)
+                .help("Open a larger view of the diagram")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    @ViewBuilder
+    private func content(_ layout: MermaidLayout?) -> some View {
+        if let layout, let diagram, mode == .diagram {
+            MermaidDiagramView(layout: layout, summary: diagram.accessibilityDescription)
+                .padding(14)
+        } else {
+            MermaidSourceText(source: source)
+        }
+    }
+}
+
+/// The Mermaid text in a monospaced block that scrolls sideways rather than
+/// wrapping, so indentation stays readable.
+private struct MermaidSourceText: View {
+    let source: String
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Text(source.isEmpty ? " " : source)
+                .font(.system(size: 12.5, design: .monospaced))
+                .lineSpacing(5)
+                .foregroundStyle(Theme.text.color)
+                .textSelection(.enabled)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// The Copy icon. Its main action copies a picture of the diagram (with the
+/// source alongside as text for plain-text editors); the menu also offers the
+/// source alone. With no drawn diagram it just copies the source.
+private struct CopyMenu: View {
+    let source: String
+    let layout: MermaidLayout?
+    @Binding var copied: Bool
+
+    @State private var isHovered = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+        Menu {
+            if layout != nil {
+                Button("Copy diagram as picture") { copyPicture() }
+            }
+            Button("Copy Mermaid source") { copySource() }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(isHovered ? Theme.text.color : Theme.muted.color)
+                .frame(width: 26, height: 26)
+                .background(isHovered ? Theme.hover.color : .clear, in: shape)
+                .contentShape(shape)
+        } primaryAction: {
+            if layout != nil { copyPicture() } else { copySource() }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .help(layout != nil
+              ? "Copies a picture of the diagram, and its source as text for plain-text editors"
+              : "Copy the Mermaid source")
+        .accessibilityLabel(copied ? "Copied" : "Copy diagram")
+    }
+
+    // Button actions run on the main thread; `assumeIsolated` states that for
+    // the main-actor pasteboard helpers without making the whole view main-actor.
+    private func copyPicture() {
+        guard let layout else { return }
+        let source = self.source
+        MainActor.assumeIsolated {
+            MermaidPasteboard.copyDiagram(layout: layout, source: source)
+        }
+        flashCopied()
+    }
+
+    private func copySource() {
+        let source = self.source
+        MainActor.assumeIsolated {
+            MermaidPasteboard.copySource(source)
+        }
+        flashCopied()
+    }
+
+    private func flashCopied() {
+        copied = true
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            copied = false
+        }
+    }
+}
+
+/// The Expand sheet: the same diagram, scaled up to the sheet's width, with a
+/// Diagram / Source toggle and Copy.
+private struct MermaidExpandedSheet: View {
+    private enum Mode: Hashable { case diagram, source }
+
+    let source: String
+    let layout: MermaidLayout
+    let summary: String
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var mode: Mode = .diagram
+    @State private var copied = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Chip("Mermaid diagram")
+                Spacer(minLength: 8)
+                ThemeSegmentedControl(
+                    options: [
+                        ThemeTab(value: Mode.diagram, title: "Diagram"),
+                        ThemeTab(value: Mode.source, title: "Source")
+                    ],
+                    selection: $mode
+                )
+                .frame(width: 160)
+                CopyMenu(source: source, layout: layout, copied: $copied)
+                Button("Done") { dismiss() }
+                    .buttonStyle(.themePrimary)
+                    .controlSize(.small)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .themeDivider(.bottom)
+
+            ScrollView([.vertical]) {
+                if mode == .diagram {
+                    MermaidDiagramView(layout: layout, summary: summary, maxScale: 2.5)
+                        .padding(24)
+                } else {
+                    MermaidSourceText(source: source)
+                }
+            }
+        }
+        .frame(minWidth: 720, idealWidth: 860, minHeight: 520, idealHeight: 620)
+        .background(Theme.field.color)
+        .onExitCommand { dismiss() }
     }
 }
 
@@ -136,7 +386,7 @@ enum MermaidPainter {
     private static func shapePath(_ shape: MermaidDiagram.Flowchart.Shape, in rect: CGRect) -> Path {
         switch shape {
         case .rectangle:
-            return Path(roundedRect: rect, cornerRadius: 4)
+            return Path(roundedRect: rect, cornerRadius: 6)
         case .rounded:
             return Path(roundedRect: rect, cornerRadius: 12)
         case .stadium:

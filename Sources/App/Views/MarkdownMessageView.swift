@@ -114,9 +114,10 @@ private struct OptionalLineSpacing: ViewModifier {
 /// code renders as a copyable code card. A ```mermaid block the system prompt
 /// invites is drawn as a real diagram — flowcharts and sequence diagrams, laid
 /// out and painted natively (see `MermaidDiagram`), with no web view or script —
-/// on a card that copies the diagram as a picture (plus its source as text). One
-/// that can't be drawn (unsupported type, malformed, still streaming in) falls
-/// back to the source in a code card, labeled as a diagram, with no error text.
+/// on a `MermaidCard` that toggles between the drawing and its source and copies
+/// the diagram as a picture (plus its source as text). One that can't be drawn
+/// (unsupported type, malformed, still streaming in) shows its source in the
+/// same card, with no error text.
 ///
 /// It re-parses on each streamed update; parsing is cheap and a partial document
 /// is always valid input (see `MarkdownParser`), so the answer formats live as
@@ -174,10 +175,15 @@ struct MarkdownMessageView: View {
             }
 
         case let .code(language, code):
-            if block.isMermaid, let diagram = MermaidDiagram.parse(code) {
-                DiagramCard(source: code, diagram: diagram)
+            if block.isMermaid {
+                // Drawn when it parses; otherwise the card shows the source.
+                MermaidCard(
+                    source: code,
+                    diagram: MermaidDiagram.parse(code),
+                    context: style == .note ? .note : .ask
+                )
             } else {
-                CodeCard(language: language, code: code, isMermaid: block.isMermaid)
+                CodeCard(language: language, code: code)
             }
 
         case .rule:
@@ -221,25 +227,22 @@ struct MarkdownMessageView: View {
     }
 }
 
-/// A fenced code (or unrenderable Mermaid) block: monospaced body on a subtle card,
-/// with a caption row that names the language and offers one-click copy. Mermaid
-/// blocks are captioned as a diagram so their source reads as intentional.
+/// A fenced code block: monospaced body on a subtle card, with a caption row
+/// that names the language and offers one-click copy.
 private struct CodeCard: View {
     let language: String?
     let code: String
-    let isMermaid: Bool
 
     @State private var copied = false
 
     private var caption: String {
-        if isMermaid { return "Diagram" }
-        return language?.capitalized ?? "Code"
+        language?.capitalized ?? "Code"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Label(caption, systemImage: isMermaid ? "point.3.connected.trianglepath.dotted" : "chevron.left.forwardslash.chevron.right")
+                Label(caption, systemImage: "chevron.left.forwardslash.chevron.right")
                     .font(.caption2)
                     .foregroundStyle(Theme.muted.color)
                 Spacer()
@@ -282,83 +285,6 @@ private struct CodeCard: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(code, forType: .string)
         #endif
-        copied = true
-        Task {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            copied = false
-        }
-    }
-}
-
-/// A rendered Mermaid diagram on the same card as `CodeCard`. "Copy" puts a
-/// picture on the clipboard (with the source alongside as text); the menu also
-/// offers the source alone for anyone who wants the Mermaid text.
-private struct DiagramCard: View {
-    let source: String
-    let diagram: MermaidDiagram
-
-    @State private var copied = false
-
-    var body: some View {
-        // Cached by source, so a streaming re-render doesn't redo the layout.
-        let layout = MermaidDiagram.cachedLayout(for: source, diagram: diagram)
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Label("Diagram", systemImage: "point.3.connected.trianglepath.dotted")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.muted.color)
-                Spacer()
-                Menu {
-                    Button("Copy Mermaid source") {
-                        copySource()
-                    }
-                } label: {
-                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
-                        .font(.caption2)
-                } primaryAction: {
-                    copyPicture(layout)
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .foregroundStyle(Theme.muted.color)
-                .help("Copies a picture of the diagram, and its source as text for plain-text editors")
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Theme.window.color)
-
-            Theme.line.color.frame(height: 1)
-
-            MermaidDiagramView(layout: layout, summary: diagram.accessibilityDescription)
-                .padding(10)
-        }
-        .background(Theme.field.color)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                .strokeBorder(Theme.line.color, lineWidth: 1)
-        )
-    }
-
-    // Button actions run on the main thread; `assumeIsolated` states that for
-    // the main-actor pasteboard helpers without making the whole view main-actor.
-    private func copyPicture(_ layout: MermaidLayout) {
-        let source = self.source
-        MainActor.assumeIsolated {
-            MermaidPasteboard.copyDiagram(layout: layout, source: source)
-        }
-        flashCopied()
-    }
-
-    private func copySource() {
-        let source = self.source
-        MainActor.assumeIsolated {
-            MermaidPasteboard.copySource(source)
-        }
-        flashCopied()
-    }
-
-    private func flashCopied() {
         copied = true
         Task {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
