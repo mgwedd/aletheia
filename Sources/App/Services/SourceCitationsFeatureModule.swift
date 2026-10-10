@@ -3,9 +3,8 @@ import Foundation
 /// Source citations in cross-session chat answers as a `FeatureModule`.
 ///
 /// Complete and working — it appends a numbered "sources" footer to an answer so
-/// the therapist can trace a claim back to the session it came from — but it's a
-/// non-core enrichment on top of chat, so it ships from `.preview` rather than
-/// `.production`.
+/// the therapist can trace a claim back to the session it came from. It's useful
+/// enough to ship in `.production`; the module stays so it can be pulled cleanly.
 ///
 /// Gating is at the one call site (`PatientChatView`), which uses the raw answer
 /// instead of the decorated one when the module is absent. Context retrieval is
@@ -17,5 +16,5 @@ struct SourceCitationsFeatureModule: FeatureModule {
 
     var id: String { Self.id }
     let title = "Source Citations"
-    let tier: BuildTier = .preview
+    let tier: BuildTier = .production
 }

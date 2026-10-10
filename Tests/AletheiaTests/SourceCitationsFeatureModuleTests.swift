@@ -1,23 +1,14 @@
 import XCTest
 @testable import Aletheia
 
-/// Source citations (the numbered "sources" footer on chat answers) are carved to
-/// `.preview`: complete but a non-core enrichment. These pin the module out of
-/// the production build and into preview/dev — against the real composition
-/// root's catalog.
+/// Source citations (the numbered "sources" footer on chat answers) ship in
+/// every tier. These pin that against the real composition root's catalog, so
+/// a later demotion is a deliberate change.
 final class SourceCitationsFeatureModuleTests: XCTestCase {
-    func testProductionBuildDoesNotIncludeCitations() {
-        let registry = FeatureRegistry.compose(tier: .production, from: FeatureRegistry.allModules)
-        XCTAssertFalse(registry.contains(id: SourceCitationsFeatureModule.id))
-    }
-
-    func testPreviewBuildIncludesCitations() {
-        let registry = FeatureRegistry.compose(tier: .preview, from: FeatureRegistry.allModules)
-        XCTAssertTrue(registry.contains(id: SourceCitationsFeatureModule.id))
-    }
-
-    func testDevBuildIncludesCitations() {
-        let registry = FeatureRegistry.compose(tier: .dev, from: FeatureRegistry.allModules)
-        XCTAssertTrue(registry.contains(id: SourceCitationsFeatureModule.id))
+    func testEveryBuildIncludesCitations() {
+        for tier in [BuildTier.production, .preview, .dev] {
+            let registry = FeatureRegistry.compose(tier: tier, from: FeatureRegistry.allModules)
+            XCTAssertTrue(registry.contains(id: SourceCitationsFeatureModule.id), "missing at \(tier)")
+        }
     }
 }
