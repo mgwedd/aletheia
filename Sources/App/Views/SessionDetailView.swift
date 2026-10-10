@@ -117,6 +117,10 @@ struct SessionDetailView: View {
     @StateObject private var chatRunner = ChatStreamRunner()
     @StateObject private var noteRunner = ChatStreamRunner()
     @State private var errorMessage: String?
+    /// Set when note generation or a chat answer failed because the local AI
+    /// engine is down; `engineRetry` re-runs whatever failed after the fix.
+    @State private var engineIncident: AIEngineIncident?
+    @State private var engineRetry = PendingRetry<() -> Void>()
     @State private var confirmationMessage: String?
     @State private var showScheduleSheet = false
     @State private var scheduleStart = Date()
@@ -153,6 +157,10 @@ struct SessionDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.window.color)
                 .themeDivider(.bottom)
+            // Notes and Ask need the local AI engine; say so before a request fails.
+            if selectedTab != .transcript {
+                AIEngineBanner()
+            }
             Group {
                 switch selectedTab {
                 case .transcript: transcriptTab
@@ -198,6 +206,9 @@ struct SessionDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
+        }
+        .aiEngineAlert($engineIncident) {
+            engineRetry.take()?()
         }
         .alert("Done", isPresented: Binding(get: { confirmationMessage != nil }, set: { if !$0 { confirmationMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -1220,7 +1231,12 @@ struct SessionDetailView: View {
                 if settings.progressNoteFormat == format { summaryText = text }
             },
             onError: { error in
-                errorMessage = error.localizedDescription
+                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                    engineRetry.set { generateNote() }
+                    engineIncident = incident
+                } else {
+                    errorMessage = error.localizedDescription
+                }
                 // The reveal blanked the pane; put back what is actually saved.
                 if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
             },
@@ -1289,7 +1305,14 @@ struct SessionDetailView: View {
             onReveal: { text in chatMessages.upsert(id: assistantID, role: .assistant, text: text) },
             onError: { error in
                 isChatSending = false
-                errorMessage = error.localizedDescription
+                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                    // Take the unanswered question back out so a retry asks it once.
+                    chatMessages.removeTurn(startingAt: userMessage.id)
+                    engineRetry.set { sendChat(question) }
+                    engineIncident = incident
+                } else {
+                    errorMessage = error.localizedDescription
+                }
             },
             onFinish: { _ in
                 isChatSending = false

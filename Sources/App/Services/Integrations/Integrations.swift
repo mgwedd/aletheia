@@ -56,6 +56,9 @@ final class Integrations: ObservableObject {
     /// The backend that `makeAssistant()` will actually use, after resolving the
     /// user's preference against what this Mac supports. The Settings and setup
     /// screens read this so they describe (and troubleshoot) the real backend.
+    /// The configured Ollama model tag, for status and support text.
+    var ollamaModelName: String { settings.ollamaModelName }
+
     var effectiveAssistantBackend: AssistantBackend {
         AssistantBackendResolver(
             appleIntelligenceAvailable: Self.appleIntelligenceAvailable,
