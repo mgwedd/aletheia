@@ -9,6 +9,12 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.35.0] - 2026-10-10
+
+### Added
+- open the patient-wide chat in its own resizable window (#253)
+- ship source citations in production (#249)
+
 ## [2.34.2] - 2026-10-10
 
 ### Fixed
