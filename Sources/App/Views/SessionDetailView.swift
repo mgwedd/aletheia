@@ -119,7 +119,7 @@ struct SessionDetailView: View {
     @State private var errorMessage: String?
     /// Set when note generation or a chat answer failed because the local AI
     /// engine is down; `engineRetry` re-runs whatever failed after the fix.
-    @State private var engineProblem: AIEngineProblem?
+    @State private var engineIncident: AIEngineIncident?
     @State private var engineRetry: (() -> Void)?
     @State private var confirmationMessage: String?
     @State private var showScheduleSheet = false
@@ -157,6 +157,10 @@ struct SessionDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.window.color)
                 .themeDivider(.bottom)
+            // Notes and Ask need the local AI engine; say so before a request fails.
+            if selectedTab != .transcript {
+                AIEngineBanner()
+            }
             Group {
                 switch selectedTab {
                 case .transcript: transcriptTab
@@ -203,7 +207,7 @@ struct SessionDetailView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .aiEngineProblemAlert($engineProblem) {
+        .aiEngineAlert($engineIncident) {
             let retry = engineRetry
             engineRetry = nil
             retry?()
@@ -1229,9 +1233,9 @@ struct SessionDetailView: View {
                 if settings.progressNoteFormat == format { summaryText = text }
             },
             onError: { error in
-                if let problem = AIEngineProblem.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
                     engineRetry = { generateNote() }
-                    engineProblem = problem
+                    engineIncident = incident
                 } else {
                     errorMessage = error.localizedDescription
                 }
@@ -1303,13 +1307,13 @@ struct SessionDetailView: View {
             onReveal: { text in chatMessages.upsert(id: assistantID, role: .assistant, text: text) },
             onError: { error in
                 isChatSending = false
-                if let problem = AIEngineProblem.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
                     // Take the unanswered question back out so a retry asks it once.
                     if let index = chatMessages.firstIndex(where: { $0.id == userMessage.id }) {
                         chatMessages.removeSubrange(index...)
                     }
                     engineRetry = { sendChat(question) }
-                    engineProblem = problem
+                    engineIncident = incident
                 } else {
                     errorMessage = error.localizedDescription
                 }

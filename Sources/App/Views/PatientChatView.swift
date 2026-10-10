@@ -28,7 +28,7 @@ struct PatientChatView: View {
     @State private var errorMessage: String?
     /// Set when a request failed because the local AI engine is down or missing
     /// its model; the alert offers a one-click fix and then re-asks `retryQuestion`.
-    @State private var engineProblem: AIEngineProblem?
+    @State private var engineIncident: AIEngineIncident?
     @State private var retryQuestion: String?
     @State private var renamingThread: ChatThread?
     @State private var renameText = ""
@@ -58,6 +58,8 @@ struct PatientChatView: View {
             .padding(.vertical, 14)
             .background(Theme.window.color)
             .themeDivider(.bottom)
+
+            AIEngineBanner()
 
             HSplitView {
                 threadSidebar
@@ -105,7 +107,7 @@ struct PatientChatView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .aiEngineProblemAlert($engineProblem) {
+        .aiEngineAlert($engineIncident) {
             if let question = retryQuestion {
                 retryQuestion = nil
                 send(question)
@@ -314,13 +316,13 @@ struct PatientChatView: View {
             onReveal: { text in messages.upsert(id: assistantID, role: .assistant, text: text) },
             onError: { error in
                 isSending = false
-                if let problem = AIEngineProblem.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
                     // Take the unanswered question back out so a retry asks it once.
                     if let index = messages.firstIndex(where: { $0.id == userMessage.id }) {
                         messages.removeSubrange(index...)
                     }
                     retryQuestion = question
-                    engineProblem = problem
+                    engineIncident = incident
                 } else {
                     errorMessage = error.localizedDescription
                 }

@@ -24,6 +24,18 @@ enum AIEngineProblem: Equatable {
         case retry
     }
 
+    /// From a health check rather than a failed request: what, if anything, is
+    /// wrong with the engine right now. `nil` when it is ready, still starting,
+    /// or reachable with the model not yet checked.
+    static func from(state: OllamaEngineState, modelName: String) -> AIEngineProblem? {
+        switch state {
+        case .notInstalled: return .notInstalled
+        case .installedNotRunning: return .notRunning
+        case .modelMissing: return .modelMissing(modelName)
+        case .starting, .running, .ready: return nil
+        }
+    }
+
     static func from(error: Error, ollamaInstalled: Bool) -> AIEngineProblem? {
         guard let ollama = error as? OllamaError else { return nil }
         switch ollama {
@@ -81,5 +93,42 @@ enum AIEngineProblem: Equatable {
         case .getOllama: return false
         case .startOllama, .downloadModel, .retry: return true
         }
+    }
+}
+
+/// A problem plus the technical detail behind it, so "Copy Details" can give
+/// support more than the friendly message.
+struct AIEngineIncident: Equatable {
+    let problem: AIEngineProblem
+    /// The underlying error, e.g. `modelNotFound("qwen2.5:7b")`. Never includes
+    /// prompt or transcript text.
+    let technical: String
+
+    static func from(error: Error, ollamaInstalled: Bool) -> AIEngineIncident? {
+        AIEngineProblem.from(error: error, ollamaInstalled: ollamaInstalled)
+            .map { AIEngineIncident(problem: $0, technical: String(describing: error)) }
+    }
+}
+
+/// The text "Copy Details" puts on the clipboard. Facts about the engine and
+/// the app only: no patient names, notes, transcripts or questions.
+enum AIEngineSupportReport {
+    static func text(
+        incident: AIEngineIncident,
+        appVersion: String,
+        macOS: String,
+        backend: String,
+        model: String
+    ) -> String {
+        [
+            "Aletheia AI engine problem",
+            "Problem: \(incident.problem.title)",
+            "Detail: \(incident.problem.message)",
+            "Technical: \(incident.technical)",
+            "Backend: \(backend)",
+            "Model: \(model)",
+            "App version: \(appVersion)",
+            "macOS: \(macOS)",
+        ].joined(separator: "\n")
     }
 }
