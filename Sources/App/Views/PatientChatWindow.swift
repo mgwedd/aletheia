@@ -11,10 +11,14 @@ struct PatientChatWindow: View {
 
     @EnvironmentObject private var appModel: AppModel
 
-    private var patient: Patient? {
-        guard let patientID else { return nil }
-        return appModel.patients.first { $0.id == patientID }
+    /// The patient this window was opened for, looked up live so edits show and a
+    /// deleted patient falls through to the "no longer available" view.
+    static func patient(id: UUID?, in patients: [Patient]) -> Patient? {
+        guard let id else { return nil }
+        return patients.first { $0.id == id }
     }
+
+    private var patient: Patient? { Self.patient(id: patientID, in: appModel.patients) }
 
     var body: some View {
         Group {
