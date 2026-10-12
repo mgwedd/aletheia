@@ -26,6 +26,10 @@ struct PatientChatView: View {
     @State private var messages: [ChatMessage] = []
     @State private var isSending = false
     @State private var errorMessage: String?
+    /// Set when a request failed because the local AI engine is down or missing
+    /// its model; the alert offers a one-click fix and then re-asks the pending question.
+    @State private var engineIncident: AIEngineIncident?
+    @State private var pendingRetry = PendingRetry<String>()
     @State private var renamingThread: ChatThread?
     @State private var renameText = ""
     /// Sessions whose transcript couldn't be read when the last question was
@@ -54,6 +58,8 @@ struct PatientChatView: View {
             .padding(.vertical, 14)
             .background(Theme.window.color)
             .themeDivider(.bottom)
+
+            AIEngineBanner()
 
             HSplitView {
                 threadSidebar
@@ -100,6 +106,9 @@ struct PatientChatView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
+        }
+        .aiEngineAlert($engineIncident) {
+            if let question = pendingRetry.take() { send(question) }
         }
     }
 
@@ -304,7 +313,14 @@ struct PatientChatView: View {
             onReveal: { text in messages.upsert(id: assistantID, role: .assistant, text: text) },
             onError: { error in
                 isSending = false
-                errorMessage = error.localizedDescription
+                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                    // Take the unanswered question back out so a retry asks it once.
+                    messages.removeTurn(startingAt: userMessage.id)
+                    pendingRetry.set(question)
+                    engineIncident = incident
+                } else {
+                    errorMessage = error.localizedDescription
+                }
                 persist(threadID: threadID)
             },
             onFinish: { finalText in
