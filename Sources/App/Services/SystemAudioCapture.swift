@@ -1,6 +1,10 @@
 import AVFoundation
 import CoreGraphics
+import os
 import ScreenCaptureKit
+
+// Diagnostics only: counts, formats and error domains/codes. Never paths, names or audio.
+private let log = Logger(subsystem: "com.aletheia", category: "SystemAudioCapture")
 
 enum SystemAudioCaptureError: LocalizedError, Equatable {
     case permissionDenied
@@ -107,8 +111,11 @@ final class SystemAudioCapture: NSObject {
         if CGPreflightScreenCaptureAccess() { return true }
         do {
             _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            log.info("verifyAccessGranted: granted via SCShareableContent")
             return true
         } catch {
+            let e = error as NSError
+            log.error("verifyAccessGranted: denied, error \(e.domain, privacy: .public) \(e.code, privacy: .public)")
             return false
         }
     }
@@ -171,9 +178,22 @@ final class SystemAudioCapture: NSObject {
         // displays, so on a build macOS doesn't recognize each Record click
         // asked for screen access twice. A declined or missing grant surfaces
         // as Aletheia's own message instead of a raw ScreenCaptureKit error.
-        let display = try await Self.firstDisplay {
-            try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true).displays
+        log.info("start: fetching displays")
+        let display: SCDisplay
+        do {
+            display = try await Self.firstDisplay {
+                try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true).displays
+            }
+        } catch {
+            let e = error as NSError
+            if let capture = error as? SystemAudioCaptureError, capture == .permissionDenied {
+                log.error("start: permission denied")
+            } else {
+                log.error("start: display fetch failed, error \(e.domain, privacy: .public) \(e.code, privacy: .public)")
+            }
+            throw error
         }
+        log.info("start: using display \(display.displayID, privacy: .public)")
 
         // `init(display:excludingWindows:)` with an empty window list is a
         // known ScreenCaptureKit gotcha that can make the stream silently
@@ -193,10 +213,17 @@ final class SystemAudioCapture: NSObject {
 
         self.fileURL = url
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
-        try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: DispatchQueue(label: "com.aletheia.systemaudio"))
-        try await stream.startCapture()
+        do {
+            try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: DispatchQueue(label: "com.aletheia.systemaudio"))
+            try await stream.startCapture()
+        } catch {
+            let e = error as NSError
+            log.error("start: stream failed to start, error \(e.domain, privacy: .public) \(e.code, privacy: .public)")
+            throw error
+        }
         self.stream = stream
         isRunning = true
+        log.info("start: stream started, \(config.sampleRate, privacy: .public) Hz, \(config.channelCount, privacy: .public) ch")
     }
 
     func stop() async {
@@ -205,6 +232,7 @@ final class SystemAudioCapture: NSObject {
         if let fileURL {
             AudioCrashSafety.flushHeader(at: fileURL)
         }
+        log.info("stop: \(self.buffersReceived, privacy: .public) buffers received, \(self.bytesWritten ?? 0, privacy: .public) bytes written")
         self.stream = nil
         self.file = nil
         self.fileURL = nil
@@ -216,14 +244,20 @@ final class SystemAudioCapture: NSObject {
 
     private func write(_ buffer: AVAudioPCMBuffer) {
         buffersReceived += 1
+        if buffersReceived == 1 {
+            log.info("first buffer: \(buffer.format.sampleRate, privacy: .public) Hz, \(buffer.format.channelCount, privacy: .public) ch")
+        }
         guard !isPaused, let fileURL else { return }
         do {
             if file == nil {
                 file = try AVAudioFile(forWriting: fileURL, settings: buffer.format.settings)
+                log.info("audio file created: \(buffer.format.sampleRate, privacy: .public) Hz, \(buffer.format.channelCount, privacy: .public) ch")
             }
             try file?.write(from: buffer)
             AudioCrashSafety.flushHeader(at: fileURL)
         } catch {
+            let e = error as NSError
+            log.error("write failed, error \(e.domain, privacy: .public) \(e.code, privacy: .public)")
             onError?(error)
             onDisruption?(error)
         }
@@ -243,6 +277,8 @@ extension SystemAudioCapture: SCStreamOutput {
 
 extension SystemAudioCapture: SCStreamDelegate {
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
+        let e = error as NSError
+        log.error("stream stopped with error \(e.domain, privacy: .public) \(e.code, privacy: .public): \(e.localizedDescription)")
         Task { @MainActor [weak self] in
             self?.isDisrupted = true
             self?.isRunning = false
