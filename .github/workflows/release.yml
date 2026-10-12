@@ -189,6 +189,10 @@ jobs:
           trap 'rm -f "$KEY_PATH"' EXIT
           umask 077
           printf '%s\n' "$ASC_API_KEY" > "$KEY_PATH"
+          if ! head -n 1 "$KEY_PATH" | grep -q 'BEGIN PRIVATE KEY'; then
+            echo "::error::ASC_API_KEY must be the .p8 file's text as-is ($(wc -l < "$KEY_PATH" | tr -d ' ') lines found, first line is not -----BEGIN PRIVATE KEY-----). Set it with: gh secret set ASC_API_KEY --env release < AuthKey_XXXX.p8"
+            exit 1
+          fi
 
           # notarytool exits 0 even when Apple rejects the build, so read the
           # status, and print Apple's log (the only place the reason appears).
