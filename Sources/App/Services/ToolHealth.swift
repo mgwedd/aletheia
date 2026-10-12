@@ -104,17 +104,23 @@ enum ToolHealth {
         }
     }
 
-    static func screenRecordingCheck(authoritative: Bool) async -> ToolHealthCheck {
+    static func screenRecordingCheck(
+        authoritative: Bool,
+        grantStore: CallAudioGrantStore = .standard
+    ) async -> ToolHealthCheck {
         // Cheap non-prompting preflight first; only fall back to the live,
         // possibly-prompting SCShareableContent probe on an authoritative refresh
         // (which is exactly when the user has just come back from granting it).
-        var granted = SystemAudioCapture.checkPermission()
+        // A grant confirmed for this build in an earlier session counts too:
+        // the preflight forgets grants it can't tie to this process.
+        var granted = SystemAudioCapture.checkPermission() || grantStore.isConfirmed
         // The live probe can show the system dialog, so it runs only once after
         // the user has acted on the permission (see `ScreenAccessProbeGate`),
         // never on plain appear/activation refreshes.
         if !granted && authoritative && ScreenAccessProbeGate.consume() {
             granted = await SystemAudioCapture.verifyAccessGranted()
         }
+        if granted { grantStore.confirm() }
         return classifyScreenRecording(granted: granted)
     }
 

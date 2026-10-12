@@ -2,33 +2,55 @@ import XCTest
 @testable import Aletheia
 
 final class CallAudioStartPolicyTests: XCTestCase {
-    func testFirstRecordTriesEvenWithoutPreflight() {
-        XCTAssertTrue(CallAudioStartPolicy().shouldAttempt(preflight: false))
+    func testNeverAsksWhenNothingSaysAccessIsGranted() {
+        XCTAssertFalse(CallAudioStartPolicy().shouldAttempt(preflight: false, confirmedBefore: false))
     }
 
-    func testGrantedPreflightAlwaysAttempts() {
+    func testGrantedPreflightAttempts() {
+        XCTAssertTrue(CallAudioStartPolicy().shouldAttempt(preflight: true, confirmedBefore: false))
+    }
+
+    func testAConfirmationFromAnEarlierSessionAttemptsEvenThoughPreflightIsStale() {
+        XCTAssertTrue(CallAudioStartPolicy().shouldAttempt(preflight: false, confirmedBefore: true))
+    }
+
+    func testASuccessThisLaunchKeepsWorking() {
         var policy = CallAudioStartPolicy()
-        policy.recordAttempt(succeeded: false)
-        XCTAssertTrue(policy.shouldAttempt(preflight: true))
+        policy.recordSuccess()
+        XCTAssertTrue(policy.shouldAttempt(preflight: false, confirmedBefore: false))
     }
 
-    func testAfterAFailedAttemptWithoutPreflightItStopsAsking() {
-        var policy = CallAudioStartPolicy()
-        policy.recordAttempt(succeeded: false)
-        XCTAssertFalse(policy.shouldAttempt(preflight: false))
-        XCTAssertFalse(policy.shouldAttempt(preflight: false))
+    func testSkippedMessagePointsAtSetup() {
+        XCTAssertTrue(CallAudioStartPolicy.skippedMessage.contains("Setup Assistant"))
+    }
+}
+
+final class CallAudioGrantStoreTests: XCTestCase {
+    private var defaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: "CallAudioGrantStoreTests-\(UUID().uuidString)")
     }
 
-    func testASuccessfulAttemptKeepsWorkingEvenThoughPreflightIsStale() {
-        var policy = CallAudioStartPolicy()
-        policy.recordAttempt(succeeded: true)
-        XCTAssertTrue(policy.shouldAttempt(preflight: false))
-        policy.recordAttempt(succeeded: false)
-        XCTAssertTrue(policy.shouldAttempt(preflight: false), "one later hiccup doesn't disable call audio")
+    func testNotConfirmedByDefault() {
+        XCTAssertFalse(CallAudioGrantStore(defaults: defaults, build: "1.0+1").isConfirmed)
     }
 
-    func testSkippedMessageSaysHowToFixIt() {
-        XCTAssertTrue(CallAudioStartPolicy.skippedMessage.contains("System Settings"))
-        XCTAssertTrue(CallAudioStartPolicy.skippedMessage.contains("reopen"))
+    func testConfirmSurvivesANewStoreForTheSameBuild() {
+        CallAudioGrantStore(defaults: defaults, build: "1.0+1").confirm()
+        XCTAssertTrue(CallAudioGrantStore(defaults: defaults, build: "1.0+1").isConfirmed)
+    }
+
+    func testANewBuildNeedsConfirmingAgain() {
+        CallAudioGrantStore(defaults: defaults, build: "1.0+1").confirm()
+        XCTAssertFalse(CallAudioGrantStore(defaults: defaults, build: "1.0+2").isConfirmed)
+    }
+
+    func testClearForgetsTheConfirmation() {
+        let store = CallAudioGrantStore(defaults: defaults, build: "1.0+1")
+        store.confirm()
+        store.clear()
+        XCTAssertFalse(store.isConfirmed)
     }
 }

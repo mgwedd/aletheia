@@ -230,6 +230,7 @@ struct SetupChecklistView: View {
             // to the dialog — awaiting it here keeps that wait off the main
             // thread instead of freezing the wizard step.
             let granted = await SystemAudioCapture.requestPermission()
+            if granted { CallAudioGrantStore.standard.confirm() }
             if !granted {
                 ScreenAccessProbeGate.arm()
                 SystemSettingsLinks.openScreenRecordingSettings()
