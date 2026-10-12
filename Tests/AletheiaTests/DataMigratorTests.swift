@@ -164,4 +164,58 @@ final class DataMigratorTests: XCTestCase {
         }
         XCTAssertTrue(Keystore.exists(at: root), "keystore is kept when disable can't run")
     }
+
+    // MARK: pre-migration JSON bundles
+
+    /// Plants a pre-migration JSON bundle the way `SQLitePersistenceCore` does,
+    /// from the folder's current (plaintext) patient.json files.
+    private func plantPreImageBundle() throws -> URL {
+        let snapshot = MigrationBackup.directory(for: CommentStore.databaseURL(root: root))
+            .appendingPathComponent("Aletheia-pre-v2-20240101T000000Z.sqlite")
+        let bundle = MigrationBackup.filesBundleURL(forSnapshot: snapshot)
+        try MigrationBackup.copyStructuredJSON(fromDataRoot: root, to: bundle)
+        return bundle
+    }
+
+    func testEnablingEncryptionAlsoSealsThePreImageJSON() throws {
+        _ = try seedPlaintextFolder()
+        let bundle = try plantPreImageBundle()
+        let copy = try XCTUnwrap(patientJSON(in: bundle))
+        XCTAssertFalse(DataCipher.isEnvelope(try Data(contentsOf: copy)), "fixture should start as plaintext")
+
+        let result = DataMigrator.migrate(root: root, from: .passthrough, to: keyed)
+
+        XCTAssertTrue(result.isComplete)
+        XCTAssertTrue(DataCipher.isEnvelope(try Data(contentsOf: copy)),
+                      "a plaintext patient.json left in .backups would expose PHI beside the encrypted folder")
+        let live = try XCTUnwrap(patientJSON(in: root))
+        XCTAssertEqual(try keyed.data(contentsOf: copy), try keyed.data(contentsOf: live))
+    }
+
+    func testDisablingEncryptionRestoresThePreImageJSONToPlaintext() throws {
+        _ = try seedPlaintextFolder()
+        let bundle = try plantPreImageBundle()
+        let copy = try XCTUnwrap(patientJSON(in: bundle))
+        let original = try Data(contentsOf: copy)
+
+        DataMigrator.migrate(root: root, from: .passthrough, to: keyed)
+        let disable = DataMigrator.migrate(root: root, from: keyed, to: .passthrough)
+
+        XCTAssertTrue(disable.isComplete)
+        XCTAssertEqual(try Data(contentsOf: copy), original,
+                       "removing the key must not strand a sealed pre-image that can no longer be restored")
+    }
+
+    func testMigratingWithoutAPreImageIsUnaffected() throws {
+        _ = try seedPlaintextFolder()
+        XCTAssertTrue(MigrationBackup.fileBundles(inDataRoot: root).isEmpty)
+        XCTAssertTrue(DataMigrator.migrate(root: root, from: .passthrough, to: keyed).isComplete)
+    }
+
+    private func patientJSON(in base: URL) -> URL? {
+        let patients = base.appendingPathComponent("Patients", isDirectory: true)
+        let dirs = (try? FileManager.default.contentsOfDirectory(at: patients, includingPropertiesForKeys: nil)) ?? []
+        return dirs.map { $0.appendingPathComponent("patient.json") }
+            .first { FileManager.default.fileExists(atPath: $0.path) }
+    }
 }

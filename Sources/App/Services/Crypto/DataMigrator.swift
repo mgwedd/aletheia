@@ -45,33 +45,15 @@ enum DataMigrator {
         let fm = FileManager.default
         var result = Result()
 
-        let patientsDir = root.appendingPathComponent("Patients", isDirectory: true)
-        let patientDirs = (try? fm.contentsOfDirectory(at: patientsDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        migratePatients(in: root, from: from, to: to, into: &result)
 
-        for patientDir in patientDirs {
-            guard (try? patientDir.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
-
-            for name in patientFileNames {
-                migrateFile(patientDir.appendingPathComponent(name), from: from, to: to, into: &result)
-            }
-
-            // Chat threads live one-per-file under ChatThreads/ with dynamic
-            // (UUID) names, so enumerate rather than use a fixed list.
-            let threadsDir = patientDir.appendingPathComponent("ChatThreads", isDirectory: true)
-            let threadFiles = (try? fm.contentsOfDirectory(at: threadsDir, includingPropertiesForKeys: nil)) ?? []
-            for file in threadFiles where file.pathExtension == "json" {
-                migrateFile(file, from: from, to: to, into: &result)
-            }
-
-            let sessionDirs = (try? fm.contentsOfDirectory(at: patientDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
-            for sessionDir in sessionDirs where isSessionFolder(sessionDir) {
-                for name in sessionFiles(in: sessionDir) {
-                    migrateFile(sessionDir.appendingPathComponent(name), from: from, to: to, into: &result)
-                }
-                for name in audioNames {
-                    migrateAudioFile(sessionDir.appendingPathComponent(name), from: from, to: to, into: &result)
-                }
-            }
+        // The pre-migration JSON bundles (`.backups/migrations/files/<snapshot>/`)
+        // mirror the data folder's layout and hold copies of patient.json. A copy
+        // taken while encryption was off would otherwise stay plaintext after it
+        // is turned on, and a sealed copy would be unreadable once it is turned
+        // off and the key removed.
+        for bundle in MigrationBackup.fileBundles(inDataRoot: root) {
+            migratePatients(in: bundle, from: from, to: to, into: &result)
         }
 
         // Database (field-level): decode with `from`, encode with `to`. Snapshot
@@ -126,6 +108,39 @@ enum DataMigrator {
         return sessionFileNames + names.filter {
             Store.isNoteFileName($0) || Store.isNoteMetaFileName($0) || Store.isNoteSidecarFileName($0)
         }.sorted()
+    }
+
+    /// Converts every patient, chat-thread and session file under `root/Patients`.
+    private static func migratePatients(in root: URL, from: FileProtector, to: FileProtector, into result: inout Result) {
+        let fm = FileManager.default
+        let patientsDir = root.appendingPathComponent("Patients", isDirectory: true)
+        let patientDirs = (try? fm.contentsOfDirectory(at: patientsDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+
+        for patientDir in patientDirs {
+            guard (try? patientDir.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
+
+            for name in patientFileNames {
+                migrateFile(patientDir.appendingPathComponent(name), from: from, to: to, into: &result)
+            }
+
+            // Chat threads live one-per-file under ChatThreads/ with dynamic
+            // (UUID) names, so enumerate rather than use a fixed list.
+            let threadsDir = patientDir.appendingPathComponent("ChatThreads", isDirectory: true)
+            let threadFiles = (try? fm.contentsOfDirectory(at: threadsDir, includingPropertiesForKeys: nil)) ?? []
+            for file in threadFiles where file.pathExtension == "json" {
+                migrateFile(file, from: from, to: to, into: &result)
+            }
+
+            let sessionDirs = (try? fm.contentsOfDirectory(at: patientDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+            for sessionDir in sessionDirs where isSessionFolder(sessionDir) {
+                for name in sessionFiles(in: sessionDir) {
+                    migrateFile(sessionDir.appendingPathComponent(name), from: from, to: to, into: &result)
+                }
+                for name in audioNames {
+                    migrateAudioFile(sessionDir.appendingPathComponent(name), from: from, to: to, into: &result)
+                }
+            }
+        }
     }
 
     private static func migrateFile(_ url: URL, from: FileProtector, to: FileProtector, into result: inout Result) {
