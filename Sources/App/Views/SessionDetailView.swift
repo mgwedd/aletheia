@@ -118,9 +118,9 @@ struct SessionDetailView: View {
     @StateObject private var noteRunner = ChatStreamRunner()
     @State private var errorMessage: String?
     /// Set when note generation or a chat answer failed because the local AI
-    /// engine is down; `engineRetry` re-runs whatever failed after the fix.
+    /// engine is down; `engineRetries` re-runs whatever failed after the fix.
     @State private var engineIncident: AIEngineIncident?
-    @State private var engineRetry = PendingRetry<() -> Void>()
+    @State private var engineRetries = PendingRetries<EngineRetryKind, () -> Void>()
     @State private var confirmationMessage: String?
     @State private var showScheduleSheet = false
     @State private var scheduleStart = Date()
@@ -207,9 +207,11 @@ struct SessionDetailView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .aiEngineAlert($engineIncident) {
-            engineRetry.take()?()
-        }
+        .aiEngineAlert($engineIncident, retry: {
+            for retry in engineRetries.takeAll() { retry() }
+        }, discard: {
+            engineRetries.clear()
+        })
         .alert("Done", isPresented: Binding(get: { confirmationMessage != nil }, set: { if !$0 { confirmationMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -1240,7 +1242,7 @@ struct SessionDetailView: View {
             },
             onError: { error in
                 if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
-                    engineRetry.set { generateNote() }
+                    engineRetries.set({ generateNote() }, for: .note)
                     engineIncident = incident
                 } else {
                     errorMessage = error.localizedDescription
@@ -1314,9 +1316,13 @@ struct SessionDetailView: View {
             onError: { error in
                 isChatSending = false
                 if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
-                    // Take the unanswered question back out so a retry asks it once.
-                    chatMessages.removeTurn(startingAt: userMessage.id)
-                    engineRetry.set { sendChat(question) }
+                    // The question stays in the conversation (nothing is lost if the
+                    // alert is cancelled); a retry takes the unanswered turn out
+                    // first so the question is asked once.
+                    engineRetries.set({
+                        chatMessages.removeTurn(startingAt: userMessage.id)
+                        sendChat(question)
+                    }, for: .chat)
                     engineIncident = incident
                 } else {
                     errorMessage = error.localizedDescription

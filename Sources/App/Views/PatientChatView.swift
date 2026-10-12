@@ -29,7 +29,7 @@ struct PatientChatView: View {
     /// Set when a request failed because the local AI engine is down or missing
     /// its model; the alert offers a one-click fix and then re-asks the pending question.
     @State private var engineIncident: AIEngineIncident?
-    @State private var pendingRetry = PendingRetry<String>()
+    @State private var pendingRetries = PendingRetries<String, () -> Void>()
     @State private var renamingThread: ChatThread?
     @State private var renameText = ""
     /// Sessions whose transcript couldn't be read when the last question was
@@ -107,9 +107,11 @@ struct PatientChatView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .aiEngineAlert($engineIncident) {
-            if let question = pendingRetry.take() { send(question) }
-        }
+        .aiEngineAlert($engineIncident, retry: {
+            for retry in pendingRetries.takeAll() { retry() }
+        }, discard: {
+            pendingRetries.clear()
+        })
     }
 
     /// What the answers draw on, matching what `gatherCitedPatientContext`
@@ -314,9 +316,13 @@ struct PatientChatView: View {
             onError: { error in
                 isSending = false
                 if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
-                    // Take the unanswered question back out so a retry asks it once.
-                    messages.removeTurn(startingAt: userMessage.id)
-                    pendingRetry.set(question)
+                    // The question stays in the thread (and nothing is lost if the
+                    // alert is cancelled); a retry takes the unanswered turn out
+                    // first so the question is asked once.
+                    pendingRetries.set({
+                        messages.removeTurn(startingAt: userMessage.id)
+                        send(question)
+                    }, for: "chat")
                     engineIncident = incident
                 } else {
                     errorMessage = error.localizedDescription

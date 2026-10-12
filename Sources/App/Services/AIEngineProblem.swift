@@ -154,17 +154,37 @@ struct AIEngineProbe {
     }
 }
 
-/// A request to re-run once, after the user fixes the engine. Taking it clears
-/// it, so a dismissed alert can't re-run a stale request later.
-struct PendingRetry<Value> {
-    private var value: Value?
+/// The kinds of request a session can have waiting on the engine.
+enum EngineRetryKind: Equatable {
+    case note
+    case chat
+}
 
-    mutating func set(_ value: Value) { self.value = value }
+/// Requests to re-run once, after the user fixes the engine: at most one per
+/// `Key`, so a progress note and a chat question that both failed are both
+/// re-run, while a repeat failure of the same kind replaces its earlier request.
+/// `takeAll` and `clear` both empty it, so a dismissed alert can't re-run a stale
+/// request later.
+struct PendingRetries<Key: Equatable, Value> {
+    private var entries: [(key: Key, value: Value)] = []
 
-    mutating func take() -> Value? {
-        defer { value = nil }
-        return value
+    var isEmpty: Bool { entries.isEmpty }
+
+    mutating func set(_ value: Value, for key: Key) {
+        if let index = entries.firstIndex(where: { $0.key == key }) {
+            entries[index].value = value
+        } else {
+            entries.append((key, value))
+        }
     }
+
+    /// Everything waiting, in the order first requested, leaving it empty.
+    mutating func takeAll() -> [Value] {
+        defer { entries.removeAll() }
+        return entries.map { $0.value }
+    }
+
+    mutating func clear() { entries.removeAll() }
 }
 
 extension Array where Element == ChatMessage {

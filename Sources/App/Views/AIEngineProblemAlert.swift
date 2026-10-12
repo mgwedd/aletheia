@@ -122,6 +122,7 @@ private func copyDetails(_ incident: AIEngineIncident, integrations: Integration
 private struct AIEngineAlert: ViewModifier {
     @Binding var incident: AIEngineIncident?
     let retry: () -> Void
+    let discard: () -> Void
 
     @EnvironmentObject private var integrations: Integrations
     @StateObject private var controller = AIEngineRecoveryController()
@@ -132,7 +133,7 @@ private struct AIEngineAlert: ViewModifier {
                 if let current = incident {
                     Button(current.problem.actionTitle) { run(current.problem) }
                     Button("Copy Details") { copyDetails(current, integrations: integrations) }
-                    Button("Cancel", role: .cancel) {}
+                    Button("Cancel", role: .cancel) { discard() }
                 }
             } message: {
                 Text(incident?.problem.message ?? "")
@@ -160,7 +161,13 @@ private struct AIEngineAlert: ViewModifier {
             let fixed = await controller.run(problem) { problem, onProgress in
                 try await AIEngineRecovery.perform(problem, actions: .live(integrations: integrations), onProgress: onProgress)
             }
-            if fixed, problem.retriesAfterAction { retry() }
+            if fixed, problem.retriesAfterAction {
+                retry()
+            } else {
+                // Nothing will re-run the failed request (the fix failed, or it
+                // only opened a download page), so don't keep it for later.
+                discard()
+            }
         }
     }
 }
@@ -168,9 +175,11 @@ private struct AIEngineAlert: ViewModifier {
 extension View {
     /// Shows a recovery alert for the AI engine problem, with one button that
     /// fixes it in place (with progress), a Copy Details button for support, and
-    /// a `retry` of the failed request after a successful fix.
-    func aiEngineAlert(_ incident: Binding<AIEngineIncident?>, retry: @escaping () -> Void) -> some View {
-        modifier(AIEngineAlert(incident: incident, retry: retry))
+    /// a `retry` of the failed requests after a successful fix. `discard` runs
+    /// when no retry will happen (Cancel, a failed fix, or a fix that only opens
+    /// a download page), so the caller can drop what it was holding.
+    func aiEngineAlert(_ incident: Binding<AIEngineIncident?>, retry: @escaping () -> Void, discard: @escaping () -> Void) -> some View {
+        modifier(AIEngineAlert(incident: incident, retry: retry, discard: discard))
     }
 }
 
@@ -192,7 +201,7 @@ struct AIEngineBanner: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Image(systemName: "exclamationmark.triangle")
-                            .foregroundStyle(Theme.callAudio.color)
+                            .foregroundStyle(Theme.warn.color)
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(problem.title)
