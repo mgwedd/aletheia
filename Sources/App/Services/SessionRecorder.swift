@@ -43,6 +43,43 @@ struct RecordingClock: Equatable {
     }
 }
 
+/// Notices a call track that never carries sound. System-audio capture can open
+/// without error and still deliver only silence (the call is played by a
+/// process the stream can't see, or the output route isn't the one captured),
+/// so nothing else would tell the therapist the other side isn't being
+/// recorded. Only "never heard anything" counts: a patient who is quiet for a
+/// while mid-session must not trip it.
+struct CallAudioWatch: Equatable {
+    /// How long a recording may run, unpaused, before silence is flagged.
+    static let defaultGrace: TimeInterval = 90
+    /// Meter position (0...1, see `AudioLevel`) that counts as sound.
+    static let audibleLevel: Float = 0.02
+
+    let grace: TimeInterval
+    private(set) var heardSound = false
+    private(set) var listened: TimeInterval = 0
+
+    init(grace: TimeInterval = CallAudioWatch.defaultGrace) { self.grace = grace }
+
+    /// True once `grace` seconds have been listened to with no sound at all.
+    var isSilent: Bool { !heardSound && listened >= grace }
+
+    /// Feed the latest raw call level every poll; `dt` is the time it covers.
+    mutating func observe(level: Float, dt: TimeInterval) {
+        guard !heardSound, dt > 0 else { return }
+        if level.isFinite, level > Self.audibleLevel {
+            heardSound = true
+        } else {
+            listened += dt
+        }
+    }
+
+    mutating func reset() {
+        heardSound = false
+        listened = 0
+    }
+}
+
 /// The smoothed live input levels (0...1) shown on the recording panel. A
 /// separate observable object, so the ~15 Hz updates redraw only the meters
 /// rather than every view that observes the recorder.
@@ -79,6 +116,10 @@ final class SessionRecorder: ObservableObject {
     /// so the UI can ask whether the therapist forgot to end the session. The
     /// view clears it when the user answers.
     @Published var longRunningReminder = false
+    /// True when the call track has stayed silent since the recording began (see
+    /// `CallAudioWatch`), so the UI can say the other side isn't being captured.
+    @Published private(set) var callAudioSilent = false
+    private var callWatch = CallAudioWatch()
 
     let recordingHealth = RecordingHealth()
     /// Live mic / call-audio levels for the meters; zero unless actively recording.
@@ -142,6 +183,8 @@ final class SessionRecorder: ObservableObject {
             clock = RecordingClock(startedAt: started)
             state = .recording(startedAt: started)
             startReminderTimer()
+            callWatch.reset()
+            callAudioSilent = false
             startLevelPolling()
         } catch {
             mic.stop()
@@ -176,6 +219,8 @@ final class SessionRecorder: ObservableObject {
         reminderTask?.cancel()
         reminderTask = nil
         stopLevelPolling()
+        callWatch.reset()
+        callAudioSilent = false
         mic.stop()
         await systemAudio.stop()
         isPaused = false
@@ -249,8 +294,11 @@ final class SessionRecorder: ObservableObject {
             resetLevels()
             return
         }
+        let callTarget = systemAudio.levelSource.latest()
+        callWatch.observe(level: callTarget, dt: TimeInterval(dt))
+        if callAudioSilent != callWatch.isSilent { callAudioSilent = callWatch.isSilent }
         let micValue = micSmoother.update(target: mic.levelSource.latest(), dt: dt)
-        let callValue = callSmoother.update(target: systemAudio.levelSource.latest(), dt: dt)
+        let callValue = callSmoother.update(target: callTarget, dt: dt)
         // Skip identical values (e.g. steady silence) so idle meters don't republish.
         if levels.mic != micValue { levels.mic = micValue }
         if levels.call != callValue { levels.call = callValue }

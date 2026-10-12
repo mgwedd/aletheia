@@ -52,3 +52,83 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(SessionRecorder().elapsed(), 0)
     }
 }
+
+final class CallAudioWatchTests: XCTestCase {
+    private func listen(_ watch: inout CallAudioWatch, level: Float, seconds: Int, step: TimeInterval = 1) {
+        for _ in 0..<Int(Double(seconds) / step) { watch.observe(level: level, dt: step) }
+    }
+
+    func testNotSilentBeforeTheGracePeriodEnds() {
+        var watch = CallAudioWatch(grace: 90)
+        listen(&watch, level: 0, seconds: 89)
+        XCTAssertFalse(watch.isSilent)
+    }
+
+    func testSilentOnceTheWholeGracePeriodWasQuiet() {
+        var watch = CallAudioWatch(grace: 90)
+        listen(&watch, level: 0, seconds: 90)
+        XCTAssertTrue(watch.isSilent)
+    }
+
+    func testAnySoundBeforeTheDeadlineClearsItForGood() {
+        var watch = CallAudioWatch(grace: 90)
+        listen(&watch, level: 0, seconds: 60)
+        watch.observe(level: 0.4, dt: 1)
+        listen(&watch, level: 0, seconds: 600)
+        XCTAssertTrue(watch.heardSound)
+        XCTAssertFalse(watch.isSilent)
+    }
+
+    func testSoundAfterTheWarningClearsIt() {
+        var watch = CallAudioWatch(grace: 90)
+        listen(&watch, level: 0, seconds: 120)
+        XCTAssertTrue(watch.isSilent)
+        watch.observe(level: 0.3, dt: 0.07)
+        XCTAssertFalse(watch.isSilent)
+    }
+
+    func testAQuietPatientMidSessionNeverTripsIt() {
+        var watch = CallAudioWatch(grace: 90)
+        listen(&watch, level: 0.5, seconds: 5)
+        listen(&watch, level: 0, seconds: 3_000)
+        XCTAssertFalse(watch.isSilent)
+    }
+
+    func testNoiseFloorBelowTheThresholdCountsAsSilence() {
+        var watch = CallAudioWatch(grace: 10)
+        listen(&watch, level: CallAudioWatch.audibleLevel, seconds: 10)
+        XCTAssertTrue(watch.isSilent)
+    }
+
+    func testPollSizedStepsAddUp() {
+        var watch = CallAudioWatch(grace: 90)
+        listen(&watch, level: 0, seconds: 90, step: 1.0 / 15.0)
+        XCTAssertTrue(watch.isSilent)
+    }
+
+    func testBadInputIsIgnored() {
+        var watch = CallAudioWatch(grace: 5)
+        watch.observe(level: 0, dt: 0)
+        watch.observe(level: 0, dt: -3)
+        XCTAssertEqual(watch.listened, 0)
+        watch.observe(level: .nan, dt: 5)
+        XCTAssertFalse(watch.heardSound)
+        XCTAssertTrue(watch.isSilent)
+    }
+
+    func testResetStartsOver() {
+        var watch = CallAudioWatch(grace: 5)
+        listen(&watch, level: 0, seconds: 5)
+        watch.reset()
+        XCTAssertFalse(watch.isSilent)
+        XCTAssertEqual(watch.listened, 0)
+        watch.observe(level: 0.5, dt: 1)
+        watch.reset()
+        XCTAssertFalse(watch.heardSound)
+    }
+
+    @MainActor
+    func testIdleRecorderIsNotFlaggedSilent() {
+        XCTAssertFalse(SessionRecorder().callAudioSilent)
+    }
+}
