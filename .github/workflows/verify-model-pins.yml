@@ -40,6 +40,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Verify pins against Hugging Face and whisper.cpp
         run: bash scripts/verify-model-pins.sh ${{ inputs.print && '--print' || '' }}
