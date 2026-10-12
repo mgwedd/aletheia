@@ -120,6 +120,11 @@ final class SessionRecorder: ObservableObject {
     /// `CallAudioWatch`), so the UI can say the other side isn't being captured.
     @Published private(set) var callAudioSilent = false
     private var callWatch = CallAudioWatch()
+    /// Why call audio isn't being captured for the current recording (it never
+    /// started, or stopped part-way), or nil when it's fine. Shown on the
+    /// recording screen so a mic-only session is never a silent surprise.
+    @Published private(set) var callAudioProblem: String?
+    private var lastCallAudioStart = CallAudioDiagnostics.StartResult.notTried
 
     let recordingHealth = RecordingHealth()
     /// Live mic / call-audio levels for the meters; zero unless actively recording.
@@ -154,6 +159,7 @@ final class SessionRecorder: ObservableObject {
         systemAudio.onError = { [weak self] error in
             guard let self else { return }
             self.recordingHealth.recordSystemAudioDisruption(error.localizedDescription)
+            if self.callAudioProblem == nil { self.callAudioProblem = error.localizedDescription }
             // System audio stream disruption (DRM, permission yank, display disconnect)
             // is non-fatal to the session if the microphone track is still recording.
             if !self.mic.isRunning {
@@ -167,6 +173,9 @@ final class SessionRecorder: ObservableObject {
             }
         }
 
+        recordingHealth.reset()
+        callAudioProblem = nil
+        lastCallAudioStart = .notTried
         do {
             try mic.start(to: micURL)
             // System audio capture is best-effort — if system audio fails to start,
@@ -180,14 +189,19 @@ final class SessionRecorder: ObservableObject {
                     try await systemAudio.start(to: callURL)
                     callAudioPolicy.recordAttempt(succeeded: true)
                     grantStore.confirm()
+                    lastCallAudioStart = .started
                 } catch {
                     callAudioPolicy.recordAttempt(succeeded: false)
+                    lastCallAudioStart = .failed(CallAudioDiagnostics.describe(error))
+                    callAudioProblem = error.localizedDescription
                     if let captureError = error as? SystemAudioCaptureError, captureError == .permissionDenied {
                         grantStore.clear()
                     }
                     recordingHealth.recordSystemAudioDisruption(error.localizedDescription)
                 }
             } else {
+                lastCallAudioStart = .skipped
+                callAudioProblem = CallAudioStartPolicy.skippedMessage
                 recordingHealth.recordSystemAudioDisruption(CallAudioStartPolicy.skippedMessage)
             }
             self.protector = protector
@@ -239,6 +253,8 @@ final class SessionRecorder: ObservableObject {
         callAudioSilent = false
         mic.stop()
         await systemAudio.stop()
+        // After the stream is down, so a late stream error can't set it again.
+        callAudioProblem = nil
         isPaused = false
         clock = nil
         let sealError = await sealRecordingsIfNeeded()
@@ -330,6 +346,25 @@ final class SessionRecorder: ObservableObject {
     var isRecording: Bool {
         if case .recording = state { return true }
         return false
+    }
+
+    /// The current call-audio state for the debug panel and Doctor. Never prompts.
+    func callAudioDiagnostics(grantStore: CallAudioGrantStore = .standard) -> CallAudioDiagnostics {
+        let health = recordingHealth.snapshot
+        return CallAudioDiagnostics(
+            preflightGranted: SystemAudioCapture.checkPermission(),
+            currentBuild: grantStore.build,
+            confirmedBuild: grantStore.confirmedBuild,
+            attemptedThisLaunch: callAudioPolicy.attempted,
+            workedThisLaunch: callAudioPolicy.worked,
+            lastStart: lastCallAudioStart,
+            streamRunning: systemAudio.isRunning,
+            streamDisrupted: systemAudio.isDisrupted,
+            buffersReceived: systemAudio.buffersReceived,
+            bytesWritten: systemAudio.bytesWritten,
+            disruptions: health.systemAudioDisruptions,
+            firstFailure: health.firstFailure
+        )
     }
 
     /// Recorded time so far, not counting paused spans. 0 before `start` and

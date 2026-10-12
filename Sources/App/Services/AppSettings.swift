@@ -99,6 +99,7 @@ final class AppSettings: ObservableObject {
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
         static let appearance = "appearance"
+        static let debugDiagnosticsEnabled = "debugDiagnosticsEnabled"
         static let keepDataOutOfSystemBackups = BackupExclusion.defaultsKey
     }
 
@@ -193,6 +194,11 @@ final class AppSettings: ObservableObject {
             appearance.apply()
         }
     }
+    /// Shows the call-audio triage readout on the recording screen
+    /// (`CallAudioDebugView`). Off by default; permission and stream state only.
+    @Published var debugDiagnosticsEnabled: Bool {
+        didSet { defaults.set(debugDiagnosticsEnabled, forKey: Keys.debugDiagnosticsEnabled) }
+    }
     /// Keep the data folder out of Time Machine and iCloud's device backup (via
     /// `isExcludedFromBackup`). Off by default: the app writes no backup of its
     /// own unless opted in, so Time Machine is the baseline copy and excluding
@@ -264,6 +270,7 @@ final class AppSettings: ObservableObject {
         // Default off when never set; an explicit stored choice is respected.
         // Assigning in `init` doesn't fire `didSet`, so this never writes the key.
         keepDataOutOfSystemBackups = BackupExclusion.resolvedExclusion(in: defaults)
+        debugDiagnosticsEnabled = defaults.bool(forKey: Keys.debugDiagnosticsEnabled)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
         if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,

@@ -8,6 +8,7 @@ struct DoctorView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
+    @EnvironmentObject private var recorder: SessionRecorder
 
     @State private var report: DoctorReport?
     @State private var isRunning = false
@@ -202,7 +203,7 @@ struct DoctorView: View {
         guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false }
-        let probes = LiveDoctorProbes.make(settings: settings, appModel: appModel, integrations: integrations)
+        let probes = LiveDoctorProbes.make(settings: settings, appModel: appModel, integrations: integrations, recorder: recorder)
         // The disk and SQLite probes are synchronous file I/O; keep them off the
         // main thread. The reused ToolHealth rows hop back to the main actor
         // themselves.

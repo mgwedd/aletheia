@@ -415,13 +415,13 @@ struct SessionDetailView: View {
                     .accessibilityLabel("Elapsed \(recordingElapsed(at: context.date))")
             }
             InputLevelMeters(levels: recorder.levels, isPaused: recorder.isPaused)
-            if recorder.callAudioSilent, !recorder.isPaused {
-                Label("No call audio detected. Only your microphone is being recorded. If the other person is speaking, make sure the call plays through this Mac, and that Aletheia is allowed under Screen & System Audio Recording.", systemImage: "exclamationmark.triangle")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: 440, alignment: .leading)
-                    .accessibilityElement(children: .combine)
+            if let problem = recorder.callAudioProblem {
+                callAudioNotice("Only your microphone is being recorded. \(problem)")
+            } else if recorder.callAudioSilent, !recorder.isPaused {
+                callAudioNotice("No call audio detected. Only your microphone is being recorded. If the other person is speaking, make sure the call plays through this Mac, and that Aletheia is allowed under Screen & System Audio Recording.")
+            }
+            if settings.debugDiagnosticsEnabled {
+                CallAudioDebugView(recorder: recorder)
             }
             Text(recorder.isPaused
                  ? "Paused. Nothing is being recorded until you resume."
@@ -433,6 +433,15 @@ struct SessionDetailView: View {
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeOut(duration: 0.15), value: recorder.isPaused)
+    }
+
+    private func callAudioNotice(_ text: String) -> some View {
+        Label(text, systemImage: "exclamationmark.triangle")
+            .font(Theme.Typography.caption)
+            .foregroundStyle(Theme.muted.color)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: 440, alignment: .leading)
+            .accessibilityElement(children: .combine)
     }
 
     private var noTranscriptPlaceholder: some View {

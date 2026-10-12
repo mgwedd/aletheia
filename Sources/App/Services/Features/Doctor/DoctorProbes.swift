@@ -91,6 +91,12 @@ protocol DoctorProbing {
     /// The existing setup checks (microphone, call audio, transcription model,
     /// AI engine, …), reused from `ToolHealth` rather than re-implemented.
     func toolHealthChecks() async -> [ToolHealthCheck]
+    /// The recorder's call-audio state, or nil when there's no recorder to ask.
+    func callAudio() -> CallAudioDiagnostics?
+}
+
+extension DoctorProbing {
+    func callAudio() -> CallAudioDiagnostics? { nil }
 }
 
 // MARK: - Live implementation
@@ -112,7 +118,10 @@ struct LiveDoctorProbes: DoctorProbing {
     var whisperExpectedSHA256: String
     var unreadableEntriesProvider: () -> UnreadableEntriesProbe = { .notAvailable }
     var toolHealthProvider: @MainActor () async -> [ToolHealthCheck]
+    /// `SessionRecorder.callAudioDiagnostics()` at the time Doctor runs.
+    var callAudioDiagnostics: CallAudioDiagnostics?
 
+    func callAudio() -> CallAudioDiagnostics? { callAudioDiagnostics }
     func environment() -> DoctorEnvironment { .current(dataRoot: dataRoot) }
     func now() -> Date { Date() }
 
@@ -257,7 +266,8 @@ struct LiveDoctorProbes: DoctorProbing {
     static func make(
         settings: AppSettings,
         appModel: AppModel,
-        integrations: Integrations
+        integrations: Integrations,
+        recorder: SessionRecorder
     ) -> LiveDoctorProbes {
         let includeScheduling = appModel.featureRegistry.contains(id: EventKitSchedulingFeatureModule.id)
         let store = appModel.store
@@ -281,7 +291,8 @@ struct LiveDoctorProbes: DoctorProbing {
             toolHealthProvider: {
                 await LiveDoctorProbes.reusedToolHealthChecks(
                     settings: settings, integrations: integrations, includeScheduling: includeScheduling)
-            }
+            },
+            callAudioDiagnostics: recorder.callAudioDiagnostics()
         )
     }
 }

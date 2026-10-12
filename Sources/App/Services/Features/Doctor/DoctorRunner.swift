@@ -48,6 +48,7 @@ struct DoctorRunner {
         checks += Self.whisperChecks(file: probes.whisperModelFile(), digest: probes.whisperModelDigest())
         let toolHealth = await probes.toolHealthChecks()
         checks += Self.toolChecks(toolHealth)
+        checks += Self.callAudioChecks(probes.callAudio())
 
         return DoctorReport(checks: checks, generatedAt: now, environment: environment)
     }
@@ -373,6 +374,20 @@ struct DoctorRunner {
         toolChecks
             .filter { $0.kind != .dataFolder }
             .map(doctorCheck(from:))
+    }
+
+    /// The recorder's own view of call audio, so a copied report says why the
+    /// call track was missing (not just whether the permission looks granted).
+    static func callAudioChecks(_ diagnostics: CallAudioDiagnostics?) -> [DoctorCheck] {
+        guard let diagnostics else { return [] }
+        return [DoctorCheck(
+            id: "tools.callAudioDetails", category: .tools, title: "Call audio details",
+            status: diagnostics.hasProblem ? .warning : .ok,
+            detail: diagnostics.summary,
+            nextStep: diagnostics.hasProblem
+                ? "If access is the cause, choose Allow next to Call audio capture in Settings > Setup Assistant, then record again. Settings > Show recording diagnostics gives a live readout."
+                : nil
+        )]
     }
 
     static func doctorCheck(from tool: ToolHealthCheck) -> DoctorCheck {

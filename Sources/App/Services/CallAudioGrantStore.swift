@@ -33,8 +33,13 @@ struct CallAudioGrantStore {
         return "\(version)+\(number)"
     }
 
+    /// The build access was last confirmed for, if any.
+    var confirmedBuild: String? {
+        defaults.string(forKey: Self.key)
+    }
+
     var isConfirmed: Bool {
-        defaults.string(forKey: Self.key) == build
+        confirmedBuild == build
     }
 
     func confirm() {
