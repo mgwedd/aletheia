@@ -9,6 +9,17 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.36.0] - 2026-10-12
+
+### Added
+- focus the clicked field in the editor with the caret at the end (#251)
+
+### Fixed
+- one-click recovery when the local AI engine is down or missing its model (#255)
+- ask ScreenCaptureKit once per Record, not twice (#260)
+- warn when the call track stays silent (#259)
+- include patient and session JSON in the pre-migration image (#258)
+
 ## [2.35.0] - 2026-10-10
 
 ### Added
