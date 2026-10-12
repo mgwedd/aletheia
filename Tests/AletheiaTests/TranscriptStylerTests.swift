@@ -47,7 +47,7 @@ final class TranscriptStylerTests: XCTestCase {
     }
 
     func testToneByLabel() {
-        XCTAssertEqual(TranscriptStyler.tone(for: "Therapist"), .therapist)
+        XCTAssertEqual(TranscriptStyler.tone(for: "You"), .therapist)
         XCTAssertEqual(TranscriptStyler.tone(for: "Call audio"), .callAudio)
         XCTAssertEqual(TranscriptStyler.tone(for: " call AUDIO "), .callAudio)
         XCTAssertEqual(TranscriptStyler.tone(for: "Jordan"), .other)

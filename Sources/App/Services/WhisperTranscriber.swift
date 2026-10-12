@@ -31,7 +31,7 @@ final class WhisperTranscriber: Transcribing {
 
     /// Transcribes the mic and call recordings separately, then merges the
     /// lines by timestamp so the transcript reads like a two-person
-    /// conversation ("Therapist" / "Call audio") instead of one blended track.
+    /// conversation ("You" / "Call audio") instead of one blended track.
     func transcribeSession(
         micURL: URL?,
         callURL: URL?,
@@ -43,7 +43,7 @@ final class WhisperTranscriber: Transcribing {
 
         var tracks: [(url: URL, source: String, stage: TranscriptionStage)] = []
         if let micURL, FileManager.default.fileExists(atPath: micURL.path) {
-            tracks.append((url: micURL, source: "Therapist", stage: .transcribingMic))
+            tracks.append((url: micURL, source: "You", stage: .transcribingMic))
         }
         if let callURL, FileManager.default.fileExists(atPath: callURL.path) {
             tracks.append((url: callURL, source: "Call audio", stage: .transcribingCall))
@@ -67,11 +67,21 @@ final class WhisperTranscriber: Transcribing {
             lines += found
         }
 
+        // On speakers the call re-enters the mic and is transcribed twice, so
+        // drop mic lines that repeat the call track's words. Before cleaning:
+        // the raw segments are shorter, which keeps the filter's time window
+        // tight, and coalescing then sees the timeline without the echoes.
+        let callLines = lines.filter { $0.source != "You" }
+        lines = SpeakerLeakageFilter.dropLeakedLines(
+            mic: lines.filter { $0.source == "You" },
+            call: callLines
+        ) + callLines
+
         // Clean across both tracks at once (coalescing needs the merged
         // timeline), then print. Dropping non-speech tags and silence
         // artifacts means a recording where nothing was said yields "" (which
         // the caller treats as "no speech") instead of a transcript of bare
-        // "[00:00] Therapist:" labels.
+        // "[00:00] You:" labels.
         return TranscriptFormatter.format(TranscriptCleaner.clean(lines))
     }
 

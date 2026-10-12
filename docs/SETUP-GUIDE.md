@@ -53,7 +53,7 @@ Start with the built-in checks. They are faster than guessing:
 | Symptom | Likely cause and fix |
 |---|---|
 | No microphone input | **System Settings → Privacy & Security → Microphone**, turn Aletheia on. Quit and reopen the app. Also check the input device in **System Settings → Sound**. |
-| The other person's voice is missing (only "Therapist" lines in the transcript) | Aletheia needs **Screen & System Audio Recording**. Turn it on under **Privacy & Security → Screen & System Audio Recording**, then quit and reopen the app. Aletheia records audio only, never video. |
+| The other person's voice is missing (only "You" lines in the transcript) | Aletheia needs **Screen & System Audio Recording**. Turn it on under **Privacy & Security → Screen & System Audio Recording**, then quit and reopen the app. Aletheia records audio only, never video. |
 | Permission is on but still not working | Toggle it off and on again, then restart the app. macOS sometimes keeps a stale grant, especially after an app update or when you move the app to a different location. |
 | Call audio is silent | Call audio is the Mac's system audio. If the call plays through a Bluetooth headset or another output device, switch the output and try a short test recording. |
 | A reminder appears after 90 minutes | This is the long-recording guard. It asks whether you meant to keep recording. |

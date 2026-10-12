@@ -37,7 +37,7 @@ final class PromptsTests: XCTestCase {
         let legend = Prompts.transcriptLegend
         XCTAssertTrue(legend.contains("not from voice analysis"))
         XCTAssertTrue(legend.contains("\"Call audio\" is normally the client"))
-        XCTAssertTrue(legend.contains("both people may appear as \"Therapist\""))
+        XCTAssertTrue(legend.contains("both people may appear as \"You\""))
         XCTAssertTrue(legend.contains("(overlapping)"))
         XCTAssertTrue(legend.contains("approximate"))
     }
