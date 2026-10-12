@@ -137,7 +137,7 @@ enum TranscriptCleaner {
     /// time-ordered lines of ALL sources so an interjection splits the turn.
     ///
     ///   t:            10    11    11.5    13
-    ///   Therapist     A1          A2      A3
+    ///   You           A1          A2      A3
     ///   Call audio          B
     ///
     ///   per source:   [A1 A2 A3]  [B]       B is shown after the whole turn

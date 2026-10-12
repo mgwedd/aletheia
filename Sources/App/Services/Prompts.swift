@@ -64,9 +64,10 @@ enum Prompts {
     static let transcriptLegend = """
     How to read the transcript: each line is "[MM:SS] Label: text". The \
     label comes from which audio track the words were recorded on, not from \
-    voice analysis. "Call audio" is normally the client. In a session \
-    recorded with the microphone only, both people may appear as \
-    "Therapist". "(overlapping)" after a label means both tracks had speech \
+    voice analysis. "You" is the microphone, normally the therapist; it \
+    never means you, the reader. "Call audio" is normally the client. In a \
+    session recorded with the microphone only, both people may appear as \
+    "You". "(overlapping)" after a label means both tracks had speech \
     at the same time, so the two people spoke over each other. Line order is \
     approximate to within a few seconds.
     """

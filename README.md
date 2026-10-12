@@ -15,7 +15,7 @@ Aletheia records a video-call therapy session, transcribes it, drafts a progress
 | | |
 |---|---|
 | **Record** | Your microphone and the other side of the call, captured as two separate tracks. No virtual audio driver. Start and stop from the window or the menu bar. |
-| **Transcribe** | On-device Whisper. Lines are labeled "Therapist" and "Call audio" and merged by timestamp. |
+| **Transcribe** | On-device Whisper. Lines are labeled "You" and "Call audio" and merged by timestamp. |
 | **Write the note** | A draft progress note from the transcript, your notes and your comments: narrative (default), SOAP, DAP, BIRP or GIRP. |
 | **Annotate** | Free-form session notes and inline comments on specific transcript lines. |
 | **Ask** | Chat about one session, or about all of a client's sessions together. Asking across sessions reads notes and comments from every session but only about 6,000 characters of transcript per question; the chat shows how much was included ([details](docs/DESIGN-DECISIONS.md)). |

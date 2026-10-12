@@ -4,17 +4,17 @@ import Foundation
 /// per segment: `[MM:SS] <source>: <text>`, or `[MM:SS] <source> (overlapping):
 /// <text>` when that speaker was talking over the other track.
 ///
-///   Therapist   |------ A ------|        |-- C --|
+///   You         |------ A ------|        |-- C --|
 ///   Call audio          |-- B --|  |-- D --|
 ///   time ------>
 ///
 ///   A and B intersect by more than `overlapTolerance`: both are marked.
 ///   D only touches C (within the tolerance): neither is marked.
 ///
-///   [00:10] Therapist (overlapping): ...A
+///   [00:10] You (overlapping): ...A
 ///   [00:14] Call audio (overlapping): ...B
 ///   [00:20] Call audio: ...D
-///   [00:21] Therapist: ...C
+///   [00:21] You: ...C
 ///
 /// Rules:
 ///   - Lines are printed in start-time order (ties keep input order).

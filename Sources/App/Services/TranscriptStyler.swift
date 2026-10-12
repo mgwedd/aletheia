@@ -7,7 +7,7 @@ import Foundation
 /// therapist edits (a line that no longer looks like `[time] Speaker:` simply
 /// gets no styling).
 ///
-///   [00:16] Therapist: - No problem.
+///   [00:16] You: - No problem.
 ///   └─────┘ └───────┘
 ///   timestamp speaker
 enum TranscriptStyler {
@@ -28,12 +28,12 @@ enum TranscriptStyler {
         case other
     }
 
-    /// The labels `WhisperTranscriber` writes ("Therapist" for the microphone
+    /// The labels `WhisperTranscriber` writes ("You" for the microphone
     /// track, "Call audio" for the call track); anything else (a hand-typed
     /// name) is neutral.
     static func tone(for label: String) -> Tone {
         switch label.trimmingCharacters(in: .whitespaces).lowercased() {
-        case "therapist": return .therapist
+        case "you": return .therapist
         case "call audio": return .callAudio
         default: return .other
         }

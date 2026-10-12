@@ -3,21 +3,21 @@ import Foundation
 /// Text-level guard against the call audio bleeding into the therapist's mic.
 ///
 /// Speaker labels are the audio track a line came from, not voice analysis:
-/// `mic.caf` is "Therapist", `call.caf` is "Call audio".
+/// `mic.caf` is "You", `call.caf` is "Call audio".
 ///
 /// ```
-///  therapist ─► mic ───────────────────────────────► mic.caf   "Therapist"
+///  therapist ─► mic ───────────────────────────────► mic.caf   "You"
 ///                 ▲ bleed (speakers): the call re-enters the mic
 ///  patient ─► call app ─► speakers ─► system audio ─► call.caf  "Call audio"
 /// ```
 ///
 /// With speakers (not headphones) the same words are transcribed twice: once on
 /// the call track (correct) and once on the mic track (wrongly labelled
-/// "Therapist"). This drops a mic line when its words are, in order, nearly all
+/// "You"). This drops a mic line when its words are, in order, nearly all
 /// contained in call-track lines that start around the same time.
 ///
 /// What it does not fix: in-person or shared-mic sessions (every line is
-/// "Therapist"), a call track that carries non-patient system audio, and track
+/// "You"), a call track that carries non-patient system audio, and track
 /// clocks that drift apart.
 ///
 /// Pure and independent of Whisper and AVFoundation so it is unit tested
