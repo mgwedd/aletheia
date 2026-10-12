@@ -4,19 +4,18 @@ name: Release
 # drag-to-Applications DMG, generates the `appcast.json` the in-app updater
 # polls, and publishes both as a GitHub Release.
 #
-# Signing/notarization is OPTIONAL and gated on repository secrets — with none
+# Signing/notarization is OPTIONAL and gated on repository secrets (in the `release` environment) — with none
 # set, this produces the same ad-hoc-signed build as before (first launch needs
 # right-click → Open). Add the secrets below to get a Developer ID-signed,
-# notarized, stapled DMG that opens with a double-click. Run
-# scripts/setup-signing-secrets.sh on your Mac to set all of them without the
-# values passing through anything but `gh`.
+# notarized, stapled DMG that opens with a double-click. Set each with
+# `gh secret set NAME` (hidden prompt, or piped on stdin).
 #   MACOS_CERTIFICATE            base64 of your Developer ID Application .p12
 #   MACOS_CERTIFICATE_PWD        password for that .p12
 #   MACOS_SIGN_IDENTITY          e.g. "Developer ID Application: Jane (TEAMID)"
 #   KEYCHAIN_PASSWORD            any strong throwaway string
-#   APPLE_ID                     Apple ID email for notarization
-#   APPLE_TEAM_ID                10-char team id
-#   APPLE_APP_SPECIFIC_PASSWORD  app-specific password for that Apple ID
+#   ASC_API_KEY                  contents of the App Store Connect API key (.p8)
+#   ASC_API_KEY_ID               that key's 10-char Key ID
+#   ASC_API_ISSUER_ID            Issuer ID (UUID) shown above the Team Keys list
 #
 #   signing secrets only        -> signed app and DMG, not notarized
 #   signing + notarization      -> signed, notarized, stapled DMG
@@ -51,9 +50,12 @@ jobs:
   release:
     name: Build and publish
     runs-on: macos-15
+    # The signing and notarization secrets live in this environment, which
+    # requires an approval before the job starts.
+    environment: release
     env:
       HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
-      HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
+      HAS_NOTARIZATION: ${{ secrets.ASC_API_KEY != '' && secrets.ASC_API_KEY_ID != '' && secrets.ASC_API_ISSUER_ID != '' }}
       # Only a tag publishes. Dispatching from a branch is a dry run.
       IS_TAG: ${{ github.ref_type == 'tag' }}
     steps:
@@ -82,7 +84,7 @@ jobs:
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PWD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign -t cert -f pkcs12 -k "$KEYCHAIN"
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           rm -f "$CERT_PATH"
           # Put our keychain first on the search list, keeping the existing ones.
@@ -94,14 +96,11 @@ jobs:
       - name: Build Release app
         env:
           SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-          DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           if [ "${HAS_SIGNING}" = "true" ]; then
             export CODE_SIGN_IDENTITY="$SIGN_IDENTITY"
             export OTHER_CODE_SIGN_FLAGS="--timestamp"
-          else
-            unset DEVELOPMENT_TEAM
           fi
           ./scripts/build.sh
 
@@ -173,20 +172,26 @@ jobs:
       - name: Notarize and staple
         if: env.HAS_SIGNING == 'true' && env.HAS_NOTARIZATION == 'true'
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
         run: |
           set -euo pipefail
           DMG="${{ steps.package.outputs.dmg }}"
+
+          # notarytool takes the API key as a file.
+          KEY_PATH="$RUNNER_TEMP/asc-api-key.p8"
+          trap 'rm -f "$KEY_PATH"' EXIT
+          umask 077
+          printf '%s\n' "$ASC_API_KEY" > "$KEY_PATH"
 
           # notarytool exits 0 even when Apple rejects the build, so read the
           # status, and print Apple's log (the only place the reason appears).
           set +e
           OUT="$(xcrun notarytool submit "$DMG" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --key "$KEY_PATH" \
+            --key-id "$ASC_API_KEY_ID" \
+            --issuer "$ASC_API_ISSUER_ID" \
             --wait 2>&1)"
           STATUS=$?
           set -e
@@ -195,9 +200,9 @@ jobs:
             SUB_ID="$(echo "$OUT" | awk '/^ *id:/ {print $2; exit}')"
             if [ -n "$SUB_ID" ]; then
               xcrun notarytool log "$SUB_ID" \
-                --apple-id "$APPLE_ID" \
-                --team-id "$APPLE_TEAM_ID" \
-                --password "$APPLE_APP_SPECIFIC_PASSWORD" || true
+                --key "$KEY_PATH" \
+                --key-id "$ASC_API_KEY_ID" \
+                --issuer "$ASC_API_ISSUER_ID" || true
             fi
             echo "::error::Notarization was not accepted; see the log above."
             exit 1
