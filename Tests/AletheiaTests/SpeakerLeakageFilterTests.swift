@@ -117,4 +117,31 @@ final class SpeakerLeakageFilterTests: XCTestCase {
         XCTAssertEqual(SpeakerLeakageFilter.words(in: "Don't STOP -- really?"), ["dont", "stop", "really"])
         XCTAssertEqual(SpeakerLeakageFilter.words(in: "  ... "), [])
     }
+
+    /// A real speaker-bleed recording: one voice on the call track, echoed
+    /// into the mic. The tracks are cut at different points and differ in a
+    /// few words ("ECMA 335" / "ECMA335", "12" / "12th", an extra "Well").
+    func testRealSpeakerBleedIsDroppedAndTherapistSpeechOverItIsKept() {
+        let callLines = [
+            call("binaries you can get your hands on. We're talking stripped-elf, PE and mako executables, JVM bytecode with obfuscated constant pools,", at: 15),
+            call("ECMA335-compliant .NET assemblies, bare-metal firmware with architecture-specific instruction", at: 22),
+            call("sets, and even OCI container layers entangled in declarative infrastructure manifests.", at: 28),
+            call("It is October 12th, 2026, and you're watching The Code Report.", at: 45),
+            call("So is it really true that one person plus Claude made the entire Adobe suite obsolete", at: 48),
+            call("overnight? On the surface, yes, as you can see on the website, you can download a Rust-based version", at: 53),
+        ]
+        let therapist = mic("Sorry to interrupt, can you tell me more about that", at: 25)
+        let result = SpeakerLeakageFilter.dropLeakedLines(
+            mic: [
+                mic("PE and Mako executables, JVM bytecode with obfuscated constant pools, ECMA 335 compliant", at: 18),
+                mic(".NET assemblies, bare metal firmware with architecture-specific instruction sets,", at: 24),
+                therapist,
+                mic("and even OCI container layers entangled in declarative infrastructure manifests.", at: 28),
+                mic("It is October 12, 2026, and you're watching the code report. So is it really true that", at: 44),
+                mic("one person plus Claude made the entire Adobe suite obsolete overnight? Well, on the surface,", at: 50),
+            ],
+            call: callLines
+        )
+        XCTAssertEqual(result, [therapist])
+    }
 }

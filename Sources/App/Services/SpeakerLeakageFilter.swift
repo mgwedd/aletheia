@@ -21,16 +21,13 @@ import Foundation
 /// clocks that drift apart.
 ///
 /// Pure and independent of Whisper and AVFoundation so it is unit tested
-/// directly. **Not wired into `WhisperTranscriber` yet**: the thresholds are
-/// unvalidated against a real two-party recording, and a false positive deletes
-/// something the therapist actually said from the clinical record. It is biased
-/// to keep: short lines and partial overlaps are never dropped.
-///
-/// Rule for wiring it: never drop a line only because it overlaps the other
-/// track in time. An interruption is real simultaneous speech; only drop when
-/// the words match too. Run it on the mic lines after cleaning and before the
-/// tracks are merged and sorted, which needs the per-track loop in
-/// `transcribeSession` split so the two tracks stay separate until then.
+/// directly. `WhisperTranscriber.transcribeSession` runs it on the raw mic
+/// segments before the tracks are cleaned and merged. A false positive deletes
+/// something the therapist actually said from the transcript (the recording
+/// keeps it), so it is biased to keep: short lines and partial overlaps are
+/// never dropped, and a line is never dropped only because it overlaps the
+/// other track in time. An interruption is real simultaneous speech; only
+/// matching words count.
 enum SpeakerLeakageFilter {
     /// A call line counts as simultaneous when its start time is within this
     /// many seconds of the mic line's. Segments carry only a start time, and
@@ -46,8 +43,7 @@ enum SpeakerLeakageFilter {
     static let defaultContainment = 0.8
 
     /// Returns `mic` without the lines that look like leakage of `call`,
-    /// preserving order. `call` is never modified. Both inputs should already
-    /// be cleaned (`TranscriptCleaner.clean`).
+    /// preserving order. `call` is never modified.
     static func dropLeakedLines(
         mic: [TranscribedLine],
         call: [TranscribedLine],

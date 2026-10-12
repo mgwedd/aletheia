@@ -67,6 +67,16 @@ final class WhisperTranscriber: Transcribing {
             lines += found
         }
 
+        // On speakers the call re-enters the mic and is transcribed twice, so
+        // drop mic lines that repeat the call track's words. Before cleaning:
+        // the raw segments are shorter, which keeps the filter's time window
+        // tight, and coalescing then sees the timeline without the echoes.
+        let callLines = lines.filter { $0.source != "Therapist" }
+        lines = SpeakerLeakageFilter.dropLeakedLines(
+            mic: lines.filter { $0.source == "Therapist" },
+            call: callLines
+        ) + callLines
+
         // Clean across both tracks at once (coalescing needs the merged
         // timeline), then print. Dropping non-speech tags and silence
         // artifacts means a recording where nothing was said yields "" (which
