@@ -19,11 +19,11 @@ enum MicRecorderError: LocalizedError {
 ///
 /// Deliberately not actor-isolated: the tap closure below runs on a
 /// dedicated real-time audio thread, and hopping to another actor on every
-/// buffer would risk dropped audio if that actor is busy. `file` is only
+/// buffer would risk dropped audio if that actor is busy. `writer` is only
 /// ever touched from that one audio thread between `start()` and `stop()`.
 final class MicRecorder {
     private let engine = AVAudioEngine()
-    private var file: AVAudioFile?
+    private var writer: MicFileWriter?
     private(set) var isRunning = false
     /// When true, the input tap keeps running but its buffers are dropped, so
     /// the file skips the paused span instead of stopping the engine (restarting
@@ -74,34 +74,9 @@ final class MicRecorder {
 
         let inputNode = engine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
-        let file = try AVAudioFile(forWriting: url, settings: format.settings)
-        self.file = file
+        writer = try MicFileWriter(url: url, format: format)
         self.fileURL = url
-
-        // Plain tap, deliberately without Apple voice processing (echo
-        // cancellation): it suppresses the near-end speaker during double-talk,
-        // which is exactly an interruption, and it changes the input format this
-        // file was opened with. Speaker bleed is handled at the text level
-        // instead (see SpeakerLeakageFilter); headphones avoid it entirely.
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            guard let self else { return }
-            if let level = AudioLevel.level(of: buffer) { self.levelSource.publish(level) }
-            guard !self.isPaused else { return }
-            do {
-                try self.file?.write(from: buffer)
-                if let fileURL = self.fileURL {
-                    AudioCrashSafety.flushHeader(at: fileURL)
-                }
-            } catch {
-                // Surface a silent write failure once, on the main actor, so the
-                // therapist learns the recording stopped saving *during* the
-                // session — not from a truncated file afterwards.
-                if self.health.recordWriteFailure(error.localizedDescription) {
-                    let message = "The microphone recording may have stopped saving to disk: \(error.localizedDescription)"
-                    Task { @MainActor [weak self] in self?.onDisruption?(message) }
-                }
-            }
-        }
+        installTap(format: format)
 
         // An input-device swap or unplug mid-session posts this; capture can
         // silently stop when it does, so record it and attempt engine recovery.
@@ -112,6 +87,14 @@ final class MicRecorder {
         ) { [weak self] _ in
             guard let self else { return }
             self.health.recordConfigurationChange()
+            // The new input may deliver a different format than the tap was
+            // installed with; reinstall so buffers match what the device now
+            // produces (the writer converts them to the file's format).
+            let current = self.engine.inputNode.outputFormat(forBus: 0)
+            if self.isRunning, current.sampleRate > 0, current != self.tapFormat {
+                self.engine.inputNode.removeTap(onBus: 0)
+                self.installTap(format: current)
+            }
             if self.isRunning && !self.engine.isRunning {
                 do {
                     self.engine.prepare()
@@ -130,6 +113,37 @@ final class MicRecorder {
         isRunning = true
     }
 
+    /// Format the tap is currently installed with.
+    private var tapFormat: AVAudioFormat?
+
+    private func installTap(format: AVAudioFormat) {
+        tapFormat = format
+        // Plain tap, deliberately without Apple voice processing (echo
+        // cancellation): it suppresses the near-end speaker during double-talk,
+        // which is exactly an interruption, and it changes the input format this
+        // file was opened with. Speaker bleed is handled at the text level
+        // instead (see SpeakerLeakageFilter); headphones avoid it entirely.
+        engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+            guard let self else { return }
+            if let level = AudioLevel.level(of: buffer) { self.levelSource.publish(level) }
+            guard !self.isPaused else { return }
+            do {
+                try self.writer?.write(buffer)
+                if let fileURL = self.fileURL {
+                    AudioCrashSafety.flushHeader(at: fileURL)
+                }
+            } catch {
+                // Surface a silent write failure once, on the main actor, so the
+                // therapist learns the recording stopped saving *during* the
+                // session — not from a truncated file afterwards.
+                if self.health.recordWriteFailure(error.localizedDescription) {
+                    let message = "The microphone recording may have stopped saving to disk: \(error.localizedDescription)"
+                    Task { @MainActor [weak self] in self?.onDisruption?(message) }
+                }
+            }
+        }
+    }
+
     func stop() {
         guard isRunning else { return }
         removeConfigObserver()
@@ -138,7 +152,9 @@ final class MicRecorder {
         if let fileURL {
             AudioCrashSafety.flushHeader(at: fileURL)
         }
-        file = nil
+        writer?.close()
+        writer = nil
+        tapFormat = nil
         fileURL = nil
         isRunning = false
         isPaused = false
