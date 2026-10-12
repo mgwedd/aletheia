@@ -102,6 +102,14 @@ enum MigrationBackup {
             .appendingPathComponent(snapshot.deletingPathExtension().lastPathComponent, isDirectory: true)
     }
 
+    /// The JSON bundle folders under `<dataRoot>/.backups/migrations/files/`,
+    /// one per pre-image. Empty when none exist.
+    static func fileBundles(inDataRoot dataRoot: URL, fileManager: FileManager = .default) -> [URL] {
+        let folder = BackupLayout.directory(.migrations, dataRoot: dataRoot)
+            .appendingPathComponent(filesFolderName, isDirectory: true)
+        return directories(in: folder, fileManager)
+    }
+
     /// Paths, relative to the data root, of every `patient.json` and
     /// `session.json`. Audio, transcripts and notes are never listed: a
     /// migration doesn't rewrite them, and copying them would make the pre-image
