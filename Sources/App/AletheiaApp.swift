@@ -25,6 +25,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // never flashes the system one first.
         AppSettings.shared.appearance.apply()
     }
+
+    #if DEBUG
+    @MainActor func applicationDidFinishLaunching(_ notification: Notification) {
+        HarnessRun.runIfRequested()
+    }
+    #endif
 }
 
 @main
