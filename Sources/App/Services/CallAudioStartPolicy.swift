@@ -2,30 +2,27 @@ import Foundation
 
 /// Decides whether Record should try to start call-audio capture.
 ///
-/// Starting capture goes through ScreenCaptureKit, which re-shows the system
-/// "record this computer's screen and audio" dialog whenever it isn't
-/// recognised as granted. On a build macOS doesn't carry the grant for
-/// (ad-hoc signed, see #256) that was every Record click. This allows one
-/// attempt per launch while access isn't confirmed; after that Record goes
-/// mic-only with a visible note instead of prompting again.
+/// Starting capture goes through ScreenCaptureKit, which shows the system
+/// "record this computer's screen and audio" dialog whenever access isn't
+/// recognised. That dialog belongs to setup, where the user is asked once on
+/// purpose. Record never asks: it captures call audio only when access is
+/// known good, and otherwise records the mic alone and says how to fix it.
 ///
-/// `CGPreflightScreenCaptureAccess` is cached per process, so a grant made
-/// while the app runs still preflights as false. A successful attempt is
-/// remembered here so it isn't mistaken for a denial afterwards.
+/// "Known good" is any of: the (per-process cached) preflight says granted,
+/// a capture already worked this launch, or a grant was confirmed for this
+/// build in an earlier session (`CallAudioGrantStore`).
 struct CallAudioStartPolicy: Equatable {
-    private(set) var attempted = false
     private(set) var worked = false
 
     static let skippedMessage =
-        "Call audio is off for this session: Screen & System Audio Recording isn't granted to Aletheia. "
-        + "Turn it on in System Settings > Privacy & Security, then quit and reopen Aletheia."
+        "Call audio is off for this session: Screen & System Audio Recording isn't set up for this version of Aletheia. "
+        + "Open Settings > Setup Assistant and choose Allow next to Call audio capture. You will only be asked there."
 
-    func shouldAttempt(preflight: Bool) -> Bool {
-        preflight || worked || !attempted
+    func shouldAttempt(preflight: Bool, confirmedBefore: Bool) -> Bool {
+        preflight || confirmedBefore || worked
     }
 
-    mutating func recordAttempt(succeeded: Bool) {
-        attempted = true
-        if succeeded { worked = true }
+    mutating func recordSuccess() {
+        worked = true
     }
 }

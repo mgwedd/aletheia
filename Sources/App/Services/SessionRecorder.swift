@@ -126,8 +126,7 @@ final class SessionRecorder: ObservableObject {
     let levels = RecordingLevels()
     private let mic = MicRecorder()
     private let systemAudio = SystemAudioCapture()
-    /// Limits ScreenCaptureKit attempts so a denied grant doesn't re-show the
-    /// system prompt on every Record click.
+    /// Keeps Record from asking for call-audio access; only setup does.
     private var callAudioPolicy = CallAudioStartPolicy()
     private var reminderTask: Task<Void, Never>?
     private var levelTask: Task<Void, Never>?
@@ -172,12 +171,19 @@ final class SessionRecorder: ObservableObject {
             try mic.start(to: micURL)
             // System audio capture is best-effort — if system audio fails to start,
             // session recording still continues with the microphone track.
-            if callAudioPolicy.shouldAttempt(preflight: SystemAudioCapture.checkPermission()) {
+            let grantStore = CallAudioGrantStore.standard
+            if callAudioPolicy.shouldAttempt(
+                preflight: SystemAudioCapture.checkPermission(),
+                confirmedBefore: grantStore.isConfirmed
+            ) {
                 do {
                     try await systemAudio.start(to: callURL)
-                    callAudioPolicy.recordAttempt(succeeded: true)
+                    callAudioPolicy.recordSuccess()
+                    grantStore.confirm()
                 } catch {
-                    callAudioPolicy.recordAttempt(succeeded: false)
+                    if let captureError = error as? SystemAudioCaptureError, captureError == .permissionDenied {
+                        grantStore.clear()
+                    }
                     recordingHealth.recordSystemAudioDisruption(error.localizedDescription)
                 }
             } else {
