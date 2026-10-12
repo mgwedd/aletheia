@@ -11,7 +11,6 @@ name: Release
 # `gh secret set NAME` (hidden prompt, or piped on stdin).
 #   MACOS_CERTIFICATE            base64 of your Developer ID Application .p12
 #   MACOS_CERTIFICATE_PWD        password for that .p12
-#   MACOS_SIGN_IDENTITY          e.g. "Developer ID Application: Jane (TEAMID)"
 #   KEYCHAIN_PASSWORD            any strong throwaway string
 #   ASC_API_KEY                  contents of the App Store Connect API key (.p8)
 #   ASC_API_KEY_ID               that key's 10-char Key ID
@@ -54,7 +53,7 @@ jobs:
     # requires an approval before the job starts.
     environment: release
     env:
-      HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
+      HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE != '' }}
       HAS_NOTARIZATION: ${{ secrets.ASC_API_KEY != '' && secrets.ASC_API_KEY_ID != '' && secrets.ASC_API_ISSUER_ID != '' }}
       # Only a tag publishes. Dispatching from a branch is a dry run.
       IS_TAG: ${{ github.ref_type == 'tag' }}
@@ -85,7 +84,7 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign -t cert -f pkcs12 -k "$KEYCHAIN"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
           rm -f "$CERT_PATH"
           # Put our keychain first on the search list, keeping the existing ones.
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
@@ -93,14 +92,22 @@ jobs:
           echo "Signing identities in the temporary keychain:"
           security find-identity -v -p codesigning "$KEYCHAIN"
 
+          # Sign by certificate hash from this keychain, so nothing depends on
+          # a hand-typed identity name or the keychain search list.
+          SIGN_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/Developer ID Application/ {print $2; exit}')"
+          if [ -z "$SIGN_IDENTITY" ]; then
+            echo "::error::No Developer ID Application identity in MACOS_CERTIFICATE."
+            exit 1
+          fi
+          echo "SIGN_IDENTITY=$SIGN_IDENTITY" >> "$GITHUB_ENV"
+          echo "SIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
       - name: Build Release app
-        env:
-          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: |
           set -euo pipefail
           if [ "${HAS_SIGNING}" = "true" ]; then
             export CODE_SIGN_IDENTITY="$SIGN_IDENTITY"
-            export OTHER_CODE_SIGN_FLAGS="--timestamp"
+            export OTHER_CODE_SIGN_FLAGS="--timestamp --keychain $SIGN_KEYCHAIN"
           fi
           ./scripts/build.sh
 
@@ -162,11 +169,9 @@ jobs:
 
       - name: Sign DMG
         if: env.HAS_SIGNING == 'true'
-        env:
-          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: |
           set -euo pipefail
-          codesign --force --sign "$SIGN_IDENTITY" --timestamp "${{ steps.package.outputs.dmg }}"
+          codesign --force --sign "$SIGN_IDENTITY" --keychain "$SIGN_KEYCHAIN" --timestamp "${{ steps.package.outputs.dmg }}"
           codesign --verify --verbose=2 "${{ steps.package.outputs.dmg }}"
 
       - name: Notarize and staple
