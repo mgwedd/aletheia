@@ -218,10 +218,15 @@ private struct LockCover: ViewModifier {
     @ObservedObject var appModel: AppModel
 
     func body(content: Content) -> some View {
-        content
+        let covers = LockCoverPolicy.cover(
+            appLocked: appLock.isLocked,
+            hasDataFolder: settings.dataRootURL != nil,
+            encryption: encryption.state
+        )
+        return content
             // Tier-1 protection: cover everything until the user authenticates.
             .overlay {
-                if appLock.isLocked {
+                if covers.contains(.appLock) {
                     LockView()
                         .environmentObject(appLock)
                         .transition(.opacity)
@@ -230,7 +235,7 @@ private struct LockCover: ViewModifier {
             // Tier-2: an encrypted folder needs its passphrase once per launch
             // before its notes can be read or written.
             .overlay {
-                if settings.dataRootURL != nil && encryption.state == .lockedNeedsPassphrase {
+                if covers.contains(.passphrase) {
                     EncryptionUnlockView()
                         .environmentObject(encryption)
                         .environmentObject(settings)
