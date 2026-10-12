@@ -402,6 +402,14 @@ struct SessionDetailView: View {
                     .accessibilityLabel("Elapsed \(recordingElapsed(at: context.date))")
             }
             InputLevelMeters(levels: recorder.levels, isPaused: recorder.isPaused)
+            if recorder.callAudioSilent, !recorder.isPaused {
+                Label("No call audio detected. Only your microphone is being recorded. If the other person is speaking, make sure the call plays through this Mac, and that Aletheia is allowed under Screen & System Audio Recording.", systemImage: "exclamationmark.triangle")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: 440, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+            }
             Text(recorder.isPaused
                  ? "Paused. Nothing is being recorded until you resume."
                  : "Recording on this Mac. Stop when the session ends, then transcribe.")
