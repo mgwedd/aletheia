@@ -155,6 +155,7 @@ struct AletheiaApp: App {
         Window("Aletheia Doctor", id: DoctorFeatureModule.windowID) {
             DoctorView()
                 .environmentObject(settings)
+                .environmentObject(recorder)
                 .environmentObject(appModel)
                 .environmentObject(integrations)
                 .environmentObject(encryption)

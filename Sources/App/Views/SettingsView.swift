@@ -276,6 +276,12 @@ struct SettingsView: View {
                         .buttonStyle(.themed)
                 }
                 .padding(.vertical, 12)
+                SettingsHairline()
+                SettingsSwitchRow(
+                    title: "Show recording diagnostics",
+                    detail: "Adds a technical readout about call audio to the recording screen, for troubleshooting. It shows permission and stream state only, never session content.",
+                    isOn: $settings.debugDiagnosticsEnabled
+                )
             }
         }
     }

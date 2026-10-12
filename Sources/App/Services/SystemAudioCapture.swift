@@ -69,6 +69,15 @@ final class SystemAudioCapture: NSObject {
     /// handler for the live meter. Read-only metering; it does not affect what
     /// is written.
     nonisolated let levelSource = LevelMeterSource()
+    /// Audio buffers delivered since the last `start`. Diagnostics only.
+    private(set) var buffersReceived = 0
+    /// Size of the open call recording on disk, nil when none is open.
+    /// Diagnostics only.
+    var bytesWritten: Int64? {
+        guard stream != nil, let fileURL else { return nil }
+        let size = try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber
+        return size?.int64Value ?? 0
+    }
 
     /// Whether Screen Recording (which gates ScreenCaptureKit audio) is granted —
     /// checked *without* prompting. Using the CoreGraphics preflight instead of
@@ -155,6 +164,7 @@ final class SystemAudioCapture: NSObject {
 
     func start(to url: URL) async throws {
         isDisrupted = false
+        buffersReceived = 0
         levelSource.reset()
         // One ScreenCaptureKit call decides everything. This used to run a
         // separate `verifyAccessGranted()` probe first and then fetch the
@@ -205,6 +215,7 @@ final class SystemAudioCapture: NSObject {
     }
 
     private func write(_ buffer: AVAudioPCMBuffer) {
+        buffersReceived += 1
         guard !isPaused, let fileURL else { return }
         do {
             if file == nil {
