@@ -81,6 +81,80 @@ enum MigrationBackup {
             .map(\.url)
     }
 
+    // MARK: - Structured JSON (patient.json / session.json)
+
+    /// Sub-folder of the migrations folder that holds, per pre-image, a copy of
+    /// the small structured JSON files. It has no `-pre-v` marker, so
+    /// `existing`/`metadata`/`prunable` never mistake it for a snapshot.
+    static let filesFolderName = "files"
+
+    /// Where the JSON copy for a given database snapshot goes: a folder named
+    /// after the snapshot, so the two are paired by name.
+    ///
+    /// ```
+    /// .backups/migrations/Aletheia-pre-v2-<stamp>.sqlite
+    /// .backups/migrations/files/Aletheia-pre-v2-<stamp>/Patients/<slug>/patient.json
+    ///                                                   Patients/<slug>/<session>/session.json
+    /// ```
+    static func filesBundleURL(forSnapshot snapshot: URL) -> URL {
+        snapshot.deletingLastPathComponent()
+            .appendingPathComponent(filesFolderName, isDirectory: true)
+            .appendingPathComponent(snapshot.deletingPathExtension().lastPathComponent, isDirectory: true)
+    }
+
+    /// Paths, relative to the data root, of every `patient.json` and
+    /// `session.json`. Audio, transcripts and notes are never listed: a
+    /// migration doesn't rewrite them, and copying them would make the pre-image
+    /// expensive. Sorted for a stable result.
+    static func structuredJSONFiles(inDataRoot dataRoot: URL, fileManager: FileManager = .default) -> [String] {
+        let patientsRoot = dataRoot.appendingPathComponent("Patients", isDirectory: true)
+        var found: [String] = []
+        for patientDir in directories(in: patientsRoot, fileManager) {
+            let patientName = patientDir.lastPathComponent
+            if fileManager.fileExists(atPath: patientDir.appendingPathComponent("patient.json").path) {
+                found.append("Patients/\(patientName)/patient.json")
+            }
+            for sessionDir in directories(in: patientDir, fileManager) {
+                if fileManager.fileExists(atPath: sessionDir.appendingPathComponent("session.json").path) {
+                    found.append("Patients/\(patientName)/\(sessionDir.lastPathComponent)/session.json")
+                }
+            }
+        }
+        return found.sorted()
+    }
+
+    /// Copies the structured JSON files into `bundle`, keeping their relative
+    /// paths so a restore is a plain copy over the data folder. Refuses to write
+    /// into a bundle that already exists (a pre-image is never overwritten) and
+    /// removes a partly written bundle on failure. Returns how many files were copied.
+    @discardableResult
+    static func copyStructuredJSON(fromDataRoot dataRoot: URL, to bundle: URL, fileManager: FileManager = .default) throws -> Int {
+        guard !fileManager.fileExists(atPath: bundle.path) else {
+            throw CocoaError(.fileWriteFileExists)
+        }
+        let relativePaths = structuredJSONFiles(inDataRoot: dataRoot, fileManager: fileManager)
+        do {
+            try fileManager.createDirectory(at: bundle, withIntermediateDirectories: true)
+            for relative in relativePaths {
+                let destination = bundle.appendingPathComponent(relative)
+                try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try fileManager.copyItem(at: dataRoot.appendingPathComponent(relative), to: destination)
+            }
+        } catch {
+            try? fileManager.removeItem(at: bundle)
+            throw error
+        }
+        return relativePaths.count
+    }
+
+    private static func directories(in url: URL, _ fileManager: FileManager) -> [URL] {
+        let entries = (try? fileManager.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
+        return entries
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
     // MARK: - Timestamp (filesystem-safe, sortable, UTC)
 
     static func stamp(_ date: Date) -> String { stampFormatter.string(from: date) }

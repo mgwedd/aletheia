@@ -106,18 +106,22 @@ final class SQLitePersistenceCore: PersistenceCore {
             // leave the data untouched at its old version, rather than upgrade
             // with no way back (docs/DATA-SAFETY.md). A fresh/baseline database
             // (current 0) has nothing to protect, so no snapshot is taken.
-            if let backupURL = MigrationBackup.snapshotURL(forDatabaseAt: url, fromVersion: current) {
-                guard snapshotBeforeMigration(to: backupURL) else {
-                    let code = sqlite3_extended_errcode(db)
-                    let detail = code == SQLITE_OK ? "" : " (\(DatabaseOpenFailure.describe(sqliteCode: code)))"
-                    return DatabaseOpenFailure(
-                        kind: .migrationRefused,
-                        reason: "Couldn't write the safety copy needed before upgrading the database from v\(current) to v\(target)\(detail).",
-                        sqliteCode: code == SQLITE_OK ? nil : code,
-                        dataVersion: current,
-                        appVersion: target
-                    )
+            if let backupURL = MigrationBackup.snapshotURL(forDatabaseAt: url, fromVersion: current),
+               let problem = takePreMigrationImage(to: backupURL) {
+                let code = sqlite3_extended_errcode(db)
+                let detail = code == SQLITE_OK ? "" : " (\(DatabaseOpenFailure.describe(sqliteCode: code)))"
+                let what: String
+                switch problem {
+                case .database: what = "the database"
+                case .files: what = "the patient and session files"
                 }
+                return DatabaseOpenFailure(
+                    kind: .migrationRefused,
+                    reason: "Couldn't write the safety copy of \(what) needed before upgrading the database from v\(current) to v\(target)\(detail).",
+                    sqliteCode: code == SQLITE_OK ? nil : code,
+                    dataVersion: current,
+                    appVersion: target
+                )
             }
             // One transaction: either the schema reaches `target` or nothing
             // changes. DDL is transactional in SQLite, and every step is
@@ -172,19 +176,37 @@ final class SQLitePersistenceCore: PersistenceCore {
         return (nil, sqlite3_extended_errcode(db))
     }
 
-    /// Writes a consistent pre-migration copy of the database to `destination`
-    /// via `VACUUM INTO`. Creates the `.backups/migrations/` directory (folding in
-    /// any legacy `Backups/` first, best-effort), and refuses (returns
-    /// false) rather than overwrite an existing file — the timestamped name makes
-    /// a collision practically impossible, and clobbering an earlier pre-image
-    /// would defeat the point. False here aborts the migration.
-    private func snapshotBeforeMigration(to destination: URL) -> Bool {
+    /// Takes the pre-migration image: a consistent copy of the database
+    /// (`VACUUM INTO`) plus a copy of the data folder's `patient.json` and
+    /// `session.json` files, so a restore returns both to one point. Creates the
+    /// `.backups/migrations/` directory (folding in any legacy `Backups/` first,
+    /// best-effort) and never overwrites an existing pre-image. Returns nil on
+    /// success; any failure aborts the migration, and a half-written image is
+    /// removed so every listed pre-image is complete.
+    func takePreMigrationImage(to destination: URL) -> PreImageFailure? {
         // Best-effort: a legacy-folder problem must never block (or fake) a pre-image.
-        BackupLayout.adoptLegacy(dataRoot: url.deletingLastPathComponent())
+        let dataRoot = url.deletingLastPathComponent()
+        BackupLayout.adoptLegacy(dataRoot: dataRoot)
         try? FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard !FileManager.default.fileExists(atPath: destination.path) else { return false }
-        return snapshot(to: destination)
+        guard !FileManager.default.fileExists(atPath: destination.path) else { return .database }
+        guard snapshot(to: destination) else { return .database }
+        // The small structured JSON a migration could also rewrite goes into the
+        // same pre-image, so a restore returns database and files to one point.
+        do {
+            try MigrationBackup.copyStructuredJSON(
+                fromDataRoot: dataRoot, to: MigrationBackup.filesBundleURL(forSnapshot: destination))
+        } catch {
+            // Never leave a pre-image that is only half there.
+            try? FileManager.default.removeItem(at: destination)
+            return .files(error.localizedDescription)
+        }
+        return nil
+    }
+
+    enum PreImageFailure: Equatable {
+        case database
+        case files(String)
     }
 
     // MARK: - PersistenceCore
