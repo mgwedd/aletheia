@@ -37,7 +37,9 @@ settings:
 packages:
   SwiftWhisper:
     url: https://github.com/exPHAT/SwiftWhisper.git
-    from: "1.2.0"
+    # 1.2.0, pinned by commit: the generated project has no checked-in
+    # Package.resolved, so a version range would float in CI.
+    revision: a192004db08de7c6eaa169eede77f1625e7d23fb
   # Embedded llama.cpp fallback — staged (see README › Embedded llama.cpp).
   # Uncomment, pin to a verified revision, and add `- package: llama` to the
   # Aletheia target dependencies below to compile the local LLM backend;
