@@ -4,7 +4,7 @@ struct PatientDetailView: View {
     let patient: Patient
     /// Opens the profile editor (hosted by `RootView`, which the sidebar's
     /// context menu shares).
-    let onEditProfile: () -> Void
+    let onEditProfile: (ProfileField) -> Void
 
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
@@ -265,8 +265,8 @@ struct PatientDetailView: View {
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.text.color)
                 .lineLimit(2)
-                .onTapGesture(perform: onEditProfile)
-            Button(action: onEditProfile) {
+                .onTapGesture { onEditProfile(.name) }
+            Button { onEditProfile(.name) } label: {
                 Label("Edit Profile", systemImage: "pencil")
             }
             .buttonStyle(.themeIcon)
