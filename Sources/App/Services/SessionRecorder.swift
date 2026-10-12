@@ -316,7 +316,8 @@ final class SessionRecorder: ObservableObject {
         return false
     }
 
-    /// Recorded time so far, not counting paused spans (0 when not recording).
+    /// Recorded time so far, not counting paused spans. 0 before `start` and
+    /// after `stop`; after a capture error it keeps counting until `stop`.
     func elapsed(at now: Date = Date()) -> TimeInterval {
         clock?.elapsed(at: now) ?? 0
     }

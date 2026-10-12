@@ -24,6 +24,24 @@ enum AppLockPolicy {
     }
 }
 
+/// Admits one operation at a time: `begin()` returns true only if nothing is
+/// running, until `end()`. Used so two triggers for the same unlock prompt
+/// (launch, becoming active, a click) don't stack a second system dialog or
+/// record a second audit entry.
+struct SingleFlight: Equatable {
+    private(set) var isRunning = false
+
+    mutating func begin() -> Bool {
+        guard !isRunning else { return false }
+        isRunning = true
+        return true
+    }
+
+    mutating func end() {
+        isRunning = false
+    }
+}
+
 /// Tier-1 protection: gate opening the app behind Touch ID / the login password.
 ///
 /// This is a *presentation* lock (it keeps the UI, and the PHI it shows, behind
@@ -43,6 +61,7 @@ final class AppLock: ObservableObject {
     var onUnlock: (() -> Void)?
 
     private let settings: AppSettings
+    private var unlockFlight = SingleFlight()
 
     /// The last time the user interacted with the app (mouse/keyboard event
     /// delivered to one of its own windows), for the idle auto-lock clock.
@@ -108,6 +127,8 @@ final class AppLock: ObservableObject {
     /// Prompt for Touch ID / password and unlock on success. Password fallback
     /// is built into `.deviceOwnerAuthentication`, so there's always a way in.
     func unlock() async {
+        guard unlockFlight.begin() else { return }
+        defer { unlockFlight.end() }
         let context = LAContext()
         context.localizedFallbackTitle = "Use Password"
         do {
