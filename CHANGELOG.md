@@ -9,6 +9,14 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.36.3] - 2026-10-12
+
+### Fixed
+- keep the mic track going when the input device changes format (#266)
+- ask for call audio at most once per launch when access isn't confirmed (#267)
+- single-flight app unlock, drop dead permissionError, correct elapsed doc (#268)
+- judge silence per second and keep the loudest channel (#265)
+
 ## [2.36.2] - 2026-10-12
 
 ### Fixed
