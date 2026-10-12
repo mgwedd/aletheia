@@ -178,9 +178,10 @@ final class SessionRecorder: ObservableObject {
             ) {
                 do {
                     try await systemAudio.start(to: callURL)
-                    callAudioPolicy.recordSuccess()
+                    callAudioPolicy.recordAttempt(succeeded: true)
                     grantStore.confirm()
                 } catch {
+                    callAudioPolicy.recordAttempt(succeeded: false)
                     if let captureError = error as? SystemAudioCaptureError, captureError == .permissionDenied {
                         grantStore.clear()
                     }

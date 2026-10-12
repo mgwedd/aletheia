@@ -2,8 +2,21 @@ import XCTest
 @testable import Aletheia
 
 final class CallAudioStartPolicyTests: XCTestCase {
-    func testNeverAsksWhenNothingSaysAccessIsGranted() {
-        XCTAssertFalse(CallAudioStartPolicy().shouldAttempt(preflight: false, confirmedBefore: false))
+    func testFirstRecordOfALaunchAttemptsEvenWhenNothingSaysAccessIsGranted() {
+        XCTAssertTrue(CallAudioStartPolicy().shouldAttempt(preflight: false, confirmedBefore: false))
+    }
+
+    func testAFailedAttemptIsNotRepeatedThisLaunch() {
+        var policy = CallAudioStartPolicy()
+        policy.recordAttempt(succeeded: false)
+        XCTAssertFalse(policy.shouldAttempt(preflight: false, confirmedBefore: false))
+    }
+
+    func testKnownGoodAccessStillAttemptsAfterAFailure() {
+        var policy = CallAudioStartPolicy()
+        policy.recordAttempt(succeeded: false)
+        XCTAssertTrue(policy.shouldAttempt(preflight: true, confirmedBefore: false))
+        XCTAssertTrue(policy.shouldAttempt(preflight: false, confirmedBefore: true))
     }
 
     func testGrantedPreflightAttempts() {
@@ -16,7 +29,7 @@ final class CallAudioStartPolicyTests: XCTestCase {
 
     func testASuccessThisLaunchKeepsWorking() {
         var policy = CallAudioStartPolicy()
-        policy.recordSuccess()
+        policy.recordAttempt(succeeded: true)
         XCTAssertTrue(policy.shouldAttempt(preflight: false, confirmedBefore: false))
     }
 
