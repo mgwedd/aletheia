@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.36.1] - 2026-10-12
+
+### Fixed
+- convert the pre-migration JSON copies when encryption changes (#262)
+
 ## [2.36.0] - 2026-10-12
 
 ### Added
