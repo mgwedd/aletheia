@@ -58,7 +58,7 @@ jobs:
       # Only a tag publishes. Dispatching from a branch is a dry run.
       IS_TAG: ${{ github.ref_type == 'tag' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Show selected Xcode
         run: xcodebuild -version
@@ -252,7 +252,7 @@ jobs:
 
       - name: Attach dry-run DMG
         if: env.IS_TAG != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: aletheia-dryrun-dmg
           path: ${{ steps.package.outputs.dmg }}
