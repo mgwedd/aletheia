@@ -136,24 +136,42 @@ final class SystemAudioCapture: NSObject {
         granted ? nil : .permissionDenied
     }
 
+    /// The display to capture from, fetched with the one call `start()` makes.
+    /// ScreenCaptureKit reports missing access as `userDeclined`, which maps to
+    /// the friendly permission error; other failures pass through unchanged.
+    nonisolated static func firstDisplay<Display>(
+        fetch: () async throws -> [Display]
+    ) async throws -> Display {
+        let displays: [Display]
+        do {
+            displays = try await fetch()
+        } catch {
+            if isAccessDenied(error) { throw SystemAudioCaptureError.permissionDenied }
+            throw error
+        }
+        guard let first = displays.first else { throw SystemAudioCaptureError.noDisplayAvailable }
+        return first
+    }
+
+    nonisolated static func isAccessDenied(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == SCStreamErrorDomain
+            && nsError.code == SCStreamError.Code.userDeclined.rawValue
+    }
+
     private(set) var isDisrupted = false
     var onDisruption: ((Error) -> Void)?
 
     func start(to url: URL) async throws {
         isDisrupted = false
         levelSource.reset()
-        // Fail fast with the friendly message when access isn't granted,
-        // mirroring `MicRecorder.start`'s guard, instead of letting an
-        // unauthorized `SCShareableContent` call surface a raw ScreenCaptureKit
-        // error. Uses the live check (not the cached preflight) so a grant made
-        // moments ago in the setup wizard is recognized immediately.
-        if let permissionError = Self.permissionError(granted: await Self.verifyAccessGranted()) {
-            throw permissionError
-        }
-
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        guard let display = content.displays.first else {
-            throw SystemAudioCaptureError.noDisplayAvailable
+        // One ScreenCaptureKit call decides everything. This used to run a
+        // separate `verifyAccessGranted()` probe first and then fetch the
+        // displays, so on a build macOS doesn't recognize each Record click
+        // asked for screen access twice. A declined or missing grant surfaces
+        // as Aletheia's own message instead of a raw ScreenCaptureKit error.
+        let display = try await Self.firstDisplay {
+            try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true).displays
         }
 
         // `init(display:excludingWindows:)` with an empty window list is a
