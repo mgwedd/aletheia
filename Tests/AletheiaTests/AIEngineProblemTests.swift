@@ -273,19 +273,38 @@ final class AIEngineProblemTests: XCTestCase {
 
     // MARK: - Retry once
 
-    func testPendingRetryIsTakenOnce() {
-        var retry = PendingRetry<String>()
-        XCTAssertNil(retry.take())
-        retry.set("question")
-        XCTAssertEqual(retry.take(), "question")
-        XCTAssertNil(retry.take(), "a second take must not re-run the request")
+    func testPendingRetriesAreTakenOnce() {
+        var retries = PendingRetries<EngineRetryKind, String>()
+        XCTAssertTrue(retries.takeAll().isEmpty)
+        retries.set("question", for: .chat)
+        XCTAssertEqual(retries.takeAll(), ["question"])
+        XCTAssertTrue(retries.takeAll().isEmpty, "a second take must not re-run the request")
+        XCTAssertTrue(retries.isEmpty)
     }
 
-    func testPendingRetryKeepsOnlyTheLatest() {
-        var retry = PendingRetry<Int>()
-        retry.set(1)
-        retry.set(2)
-        XCTAssertEqual(retry.take(), 2)
+    func testARepeatFailureOfTheSameKindReplacesTheEarlierRequest() {
+        var retries = PendingRetries<EngineRetryKind, Int>()
+        retries.set(1, for: .chat)
+        retries.set(2, for: .chat)
+        XCTAssertEqual(retries.takeAll(), [2])
+    }
+
+    func testANoteAndAChatThatBothFailedAreBothKept() {
+        var retries = PendingRetries<EngineRetryKind, String>()
+        retries.set("note", for: .note)
+        retries.set("chat", for: .chat)
+        retries.set("note again", for: .note)
+        XCTAssertEqual(retries.takeAll(), ["note again", "chat"],
+                       "the chat failing second must not overwrite the note's retry; order is first-requested")
+    }
+
+    func testClearDropsEverythingSoACancelledAlertCannotRunLater() {
+        var retries = PendingRetries<EngineRetryKind, String>()
+        retries.set("note", for: .note)
+        retries.set("chat", for: .chat)
+        retries.clear()
+        XCTAssertTrue(retries.isEmpty)
+        XCTAssertTrue(retries.takeAll().isEmpty)
     }
 
     // MARK: - Failed turn removal
