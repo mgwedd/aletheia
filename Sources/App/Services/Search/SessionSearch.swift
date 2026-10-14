@@ -266,6 +266,14 @@ enum SessionSearch {
 
     private static let indexBox = OSAllocatedUnfairLock<SearchIndex>(initialState: SearchIndex())
 
+    /// The two locks, mirrored here so the index can ask from any thread without touching
+    /// main-actor objects. Callers set a lock engaged BEFORE closing or deleting the index,
+    /// and released BEFORE `openIndex()`, so this never lags behind.
+    private static let lockMirror = OSAllocatedUnfairLock(initialState: (app: false, encryption: false))
+    static func setAppLocked(_ locked: Bool) { lockMirror.withLock { $0.app = locked } }
+    static func setEncryptionLocked(_ locked: Bool) { lockMirror.withLock { $0.encryption = locked } }
+    static var mayOpenIndex: Bool { lockMirror.withLock { !$0.app && !$0.encryption } }
+
     /// Closes the index's database connection so no indexed text stays in
     /// SQLite's memory while the app or data folder is locked. Nothing reopens
     /// it (searches find nothing, writes are dropped) until `openIndex()`; the

@@ -59,7 +59,8 @@ struct AletheiaApp: App {
         let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL })
         _encryption = StateObject(wrappedValue: encryption)
         let appLock = AppLock(settings: settings)
-        let appModel = AppModel(settings: settings, encryption: encryption, appLocked: { [weak appLock] in appLock?.isLocked ?? true })
+        SessionSearch.setAppLocked(appLock.isLocked)   // before AppModel builds the index: it starts closed behind the lock
+        let appModel = AppModel(settings: settings, encryption: encryption)
         _appModel = StateObject(wrappedValue: appModel)
         let integrations = Integrations(settings: settings)
         _integrations = StateObject(wrappedValue: integrations)

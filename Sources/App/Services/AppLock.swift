@@ -164,6 +164,7 @@ final class AppLock: ObservableObject {
     func lockIfEnabled() {
         if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: Self.canAuthenticate()) {
             isLocked = true
+            SessionSearch.setAppLocked(true)
             // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
             SessionSearch.closeIndex()
             OllamaClient.unloadLoaded()
@@ -192,6 +193,7 @@ final class AppLock: ObservableObject {
             )
             if ok {
                 isLocked = false
+                SessionSearch.setAppLocked(false)
                 SessionSearch.openIndex()
                 lastError = nil
                 onUnlock?()

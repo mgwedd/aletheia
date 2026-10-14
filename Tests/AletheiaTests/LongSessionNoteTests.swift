@@ -35,6 +35,9 @@ private func syntheticTranscript(minutes: Int) -> String {
 final class LongSessionNoteTests: XCTestCase {
     private let budget = ContextBudget(tokens: 8192)
 
+    /// The test host app owns the shared index and may have it closed behind its lock; use a private one.
+    override func setUp() async throws { SessionSearch.index = SearchIndex() }
+
     private struct Run {
         var snapshots: [String]
         var coverage: [String]

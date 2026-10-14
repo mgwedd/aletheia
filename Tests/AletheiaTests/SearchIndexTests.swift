@@ -154,6 +154,21 @@ final class SearchIndexTests: XCTestCase {
         XCTAssertEqual(kicks, 1, "reopening re-kicks the sweep")
     }
 
+    func testLockMirrorBlocksUntilBothLocksAreReleased() {
+        defer { SessionSearch.setAppLocked(false); SessionSearch.setEncryptionLocked(false) }
+        index.mayOpen = { SessionSearch.mayOpenIndex }
+        SessionSearch.setAppLocked(true); SessionSearch.setEncryptionLocked(true)
+        XCTAssertFalse(SessionSearch.mayOpenIndex)
+        SessionSearch.setAppLocked(false)
+        XCTAssertFalse(SessionSearch.mayOpenIndex)
+        XCTAssertEqual(index.counts().docs, 0)
+        XCTAssertFalse(index.isOpen)
+        SessionSearch.setEncryptionLocked(false)
+        XCTAssertTrue(SessionSearch.mayOpenIndex)
+        XCTAssertEqual(index.counts().docs, 0)
+        XCTAssertTrue(index.isOpen)
+    }
+
     func testEncryptionLockDeletesTheIndexAndRememberedKeyReopensIt() throws {
         let dataRoot = root.appendingPathComponent("data")
         try FileManager.default.createDirectory(at: dataRoot, withIntermediateDirectories: true)

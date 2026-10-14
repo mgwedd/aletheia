@@ -47,7 +47,9 @@ final class EncryptionManager: ObservableObject {
         }
     }
 
-    @Published private(set) var state: State = .disabled
+    @Published private(set) var state: State = .disabled {
+        didSet { SessionSearch.setEncryptionLocked(state == .lockedNeedsPassphrase) }
+    }
 
     /// Set by `AppModel` so the stores rebuild with a fresh `FileProtector`
     /// whenever the key or on/off state changes.
@@ -184,6 +186,7 @@ final class EncryptionManager: ObservableObject {
     func lock() {
         guard dek != nil else { return }
         dek = nil
+        SessionSearch.setEncryptionLocked(true)   // before the delete; `refresh()` below may release it again
         SessionSearch.deleteIndex()   // plaintext transcript text: gone while locked, rebuilt on unlock
         OllamaClient.unloadLoaded()
         refresh()
