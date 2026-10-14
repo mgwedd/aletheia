@@ -57,7 +57,9 @@ enum LlamaPrompt {
     static func tokens(model: OpaquePointer, vocab: OpaquePointer, system: String, prompt: String) -> [llama_token]? {
         var text = rawPrompt(system: system, prompt: prompt)
         var addSpecial = true
-        if let tmplPtr = llama_model_chat_template(model, nil),
+        let tmplPtr = llama_model_chat_template(model, nil)
+        if tmplPtr == nil { log.notice("Model has no chat template; using the raw prompt") }
+        if let tmplPtr,
            let templated = applyTemplate(String(cString: tmplPtr), system: system, prompt: prompt) {
             text = templated
             // Many templates already begin with the literal BOS token, which
