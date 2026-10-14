@@ -243,7 +243,7 @@ struct LiveDoctorProbes: DoctorProbing {
             ToolHealth.whisperModelCheck(settings: settings)
         ]
         let backend = integrations.effectiveAssistantBackend
-        if backend != .appleIntelligence && !isLoopback(settings.ollamaBaseURL) {
+        if backend == .ollama && !isLoopback(settings.ollamaBaseURL) {
             checks.append(ToolHealthCheck(
                 kind: .ollama,
                 title: "AI summaries & chat",

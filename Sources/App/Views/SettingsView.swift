@@ -325,8 +325,8 @@ struct SettingsView: View {
                 SettingsCaption("Apple Intelligence is blocked on purpose, so every AI path is on-device.")
             }
         }
-        // The .dev-tier "Built-in Model" (embedded llama.cpp) management UI —
-        // offered only when the module ships AND the runtime is linked.
+        // The "Built-in Model" (embedded llama.cpp) management UI — offered
+        // when the module ships AND the runtime is linked.
         if LlamaRuntime.isBuilt && appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id) {
             builtInModelCard
         }

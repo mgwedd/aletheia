@@ -48,12 +48,11 @@ final class Integrations: ObservableObject {
             return OllamaClient(baseURL: settings.ollamaBaseURL)
         case .localLlama:
             #if canImport(llama)
-            if LlamaRuntime.isAvailable(model: settings.llamaModel) {
-                return LlamaAssistant(modelURL: LlamaRuntime.modelURL(for: settings.llamaModel))
-            }
-            #endif
-            // Runtime not linked or model not downloaded: fall back to Ollama.
+            return LlamaAssistant(modelURL: LlamaRuntime.modelURL(for: settings.llamaModel))
+            #else
+            // Unreachable: the resolver only picks `.localLlama` when it's linked.
             return OllamaClient(baseURL: settings.ollamaBaseURL)
+            #endif
         case .ollama, .automatic:
             return OllamaClient(baseURL: settings.ollamaBaseURL)
         }
@@ -71,7 +70,10 @@ final class Integrations: ObservableObject {
     var effectiveAssistantBackend: AssistantBackend {
         AssistantBackendResolver(
             appleIntelligenceAvailable: Self.appleIntelligenceAvailable,
-            localLlamaAvailable: LlamaRuntime.isAvailable(model: settings.llamaModel)
+            // The built-in engine is first-class: chosen whenever it's linked, model
+            // downloaded or not. A missing model is a setup step, never a silent
+            // switch to Ollama.
+            localLlamaAvailable: LlamaRuntime.isBuilt
         ).resolve(settings.assistantBackend)
     }
 

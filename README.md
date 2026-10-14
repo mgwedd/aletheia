@@ -41,11 +41,7 @@ On first launch Aletheia shows a checklist. Work down it:
 2. **Microphone:** click **Allow Microphone**.
 3. **Call audio capture:** click **Allow**. macOS calls this "Screen Recording", but Aletheia only uses it to hear your video call. It does not capture the screen.
 4. **Transcription model:** click **Download**.
-5. **AI (Ollama):** the AI runs in a free app called [Ollama](https://ollama.com). You install it once, then Aletheia downloads the model for you. You never need Terminal.
-   1. Click **Get Ollama**. Your browser opens ollama.com/download.
-   2. Download Ollama, drag it into **Applications**, and open it once.
-   3. Back in Aletheia, click **Launch Ollama** if the row still asks for it.
-   4. Click **Download Model**. Aletheia fetches the model that fits your Mac (a few GB, once). Wait for the row to turn green.
+5. **AI model:** click **Download**. Aletheia fetches the model that fits your Mac (3–6 GB, once) and runs it inside the app. Nothing else to install. Wait for the row to turn green.
 6. **Terms & Privacy:** read and accept.
 
 After the downloads, Aletheia works offline. If a row will not turn green, see the [Setup guide](docs/SETUP-GUIDE.md).
@@ -78,7 +74,7 @@ flowchart LR
     STT["Transcription<br/>Whisper (in-process)"]
     AI["Assistant<br/>notes · chat · digests"]
     DB[("Local data folder<br/>SQLite + files")]
-    LLM["Ollama<br/>127.0.0.1:11434"]
+    LLM["Built-in llama.cpp<br/>(in-process)"]
     UI --> REC --> STT --> DB
     UI --> AI --> LLM
     AI <--> DB
@@ -141,13 +137,13 @@ The encrypted archive service covers only the SQLite database and is not invoked
 - Silero VAD v6.2.0 skips silence so long pauses cannot trigger repeated phantom lines.
 - Microphone ("You") and call audio ("Call audio") are captured as separate tracks and merged by timestamp.
 
-The only third-party dependency is the official whisper.cpp XCFramework (ggml-org, pinned by checksum). The Silero model is MIT-licensed, under 1 MB, pinned by SHA-256. A sandboxed native app can capture call audio with ScreenCaptureKit and run Whisper in-process, which keeps the privacy boundary small enough to audit.
+The only third-party dependencies are the official whisper.cpp and llama.cpp XCFrameworks (ggml-org, pinned by checksum). The Silero model is MIT-licensed, under 1 MB, pinned by SHA-256. A sandboxed native app can capture call audio with ScreenCaptureKit and run Whisper in-process, which keeps the privacy boundary small enough to audit.
 
 ### AI backends and recommended models
 
-- **Ollama** is the runtime in use. The app talks to it on `127.0.0.1` only.
+- **Built-in llama.cpp** is the default runtime, in-process. See [Embedded llama.cpp](#embedded-llamacpp).
+- **Ollama** is an optional engine chosen in Settings. The app talks to it on `127.0.0.1` only.
 - **Apple Intelligence** is disabled via `Integrations.appleIntelligenceBlocked = true`.
-- **Embedded llama.cpp** is linked into every build and offered as the "Built-in model" backend in developer builds. Ollama is the default backend. See [Embedded llama.cpp](#embedded-llamacpp).
 
 `ModelAdvisor` picks defaults from your hardware:
 
@@ -247,7 +243,7 @@ CI runs on macOS runners (the only place the Swift code compiles). Developer ID 
 
 ### Embedded llama.cpp
 
-The official llama.cpp XCFramework (`Packages/LlamaCpp`, pinned by URL and checksum) is linked into every build. The "Built-in model" backend is offered in developer builds; Ollama is the default.
+The official llama.cpp XCFramework (`Packages/LlamaCpp`, pinned by URL and checksum) is linked into every build. The built-in model is the default AI engine in every build: setup downloads it inside Aletheia, with nothing else to install. Ollama remains an optional engine you can choose in Settings.
 
 Models come from ggml-org on Hugging Face, pinned to a revision and verified by SHA-256 before install:
 

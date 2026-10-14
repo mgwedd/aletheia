@@ -9,6 +9,7 @@ struct SetupChecklistView: View {
     @EnvironmentObject private var integrations: Integrations
 
     @StateObject private var whisperDownloader = WhisperModelDownloader()
+    @StateObject private var llamaDownloader = LlamaModelDownloader()
     @State private var items: [SetupItem] = []
     @State private var isChecking = false
     @State private var busyAction: SetupAction?
@@ -61,7 +62,7 @@ struct SetupChecklistView: View {
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
 
-            Text("Everything runs on this Mac. Aletheia's AI uses Ollama — a free local engine you install once — and the AI model then downloads inside Aletheia. This list updates itself as you grant each permission; no restart needed.")
+            Text("Everything runs on this Mac. Aletheia's AI model downloads inside Aletheia and runs here; nothing else to install. This list updates itself as you grant each permission; no restart needed.")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)
@@ -87,6 +88,10 @@ struct SetupChecklistView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if item.action == .downloadTranscriptionModel, whisperDownloader.isDownloading {
                     ProgressView(value: whisperDownloader.progress)
+                        .tint(Theme.accent.color)
+                }
+                if item.action == .downloadBuiltInModel, llamaDownloader.isDownloading {
+                    ProgressView(value: llamaDownloader.progress)
                         .tint(Theme.accent.color)
                 }
                 if item.action == .downloadOllamaModel, busyAction == .downloadOllamaModel {
@@ -125,7 +130,7 @@ struct SetupChecklistView: View {
     private func actionButton(_ action: SetupAction, isCurrent: Bool) -> some View {
         let button = Button(action.label) { Task { await perform(action) } }
             .controlSize(.small)
-            .disabled(busyAction != nil || whisperDownloader.isDownloading)
+            .disabled(busyAction != nil || whisperDownloader.isDownloading || llamaDownloader.isDownloading)
         if isCurrent {
             button.buttonStyle(.themePrimary)
         } else {
@@ -243,6 +248,12 @@ struct SetupChecklistView: View {
         case .downloadTranscriptionModel:
             do {
                 try await whisperDownloader.download(settings.whisperModel, to: settings.whisperModelPath)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        case .downloadBuiltInModel:
+            do {
+                try await llamaDownloader.download(settings.llamaModel, to: LlamaRuntime.modelURL(for: settings.llamaModel))
             } catch {
                 errorMessage = error.localizedDescription
             }

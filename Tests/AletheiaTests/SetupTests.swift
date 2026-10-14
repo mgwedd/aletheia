@@ -7,7 +7,7 @@ final class SetupTests: XCTestCase {
     }
 
     func testOkChecksHaveNoAction() {
-        for kind in [ToolHealthCheck.Kind.dataFolder, .microphone, .screenRecording, .whisperModel, .ollama, .appleIntelligence, .calendar, .reminders] {
+        for kind in [ToolHealthCheck.Kind.dataFolder, .microphone, .screenRecording, .whisperModel, .ollama, .builtInModel, .appleIntelligence, .calendar, .reminders] {
             XCTAssertNil(Setup.action(for: check(kind, .ok)))
         }
     }
@@ -23,10 +23,23 @@ final class SetupTests: XCTestCase {
         // than guessing Ollama is already there.
         XCTAssertEqual(Setup.action(for: check(.ollama, .failed)), .installOrOpenOllama)
         XCTAssertEqual(Setup.action(for: check(.ollama, .warning)), .downloadOllamaModel)
+        XCTAssertEqual(Setup.action(for: check(.builtInModel, .failed)), .downloadBuiltInModel)
         XCTAssertEqual(Setup.action(for: check(.appleIntelligence, .failed)), .enableAppleIntelligence)
         XCTAssertNil(Setup.action(for: check(.appleIntelligence, .warning)))
         XCTAssertEqual(Setup.action(for: check(.calendar, .warning)), .requestCalendarAccess)
         XCTAssertEqual(Setup.action(for: check(.reminders, .warning)), .requestRemindersAccess)
+    }
+
+    /// A missing built-in model blocks setup and offers the in-app download.
+    @MainActor
+    func testBuiltInModelCheck() {
+        let missing = ToolHealth.classifyBuiltInModel(installed: false, modelName: "Llama 3.1 8B", sizeMB: 6036)
+        XCTAssertEqual(missing.status, .failed)
+        XCTAssertFalse(Setup.isReady([missing]))
+        XCTAssertEqual(Setup.action(for: missing), .downloadBuiltInModel)
+        let ready = ToolHealth.classifyBuiltInModel(installed: true, modelName: "Llama 3.1 8B", sizeMB: 6036)
+        XCTAssertEqual(ready.status, .ok)
+        XCTAssertNil(Setup.action(for: ready))
     }
 
     // MARK: #111 — launch vs. install, driven by `ollamaState`
