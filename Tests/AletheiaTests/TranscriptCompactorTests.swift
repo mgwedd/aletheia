@@ -59,7 +59,7 @@ final class TranscriptCompactorTests: XCTestCase {
         assertIdempotent(out)
     }
 
-    func testHoursAndUnwrappedMinuteStampsKeepTheirForm() {
+    func testMinutePastFiftyNineAndHourStampsKeepTheirForm() {
         let out = compact(
             "[1:59:50] You: a", "[2:00:55] You: b", "[75:12] Call audio: c", "[75:20] Call audio: d")
         XCTAssertEqual(out, "[1:59:50] Y: a\n[2:00:55] Y: b\n[75:12] C: c d")
@@ -85,22 +85,52 @@ final class TranscriptCompactorTests: XCTestCase {
         }
     }
 
-    func testFillerOnlyLineIsDropped() {
-        XCTAssertEqual(compact("[00:01] You: Hello.", "[00:03] Call audio: Um.", "[00:05] You: Bye."), "[00:01] Y: Hello. Bye.")
+    func testFillerOnlyLineIsDroppedButEndsTheTurn() {
+        XCTAssertEqual(compact("[00:01] You: Hello.", "[00:03] Call audio: Um.", "[00:05] You: Bye."), "[00:01] Y: Hello.\n[00:05] Y: Bye.")
+        XCTAssertEqual(compact("[00:01] You: Yes.", "[00:02] Call audio: Um.", "[00:03] You: Yes."), "[00:01] Y: Yes.\n[00:03] Y: Yes.")
+    }
+
+    func testBackChannelsKeepTheirFiller() {
+        for kept in ["Mm hmm.", "Uh huh.", "Uh oh.", "Uh–huh.", "Mm–hmm.", "Uh—oh.", "Yeah, uh huh, I see.", "Mm hmm, okay."] {
+            XCTAssertEqual(TranscriptCompactor.removeFiller(kept), kept)
+        }
+        XCTAssertEqual(TranscriptCompactor.removeFiller("The album uh worked."), "The album worked.")
+    }
+
+    func testStandaloneHmmLineIsKept() {
+        XCTAssertEqual(compact("[00:01] You: Hmm.", "[00:03] Call audio: Hm.", "[00:05] You: Hmm."), "[00:01] Y: Hmm.\n[00:03] C: Hm.\n[00:05] Y: Hmm.")
+    }
+
+    func testEllipsesAndUntouchedPunctuationStay() {
+        XCTAssertEqual(TranscriptCompactor.removeFiller("So... uh... yes"), "So... yes")
+        XCTAssertEqual(TranscriptCompactor.removeFiller("Well... I guess ,, maybe!! Uh, yes..."), "Well... I guess ,, maybe!! yes...")
+        XCTAssertEqual(TranscriptCompactor.removeFiller("Wait... I don't know..."), "Wait... I don't know...")
     }
 
     // MARK: - Loops
 
-    func testCollapsesThreeOrMoreRepeats() {
-        XCTAssertEqual(compact("[00:01] You: Okay. Okay. Okay."), "[00:01] Y: Okay. (repeated ×3)")
-        let across = compact("[00:01] You: Okay.", "[00:02] You: okay!", "[00:03] You: Okay.", "[00:04] You: Okay.", "[00:05] You: Now.")
-        XCTAssertEqual(across, "[00:01] Y: Okay. (repeated ×4) Now.")
+    func testCollapsesFiveOrMoreRepeats() {
+        XCTAssertEqual(compact("[00:01] You: Okay. Okay. Okay. Okay. Okay."), "[00:01] Y: Okay. (repeated ×5)")
+        let across = compact("[00:01] You: Okay.", "[00:02] You: okay.", "[00:03] You: Okay.", "[00:04] You: Okay.",
+                             "[00:05] You: Okay.", "[00:06] You: Okay.", "[00:07] You: Now.")
+        XCTAssertEqual(across, "[00:01] Y: Okay. (repeated ×6) Now.")
+    }
+
+    func testEmphaticRepetitionStays() {
+        for kept in ["No. No. No.", "I don't know. I don't know. I don't know.", "Okay. Okay. Okay. Okay."] {
+            XCTAssertEqual(compact("[00:01] You: \(kept)"), "[00:01] Y: \(kept)")
+        }
+    }
+
+    func testDifferentPunctuationIsNotTheSameSentence() {
+        let text = "No? No! No? No! No? No!"
+        XCTAssertEqual(compact("[00:01] You: \(text)"), "[00:01] Y: \(text)")
     }
 
     func testTwoRepeatsAndLongPhrasesStay() {
         XCTAssertEqual(compact("[00:01] You: Okay. Okay."), "[00:01] Y: Okay. Okay.")
         let long = "I really did not want to go there at all. "
-        let text = "[00:01] Y: " + String(repeating: long, count: 3).trimmingCharacters(in: .whitespaces)
+        let text = "[00:01] Y: " + String(repeating: long, count: 5).trimmingCharacters(in: .whitespaces)
         XCTAssertEqual(TranscriptCompactor.compact(text), text)
     }
 
@@ -108,8 +138,21 @@ final class TranscriptCompactorTests: XCTestCase {
         assertIdempotent("""
         [00:01] You: Okay. Okay. Okay. Okay.
         [00:05] Call audio: Um, I was, uh, scared.
-        [00:09] Call audio (overlapping): Thank you. Thank you. Thank you.
+        [00:09] Call audio (overlapping): Thank you. Thank you. Thank you. Thank you. Thank you.
         """)
+    }
+
+    // MARK: - Performance
+
+    /// Mic-only session: one speaker, so the whole two hours is a single turn.
+    func testTwoHourSingleSpeakerSessionCompactsFast() {
+        let lines = (0..<1500).map { stamp($0 * 5, "You", "Segment \($0) um about the week, okay. Okay.") }
+        let raw = lines.joined(separator: "\n")
+        let start = Date()
+        let out = TranscriptCompactor.compact(raw)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0)
+        XCTAssertTrue(out.contains("Segment 1499"))
+        measure { _ = TranscriptCompactor.compact(raw) }
     }
 
     // MARK: - Synthetic hour

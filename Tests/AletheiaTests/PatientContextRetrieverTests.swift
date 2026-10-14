@@ -98,4 +98,17 @@ final class PatientContextRetrieverTests: XCTestCase {
         let selection = PatientContextRetriever.select(transcripts: docs, search: search, characterBudget: 100)
         XCTAssertFalse(selection.whole, "no search terms: the newest that fit, and the rest is reported as left out")
     }
+
+    func testHitBudgetCountsCompactedLines() {
+        // Alternating speakers so nothing merges; the filler makes raw lines ~3x longer.
+        var lines = (1...40).map { "[00:\(String(format: "%02d", $0))] \($0 % 2 == 0 ? "You" : "Call audio"): Um, um, um, um, um, um, um, um, errands." }
+        lines[9] = "[00:10] You: Dana called."
+        lines[30] = "[00:31] Call audio: Dana again."
+        let docs = [TranscriptDocument(date: date(2026, 1, 1), text: lines.joined(separator: "\n"))]
+        let search = SessionSearch.search(
+            [SessionSearch.Document(date: docs[0].date, tag: "S1", kind: .transcript, text: docs[0].text)], question: "Dana")
+        let selection = PatientContextRetriever.select(transcripts: docs, search: search, characterBudget: 350)
+        XCTAssertEqual(selection.hitsShown, 2, "raw lines would only have admitted one hit")
+        XCTAssertFalse(selection.whole)
+    }
 }

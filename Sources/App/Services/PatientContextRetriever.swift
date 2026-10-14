@@ -99,7 +99,9 @@ enum PatientContextRetriever {
         var used = 0
         var shown = 0
         for hit in transcriptHits {
+            // Lines are compacted before they are counted, so the room saved admits more hits.
             var fresh = hit.context.enumerated().filter { kept[Slot(document: hit.documentIndex, line: hit.contextStart + $0.offset)] == nil }
+                .map { (offset: $0.offset, element: TranscriptCompactor.compact($0.element)) }
             let headerCost = headed.contains(hit.date) ? 0 : header(hit.date, labels: labels).count + 3
             var cost = fresh.reduce(0) { $0 + $1.element.count + 1 } + headerCost
             if used + cost > characterBudget {

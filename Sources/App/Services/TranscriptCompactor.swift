@@ -11,10 +11,12 @@ import Foundation
 ///   2. Consecutive lines from one speaker become one turn with one stamp.
 ///   3. A turn running 60 s or more gets a further `[stamp] Y:` line each 60 s,
 ///      so a time still anchors every minute. Stamps keep their original text
-///      (`[75:12]` or `[1:15:12]`).
-///   4. The same short sentence 3+ times in a row keeps one copy plus
-///      `(repeated ×N)`.
-///   5. Only the standalone words um, uh, erm and hmm are removed. Nothing else.
+///      (the formatter writes minutes past 59, `[75:12]`; `[1:15:12]` also parses).
+///   4. The same short sentence, exactly as spoken, 5+ times in a row keeps one
+///      copy plus `(repeated ×N)`. Fewer is emphasis, not a glitch, and stays.
+///   5. Only the standalone words um, uh, erm and hmm are removed, never next to
+///      a back-channel ("Mm hmm", "Uh huh", "Uh oh"), and a line that is only
+///      "hmm" is kept. Nothing else.
 ///
 /// Pure, deterministic and idempotent: its own output parses back to itself.
 /// Lines it doesn't recognise (hand-typed, other labels, "…" gaps) pass through
@@ -24,7 +26,7 @@ enum TranscriptCompactor {
     static let anchorInterval = 60
     /// Most words in a sentence that counts as a repeatable phrase.
     static let maxLoopWords = 8
-    static let minLoopRepeats = 3
+    static let minLoopRepeats = 5
 
     static func compact(_ transcript: String) -> String {
         var out: [String] = []
@@ -40,8 +42,8 @@ enum TranscriptCompactor {
                 out.append(String(raw))
                 continue
             }
-            // A line that was only filler vanishes without ending the turn.
-            guard !line.segment.text.isEmpty else { continue }
+            // A line that was only filler vanishes, but still ends the turn.
+            guard !line.segment.text.isEmpty else { flush(); continue }
             if turn?.speaker == line.speaker {
                 turn?.segments.append(line.segment)
             } else {
@@ -104,23 +106,59 @@ enum TranscriptCompactor {
     private static let fillerPattern = try! NSRegularExpression(
         pattern: #"(?<![\p{L}\p{N}'’-])(?:um|uh|erm|hmm)(?![\p{L}\p{N}'’-])[,;—–]?"#,
         options: .caseInsensitive)
+    /// A back-channel ("Mm hmm", "Uh huh", "Uh oh") right before / after a filler
+    /// token, joined by a space, hyphen or dash. Such a filler is part of the sound.
+    private static let backChannelBefore = try! NSRegularExpression(
+        pattern: #"(?<![\p{L}\p{N}])(?:huh|hmm|hm|mm|oh|uh|um)[ \-–—]+$"#, options: .caseInsensitive)
+    private static let backChannelAfter = try! NSRegularExpression(
+        pattern: #"^[ \-–—]+(?:huh|hmm|hm|mm|oh|uh|um)(?![\p{L}\p{N}])"#, options: .caseInsensitive)
+    private static let hmmWord = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}])hmm?(?![\p{L}\p{N}])"#, options: .caseInsensitive)
 
     /// Drops standalone um/uh/erm/hmm (with a comma or dash right after) and
-    /// tidies the punctuation it leaves. Text without filler is returned as is.
+    /// tidies the punctuation only where it removed something. Fillers next to
+    /// a back-channel ("Mm hmm", "Uh huh", "Uh oh") stay, and a line that is
+    /// only "hmm"-type is kept whole. Text without filler is returned as is.
     static func removeFiller(_ text: String) -> String {
-        let range = NSRange(location: 0, length: (text as NSString).length)
-        guard fillerPattern.firstMatch(in: text, range: range) != nil else { return text }
-        var s = fillerPattern.stringByReplacingMatches(in: text, range: range, withTemplate: "")
-        for (pattern, template) in [
-            (#"\s+([,;.!?])"#, "$1"),       // "was ." -> "was."
-            (#"([,;])\s*([,;.!?])"#, "$2"), // ", ." -> "."
-            (#"([.!?])\s*\.(?!\.)"#, "$1"), // "Right. ." -> "Right."
-            (#"\s{2,}"#, " "),
-        ] {
-            s = s.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
+        let ns = text as NSString
+        var result = ""
+        var pos = 0
+        var removed = false
+        for m in fillerPattern.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            var tokenEnd = m.range.location + m.range.length
+            if ",;—–".contains(ns.substring(with: NSRange(location: tokenEnd - 1, length: 1))) { tokenEnd -= 1 }
+            let before = ns.substring(to: m.range.location)
+            let after = ns.substring(from: tokenEnd)
+            func hit(_ re: NSRegularExpression, _ s: String) -> Bool {
+                re.firstMatch(in: s, range: NSRange(location: 0, length: (s as NSString).length)) != nil
+            }
+            if hit(backChannelBefore, before) || hit(backChannelAfter, after) { continue }
+            result = join(result, ns.substring(with: NSRange(location: pos, length: m.range.location - pos)))
+            pos = m.range.location + m.range.length
+            removed = true
         }
-        s = s.replacingOccurrences(of: #"^[\s,;.!?]+"#, with: "", options: .regularExpression)
-        return s.trimmingCharacters(in: .whitespaces)
+        guard removed else { return text }
+        result = join(result, ns.substring(from: pos)).trimmingCharacters(in: .whitespaces)
+        if result.isEmpty, hmmWord.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) != nil { return text }
+        return result
+    }
+
+    /// Glues the text before a removed filler to the text after it, fixing only
+    /// the spacing and punctuation at the seam ("was, ." -> "was.", "Right. ." -> "Right.").
+    private static func join(_ head: String, _ tail: String) -> String {
+        let h = head.replacingOccurrences(of: #"\s+$"#, with: "", options: .regularExpression)
+        var t = tail.replacingOccurrences(of: #"^\s+"#, with: "", options: .regularExpression)
+        guard !h.isEmpty else {   // start of the text
+            t = t.replacingOccurrences(of: #"^[,;]+\s*"#, with: "", options: .regularExpression)
+            return t.replacingOccurrences(of: #"^[.!?](?![.!?…])\s*"#, with: "", options: .regularExpression)
+        }
+        guard let next = t.first, ".!?…,;".contains(next) else {
+            return head.last?.isWhitespace == true && tail.first?.isWhitespace == true ? head + tail.dropFirst() : head + tail
+        }
+        if ",;".contains(h.last!) { return String(h.dropLast()) + t }   // "hard, ." -> "hard."
+        if ".!?…".contains(h.last!) {                                   // "Right. ." / "So... ..."
+            return h + t.replacingOccurrences(of: #"^[.!?…,;]+"#, with: "", options: .regularExpression)
+        }
+        return h + t                                                    // "was ." -> "was."
     }
 
     // MARK: - Repeat loops
@@ -137,7 +175,7 @@ enum TranscriptCompactor {
                 units.append((i, text, key(of: text)))
             }
         }
-        var kept: [(segment: Int, text: String)] = []
+        var kept = [[String]](repeating: [], count: segments.count)
         var i = 0
         while i < units.count {
             var j = i + 1
@@ -145,22 +183,20 @@ enum TranscriptCompactor {
             let count = j - i
             if count >= minLoopRepeats, units[i].key.split(separator: " ").count <= maxLoopWords {
                 let first = units[i].text.trimmingCharacters(in: .whitespaces)
-                kept.append((units[i].segment, "\(first) (repeated ×\(count)) "))
+                kept[units[i].segment].append("\(first) (repeated ×\(count)) ")
             } else {
-                for k in i..<j { kept.append((units[k].segment, units[k].text)) }
+                for k in i..<j { kept[units[k].segment].append(units[k].text) }
             }
             i = j
         }
         for index in segments.indices {
-            segments[index].text = kept.filter { $0.segment == index }.map(\.text).joined()
-                .trimmingCharacters(in: .whitespaces)
+            segments[index].text = kept[index].joined().trimmingCharacters(in: .whitespaces)
         }
     }
 
-    /// Lowercased words only, so "Okay." and "okay!" count as the same phrase.
+    /// The sentence as spoken: lowercased, spaces collapsed, punctuation kept,
+    /// so "No?" and "No!" stay different (a question is not an answer).
     private static func key(of unit: String) -> String {
-        unit.lowercased()
-            .components(separatedBy: CharacterSet.letters.union(.decimalDigits).union(CharacterSet(charactersIn: "'’")).inverted)
-            .filter { !$0.isEmpty }.joined(separator: " ")
+        unit.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 }

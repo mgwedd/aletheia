@@ -64,17 +64,17 @@ enum Prompts {
     /// "(overlapping)" suffix in `TranscriptFormatter`.
     static let transcriptLegend = """
     How to read the transcript: each turn is "[MM:SS] Y: text" or \
-    "[MM:SS] C: text" ("[H:MM:SS]" in a long session). The time is when the \
-    turn started; a long turn repeats its label and a new time about every \
+    "[MM:SS] C: text" (minutes can exceed 59 in a long session, e.g. \
+    "[75:12]"). The time is when the turn started; a long turn repeats its label and a new time about every \
     minute. The label comes from which audio track the words were recorded \
     on, not from voice analysis. "Y" (You) is the microphone, normally the \
     therapist; it never means you, the reader. "C" (Call audio) is normally \
     the client. In a session recorded with the microphone only, both people \
     may appear as "Y". A "~" after the letter ("Y~", "C~") means \
     "(overlapping)": both tracks had speech at the same time, so the two \
-    people spoke over each other. "(repeated ×N)" after a phrase means it was \
-    transcribed N times in a row, likely a transcription loop, not N separate \
-    statements. Filler sounds such as "um" and "uh" were left out. Line order \
+    people spoke over each other. "(repeated ×N)" after a sentence means the same \
+    sentence was repeated N times in a row (often a transcription loop, but it \
+    can be the speaker repeating it). Filler sounds such as "um" and "uh" were left out. Line order \
     is approximate to within a few seconds.
     """
 

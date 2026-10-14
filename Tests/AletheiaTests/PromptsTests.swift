@@ -31,6 +31,17 @@ final class PromptsTests: XCTestCase {
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("cite"))
     }
 
+    func testTranscriptPromptsUseShortSpeakerLabels() {
+        let t = "[00:01] You: Hello.\n[00:03] Call audio: Hi."
+        for prompt in [Prompts.summarize(transcript: t),
+                       Prompts.progressNote(format: .soap, transcript: t),
+                       Prompts.sessionChat(transcript: t, history: [], question: "Q?")] {
+            XCTAssertTrue(prompt.contains("[00:01] Y: Hello."))
+            XCTAssertTrue(prompt.contains("[00:03] C: Hi."))
+            XCTAssertFalse(prompt.contains("] You:"))
+        }
+    }
+
     // MARK: - Transcript legend
 
     func testLegendExplainsLabelsOverlapAndOrdering() {
