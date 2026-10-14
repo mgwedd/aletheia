@@ -63,12 +63,4 @@ struct LocalLLMRequest {
         self.grammar = grammar
     }
 
-    /// The single prompt string an engine feeds the model: the system prompt
-    /// prepended to the turn prompt, or just the prompt when there's no system
-    /// text. Kept here so the engine and its tests assemble it identically (a
-    /// fine-tuned model's own chat template can supersede this later).
-    var composedPrompt: String {
-        let trimmed = system.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? prompt : "System: \(trimmed)\n\n\(prompt)"
-    }
 }
