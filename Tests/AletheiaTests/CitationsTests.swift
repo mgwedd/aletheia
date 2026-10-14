@@ -126,24 +126,26 @@ extension CitationsTests {
 }
 
 final class TranscriptCoverageEdgeTests: XCTestCase {
-    func testNothingReadableIsNotPartialAndShowsFull() {
-        let c = TranscriptCoverage()
-        XCTAssertFalse(c.isPartial)
-        XCTAssertEqual(c.percentIncluded, 100)
-        XCTAssertNil(c.notice)
+    func testNothingReadIsNoLabel() {
+        XCTAssertNil(TranscriptCoverage().label)
     }
 
-    func testIncludedAboveTotalIsCappedAt100AndNotPartial() {
-        let c = TranscriptCoverage(sessions: 1, sessionsWithoutPassages: 0, totalCharacters: 100, includedCharacters: 150)
-        XCTAssertFalse(c.isPartial)
-        XCTAssertEqual(c.percentIncluded, 100)
+    func testLabelPluralsAndSearchCount() {
+        let c = TranscriptCoverage(
+            transcriptSessions: 22, sessionsWithPassages: 6, notesSessions: 22, unreadableSessions: 0,
+            mentions: 14, searched: true, wholeTranscripts: false
+        )
+        XCTAssertEqual(
+            c.label,
+            "Read: notes and comments from 22 sessions · transcript passages from 6 of 22 sessions (search: 14 mentions)"
+        )
+        let one = TranscriptCoverage(transcriptSessions: 1, sessionsWithPassages: 1, mentions: 1, searched: true)
+        XCTAssertEqual(one.label, "Read: transcript passages from 1 of 1 session (search: 1 mention)")
     }
 
-    func testNoticeMentionsSessionsWithoutPassagesOnlyWhenThereAreSome() {
-        let none = TranscriptCoverage(sessions: 3, sessionsWithoutPassages: 0, totalCharacters: 1000, includedCharacters: 500)
-        XCTAssertEqual(none.notice?.contains("session(s) had no transcript passage"), false)
-        let some = TranscriptCoverage(sessions: 3, sessionsWithoutPassages: 2, totalCharacters: 1000, includedCharacters: 500)
-        XCTAssertEqual(some.notice?.contains("2 of 3 session(s) had no transcript passage included"), true)
+    func testUnreadableSessionsAreLabelledNotRead() {
+        let c = TranscriptCoverage(transcriptSessions: 2, sessionsWithPassages: 2, unreadableSessions: 2, wholeTranscripts: true)
+        XCTAssertEqual(c.label, "Read: full transcripts from 2 sessions · 2 sessions unreadable, not read")
     }
 }
 
