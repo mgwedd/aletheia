@@ -172,12 +172,18 @@ extension TranscriptCoverageEdgeTests {
 extension TranscriptCoverageEdgeTests {
     func testNothingFitsReadsPlainlyNotNewestZero() {
         let c = TranscriptCoverage(transcriptSessions: 3, sessionsWithPassages: 0, fullTexts: true)
-        XCTAssertEqual(c.label, "Read: no full transcripts (the newest session is too long to fit)")
-        let block = Prompts.searchBlock(
-            SessionSearch.search([], question: "Dana"), shown: 0, whole: false, newest: (0, 3), unreadableSessions: 0
+        XCTAssertEqual(c.label, "Read: no full transcripts (not enough room)")
+        let cut = TranscriptCoverage(transcriptSessions: 3, sessionsWithPassages: 1, fullTexts: true, newestCutShort: true)
+        XCTAssertEqual(cut.label, "Read: the newest session's transcript, cut short (1 of 3 sessions)")
+        let none = Prompts.searchBlock(
+            SessionSearch.search([], question: "Dana"), shown: 0, whole: false, newest: (0, 3, false), unreadableSessions: 0
         )
-        XCTAssertTrue(block.contains("no full transcript fits, so none of the 3 sessions was read"))
-        XCTAssertFalse(block.contains("newest 0"))
+        XCTAssertTrue(none.contains("no session transcript is included below"))
+        XCTAssertFalse(none.contains("newest 0"))
+        let block = Prompts.searchBlock(
+            SessionSearch.search([], question: "Dana"), shown: 0, whole: false, newest: (1, 3, true), unreadableSessions: 0
+        )
+        XCTAssertTrue(block.contains("only the newest session's transcript, cut short to fit, is included below (1 of 3 sessions)"))
     }
 
     func testSingularMatchSimilarSpellingAndUnreadableWithNewest() {
@@ -190,7 +196,7 @@ extension TranscriptCoverageEdgeTests {
             "Read: the full transcript of the newest session (1 of 4 sessions) (1 match for your words, 1 more with similar spelling) · 1 session could not be read, so answers may be incomplete"
         )
         let block = Prompts.searchBlock(
-            SessionSearch.search([], question: "Dana"), shown: 0, whole: false, newest: (1, 4), unreadableSessions: 1
+            SessionSearch.search([], question: "Dana"), shown: 0, whole: false, newest: (1, 4, false), unreadableSessions: 1
         )
         XCTAssertTrue(block.contains("only the full transcript of the newest session (1 of 4) is included below"))
     }

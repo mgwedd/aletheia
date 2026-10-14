@@ -1119,17 +1119,22 @@ final class Store {
         // Counted from what is in `text`: a session whose transcript is
         // unreadable is not counted as read.
         let transcriptDates = Set(documents.map { $0.date }.filter { search.dateRange?.contains($0) ?? true })
-        let sessionsRead = transcriptDates.intersection(excerptsByDate.keys).count
+        // Whole-transcript selections are counted per session, not per date, so
+        // two sessions on one day are not both counted when only one was sent.
+        let sessionsRead = selection.fullTexts
+            ? selection.wholeCount + (selection.cutShort ? 1 : 0)
+            : transcriptDates.intersection(excerptsByDate.keys).count
+        let transcriptTotal = selection.fullTexts ? selection.totalCount : transcriptDates.count
         let searchBlock = Prompts.searchBlock(
             search, shown: selection.hitsShown, whole: selection.whole,
-            newest: selection.fullTexts ? (sessionsRead, transcriptDates.count) : nil,
+            newest: selection.fullTexts ? (sessionsRead, transcriptTotal, selection.cutShort) : nil,
             unreadableSessions: unreadable
         )
         let text = [background, searchBlock, sessionsText]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n\n")
         let coverage = TranscriptCoverage(
-            transcriptSessions: transcriptDates.count,
+            transcriptSessions: transcriptTotal,
             sessionsWithPassages: sessionsRead,
             notesSessions: notesDates.count,
             unreadableSessions: unreadable,
@@ -1138,6 +1143,7 @@ final class Store {
             searched: !search.terms.isEmpty,
             wholeTranscripts: selection.whole,
             fullTexts: selection.fullTexts,
+            newestCutShort: selection.cutShort,
             notesCutSessions: notesCut
         )
         return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)

@@ -51,15 +51,63 @@ final class PatientContextRetrieverTests: XCTestCase {
         XCTAssertLessThanOrEqual(rendered, 1_000)
     }
 
-    func testBigNewestSessionStopsTheSelectionInsteadOfSkippingToOlderOnes() {
-        let big = TranscriptDocument(date: date(2026, 3, 1), text: String(repeating: "x", count: 900))
-        let small = [1, 2].map { TranscriptDocument(date: date(2026, $0, 1), text: "short session \($0)") }
-        let docs = small + [big]
-        let search = SessionSearch.search(docs.map { .init(date: $0.date, tag: "", kind: .transcript, text: $0.text) }, question: "???")
-        let selection = PatientContextRetriever.select(transcripts: docs, search: search, characterBudget: 500)
-        XCTAssertTrue(selection.excerpts.isEmpty, "the newest did not fit, so no older one is passed off as the newest")
+    private func select(_ docs: [TranscriptDocument], _ question: String, budget: Int) -> PatientContextRetriever.Selection {
+        let search = SessionSearch.search(docs.map { .init(date: $0.date, tag: "", kind: .transcript, text: $0.text) }, question: question)
+        return PatientContextRetriever.select(transcripts: docs, search: search, characterBudget: budget)
+    }
+
+    func testSmallNewestBigMiddleSmallOldestKeepsExactlyTheNewest() {
+        let docs = [
+            TranscriptDocument(date: date(2026, 1, 1), text: "short oldest"),
+            TranscriptDocument(date: date(2026, 2, 1), text: String(repeating: "x", count: 900)),
+            TranscriptDocument(date: date(2026, 3, 1), text: "short newest"),
+        ]
+        let selection = select(docs, "???", budget: 500)
+        XCTAssertEqual(selection.excerpts.map(\.date), [date(2026, 3, 1)])
+        XCTAssertEqual(selection.wholeCount, 1)
+        XCTAssertEqual(selection.totalCount, 3)
+        XCTAssertFalse(selection.cutShort)
         XCTAssertFalse(selection.whole)
+    }
+
+    func testNothingWholeFitsSendsTheNewestCutShort() {
+        let lines = (1...40).map { "[00:\(String(format: "%02d", $0))] Patient: line \($0) about errands" }
+        let docs = [
+            TranscriptDocument(date: date(2026, 1, 1), text: "short oldest"),
+            TranscriptDocument(date: date(2026, 3, 1), text: lines.joined(separator: "\n")),
+        ]
+        let selection = select(docs, "What did we talk about last time?", budget: 400)
+        XCTAssertEqual(selection.excerpts.map(\.date), [date(2026, 3, 1)])
+        XCTAssertEqual(selection.wholeCount, 0)
+        XCTAssertTrue(selection.cutShort)
+        XCTAssertFalse(selection.whole)
+        let text = selection.excerpts[0].text
+        XCTAssertTrue(text.contains("line 40"), "the latest lines are the ones kept")
+        XCTAssertFalse(text.contains("line 1 "))
+        let rendered = PatientContextRetriever.header(docs[1].date, labels: [:]).count + text.count + 3
+        XCTAssertLessThanOrEqual(rendered, 400)
+    }
+
+    func testTermsWithNoTranscriptHitFallBackToTheNewestThatFit() {
+        let docs = (1...3).map { TranscriptDocument(date: date(2026, $0, 1), text: String(repeating: "word ", count: 80) + "\($0)") }
+        let selection = select(docs, "kayaking", budget: 500)
+        XCTAssertEqual(selection.excerpts.map(\.date), [date(2026, 3, 1)])
         XCTAssertTrue(selection.fullTexts)
+        XCTAssertEqual(selection.wholeCount, 1)
+        XCTAssertEqual(selection.totalCount, 3)
+    }
+
+    func testSameDaySessionsAreCountedPerSession() {
+        let day = date(2026, 3, 1)
+        let docs = [
+            TranscriptDocument(date: day, text: String(repeating: "a", count: 300)),
+            TranscriptDocument(date: day, text: String(repeating: "b", count: 300)),
+        ]
+        let selection = select(docs, "???", budget: 400)
+        XCTAssertEqual(selection.wholeCount, 1)
+        XCTAssertEqual(selection.totalCount, 2)
+        XCTAssertTrue(selection.excerpts[0].text.hasPrefix("a"), "same-day ties keep their given order")
+        XCTAssertFalse(selection.whole)
     }
 
     func testTermlessQuestionOverAHistoryLargerThanTheBudgetStaysWithinIt() {

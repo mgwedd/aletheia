@@ -321,7 +321,7 @@ struct PatientChatView: View {
         }
         // Decrypting and searching every session takes a moment on a long
         // history, so it runs off the main thread with a line saying so.
-        let sessionCount = (try? store.listSessions(for: patient))?.filter(\.hasTranscript).count ?? 0
+        let sessionCount = (try? store.listSessions(for: patient))?.count ?? 0
         searchingNotice = Self.searchingNotice(sessions: sessionCount)
         let patient = patient
         Task {
