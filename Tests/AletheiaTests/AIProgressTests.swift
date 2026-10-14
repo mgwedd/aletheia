@@ -106,65 +106,84 @@ final class AIProgressTests: XCTestCase {
         XCTAssertEqual(speed.read, 100)
     }
 
-    func testEstimateNeedsHistory() throws {
-        let none = ModelSpeed().estimate(promptTokens: 1000, outputTokens: 100)
-        XCTAssertNil(none.read)
-        XCTAssertNil(none.write)
-        let speed = ModelSpeed(read: 500, write: 20, output: 400)
-        let both = speed.estimate(promptTokens: 1000)
-        XCTAssertEqual(try XCTUnwrap(both.read), 2, accuracy: 0.001)
-        XCTAssertEqual(try XCTUnwrap(both.write), 20, accuracy: 0.001)
-        XCTAssertEqual(try XCTUnwrap(speed.estimate(promptTokens: 0, outputTokens: 100).write), 5, accuracy: 0.001)
+    func testPartialPrefixHitIsNotRecordedAsReadSpeed() {
+        // 8K prompt, 6K cached: Ollama counts all 8K but spent time on 2K only.
+        var stats = AIRunStats(promptTokens: 8000, promptNanos: 4_000_000_000, expectedPromptTokens: 2200)
+        XCTAssertNotNil(stats.readTokensPerSecond)
+        stats.reusedPrefix = true
+        XCTAssertNil(stats.readTokensPerSecond)
+        XCTAssertEqual(ModelSpeed(read: 100).folding(stats).read, 100)
+    }
+
+    func testCacheFilterBoundaries() {
+        // Exactly half of what was expected still counts; just under does not.
+        XCTAssertNotNil(AIRunStats(promptTokens: 2500, promptNanos: 25_000_000_000, expectedPromptTokens: 5000).readTokensPerSecond)
+        XCTAssertNil(AIRunStats(promptTokens: 2499, promptNanos: 25_000_000_000, expectedPromptTokens: 5000).readTokensPerSecond)
+        // No expectation (0) never filters on size.
+        XCTAssertNotNil(AIRunStats(promptTokens: 300, promptNanos: 3_000_000_000, expectedPromptTokens: 0).readTokensPerSecond)
     }
 
     func testWritingLineShowsTimeLeftOnceSpeedKnown() {
         var progress = AIRunProgress(startedAt: Date(timeIntervalSince1970: 0))
         progress.firstTokenAt = Date(timeIntervalSince1970: 10)
         progress.tokensWritten = 50
+        let now = Date(timeIntervalSince1970: 20)
         let lines = AIProgressFormat.lines(
-            progress, now: Date(timeIntervalSince1970: 20), readTokensPerSecond: nil,
-            writeTokensPerSecond: 10, expectedOutputTokens: 800)
-        XCTAssertEqual(lines[1].text, "Writing · 50 tokens · 0:10 · about 1 min left")
-        let unknown = AIProgressFormat.lines(progress, now: Date(timeIntervalSince1970: 20), readTokensPerSecond: nil)
+            progress, now: now, readTokensPerSecond: nil, writeTokensPerSecond: 10, expectedOutputTokens: 650)
+        XCTAssertEqual(lines[1].text, "Writing · 50 tokens · 0:10 · about 1 min left")  // 600 left at 10/s
+        let unknown = AIProgressFormat.lines(progress, now: now, readTokensPerSecond: nil)
         XCTAssertEqual(unknown[1].text, "Writing · 50 tokens · 0:10")
     }
 
-    // MARK: Speed history (persistence)
-
-    private var runStats: AIRunStats {
-        AIRunStats(promptTokens: 1000, promptNanos: 10_000_000_000, outputTokens: 100, outputNanos: 5_000_000_000)
+    func testWritingLineHidesTimeLeftPastExpectedLength() {
+        var progress = AIRunProgress(startedAt: Date(timeIntervalSince1970: 0))
+        progress.firstTokenAt = Date(timeIntervalSince1970: 10)
+        progress.tokensWritten = 500
+        let lines = AIProgressFormat.lines(
+            progress, now: Date(timeIntervalSince1970: 20), readTokensPerSecond: nil,
+            writeTokensPerSecond: 10, expectedOutputTokens: 400)
+        XCTAssertEqual(lines[1].text, "Writing · 500 tokens · 0:10")
     }
 
-    func testSpeedHistoryRecordsAndAverages() throws {
-        let repo = ModelSpeedRepository(core: InMemoryPersistenceCore())
-        XCTAssertEqual(repo.speed(for: "m"), ModelSpeed())
-        repo.record(model: "m", from: runStats)  // read 100, write 20, output 100
-        XCTAssertEqual(repo.speed(for: "m"), ModelSpeed(read: 100, write: 20, output: 100))
-        repo.record(model: "m", from: AIRunStats(promptTokens: 2000, promptNanos: 10_000_000_000, outputTokens: 200, outputNanos: 5_000_000_000))
-        let speed = repo.speed(for: "m")
-        XCTAssertEqual(try XCTUnwrap(speed.read), 130, accuracy: 0.001)
-        XCTAssertEqual(try XCTUnwrap(speed.write), 26, accuracy: 0.001)
-        XCTAssertEqual(try XCTUnwrap(speed.output), 130, accuracy: 0.001)
-        XCTAssertEqual(repo.speed(for: "other"), ModelSpeed())
-    }
-
-    func testSpeedHistoryPersistsInSQLiteAndHoldsNoSessionText() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let url = root.appendingPathComponent("speeds.sqlite")
-        do {
-            let core = try XCTUnwrap(SQLitePersistenceCore(url: url))
-            ModelSpeedRepository(core: core).record(model: "llama3.1:8b", from: runStats, now: Date(timeIntervalSince1970: 5))
+    func testOutputLengthIsAveragedPerTask() throws {
+        func run(_ task: AITask, tokens: Int) -> AIRunStats {
+            AIRunStats(outputTokens: tokens, outputNanos: 5_000_000_000, task: task)
         }
-        let core = try XCTUnwrap(SQLitePersistenceCore(url: url))
-        XCTAssertEqual(ModelSpeedRepository(core: core).speed(for: "llama3.1:8b"), ModelSpeed(read: 100, write: 20, output: 100))
-        let record = try XCTUnwrap(core.record(kind: ModelSpeedRepository.kind, id: "llama3.1:8b"))
-        XCTAssertEqual(record.updatedAt, Date(timeIntervalSince1970: 5))
-        XCTAssertNil(record.ownerID)
-        XCTAssertNil(record.itemID)
-        // Only the model name and numbers: the payload's keys are exactly the speed fields.
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: record.payload) as? [String: Double])
-        XCTAssertEqual(Set(json.keys), ["read", "write", "output"])
+        var speed = ModelSpeed()
+        speed = speed.folding(run(.note, tokens: 1000)).folding(run(.chat, tokens: 100))
+        XCTAssertEqual(speed.expectedOutput(for: .note), 1000)
+        XCTAssertEqual(speed.expectedOutput(for: .chat), 100)
+        XCTAssertNil(speed.expectedOutput(for: .digest))
+        speed = speed.folding(run(.chat, tokens: 200))
+        XCTAssertEqual(try XCTUnwrap(speed.expectedOutput(for: .chat)), 130)
+        XCTAssertEqual(speed.expectedOutput(for: .note), 1000)
+        // A run without a task, or too short to time, leaves outputs alone.
+        XCTAssertEqual(speed.folding(AIRunStats(outputTokens: 900, outputNanos: 5_000_000_000)).outputs, speed.outputs)
+        XCTAssertEqual(speed.folding(run(.note, tokens: 10)).outputs, speed.outputs)
+    }
+
+    func testStoredFormRoundTripsAndToleratesLegacyOrJunk() {
+        let speed = ModelSpeed(read: 120, write: 30, outputs: ["note": 800, "chat": 150])
+        XCTAssertEqual(ModelSpeed(stored: speed.stored), speed)
+        // What main stored before per-task outputs: read and write only.
+        XCTAssertEqual(ModelSpeed(stored: ["read": 120, "write": 30]), ModelSpeed(read: 120, write: 30))
+        XCTAssertEqual(ModelSpeed(stored: ["bogus": 1, "output.": 2]).read, nil)
+        XCTAssertEqual(ModelSpeed(stored: [:]), ModelSpeed())
+    }
+
+    @MainActor
+    func testSettingsRecordSpeedsOverLegacyStoredHistory() throws {
+        let settings = AppSettings.shared
+        let original = settings.modelSpeeds
+        defer { settings.modelSpeeds = original }
+        // The shape main stored: read and write only.
+        settings.modelSpeeds = ["m": ["read": 90, "write": 12]]
+        XCTAssertEqual(settings.speed(for: "m"), ModelSpeed(read: 90, write: 12))
+        XCTAssertEqual(settings.speed(for: "other"), ModelSpeed())
+        settings.recordSpeeds(model: "m", from: AIRunStats(
+            promptTokens: 1000, promptNanos: 10_000_000_000, outputTokens: 100, outputNanos: 5_000_000_000, task: .note))
+        XCTAssertEqual(settings.speed(for: "m").outputs, ["note": 100])
+        XCTAssertEqual(try XCTUnwrap(settings.speed(for: "m").read), 93, accuracy: 0.001)
     }
 
     // MARK: Budget

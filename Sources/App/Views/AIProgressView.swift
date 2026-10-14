@@ -66,8 +66,11 @@ enum AIProgressFormat {
             ]
         }
         let writingFor = now.timeIntervalSince(firstToken)
-        let writeLeft = readingRemaining(
-            estimatedTokens: expectedOutputTokens, tokensPerSecond: writeTokensPerSecond, elapsed: writingFor)
+        // Hidden once the reply passes its typical length: nothing honest to say.
+        let writeLeft = expectedOutputTokens.flatMap { expected in
+            writeTokensPerSecond.flatMap { $0 > 0 && progress.tokensWritten < expected
+                ? Double(expected - progress.tokensWritten) / $0 : nil }
+        }
         return [
             AIProgressLine(state: .done, text: join([
                 progress.readTitle, readDetail, elapsed(firstToken.timeIntervalSince(started)),
@@ -89,12 +92,13 @@ struct AIProgressView: View {
     let progress: AIRunProgress
     /// Measured speeds for this model, when known.
     var speed: ModelSpeed?
+    var task: AITask = .chat
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let lines = AIProgressFormat.lines(
                 progress, now: context.date, readTokensPerSecond: speed?.read,
-                writeTokensPerSecond: speed?.write, expectedOutputTokens: speed?.output.map { Int($0) })
+                writeTokensPerSecond: speed?.write, expectedOutputTokens: speed?.expectedOutput(for: task))
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                     HStack(spacing: 6) {

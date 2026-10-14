@@ -77,7 +77,7 @@ final class PromptPrefixMemory: @unchecked Sendable {
 
 /// What a request is for. Notes, digests and factual chat want the same
 /// answer every time, so they run cool; this is the one place that says how cool.
-enum AITask {
+enum AITask: String {
     case note, digest, chat, compaction
 
     var temperature: Double {
@@ -246,6 +246,9 @@ final class OllamaClient: Assistant {
         let cached = onStats == nil ? 0
             : PromptPrefixMemory.shared.sharedPrefixCharacters(model: model, text: system + "\n" + prompt)
         let expectedTokens = ContextBudget.estimatedTokens(forCharacters: max(0, system.count + prompt.count - cached))
+        let onStats: (@Sendable (AIRunStats) -> Void)? = onStats.map { report in
+            { var stats = $0; stats.task = task; stats.reusedPrefix = cached > 0; report(stats) }
+        }
         return AsyncThrowingStream { continuation in
             OllamaResidency.shared.began(baseURL: baseURL, model: model)
             let job = Task {

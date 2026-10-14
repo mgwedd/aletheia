@@ -1070,7 +1070,7 @@ struct SessionDetailView: View {
     /// Shown between pressing Generate and the first token, which can take a
     /// minute on a long session.
     private var noteWorkingRow: some View {
-        AIProgressView(progress: noteRunner.progress, speed: settings.speed(for: settings.ollamaModelName))
+        AIProgressView(progress: noteRunner.progress, speed: settings.speed(for: settings.ollamaModelName), task: .note)
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
     }

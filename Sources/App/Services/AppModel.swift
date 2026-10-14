@@ -89,7 +89,6 @@ final class AppModel: ObservableObject {
         guard let root = dataRoot else {
             store = nil
             commentStore = nil
-            settings.speedStore = nil
             databaseState = .noDataFolder
             patients = []
             unreadablePatients = []
@@ -115,7 +114,6 @@ final class AppModel: ObservableObject {
             ))
         }
         commentStore = newCommentStore
-        settings.speedStore = newCommentStore?.modelSpeeds
         let newStore = Store(root: root, protector: protector, commentStore: newCommentStore, openDatabaseIfMissing: false)
         store = newStore
         if case let .needsNewerApp(dataVersion, appVersion) = newStore.schemaCompatibility {
