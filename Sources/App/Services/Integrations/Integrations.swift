@@ -37,8 +37,8 @@ final class Integrations: ObservableObject {
     /// Low-level LLM adapter, chosen by the resolved backend (see
     /// `effectiveAssistantBackend`). Apple Intelligence is preferred where it's
     /// supported because it needs no install or model download; otherwise the
-    /// app uses Ollama. The embedded llama.cpp runtime is staged and, until it
-    /// ships, resolves back to Ollama here.
+    /// app uses Ollama. The embedded llama.cpp runtime is used when selected and
+    /// its model is downloaded.
     func makeAssistant() -> Assistant {
         switch effectiveAssistantBackend {
         case .appleIntelligence:
@@ -52,9 +52,7 @@ final class Integrations: ObservableObject {
                 return LlamaAssistant(modelURL: LlamaRuntime.modelURL(for: settings.llamaModel))
             }
             #endif
-            // Runtime not linked (default today) or model not downloaded: fall
-            // back to Ollama. Flipping this on is just adding the pinned
-            // llama.cpp package — see README › Embedded llama.cpp.
+            // Runtime not linked or model not downloaded: fall back to Ollama.
             return OllamaClient(baseURL: settings.ollamaBaseURL)
         case .ollama, .automatic:
             return OllamaClient(baseURL: settings.ollamaBaseURL)

@@ -107,11 +107,9 @@ final class UnavailableLocalLLMEngine: LocalLLMEngine {
 
 /// Composition root for the local-LLM engine. Returns the real `LlamaEngine`
 /// only when the llama runtime is linked (`#if canImport(llama)`); otherwise a
-/// graceful `UnavailableLocalLLMEngine`. The package stays commented out in
-/// `project.yml` (see README › Embedded llama.cpp), so `canImport(llama)` is
-/// false in CI and production today — both branches keep returning
-/// `UnavailableLocalLLMEngine` there, unchanged. A Mac maintainer flips it on
-/// per `scripts/verify-llama-bringup.sh`.
+/// graceful `UnavailableLocalLLMEngine`. The `LlamaCpp` package is linked in
+/// every tier (see `project.yml`); whether the engine is *offered* is gated by
+/// `EmbeddedLlamaFeatureModule`.
 enum LocalLLMEngineFactory {
     static func make(
         modelURL: URL,

@@ -4,8 +4,8 @@ import Foundation
 ///
 /// This is a *must-have* for production eventually — a therapist should get
 /// working AI with nothing to install — but it isn't stable yet (the runtime is
-/// still staged behind `#if canImport(llama)`, the pinned dependency is not yet
-/// added, and the in-wizard model download hasn't launched reliably). So it
+/// linked in every tier but the in-wizard model download hasn't launched
+/// reliably). So it
 /// ships developer-build-only (`.dev`) until it's proven, then graduates to
 /// preview and finally production.
 ///

@@ -5,13 +5,9 @@ import llama
 /// The embedded local-LLM backend: the official llama.cpp runtime compiled into
 /// the app, answering entirely on-device with no server and no external process.
 ///
-/// ⚠️ Staged / needs Mac verification. This whole file is behind
-/// `#if canImport(llama)`, so it is only compiled once the pinned `llama.cpp`
-/// Swift package is added (see README › Embedded llama.cpp and the commented
-/// stanza in `project.yml`). It has therefore NOT been compiled by CI. The C
-/// API symbol names and pointer lifetimes below track llama.cpp's public
-/// `llama.h` as of the pin; verify them against the exact pinned revision when
-/// bringing this up on a Mac, and adjust if the API has shifted.
+/// Compiled against the `llama.h` in the pinned XCFramework (`Packages/LlamaCpp`);
+/// re-verify the C calls when re-pinning.
+
 /// A thread-safe one-way "stop" flag. The stream's `onTermination` (Stop button,
 /// or the consumer going away) sets it; the background inference loop polls it.
 private final class CancellationFlag: @unchecked Sendable {
