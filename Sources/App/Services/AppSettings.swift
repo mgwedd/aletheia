@@ -54,9 +54,9 @@ enum IdleAutoLockTimeout: Int, CaseIterable, Identifiable, Codable, Hashable {
 
     var id: Int { rawValue }
 
-    /// 15 minutes: short enough to matter for a clinician stepping away
-    /// mid-session, long enough not to interrupt writing a note.
-    static let defaultTimeout: IdleAutoLockTimeout = .fifteenMinutes
+    /// Off: by default the app locks only when the Mac locks or sleeps, so the
+    /// Mac's own Lock Screen setting decides. The in-app idle lock is opt-in.
+    static let defaultTimeout: IdleAutoLockTimeout = .off
 
     var displayName: String {
         switch self {

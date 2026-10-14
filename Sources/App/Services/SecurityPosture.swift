@@ -52,14 +52,15 @@ enum SecurityPosture {
                 detail: "Require Touch ID or your password to open the app, so notes stay behind authentication."))
         }
 
-        // Idle auto-lock (only meaningful once app lock is on).
+        // Automatic logoff (only meaningful once app lock is on): the Mac's screen
+        // lock provides it; the in-app idle lock is an optional extra.
         if appLockEnabled {
             if idleAutoLockMinutes > 0 {
                 items.append(PostureItem(id: "idleAutoLock", title: "Automatic logoff", level: .secure,
-                    detail: "Re-locks after \(idleAutoLockMinutes) minute\(idleAutoLockMinutes == 1 ? "" : "s") of inactivity."))
+                    detail: "Aletheia locks when your Mac locks or sleeps, and after \(idleAutoLockMinutes) minute\(idleAutoLockMinutes == 1 ? "" : "s") without activity."))
             } else {
-                items.append(PostureItem(id: "idleAutoLock", title: "Automatic logoff", level: .actionRecommended,
-                    detail: "Idle auto-lock is off. Set a timeout so the app re-locks when you step away."))
+                items.append(PostureItem(id: "idleAutoLock", title: "Automatic logoff", level: .informational,
+                    detail: "Aletheia locks when your Mac locks or sleeps, so your Mac's screen-lock setting controls it (System Settings > Lock Screen). You can also turn on an in-app idle lock in Settings."))
             }
         }
 

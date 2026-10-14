@@ -42,7 +42,7 @@ Legend: **✅ in place** · **◐ in progress** · **○ clinician responsibilit
 | Safeguard (§164.312) | Status | How Aletheia addresses it |
 | --- | --- | --- |
 | **Access control (a)(1)** — unique user ID, limit access to authorized users | ✅ / ○ | Single-user app scoped to one macOS account. The macOS login (unique user, password/Touch ID) is the access boundary; the app adds its own lock below. |
-| **Automatic logoff (a)(2)(iii)** *(addressable)* | ◐ | App lock re-engages when the app is hidden; a configurable **idle auto-lock timeout** re-locks after inactivity. |
+| **Automatic logoff (a)(2)(iii)** *(addressable)* | ◐ | App lock re-engages whenever the Mac locks or sleeps, so the Mac's screen-lock setting (System Settings › Lock Screen) provides the logoff; set a short interval there. An optional **in-app idle lock** (off by default) also re-locks after inactivity in Aletheia. |
 | **Encryption & decryption (a)(2)(iv)** *(addressable)* | ✅ | AES-256-GCM at rest for the database, transcripts, summaries, session digests, and audio (see [ENCRYPTION.md](ENCRYPTION.md)); FileVault recommended as the disk-level baseline. First-run recommends turning it on as an opt-out step (with a recovery passphrase and optional transparent unlock on this Mac), so a new install is guided to encrypt by default rather than leaving it a buried toggle. |
 | **Audit controls (b)** — record and examine activity involving ePHI | ✅ / ◐ | An on-device, append-only audit log (`audit.log`, one JSON line per event) records ePHI-affecting actions with timestamps and holds **no names or clinical content** — only action types and opaque record ids. It's viewable and exportable in Settings, stored only on the Mac. App-unlock and encryption enable/disable/unlock are wired now; export/delete/backup events attach as those flows land. |
 | **Integrity (c)(1)** — protect ePHI from improper alteration/destruction | ✅ / ○ | SQLite `PRAGMA secure_delete` zeroes freed pages; atomic writes for identity/metadata; encrypted backups are sealed snapshots. Source-of-truth transcript is editable by the clinician by design (right-to-amend), with edits under the clinician's control. |
@@ -58,7 +58,7 @@ These belong to the practice. Aletheia supports, but cannot satisfy, them:
   analysis. The policy/analysis itself is yours.
 - **Workforce security, sanction policy, information-access management** — org
   policy. On a shared Mac, use separate macOS accounts and enable app lock +
-  idle auto-lock.
+  a short screen-lock interval (optionally the in-app idle lock).
 - **Contingency plan / data backup (§164.308(a)(7))** — by default the data
   folder is **included in Time Machine**, because the app writes no backup of
   its own unless opted in and there would otherwise be a single copy. The folder
@@ -85,7 +85,7 @@ the app keeps records until the clinician removes them.
 
 ## Where these controls live in the app
 
-- Settings › Security — app lock, idle auto-lock, FileVault guidance.
+- Settings › Security — app lock, optional idle lock, FileVault guidance.
 - Settings › Extra Encryption — at-rest encryption (Tier 2) and recovery
   passphrase; see [ENCRYPTION.md](ENCRYPTION.md).
 - Settings › Backup — optional system-backup exclusion (off by default) and opt-in

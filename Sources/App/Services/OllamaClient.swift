@@ -96,13 +96,27 @@ final class OllamaResidency: @unchecked Sendable {
     /// Don't warm again within this long of the last request or warm-up.
     static let warmInterval: TimeInterval = 5 * 60
     private let lock = NSLock()
-    private var target: (baseURL: URL, model: String)?
+    struct Entry: Hashable { let baseURL: URL; let model: String }
+    /// Every model used or warmed since the last unload, so a lock frees them all.
+    private var loaded: Set<Entry> = []
+    private var last: Entry?
     private var inFlight = 0
     private var lastActivity: Date?
+    private var locked = false
+    /// Bumped on every unload, so a warm-up that finishes after one is ignored.
+    private var generation = 0
+    /// Warm-ups sent and not yet answered, so parallel callers don't each POST.
+    private var warming: Set<Entry> = []
+    /// What the last unload freed, for the next unlock to load again.
+    private var resume: Set<Entry> = []
+
+    struct WarmClaim { let entry: Entry; let generation: Int }
 
     func began(baseURL: URL, model: String, now: Date = Date()) {
         lock.lock(); defer { lock.unlock() }
-        target = (baseURL, model)
+        let entry = Entry(baseURL: baseURL, model: model)
+        loaded.insert(entry)
+        last = entry
         inFlight += 1
         lastActivity = now
     }
@@ -113,21 +127,54 @@ final class OllamaResidency: @unchecked Sendable {
         lastActivity = now
     }
 
-    /// True (and counts as a warm-up) unless a request is running or one ran or warmed recently.
-    func claimWarmUp(baseURL: URL, model: String, now: Date = Date()) -> Bool {
+    /// While locked nothing may be warmed (e.g. a session restored behind the lock screen).
+    func setLocked(_ value: Bool) {
         lock.lock(); defer { lock.unlock() }
-        if inFlight > 0 { return false }
-        if target?.model == model, let last = lastActivity, now.timeIntervalSince(last) < Self.warmInterval { return false }
-        target = (baseURL, model)
-        lastActivity = now
-        return true
+        locked = value
     }
 
-    /// The model to unload, forgetting it (a later warm-up must reload).
-    func takeLoaded() -> (baseURL: URL, model: String)? {
+    /// A claim unless locked, a request is running, this model at this URL is already
+    /// being warmed, or it ran or warmed recently. Counts nothing until `warmed`.
+    func claimWarmUp(baseURL: URL, model: String, now: Date = Date()) -> WarmClaim? {
         lock.lock(); defer { lock.unlock() }
-        defer { target = nil; lastActivity = nil }
-        return target
+        let entry = Entry(baseURL: baseURL, model: model)
+        if locked || inFlight > 0 || warming.contains(entry) { return nil }
+        if last == entry, let at = lastActivity, now.timeIntervalSince(at) < Self.warmInterval { return nil }
+        warming.insert(entry)
+        return WarmClaim(entry: entry, generation: generation)
+    }
+
+    /// A warm-up succeeded: the model is resident and the debounce starts. Ignored if
+    /// an unload or lock happened since the claim.
+    func warmed(_ claim: WarmClaim, now: Date = Date()) {
+        lock.lock(); defer { lock.unlock() }
+        guard claim.generation == generation else { return }
+        warming.remove(claim.entry)
+        guard !locked else { return }
+        loaded.insert(claim.entry)
+        last = claim.entry
+        lastActivity = now
+    }
+
+    /// A warm-up failed: nothing resident, nothing debounced.
+    func warmFailed(_ claim: WarmClaim) {
+        lock.lock(); defer { lock.unlock() }
+        if claim.generation == generation { warming.remove(claim.entry) }
+    }
+
+    /// The models to unload, forgetting them (a later warm-up must reload).
+    func takeLoaded() -> [Entry] {
+        lock.lock(); defer { lock.unlock() }
+        defer { loaded = []; last = nil; lastActivity = nil; warming = []; generation += 1 }
+        resume.formUnion(loaded)
+        return Array(loaded)
+    }
+
+    /// The models an unload freed since the last call: what to load again after an unlock.
+    func takeResume() -> [Entry] {
+        lock.lock(); defer { lock.unlock() }
+        defer { resume = [] }
+        return Array(resume)
     }
 }
 
@@ -327,26 +374,40 @@ final class OllamaClient: Assistant {
         ["model": model, "prompt": "", "stream": false, "keep_alive": 0]
     }
 
-    private static func fireAndForget(_ baseURL: URL, _ body: [String: Any]) {
+    private static func fireAndForget(_ baseURL: URL, _ body: [String: Any], completion: (@Sendable (Bool) -> Void)? = nil) {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 120
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
         request.httpBody = data
-        Task.detached { _ = try? await URLSession.shared.data(for: request) }
+        Task.detached {
+            let response = (try? await URLSession.shared.data(for: request))?.1
+            completion?((response as? HTTPURLResponse)?.statusCode == 200)
+        }
     }
 
     func warmUp(model: String) {
-        guard OllamaResidency.shared.claimWarmUp(baseURL: baseURL, model: model) else { return }
-        Self.fireAndForget(baseURL, Self.warmUpBody(model: model))
+        guard !model.isEmpty,
+              let claim = OllamaResidency.shared.claimWarmUp(baseURL: baseURL, model: model) else { return }
+        Self.fireAndForget(baseURL, Self.warmUpBody(model: model)) { ok in
+            if ok { OllamaResidency.shared.warmed(claim) } else { OllamaResidency.shared.warmFailed(claim) }
+        }
     }
 
-    /// Unloads the model this app last used. Called when the app locks; never
+    /// Unloads every model this app used since the last unload. Called when the app locks; never
     /// waits on Ollama and ignores any failure.
     static func unloadLoaded() {
-        guard let loaded = OllamaResidency.shared.takeLoaded() else { return }
-        fireAndForget(loaded.baseURL, unloadBody(model: loaded.model))
+        for entry in OllamaResidency.shared.takeLoaded() {
+            fireAndForget(entry.baseURL, unloadBody(model: entry.model))
+        }
+    }
+
+    /// Loads again whatever the last lock unloaded; nothing if nothing was resident.
+    static func warmUpResumed() {
+        for entry in OllamaResidency.shared.takeResume() {
+            OllamaClient(baseURL: entry.baseURL).warmUp(model: entry.model)
+        }
     }
 
     /// Parses one NDJSON line from `/api/generate` streaming into its text delta,

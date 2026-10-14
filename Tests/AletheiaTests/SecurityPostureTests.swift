@@ -60,9 +60,11 @@ final class SecurityPostureTests: XCTestCase {
         XCTAssertEqual(item("appLock", in: items)?.level, .actionRecommended)
     }
 
-    func testIdleAutoLockNeverIsActionableWhenAppLockOn() {
+    func testIdleAutoLockOffIsInformationalNotAWarning() {
         let items = evaluate(idleAutoLockMinutes: 0)
-        XCTAssertEqual(item("idleAutoLock", in: items)?.level, .actionRecommended)
+        XCTAssertEqual(item("idleAutoLock", in: items)?.level, .informational)
+        XCTAssertTrue(item("idleAutoLock", in: items)?.detail.contains("Lock Screen") == true)
+        XCTAssertFalse(items.contains { $0.level == .actionRecommended })
     }
 
     func testEncryptionStates() {

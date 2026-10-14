@@ -87,13 +87,18 @@ struct AletheiaApp: App {
         let appLock = AppLock(settings: settings)
         // Record each successful unlock in the on-device audit log (HIPAA
         // §164.312(b)). AppLock stays decoupled from the log via this hook.
-        appLock.onUnlock = { [weak appModel] in appModel?.recordAudit(.appUnlocked) }
+        appLock.onUnlock = { [weak appModel] in
+            appModel?.recordAudit(.appUnlocked)
+            // Reload only what the lock unloaded; not ~5 GB on every unlock.
+            OllamaClient.warmUpResumed()
+        }
         _appLock = StateObject(wrappedValue: appLock)
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: MainWindow.id) {
             RootView()
+                .background(MainWindowCapture())
                 .environmentObject(settings)
                 .environmentObject(appModel)
                 .environmentObject(integrations)
