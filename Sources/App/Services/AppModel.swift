@@ -32,6 +32,9 @@ final class AppModel: ObservableObject {
     /// On-device, append-only audit log of ePHI-affecting actions (HIPAA
     /// §164.312(b)), living in the data folder beside the stores.
     private(set) var audit: AuditLog?
+    /// The persistent search index (`<dataRoot>/search.sqlite`), reused while the data folder is unchanged.
+    private var searchIndex: SearchIndex?
+    private var searchSync: Task<Void, Never>?
     // Previous encryption on/unlocked state, so `rebuildStore` (which fires on
     // every protection change) can derive what changed and record it. Both are
     // `nil` until the first build, so launching the app isn't logged as a change.
@@ -114,8 +117,18 @@ final class AppModel: ObservableObject {
             ))
         }
         commentStore = newCommentStore
-        let newStore = Store(root: root, protector: protector, commentStore: newCommentStore, openDatabaseIfMissing: false)
+        let indexURL = root.appendingPathComponent("search.sqlite")
+        let index = searchIndex?.url == indexURL ? searchIndex! : SearchIndex(url: indexURL)
+        searchIndex = index
+        index.mayOpen = { SessionSearch.mayOpenIndex }
+        index.onReopen = { [weak self] in DispatchQueue.main.async { self?.startSearchSync() } }
+        // The file is a plaintext copy: not to be left behind while the folder is locked (e.g. from the last session).
+        if encryption.isEnabled && !encryption.isUnlocked { index.destroy() }
+        SessionSearch.index = index
+        let newStore = Store(
+            root: root, protector: protector, commentStore: newCommentStore, openDatabaseIfMissing: false, searchIndex: index)
         store = newStore
+        startSearchSync()
         if case let .needsNewerApp(dataVersion, appVersion) = newStore.schemaCompatibility {
             schemaWarning = """
             This folder's data was created by a newer version of Aletheia \
@@ -127,6 +140,17 @@ final class AppModel: ObservableObject {
             schemaWarning = nil
         }
         refreshPatients()
+    }
+
+    /// Brings the index up to date in the background (launch, unlock, folder change). Not while either
+    /// lock is engaged, when no transcript may be read, and it stops as soon as one engages.
+    private func startSearchSync() {
+        searchSync?.cancel()
+        searchSync = nil
+        guard let store, let index = searchIndex, !index.isBlocked else { return }
+        searchSync = Task.detached(priority: .utility) {
+            store.syncSearchIndex(shouldContinue: { !Task.isCancelled && !index.isBlocked })
+        }
     }
 
     /// Runs a save that goes to the database and, if it throws, raises the

@@ -151,7 +151,8 @@ first.
 | Therapist notes | SQLite `note` record | free text; independent of transcript | unaffected |
 | Session chat | SQLite `sessionChat` | answers quote the old transcript | stale answers remain, unlabelled |
 | Patient chat threads | SQLite `chatThread` | stored answers already decorated with session dates and a Sources footer (`Citations.decorate`); tags `S1..` are per question, not stable ids | stale text; no pointer into the transcript to break |
-| Search, patient-chat context, export | read from files at query time (`searchSessions`, `gatherCitedPatientContext`) | live | not stale. The issue's "search index" does not exist; there is no persisted index |
+| Patient-chat search | persistent FTS5 index `search.sqlite` (`SearchIndex`), keyed by session, kind and a fingerprint of the text | the text each search reads | not stale: a search stores any text it hasn't seen and drops older versions of that session; `saveTranscript` and a launch/unlock sweep (by mtime and size) also refresh it. It holds a plaintext (stemmed) copy of searchable text, accepted because FileVault covers it at rest; it is excluded from Time Machine and rebuilt if missing or corrupt |
+| Session search, export | read from files at query time (`searchSessions`) | live | not stale |
 | Spotlight | names and dates only | none | unaffected |
 | Encryption sealing | `FileProtector.write` seals each write | `saveTranscript` seals correctly | a **new** file kind (such as a prior revision) is not covered: `DataMigrator` converts only a fixed list (`transcript.txt`, `summary.txt`, `chat.json`, `note.*.txt`). A revision file left out of that list is skipped on enable (stays plaintext) and, worse, stays sealed when encryption is turned off after the keystore is removed (unreadable) |
 | DB snapshots and backups | `.backups/snapshots` cover SQLite only | `transcript.txt` is a file | a replaced transcript is not recoverable from DB snapshots; only Time Machine or a manual copy |

@@ -55,7 +55,7 @@ enum PatientContextRetriever {
     ) -> String {
         let search = SessionSearch.search(
             documents.map { SessionSearch.Document(date: $0.date, tag: labels[$0.date] ?? "", kind: .transcript, text: $0.text) },
-            question: question
+            question: question, characterBudget: characterBudget
         )
         return select(transcripts: documents, search: search, characterBudget: characterBudget, labels: labels)
             .excerpts
@@ -96,7 +96,7 @@ enum PatientContextRetriever {
         if totalChars <= characterBudget {
             return Selection(
                 excerpts: wholeExcerpts(usable, budget: characterBudget, labels: labels).excerpts,
-                hitsShown: transcriptHits.count, whole: true, fullTexts: true,
+                hitsShown: search.transcriptHitCount, whole: true, fullTexts: true,
                 wholeCount: usable.count, totalCount: usable.count
             )
         }

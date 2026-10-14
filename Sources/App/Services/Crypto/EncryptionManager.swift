@@ -47,7 +47,9 @@ final class EncryptionManager: ObservableObject {
         }
     }
 
-    @Published private(set) var state: State = .disabled
+    @Published private(set) var state: State = .disabled {
+        didSet { SessionSearch.setEncryptionLocked(state == .lockedNeedsPassphrase) }
+    }
 
     /// Set by `AppModel` so the stores rebuild with a fresh `FileProtector`
     /// whenever the key or on/off state changes.
@@ -94,6 +96,9 @@ final class EncryptionManager: ObservableObject {
             dek = key
         }
         state = dek == nil ? .lockedNeedsPassphrase : .unlocked
+        // Ended unlocked (e.g. `lock()` re-read the remembered key): the index may open again,
+        // unless the app lock is still up.
+        if state == .unlocked { SessionSearch.openIndex() }
     }
 
     /// Whether the DEK is remembered in this Mac's keychain for auto-unlock.
@@ -160,7 +165,9 @@ final class EncryptionManager: ObservableObject {
         try FileManager.default.removeItem(at: root.appendingPathComponent(Keystore.fileName))
         dek = nil
         state = .disabled
+        SessionSearch.deleteIndex()   // the folder is plaintext now, but don't leave a copy behind; the sweep rebuilds it
         onProtectionChanged?()
+        SessionSearch.openIndex()
     }
 
     /// Unlocks an already-enabled folder by recovering the DEK from `passphrase`.
@@ -171,6 +178,7 @@ final class EncryptionManager: ObservableObject {
         dek = try keystore.unlock(passphrase: passphrase)
         state = .unlocked
         onProtectionChanged?()
+        SessionSearch.openIndex()   // after the stores are rebuilt, so the sweep it starts reads with the new key
     }
 
     /// Drops the in-memory DEK; the folder stays encrypted and re-locks. Called
@@ -178,7 +186,8 @@ final class EncryptionManager: ObservableObject {
     func lock() {
         guard dek != nil else { return }
         dek = nil
-        SessionSearch.clearCache()   // holds transcript text
+        SessionSearch.setEncryptionLocked(true)   // before the delete; `refresh()` below may release it again
+        SessionSearch.deleteIndex()   // plaintext transcript text: gone while locked, rebuilt on unlock
         OllamaClient.unloadLoaded()
         refresh()
         onProtectionChanged?()

@@ -2,6 +2,10 @@ import XCTest
 @testable import Aletheia
 
 final class PatientContextRetrieverTests: XCTestCase {
+    override func setUp() {
+        SessionSearch.index = SearchIndex()   // earlier tests may have left a locked file index behind
+    }
+
     private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
         Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: month, day: day))!
     }
