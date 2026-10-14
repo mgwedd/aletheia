@@ -2,38 +2,33 @@
 import Foundation
 import llama
 
-/// A thread-safe one-way "stop" flag. The stream's `onTermination` (Stop button,
-/// or the consumer going away) sets it; the background inference loop polls it.
-private final class CancellationFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var flag = false
-    var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return flag }
-    func cancel() { lock.lock(); flag = true; lock.unlock() }
-}
-
 /// The embedded local-LLM backend: the official llama.cpp runtime compiled into
 /// the app, answering entirely on-device with no server and no external process.
 ///
 /// Compiled against the `llama.h` in the pinned XCFramework (`Packages/LlamaCpp`);
 /// re-verify the C calls when re-pinning.
 final class LlamaAssistant: Assistant {
-    enum LlamaError: LocalizedError {
-        case modelLoadFailed, contextInitFailed, tokenizeFailed, samplerInitFailed, decodeFailed
-
-        var errorDescription: String? { "The built-in model couldn't complete a response." }
-    }
-
     private let modelURL: URL
     private let maxTokens: Int
-    private var model: OpaquePointer?
+
+    /// One engine per model file, shared by every assistant made for it: the
+    /// app builds a new assistant per use, and the loaded weights and context
+    /// (sized by `LlamaEngine`) must outlive each one.
+    private static let enginesLock = NSLock()
+    nonisolated(unsafe) private static var engines: [URL: LlamaEngine] = [:]
+
+    private var engine: LlamaEngine {
+        Self.enginesLock.lock()
+        defer { Self.enginesLock.unlock() }
+        if let existing = Self.engines[modelURL] { return existing }
+        let created = LlamaEngine(modelURL: modelURL, sampling: LocalLLMSampling(maxTokens: maxTokens))
+        Self.engines[modelURL] = created
+        return created
+    }
 
     init(modelURL: URL, maxTokens: Int = 512) {
         self.modelURL = modelURL
         self.maxTokens = maxTokens
-    }
-
-    deinit {
-        if let model { llama_model_free(model) }
     }
 
     func isReachable() async -> Bool { FileManager.default.fileExists(atPath: modelURL.path) }
@@ -45,106 +40,19 @@ final class LlamaAssistant: Assistant {
         onProgress(1.0, "ready")
     }
 
+    private func request(system: String, prompt: String) -> LocalLLMRequest {
+        LocalLLMRequest(system: system, prompt: prompt, sampling: LocalLLMSampling(maxTokens: maxTokens))
+    }
+
     func generate(model _: String, system: String, prompt: String) async throws -> String {
-        // Inference is blocking; run it off the calling thread.
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do { continuation.resume(returning: try self.runInference(system: system, prompt: prompt)) }
-                catch { continuation.resume(throwing: error) }
-            }
-        }
+        try await engine.generate(request(system: system, prompt: prompt))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Token-by-token streaming: runs the same blocking inference loop off the
-    /// calling thread, but yields the growing full text after each token instead
-    /// of only returning at the end. Honors cancellation so a Stop in the UI
-    /// halts generation promptly.
+    /// Token-by-token streaming of the growing full text; a Stop in the UI
+    /// cancels the engine's decode loop.
     func stream(model _: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
-        let cancelled = CancellationFlag()
-        return AsyncThrowingStream { continuation in
-            continuation.onTermination = { _ in cancelled.cancel() }
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self else { continuation.finish(); return }
-                do {
-                    try self.runInference(
-                        system: system,
-                        prompt: prompt,
-                        isCancelled: { cancelled.isCancelled }
-                    ) { soFar in
-                        continuation.yield(soFar)
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-        }
-    }
-
-    private func ensureModelLoaded() throws {
-        guard model == nil else { return }
-        llama_backend_init()
-        let params = llama_model_default_params()
-        guard let loaded = llama_model_load_from_file(modelURL.path, params) else {
-            throw LlamaError.modelLoadFailed
-        }
-        model = loaded
-    }
-
-    /// Runs the greedy decode loop. `onToken`, when given, is called with the
-    /// growing full text after each token (for streaming); `isCancelled` lets a
-    /// streaming caller stop generation early. Returns the final trimmed text.
-    @discardableResult
-    private func runInference(
-        system: String,
-        prompt: String,
-        isCancelled: @escaping () -> Bool = { false },
-        onToken: ((String) -> Void)? = nil
-    ) throws -> String {
-        try ensureModelLoaded()
-        guard let model else { throw LlamaError.modelLoadFailed }
-        guard let vocab = llama_model_get_vocab(model) else { throw LlamaError.tokenizeFailed }
-
-        var contextParams = llama_context_default_params()
-        contextParams.n_ctx = 4096
-        contextParams.n_batch = 512
-        guard let context = llama_init_from_model(model, contextParams) else {
-            throw LlamaError.contextInitFailed
-        }
-        defer { llama_free(context) }
-
-        guard let promptTokens = LlamaPrompt.tokens(model: model, vocab: vocab, system: system, prompt: prompt),
-              !promptTokens.isEmpty else { throw LlamaError.tokenizeFailed }
-        var tokens = promptTokens
-
-        // Greedy sampler for stable, reproducible clinical summaries.
-        guard let sampler = llama_sampler_chain_init(llama_sampler_chain_default_params()) else {
-            throw LlamaError.samplerInitFailed
-        }
-        defer { llama_sampler_free(sampler) }
-        llama_sampler_chain_add(sampler, llama_sampler_init_greedy())
-
-        var output = ""
-        var batch = llama_batch_get_one(&tokens, Int32(tokens.count))
-        var produced = 0
-        while produced < maxTokens {
-            if isCancelled() { break }
-            guard llama_decode(context, batch) == 0 else { throw LlamaError.decodeFailed }
-            var next = llama_sampler_sample(sampler, context, -1)
-            if llama_vocab_is_eog(vocab, next) { break }
-            output += piece(for: next, vocab: vocab)
-            onToken?(output)
-            batch = llama_batch_get_one(&next, 1)
-            produced += 1
-        }
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func piece(for token: llama_token, vocab: OpaquePointer?) -> String {
-        var buffer = [CChar](repeating: 0, count: 256)
-        let count = llama_token_to_piece(vocab, token, &buffer, Int32(buffer.count), 0, true)
-        guard count > 0 else { return "" }
-        return String(decoding: buffer[0..<Int(count)].map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        engine.stream(request(system: system, prompt: prompt))
     }
 }
 #endif

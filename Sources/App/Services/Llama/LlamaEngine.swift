@@ -29,11 +29,16 @@ final class LlamaEngine: LocalLLMEngine {
     private let adapterURL: URL?
     /// The sampling this engine was constructed with. Every `generate`/
     /// `stream` call carries its own `LocalLLMRequest.sampling`, which is
-    /// what actually drives decoding — this value's only job is sizing the
-    /// context window at load time (`n_ctx` must be fixed before any
-    /// request is seen), so a caller that plans on long completions gets a
-    /// context big enough to hold them.
+    /// what actually drives decoding — this value only sizes the context
+    /// `load()` warms up. A request's own prompt and reply size the window
+    /// it actually runs in (`contextOnQueue`).
     private let defaultSampling: LocalLLMSampling
+    /// What this Mac can read at once; caps the context window.
+    private let budget: ContextBudget
+    /// The current context's `n_ctx`; it only grows (see `contextOnQueue`).
+    private(set) var contextTokens = 0
+    /// The last request's prompt size in tokens (for tests and diagnostics).
+    private(set) var lastPromptTokens = 0
 
     /// Serializes every touch of `model`/`context`/`adapter`: load, decode,
     /// unload. See the threading note on the type.
@@ -59,17 +64,19 @@ final class LlamaEngine: LocalLLMEngine {
     }
 
     /// A plain base model, no adapter.
-    init(modelURL: URL, sampling: LocalLLMSampling) {
+    init(modelURL: URL, sampling: LocalLLMSampling, budget: ContextBudget = .current) {
         self.modelURL = modelURL
         self.adapterURL = nil
         self.defaultSampling = sampling
+        self.budget = budget
     }
 
     /// A base model with an optional LoRA adapter layered on it at load time.
-    init(modelURL: URL, adapterURL: URL?, sampling: LocalLLMSampling) {
+    init(modelURL: URL, adapterURL: URL?, sampling: LocalLLMSampling, budget: ContextBudget = .current) {
         self.modelURL = modelURL
         self.adapterURL = adapterURL
         self.defaultSampling = sampling
+        self.budget = budget
     }
 
     /// From a `ModelLoadPlan` — base + optional adapter, already validated
@@ -92,6 +99,8 @@ final class LlamaEngine: LocalLLMEngine {
                 guard let self else { continuation.resume(); return }
                 do {
                     try self.ensureLoadedOnQueue()
+                    // Warm the floor-size context too, so the first request skips it.
+                    _ = try self.contextOnQueue(promptTokens: 0, replyTokens: self.defaultSampling.maxTokens)
                     continuation.resume()
                 } catch {
                     continuation.resume(throwing: error)
@@ -176,26 +185,6 @@ final class LlamaEngine: LocalLLMEngine {
             }
             model = loadedModel
 
-            var contextParams = llama_context_default_params()
-            // Size the context to comfortably hold prompt + completion for
-            // the sampling this engine was built with, capped at what the
-            // model was actually trained on (0 from llama_model_n_ctx_train
-            // means "unknown", so don't cap in that case).
-            let trainCtx = Int(llama_model_n_ctx_train(loadedModel))
-            let desiredCtx = max(2048, defaultSampling.maxTokens * 4)
-            contextParams.n_ctx = UInt32(trainCtx > 0 ? min(desiredCtx, trainCtx) : desiredCtx)
-            contextParams.n_batch = 512
-            let threads = Int32(max(1, ProcessInfo.processInfo.activeProcessorCount))
-            contextParams.n_threads = threads
-            contextParams.n_threads_batch = threads
-
-            guard let loadedContext = llama_init_from_model(loadedModel, contextParams) else {
-                throw LocalLLMEngineError.loadFailed(
-                    "Couldn't create an inference context for the built-in model."
-                )
-            }
-            context = loadedContext
-
             if let adapterURL {
                 guard let loadedAdapter = llama_adapter_lora_init(loadedModel, adapterURL.path) else {
                     throw LocalLLMEngineError.loadFailed(
@@ -203,30 +192,6 @@ final class LlamaEngine: LocalLLMEngine {
                     )
                 }
                 adapter = loadedAdapter
-
-                // llama_set_adapters_lora takes a small array of adapters +
-                // per-adapter scales (we apply one, at full strength) and
-                // returns non-zero if the context rejected the pairing —
-                // fail closed rather than silently generating off the base
-                // model with the adapter quietly not applied.
-                var adapters: [OpaquePointer?] = [loadedAdapter]
-                var scales: [Float] = [1.0]
-                let applied = adapters.withUnsafeMutableBufferPointer { adaptersBuffer in
-                    scales.withUnsafeMutableBufferPointer { scalesBuffer in
-                        llama_set_adapters_lora(
-                            loadedContext,
-                            adaptersBuffer.baseAddress,
-                            adaptersBuffer.count,
-                            scalesBuffer.baseAddress
-                        )
-                    }
-                }
-                guard applied == 0 else {
-                    throw LocalLLMEngineError.loadFailed(
-                        "The LoRA adapter at \(adapterURL.lastPathComponent) couldn't be applied "
-                            + "to the loaded model (code \(applied))."
-                    )
-                }
             }
 
             setState(.ready)
@@ -236,6 +201,73 @@ final class LlamaEngine: LocalLLMEngine {
             setState(.failed(reason: reason))
             throw error
         }
+    }
+
+    /// The context for a prompt of `promptTokens` plus `replyTokens`, created or
+    /// rebuilt only when the stable window it needs is bigger than the current
+    /// one (the loaded model is kept; the KV cache is the cost of a bigger
+    /// window). Throws `ContextBudgetError` when the prompt can't fit. Must
+    /// only run on `queue`.
+    private func contextOnQueue(promptTokens: Int, replyTokens: Int) throws -> OpaquePointer {
+        guard let model else {
+            throw LocalLLMEngineError.generationFailed("The built-in model isn't loaded.")
+        }
+        let target = try LlamaContextSize.contextTokens(
+            promptTokens: promptTokens, replyTokens: replyTokens,
+            trainContext: Int(llama_model_n_ctx_train(model)), budget: budget)
+        if let context, contextTokens >= target { return context }
+
+        if let context { llama_free(context) }
+        context = nil
+        contextTokens = 0
+
+        // Flash attention and a q8_0 KV cache halve the cache's memory (the
+        // limit on a long session) and speed up long-context attention; the
+        // quantized V cache needs flash attention. A model or backend that
+        // can't do that falls back to the library defaults rather than failing.
+        var params = llama_context_default_params()
+        params.n_ctx = UInt32(target)
+        // n_batch is the most tokens one llama_decode takes (the prefill loop
+        // feeds the prompt in chunks of it); a big ubatch speeds up prefill
+        // on the GPU. 2048 keeps the compute buffer modest.
+        params.n_batch = 2048
+        params.n_ubatch = 2048
+        // The GPU does the work; extra CPU threads (and the efficiency cores)
+        // only add sync overhead, so use at most half the cores, up to 8.
+        let threads = Int32(max(1, min(8, ProcessInfo.processInfo.activeProcessorCount / 2)))
+        params.n_threads = threads
+        params.n_threads_batch = threads
+        var fast = params
+        fast.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED
+        fast.type_k = GGML_TYPE_Q8_0
+        fast.type_v = GGML_TYPE_Q8_0
+        guard let created = llama_init_from_model(model, fast) ?? llama_init_from_model(model, params) else {
+            throw LocalLLMEngineError.loadFailed("Couldn't create an inference context for the built-in model.")
+        }
+
+        if let adapter {
+            // llama_set_adapters_lora takes a small array of adapters +
+            // per-adapter scales (we apply one, at full strength) and
+            // returns non-zero if the context rejected the pairing —
+            // fail closed rather than silently generating off the base
+            // model with the adapter quietly not applied.
+            var adapters: [OpaquePointer?] = [adapter]
+            var scales: [Float] = [1.0]
+            let applied = adapters.withUnsafeMutableBufferPointer { adaptersBuffer in
+                scales.withUnsafeMutableBufferPointer { scalesBuffer in
+                    llama_set_adapters_lora(created, adaptersBuffer.baseAddress, adaptersBuffer.count, scalesBuffer.baseAddress)
+                }
+            }
+            guard applied == 0 else {
+                llama_free(created)
+                throw LocalLLMEngineError.loadFailed(
+                    "The LoRA adapter couldn't be applied to the loaded model (code \(applied))."
+                )
+            }
+        }
+        context = created
+        contextTokens = target
+        return created
     }
 
     /// Frees adapter/context/model in dependency order (an adapter is only
@@ -250,6 +282,7 @@ final class LlamaEngine: LocalLLMEngine {
             llama_free(context)
         }
         context = nil
+        contextTokens = 0
         if let model {
             llama_model_free(model)
         }
@@ -273,7 +306,7 @@ final class LlamaEngine: LocalLLMEngine {
         isCancelled: () -> Bool,
         onToken: ((String) -> Void)?
     ) throws -> String {
-        guard let model, let context else {
+        guard let model else {
             throw LocalLLMEngineError.generationFailed("The built-in model isn't loaded.")
         }
         guard let vocab = llama_model_get_vocab(model) else {
@@ -285,6 +318,12 @@ final class LlamaEngine: LocalLLMEngine {
         ), !tokens.isEmpty else {
             throw LocalLLMEngineError.generationFailed("Couldn't tokenize the prompt.")
         }
+
+        lastPromptTokens = tokens.count
+        // Sized from the real prompt; throws ContextBudgetError rather than cutting it.
+        let context = try contextOnQueue(promptTokens: tokens.count, replyTokens: request.sampling.maxTokens)
+        // Every request starts from an empty cache (the context is reused).
+        llama_memory_clear(llama_get_memory(context), true)
 
         guard let chain = llama_sampler_chain_init(llama_sampler_chain_default_params()) else {
             throw LocalLLMEngineError.generationFailed("Couldn't create a sampler chain.")
@@ -333,7 +372,18 @@ final class LlamaEngine: LocalLLMEngine {
         tokens.withUnsafeBufferPointer { src in
             tokenStore.update(from: src.baseAddress!, count: promptCount)
         }
-        var batch = llama_batch_get_one(tokenStore, Int32(promptCount))
+        // llama_decode takes at most n_batch tokens: feed the prompt in chunks,
+        // keeping the last one for the loop below, which samples from it.
+        let chunk = Int(llama_n_batch(context))
+        var offset = 0
+        while promptCount - offset > chunk {
+            if isCancelled() { return output }
+            guard llama_decode(context, llama_batch_get_one(tokenStore + offset, Int32(chunk))) == 0 else {
+                throw LocalLLMEngineError.generationFailed("The model failed to decode a batch.")
+            }
+            offset += chunk
+        }
+        var batch = llama_batch_get_one(tokenStore + offset, Int32(promptCount - offset))
 
         var produced = 0
         while produced < maxTokens {
