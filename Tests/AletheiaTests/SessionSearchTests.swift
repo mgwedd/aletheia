@@ -341,6 +341,17 @@ final class SessionSearchTests: XCTestCase {
         XCTAssertEqual(SessionSearch.cachedIndexCount, 0)
     }
 
+    func testASearchRunningWhenTheCacheClearsDoesNotRefillIt() {
+        SessionSearch.clearCache()
+        let a = doc("[00:01] A: Dana called.")
+        let startedBeforeClear = 0   // clears seen by a search that began before the clear below
+        SessionSearch.clearCache()
+        _ = SessionSearch.index(for: a, clearsAtStart: startedBeforeClear)
+        XCTAssertEqual(SessionSearch.cachedIndexCount, 0)
+        _ = search([a], "Dana")
+        XCTAssertEqual(SessionSearch.cachedIndexCount, 1, "a search that starts after the clear caches as usual")
+    }
+
     func testEncryptionLockClearsTheSearchCache() throws {
         _ = search([doc("[00:01] A: Dana called.")], "Dana")
         XCTAssertGreaterThan(SessionSearch.cachedIndexCount, 0)
