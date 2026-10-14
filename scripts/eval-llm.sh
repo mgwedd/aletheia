@@ -71,10 +71,12 @@ BIN="$APP/Contents/MacOS/Aletheia"
 
 # The app is sandboxed: stage the transcript and its output in its container.
 STAGE="$HOME/Library/Containers/com.aletheia.app/Data/tmp"
-rm -rf "$STAGE"/eval.* 2>/dev/null   # leftovers from runs that were killed
+# Leftovers from runs that were killed; a run still going keeps its own.
+for dir in "$STAGE"/eval.*; do
+    [ -d "$dir" ] || continue
+    kill -0 "${dir##*.}" 2>/dev/null || rm -rf "$dir"
+done
 WORK="$STAGE/eval.$$"
-mkdir -p "$WORK/out" && chmod 700 "$WORK"
-cp "$TRANSCRIPT" "$WORK/transcript.txt"
 
 APP_PID=""
 finish() {
@@ -87,7 +89,11 @@ finish() {
     rm -rf "$WORK"
 }
 trap finish EXIT
-trap 'exit 130' INT TERM HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+mkdir -p "$WORK/out" && chmod 700 "$WORK"
+cp "$TRANSCRIPT" "$WORK/transcript.txt"
 
 ARGS=(--harness-eval "$WORK/transcript.txt")
 [ -n "$OUT" ] && ARGS+=(--out "$WORK/out")
