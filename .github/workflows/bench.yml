@@ -1,0 +1,109 @@
+name: Benchmarks
+
+# Fast benchmarks (PRBenchmarkTests, well under two minutes once built) on every
+# PR and main push. Informational only: nothing here fails on a timing. Main
+# runs upload their results as the baseline; a PR run compares its medians with
+# the last 10 main runs (scripts/bench-report.py), flags anything out of
+# distribution, and keeps one comment on the PR up to date.
+#
+# Supply-chain note: only first-party GitHub actions and Homebrew CLIs, as in
+# smoke-test.yml.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read          # download baseline artifacts from main runs
+  pull-requests: write   # the PR comment
+
+jobs:
+  bench:
+    name: Benchmarks (informational)
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      NSUnbufferedIO: "YES"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install tools (XcodeGen, xcbeautify)
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Cache Swift packages
+        uses: actions/cache@v5
+        with:
+          path: build/SourcePackages
+          key: spm-macos-15-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
+          restore-keys: spm-macos-15-
+
+      # Debug (so @testable works) but optimized, so the timings resemble the
+      # shipped app rather than unoptimized code.
+      - name: Run benchmarks
+        run: |
+          set -o pipefail
+          TEST_RUNNER_ALETHEIA_BENCH=1 xcodebuild test \
+            -project Aletheia.xcodeproj \
+            -scheme Aletheia \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            -only-testing:AletheiaTests/PRBenchmarkTests \
+            SWIFT_OPTIMIZATION_LEVEL=-O \
+            2>&1 | tee bench.log | xcbeautify --renderer github-actions
+          mkdir -p bench
+          grep -o 'BENCH-JSON {.*}' bench.log | sed 's/^BENCH-JSON //' | jq -s . > bench/results.json
+          test "$(jq length bench/results.json)" -gt 0
+
+      - name: Upload results (main baseline)
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v6
+        with:
+          name: bench-results
+          path: bench/results.json
+          retention-days: 90
+
+      - name: Compare with main
+        run: |
+          mkdir -p baseline
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow bench.yml --branch main --event push \
+              --status success --limit 10 --json databaseId --jq '.[].databaseId' |
+            while read -r id; do
+              gh run download "$id" --repo "$GITHUB_REPOSITORY" -n bench-results -D "baseline/$id" || true
+            done
+          python3 scripts/bench-report.py bench/results.json baseline > report.md
+          { echo '### Benchmarks'; cat report.md; } >> "$GITHUB_STEP_SUMMARY"
+
+      # Read-only token on fork PRs, so the comment may fail; the step summary has it too.
+      - name: Comment on the PR
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          marker='<!-- aletheia-bench -->'
+          body="$(printf '%s\n### Benchmarks\n\n%s\n\n<sub>%s · [run](%s)</sub>' "$marker" "$(cat report.md)" \
+            "${{ github.event.pull_request.head.sha }}" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/${{ github.event.pull_request.number }}/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+          else
+            gh pr comment "${{ github.event.pull_request.number }}" --repo "$GITHUB_REPOSITORY" --body "$body"
+          fi

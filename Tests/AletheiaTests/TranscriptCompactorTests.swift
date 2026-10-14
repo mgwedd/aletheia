@@ -142,17 +142,13 @@ final class TranscriptCompactorTests: XCTestCase {
         """)
     }
 
-    // MARK: - Performance
+    // MARK: - Long sessions (timings: PRBenchmarkTests)
 
     /// Mic-only session: one speaker, so the whole two hours is a single turn.
-    func testTwoHourSingleSpeakerSessionCompactsFast() {
+    func testTwoHourSingleSpeakerSessionCompacts() {
         let lines = (0..<1500).map { stamp($0 * 5, "You", "Segment \($0) um about the week, okay. Okay.") }
         let raw = lines.joined(separator: "\n")
-        let start = Date()
-        let out = TranscriptCompactor.compact(raw)
-        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0)
-        XCTAssertTrue(out.contains("Segment 1499"))
-        measure { _ = TranscriptCompactor.compact(raw) }
+        XCTAssertTrue(TranscriptCompactor.compact(raw).contains("Segment 1499"))
     }
 
     // MARK: - Synthetic hour
