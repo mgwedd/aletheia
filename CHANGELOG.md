@@ -9,6 +9,17 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.40.0] - 2026-10-14
+
+### Added
+- length menu, prompt editor, progress and copy feedback in the note bar (#285)
+- compact long conversations instead of silently forgetting them (#284)
+
+### Fixed
+- give the composer's caption its own line and quote only the words (#282)
+- stop re-locking when switching to another app (#281)
+- size the context window to the prompt (#283)
+
 ## [2.39.0] - 2026-10-14
 
 ### Added

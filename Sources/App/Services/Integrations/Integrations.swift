@@ -16,9 +16,17 @@ final class Integrations: ObservableObject {
     /// Serializes every LLM generation (notes and both chats) so a new request
     /// waits for the running one instead of hanging behind it in the model.
     let inferenceQueue = InferenceQueue()
+    /// Builds session digests in the background, at low priority on the queue.
+    let digests: DigestBuilder
 
     init(settings: AppSettings) {
         self.settings = settings
+        self.digests = DigestBuilder(queue: inferenceQueue)
+    }
+
+    /// Starts a background digest for the session unless a current one exists.
+    func buildDigest(for patient: Patient, session: SessionRecord, transcript: String, store: Store) {
+        digests.ensureDigest(for: patient, session: session, transcript: transcript, store: store, service: makeAssistantService())
     }
 
     /// Speech-to-text: whisper.cpp with Metal (see `WhisperTranscriber`).
@@ -56,6 +64,9 @@ final class Integrations: ObservableObject {
     /// The configured Ollama model tag, for status and support text.
     var ollamaModelName: String { settings.ollamaModelName }
 
+    /// Measured prompt tokens a second for the configured model, once it has run.
+    var readTokensPerSecond: Double? { settings.speed(for: settings.ollamaModelName).read }
+
     /// The backend that `makeAssistant()` will actually use, after resolving the
     /// user's preference against what this Mac supports. The Settings and setup
     /// screens read this so they describe (and troubleshoot) the real backend.
@@ -88,8 +99,19 @@ final class Integrations: ObservableObject {
 
     /// The use-case layer over the LLM adapter, preconfigured with the
     /// currently selected model. This is what summary/chat call sites use.
-    func makeAssistantService() -> AssistantService {
-        AssistantService(assistant: makeAssistant(), model: settings.ollamaModelName, systemPrompt: settings.systemPrompt)
+    /// `report` hears about the run (see `ChatStreamRunner.reporter`); a finished
+    /// run also updates this model's measured speeds.
+    func makeAssistantService(report: (@Sendable (AIRunEvent) -> Void)? = nil) -> AssistantService {
+        let settings = settings
+        let model = settings.ollamaModelName
+        var service = AssistantService(assistant: makeAssistant(), model: model, systemPrompt: settings.systemPrompt)
+        service.report = { event in
+            if case .finished(let stats) = event {
+                Task { @MainActor in settings.recordSpeeds(model: model, from: stats) }
+            }
+            report?(event)
+        }
+        return service
     }
 
     /// System notifications (transcript/summary ready). Created once so the

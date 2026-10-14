@@ -33,6 +33,25 @@ final class ChatStreamRunner: ObservableObject {
     /// Whether the last run ended by Stop rather than running to completion;
     /// read it in `onFinish` to tell a partial result from a whole one.
     private(set) var wasStopped = false
+    /// Live state of the current (or last) run, for `AIProgressView`, and the
+    /// run's own stats once it ends (for the truncation notice).
+    @Published private(set) var progress = AIRunProgress()
+
+    /// Hand this to `makeAssistantService(report:)` so the run's events reach
+    /// `progress`. Safe to call from any thread.
+    var reporter: @Sendable (AIRunEvent) -> Void {
+        { [weak self] event in Task { @MainActor in self?.apply(event) } }
+    }
+
+    private func apply(_ event: AIRunEvent) {
+        switch event {
+        case .reading(let tokens):
+            progress.estimatedPromptTokens = tokens
+        case .finished(let stats):
+            progress.stats = stats
+            if let written = stats.outputTokens { progress.tokensWritten = written }
+        }
+    }
 
     /// Plain status line while this run is waiting behind another generation;
     /// nil when it is not waiting (including the instant before an idle queue
@@ -56,6 +75,8 @@ final class ChatStreamRunner: ObservableObject {
     /// that is already scheduled becomes a no-op.
     private var jobToken: UUID?
     private var onCancelledWhileQueued: (() -> Void)?
+    private var titles = (read: "Reading", write: "Writing")
+    private var chunkCount = 0
 
     /// Interval between reveal ticks. Small enough to feel live, large enough
     /// that each tick reveals a readable chunk rather than one twitchy glyph.
@@ -75,6 +96,8 @@ final class ChatStreamRunner: ObservableObject {
         queue: InferenceQueue,
         kind: InferenceQueue.Kind,
         label: String,
+        readTitle: String = "Reading",
+        writeTitle: String = "Writing",
         makeStream: @escaping () -> AsyncThrowingStream<String, Error>,
         onReveal: @escaping (String) -> Void,
         onError: @escaping (Error) -> Void,
@@ -82,6 +105,7 @@ final class ChatStreamRunner: ObservableObject {
         onCancelledWhileQueued: @escaping () -> Void = {}
     ) {
         stop()
+        titles = (readTitle, writeTitle)
         self.queue = queue
         self.onCancelledWhileQueued = onCancelledWhileQueued
         isQueued = true
@@ -154,6 +178,8 @@ final class ChatStreamRunner: ObservableObject {
         finishedReceiving = false
         failure = nil
         wasStopped = false
+        chunkCount = 0
+        progress = AIRunProgress(readTitle: titles.read, writeTitle: titles.write, startedAt: Date())
         isStreaming = true
 
         let stream = makeStream()
@@ -161,7 +187,10 @@ final class ChatStreamRunner: ObservableObject {
             do {
                 for try await snapshot in stream {
                     if Task.isCancelled { break }
-                    self?.target = snapshot
+                    guard let self else { break }
+                    self.target = snapshot
+                    self.chunkCount += 1
+                    if self.progress.firstTokenAt == nil { self.progress.firstTokenAt = Date() }
                 }
             } catch {
                 self?.failure = error
@@ -177,6 +206,10 @@ final class ChatStreamRunner: ObservableObject {
                 if next != displayed {
                     displayed = next
                     onReveal(StreamSmoother.prefix(of: self.target, count: displayed))
+                }
+                // The real count replaces this once the run reports its stats.
+                if self.progress.stats == nil, self.progress.tokensWritten != self.chunkCount {
+                    self.progress.tokensWritten = self.chunkCount
                 }
                 if self.finishedReceiving && displayed >= self.target.count { break }
                 try? await Task.sleep(nanoseconds: self.tickNanos)

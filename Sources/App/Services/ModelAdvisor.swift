@@ -42,6 +42,20 @@ enum ModelAdvisor {
         return ModelRecommendation(whisperModel: whisper, ollamaModel: ollama, summary: summary)
     }
 
+    /// Tokens of prompt this Mac can have the model read at once: 16K on 8 GB,
+    /// 32K on 16 GB, 64K on 32 GB or more. An Intel Mac, which runs the model
+    /// far slower, gets one tier lower. Never below Ollama's 8K floor.
+    static func contextBudgetTokens(for hardware: HardwareCapabilities) -> Int {
+        let tokens: Int
+        switch hardware.physicalMemoryGB {
+        case 32...: tokens = 65_536
+        case 16...: tokens = 32_768
+        case 8...: tokens = 16_384
+        default: tokens = 8_192
+        }
+        return hardware.isAppleSilicon ? tokens : max(8_192, tokens / 2)
+    }
+
     static func current() -> ModelRecommendation {
         recommend(for: .current())
     }

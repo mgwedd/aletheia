@@ -25,6 +25,54 @@ private struct OllamaTagsResponse: Decodable {
 private struct OllamaGenerateResponse: Decodable {
     let response: String
     let done: Bool
+    // Only on the final chunk; durations are nanoseconds.
+    let promptEvalCount: Int?
+    let promptEvalDuration: Int?
+    let evalCount: Int?
+    let evalDuration: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case response, done
+        case promptEvalCount = "prompt_eval_count"
+        case promptEvalDuration = "prompt_eval_duration"
+        case evalCount = "eval_count"
+        case evalDuration = "eval_duration"
+    }
+}
+
+/// Remembers, per model, a hash of each 2,000-character prefix of the last
+/// prompt sent (never the text), so the next request can tell how much of its
+/// start Ollama probably still holds. Ollama keeps the model's working state
+/// for a shared prefix, and some versions then leave it out of
+/// `prompt_eval_count` (checked on a current one: it still counts the whole
+/// prompt, with a near-zero `prompt_eval_duration`). Expecting only the new
+/// tail is safe under either behaviour: it can't raise a false alarm.
+final class PromptPrefixMemory: @unchecked Sendable {
+    static let shared = PromptPrefixMemory()
+    static let step = 2000
+    private let lock = NSLock()
+    private var last: [String: [Int]] = [:]
+
+    /// Characters at the start of `text` that match the previous prompt for
+    /// `model`, rounded down to a step; then remembers `text`.
+    func sharedPrefixCharacters(model: String, text: String) -> Int {
+        var hasher = Hasher()
+        var hashes: [Int] = []
+        var index = text.startIndex
+        while let end = text.index(index, offsetBy: Self.step, limitedBy: text.endIndex), end != index {
+            hasher.combine(text[index..<end])
+            var snapshot = hasher
+            hashes.append(snapshot.finalize())
+            index = end
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        let previous = last[model] ?? []
+        last[model] = hashes
+        var shared = 0
+        while shared < min(previous.count, hashes.count), previous[shared] == hashes[shared] { shared += 1 }
+        return shared * Self.step
+    }
 }
 
 private struct OllamaPullProgress: Decodable {
@@ -119,7 +167,18 @@ final class OllamaClient: Assistant {
     /// `{response, done}` chunk. We accumulate the deltas and yield the growing
     /// full text so callers see one uniform "text so far" shape.
     func stream(model: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
+        stream(model: model, system: system, prompt: prompt, onStats: nil)
+    }
+
+    /// `onStats` gets the run's own numbers (tokens read and written, and how
+    /// long each took) from Ollama's final chunk.
+    func stream(
+        model: String, system: String, prompt: String, onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        let cached = onStats == nil ? 0
+            : PromptPrefixMemory.shared.sharedPrefixCharacters(model: model, text: system + "\n" + prompt)
+        let expectedTokens = max(0, system.count + prompt.count - cached) / 4
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
@@ -138,10 +197,14 @@ final class OllamaClient: Assistant {
                     var full = ""
                     for try await line in bytes.lines {
                         if Task.isCancelled { break }
-                        guard let chunk = OllamaClient.streamChunk(fromLine: line) else { continue }
+                        guard let chunk = OllamaClient.streamChunk(fromLine: line, expectedPromptTokens: expectedTokens)
+                        else { continue }
                         full += chunk.text
                         continuation.yield(full)
-                        if chunk.done { break }
+                        if chunk.done {
+                            if let stats = chunk.stats { onStats?(stats) }
+                            break
+                        }
                     }
                     continuation.finish()
                 } catch {
@@ -172,21 +235,32 @@ final class OllamaClient: Assistant {
     /// Tokens to reserve: the prompt (English runs about 4 characters a token;
     /// 3 leaves margin) plus room for the reply, rounded up to a power of two so
     /// similar requests share a size and Ollama doesn't reload the model for
-    /// each. 8K floor, 128K cap (the Llama 3 models' limit).
-    static func contextSize(forCharacters characters: Int) -> Int {
-        let needed = characters / 3 + 2048
+    /// each. 8K floor, 128K cap (the Llama 3 models' limit), and never above this
+    /// Mac's `ContextBudget`. `AssistantService` refuses a prompt over the budget
+    /// before it gets here, so the cap only guards the Mac's memory.
+    static func contextSize(forCharacters characters: Int, budget: Int = ContextBudget.current.tokens) -> Int {
+        let needed = ContextBudget.neededTokens(forCharacters: characters)
         var size = 8192
         while size < needed && size < 131_072 { size *= 2 }
-        return size
+        return min(size, budget)
     }
 
-    /// Parses one NDJSON line from `/api/generate` streaming into its text delta
-    /// and done flag. Pure, so the streaming accumulation is unit-testable.
-    static func streamChunk(fromLine line: String) -> (text: String, done: Bool)? {
+    /// Parses one NDJSON line from `/api/generate` streaming into its text delta,
+    /// done flag and, on the final chunk, the run's stats. Pure, so the streaming
+    /// accumulation is unit-testable.
+    static func streamChunk(
+        fromLine line: String, expectedPromptTokens: Int = 0
+    ) -> (text: String, done: Bool, stats: AIRunStats?)? {
         guard let data = line.data(using: .utf8),
               let decoded = try? JSONDecoder().decode(OllamaGenerateResponse.self, from: data)
         else { return nil }
-        return (decoded.response, decoded.done)
+        let stats = decoded.done
+            ? AIRunStats(
+                promptTokens: decoded.promptEvalCount, promptNanos: decoded.promptEvalDuration,
+                outputTokens: decoded.evalCount, outputNanos: decoded.evalDuration,
+                expectedPromptTokens: expectedPromptTokens)
+            : nil
+        return (decoded.response, decoded.done, stats)
     }
 
     /// Streams pull progress (0...1) as Ollama downloads a model, so the

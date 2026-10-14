@@ -29,6 +29,21 @@ enum NotesPane: Hashable, Identifiable {
     }
 }
 
+/// One muted line while the session's digest is being built in the background.
+private struct DigestStatusLine: View {
+    @ObservedObject var builder: DigestBuilder
+    let sessionID: UUID
+
+    var body: some View {
+        if let text = builder.status[sessionID] {
+            Text(text)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .padding([.horizontal, .top], 20)
+        }
+    }
+}
+
 struct SessionDetailView: View {
     let patient: Patient
     let session: SessionRecord
@@ -77,9 +92,6 @@ struct SessionDetailView: View {
     @State private var noteDraft = ""
     @State private var confirmRegenerate = false
     @State private var hasPreviousNote = false
-    /// When the running note job actually started; drives the "Reading the
-    /// session…" elapsed time before the first token arrives.
-    @State private var noteStartedAt: Date?
     @State private var noteCopied = false
     @State private var editingInstructions = false
     /// The note text as last read from / written to the store. `load()` assigns
@@ -517,6 +529,7 @@ struct SessionDetailView: View {
 
     private var transcriptTab: some View {
         VStack(alignment: .leading, spacing: 0) {
+            DigestStatusLine(builder: integrations.digests, sessionID: session.id)
             if let notice = noSpeechNotice {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle")
@@ -792,6 +805,7 @@ struct SessionDetailView: View {
         }
         transcriptText = text
         hasTranscript = true
+        integrations.buildDigest(for: patient, session: session, transcript: text, store: store)
         onSessionUpdated()
         return true
     }
@@ -974,6 +988,14 @@ struct SessionDetailView: View {
                 RichNoteEditor(markdown: $noteDraft, fonts: .serif, minHeight: 200, fills: true, label: "Edit note")
                     .padding([.horizontal, .bottom], 20)
             } else {
+                if noteRunner.isStreaming {
+                    noteWorkingRow
+                } else if noteRunner.progress.stats?.possiblyTruncated == true {
+                    Text(AIRunStats.truncationNotice)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
+                        .padding(.horizontal, 20)
+                }
                 ScrollView {
                     MarkdownMessageView(text: summaryText, style: .note)
                         .textSelection(.enabled)
@@ -1030,23 +1052,9 @@ struct SessionDetailView: View {
     /// Shown between pressing Generate and the first token, which can take a
     /// minute on a long session.
     private var noteWorkingRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let elapsed = max(0, Int(context.date.timeIntervalSince(noteStartedAt ?? context.date)))
-                    Text("Reading the session… \(elapsed / 60):\(String(format: "%02d", elapsed % 60))")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.text.color)
-                        .monospacedDigit()
-                }
-            }
-            Text("Long sessions take a minute before writing starts.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.muted.color)
-        }
-        .padding(.horizontal, 20)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        AIProgressView(progress: noteRunner.progress, readTokensPerSecond: settings.speed(for: settings.ollamaModelName).read)
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// No note in this format yet: say why, and offer the one action.
@@ -1129,7 +1137,7 @@ struct SessionDetailView: View {
     }
 
     private var chatTab: some View {
-        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() }, queuedStatus: chatRunner.queuedStatus, onCompact: { compactChat($0) })
+        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() }, queuedStatus: chatRunner.queuedStatus, notices: chatRunner.progress.stats?.possiblyTruncated == true && !isChatSending ? [AIRunStats.truncationNotice] : [], onCompact: { compactChat($0) }, progress: chatRunner.progress, readTokensPerSecond: settings.speed(for: settings.ollamaModelName).read)
     }
 
     private func load() {
@@ -1300,7 +1308,7 @@ struct SessionDetailView: View {
         let instructions = settings.noteInstructions[format.rawValue]
         // Snapshot the inputs now; the request itself is only made when the
         // queue starts this job (it may be waiting behind a chat answer).
-        let service = integrations.makeAssistantService()
+        let service = integrations.makeAssistantService(report: noteRunner.reporter)
         let transcript = transcriptText
         let notes = sessionNote
         let sessionComments = comments
@@ -1308,11 +1316,12 @@ struct SessionDetailView: View {
             queue: integrations.inferenceQueue,
             kind: .note,
             label: "progress note",
+            readTitle: "Reading the session",
+            writeTitle: "Writing the note",
             makeStream: {
                 // The job has started: drop the old note so the pane can show
                 // progress until the first token.
                 if settings.progressNoteFormat == format { summaryText = "" }
-                noteStartedAt = Date()
                 return service.streamProgressNote(
                     format: format,
                     transcript: transcript,
@@ -1390,7 +1399,7 @@ struct SessionDetailView: View {
         let assistantID = UUID()
         // Snapshot the inputs now; the request itself is only made when the
         // queue starts this job (it may be waiting behind the note).
-        let service = integrations.makeAssistantService()
+        let service = integrations.makeAssistantService(report: chatRunner.reporter)
         let transcript = transcriptText
         let notes = sessionNote
         let sessionComments = comments
@@ -1399,6 +1408,8 @@ struct SessionDetailView: View {
             queue: integrations.inferenceQueue,
             kind: .sessionChat,
             label: "session question",
+            readTitle: "Reading the session",
+            writeTitle: "Writing the answer",
             makeStream: {
                 service.streamAnswerAboutSession(
                     transcript: transcript,
@@ -1447,12 +1458,14 @@ extension SessionDetailView {
         guard let store = appModel.store, !chatMessages.isEmpty else { return }
         isChatSending = true
         let summaryID = UUID()
-        let service = integrations.makeAssistantService()
+        let service = integrations.makeAssistantService(report: chatRunner.reporter)
         let history = chatMessages
         chatRunner.start(
             queue: integrations.inferenceQueue,
             kind: .sessionChat,
             label: "conversation summary",
+            readTitle: "Reading the conversation",
+            writeTitle: "Summarizing the conversation",
             makeStream: { service.streamCompaction(history: history, focus: focus) },
             onReveal: { text in chatMessages.upsert(id: summaryID, role: .summary, text: text) },
             onError: { error in

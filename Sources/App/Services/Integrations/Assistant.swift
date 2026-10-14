@@ -28,11 +28,24 @@ protocol Assistant {
     /// render regardless of backend. Has a default implementation.
     func stream(model: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error>
 
+    /// Like `stream`, and also hands `onStats` the run's own numbers when the
+    /// backend reports them (tokens read and written, and how long each took).
+    /// The default reports nothing.
+    func stream(
+        model: String, system: String, prompt: String, onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error>
+
     /// Download a model, reporting progress as (fraction 0...1, status text).
     func pullModel(_ name: String, onProgress: @escaping (Double, String) -> Void) async throws
 }
 
 extension Assistant {
+    func stream(
+        model: String, system: String, prompt: String, onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        stream(model: model, system: system, prompt: prompt)
+    }
+
     /// Default: no real streaming — run the batch `generate` and emit the whole
     /// answer once. Backends that can stream (Ollama, Foundation Models,
     /// llama.cpp) override this.

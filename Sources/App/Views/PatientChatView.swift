@@ -76,7 +76,9 @@ struct PatientChatView: View {
                         queuedStatus: chatRunner.queuedStatus,
                         scopeNote: scopeNote,
                         notices: notices,
-                        onCompact: { compact($0) }
+                        onCompact: { compact($0) },
+                        progress: chatRunner.progress,
+                        readTokensPerSecond: integrations.readTokensPerSecond
                     )
                     .frame(minWidth: 360)
                 } else {
@@ -128,6 +130,9 @@ struct PatientChatView: View {
         if let coverageNotice { lines.append(coverageNotice) }
         if unreadableSessions > 0 {
             lines.append("\(unreadableSessions) session(s) could not be read; answers may be incomplete.")
+        }
+        if chatRunner.progress.stats?.possiblyTruncated == true && !isSending {
+            lines.append(AIRunStats.truncationNotice)
         }
         return lines
     }
@@ -309,11 +314,13 @@ struct PatientChatView: View {
         coverageNotice = context.coverage.label
         // Snapshot everything the prompt needs now; the request itself is only
         // made when the queue starts this job.
-        let service = integrations.makeAssistantService()
+        let service = integrations.makeAssistantService(report: chatRunner.reporter)
         chatRunner.start(
             queue: integrations.inferenceQueue,
             kind: .patientChat,
             label: "patient question",
+            readTitle: "Reading the sessions",
+            writeTitle: "Writing the answer",
             makeStream: {
                 service.streamAnswerAboutPatient(context: context.text, history: history, question: question)
             },
@@ -365,12 +372,14 @@ struct PatientChatView: View {
         guard let threadID = selectedThreadID, !messages.isEmpty else { return }
         isSending = true
         let summaryID = UUID()
-        let service = integrations.makeAssistantService()
+        let service = integrations.makeAssistantService(report: chatRunner.reporter)
         let history = messages
         chatRunner.start(
             queue: integrations.inferenceQueue,
             kind: .patientChat,
             label: "conversation summary",
+            readTitle: "Reading the conversation",
+            writeTitle: "Summarizing the conversation",
             makeStream: { service.streamCompaction(history: history, focus: focus) },
             onReveal: { text in messages.upsert(id: summaryID, role: .summary, text: text) },
             onError: { error in
