@@ -94,14 +94,14 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      # Cache the resolved Swift packages (the pinned whisper.cpp XCFramework)
+      # Cache the resolved Swift packages (the pinned whisper.cpp and llama.cpp XCFrameworks)
       # so we don't re-download them every run. Keyed on where dependency versions
       # live and the runner image, so each Xcode toolchain keeps its own cache.
       - name: Cache Swift packages
         uses: actions/cache@v5
         with:
           path: build/SourcePackages
-          key: spm-${{ matrix.runner }}-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift') }}
+          key: spm-${{ matrix.runner }}-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
           restore-keys: spm-${{ matrix.runner }}-
 
       # Resolving packages (downloading the whisper.cpp XCFramework) is the

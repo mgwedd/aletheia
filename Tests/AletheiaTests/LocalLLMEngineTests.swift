@@ -4,7 +4,7 @@ import XCTest
 /// The local-LLM engine seam is package-free and compiled in every build, so its
 /// contract — request assembly, sampling defaults, and graceful behavior when no
 /// runtime is linked — is unit-tested here regardless of tier. The real llama.cpp
-/// engine plugs in behind `#if canImport(llama)` at the pin step.
+/// engine is always compiled in since the package is now linked.
 final class LocalLLMEngineTests: XCTestCase {
     // MARK: Request / sampling / grammar value types
 
@@ -84,13 +84,19 @@ final class LocalLLMEngineTests: XCTestCase {
 
     // MARK: Factory
 
-    /// In every current build (the llama package isn't pinned yet), the factory
-    /// returns a gracefully-unavailable engine rather than crashing or half-wiring.
-    func testFactoryReturnsUnavailableEngineWithoutRuntime() {
+    /// Without the llama runtime the factory returns a gracefully-unavailable
+    /// engine; with it, a real engine that hasn't loaded anything yet.
+    func testFactoryMatchesRuntimeAvailability() {
         let url = URL(fileURLWithPath: "/tmp/does-not-exist.gguf")
         let engine = LocalLLMEngineFactory.make(modelURL: url)
-        guard case .unavailable = engine.state else {
-            return XCTFail("expected an unavailable engine without the llama runtime, got \(engine.state)")
+        if LlamaRuntime.isBuilt {
+            guard case .notLoaded = engine.state else {
+                return XCTFail("expected a not-yet-loaded engine, got \(engine.state)")
+            }
+        } else {
+            guard case .unavailable = engine.state else {
+                return XCTFail("expected an unavailable engine without the llama runtime, got \(engine.state)")
+            }
         }
     }
 }

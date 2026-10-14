@@ -8,15 +8,9 @@ import llama
 /// swappable LoRA fine-tunes) is built once against a stable contract and
 /// gets a working backend the moment this file compiles.
 ///
-/// ⚠️ Staged / needs Mac verification. This whole file sits behind
-/// `#if canImport(llama)`, so — like `LlamaAssistant` next to it — it has
-/// never been compiled by CI; the package stays commented in `project.yml`
-/// until a maintainer runs `scripts/verify-llama-bringup.sh` on a Mac. The
-/// C API calls below track `llama.h` exactly as it reads at the pinned
-/// commit (fetched and cross-checked line-by-line while writing this, not
-/// recalled from memory — the API reshuffled several times across
-/// 2024–2025). Re-verify every symbol here before ever re-pinning to a
-/// newer revision.
+/// The C API calls below are compiled against the `llama.h` shipped in the
+/// pinned XCFramework (`Packages/LlamaCpp`). The API reshuffles often, so
+/// re-verify every symbol here when re-pinning to a newer build.
 ///
 /// Threading: deliberately not actor-isolated. `generate`/`stream` run a
 /// blocking, potentially multi-second `llama_decode` loop; hopping onto an
@@ -386,7 +380,7 @@ final class LlamaEngine: LocalLLMEngine {
 /// A thread-safe one-way "stop" flag for a single `stream(_:)` call — the
 /// same small pattern `LlamaAssistant` uses for its own streaming decode
 /// loop, kept private and duplicated here (rather than shared) since each
-/// file is independently staged behind `#if canImport(llama)`.
+/// file has its own copy.
 private final class LlamaEngineCancellationFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var flag = false

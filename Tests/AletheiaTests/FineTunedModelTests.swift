@@ -114,17 +114,17 @@ final class FineTunedModelTests: XCTestCase {
     // MARK: - Engine factory routes a plan without changing call sites
 
     func testFactoryAcceptsAPlanAndDegradesGracefully() async {
-        // No runtime linked in CI, so the engine is Unavailable — but the plan
-        // routes through the same seam, proving adapter selection needs no
-        // call-site change. (On-device this returns the real engine.)
+        // The plan routes through the same seam, proving adapter selection needs
+        // no call-site change. With the runtime linked the engine is the real one
+        // (weights absent here, so it must fail to load rather than answer).
         let plan = ModelLoadPlan(base: .llama32_3b)
         let engine = LocalLLMEngineFactory.make(plan: plan)
-        if case .unavailable = engine.state {} else {
-            XCTFail("without the runtime linked the engine must be unavailable")
+        if case .unavailable = engine.state {
+            XCTAssertFalse(LlamaRuntime.isBuilt, "an unavailable engine means the runtime isn't linked")
         }
         do {
             _ = try await engine.generate(LocalLLMRequest(prompt: "hi"))
-            XCTFail("an unavailable engine must throw rather than answer")
+            XCTFail("an engine without weights must throw rather than answer")
         } catch {
             XCTAssertTrue(error is LocalLLMEngineError)
         }

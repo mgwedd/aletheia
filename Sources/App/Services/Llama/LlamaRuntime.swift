@@ -4,10 +4,8 @@ import Foundation
 /// the resolver/UI can ask "can we actually run a local model right now?".
 ///
 /// `isBuilt` is true only when the app was compiled with the llama.cpp package
-/// linked in (see README › Embedded llama.cpp). It's driven by
-/// `#if canImport(llama)`, so today — before the pinned dependency is added and
-/// verified on a Mac — it's false, and the tiered backend resolves `localLlama`
-/// down to Ollama. Adding the dependency flips it on with no other changes.
+/// linked in (`Packages/LlamaCpp`). It's driven by `#if canImport(llama)`; where
+/// it's false the tiered backend resolves `localLlama` down to Ollama.
 enum LlamaRuntime {
     /// Whether the llama.cpp module is linked into this build.
     static var isBuilt: Bool {

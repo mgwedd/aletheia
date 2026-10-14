@@ -2,16 +2,6 @@
 import Foundation
 import llama
 
-/// The embedded local-LLM backend: the official llama.cpp runtime compiled into
-/// the app, answering entirely on-device with no server and no external process.
-///
-/// ⚠️ Staged / needs Mac verification. This whole file is behind
-/// `#if canImport(llama)`, so it is only compiled once the pinned `llama.cpp`
-/// Swift package is added (see README › Embedded llama.cpp and the commented
-/// stanza in `project.yml`). It has therefore NOT been compiled by CI. The C
-/// API symbol names and pointer lifetimes below track llama.cpp's public
-/// `llama.h` as of the pin; verify them against the exact pinned revision when
-/// bringing this up on a Mac, and adjust if the API has shifted.
 /// A thread-safe one-way "stop" flag. The stream's `onTermination` (Stop button,
 /// or the consumer going away) sets it; the background inference loop polls it.
 private final class CancellationFlag: @unchecked Sendable {
@@ -21,6 +11,11 @@ private final class CancellationFlag: @unchecked Sendable {
     func cancel() { lock.lock(); flag = true; lock.unlock() }
 }
 
+/// The embedded local-LLM backend: the official llama.cpp runtime compiled into
+/// the app, answering entirely on-device with no server and no external process.
+///
+/// Compiled against the `llama.h` in the pinned XCFramework (`Packages/LlamaCpp`);
+/// re-verify the C calls when re-pinning.
 final class LlamaAssistant: Assistant {
     enum LlamaError: LocalizedError {
         case modelLoadFailed, contextInitFailed, tokenizeFailed, samplerInitFailed, decodeFailed
@@ -52,7 +47,7 @@ final class LlamaAssistant: Assistant {
 
     func generate(model _: String, system: String, prompt: String) async throws -> String {
         // The pinned model's chat template would be the ideal home for the
-        // system prompt; for this staged reference we prepend it plainly.
+        // system prompt; we prepend it plainly for now.
         let trimmed = system.trimmingCharacters(in: .whitespacesAndNewlines)
         let fullPrompt = trimmed.isEmpty ? prompt : "System: \(trimmed)\n\n\(prompt)"
         // Inference is blocking; run it off the calling thread.
