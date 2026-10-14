@@ -157,6 +157,16 @@ struct SessionDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.window.color)
                 .themeDivider(.bottom)
+            // Above the tab content, so progress shows on every tab.
+            if let job = transcription.job(for: session.id) {
+                TranscriptionProgressView(job: job) {
+                    transcription.cancel(sessionID: session.id)
+                }
+            } else if isQueued {
+                TranscriptionQueuedView {
+                    transcription.cancel(sessionID: session.id)
+                }
+            }
             // Notes and Ask need the local AI engine; say so before a request fails.
             if selectedTab != .transcript {
                 AIEngineBanner()
@@ -218,32 +228,6 @@ struct SessionDetailView: View {
             Text(confirmationMessage ?? "")
         }
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
-        .onChange(of: recorder.longRunningReminder) { _, exceeded in
-            // Also fire a system notification so it's noticed if the app isn't
-            // focused (the therapist has likely switched to the call window).
-            if exceeded {
-                let name = recorder.active?.patientName ?? patient.name
-                Task {
-                    await integrations.makeNotifier().post(
-                        SessionNotifications.longRecordingReminder(patientName: name)
-                    )
-                }
-            }
-        }
-        .alert("Still recording", isPresented: recorderReminderBinding) {
-            Button("Keep Recording", role: .cancel) {}
-            Button("Stop Now", role: .destructive) { Task { await stopRecording() } }
-        } message: {
-            Text("This session has been recording for over 90 minutes. Did you forget to end it?")
-        }
-    }
-
-    private var recorderReminderBinding: Binding<Bool> {
-        Binding(
-            // Only the view of the session actually recording shows the alert.
-            get: { recorder.longRunningReminder && isRecordingThisSession },
-            set: { if !$0 { recorder.longRunningReminder = false } }
-        )
     }
 
     private var header: some View {
@@ -324,8 +308,8 @@ struct SessionDetailView: View {
                 } label: {
                     Label("Record Session", systemImage: "record.circle")
                 }
-                .help(isTranscribing ? "Finish transcribing first" : "Record this session's audio")
-                .disabled(isTranscribing)
+                .help(recordBlocker ?? "Record this session's audio")
+                .disabled(recordBlocker != nil)
             }
 
             Rectangle()
@@ -334,17 +318,17 @@ struct SessionDetailView: View {
                 .padding(.horizontal, 4)
 
             // The label stays put; a spinner beside it shows work is under way
-            // (the progress itself lives in the Transcript tab).
+            // (the progress itself is the band under the tab bar).
             Button {
                 noSpeechNotice = nil
                 transcription.start(patient: patient, session: session)
             } label: {
                 Label("Transcribe", systemImage: "waveform")
             }
-            .help(transcription.isBusy && !isTranscribing
-                  ? "Another session is being transcribed"
-                  : "Transcribe the recorded audio on-device")
-            .disabled(recorder.isRecording || transcription.isBusy || !hasAnyRecording)
+            .help(transcribeBlocker ?? (transcription.isBusy
+                  ? "Another session is being transcribed. This one will start when it finishes"
+                  : "Transcribe the recorded audio on-device"))
+            .disabled(transcribeBlocker != nil)
             if isTranscribing {
                 ProgressView().controlSize(.small)
             }
@@ -528,11 +512,6 @@ struct SessionDetailView: View {
 
     private var transcriptTab: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let job = transcription.job(for: session.id) {
-                TranscriptionProgressView(job: job, compact: !transcriptText.isEmpty) {
-                    transcription.cancel(sessionID: session.id)
-                }
-            }
             if let notice = noSpeechNotice {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle")
@@ -552,7 +531,7 @@ struct SessionDetailView: View {
                 .padding([.horizontal, .top], 20)
             }
             if transcriptText.isEmpty && transcriptDraft.isEmpty && !hasTranscript {
-                // While transcribing, the progress card above is the pane.
+                // While transcribing, the progress band above the tabs says it all.
                 if isRecordingThisSession {
                     recordingPanel
                 } else if !isTranscribing {
@@ -1149,7 +1128,8 @@ struct SessionDetailView: View {
         guard let store = appModel.store else { return }
         let micURL = store.micRecordingURL(for: patient, session: session)
         let callURL = store.callRecordingURL(for: patient, session: session)
-        await recorder.start(
+        // Refused (another recording is in the way) or failed to start: say why.
+        errorMessage = await recorder.start(
             micURL: micURL,
             callURL: callURL,
             context: .init(
@@ -1160,9 +1140,6 @@ struct SessionDetailView: View {
             ),
             protector: appModel.currentProtector
         )
-        if case .error(let message) = recorder.state {
-            errorMessage = message
-        }
     }
 
     private func stopRecording() async {
@@ -1174,6 +1151,27 @@ struct SessionDetailView: View {
     /// the app-level coordinator, so it survives leaving and returning).
     private var isTranscribing: Bool {
         transcription.job(for: session.id) != nil
+    }
+
+    /// Waiting behind another session's transcription.
+    private var isQueued: Bool {
+        transcription.isWaiting(session.id)
+    }
+
+    private var recordBlocker: String? {
+        SessionActionPolicy.recordBlocker(
+            isTranscribing: isTranscribing, isQueued: isQueued, isStarting: recorder.isStarting
+        )
+    }
+
+    private var transcribeBlocker: String? {
+        SessionActionPolicy.transcribeBlocker(
+            isRecordingThisSession: isRecordingThisSession,
+            isRecordingElsewhere: recorder.isBusy && !isRecordingThisSession,
+            isTranscribing: isTranscribing,
+            isQueued: isQueued,
+            hasRecording: hasAnyRecording
+        )
     }
 
     /// Picks up how this session's last transcription ended: reloads the text

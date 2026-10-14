@@ -98,6 +98,7 @@ final class AppSettings: ObservableObject {
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
+        static let autoTranscribeAfterRecording = "autoTranscribeAfterRecording"
         static let appearance = "appearance"
         static let debugDiagnosticsEnabled = "debugDiagnosticsEnabled"
         static let keepDataOutOfSystemBackups = BackupExclusion.defaultsKey
@@ -186,6 +187,11 @@ final class AppSettings: ObservableObject {
     @Published var keepAudioRecordings: Bool {
         didSet { defaults.set(keepAudioRecordings, forKey: Keys.keepAudioRecordings) }
     }
+    /// Start transcribing a session as soon as its recording is stopped, so the
+    /// transcript is ready without pressing Transcribe. On unless turned off.
+    @Published var autoTranscribeAfterRecording: Bool {
+        didSet { defaults.set(autoTranscribeAfterRecording, forKey: Keys.autoTranscribeAfterRecording) }
+    }
     /// Light, Dark, or follow the system. Applied app-wide as soon as it changes
     /// (and at launch, by `AppDelegate`).
     @Published var appearance: AppearancePreference {
@@ -265,6 +271,7 @@ final class AppSettings: ObservableObject {
         localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)
         iCloudEncryptedBackupEnabled = defaults.bool(forKey: Keys.iCloudEncryptedBackupEnabled)
         keepAudioRecordings = defaults.bool(forKey: Keys.keepAudioRecordings)
+        autoTranscribeAfterRecording = Self.resolvedAutoTranscribe(in: defaults)
         appearance = defaults.string(forKey: Keys.appearance)
             .flatMap(AppearancePreference.init(rawValue:)) ?? .default
         // Default off when never set; an explicit stored choice is respected.
@@ -298,6 +305,11 @@ final class AppSettings: ObservableObject {
         // Re-assert the backup-exclusion policy on the resolved folder each launch
         // (best-effort: the folder may not be accessible yet this early).
         applyBackupExclusion()
+    }
+
+    /// On when never chosen; an explicit stored choice is respected.
+    static func resolvedAutoTranscribe(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: Keys.autoTranscribeAfterRecording) as? Bool ?? true
     }
 
     /// Called after the user picks (or creates) the data folder via NSOpenPanel.

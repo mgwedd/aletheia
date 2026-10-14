@@ -224,6 +224,7 @@ struct PatientDetailView: View {
                 session: session,
                 isSelected: session.id == selectedSessionID,
                 isTranscribing: transcription.job(for: session.id) != nil,
+                isQueued: transcription.isWaiting(session.id),
                 isRecording: isRecording(session)
             )
             .tag(session.id)
@@ -336,6 +337,7 @@ private struct SessionRow: View {
     let session: SessionRecord
     var isSelected = false
     var isTranscribing = false
+    var isQueued = false
     var isRecording = false
 
     private static let dateFormatter: DateFormatter = {
@@ -353,6 +355,7 @@ private struct SessionRow: View {
     private var detail: String {
         if isRecording { return "Recording in progress" }
         if isTranscribing { return "Transcribing…" }
+        if isQueued { return "Waiting to transcribe" }
         var parts = [Self.timeFormatter.string(from: session.date)]
         if session.hasRecording { parts.append("Audio") }
         return parts.joined(separator: " · ")
