@@ -166,7 +166,7 @@ and attested it is correct.**
 | **iCloud encrypted archive** | staged; reports "not configured" until the CloudKit capability is provisioned | `ICloudEncryptedBackupService` |
 | **Attest-then-prune** UX + **Restore previous version** | next | `MigrationBackup.prunable` ready; needs Settings + a post-update banner. Nothing prunes migration pre-images today. |
 | **Snapshot the small JSON** (patient/session) alongside the DB | next | copy referenced JSON into the same pre-image set |
-| **Whole-folder atomicity** across DB + files | Arch v2 (7), #70 | backup archive covers DB + referenced files |
+| **Whole-folder atomicity** across DB + files | not covered | The archive covers only the SQLite database; transcripts, notes and `digest.json` are covered only through the data folder (for example Time Machine) |
 
 ### Where backups live (one layout)
 
