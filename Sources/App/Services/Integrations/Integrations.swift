@@ -21,18 +21,9 @@ final class Integrations: ObservableObject {
         self.settings = settings
     }
 
-    /// Speech-to-text: whisper.cpp. Preview and dev builds run the current
-    /// official release with Metal; production stays on SwiftWhisper's older
-    /// CPU-only build until the new one has proven itself.
+    /// Speech-to-text: whisper.cpp with Metal (see `WhisperTranscriber`).
     func makeTranscriber() -> Transcribing {
-        WhisperTranscriber(modelPath: settings.whisperModelPath, engine: Self.speechEngine(for: .current))
-    }
-
-    nonisolated static func speechEngine(for tier: BuildTier) -> SpeechEngine {
-        #if ALETHEIA_PREVIEW && canImport(WhisperEngine)
-        if tier.includes(.preview) { return WhisperCppEngine() }
-        #endif
-        return SwiftWhisperEngine()
+        WhisperTranscriber(modelPath: settings.whisperModelPath)
     }
 
     /// Low-level LLM adapter, chosen by the resolved backend (see

@@ -1,6 +1,7 @@
 #if DEBUG
 import AVFoundation
 import Foundation
+import WhisperEngine
 
 /// Debug-only test harness for call-audio recording (driven by scripts/harness.sh):
 ///   --harness-record <seconds> --out <dir> [--harness-transcribe] [--harness-reference <file>]
@@ -135,9 +136,9 @@ enum HarnessRun {
         let range = args.sliceRange(count: all.count)
         let samples = Array(all[range])
         let audioSeconds = Double(samples.count) / 16000
-        log(String(format: "audio %@: %.0fs total, benchmarking %.0fs from %.0fs; engine %@",
+        log(String(format: "audio %@: %.0fs total, benchmarking %.0fs from %.0fs; whisper.cpp %@",
                    args.audio.lastPathComponent, Double(all.count) / 16000, audioSeconds,
-                   Double(range.lowerBound) / 16000, String(describing: type(of: Integrations.speechEngine(for: .current)))))
+                   Double(range.lowerBound) / 16000, WhisperEngine.version))
 
         let modelsDir = AppSettings.shared.whisperModelPath.deletingLastPathComponent()
         var reference: (model: WhisperModel, text: String)?
@@ -152,10 +153,9 @@ enum HarnessRun {
                 }
             }
             let start = Date()
-            let segments: [SpeechSegment]
+            let segments: [WhisperSegment]
             do {
-                segments = try await Integrations.speechEngine(for: .current)
-                    .segments(for: samples, modelPath: path, onProgress: { _ in })
+                segments = try await WhisperTranscriber.segments(for: samples, modelPath: path, onProgress: { _ in })
             } catch {
                 log("\(model.rawValue): failed: \(error.localizedDescription)"); failed = true; continue
             }
@@ -264,7 +264,7 @@ enum HarnessRun {
     }
 
     private static func transcribe(_ args: HarnessArgs, micURL: URL, callURL: URL, into result: inout [String: Any]) async {
-        let transcriber = WhisperTranscriber(modelPath: AppSettings.shared.whisperModelPath, engine: Integrations.speechEngine(for: .current))
+        let transcriber = WhisperTranscriber(modelPath: AppSettings.shared.whisperModelPath)
         guard transcriber.isReady else { result["transcription"] = "model missing"; return }
         let reference = args.reference.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
         var out: [String: Any] = [:]

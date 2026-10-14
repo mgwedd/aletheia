@@ -1,4 +1,5 @@
 import Foundation
+import os
 import whisper
 
 /// One line of speech as whisper.cpp reports it, in seconds from the start of
@@ -33,13 +34,7 @@ public enum WhisperEngineError: LocalizedError, Equatable {
 }
 
 /// The current official whisper.cpp (ggml-org), behind a small Swift surface.
-///
-/// A framework of its own, not a file in the app, on purpose: the app also
-/// links SwiftWhisper, which compiles an old whisper.cpp into the app binary
-/// under the same C symbol names (`whisper_full`, …). A symbol name resolves
-/// once per binary, so code in the app calling `whisper_full` would bind to
-/// that old copy while reading the new header's struct layouts. Inside this
-/// framework the names bind to the new library only.
+/// The C API, its pointers and callbacks stay inside this framework.
 ///
 /// Everything here is synchronous and CPU/GPU-heavy; call it off the main
 /// thread. One engine holds one loaded model.
@@ -64,6 +59,7 @@ public final class WhisperEngine {
     /// Loads the ggml model at `modelPath`. `useGPU` runs the encoder on Metal;
     /// whisper.cpp falls back to the CPU by itself where Metal isn't available.
     public init(modelPath: URL, useGPU: Bool = true) throws {
+        _ = Self.routeLogs
         var params = whisper_context_default_params()
         params.use_gpu = useGPU
         guard FileManager.default.fileExists(atPath: modelPath.path),
@@ -127,6 +123,25 @@ public final class WhisperEngine {
             )
         }
     }
+}
+
+private let log = Logger(subsystem: "com.aletheia.WhisperEngine", category: "whisper.cpp")
+
+extension WhisperEngine {
+    /// whisper.cpp and ggml print every load step to stderr, including the
+    /// optional Core ML encoder they probe for and we don't ship ("failed to
+    /// load Core ML model", then Metal runs the whole model). Send it to the
+    /// unified log instead, where Console still has it. Once per process.
+    fileprivate static let routeLogs: Void = whisper_log_set({ level, text, _ in
+        guard let text else { return }
+        let line = String(cString: text).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !line.isEmpty else { return }
+        switch level {
+        case GGML_LOG_LEVEL_ERROR: log.error("\(line, privacy: .public)")
+        case GGML_LOG_LEVEL_WARN: log.notice("\(line, privacy: .public)")
+        default: log.debug("\(line, privacy: .public)")
+        }
+    }, nil)
 }
 
 /// Carries the Swift closures through whisper.cpp's `void *` user data.

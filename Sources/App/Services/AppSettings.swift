@@ -1,9 +1,8 @@
 import Foundation
 
 /// Whisper model choices, ordered smallest/fastest to largest/most accurate.
-/// SwiftWhisper runs entirely on-device (no network, no CLI); on an Apple
-/// Silicon MacBook Air, `small.en` is a good balance of speed and accuracy
-/// for CPU-only inference. Larger models are slower per minute of audio.
+/// whisper.cpp runs entirely on-device (no network, no CLI), on the GPU via
+/// Metal. Larger models are slower per minute of audio and more accurate.
 enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
     case baseEn = "base.en"
     case smallEn = "small.en"

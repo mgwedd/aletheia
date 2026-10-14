@@ -47,10 +47,15 @@ xcodegen generate
 
 echo "Building (Release)…"
 # xcodebuild always signs ad-hoc. Passing a Developer ID here also applies it
-# to the SwiftWhisper package targets, which are automatically signed and fail
+# to the framework targets, which are automatically signed and fail
 # with "conflicting provisioning settings". A Developer ID (CODE_SIGN_IDENTITY
 # env) is applied to the finished app below instead; OTHER_CODE_SIGN_FLAGS can
 # add a secure timestamp ("--timestamp").
+#
+# No Hardened Runtime at this stage: its library validation refuses to load
+# ad-hoc-signed frameworks (no Team ID) even into an ad-hoc app, so an ad-hoc
+# build with it dies at launch. The Developer ID signing below adds it
+# (`--options runtime`) to the app and every framework.
 IDENTITY="${CODE_SIGN_IDENTITY:--}"
 EXTRA_CODE_SIGN_FLAGS="${OTHER_CODE_SIGN_FLAGS:-}"
 
@@ -64,6 +69,7 @@ xcodebuild \
     -derivedDataPath build \
     -skipPackagePluginValidation \
     CODE_SIGN_IDENTITY="-" \
+    ENABLE_HARDENED_RUNTIME=NO \
     CODE_SIGNING_REQUIRED=YES \
     CODE_SIGNING_ALLOWED=YES \
     build

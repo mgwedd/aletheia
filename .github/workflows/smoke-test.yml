@@ -94,9 +94,8 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      # Cache the resolved Swift packages (SwiftWhisper + its whisper.cpp
-      # sources, and the pinned whisper.cpp XCFramework) so we don't
-      # re-download/rebuild them every run. Keyed on where dependency versions
+      # Cache the resolved Swift packages (the pinned whisper.cpp XCFramework)
+      # so we don't re-download them every run. Keyed on where dependency versions
       # live and the runner image, so each Xcode toolchain keeps its own cache.
       - name: Cache Swift packages
         uses: actions/cache@v5
@@ -105,7 +104,7 @@ jobs:
           key: spm-${{ matrix.runner }}-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift') }}
           restore-keys: spm-${{ matrix.runner }}-
 
-      # Resolving SwiftWhisper (which compiles whisper.cpp) is the slow,
+      # Resolving packages (downloading the whisper.cpp XCFramework) is the
       # network-dependent step; do it once up front so a failure here is clearly
       # a dependency problem rather than a build problem.
       - name: Resolve Swift packages

@@ -2,11 +2,9 @@ import XCTest
 import WhisperEngine
 @testable import Aletheia
 
-/// The current-whisper.cpp wrapper and the choice of engine per build tier.
+/// The whisper.cpp wrapper.
 final class WhisperEngineTests: XCTestCase {
     func testLinksTheCurrentWhisperCpp() {
-        // The old whisper.cpp inside SwiftWhisper has no `whisper_version` at
-        // all, so an answer here can only come from the new library.
         XCTAssertTrue(WhisperEngine.version.hasPrefix("1.9"), WhisperEngine.version)
     }
 
@@ -37,22 +35,6 @@ final class WhisperEngineTests: XCTestCase {
         XCTAssertThrowsError(try WhisperEngine(modelPath: junk)) {
             XCTAssertEqual($0 as? WhisperEngineError, .modelLoadFailed)
         }
-    }
-
-    // MARK: Engine per tier
-
-    func testProductionStaysOnSwiftWhisper() {
-        XCTAssertTrue(Integrations.speechEngine(for: .production) is SwiftWhisperEngine)
-    }
-
-    func testPreviewAndDevUseTheNewEngineWhenCompiledIn() {
-        #if ALETHEIA_PREVIEW
-        XCTAssertTrue(Integrations.speechEngine(for: .preview) is WhisperCppEngine)
-        XCTAssertTrue(Integrations.speechEngine(for: .dev) is WhisperCppEngine)
-        #else
-        // A production-compiled binary has no new engine to hand out.
-        XCTAssertTrue(Integrations.speechEngine(for: .preview) is SwiftWhisperEngine)
-        #endif
     }
 
     // MARK: With a real model (skipped where none is downloaded, e.g. CI)
@@ -86,16 +68,14 @@ final class WhisperEngineTests: XCTestCase {
     }
 
     func testCancellingTheTaskThrowsCancellation() async throws {
-        #if ALETHEIA_PREVIEW
         let model = try downloadedModel()
         let samples = tone
-        let task = Task { try await WhisperCppEngine().segments(for: samples, modelPath: model, onProgress: { _ in }) }
+        let task = Task { try await WhisperTranscriber.segments(for: samples, modelPath: model, onProgress: { _ in }) }
         task.cancel()
         do {
             _ = try await task.value
             XCTFail("A cancelled transcription returned text")
         } catch is CancellationError {
         }
-        #endif
     }
 }

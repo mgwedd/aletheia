@@ -12,7 +12,7 @@
 	<!--
 	App Sandbox is on. Aletheia never launches an external process
 	(no ffmpeg / whisper-cli / ollama subprocess): transcription runs
-	in-process via whisper.cpp (SwiftWhisper), and Ollama is reached over
+	in-process via whisper.cpp (linked framework), and Ollama is reached over
 	localhost HTTP, so full sandboxing is possible without giving up any
 	feature.
 	-->

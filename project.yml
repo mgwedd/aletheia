@@ -35,14 +35,9 @@ settings:
       ENABLE_HARDENED_RUNTIME: YES
 
 packages:
-  SwiftWhisper:
-    url: https://github.com/exPHAT/SwiftWhisper.git
-    # 1.2.0, pinned by commit: the generated project has no checked-in
-    # Package.resolved, so a version range would float in CI.
-    revision: a192004db08de7c6eaa169eede77f1625e7d23fb
   # The current official whisper.cpp (ggml-org) as its prebuilt XCFramework,
-  # pinned by URL + checksum in the local package. Linked only by the
-  # WhisperEngine framework target (see there for why it is a separate binary).
+  # pinned by URL + checksum in the local package, wrapped by the WhisperEngine
+  # framework target.
   WhisperCpp:
     path: Packages/WhisperCpp
   # Embedded llama.cpp fallback — staged (see README › Embedded llama.cpp).
@@ -99,21 +94,15 @@ targets:
         Release:
           CODE_SIGN_ENTITLEMENTS: Sources/App/Resources/Aletheia.entitlements
     dependencies:
-      - package: SwiftWhisper
       - target: WhisperEngine
       # Listed so Xcode copies whisper.framework into the app bundle (it only
-      # embeds a package's binary framework for the target that names it). The
-      # app never calls into it: its own whisper_* references are satisfied by
-      # SwiftWhisper's objects, which the linker prefers over a dylib (check:
-      # `nm -m` on the app binary lists no whisper_* "from whisper").
+      # embeds a package's binary framework for the target that names it).
       - package: WhisperCpp
       # - package: llama   # staged: uncomment with the packages stanza above
       - sdk: ScreenCaptureKit.framework
       - sdk: AVFoundation.framework
 
-  # The Swift surface over the current whisper.cpp. Its own binary so its C
-  # symbols can't be confused with the old whisper.cpp that SwiftWhisper
-  # compiles into the app (same names, different struct layouts).
+  # The Swift surface over whisper.cpp; the C API stays inside it.
   WhisperEngine:
     type: framework
     platform: macOS

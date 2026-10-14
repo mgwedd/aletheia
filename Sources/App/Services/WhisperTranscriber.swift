@@ -1,5 +1,6 @@
 import Foundation
-import SwiftWhisper
+import os
+import WhisperEngine
 
 enum WhisperTranscriberError: LocalizedError {
     case modelNotDownloaded
@@ -9,29 +10,9 @@ enum WhisperTranscriberError: LocalizedError {
     }
 }
 
-/// One line of speech from a single track, in seconds from its start.
-struct SpeechSegment: Equatable {
-    var start: TimeInterval
-    var end: TimeInterval
-    var text: String
-}
-
-/// The whisper.cpp build that turns one track's samples into segments. The
-/// seam between the session logic in `WhisperTranscriber` (tracks, merging,
-/// cleaning) and the runtime doing the inference, so the runtime can change
-/// without touching the rest. See `Integrations.makeTranscriber()`.
-protocol SpeechEngine {
-    /// Transcribes 16 kHz mono samples; `onProgress` gets 0...1 from any
-    /// thread. Honors task cancellation by throwing `CancellationError`.
-    func segments(
-        for samples: [Float],
-        modelPath: URL,
-        onProgress: @escaping (Double) -> Void
-    ) async throws -> [SpeechSegment]
-}
-
-/// Transcribes a session with whisper.cpp, in-process — no Homebrew install or
-/// shelled-out CLI tool; it runs inside the sandboxed app itself, entirely
+/// Transcribes a session with whisper.cpp (the official release, on the GPU via
+/// Metal; see the `WhisperEngine` framework), in-process — no Homebrew install
+/// or shelled-out CLI tool; it runs inside the sandboxed app itself, entirely
 /// offline.
 ///
 /// Deliberately not MainActor-isolated: resampling and whisper.cpp
@@ -41,11 +22,9 @@ protocol SpeechEngine {
 /// touching UI state.
 final class WhisperTranscriber: Transcribing {
     private let modelPath: URL
-    private let engine: SpeechEngine
 
-    init(modelPath: URL, engine: SpeechEngine = SwiftWhisperEngine()) {
+    init(modelPath: URL) {
         self.modelPath = modelPath
-        self.engine = engine
     }
 
     var isReady: Bool {
@@ -121,7 +100,7 @@ final class WhisperTranscriber: Transcribing {
         guard !AudioResampler.isEssentiallySilent(samples) else { return [] }
 
         report(stage, 0)
-        let segments = try await engine.segments(for: samples, modelPath: modelPath) { report(stage, $0) }
+        let segments = try await Self.segments(for: samples, modelPath: modelPath) { report(stage, $0) }
         // Cancel can land before the engine has started; never hand back text
         // for a cancelled run.
         try Task.checkCancellation()
@@ -134,78 +113,33 @@ final class WhisperTranscriber: Transcribing {
             )
         }
     }
-}
 
-/// whisper.cpp via SwiftWhisper: an early-2023 build, CPU only. What the
-/// production build ships.
-struct SwiftWhisperEngine: SpeechEngine {
-    func segments(
+    /// One track's 16 kHz mono samples through whisper.cpp. `onProgress` gets
+    /// 0...1 from any thread; cancelling the task stops the run and throws
+    /// `CancellationError`.
+    static func segments(
         for samples: [Float],
         modelPath: URL,
         onProgress: @escaping (Double) -> Void
-    ) async throws -> [SpeechSegment] {
-        let whisper = Whisper(fromFileURL: modelPath)
-        let forwarder = ProgressForwarder(onProgress: onProgress)
-        whisper.delegate = forwarder
-
-        // whisper.cpp can't be interrupted mid-window, but SwiftWhisper checks a
-        // cancel flag before each ~30 s window and then throws `.cancelled`, so
-        // cancelling the task stops the work within a few seconds.
-        let canceller = WhisperCanceller(whisper)
-        let segments: [Segment]
-        do {
-            segments = try await withTaskCancellationHandler {
-                try await whisper.transcribe(audioFrames: samples)
-            } onCancel: {
-                canceller.cancel()
-            }
-        } catch WhisperError.cancelled {
-            throw CancellationError()
-        }
-        // SwiftWhisper holds `delegate` weakly; nothing else retains
-        // `forwarder`, so without this the optimizer could release it right
-        // after the assignment above and silently drop every progress
-        // callback. Referencing it after the await pins its lifetime across
-        // the whole transcription.
-        withExtendedLifetime(forwarder) {}
-        return segments.map { segment in
-            SpeechSegment(
-                start: TimeInterval(segment.startTime) / 1000.0,
-                end: TimeInterval(segment.endTime) / 1000.0,
-                text: segment.text
-            )
+    ) async throws -> [WhisperSegment] {
+        // whisper.cpp polls this flag from its own threads, where
+        // `Task.isCancelled` can't be read.
+        let cancelled = OSAllocatedUnfairLock(initialState: false)
+        return try await withTaskCancellationHandler {
+            // Blocking for minutes: keep it off the cooperative pool.
+            try await Task.detached(priority: .userInitiated) {
+                do {
+                    return try WhisperEngine(modelPath: modelPath).transcribe(
+                        samples: samples,
+                        onProgress: onProgress,
+                        shouldAbort: { cancelled.withLock { $0 } }
+                    )
+                } catch WhisperEngineError.aborted {
+                    throw CancellationError()
+                }
+            }.value
+        } onCancel: {
+            cancelled.withLock { $0 = true }
         }
     }
-}
-
-/// Lets the task-cancellation handler (a `@Sendable` closure on an arbitrary
-/// thread) ask a `Whisper` instance to stop. `Whisper.cancel` only sets a flag
-/// that its C callback polls, and throws when nothing is running; both are fine
-/// to ignore here.
-private final class WhisperCanceller: @unchecked Sendable {
-    private let whisper: Whisper
-
-    init(_ whisper: Whisper) {
-        self.whisper = whisper
-    }
-
-    func cancel() {
-        try? whisper.cancel(completionHandler: {})
-    }
-}
-
-private final class ProgressForwarder: WhisperDelegate {
-    private let onProgress: (Double) -> Void
-
-    init(onProgress: @escaping (Double) -> Void) {
-        self.onProgress = onProgress
-    }
-
-    func whisper(_ aWhisper: Whisper, didUpdateProgress progress: Double) {
-        onProgress(progress)
-    }
-
-    func whisper(_ aWhisper: Whisper, didProcessNewSegments segments: [Segment], atIndex index: Int) {}
-    func whisper(_ aWhisper: Whisper, didCompleteWithSegments segments: [Segment]) {}
-    func whisper(_ aWhisper: Whisper, didErrorWith error: Error) {}
 }
