@@ -13,9 +13,9 @@ final class TranscriptStylerTests: XCTestCase {
     func testOverlappingSuffixIsNotPartOfTheSpeaker() {
         let text = "[01:03] Call audio (overlapping): I wrote it down."
         let spans = TranscriptStyler.spans(in: text)
-        XCTAssertEqual(spans.count, 2)
-        XCTAssertEqual(spans[1].role, .speaker("Call audio"))
+        XCTAssertEqual(spans.map(\.role), [.timestamp, .speaker("Call audio"), .overlapTag])
         XCTAssertEqual(spans[1].range, NSRange(location: 8, length: 10))
+        XCTAssertEqual((text as NSString).substring(with: spans[2].range), " (overlapping)")
     }
 
     func testEveryLineIsStyledWithItsOwnOffsets() {

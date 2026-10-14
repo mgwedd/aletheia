@@ -197,6 +197,11 @@ struct TranscriptTextView: NSViewRepresentable {
                     .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
                     .foregroundColor: color,
                 ]
+            case .overlapTag:
+                return [
+                    .font: NSFont.systemFont(ofSize: 10),
+                    .foregroundColor: Theme.muted.nsColor,
+                ]
             }
         }
 
