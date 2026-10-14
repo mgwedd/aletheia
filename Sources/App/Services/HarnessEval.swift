@@ -54,8 +54,16 @@ struct EvalStage {
     var truncated: Bool { calls.contains { $0.stats?.possiblyTruncated == true } }
     /// Requests always carry this Mac's budget as `num_ctx` (see `OllamaClient.generateBody`).
     var numCtx: Int? { calls.isEmpty ? nil : ContextBudget.current.tokens }
-    var prefillTPS: Double? { Self.rate(calls.compactMap(\.stats?.promptTokens), calls.compactMap(\.stats?.promptNanos)) }
+    /// Cold prefill speed: only calls with no shared prompt prefix. Ollama counts a cached
+    /// prefix in prompt_eval_count but barely spends time on it, which inflates the rate.
+    var prefillTPS: Double? { Self.prefill(calls.filter { $0.stats?.reusedPrefix == false }) }
+    /// Calls that reused a cached prefix: not a measure of how fast this Mac reads.
+    var warmPrefillTPS: Double? { Self.prefill(calls.filter { $0.stats?.reusedPrefix == true }) }
     var decodeTPS: Double? { Self.rate(calls.compactMap(\.stats?.outputTokens), calls.compactMap(\.stats?.outputNanos)) }
+
+    private static func prefill(_ calls: [Call]) -> Double? {
+        rate(calls.compactMap(\.stats?.promptTokens), calls.compactMap(\.stats?.promptNanos))
+    }
 
     private static func rate(_ tokens: [Int], _ nanos: [Int]) -> Double? {
         let n = nanos.reduce(0, +)
@@ -68,7 +76,9 @@ struct EvalStage {
         var lines = ["== \(name) ==", error.map { "ERROR: \($0)" } ?? output, "", "coverage: \(coverage)"]
         lines.append("prompt tokens: \(reported) (Ollama prompt_eval_count) vs \(estimatedTokens) estimated, "
             + "\(calls.count) call(s); " + (truncated ? "TRIPWIRE FIRED: possibly truncated" : "tripwire clear"))
-        lines.append(String(format: "timing: wall %.1fs, prefill %@, decode %@", wallSeconds, tps(prefillTPS), tps(decodeTPS)))
+        var timing = String(format: "timing: wall %.1fs, prefill %@ (cold)", wallSeconds, tps(prefillTPS))
+        if let warm = warmPrefillTPS { timing += ", prefill " + tps(warm) + " (cache-warm, inflated by prefix cache)" }
+        lines.append(timing + ", decode " + tps(decodeTPS))
         if let numCtx { lines.append("num_ctx: \(numCtx)") }
         return lines.joined(separator: "\n")
     }
@@ -82,15 +92,19 @@ struct EvalStage {
         if calls.contains(where: { $0.stats?.promptTokens != nil }) { d["promptEvalCount"] = promptTokens }
         if let numCtx { d["numCtx"] = numCtx }
         if let prefillTPS { d["prefillTokensPerSecond"] = prefillTPS }
+        if let warmPrefillTPS { d["prefillCacheWarmTokensPerSecond"] = warmPrefillTPS }
         if let decodeTPS { d["decodeTokensPerSecond"] = decodeTPS }
         return d
     }
 }
 
 enum EvalReport {
-    static func header(model: String, budget: Int, transcriptChars: Int) -> String {
-        "Aletheia LLM eval: model \(model), seed \(HarnessEvalArgs.seed), temperature 0, "
-            + "context budget \(budget) tokens, transcript \(transcriptChars) chars "
+    /// `numCtx` is what requests actually carry; it differs from `budget` under --budget,
+    /// which only changes what the app treats as fitting.
+    static func header(model: String, budget: Int, numCtx: Int = ContextBudget.current.tokens, transcriptChars: Int) -> String {
+        let ctx = budget == numCtx ? "" : " (--budget override; requests send num_ctx \(numCtx))"
+        return "Aletheia LLM eval: model \(model), seed \(HarnessEvalArgs.seed), temperature 0, "
+            + "context budget \(budget) tokens\(ctx), transcript \(transcriptChars) chars "
             + "(~\(ContextBudget.estimatedTokens(forCharacters: transcriptChars)) tokens estimated)"
     }
 

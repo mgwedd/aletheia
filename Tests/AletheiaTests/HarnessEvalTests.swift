@@ -46,6 +46,24 @@ final class HarnessEvalTests: XCTestCase {
         XCTAssertTrue(failed.text().contains("prompt tokens: n/a"))
     }
 
+    func testWarmPrefillIsLabelledNotCold() {
+        var warm = AIRunStats(promptTokens: 900, promptNanos: 100_000_000, outputTokens: 10, outputNanos: 1_000_000_000)
+        warm.reusedPrefix = true
+        let cold = AIRunStats(promptTokens: 900, promptNanos: 1_000_000_000, outputTokens: 10, outputNanos: 1_000_000_000)
+        let s = EvalStage(name: "n", output: "o", wallSeconds: 1,
+                          calls: [.init(estimatedTokens: 900, stats: cold), .init(estimatedTokens: 900, stats: warm)], coverage: "c")
+        XCTAssertEqual(s.prefillTPS, 900)
+        XCTAssertEqual(s.warmPrefillTPS, 9000)
+        XCTAssertTrue(s.text().contains("900.0 tok/s (cold)"))
+        XCTAssertTrue(s.text().contains("9000.0 tok/s (cache-warm"))
+    }
+
+    func testHeaderShowsBudgetOverride() {
+        XCTAssertFalse(EvalReport.header(model: "m", budget: 8192, numCtx: 8192, transcriptChars: 10).contains("override"))
+        XCTAssertTrue(EvalReport.header(model: "m", budget: 2000, numCtx: 8192, transcriptChars: 10)
+            .contains("--budget override; requests send num_ctx 8192"))
+    }
+
     func testJSONReport() throws {
         let s = EvalStage(name: "n", output: "o", wallSeconds: 1, calls: [], coverage: "c")
         let data = try XCTUnwrap(EvalReport.json(header: "h", stages: [s]))
