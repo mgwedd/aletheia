@@ -35,11 +35,35 @@ protocol Assistant {
         model: String, system: String, prompt: String, onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error>
 
+    /// Like `generate`, tagged with what the request is for (sets the sampling
+    /// temperature on backends that support it). Default ignores the task.
+    func generate(model: String, system: String, prompt: String, task: AITask) async throws -> String
+
+    /// Like the `onStats` stream, tagged with the task. Default ignores it.
+    func stream(
+        model: String, system: String, prompt: String, task: AITask, onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error>
+
+    /// Load the model ahead of the first real request. Default does nothing.
+    func warmUp(model: String)
+
     /// Download a model, reporting progress as (fraction 0...1, status text).
     func pullModel(_ name: String, onProgress: @escaping (Double, String) -> Void) async throws
 }
 
 extension Assistant {
+    func generate(model: String, system: String, prompt: String, task: AITask) async throws -> String {
+        try await generate(model: model, system: system, prompt: prompt)
+    }
+
+    func stream(
+        model: String, system: String, prompt: String, task: AITask, onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        stream(model: model, system: system, prompt: prompt, onStats: onStats)
+    }
+
+    func warmUp(model: String) {}
+
     func stream(
         model: String, system: String, prompt: String, onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {

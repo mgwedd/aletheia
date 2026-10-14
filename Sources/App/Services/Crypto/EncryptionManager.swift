@@ -179,6 +179,7 @@ final class EncryptionManager: ObservableObject {
         guard dek != nil else { return }
         dek = nil
         SessionSearch.clearCache()   // holds transcript text
+        OllamaClient.unloadLoaded()
         refresh()
         onProtectionChanged?()
     }

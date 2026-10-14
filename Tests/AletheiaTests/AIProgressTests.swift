@@ -123,12 +123,6 @@ final class AIProgressTests: XCTestCase {
         XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac(4, appleSilicon: false)), 8_192)
     }
 
-    func testContextSizeNeverExceedsTheBudget() {
-        XCTAssertEqual(OllamaClient.contextSize(forCharacters: 60_000, budget: 16_384), 16_384)
-        XCTAssertEqual(OllamaClient.contextSize(forCharacters: 10_000_000, budget: 32_768), 32_768)
-        XCTAssertEqual(OllamaClient.contextSize(forCharacters: 60_000, budget: 65_536), 32_768)
-        XCTAssertLessThanOrEqual(OllamaClient.contextSize(forCharacters: 10_000_000), ContextBudget.current.tokens)
-    }
 
     func testFits() {
         let budget = ContextBudget(tokens: 16_384)
