@@ -90,7 +90,7 @@ flowchart LR
 
 ### What a note or answer reads
 
-- **Context window.** Ollama is asked for a window sized to the prompt (`num_ctx`), so it never truncates silently. Each Mac has a prompt budget: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB or more (one tier lower on Intel). A prompt over budget fails with a clear message and nothing is sent.
+- **Context window.** Ollama is sent a fixed context window (`num_ctx`) equal to this Mac's context budget, so it never truncates silently. Each Mac has a prompt budget: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB or more (one tier lower on Intel). A prompt over budget fails with a clear message and nothing is sent.
 - **Tripwire.** If Ollama reports reading well under what was sent, the answer shows a notice that the model may not have read everything.
 - **Progress.** Notes and chat show the stage, elapsed time and token counts while the model works.
 - **Chat memory.** Past about 12,000 characters, older messages are replaced by a summary (also `/compact [focus]`). Source material is always sent fresh.
@@ -147,7 +147,7 @@ The only third-party dependency is the official whisper.cpp XCFramework (ggml-or
 
 - **Ollama** is the runtime in use. The app talks to it on `127.0.0.1` only.
 - **Apple Intelligence** is disabled via `Integrations.appleIntelligenceBlocked = true`.
-- **Embedded llama.cpp** has an engine behind `canImport(llama)`, but the package is not linked in shipping builds. See [Embedded llama.cpp](#embedded-llamacpp).
+- **Embedded llama.cpp** is linked into every build and offered as the "Built-in model" backend in developer builds. Ollama is the default backend. See [Embedded llama.cpp](#embedded-llamacpp).
 
 `ModelAdvisor` picks defaults from your hardware:
 
@@ -216,7 +216,7 @@ Sources/App/
     Crypto/               encryption, keystore, snapshots, backup
     Integrations/         assistant/transcriber factory, backend selection
     Features/             build tiers, feature registry, Doctor
-    Llama/                embedded llama.cpp backend (staged)
+    Llama/                embedded llama.cpp backend
 Tests/AletheiaTests/      XCTest suite
 scripts/                  build, release, secret scan, entitlement and pin checks
 docs/                     setup, data safety, encryption, HIPAA safeguards
@@ -247,18 +247,17 @@ CI runs on macOS runners (the only place the Swift code compiles). Developer ID 
 
 ### Embedded llama.cpp
 
-<details>
-<summary>Steps</summary>
+The embedded llama.cpp engine (`LlamaEngine`) is linked into every build on Apple Silicon. It is offered as the "Built-in model" backend in developer builds only (production and preview use Ollama).
 
-The engine (`LlamaEngine`, llama.cpp b11149) is in the source, but the `llama` package is commented out in `project.yml` and the model download has no checksum. To try it on a Mac:
+Downloadable models from ggml-org on Hugging Face, pinned to a revision and verified by SHA-256:
 
-```bash
-./scripts/verify-llama-bringup.sh
-```
+| Mac | Model |
+|---|---|
+| 16 GB+ | Llama 3.1 8B Instruct Q4_0 (~6.0 GB) |
+| 8–15 GB | Gemma 2 9B Q4_0 (~5.2 GB) |
+| Under 8 GB | Gemma 2 2B Q4_0 (~1.6 GB) |
 
-The script lists the checks to run before enabling the package and the built-in backend. Ollama is the default backend.
-
-</details>
+The engine applies the model's chat template. Context window is sized to the prompt plus reply, rounded up to a power of two (8K minimum), and capped at the RAM-based context budget and the model's training context limit. A prompt over the cap fails with a clear error, never silently truncated. Flash attention and 8-bit KV cache are on. The model unloads on app lock, on backend or model change, and after 30 minutes idle.
 
 ### Releases
 
