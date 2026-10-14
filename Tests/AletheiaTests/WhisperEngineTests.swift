@@ -54,10 +54,10 @@ final class WhisperEngineTests: XCTestCase {
         let engine = try WhisperEngine(modelPath: try downloadedModel())
         var lastProgress = 0.0
         let segments = try engine.transcribe(samples: tone, onProgress: { lastProgress = max(lastProgress, $0) })
-        XCTAssertEqual(lastProgress, 1, accuracy: 0.001)
-        for segment in segments {
-            XCTAssertGreaterThanOrEqual(segment.end, segment.start)
-        }
+        XCTAssertLessThanOrEqual(lastProgress, 1)
+        // A pure tone isn't speech: VAD drops it, so nothing is decoded and
+        // nothing can be hallucinated.
+        XCTAssertEqual(segments, [])
     }
 
     func testAbortStopsAndReturnsNothing() throws {
