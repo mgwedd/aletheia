@@ -584,6 +584,8 @@ final class Store {
         case generated
         /// The user's edited text, kept when a regenerate replaced it.
         case previous
+        /// What a long session's note was written from, when not the whole transcript.
+        case coverage
     }
 
     /// The companion file for `format`, e.g. `note.soap.generated.txt`.
@@ -719,7 +721,8 @@ final class Store {
         for patient: Patient,
         session: SessionRecord,
         format: ProgressNoteFormat,
-        generatedFromTranscript transcript: String? = nil
+        generatedFromTranscript transcript: String? = nil,
+        coverage: String? = nil
     ) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
         if NoteEditing.shouldArchiveBeforeReplacing(noteEditState(for: patient, session: session, format: format)),
@@ -728,6 +731,19 @@ final class Store {
         }
         try saveNote(text, for: patient, session: session, format: format, generatedFromTranscript: transcript)
         try protector.write(text, to: noteSidecarURL(.generated, patient: patient, session: session, format: format))
+        // A note written from the whole transcript has no coverage line; drop any old one.
+        let coverageURL = noteSidecarURL(.coverage, patient: patient, session: session, format: format)
+        if let coverage, !coverage.isEmpty {
+            try protector.write(coverage, to: coverageURL)
+        } else {
+            try? FileManager.default.removeItem(at: coverageURL)
+        }
+    }
+
+    /// What the saved `format` note was written from, if it was not the whole transcript.
+    func noteCoverage(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) -> String? {
+        let url = noteSidecarURL(.coverage, patient: patient, session: session, format: format)
+        return (try? protector.stringIfPresent(at: url)) ?? nil
     }
 
     /// Saves the user's hand-edited note. The generated baseline is left as it

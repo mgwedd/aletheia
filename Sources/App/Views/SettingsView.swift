@@ -28,6 +28,9 @@ struct SettingsView: View {
     @State private var healthChecks: [ToolHealthCheck] = []
     @State private var isCheckingHealth = false
     @State private var showSetup = false
+    @State private var newRiskPhrase = ""
+    @State private var confirmClearRiskPhrases = false
+    @State private var confirmResetRiskPhrases = false
     @State private var errorMessage: String?
     @State private var showEncryptionSetup = false
     @State private var confirmDisableEncryption = false
@@ -328,6 +331,7 @@ struct SettingsView: View {
             builtInModelCard
         }
         instructionsCard
+        riskPhrasesCard
     }
 
     private var whisperInstalled: Bool {
@@ -556,6 +560,85 @@ struct SettingsView: View {
                     .disabled(settings.systemPrompt == Prompts.defaultSystemPrompt)
             }
         }
+    }
+
+    private var riskPhrasesCard: some View {
+        SettingsCard {
+            SettingsCardHeader(title: "Risk phrases") { EmptyView() }
+            SettingsCaption("For a session too long to send whole, lines with these phrases are always put into the note first, and the note says so if any don't fit. Matching ignores case and whole words only. The list stays on this Mac.")
+            if settings.riskPhrases.isEmpty {
+                Text("No phrases. No lines will be prioritised for risk in long sessions.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .themeBanner(.warn)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(settings.riskPhrases.enumerated()), id: \.offset) { index, phrase in
+                            HStack(spacing: 8) {
+                                Text(phrase)
+                                    .font(Theme.Typography.body)
+                                    .foregroundStyle(Theme.text.color)
+                                Spacer(minLength: 8)
+                                Button {
+                                    settings.riskPhrases.remove(at: index)
+                                } label: {
+                                    Label("Remove \(phrase)", systemImage: "minus.circle")
+                                        .labelStyle(.iconOnly)
+                                }
+                                .buttonStyle(.themeIcon)
+                                .controlSize(.small)
+                                .help("Remove this phrase")
+                            }
+                            .padding(.vertical, 4)
+                            if index < settings.riskPhrases.count - 1 { SettingsHairline() }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+                .frame(maxHeight: 220)
+                .themeField()
+            }
+            HStack(spacing: 8) {
+                TextField("Add a phrase (e.g. kill myself)", text: $newRiskPhrase)
+                    .textFieldStyle(.plain)
+                    .font(Theme.Typography.body)
+                    .padding(.horizontal, 12)
+                    .frame(height: 38)
+                    .themeField()
+                    .onSubmit(addRiskPhrase)
+                Button("Add", action: addRiskPhrase)
+                    .buttonStyle(.themePrimary)
+                    .disabled(newRiskPhrase.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            HStack {
+                Button("Clear All") { confirmClearRiskPhrases = true }
+                    .buttonStyle(.themed)
+                    .disabled(settings.riskPhrases.isEmpty)
+                Spacer()
+                Button("Reset to Defaults") { confirmResetRiskPhrases = true }
+                    .buttonStyle(.themed)
+                    .disabled(settings.riskPhrases == LongSessionNote.defaultRiskPhrases)
+            }
+        }
+        .confirmationDialog("Clear all risk phrases?", isPresented: $confirmClearRiskPhrases, titleVisibility: .visible) {
+            Button("Clear All", role: .destructive) { settings.riskPhrases = [] }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("No lines will be prioritised for risk in long sessions until you add your own.")
+        }
+        .confirmationDialog("Reset risk phrases?", isPresented: $confirmResetRiskPhrases, titleVisibility: .visible) {
+            Button("Reset to Defaults", role: .destructive) { settings.resetRiskPhrases() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your list is replaced by the built-in one.")
+        }
+    }
+
+    private func addRiskPhrase() {
+        settings.addRiskPhrase(newRiskPhrase)
+        newRiskPhrase = ""
     }
 
     // MARK: - Note format

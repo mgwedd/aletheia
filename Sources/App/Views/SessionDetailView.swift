@@ -99,8 +99,13 @@ struct SessionDetailView: View {
     /// Fingerprint of the transcript the displayed format's note was generated
     /// from, if one was recorded. See `NoteFreshness`.
     @State private var noteFingerprint: String?
-/// What a long session's note was written from, when it was not the whole transcript.
-@State private var noteCoverage: String?
+    /// What the displayed format's note was written from, when it was not the
+    /// whole transcript (a long session).
+    @State private var noteCoverage: String?
+    /// Stop was pressed and the stopped note's job may still be unwinding.
+    @State private var noteStopping = false
+    /// Waits for a stopped note's job to unwind before starting the next one.
+    @State private var noteWaiter: Task<Void, Never>?
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
     @State private var sessionNote: String = ""
@@ -230,6 +235,9 @@ struct SessionDetailView: View {
             // keep the unsaved edits for the next time this session opens.
             UnsavedTranscriptDrafts.stash(transcriptDraft, saved: transcriptText, for: session.id)
             editGuard?.detach()
+            // A note must not start after the user has left.
+            noteWaiter?.cancel()
+            noteWaiter = nil
         }
         .onChange(of: transcriptText) { old, new in
             if !new.isEmpty { hasTranscript = true; transcriptReadError = nil }
@@ -247,6 +255,7 @@ struct SessionDetailView: View {
             isEditingNote = false
             summaryText = savedNote(for: newFormat)
             noteFingerprint = savedFingerprint(for: newFormat)
+            noteCoverage = savedCoverage(for: newFormat)
             refreshHasPreviousNote()
         }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
@@ -906,13 +915,13 @@ struct SessionDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 12)
                     if noteRunner.isStreaming {
-                        Button(role: .destructive) { noteRunner.stop() } label: {
+                        Button(role: .destructive) { noteStopping = true; noteRunner.stop() } label: {
                             Label("Stop", systemImage: "stop.fill")
                         }
                     } else if noteRunner.isQueued {
                         // Waiting behind another generation: offer to back out
                         // rather than a Generate button that looks stuck.
-                        Button(role: .cancel) { noteRunner.stop() } label: {
+                        Button(role: .cancel) { noteStopping = true; noteRunner.stop() } label: {
                             Label("Cancel", systemImage: "xmark")
                         }
                     } else if !summaryText.isEmpty {
@@ -1157,6 +1166,10 @@ struct SessionDetailView: View {
         }
     }
 
+    private func savedCoverage(for format: ProgressNoteFormat) -> String? {
+        appModel.store?.noteCoverage(for: patient, session: session, format: format)
+    }
+
     private func refreshHasPreviousNote() {
         guard let store = appModel.store else { hasPreviousNote = false; return }
         hasPreviousNote = store.previousNote(for: patient, session: session, format: settings.progressNoteFormat) != nil
@@ -1189,6 +1202,7 @@ struct SessionDetailView: View {
         )
         summaryText = savedNote(for: settings.progressNoteFormat)
         noteFingerprint = savedFingerprint(for: settings.progressNoteFormat)
+        noteCoverage = savedCoverage(for: settings.progressNoteFormat)
         isEditingNote = false
         refreshHasPreviousNote()
         chatMessages = store.loadSessionChat(for: patient, session: session)
@@ -1337,6 +1351,35 @@ struct SessionDetailView: View {
     /// misfile the result into another format's note.
     private func generateNote() {
         guard let store = appModel.store else { return }
+        // One note per session at a time, even across leaving and reopening the session.
+        let jobLabel = "progress note \(session.id.uuidString)"
+        guard !integrations.inferenceQueue.hasJob(labelled: jobLabel) else {
+            if noteStopping {
+                // Just stopped: start again once the old job has unwound, with no alert.
+                // Only the first waiter goes on; a second click finds the flag already cleared.
+                guard noteWaiter == nil else { return }
+                noteWaiter = Task { @MainActor in
+                    let deadline = Date().addingTimeInterval(10)
+                    while integrations.inferenceQueue.hasJob(labelled: jobLabel), !Task.isCancelled, Date() < deadline {
+                        try? await Task.sleep(nanoseconds: 100_000_000)
+                    }
+                    // A cancelled waiter may already have been replaced; leave the new one alone.
+                    if !Task.isCancelled { noteWaiter = nil }
+                    guard !Task.isCancelled, noteStopping else { return }
+                    noteStopping = false
+                    // Still running after the wait: say so, as for any second Generate.
+                    if integrations.inferenceQueue.hasJob(labelled: jobLabel) {
+                        errorMessage = "A note for this session is already being written."
+                    } else {
+                        generateNote()
+                    }
+                }
+            } else {
+                errorMessage = "A note for this session is already being written."
+            }
+            return
+        }
+        noteStopping = false
         let format = settings.progressNoteFormat
         let verbosity = settings.summaryVerbosity
         let instructions = settings.noteInstructions[format.rawValue]
@@ -1347,18 +1390,19 @@ struct SessionDetailView: View {
         let notes = sessionNote
         let sessionComments = comments
         let effort = settings.noteEffort
+        let riskPhrases = settings.riskPhrases
         let model = service.model
-        noteCoverage = nil
+        let produced = CoverageBox()
         noteRunner.start(
             queue: integrations.inferenceQueue,
             kind: .note,
-            label: "progress note",
+            label: jobLabel,
             readTitle: "Reading the session",
             writeTitle: "Writing the note",
             makeStream: {
                 // The job has started: drop the old note so the pane can show
                 // progress until the first token.
-                if settings.progressNoteFormat == format { summaryText = "" }
+                if settings.progressNoteFormat == format { summaryText = ""; noteCoverage = nil }
                 return LongSessionNote.stream(
                     format: format,
                     transcript: transcript,
@@ -1367,6 +1411,7 @@ struct SessionDetailView: View {
                     verbosity: verbosity,
                     instructions: instructions,
                     effort: effort,
+                    riskPhrases: riskPhrases,
                     service: service,
                     builder: integrations.digests,
                     sessionID: session.id,
@@ -1375,7 +1420,10 @@ struct SessionDetailView: View {
                     },
                     saveDigest: { [patient, session] in try store.saveDigest($0, for: patient, session: session) },
                     live: { started, change in noteRunner.update(started: started, change) },
-                    coverage: { noteCoverage = $0 }
+                    coverage: {
+                        produced.text = $0
+                        if settings.progressNoteFormat == format { noteCoverage = $0 }
+                    }
                 )
             },
             onReveal: { text in
@@ -1389,24 +1437,38 @@ struct SessionDetailView: View {
                     errorMessage = error.localizedDescription
                 }
                 // The reveal blanked the pane; put back what is actually saved.
-                if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
+                if settings.progressNoteFormat == format {
+                    summaryText = savedNote(for: format)
+                    noteCoverage = savedCoverage(for: format)
+                }
             },
             onFinish: { raw in
                 // Save the tidied text, so copy, export and edit see the same
                 // paragraphs and labels the pane shows.
                 let final = NoteMarkdown.tidy(raw)
+                // Stopped part-way: say the saved note is only what was written so far.
+                if noteStopping, !final.isEmpty, !(produced.text ?? "").contains(LongSessionNote.CheckOutcome.stopped.text) {
+                    produced.text = [produced.text, LongSessionNote.stoppedEarlyText].compactMap { $0 }.joined(separator: " ")
+                    if settings.progressNoteFormat == format { noteCoverage = produced.text }
+                }
                 guard !final.isEmpty else {
                     // Stopped before the first token, or empty output: the pane
                     // was cleared at start, so put back what is saved.
-                    if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
+                    if settings.progressNoteFormat == format {
+                        summaryText = savedNote(for: format)
+                        noteCoverage = savedCoverage(for: format)
+                    }
                     return
                 }
                 if settings.progressNoteFormat == format { summaryText = final }
                 do {
-                    try store.saveGeneratedNote(final, for: patient, session: session, format: format, generatedFromTranscript: transcript)
+                    try store.saveGeneratedNote(final, for: patient, session: session, format: format, generatedFromTranscript: transcript, coverage: produced.text)
                 } catch {
                     errorMessage = error.localizedDescription
-                    if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
+                    if settings.progressNoteFormat == format {
+                        summaryText = savedNote(for: format)
+                        noteCoverage = savedCoverage(for: format)
+                    }
                     return
                 }
                 // Record which transcript this note came from (the snapshot the
@@ -1414,6 +1476,8 @@ struct SessionDetailView: View {
                 if settings.progressNoteFormat == format {
                     refreshHasPreviousNote()
                     noteFingerprint = NoteFreshness.fingerprint(of: transcript)
+                    // The format may have been switched away and back during the run.
+                    noteCoverage = savedCoverage(for: format)
                 }
                 onSessionUpdated()
                 Task {
@@ -1626,4 +1690,10 @@ private struct InlineCommentComposerCard: View {
             .themeField(isFocused: focused)
             .accessibilityLabel("Comment")
     }
+}
+
+/// Holds what a long-session note says it was written from, between the run's
+/// first report and the save, whatever the picker shows meanwhile.
+private final class CoverageBox {
+    var text: String?
 }
