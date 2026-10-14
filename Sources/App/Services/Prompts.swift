@@ -88,21 +88,26 @@ enum Prompts {
         """
     }
 
-    /// Builds a clinical progress note in a standard documentation format
-    /// (SOAP/DAP/BIRP), or a plain narrative summary. The heading structure and
-    /// per-section meaning come from `ProgressNoteFormat` so the model writes to
-    /// the exact sections the exporter and the payer expect. Grounded strictly
-    /// in the transcript and the therapist's own notes/comments; empty sections
-    /// are marked rather than filled with guesses.
-    static func progressNote(
-        format: ProgressNoteFormat,
-        transcript: String,
-        notes: String = "",
-        comments: [String] = [],
-        verbosity: SummaryVerbosity = .default
-    ) -> String {
+    /// The editable part of a note prompt: the opening instruction and, for the
+    /// structured formats, the section spec and rules; for the narrative, its
+    /// layout rule. The therapist can replace it per format
+    /// (`AppSettings.noteInstructions`); everything else in the prompt is added
+    /// by `progressNote` regardless.
+    static func defaultInstructions(for format: ProgressNoteFormat) -> String {
         guard !format.sections.isEmpty else {
-            return summarizeNarrative(transcript: transcript, notes: notes, comments: comments, verbosity: verbosity)
+            return """
+            You are helping a therapist review her own session notes. Write a \
+            narrative clinical summary of the following therapy session: \
+            presenting topics, notable statements, mood/affect observations, and \
+            any follow-ups to revisit next session. Fold in the therapist's own \
+            notes and comments where they fit, treating them as her clinical \
+            judgment. Do not invent details that aren't in the material. If the \
+            material is too short or unclear to summarize, say so plainly.
+
+            Write short paragraphs. Where a topic needs a label, start its \
+            paragraph with a bold lead-in, e.g. **Mood and affect:**, and put \
+            follow-ups in a bulleted list under a **Follow-ups:** lead-in.
+            """
         }
 
         let sectionSpec = format.sections
@@ -127,12 +132,42 @@ enum Prompts {
         weave them in where they fit a section.
         - Write in the concise, professional third-person voice of a chart note \
         (e.g. "Client reported…"), not a transcript recap.
+        - Be specific, not high-level: name the concrete situations, themes and \
+        examples the client described, the client's own words where telling \
+        (briefly quoted), the interventions the therapist used and how the \
+        client responded. Avoid generic phrases such as "discussed stressors" \
+        or "explored feelings".
         - If a section has nothing to support it in the material, write \
         "Not documented in this session." under that heading rather than \
         guessing.
         - If a safety concern (risk of harm to self or others) appears, state \
         it plainly in the Assessment/appropriate section.
         - Do not add a diagnosis that isn't already in the material.
+        """
+    }
+
+    /// Builds a clinical progress note in a standard documentation format
+    /// (SOAP/DAP/BIRP), or a plain narrative summary. The heading structure and
+    /// per-section meaning come from `ProgressNoteFormat` so the model writes to
+    /// the exact sections the exporter and the payer expect. Grounded strictly
+    /// in the transcript and the therapist's own notes/comments; empty sections
+    /// are marked rather than filled with guesses. `instructions` replaces the
+    /// format's default instruction text (nil keeps it); the length setting,
+    /// formatting rules, legend and material are always appended.
+    static func progressNote(
+        format: ProgressNoteFormat,
+        transcript: String,
+        notes: String = "",
+        comments: [String] = [],
+        verbosity: SummaryVerbosity = .default,
+        instructions: String? = nil
+    ) -> String {
+        let lengthGuidance = format.sections.isEmpty ? verbosity.promptGuidance : verbosity.noteGuidance
+        return """
+        \(instructions ?? defaultInstructions(for: format))
+
+        \(lengthGuidance)
+        \(SummaryVerbosity.clarityRule)
 
         \(noteFormattingRules)
 
@@ -155,40 +190,6 @@ enum Prompts {
     - Use the therapist's notes and comments as context. Don't quote, discuss, \
     or speculate about them, and leave out any that are unclear.
     """
-
-    /// The narrative-format path of `progressNote`: a prose summary that still
-    /// folds in the therapist's own notes and comments, at the length the
-    /// therapist chose in Settings.
-    private static func summarizeNarrative(
-        transcript: String,
-        notes: String,
-        comments: [String],
-        verbosity: SummaryVerbosity
-    ) -> String {
-        """
-        You are helping a therapist review her own session notes. Write a \
-        narrative clinical summary of the following therapy session: \
-        presenting topics, notable statements, mood/affect observations, and \
-        any follow-ups to revisit next session. Fold in the therapist's own \
-        notes and comments where they fit, treating them as her clinical \
-        judgment. Do not invent details that aren't in the material. If the \
-        material is too short or unclear to summarize, say so plainly.
-
-        \(verbosity.promptGuidance)
-        \(SummaryVerbosity.clarityRule)
-
-        \(noteFormattingRules)
-        - Write short paragraphs. Where a topic needs a label, start its \
-        paragraph with a bold lead-in, e.g. **Mood and affect:**, and put \
-        follow-ups in a bulleted list under a **Follow-ups:** lead-in.
-
-        \(transcriptLegend)
-
-        Transcript:
-        \(transcript)
-        \(therapistMaterial(notes: notes, comments: comments))
-        """
-    }
 
     static func sessionChat(
         transcript: String,

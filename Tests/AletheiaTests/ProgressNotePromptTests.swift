@@ -52,4 +52,36 @@ final class ProgressNotePromptTests: XCTestCase {
         )
         XCTAssertTrue(prompt.contains("Client is making progress."))
     }
+
+    func testNilInstructionsUseTheDefault() {
+        for format in ProgressNoteFormat.allCases {
+            let prompt = Prompts.progressNote(format: format, transcript: transcript)
+            XCTAssertTrue(prompt.contains(Prompts.defaultInstructions(for: format)), "\(format)")
+        }
+    }
+
+    func testCustomInstructionsReplaceTheDefaultButKeepTheFixedParts() {
+        for format in ProgressNoteFormat.allCases {
+            let prompt = Prompts.progressNote(
+                format: format,
+                transcript: transcript,
+                notes: "My note.",
+                comments: ["A comment."],
+                verbosity: .detailed,
+                instructions: "CUSTOM INSTRUCTIONS"
+            )
+            XCTAssertTrue(prompt.contains("CUSTOM INSTRUCTIONS"))
+            XCTAssertFalse(prompt.contains(Prompts.defaultInstructions(for: format)))
+            XCTAssertTrue(prompt.contains(Prompts.transcriptLegend))
+            XCTAssertTrue(prompt.contains(Prompts.noteFormattingRules))
+            XCTAssertTrue(prompt.contains(SummaryVerbosity.clarityRule))
+            XCTAssertTrue(prompt.contains(transcript))
+            XCTAssertTrue(prompt.contains("My note."))
+            XCTAssertTrue(prompt.contains("A comment."))
+        }
+    }
+
+    func testStructuredDefaultsAskForSpecifics() {
+        XCTAssertTrue(Prompts.defaultInstructions(for: .soap).contains("Avoid generic phrases"))
+    }
 }

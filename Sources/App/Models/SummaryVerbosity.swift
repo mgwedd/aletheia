@@ -1,14 +1,14 @@
 import Foundation
 
-/// How much the Summary note says. Every level puts clarity first: the setting
+/// How much a generated note says. Every level puts clarity first: the setting
 /// sets a length to aim for, never a length to pad to.
 ///
 ///     concise  ── ~80–150 words: what's needed to recall the session at a glance
 ///     natural  ── ~150–300 words: the session and its context (default)
 ///     detailed ── ~300–600 words: sequence, notable statements and nuance
 ///
-/// Applies to the Summary format only; SOAP/DAP/BIRP/GIRP keep their own
-/// section structure.
+/// The ranges are for the Summary format; SOAP/DAP/BIRP/GIRP apply the level
+/// per section (`noteGuidance`).
 enum SummaryVerbosity: String, CaseIterable, Identifiable, Codable, Hashable {
     case concise
     case natural
@@ -44,6 +44,18 @@ enum SummaryVerbosity: String, CaseIterable, Identifiable, Codable, Hashable {
             return "Length: natural. Aim for roughly 150–300 words: enough to recall the session and its context, and no more."
         case .detailed:
             return "Length: detailed. Aim for roughly 300–600 words: include the order of events, notable statements and the nuance a later reader would need."
+        }
+    }
+
+    /// The length instruction for the structured formats, applied per section.
+    var noteGuidance: String {
+        switch self {
+        case .concise:
+            return "Length: concise. Keep each section to one or two sentences."
+        case .natural:
+            return "Length: natural. Write a short paragraph for each section."
+        case .detailed:
+            return "Length: detailed. Write a full paragraph for each section, including the specifics a later reader would need."
         }
     }
 
