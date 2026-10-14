@@ -84,19 +84,34 @@ ollama_run() {
     jq -n --rawfile p "$1" --arg m "$OLLAMA_MODEL" --argjson ctx "$2" \
         '{model:$m, prompt:$p, stream:false, options:{num_ctx:$ctx, num_predict:256, temperature:0, seed:1}}' |
     curl -sf "$OLLAMA/api/generate" -d @- |
-    jq -r '[.prompt_eval_count, .prompt_eval_duration / 1e9, .prompt_eval_count / (.prompt_eval_duration / 1e9),
-            .eval_count / (.eval_duration / 1e9), (.total_duration - .load_duration) / 1e9] | @tsv'
+    jq -r '(.prompt_eval_duration / 1e9) as $pd | (.eval_duration / 1e9) as $ed |
+        [.prompt_eval_count, $pd, (if $pd > 0 then .prompt_eval_count / $pd else 0 end),
+         (if $ed > 0 then .eval_count / $ed else 0 end), (.total_duration - .load_duration) / 1e9] | @tsv'
 }
 
 # Same fields from mlx_lm.generate's summary lines, plus peak memory in GB.
 # Each call is a new process that loads the model, so wall time is derived
 # from its own rates (prefill + 256 tokens), excluding the load.
 mlx_run() {
-    mlx_lm.generate --model "$MLX_MODEL" --prompt "$(cat "$1")" --max-tokens 256 --temp 0 --seed 1 2>&1 |
-    awk '/^Prompt:/ { pt = $2; ptps = $4 }
+    local stderr_file
+    stderr_file=$(mktemp)
+    trap "rm -f '$stderr_file'" RETURN
+
+    mlx_lm.generate --model "$MLX_MODEL" --prompt "$(cat "$1")" --max-tokens 256 --temp 0 --seed 1 2>"$stderr_file" |
+    awk -v stderrfile="$stderr_file" '/^Prompt:/ { pt = $2; ptps = $4 }
         /^Generation:/ { gt = $2; gtps = $4 }
         /^Peak memory:/ { mem = $3 }
-        END { printf "%s\t%.2f\t%s\t%s\t%.2f\t%s\n", pt, pt / ptps, ptps, gtps, pt / ptps + gt / gtps, mem }'
+        END {
+            if (!pt || !ptps || !gt || !gtps || !mem) {
+                printf "-\t-\t-\t-\t-\t-\n"
+                print "mlx_lm.generate: no summary line (context too large?); last stderr lines:" > "/dev/stderr"
+                linecount = 0; while ((getline line < stderrfile) > 0) saved_lines[linecount++ % 5] = line
+                start = (linecount < 5) ? 0 : linecount - 5
+                for (i = start; i < linecount; i++) print "  " saved_lines[i % 5] > "/dev/stderr"
+            } else {
+                printf "%s\t%.2f\t%s\t%s\t%.2f\t%s\n", pt, pt / ptps, ptps, gtps, pt / ptps + gt / gtps, mem
+            }
+        }'
 }
 
 # Median of each column over runs 2..N (run 1 is load/warm-up).
