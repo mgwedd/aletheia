@@ -1,6 +1,7 @@
 #if DEBUG
 import AVFoundation
 import Foundation
+import WhisperEngine
 
 /// Debug-only test harness for call-audio recording (driven by scripts/harness.sh):
 ///   --harness-record <seconds> --out <dir> [--harness-transcribe] [--harness-reference <file>]
@@ -26,6 +27,49 @@ struct HarnessArgs: Equatable {
             transcribe: argv.contains("--harness-transcribe"),
             reference: value("--harness-reference").map { URL(fileURLWithPath: $0) }
         )
+    }
+}
+
+/// Model benchmark on a real recording (driven by scripts/bench-transcription.sh):
+///   --harness-bench <audio> --out <dir> [--models large-v3,medium.en,small.en]
+///   [--start-min M] [--minutes N] [--harness-download]
+/// Transcribes the audio (or an N-minute slice from minute M) with each model
+/// through the app's own engine, writes `<model>.txt` transcripts plus
+/// `summary.txt` into <dir>, and scores each against the first model (the
+/// reference, largest by default) by word error rate. Results are written after
+/// every model, so stopping early keeps what finished.
+struct HarnessBenchArgs: Equatable {
+    var audio: URL
+    var out: URL
+    var models: [WhisperModel] = [.largeV3, .mediumEn, .smallEn]
+    var startMinutes: Double = 0
+    var minutes: Double?
+    var download = false
+
+    /// nil when `--harness-bench` is absent or its arguments are unusable.
+    static func parse(_ argv: [String]) -> HarnessBenchArgs? {
+        func value(_ flag: String) -> String? {
+            guard let i = argv.firstIndex(of: flag), i + 1 < argv.count else { return nil }
+            return argv[i + 1]
+        }
+        guard let audio = value("--harness-bench"), let out = value("--out") else { return nil }
+        var args = HarnessBenchArgs(audio: URL(fileURLWithPath: audio), out: URL(fileURLWithPath: out, isDirectory: true))
+        if let list = value("--models") {
+            let models = list.split(separator: ",").compactMap { WhisperModel(rawValue: String($0)) }
+            guard !models.isEmpty else { return nil }
+            args.models = models
+        }
+        args.startMinutes = value("--start-min").flatMap(Double.init) ?? 0
+        args.minutes = value("--minutes").flatMap(Double.init)
+        args.download = argv.contains("--harness-download")
+        return args
+    }
+
+    /// The sample range to transcribe out of `count` 16 kHz samples.
+    func sliceRange(count: Int) -> Range<Int> {
+        let start = min(count, Int(startMinutes * 60 * 16000))
+        guard let minutes else { return start..<count }
+        return start..<min(count, start + Int(minutes * 60 * 16000))
     }
 }
 
@@ -66,8 +110,79 @@ enum HarnessScoring {
 @MainActor
 enum HarnessRun {
     static func runIfRequested() {
-        guard let args = HarnessArgs.parse(ProcessInfo.processInfo.arguments) else { return }
-        Task { @MainActor in exit(await run(args)) }
+        let argv = ProcessInfo.processInfo.arguments
+        if let args = HarnessBenchArgs.parse(argv) {
+            Task { @MainActor in exit(await bench(args)) }
+        } else if let args = HarnessArgs.parse(argv) {
+            Task { @MainActor in exit(await run(args)) }
+        }
+    }
+
+    private static func bench(_ args: HarnessBenchArgs) async -> Int32 {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: args.out, withIntermediateDirectories: true)
+        var lines: [String] = []
+        func log(_ line: String) {
+            lines.append(line)
+            print(line)
+            let summary = args.out.appendingPathComponent("summary.txt")
+            try? lines.joined(separator: "\n").appending("\n").write(to: summary, atomically: true, encoding: .utf8)
+        }
+        let all: [Float]
+        do { all = try AudioResampler.loadWhisperSamples(from: args.audio) } catch {
+            log("error: couldn't read \(args.audio.lastPathComponent): \(error.localizedDescription)")
+            return 1
+        }
+        let range = args.sliceRange(count: all.count)
+        let samples = Array(all[range])
+        let audioSeconds = Double(samples.count) / 16000
+        log(String(format: "audio %@: %.0fs total, benchmarking %.0fs from %.0fs; whisper.cpp %@",
+                   args.audio.lastPathComponent, Double(all.count) / 16000, audioSeconds,
+                   Double(range.lowerBound) / 16000, WhisperEngine.version))
+
+        let modelsDir = AppSettings.shared.whisperModelPath.deletingLastPathComponent()
+        var reference: (model: WhisperModel, text: String)?
+        var failed = false
+        for model in args.models {
+            let path = modelsDir.appendingPathComponent(model.fileName)
+            if !fm.fileExists(atPath: path.path) {
+                guard args.download else { log("\(model.rawValue): not downloaded, skipped"); continue }
+                log("\(model.rawValue): downloading (~\(model.approximateSizeMB) MB, checksum-verified)…")
+                do { try await WhisperModelDownloader().download(model, to: path) } catch {
+                    log("\(model.rawValue): download failed: \(error.localizedDescription)"); failed = true; continue
+                }
+            }
+            let start = Date()
+            let segments: [WhisperSegment]
+            do {
+                segments = try await WhisperTranscriber.segments(for: samples, modelPath: path, onProgress: { _ in })
+            } catch {
+                log("\(model.rawValue): failed: \(error.localizedDescription)"); failed = true; continue
+            }
+            let seconds = Date().timeIntervalSince(start)
+            let text = segments.map(\.text).joined(separator: " ")
+            let transcript = segments.map { segment in
+                String(format: "[%02d:%02d] %@", Int(segment.start) / 60, Int(segment.start) % 60,
+                       segment.text.trimmingCharacters(in: .whitespaces))
+            }.joined(separator: "\n")
+            let file = args.out.appendingPathComponent("\(model.rawValue).txt")
+            try? transcript.write(to: file, atomically: true, encoding: .utf8)
+            try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+
+            var line = String(format: "%@: %.1fs (%.1fx realtime), %d segments, %d words",
+                              model.rawValue, seconds, audioSeconds / max(seconds, 0.001),
+                              segments.count, HarnessScoring.words(text).count)
+            if let reference {
+                line += String(format: ", WER vs %@ %.1f%%", reference.model.rawValue,
+                               HarnessScoring.wer(reference: reference.text, hypothesis: text) * 100)
+            } else {
+                reference = (model, text)
+                line += " (reference)"
+            }
+            log(line)
+        }
+        log("done")
+        return failed ? 1 : 0
     }
 
     private static func run(_ args: HarnessArgs) async -> Int32 {
