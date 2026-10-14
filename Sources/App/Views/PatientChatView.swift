@@ -75,7 +75,8 @@ struct PatientChatView: View {
                         onStop: { chatRunner.stop() },
                         queuedStatus: chatRunner.queuedStatus,
                         scopeNote: scopeNote,
-                        notices: notices
+                        notices: notices,
+                        onCompact: { compact($0) }
                     )
                     .frame(minWidth: 360)
                 } else {
@@ -289,6 +290,12 @@ struct PatientChatView: View {
         guard let store = appModel.store else { return }
         if selectedThreadID == nil { startNewThread() }
         guard let threadID = selectedThreadID else { return }
+        // Past ChatMemory's budget, compact first so the answer still has the
+        // whole conversation, the earlier part in summary.
+        if ChatMemory.needsCompaction(messages) {
+            compact("") { send(question) }
+            return
+        }
 
         // The prompt carries the question on its own line, so the history
         // snapshot is taken before the question is appended to it.
@@ -347,6 +354,40 @@ struct PatientChatView: View {
                 messages.removeAll { $0.id == userMessage.id }
                 isSending = false
             }
+        )
+    }
+
+    /// Replaces the thread so far with the model's summary of it (`/compact`,
+    /// the Compact button, or a send past the budget), then runs `next`. A
+    /// stopped or failed summary is discarded: a partial one would stand in
+    /// for messages it doesn't cover.
+    private func compact(_ focus: String, then next: (() -> Void)? = nil) {
+        guard let threadID = selectedThreadID, !messages.isEmpty else { return }
+        isSending = true
+        let summaryID = UUID()
+        let service = integrations.makeAssistantService()
+        let history = messages
+        chatRunner.start(
+            queue: integrations.inferenceQueue,
+            kind: .patientChat,
+            label: "conversation summary",
+            makeStream: { service.streamCompaction(history: history, focus: focus) },
+            onReveal: { text in messages.upsert(id: summaryID, role: .summary, text: text) },
+            onError: { error in
+                isSending = false
+                messages.removeAll { $0.id == summaryID }
+                errorMessage = error.localizedDescription
+            },
+            onFinish: { text in
+                isSending = false
+                guard !chatRunner.wasStopped, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    messages.removeAll { $0.id == summaryID }
+                    return
+                }
+                persist(threadID: threadID)
+                next?()
+            },
+            onCancelledWhileQueued: { isSending = false }
         )
     }
 

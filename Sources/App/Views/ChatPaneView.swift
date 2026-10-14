@@ -26,6 +26,9 @@ struct ChatPaneView: View {
     var scopeNote: String = "Answers come from this session's transcript, your notes and comments."
     /// Caveats about the last answer, shown above the composer in muted type.
     var notices: [String] = []
+    /// Compacts the conversation, with an optional focus: the Compact button
+    /// and the `/compact [focus]` command. Nil hides both.
+    var onCompact: ((String) -> Void)? = nil
 
     @State private var draft: String = ""
     @FocusState private var inputFocused: Bool
@@ -34,7 +37,7 @@ struct ChatPaneView: View {
     /// Show the "Thinking…" spinner only until the first streamed token lands —
     /// once the assistant bubble has text, the growing bubble is the progress.
     private var isWaitingForFirstToken: Bool {
-        isSending && (messages.last?.role != .assistant || (messages.last?.text.isEmpty ?? true))
+        isSending && (messages.last?.role == .user || (messages.last?.text.isEmpty ?? true))
     }
 
     private var canSend: Bool {
@@ -54,6 +57,22 @@ struct ChatPaneView: View {
                     .themeDivider(.bottom)
             }
             conversation
+            if onCompact != nil, let memory = ChatMemory.status(messages) {
+                HStack(spacing: 8) {
+                    Text(memory)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("Compact") { onCompact?("") }
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
+                        .disabled(isSending)
+                        .help("Summarize the conversation so far to make room for more. Type /compact followed by a topic to keep that topic in detail.")
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+            }
             if !notices.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(notices, id: \.self) { notice in
@@ -210,7 +229,11 @@ struct ChatPaneView: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         draft = ""
-        onSend(text)
+        if let onCompact, let focus = ChatMemory.compactCommand(text) {
+            onCompact(focus)
+        } else {
+            onSend(text)
+        }
     }
 }
 
@@ -220,7 +243,20 @@ private struct ChatBubble: View {
     let message: ChatMessage
 
     var body: some View {
-        if message.role == .user {
+        if message.role == .summary {
+            // A compaction: what later answers remember of everything above.
+            VStack(alignment: .leading, spacing: 8) {
+                Chip("Conversation compacted")
+                MarkdownMessageView(text: message.text)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+            }
+            .padding(12)
+            .frame(maxWidth: 640, alignment: .leading)
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.line.color))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+        } else if message.role == .user {
             // The therapist's own words, shown verbatim in a trailing bubble
             // at most 70% as wide as the pane.
             TrailingBubbleLayout(fraction: 0.7) {

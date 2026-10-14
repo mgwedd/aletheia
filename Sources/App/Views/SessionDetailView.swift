@@ -1057,7 +1057,7 @@ struct SessionDetailView: View {
     }
 
     private var chatTab: some View {
-        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() }, queuedStatus: chatRunner.queuedStatus)
+        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() }, queuedStatus: chatRunner.queuedStatus, onCompact: { compactChat($0) })
     }
 
     private func load() {
@@ -1295,6 +1295,12 @@ struct SessionDetailView: View {
 
     private func sendChat(_ question: String) {
         guard let store = appModel.store else { return }
+        // Past ChatMemory's budget, compact first so the answer still has the
+        // whole conversation, the earlier part in summary.
+        if ChatMemory.needsCompaction(chatMessages) {
+            compactChat("") { sendChat(question) }
+            return
+        }
         let userMessage = ChatMessage(role: .user, text: question)
         chatMessages.append(userMessage)
         isChatSending = true
@@ -1345,6 +1351,42 @@ struct SessionDetailView: View {
                 chatMessages.removeAll { $0.id == userMessage.id }
                 isChatSending = false
             }
+        )
+    }
+}
+
+extension SessionDetailView {
+    /// Replaces the conversation so far with the model's summary of it
+    /// (`/compact`, the Compact button, or a send past the budget), then runs
+    /// `next`. A stopped or failed summary is discarded: a partial one would
+    /// stand in for messages it doesn't cover.
+    fileprivate func compactChat(_ focus: String, then next: (() -> Void)? = nil) {
+        guard let store = appModel.store, !chatMessages.isEmpty else { return }
+        isChatSending = true
+        let summaryID = UUID()
+        let service = integrations.makeAssistantService()
+        let history = chatMessages
+        chatRunner.start(
+            queue: integrations.inferenceQueue,
+            kind: .sessionChat,
+            label: "conversation summary",
+            makeStream: { service.streamCompaction(history: history, focus: focus) },
+            onReveal: { text in chatMessages.upsert(id: summaryID, role: .summary, text: text) },
+            onError: { error in
+                isChatSending = false
+                chatMessages.removeAll { $0.id == summaryID }
+                errorMessage = error.localizedDescription
+            },
+            onFinish: { text in
+                isChatSending = false
+                guard !chatRunner.wasStopped, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    chatMessages.removeAll { $0.id == summaryID }
+                    return
+                }
+                appModel.attemptSave("chat") { try store.saveSessionChat(chatMessages, for: patient, session: session) }
+                next?()
+            },
+            onCancelledWhileQueued: { isChatSending = false }
         )
     }
 }
