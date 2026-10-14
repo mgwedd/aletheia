@@ -33,6 +33,9 @@ struct SessionRecord: Identifiable, Codable, Hashable {
 enum ChatRole: String, Codable {
     case user
     case assistant
+    /// A compaction: the model's summary of everything before it, which stands
+    /// in for those messages in later prompts (see `ChatMemory`).
+    case summary
 }
 
 struct ChatMessage: Identifiable, Codable, Equatable {

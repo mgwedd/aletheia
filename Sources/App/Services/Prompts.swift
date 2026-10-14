@@ -210,7 +210,7 @@ enum Prompts {
         Transcript:
         \(transcript)
         \(therapistMaterial(notes: notes, comments: comments))
-        \(formatHistory(history))
+        \(formatHistory(history, question: question))
         Therapist's question: \(question)
         """
     }
@@ -231,12 +231,7 @@ enum Prompts {
     }
 
     static func patientChat(context: String, history: [ChatMessage], question: String) -> String {
-        // The question is sent once, in its own line below. If the caller's
-        // history already ends with it (the chat view appends it before
-        // sending), leave it out of the recent-conversation block.
-        var prior = history
-        if let last = prior.last, last.role == .user, last.text == question { prior.removeLast() }
-        return """
+        """
         You are helping a therapist ask questions across all of one \
         patient's past sessions, given below (most recent first). Each \
         session header carries a short tag in brackets next to its date, \
@@ -257,16 +252,48 @@ enum Prompts {
 
         \(context)
 
-        \(formatHistory(prior))
+        \(formatHistory(history, question: question))
         Therapist's question: \(question)
         """
     }
 
-    private static func formatHistory(_ history: [ChatMessage]) -> String {
-        guard !history.isEmpty else { return "" }
-        let lines = history.suffix(6).map { message in
-            "\(message.role == .user ? "Therapist" : "Assistant"): \(message.text)"
+    /// The conversation as `ChatMemory` remembers it. The question is sent
+    /// once, on its own line after this; if the history already ends with it
+    /// (the chat views append it before sending), it's left out here.
+    private static func formatHistory(_ history: [ChatMessage], question: String? = nil) -> String {
+        var (summary, recent) = ChatMemory.remembered(history)
+        if let last = recent.last, last.role == .user, last.text == question { recent.removeLast() }
+        var parts: [String] = []
+        if let summary {
+            parts.append("Summary of the earlier conversation:\n\(summary)\n")
         }
-        return "Recent conversation:\n" + lines.joined(separator: "\n") + "\n"
+        if !recent.isEmpty {
+            let lines = recent.map { "\($0.role == .user ? "Therapist" : "Assistant"): \($0.text)" }
+            parts.append("Recent conversation:\n" + lines.joined(separator: "\n") + "\n")
+        }
+        return parts.joined(separator: "\n")
+    }
+
+    /// Asks for a summary that can stand in for the conversation so far, so a
+    /// long chat keeps going without silently forgetting its start.
+    static func compactChat(history: [ChatMessage], focus: String) -> String {
+        let focusLine = focus.isEmpty ? "" : """
+
+        The therapist asked to keep this in particular, in full detail: \(focus)
+
+        """
+        return """
+        Below is a conversation between a therapist and an assistant about \
+        her recorded therapy sessions. Write a summary that will replace it, \
+        so the conversation can continue without the full history.
+
+        Keep: each question she asked, the answers and conclusions reached, \
+        specific facts with the session tags or time stamps they were cited \
+        with, and anything left open. Leave out pleasantries and repetition. \
+        Write it as compact notes, under 400 words, with no opening or \
+        closing remarks. Don't add anything that isn't in the conversation.
+        \(focusLine)
+        \(formatHistory(history))
+        """
     }
 }

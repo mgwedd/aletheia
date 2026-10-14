@@ -126,6 +126,11 @@ struct AssistantService {
         )
     }
 
+    /// Streams a summary that replaces the conversation so far (`/compact`).
+    func streamCompaction(history: [ChatMessage], focus: String) -> AsyncThrowingStream<String, Error> {
+        assistant.stream(model: model, system: systemPrompt, prompt: Prompts.compactChat(history: history, focus: focus))
+    }
+
     /// Renders stored margin comments into the plain lines the prompt expects.
     /// Shared by the batch and streaming session-chat paths. Resolved comments
     /// are left out: like a resolved Google-Docs thread, they've been closed out

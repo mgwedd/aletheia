@@ -30,6 +30,9 @@ final class ChatStreamRunner: ObservableObject {
     @Published private(set) var isStreaming = false
     /// True from `start` until the job begins running (or is cancelled).
     @Published private(set) var isQueued = false
+    /// Whether the last run ended by Stop rather than running to completion;
+    /// read it in `onFinish` to tell a partial result from a whole one.
+    private(set) var wasStopped = false
 
     /// Plain status line while this run is waiting behind another generation;
     /// nil when it is not waiting (including the instant before an idle queue
@@ -114,6 +117,7 @@ final class ChatStreamRunner: ObservableObject {
         }
         producer?.cancel()
         finishedReceiving = true
+        wasStopped = true
     }
 
     /// Drops a job that has not started: it never runs and the queue moves on.
@@ -149,6 +153,7 @@ final class ChatStreamRunner: ObservableObject {
         target = ""
         finishedReceiving = false
         failure = nil
+        wasStopped = false
         isStreaming = true
 
         let stream = makeStream()
