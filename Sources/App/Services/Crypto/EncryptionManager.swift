@@ -189,6 +189,7 @@ final class EncryptionManager: ObservableObject {
         SessionSearch.setEncryptionLocked(true)   // before the delete; `refresh()` below may release it again
         SessionSearch.deleteIndex()   // plaintext transcript text: gone while locked, rebuilt on unlock
         OllamaClient.unloadLoaded()
+        LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript
         refresh()
         onProtectionChanged?()
     }

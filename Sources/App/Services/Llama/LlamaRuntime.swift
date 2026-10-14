@@ -16,6 +16,13 @@ enum LlamaRuntime {
         #endif
     }
 
+    /// Frees the built-in model and its KV cache (no-op when not linked).
+    static func unloadAll() {
+        #if canImport(llama)
+        LlamaAssistant.unloadAll()
+        #endif
+    }
+
     /// The directory downloaded weights live in, alongside the Whisper models in
     /// Application Support. Weights refresh separately from the app.
     static var modelsDirectory: URL {

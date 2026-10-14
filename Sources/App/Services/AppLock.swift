@@ -168,6 +168,7 @@ final class AppLock: ObservableObject {
             // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
             SessionSearch.closeIndex()
             OllamaClient.unloadLoaded()
+            LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript
         }
     }
 
