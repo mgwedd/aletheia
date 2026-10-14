@@ -217,7 +217,17 @@ jobs:
             exit 1
           fi
 
-          xcrun stapler staple "$DMG"
+          # Stapling fetches the ticket from Apple's CDN, which can drop the
+          # connection (Error 68) right after an accepted notarization. Retry
+          # with exponential backoff capped at 2 min (~10 min in all).
+          delay=15
+          for attempt in 1 2 3 4 5 6 7 8; do
+            xcrun stapler staple "$DMG" && break
+            [ "$attempt" -eq 8 ] && { echo "::error::Stapling failed after $attempt attempts."; exit 1; }
+            echo "Stapling failed (attempt $attempt); retrying in ${delay}s."
+            sleep "$delay"
+            delay=$(( delay * 2 > 120 ? 120 : delay * 2 ))
+          done
           xcrun stapler validate "$DMG"
 
           # Gatekeeper's verdict on the DMG, and on the app inside it as a
