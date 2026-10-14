@@ -15,8 +15,12 @@ enum LlamaModel: String, CaseIterable, Identifiable, Codable, Hashable {
     var id: String { rawValue }
 
     /// The model offered by default (and used when a persisted raw value is
-    /// unknown, e.g. a retired model from an older release).
-    static let recommended: LlamaModel = .llama31_8b
+    /// unknown, e.g. a retired model from an older release): the 8B on 16 GB+
+    /// Macs (the same threshold `ModelAdvisor` uses for its 8B tier), otherwise
+    /// the lighter Gemma 4 E2B.
+    static func recommended(for hardware: HardwareCapabilities) -> LlamaModel {
+        hardware.physicalMemoryGB >= 16 ? .llama31_8b : .gemma4_e2b
+    }
 
     var displayName: String {
         switch self {

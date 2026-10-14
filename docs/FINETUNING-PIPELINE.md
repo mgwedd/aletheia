@@ -90,8 +90,8 @@ implement it in the separate repo.
 - **Covers:** SOAP, DAP, BIRP, GIRP.
 
 ### 3. LoRA fine-tune — `scripts/03_finetune.py`
-- **In:** templated rows; a base model (candidate: the same Llama 3.2 1B/3B
-  Instruct family the app already downloads, so the runtime and tokenizer match).
+- **In:** templated rows; a base model (candidate: the same Llama 3.1 8B / Gemma 4 E2B
+  Instruct models the app already downloads, so the runtime and tokenizer match).
 - **Out:** a LoRA adapter (PEFT), plus training logs/metrics.
 - **Tooling:** `transformers` + `peft` + `trl`; QLoRA for consumer GPUs.
 - **Why LoRA:** small, swappable adapters (#125's "swappable LoRA" goal), cheap to
@@ -168,7 +168,7 @@ unverified or incompatible model.
 
 ## Open decisions (defer to the owner)
 
-- **Base model:** stay on Llama 3.2 (1B/3B) for runtime/tokenizer parity, or
+- **Base model:** stay on Llama 3.1 8B / Gemma 4 E2B for runtime/tokenizer parity, or
   evaluate a small clinical-domain base? (Licensing + on-device size are the
   constraints.)
 - **Ship shape:** a single merged GGUF (simplest) vs. base + swappable LoRA

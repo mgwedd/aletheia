@@ -323,7 +323,7 @@ final class AppSettings: ObservableObject {
         if let raw = defaults.string(forKey: Keys.llamaModel), let model = LlamaModel(rawValue: raw) {
             llamaModel = model
         } else {
-            llamaModel = .recommended
+            llamaModel = .recommended(for: hardware)
         }
         ollamaModelName = defaults.string(forKey: Keys.ollamaModelName) ?? recommendation.ollamaModel
         let savedPrompt = defaults.string(forKey: Keys.systemPrompt)

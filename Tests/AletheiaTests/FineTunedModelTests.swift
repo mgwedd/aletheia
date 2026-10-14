@@ -8,7 +8,7 @@ import XCTest
 /// what's pinned here is the source-agnostic, runtime-free contract.
 final class FineTunedModelTests: XCTestCase {
 
-    /// A therapy adapter trained against the recommended 3B base.
+    /// A therapy adapter trained against the recommended base (Llama 3.1 8B).
     private func therapyAdapter(
         base: LlamaModel = .llama31_8b,
         sha: String = "abc123"
