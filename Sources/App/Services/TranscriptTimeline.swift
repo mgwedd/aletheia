@@ -24,6 +24,15 @@ enum TranscriptTimeline {
         }
     }
 
+    /// The words alone: drops each line's `[MM:SS] Speaker:` stamp, for showing
+    /// a quote without the transcript's bookkeeping. Untimed lines are kept.
+    static func spokenText(_ text: String) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false).map { line in
+            line.range(of: #"^\s*\[[0-9:]+\][^:\n]*:\s*"#, options: .regularExpression)
+                .map { String(line[$0.upperBound...]) } ?? String(line)
+        }.joined(separator: " ")
+    }
+
     /// The time code of the transcript line that a quoted passage falls in — the
     /// timestamp of the last line at or before where the quote first appears.
     /// Returns nil if the quote isn't found verbatim or no line before it carries

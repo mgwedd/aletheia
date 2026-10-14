@@ -122,4 +122,11 @@ final class TranscriptTimelineTests: XCTestCase {
         XCTAssertEqual(TranscriptTimeline.durationLabel(3840), "1h 04m")
         XCTAssertEqual(TranscriptTimeline.durationLabel(-3), "0s")
     }
+
+    func testSpokenTextDropsLineStamps() {
+        XCTAssertEqual(
+            TranscriptTimeline.spokenText("[00:03] Call audio (overlapping): hello there\n[1:02:10] You: and: more"),
+            "hello there and: more")
+        XCTAssertEqual(TranscriptTimeline.spokenText("just words: here"), "just words: here")
+    }
 }
