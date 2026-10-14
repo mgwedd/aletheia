@@ -299,29 +299,31 @@ enum LongSessionNote {
     /// and whole-word; ' and ’ are the same character.
     nonisolated static let defaultRiskPhrases: [String] = [
         // Suicide: statements
-        "suicide", "suicidal", "kill myself", "killing myself", "end my life",
-        "ending my life", "take my life", "end it all", "want to die",
-        "wanna die", "wish I was dead",
-        "better off dead", "better off without me", "rather be dead",
+        "suicide", "suicidal", "kill myself", "killing myself", "end my life", "end my own life",
+        "ending my life", "take my life", "take my own life", "end it all", "ending it all",
+        "want to die", "wanna die", "wish I was dead", "wish I were dead", "better off dead",
+        "better off without me", "rather be dead",
         // Suicide: passive
-        "don't want to be here", "don't want to live",
-        "don't want to wake up", "hope I don't wake up", "not wake up", "nothing to live for",
-        "reason to live",
+        "don't want to be here anymore", "don't want to live", "don't want to wake up",
+        "hope I don't wake up", "never wake up", "nothing to live for", "no reason to live",
+        "thoughts of dying", "can't go on",
         // Suicide: plans and means
-        "plan to kill", "overdose", "overdosed", "took all my pills",
-        "took a whole bottle", "hang myself", "walk into traffic",
+        "plan to kill", "overdose", "overdosed", "took all my pills", "took a whole bottle",
+        "hang myself", "walk into traffic", "jump off",
         // Suicide: clinical shorthand
-        "denies SI", "endorses SI", "no SI", "history of SI", "SI/HI",
-        "denies HI", "endorses HI",
+        "denies SI", "endorses SI", "history of SI", "SI/HI", "denies HI", "endorses HI",
         // Self-harm
-        "cut myself", "cutting myself", "I've been cutting", "burn myself", "burning myself",
+        "cut myself", "cutting myself", "I've been cutting myself", "burn myself", "burning myself",
         "hurt myself", "hurting myself", "harm myself", "harming myself", "self-harm",
         "self harm", "hit myself", "starving myself", "denies SH", "endorses SH",
         // Violence to others and by others
-        "kill him", "kill her", "want to kill", "going to kill",
-        "threatened to kill", "murder", "homicidal", "want to hurt",
-        "shooting up", "hit me", "hits me", "beat me",
-        "choked me",
+        "kill him", "kill her", "kill them", "kill you", "kill someone", "kill people",
+        "gonna kill", "going to kill", "threatened to kill", "killed himself", "killed herself",
+        "killing himself", "killing herself", "murder him", "murder her", "murder them",
+        "homicidal", "homicide", "want to hurt him", "want to hurt her", "want to hurt someone",
+        "want to hurt myself", "hurt someone", "harm others", "shoot up the", "shoot him",
+        "shoot her", "stab him", "stab her", "stab myself", "he hit me", "she hit me",
+        "hits me when", "beat me up", "choked me",
     ]
 
     /// Each line that holds a risk phrase, with where the first one sits.
@@ -565,26 +567,53 @@ extension Prompts {
 /// word, any run of spaces for a space, and ' ‘ ’ ʼ all the same character.
 /// Phrases are escaped, so no pattern syntax reaches the regex engine.
 struct RiskPhraseMatcher {
-    private let regex: NSRegularExpression?
+    private static let apostrophes: [Character] = ["'", "\u{2018}", "\u{2019}", "\u{02BC}"]
 
-    init(_ phrases: [String]) {
-        let apostrophes: [Character] = ["'", "\u{2018}", "\u{2019}", "\u{02BC}"]
-        let apostrophe = #"['\u2018\u2019\u02BC]"#
+    private let regex: NSRegularExpression?
+    /// Used only if the pattern ever fails to compile: case-insensitive
+    /// substring matching on the phrases themselves, so a failure never means no matches.
+    private let literals: [String]
+
+    init(_ phrases: [String], forceLiteralFallback: Bool = false) {
+        let apostrophe = #"['‘’ʼ]"#
         let parts = phrases.compactMap { raw -> String? in
             let words = raw.split(whereSeparator: \.isWhitespace)
             guard !words.isEmpty else { return nil }
             return words.map { word in
-                word.map { apostrophes.contains($0) ? apostrophe : NSRegularExpression.escapedPattern(for: String($0)) }
+                word.map { Self.apostrophes.contains($0) ? apostrophe : NSRegularExpression.escapedPattern(for: String($0)) }
                     .joined()
             }.joined(separator: #"\s+"#)
         }
-        regex = parts.isEmpty ? nil : try? NSRegularExpression(
+        literals = phrases.map { Self.straight($0.trimmingCharacters(in: .whitespacesAndNewlines)) }.filter { !$0.isEmpty }
+        guard !parts.isEmpty, !forceLiteralFallback else {
+            regex = nil
+            return
+        }
+        let compiled = try? NSRegularExpression(
             pattern: #"(?<![\p{L}\p{N}])(?:"# + parts.joined(separator: "|") + #")(?![\p{L}\p{N}])"#,
             options: [.caseInsensitive])
+        if compiled == nil { assertionFailure("risk phrase pattern failed to compile") }
+        regex = compiled
     }
 
     /// Where the first phrase sits in `text`, if any does.
     func firstMatch(in text: String) -> NSRange? {
-        regex?.firstMatch(in: text, range: NSRange(text.startIndex..., in: text))?.range
+        if let regex { return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text))?.range }
+        // Every apostrophe form is one UTF-16 unit, so ranges in `plain` hold for `text`.
+        let plain = Self.straight(text)
+        for literal in literals {
+            if let found = plain.range(of: literal, options: .caseInsensitive) { return NSRange(found, in: plain) }
+        }
+        return nil
+    }
+
+    /// `text` with every apostrophe form as a straight one.
+    private static func straight(_ text: String) -> String {
+        String(text.map { apostrophes.contains($0) ? "'" : $0 })
+    }
+
+    /// A phrase as the matcher sees it: apostrophes alike, spaces collapsed, no case.
+    static func normalized(_ phrase: String) -> String {
+        straight(phrase).split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
     }
 }

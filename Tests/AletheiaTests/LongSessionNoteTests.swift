@@ -254,35 +254,48 @@ final class LongSessionNoteTests: XCTestCase {
     }
 
     func testTheDefaultListIsAReadableSizeWithNoDuplicates() {
-        XCTAssertTrue((30...70).contains(defaultPhrases.count), "\(defaultPhrases.count) phrases")
+        XCTAssertTrue((30...110).contains(defaultPhrases.count), "\(defaultPhrases.count) phrases")
         XCTAssertEqual(Set(defaultPhrases.map { $0.lowercased() }).count, defaultPhrases.count)
         XCTAssertFalse(defaultPhrases.contains { $0.trimmingCharacters(in: .whitespaces) != $0 || $0.isEmpty })
     }
 
     func testDefaultsMatchSuicideSelfHarmAndViolence() {
         let risky = [
-            "I want to kill myself", "I don't want to be here", "I don\u{2019}t want to be here",
+            "I want to kill myself", "I don't want to be here anymore", "I don\u{2019}t want to be here anymore",
             "I don\u{2018}t want to live", "I don\u{02BC}t want to live", "he threatened to kill me",
             "I'm going to kill him", "I wish I was dead", "He hits me when he drinks", "Client denies SI",
-            "client DENIES si/hi", "No SI", "Client endorses SH", "I've been cutting", "I\u{2019}ve been cutting",
+            "client DENIES si/hi", "Client endorses SH", "I've been cutting myself", "I\u{2019}ve been cutting myself",
             "I cut myself", "I overdosed last year", "she would murder him", "I want to hurt someone",
-            "he beat me", "I hope I don't wake up", "I took all my pills", "I might walk into traffic",
+            "he beat me up", "I hope I don't wake up", "I took all my pills", "I might walk into traffic",
             "history of SI", "Reports HI: no. Denies HI.", "I think about self-harm",
+            "take my own life", "end my own life", "wish I were dead", "thinking of ending it all",
+            "she killed herself", "he killed himself", "she is killing herself", "he is killing himself",
+            "I will kill them", "I could kill you", "I might kill someone", "I want to kill people", "I\u{2019}m gonna kill",
+            "I want to hurt someone", "I want to hurt him", "I want to hurt myself", "I could harm others",
+            "thoughts of dying", "I can\u{2019}t go on", "I can't go on", "I want to jump off the bridge",
+            "I will shoot him", "I will shoot her", "I will stab him", "I will stab her", "I might stab myself",
+            "a homicide threat", "he hit me", "she hit me", "he hits me when he drinks", "never wake up",
+            "I want to shoot up the school", "I will murder her", "I will murder them", "ending it all",
+            "I have no reason to live",
         ]
         for line in risky { XCTAssertTrue(isRisk(line), line) }
     }
 
     func testAmbiguousShortPhrasesAreNotDefaults() {
         for line in [
-            "I give up on this recipe", "He shot me a look", "I threaten to leave the group", "She ended it with him",
+            "I give up on this recipe", "He shot me a look",
+            "It hit me that I was late", "She beat me to the door", "I did not wake up until noon",
+            "I am cutting back on coffee", "I don\u{2019}t want to hurt his feelings", "A murder mystery novel",
+            "Prices are shooting up", "The SI units were converted", "No SI units here", "He hits me up for gossip",
+            "I want to kill the lights", "It is not wake up time", "She found a reason to live it up",
+            "I\u{2019}ve been cutting corners", "I threaten to leave the group", "She ended it with him",
             "I hit him with a serve", "I hurt her feelings once", "I took a shot at it", "He put his hands on the table",
         ] { XCTAssertFalse(isRisk(line), line) }
     }
 
     func testTheMainFalsePositivesAreAcceptedBecauseTheListIsEditable() {
-        XCTAssertTrue(isRisk("It hit me that I was late"))
         XCTAssertTrue(isRisk("I want to die laughing at that show"))
-        XCTAssertTrue(isRisk("She found a reason to live it up"))
+        XCTAssertTrue(isRisk("We could jump off the dock into the lake"))
     }
 
     func testDefaultsMissNothingBenign() {
@@ -324,6 +337,14 @@ final class LongSessionNoteTests: XCTestCase {
         }
     }
 
+    func testTheLiteralFallbackNeverFailsOpen() {
+        let matcher = RiskPhraseMatcher(["kill myself", "don't want to live"], forceLiteralFallback: true)
+        XCTAssertNotNil(matcher.firstMatch(in: "Some days I want to KILL MYSELF"))
+        XCTAssertNotNil(matcher.firstMatch(in: "I don\u{2019}t want to live"))
+        XCTAssertNil(matcher.firstMatch(in: "a quiet week in the garden"))
+        XCTAssertNil(RiskPhraseMatcher([], forceLiteralFallback: true).firstMatch(in: "kill myself"))
+    }
+
     func testBlankPhrasesMatchNothing() {
         XCTAssertFalse(isRisk("anything at all", ["", "   "]))
         XCTAssertFalse(isRisk("anything at all", []))
@@ -355,9 +376,12 @@ final class LongSessionNoteTests: XCTestCase {
         XCTAssertEqual(AppSettings.loadRiskPhrases(from: .standard), [])
         settings.addRiskPhrase("  my phrase ")
         settings.addRiskPhrase("MY PHRASE")
+        settings.addRiskPhrase("my   phrase")
         settings.addRiskPhrase("   ")
-        XCTAssertEqual(settings.riskPhrases, ["my phrase"])
-        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: "riskPhrases"), ["my phrase"])
+        settings.addRiskPhrase("don't like it")
+        settings.addRiskPhrase("Don\u{2019}t  like it")
+        XCTAssertEqual(settings.riskPhrases, ["my phrase", "don't like it"])
+        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: "riskPhrases"), ["my phrase", "don't like it"])
         settings.resetRiskPhrases()
         XCTAssertEqual(settings.riskPhrases, defaultPhrases)
         XCTAssertNil(UserDefaults.standard.object(forKey: "riskPhrases"))
@@ -528,7 +552,7 @@ final class LongSessionNoteTests: XCTestCase {
         XCTAssertTrue(LongSessionNote.plausiblyComplete(checkedDraft, draft: checkedDraft, format: .soap, phrases: defaultPhrases))
         let dropped = checkedDraft.replacingOccurrences(of: " Client denies SI/HI.", with: "")
         XCTAssertFalse(LongSessionNote.plausiblyComplete(dropped, draft: checkedDraft, format: .soap, phrases: defaultPhrases))
-        for variant in ["Client denies SI.", "No SI.", "Client denies SI and HI."] {
+        for variant in ["Client denies SI.", "Client endorses SI.", "Client denies SI and HI."] {
             let draft = checkedDraft.replacingOccurrences(of: "Client denies SI/HI.", with: variant)
             let gone = draft.replacingOccurrences(of: variant, with: "")
             XCTAssertFalse(LongSessionNote.plausiblyComplete(gone, draft: draft, format: .soap, phrases: defaultPhrases), variant)

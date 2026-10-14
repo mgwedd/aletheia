@@ -216,7 +216,8 @@ final class AppSettings: ObservableObject {
     /// Adds a phrase (trimmed; ignored if empty or already listed, ignoring case).
     func addRiskPhrase(_ text: String) {
         let phrase = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !phrase.isEmpty, !riskPhrases.contains(where: { $0.caseInsensitiveCompare(phrase) == .orderedSame }) else { return }
+        let key = RiskPhraseMatcher.normalized(phrase)
+        guard !key.isEmpty, !riskPhrases.contains(where: { RiskPhraseMatcher.normalized($0) == key }) else { return }
         riskPhrases.append(phrase)
     }
     func resetRiskPhrases() { riskPhrases = LongSessionNote.defaultRiskPhrases }
