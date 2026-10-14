@@ -111,6 +111,7 @@ enum HarnessScoring {
 enum HarnessRun {
     static func runIfRequested() {
         let argv = ProcessInfo.processInfo.arguments
+        if HarnessEval.runIfRequested(argv: argv) { return }
         if let args = HarnessBenchArgs.parse(argv) {
             Task { @MainActor in exit(await bench(args)) }
         } else if let args = HarnessArgs.parse(argv) {
