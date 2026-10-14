@@ -57,6 +57,8 @@ struct TranscriptCoverage: Equatable {
     var wholeTranscripts = false
     /// What was sent are whole transcripts (the newest that fit), not search passages.
     var fullTexts = false
+    /// Nothing whole fit, so only the newest transcript, cut short, was sent.
+    var newestCutShort = false
     /// Sessions whose notes or comments were cut short or left out to fit.
     var notesCutSessions: Int = 0
 
@@ -77,7 +79,14 @@ struct TranscriptCoverage: Equatable {
             if wholeTranscripts {
                 parts.append("full transcripts of \(sessions(sessionsWithPassages))" + search)
             } else if fullTexts {
-                parts.append("full transcripts of the newest \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
+                let read = newestCutShort
+                    ? "the newest session's transcript, cut short (1 of \(sessions(transcriptSessions)))"
+                    : sessionsWithPassages == 0
+                    ? "no full transcripts (not enough room)"
+                    : sessionsWithPassages == 1
+                        ? "the full transcript of the newest session (1 of \(sessions(transcriptSessions)))"
+                        : "full transcripts of the newest \(sessionsWithPassages) of \(sessions(transcriptSessions))"
+                parts.append(read + search)
             } else {
                 parts.append("transcript passages from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
             }

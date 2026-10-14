@@ -35,6 +35,12 @@ enum PatientContextRetriever {
         let whole: Bool
         /// The excerpts are whole transcripts (all of them, or the newest that fit).
         let fullTexts: Bool
+        /// Transcripts (not dates) in `excerpts` that are whole, and transcripts
+        /// with text in range. Only meaningful when `fullTexts`.
+        var wholeCount = 0
+        var totalCount = 0
+        /// Nothing whole fit, so the newest transcript is included cut short.
+        var cutShort = false
     }
 
     /// Transcript characters the patient-wide chat sends per question when a
@@ -75,19 +81,30 @@ enum PatientContextRetriever {
                 && (search.dateRange?.contains($0.date) ?? true)
         }.map { TranscriptDocument(date: $0.date, text: TranscriptCompactor.compact($0.text)) }
         guard !usable.isEmpty else { return Selection(excerpts: [], hitsShown: 0, whole: true, fullTexts: true) }
+        func newestFirst() -> Selection {
+            let kept = wholeExcerpts(usable, budget: characterBudget, labels: labels)
+            return Selection(
+                excerpts: kept.excerpts, hitsShown: 0, whole: false, fullTexts: true,
+                wholeCount: kept.whole, totalCount: usable.count, cutShort: kept.cutShort
+            )
+        }
         let transcriptHits = search.hits.filter { $0.kind == .transcript }
 
         // Everything fits: all of it, newest first, so nothing a search could
         // have found is left out.
         let totalChars = usable.reduce(0) { $0 + blockLength($1, labels: labels) }
         if totalChars <= characterBudget {
-            return Selection(excerpts: wholeExcerpts(usable, budget: characterBudget, labels: labels), hitsShown: transcriptHits.count, whole: true, fullTexts: true)
+            return Selection(
+                excerpts: wholeExcerpts(usable, budget: characterBudget, labels: labels).excerpts,
+                hitsShown: transcriptHits.count, whole: true, fullTexts: true,
+                wholeCount: usable.count, totalCount: usable.count
+            )
         }
         // No terms to rank on, or terms with no transcript match: the newest
         // sessions that fit, rather than nothing. `whole` is false: older
         // sessions were left out, and the label says how many.
         guard !search.terms.isEmpty, !transcriptHits.isEmpty else {
-            return Selection(excerpts: wholeExcerpts(usable, budget: characterBudget, labels: labels), hitsShown: 0, whole: false, fullTexts: true)
+            return newestFirst()
         }
 
         // Best hits first; each adds only the context lines not already kept
@@ -135,7 +152,7 @@ enum PatientContextRetriever {
             byDate[dateOf[document]!, default: []].append(text)
         }
         let excerpts = byDate.keys.sorted(by: >).map { Excerpt(date: $0, text: TranscriptCompactor.compact(byDate[$0]!.joined(separator: "\n…\n"))) }
-        return Selection(excerpts: excerpts, hitsShown: shown, whole: false, fullTexts: false)
+        return Selection(excerpts: excerpts, hitsShown: shown, whole: false, fullTexts: false, totalCount: usable.count)
     }
 
     /// The lines nearest `center` (a position in `lines`) that fit `room`
@@ -178,17 +195,33 @@ enum PatientContextRetriever {
         header(doc.date, labels: labels).count + 1 + doc.text.count + 2
     }
 
-    /// Whole transcripts, newest first, each only if it still fits `budget`
-    /// (a session too long for what is left is skipped, not cut).
-    private static func wholeExcerpts(_ documents: [TranscriptDocument], budget: Int, labels: [Date: String]) -> [Excerpt] {
+    /// Whole transcripts, newest first, stopping at the first one that does not
+    /// fit `budget` (never skipped over), so what is kept is exactly "the newest
+    /// K sessions". When not even the newest fits, its latest lines are kept,
+    /// cut to fit, rather than sending no transcript text at all.
+    private static func wholeExcerpts(
+        _ documents: [TranscriptDocument], budget: Int, labels: [Date: String]
+    ) -> (excerpts: [Excerpt], whole: Int, cutShort: Bool) {
+        // Same-day sessions keep their given order (not left to sort stability).
+        let ordered = documents.enumerated()
+            .sorted { $0.element.date != $1.element.date ? $0.element.date > $1.element.date : $0.offset < $1.offset }
+            .map(\.element)
         var result: [Excerpt] = []
         var used = 0
-        for doc in documents.sorted(by: { $0.date > $1.date }) {
+        for doc in ordered {
             let length = blockLength(doc, labels: labels)
-            guard used + length <= budget else { continue }
+            guard used + length <= budget else { break }
             result.append(Excerpt(date: doc.date, text: doc.text))
             used += length
         }
-        return result
+        if result.isEmpty, let newest = ordered.first {
+            let room = budget - header(newest.date, labels: labels).count - 3
+            let lines = Array(newest.text.components(separatedBy: "\n").enumerated().map { (offset: $0.offset, element: $0.element) })
+            let kept = room > 1 ? trimmed(lines, around: lines.count - 1, room: room) : []
+            if !kept.isEmpty {
+                return ([Excerpt(date: newest.date, text: kept.map(\.element).joined(separator: "\n"))], 0, true)
+            }
+        }
+        return (result, result.count, false)
     }
 }

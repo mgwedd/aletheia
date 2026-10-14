@@ -23,7 +23,7 @@ extension Prompts {
     /// transcript is included; `newest` (included, of) means only the full
     /// transcripts of the newest sessions are.
     static func searchBlock(
-        _ result: SessionSearch.Result, shown: Int, whole: Bool, newest: (included: Int, of: Int)? = nil,
+        _ result: SessionSearch.Result, shown: Int, whole: Bool, newest: (included: Int, of: Int, cutShort: Bool)? = nil,
         unreadableSessions: Int
     ) -> String {
         func plural(_ n: Int, _ word: String) -> String { "\(n) \(word)\(n == 1 ? "" : "s")" }
@@ -32,7 +32,13 @@ extension Prompts {
         if whole {
             included = "the full transcripts are included below"
         } else if let newest {
-            included = "only the full transcripts of the newest \(newest.included) of \(plural(newest.of, "session")) are included below; the older ones were not read"
+            included = newest.cutShort
+                ? "only the newest session's transcript, cut short to fit, is included below (1 of \(plural(newest.of, "session"))); the other transcripts are not included"
+                : newest.included == 0
+                ? "no session transcript is included below"
+                : newest.included == 1
+                    ? "only the full transcript of the newest session (1 of \(newest.of)) is included below; the older transcripts are not included"
+                    : "only the full transcripts of the newest \(newest.included) of \(plural(newest.of, "session")) are included below; the older transcripts are not included"
         } else {
             included = "showing the top \(plural(shown, "transcript passage"))"
         }
