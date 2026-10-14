@@ -1,17 +1,34 @@
 import Foundation
 
 /// Builds a session's digest in the background: one model call per section, then
-/// one to merge them, each run as its own `InferenceQueue` job at low priority so
+/// merges of them, each run as its own `InferenceQueue` job at low priority so
 /// a note or chat answer never waits behind a whole session's worth of digesting.
+/// Every call goes through `AssistantService`, so it gets the same context-budget
+/// check, progress report and truncation tripwire as a note or an answer.
 ///
-/// `status` holds a calm one-line progress text per session while it builds
-/// ("Building digest · section 4 of 11"); a session absent from it is idle.
+/// `progress` holds live state per session while it builds (stage, elapsed,
+/// tokens); `failures` holds a short message for a build that failed. A session
+/// in neither is idle.
 @MainActor
 final class DigestBuilder: ObservableObject {
-    @Published private(set) var status: [UUID: String] = [:]
+    @Published private(set) var progress: [UUID: AIRunProgress] = [:]
+    @Published private(set) var failures: [UUID: String] = [:]
+
+    /// One build in flight. `id` tells it apart from the build that replaced it.
+    private struct Build {
+        let id: UUID
+        /// Transcript fingerprint and model it is building for.
+        let key: String
+        let task: Task<Void, Never>
+    }
 
     private let queue: InferenceQueue
-    private var tasks: [UUID: Task<Void, Never>] = [:]
+    private var builds: [UUID: Build] = [:]
+
+    /// Applies a change to the live progress of the call that started at
+    /// `started` (nil: whichever call is current). Events from an earlier call
+    /// or build are dropped.
+    typealias Live = @MainActor (_ started: Date?, _ change: (inout AIRunProgress) -> Void) -> Void
 
     init(queue: InferenceQueue) {
         self.queue = queue
@@ -19,9 +36,10 @@ final class DigestBuilder: ObservableObject {
 
     // MARK: - Lifecycle
 
-    /// Starts a background build unless the stored digest is already current or a
-    /// build for this session is running. A build for a changed transcript or
-    /// model replaces the one in flight.
+    /// Starts a background build unless the stored digest is already current or
+    /// a build for this transcript and model is running. A build for a changed
+    /// transcript or model replaces the one in flight. The stored digest is read
+    /// (and decrypted) off the main thread.
     func ensureDigest(
         for patient: Patient,
         session: SessionRecord,
@@ -29,41 +47,68 @@ final class DigestBuilder: ObservableObject {
         store: Store,
         service: AssistantService
     ) {
-        if store.digest(for: patient, session: session, model: service.model) != nil { return }
+        let key = NoteFreshness.fingerprint(of: transcript) + "|" + service.model
+        if builds[session.id]?.key == key { return }
         cancel(session.id)
-        status[session.id] = "Building digest…"
-        tasks[session.id] = Task { [weak self] in
-            guard let self else { return }
+        let id = UUID()
+        let task = Task { [weak self] in
+            let model = service.model
+            let alreadyCurrent = await Task.detached {
+                store.digest(for: patient, session: session, model: model) != nil
+            }.value
+            guard let self, self.builds[session.id]?.id == id else { return }
+            if alreadyCurrent {
+                self.builds[session.id] = nil
+                return
+            }
+            self.progress[session.id] = AIRunProgress(readTitle: "Reading", startedAt: Date())
             do {
-                let digest = try await self.build(transcript: transcript, service: service) { done, total in
-                    self.status[session.id] = "Building digest · section \(done) of \(total)"
-                }
+                let digest = try await self.build(transcript: transcript, service: service, live: { started, change in
+                    self.update(session.id, build: id, started: started, change)
+                })
                 try Task.checkCancellation()
+                guard self.builds[session.id]?.id == id else { return }
                 try store.saveDigest(digest, for: patient, session: session)
             } catch {
-                // Best effort: a failed or cancelled build just leaves the session
-                // without a digest; the next trigger tries again.
+                // Cancelling (Stop, or a newer build replacing this one) is not
+                // a failure.
+                if !Task.isCancelled && !(error is CancellationError) && self.builds[session.id]?.id == id {
+                    self.failures[session.id] = "Couldn't build the digest: \(error.localizedDescription)"
+                }
             }
-            self.status[session.id] = nil
-            self.tasks[session.id] = nil
+            // A replaced or cancelled build leaves its successor's state alone.
+            guard self.builds[session.id]?.id == id else { return }
+            self.builds[session.id] = nil
+            self.progress[session.id] = nil
         }
+        builds[session.id] = Build(id: id, key: key, task: task)
     }
 
     func cancel(_ sessionID: UUID) {
-        tasks[sessionID]?.cancel()
-        tasks[sessionID] = nil
-        status[sessionID] = nil
+        builds[sessionID]?.task.cancel()
+        builds[sessionID] = nil
+        progress[sessionID] = nil
+        failures[sessionID] = nil
+    }
+
+    private func update(_ sessionID: UUID, build: UUID, started: Date?, _ change: (inout AIRunProgress) -> Void) {
+        guard builds[sessionID]?.id == build, var current = progress[sessionID] else { return }
+        if let started, current.startedAt != started { return }
+        change(&current)
+        progress[sessionID] = current
     }
 
     // MARK: - Building
 
-    /// Digests every section of `transcript`, then merges them. `progress` is told
-    /// which section is being worked on (1-based). Throws `CancellationError` if
-    /// the surrounding task is cancelled.
+    /// Digests every section of `transcript`, then merges them (in budget-sized
+    /// groups when they don't fit one prompt). `progress` is told which section
+    /// is being worked on (1-based); `live` gets the running model call's state.
+    /// Throws `CancellationError` if the surrounding task is cancelled.
     func build(
         transcript: String,
         service: AssistantService,
-        progress: @escaping (_ section: Int, _ of: Int) -> Void = { _, _ in }
+        progress: @escaping (_ section: Int, _ of: Int) -> Void = { _, _ in },
+        live: @escaping Live = { _, _ in }
     ) async throws -> SessionDigest {
         let sections = TranscriptSections.split(transcript)
         var parts: [SessionDigest.Section] = []
@@ -72,12 +117,14 @@ final class DigestBuilder: ObservableObject {
             try Task.checkCancellation()
             progress(index + 1, sections.count)
             let anchor = section.anchor(index: index, count: sections.count)
-            let text = try await generate(Prompts.sectionDigest(text: section.text, anchor: anchor), label: "digest", service: service)
+            let text = try await generate(
+                Prompts.sectionDigest(text: section.text, anchor: anchor),
+                stage: "Reading section \(index + 1) of \(sections.count)", service: service, live: live)
             parts.append(.init(start: section.start, end: section.end, digest: text))
             anchored.append((anchor, text))
         }
         try Task.checkCancellation()
-        let merged = try await generate(Prompts.sessionDigest(sections: anchored), label: "digest", service: service)
+        let merged = try await merge(anchored, service: service, live: live)
         return SessionDigest(
             model: service.model,
             promptVersion: Prompts.digestVersion,
@@ -88,18 +135,82 @@ final class DigestBuilder: ObservableObject {
         )
     }
 
-    /// One model call, run as a `.digest` job on the shared queue.
-    private func generate(_ prompt: String, label: String, service: AssistantService) async throws -> String {
+    /// Merges section digests into the session digest. While they don't fit one
+    /// prompt, merges them in groups of as many as fit and repeats on the
+    /// results, so the final merge is always within budget (or fails with
+    /// `ContextBudgetError` when even two can't be merged).
+    private func merge(
+        _ items: [(anchor: String, digest: String)], service: AssistantService, live: @escaping Live
+    ) async throws -> String {
+        var items = items
+        while items.count > 1 && !service.fits(prompt: Prompts.sessionDigest(sections: items)) {
+            try Task.checkCancellation()
+            var next: [(anchor: String, digest: String)] = []
+            var group: [(anchor: String, digest: String)] = []
+            func flush() async throws {
+                guard let first = group.first, let last = group.last else { return }
+                if group.count == 1 {
+                    next.append(first)
+                } else {
+                    let text = try await generate(
+                        Prompts.sessionDigest(sections: group), stage: "Merging digests", service: service, live: live)
+                    next.append(("\(first.anchor) … \(last.anchor)", text))
+                }
+                group = []
+            }
+            for item in items {
+                if group.count >= 2 && !service.fits(prompt: Prompts.sessionDigest(sections: group + [item])) {
+                    try await flush()
+                }
+                group.append(item)
+            }
+            try await flush()
+            items = next
+        }
+        return try await generate(
+            Prompts.sessionDigest(sections: items), stage: "Merging digests", service: service, live: live)
+    }
+
+    /// One model call, run as a `.digest` job on the shared queue and streamed so
+    /// its stage, elapsed time and token count reach `live`.
+    private func generate(
+        _ prompt: String, stage: String, service: AssistantService, live: @escaping Live
+    ) async throws -> String {
         let waiter = JobWaiter()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 // Already cancelled before the job was queued: don't queue it.
                 guard waiter.attach(continuation) else { return }
-                waiter.jobID = queue.enqueue(kind: .digest, label: label) {
+                waiter.jobID = queue.enqueue(kind: .digest, label: "digest") {
+                    let started = Date()
+                    live(nil) { $0 = AIRunProgress(readTitle: stage, writeTitle: "Writing digest", startedAt: started) }
+                    var run = service
+                    let outer = service.report
+                    run.report = { event in
+                        outer?(event)
+                        Task { @MainActor in
+                            live(started) { progress in
+                                switch event {
+                                case .reading(let tokens): progress.estimatedPromptTokens = tokens
+                                case .finished(let stats):
+                                    progress.stats = stats
+                                    if let written = stats.outputTokens { progress.tokensWritten = written }
+                                }
+                            }
+                        }
+                    }
                     do {
-                        let text = try await service.assistant.generate(
-                            model: service.model, system: service.systemPrompt, prompt: prompt
-                        )
+                        var text = ""
+                        var chunks = 0
+                        for try await snapshot in run.streamDigest(prompt: prompt) {
+                            text = snapshot
+                            chunks += 1
+                            live(started) { progress in
+                                if progress.firstTokenAt == nil { progress.firstTokenAt = Date() }
+                                if progress.stats == nil { progress.tokensWritten = chunks }
+                            }
+                        }
+                        try Task.checkCancellation()
                         waiter.finish(.success(text.trimmingCharacters(in: .whitespacesAndNewlines)))
                     } catch {
                         waiter.finish(.failure(error))

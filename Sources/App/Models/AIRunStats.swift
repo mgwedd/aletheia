@@ -8,8 +8,8 @@ struct AIRunStats: Equatable {
     var promptNanos: Int?
     var outputTokens: Int?
     var outputNanos: Int?
-    /// Tokens Ollama should have had to read for this prompt: about 4 characters
-    /// a token, minus any leading part of the prompt it already holds from the
+    /// Tokens Ollama should have had to read for this prompt (the shared
+    /// `ContextBudget.estimatedTokens`), minus any leading part of the prompt it already holds from the
     /// previous request (see `PromptPrefixMemory`). 0 when unknown.
     var expectedPromptTokens: Int = 0
 
@@ -28,9 +28,15 @@ struct AIRunStats: Equatable {
     /// the prompt. Only judged for prompts big enough that the estimate is
     /// reliable, and against `expectedPromptTokens` so a cached prefix (which
     /// Ollama doesn't count in `prompt_eval_count`) isn't mistaken for a cut.
+    ///
+    /// Threshold: 60% of the estimate. The estimate is deliberately high (3
+    /// characters a token; ordinary English tokenizes at about 4, so a complete
+    /// read lands near 75% of it, and text heavy in long words nearer 65%). 60%
+    /// sits under that spread, so only a real cut (a dropped chunk, not
+    /// tokenizer noise) trips it.
     var possiblyTruncated: Bool {
         guard let promptTokens, expectedPromptTokens >= 500 else { return false }
-        return promptTokens * 10 < expectedPromptTokens * 7
+        return promptTokens * 10 < expectedPromptTokens * 6
     }
 
     /// Shown under an answer or note when `possiblyTruncated`.
@@ -44,7 +50,7 @@ struct AIRunStats: Equatable {
 
 /// What a backend tells the UI while a run is going.
 enum AIRunEvent {
-    /// The prompt is built and about to be read; `estimatedTokens` is chars / 4.
+    /// The prompt is built and about to be read; `estimatedTokens` is `ContextBudget.estimatedTokens`.
     case reading(estimatedTokens: Int)
     case finished(AIRunStats)
 }

@@ -45,9 +45,12 @@ final class AIProgressTests: XCTestCase {
     func testTripwireFlagsAPromptOllamaReadLittleOf() {
         XCTAssertTrue(AIRunStats(promptTokens: 4096, expectedPromptTokens: 20_000).possiblyTruncated)
         XCTAssertFalse(AIRunStats(promptTokens: 19_000, expectedPromptTokens: 20_000).possiblyTruncated)
-        // Exactly 70% is not flagged; below it is.
-        XCTAssertFalse(AIRunStats(promptTokens: 14_000, expectedPromptTokens: 20_000).possiblyTruncated)
-        XCTAssertTrue(AIRunStats(promptTokens: 13_999, expectedPromptTokens: 20_000).possiblyTruncated)
+        // Exactly 60% is not flagged; below it is.
+        XCTAssertFalse(AIRunStats(promptTokens: 12_000, expectedPromptTokens: 20_000).possiblyTruncated)
+        XCTAssertTrue(AIRunStats(promptTokens: 11_999, expectedPromptTokens: 20_000).possiblyTruncated)
+        // A complete read of ordinary English (about 4 characters a token) is not flagged.
+        let text = 60_000
+        XCTAssertFalse(AIRunStats(promptTokens: text / 4, expectedPromptTokens: ContextBudget.estimatedTokens(forCharacters: text)).possiblyTruncated)
     }
 
     func testTripwireIgnoresSmallPromptsAndMissingCounts() {
@@ -64,10 +67,10 @@ final class AIProgressTests: XCTestCase {
         let second = String(first.prefix(30_000)) + String(repeating: "b", count: 10_000)
         let cached = memory.sharedPrefixCharacters(model: "m", text: second)
         XCTAssertEqual(cached, 30_000)
-        let expected = (second.count - cached) / 4
+        let expected = ContextBudget.estimatedTokens(forCharacters: second.count - cached)
         XCTAssertFalse(AIRunStats(promptTokens: 2500, expectedPromptTokens: expected).possiblyTruncated)
         // The same small count against the uncached estimate would have fired.
-        XCTAssertTrue(AIRunStats(promptTokens: 2500, expectedPromptTokens: second.count / 4).possiblyTruncated)
+        XCTAssertTrue(AIRunStats(promptTokens: 2500, expectedPromptTokens: ContextBudget.estimatedTokens(forCharacters: second.count)).possiblyTruncated)
     }
 
     func testPrefixMemoryIsPerModel() {
@@ -168,6 +171,27 @@ final class AIProgressTests: XCTestCase {
         for try await _ in service.streamProgressNote(format: .narrative, transcript: "short") {}
         XCTAssertEqual(fake.sent, 1)
         XCTAssertEqual(events.readingEstimates.count, 1)
+        // The shared estimate is what the progress display shows.
+        let prompt = Prompts.progressNote(
+            format: .narrative, transcript: "short", notes: "", comments: [], verbosity: .default, instructions: nil)
+        XCTAssertEqual(events.readingEstimates.first,
+                       ContextBudget.estimatedTokens(forCharacters: service.systemPrompt.count + prompt.count))
+        XCTAssertEqual(ContextBudget.estimatedTokens(forCharacters: 3_000), 1_000)
+    }
+
+    @MainActor
+    func testStaleRunEventIsIgnored() async throws {
+        let runner = ChatStreamRunner()
+        let previous = runner.reporter
+        let current = runner.reporter
+        previous(.reading(estimatedTokens: 111))
+        previous(.finished(AIRunStats(outputTokens: 5)))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertNil(runner.progress.estimatedPromptTokens)
+        XCTAssertNil(runner.progress.stats)
+        current(.reading(estimatedTokens: 222))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(runner.progress.estimatedPromptTokens, 222)
     }
 
     // MARK: Progress wording

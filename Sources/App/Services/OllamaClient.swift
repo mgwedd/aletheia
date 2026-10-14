@@ -177,7 +177,7 @@ final class OllamaClient: Assistant {
     ) -> AsyncThrowingStream<String, Error> {
         let cached = onStats == nil ? 0
             : PromptPrefixMemory.shared.sharedPrefixCharacters(model: model, text: system + "\n" + prompt)
-        let expectedTokens = max(0, system.count + prompt.count - cached) / 4
+        let expectedTokens = ContextBudget.estimatedTokens(forCharacters: max(0, system.count + prompt.count - cached))
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
