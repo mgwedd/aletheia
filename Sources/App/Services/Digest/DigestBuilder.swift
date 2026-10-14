@@ -108,7 +108,8 @@ final class DigestBuilder: ObservableObject {
         transcript: String,
         service: AssistantService,
         progress: @escaping (_ section: Int, _ of: Int) -> Void = { _, _ in },
-        live: @escaping Live = { _, _ in }
+        live: @escaping Live = { _, _ in },
+        inline: Bool = false
     ) async throws -> SessionDigest {
         let sections = TranscriptSections.split(transcript)
         var parts: [SessionDigest.Section] = []
@@ -119,12 +120,12 @@ final class DigestBuilder: ObservableObject {
             let anchor = section.anchor(index: index, count: sections.count)
             let text = try await generate(
                 Prompts.sectionDigest(text: section.text, anchor: anchor),
-                stage: "Reading section \(index + 1) of \(sections.count)", service: service, live: live)
+                stage: "Reading section \(index + 1) of \(sections.count)", service: service, live: live, inline: inline)
             parts.append(.init(start: section.start, end: section.end, digest: text))
             anchored.append((anchor, text))
         }
         try Task.checkCancellation()
-        let merged = try await merge(anchored, service: service, live: live)
+        let merged = try await merge(anchored, service: service, live: live, inline: inline)
         return SessionDigest(
             model: service.model,
             promptVersion: Prompts.digestVersion,
@@ -140,7 +141,7 @@ final class DigestBuilder: ObservableObject {
     /// results, so the final merge is always within budget (or fails with
     /// `ContextBudgetError` when even two can't be merged).
     private func merge(
-        _ items: [(anchor: String, digest: String)], service: AssistantService, live: @escaping Live
+        _ items: [(anchor: String, digest: String)], service: AssistantService, live: @escaping Live, inline: Bool
     ) async throws -> String {
         var items = items
         while items.count > 1 && !service.fits(prompt: Prompts.sessionDigest(sections: items)) {
@@ -153,7 +154,7 @@ final class DigestBuilder: ObservableObject {
                     next.append(first)
                 } else {
                     let text = try await generate(
-                        Prompts.sessionDigest(sections: group), stage: "Merging digests", service: service, live: live)
+                        Prompts.sessionDigest(sections: group), stage: "Merging digests", service: service, live: live, inline: inline)
                     next.append(("\(first.anchor) … \(last.anchor)", text))
                 }
                 group = []
@@ -168,50 +169,27 @@ final class DigestBuilder: ObservableObject {
             items = next
         }
         return try await generate(
-            Prompts.sessionDigest(sections: items), stage: "Merging digests", service: service, live: live)
+            Prompts.sessionDigest(sections: items), stage: "Merging digests", service: service, live: live, inline: inline)
     }
 
-    /// One model call, run as a `.digest` job on the shared queue and streamed so
-    /// its stage, elapsed time and token count reach `live`.
+    /// One model call, run as a `.digest` job on the shared queue. With `inline`
+    /// it runs right here instead: for a caller that is itself a queue job (a
+    /// note building its own digest), which would otherwise wait on itself.
     private func generate(
-        _ prompt: String, stage: String, service: AssistantService, live: @escaping Live
+        _ prompt: String, stage: String, service: AssistantService, live: @escaping Live, inline: Bool
     ) async throws -> String {
+        if inline {
+            return try await runStage(prompt, read: stage, write: "Writing digest", service: service, live: live)
+        }
         let waiter = JobWaiter()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 // Already cancelled before the job was queued: don't queue it.
                 guard waiter.attach(continuation) else { return }
                 waiter.jobID = queue.enqueue(kind: .digest, label: "digest") {
-                    let started = Date()
-                    live(nil) { $0 = AIRunProgress(readTitle: stage, writeTitle: "Writing digest", startedAt: started) }
-                    var run = service
-                    let outer = service.report
-                    run.report = { event in
-                        outer?(event)
-                        Task { @MainActor in
-                            live(started) { progress in
-                                switch event {
-                                case .reading(let tokens): progress.estimatedPromptTokens = tokens
-                                case .finished(let stats):
-                                    progress.stats = stats
-                                    if let written = stats.outputTokens { progress.tokensWritten = written }
-                                }
-                            }
-                        }
-                    }
                     do {
-                        var text = ""
-                        var chunks = 0
-                        for try await snapshot in run.streamDigest(prompt: prompt) {
-                            text = snapshot
-                            chunks += 1
-                            live(started) { progress in
-                                if progress.firstTokenAt == nil { progress.firstTokenAt = Date() }
-                                if progress.stats == nil { progress.tokensWritten = chunks }
-                            }
-                        }
-                        try Task.checkCancellation()
-                        waiter.finish(.success(text.trimmingCharacters(in: .whitespacesAndNewlines)))
+                        waiter.finish(.success(try await self.runStage(
+                            prompt, read: stage, write: "Writing digest", service: service, live: live)))
                     } catch {
                         waiter.finish(.failure(error))
                     }
@@ -224,6 +202,43 @@ final class DigestBuilder: ObservableObject {
                 waiter.finish(.failure(CancellationError()))
             }
         }
+    }
+
+    /// Runs one prompt now, streamed so its stage (`read` while the model reads,
+    /// `write` once text arrives), elapsed time and token count reach `live`.
+    func runStage(
+        _ prompt: String, read: String, write: String, task: AITask = .digest,
+        service: AssistantService, live: @escaping Live
+    ) async throws -> String {
+        let started = Date()
+        live(nil) { $0 = AIRunProgress(readTitle: read, writeTitle: write, startedAt: started) }
+        var run = service
+        let outer = service.report
+        run.report = { event in
+            outer?(event)
+            Task { @MainActor in
+                live(started) { progress in
+                    switch event {
+                    case .reading(let tokens): progress.estimatedPromptTokens = tokens
+                    case .finished(let stats):
+                        progress.stats = stats
+                        if let written = stats.outputTokens { progress.tokensWritten = written }
+                    }
+                }
+            }
+        }
+        var text = ""
+        var chunks = 0
+        for try await snapshot in run.streamDigest(prompt: prompt, task: task) {
+            text = snapshot
+            chunks += 1
+            live(started) { progress in
+                if progress.firstTokenAt == nil { progress.firstTokenAt = Date() }
+                if progress.stats == nil { progress.tokensWritten = chunks }
+            }
+        }
+        try Task.checkCancellation()
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

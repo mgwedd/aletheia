@@ -48,6 +48,14 @@ final class ChatStreamRunner: ObservableObject {
 
     private var currentRun = UUID()
 
+    /// Lets a multi-stage run (digest, passages, check) report its own stage.
+    /// A change from a stage that has since been replaced (`started` no longer
+    /// matches) is dropped; nil applies to whatever is current.
+    func update(started: Date?, _ change: (inout AIRunProgress) -> Void) {
+        if let started, let current = progress.startedAt, started != current { return }
+        change(&progress)
+    }
+
     func apply(_ event: AIRunEvent, run: UUID) {
         guard run == currentRun else { return }
         switch event {
@@ -214,7 +222,7 @@ final class ChatStreamRunner: ObservableObject {
                     onReveal(StreamSmoother.prefix(of: self.target, count: displayed))
                 }
                 // The real count replaces this once the run reports its stats.
-                if self.progress.stats == nil, self.progress.tokensWritten != self.chunkCount {
+                if self.progress.stats == nil, self.chunkCount > 0, self.progress.tokensWritten != self.chunkCount {
                     self.progress.tokensWritten = self.chunkCount
                 }
                 if self.finishedReceiving && displayed >= self.target.count { break }

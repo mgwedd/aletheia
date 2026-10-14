@@ -48,9 +48,10 @@ struct AssistantService {
     }
 
     /// Streams a digest prompt: the same budget check, progress report and
-    /// truncation tripwire as a note or an answer.
-    func streamDigest(prompt: String) -> AsyncThrowingStream<String, Error> {
-        run(task: .digest, system: systemPrompt, prompt: prompt)
+    /// truncation tripwire as a note or an answer. `task` picks the sampling
+    /// settings (a long-session note's draft and check are `.note`).
+    func streamDigest(prompt: String, task: AITask = .digest) -> AsyncThrowingStream<String, Error> {
+        run(task: task, system: systemPrompt, prompt: prompt)
     }
 
     func summarize(transcript: String) async throws -> String {

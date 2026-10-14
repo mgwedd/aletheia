@@ -99,6 +99,8 @@ struct SessionDetailView: View {
     /// Fingerprint of the transcript the displayed format's note was generated
     /// from, if one was recorded. See `NoteFreshness`.
     @State private var noteFingerprint: String?
+/// What a long session's note was written from, when it was not the whole transcript.
+@State private var noteCoverage: String?
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
     @State private var sessionNote: String = ""
@@ -1014,6 +1016,12 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.muted.color)
                         .padding(.horizontal, 20)
                 }
+                if !noteRunner.isStreaming, let noteCoverage {
+                    Text(noteCoverage)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
+                        .padding(.horizontal, 20)
+                }
                 ScrollView {
                     MarkdownMessageView(text: summaryText, style: .note)
                         .textSelection(.enabled)
@@ -1338,6 +1346,9 @@ struct SessionDetailView: View {
         let transcript = transcriptText
         let notes = sessionNote
         let sessionComments = comments
+        let effort = settings.noteEffort
+        let model = service.model
+        noteCoverage = nil
         noteRunner.start(
             queue: integrations.inferenceQueue,
             kind: .note,
@@ -1348,13 +1359,23 @@ struct SessionDetailView: View {
                 // The job has started: drop the old note so the pane can show
                 // progress until the first token.
                 if settings.progressNoteFormat == format { summaryText = "" }
-                return service.streamProgressNote(
+                return LongSessionNote.stream(
                     format: format,
                     transcript: transcript,
                     notes: notes,
                     comments: sessionComments,
                     verbosity: verbosity,
-                    instructions: instructions
+                    instructions: instructions,
+                    effort: effort,
+                    service: service,
+                    builder: integrations.digests,
+                    sessionID: session.id,
+                    loadDigest: { [patient, session] in
+                        await Task.detached { store.digest(for: patient, session: session, model: model) }.value
+                    },
+                    saveDigest: { [patient, session] in try store.saveDigest($0, for: patient, session: session) },
+                    live: { started, change in noteRunner.update(started: started, change) },
+                    coverage: { noteCoverage = $0 }
                 )
             },
             onReveal: { text in
