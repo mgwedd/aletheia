@@ -3,11 +3,13 @@ import XCTest
 
 final class OllamaContextSizeTests: XCTestCase {
     func testContextGrowsWithThePromptInPowersOfTwo() {
-        XCTAssertEqual(OllamaClient.contextSize(forCharacters: 0), 8192)
-        XCTAssertEqual(OllamaClient.contextSize(forCharacters: 18_000), 8192)
+        // Budget given explicitly: the answer must not depend on this Mac's memory.
+        let roomy = 131_072
+        XCTAssertEqual(OllamaClient.contextSize(forCharacters: 0, budget: roomy), 8192)
+        XCTAssertEqual(OllamaClient.contextSize(forCharacters: 18_000, budget: roomy), 8192)
         // A 54-minute session runs about 60,000 characters.
-        XCTAssertEqual(OllamaClient.contextSize(forCharacters: 60_000), 32_768)
-        XCTAssertEqual(OllamaClient.contextSize(forCharacters: 10_000_000), 131_072)
+        XCTAssertEqual(OllamaClient.contextSize(forCharacters: 60_000, budget: roomy), 32_768)
+        XCTAssertEqual(OllamaClient.contextSize(forCharacters: 10_000_000, budget: roomy), 131_072)
     }
 
     func testBodyCarriesTheContextSizeAndSkipsAnEmptySystemPrompt() {
