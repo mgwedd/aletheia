@@ -12,7 +12,9 @@ import SQLite3
 /// Michael accepted that this holds a plaintext copy of the searchable text
 /// (stemmed words, not the original lines; FileVault covers it at rest). The
 /// file is excluded from Time Machine, zeroes freed pages, and its connection
-/// is closed when the app or the data folder locks.
+/// is closed when the app or the data folder locks. When per-folder encryption
+/// locks or is turned off the file is deleted (it would be a plaintext copy of
+/// an encrypted folder); the unlock sweep rebuilds it.
 ///
 /// Layout:
 ///   doc      one row per indexed document: patient, session, kind, date, and a
@@ -67,13 +69,18 @@ final class SearchIndex {
     private var db: OpaquePointer?
     private var corrupt = false
     private var verified = false
-    /// Set by `close()` (the app or data folder locked): nothing reopens the file until `reopen()`.
+    /// Set by `close()` / `destroy()` (a lock engaged): nothing reopens the file until `reopen()` finds `mayOpen()` true.
     private var locked = false
+    /// Asked on every open and on `reopen()`: false while the app lock or the folder's encryption lock is engaged.
+    /// Derived rather than toggled, so unlocking one lock never opens the index behind the other.
+    var mayOpen: () -> Bool = { true }
+    /// Called after `reopen()` succeeds, to re-run the (incremental) sweep.
+    var onReopen: (() -> Void)?
     private let worker = DispatchQueue(label: "aletheia.search-index", qos: .utility)
 
     init(url: URL? = nil) { self.url = url }
 
-    deinit { sqlite3_close(db) }
+    deinit { sqlite3_close_v2(db) }
 
     /// Whether a connection is open, for tests.
     var isOpen: Bool {
@@ -89,16 +96,39 @@ final class SearchIndex {
         guard url != nil else { return }
         lock.lock()
         locked = true
-        sqlite3_close(db)
+        sqlite3_close_v2(db)
         db = nil
         lock.unlock()
     }
 
-    /// Allows the file to be opened again (the app or data folder unlocked).
+    /// Closes the connection and deletes the file and its sidecars (the folder's
+    /// encryption locked or was turned off, so the plaintext copy must go). A
+    /// no-op for an in-memory index.
+    func destroy() {
+        guard let url else { return }
+        lock.lock()
+        locked = true
+        sqlite3_close_v2(db)
+        db = nil
+        verified = false
+        Self.removeFiles(url)
+        lock.unlock()
+    }
+
+    /// Whether the index is closed, or a lock is engaged, so work on it would be dropped.
+    var isBlocked: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return locked || !mayOpen()
+    }
+
+    /// Lets the file open again if no lock is still engaged, and re-kicks the sweep.
     func reopen() {
         lock.lock()
-        locked = false
+        locked = !mayOpen()
+        let open = !locked
         lock.unlock()
+        if open { onReopen?() }
     }
 
 
@@ -173,7 +203,7 @@ final class SearchIndex {
     func missing(_ items: [Item]) -> Set<Int> {
         lock.lock()
         defer { lock.unlock() }
-        guard let db = open() else { return locked ? [] : Set(items.indices) }
+        guard let db = open() else { return locked || !mayOpen() ? [] : Set(items.indices) }
         var result = Set<Int>()
         for (i, item) in items.enumerated() where docID(db, item) == nil { result.insert(i) }
         settle()
@@ -201,7 +231,7 @@ final class SearchIndex {
         lock.lock()
         defer { lock.unlock() }
         guard let db = open() else { return nil }
-        exec(db, "BEGIN")
+        guard exec(db, "BEGIN") else { settle(); return nil }
         var ids: [Int64] = []
         for (i, item) in items.enumerated() {
             guard let id = store(db, item, passages[i] ?? Self.passages(of: item.text, kind: kindOf(item))) else {
@@ -211,7 +241,11 @@ final class SearchIndex {
             }
             ids.append(id)
         }
-        exec(db, "COMMIT")
+        guard exec(db, "COMMIT") else {
+            exec(db, "ROLLBACK")
+            settle()
+            return nil
+        }
         var docs: [Int64: [Int]] = [:]
         for (i, id) in ids.enumerated() { docs[id, default: []].append(i) }
 
@@ -271,10 +305,17 @@ final class SearchIndex {
         lock.lock()
         defer { lock.unlock() }
         guard let db = open() else { return }
-        exec(db, "BEGIN")
+        guard exec(db, "BEGIN") else { settle(); return }
         var keep = Set<Int64>()
         for (i, item) in items.enumerated() {
-            if let id = store(db, item, prepared[i] ?? []) { keep.insert(id) }
+            guard let id = store(db, item, prepared[i] ?? []) else {
+                // All or nothing: no deletes, no stamp, so the sweep retries this session.
+                pendingDelete.removeAll()
+                exec(db, "ROLLBACK")
+                settle()
+                return
+            }
+            keep.insert(id)
         }
         for kind in kinds {
             each(db, "SELECT id FROM doc WHERE session = ?1 AND kind = ?2", binds: [.text(session), .text(kind.rawValue)]) { stmt in
@@ -287,7 +328,7 @@ final class SearchIndex {
             run(db, "INSERT OR REPLACE INTO session(id, patient, stamp) VALUES(?1, ?2, ?3)",
                 binds: [.text(session), .text(patient), .text(stamp)])
         }
-        exec(db, "COMMIT")
+        if !exec(db, "COMMIT") { exec(db, "ROLLBACK") }
         settle()
     }
 
@@ -312,8 +353,7 @@ final class SearchIndex {
     func drop(sessionsNotIn live: Set<String>) {
         lock.lock()
         defer { lock.unlock() }
-        guard let db = open() else { return }
-        exec(db, "BEGIN")
+        guard let db = open(), exec(db, "BEGIN") else { return }
         each(db, "SELECT id, session FROM doc") { stmt in
             let session = Self.text(stmt, 1)
             if session.isEmpty || !live.contains(session) { self.pendingDelete.append(sqlite3_column_int64(stmt, 0)) }
@@ -325,7 +365,7 @@ final class SearchIndex {
             if !live.contains(id) { stale.append(id) }
         }
         for id in stale { run(db, "DELETE FROM session WHERE id = ?1", binds: [.text(id)]) }
-        exec(db, "COMMIT")
+        if !exec(db, "COMMIT") { exec(db, "ROLLBACK") }
         settle()
     }
 
@@ -349,7 +389,7 @@ final class SearchIndex {
 
     /// Opens (creating, and rebuilding from scratch if the file is unusable).
     private func open() -> OpaquePointer? {
-        if locked { return nil }
+        if locked || !mayOpen() { return nil }
         if let db { return db }
         for attempt in 0..<2 {
             if let handle = openOnce() { db = handle; return handle }
@@ -364,10 +404,11 @@ final class SearchIndex {
         if let url { try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true) }
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
         guard sqlite3_open_v2(url?.path ?? ":memory:", &handle, flags, nil) == SQLITE_OK, let db = handle else {
-            sqlite3_close(handle)
+            sqlite3_close_v2(handle)
             return nil
         }
         exec(db, "PRAGMA secure_delete = ON")
+        exec(db, "PRAGMA journal_mode = MEMORY")   // no -journal file to leave text behind or to exclude from backup
         exec(db, "PRAGMA synchronous = OFF")   // a cache: a crash is repaired by the rebuild below
         exec(db, "PRAGMA temp_store = MEMORY")
         exec(db, "PRAGMA cache_size = -65536")
@@ -396,15 +437,17 @@ final class SearchIndex {
         // Walks the whole index (a few hundred ms for a large one), so once per launch, not on every reopen after a lock.
         if ok, !verified { ok = exec(db, "INSERT INTO passage(passage) VALUES('integrity-check')"); verified = ok }
         guard ok, !corrupt else {
-            sqlite3_close(db)
+            sqlite3_close_v2(db)
             corrupt = false
             return nil
         }
         if let url {
             var excluded = URLResourceValues()
             excluded.isExcludedFromBackup = true
-            var target = url
-            try? target.setResourceValues(excluded)
+            for suffix in ["", "-journal", "-wal", "-shm"] {
+                var target = URL(fileURLWithPath: url.path + suffix)
+                try? target.setResourceValues(excluded)   // fails harmlessly for a sidecar that doesn't exist
+            }
         }
         return db
     }
@@ -417,7 +460,7 @@ final class SearchIndex {
         guard corrupt else { return true }
         corrupt = false
         verified = false
-        sqlite3_close(db)
+        sqlite3_close_v2(db)
         db = nil
         if let url { Self.removeFiles(url) }
         return false
@@ -509,8 +552,10 @@ final class SearchIndex {
             sqlite3_bind_int64(insert, 1, Self.rowid(doc: id, line: p.line))
             sqlite3_bind_int64(insert, 2, Int64(p.line))
             sqlite3_bind_text(insert, 3, p.text, -1, Self.transient)
-            note(sqlite3_step(insert))
+            let code = sqlite3_step(insert)
+            note(code)
             sqlite3_reset(insert)
+            if code != SQLITE_DONE { return nil }
         }
         if let addWord = prepare(db, "INSERT OR IGNORE INTO word(term) VALUES(?1)") {
             for word in words {

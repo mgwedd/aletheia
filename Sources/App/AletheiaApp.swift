@@ -58,7 +58,8 @@ struct AletheiaApp: App {
         _settings = StateObject(wrappedValue: settings)
         let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL })
         _encryption = StateObject(wrappedValue: encryption)
-        let appModel = AppModel(settings: settings, encryption: encryption)
+        let appLock = AppLock(settings: settings)
+        let appModel = AppModel(settings: settings, encryption: encryption, appLocked: { [weak appLock] in appLock?.isLocked ?? true })
         _appModel = StateObject(wrappedValue: appModel)
         let integrations = Integrations(settings: settings)
         _integrations = StateObject(wrappedValue: integrations)
@@ -84,7 +85,6 @@ struct AletheiaApp: App {
             checker: AppcastUpdateChecker(feedURL: settings.updateFeedURL),
             currentVersion: UpdateService.bundleVersion()
         ))
-        let appLock = AppLock(settings: settings)
         // Record each successful unlock in the on-device audit log (HIPAA
         // §164.312(b)). AppLock stays decoupled from the log via this hook.
         appLock.onUnlock = { [weak appModel] in

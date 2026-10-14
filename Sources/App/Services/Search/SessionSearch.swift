@@ -128,7 +128,12 @@ enum SessionSearch {
         rest = starred?.stringByReplacingMatches(in: rest, range: remaining, withTemplate: " ") ?? rest
 
         for raw in rest.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "’" }) {
-            guard let word = tokenize(String(raw)).first, word.count > 1, !stopwords.contains(word) else { continue }
+            let words = tokenize(String(raw))
+            if words.count > 1 {   // a word whose combining marks split it, as in the index: match its pieces together
+                add(Term(words: words, isName: false, quoted: true))
+                continue
+            }
+            guard let word = words.first, word.count > 1, !stopwords.contains(word) else { continue }
             add(Term(words: [word], isName: raw.first?.isUppercase == true))
         }
         return result
@@ -267,8 +272,11 @@ enum SessionSearch {
     /// unlock sweep brings it up to date again.
     static func closeIndex() { index.close() }
 
-    /// Lets the index open again, after the app or data folder unlocked.
+    /// Lets the index open again, if neither lock is still engaged.
     static func openIndex() { index.reopen() }
+
+    /// Closes the index and deletes its file: it holds plaintext, so it must not outlive the folder's encryption.
+    static func deleteIndex() { index.destroy() }
 
     // MARK: - Search
 
@@ -650,6 +658,17 @@ enum SessionSearch {
         return nil
     }
 
+    /// FTS5's unicode61 word characters (letters, numbers, private use), so combining
+    /// marks (Devanagari vowel signs and the like) split words here exactly as they do in the index.
+    private static func isWordScalar(_ scalar: Unicode.Scalar) -> Bool {
+        if scalar.isASCII { return (scalar.value | 0x20) >= 0x61 && (scalar.value | 0x20) <= 0x7A || (0x30...0x39).contains(scalar.value) }
+        switch scalar.properties.generalCategory {
+        case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter,
+             .decimalNumber, .letterNumber, .otherNumber, .privateUse: return true
+        default: return false
+        }
+    }
+
     /// Lowercase, accent-free words; `'s` stripped so "Dana's" is "dana".
     static func tokenize(_ text: String) -> [String] {
         var folded = text.lowercased().replacingOccurrences(of: "’", with: "'")
@@ -667,7 +686,7 @@ enum SessionSearch {
             current = String.UnicodeScalarView()
         }
         for scalar in folded.unicodeScalars {
-            if CharacterSet.alphanumerics.contains(scalar) || scalar == "'" || scalar == "’" {
+            if isWordScalar(scalar) || scalar == "'" || scalar == "’" {
                 current.append(scalar)
             } else {
                 flush()

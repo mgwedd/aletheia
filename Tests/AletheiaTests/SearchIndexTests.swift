@@ -1,3 +1,4 @@
+import CryptoKit
 import SQLite3
 import XCTest
 @testable import Aletheia
@@ -90,10 +91,117 @@ final class SearchIndexTests: XCTestCase {
         XCTAssertEqual(index.counts().docs, 1)
 
         manager.lock()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("search.sqlite").path),
+                       "the plaintext index does not outlive the unlock")
         index.reopen()   // the app never sweeps behind the lock; this checks the sweep itself is safe
         let locked = Store(root: dataRoot, protector: manager.protector, searchIndex: index)
         locked.syncSearchIndex()
-        XCTAssertEqual(index.counts().docs, 1, "sealed records read as missing, which must not look like deletion")
+        XCTAssertEqual(index.counts().docs, 0, "sealed records read as missing, which must not look like deletion or leak")
+    }
+
+    // MARK: - Locks
+
+    private final class FakeKeys: DeviceKeyStoring {
+        var keys: [String: SymmetricKey] = [:]
+        func save(_ key: SymmetricKey, for id: String) throws { keys[id] = key }
+        func load(for id: String) -> SymmetricKey? { keys[id] }
+        func delete(for id: String) { keys[id] = nil }
+    }
+
+    private var indexFile: URL { root.appendingPathComponent("search.sqlite") }
+
+    private func populate() {
+        let id = UUID()
+        _ = search([doc("[00:01] A: Dana called.", session: id)], "Dana")
+        XCTAssertTrue(index.isOpen)
+    }
+
+    func testIndexStartsClosedWhileEitherLockIsEngaged() {
+        var appLocked = true, encryptionLocked = false
+        let fresh = SearchIndex(url: root.appendingPathComponent("fresh.sqlite"))
+        fresh.mayOpen = { !appLocked && !encryptionLocked }
+        XCTAssertTrue(fresh.isBlocked)
+        XCTAssertEqual(fresh.counts().docs, 0)
+        XCTAssertFalse(fresh.isOpen)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("fresh.sqlite").path))
+        appLocked = false
+        XCTAssertFalse(fresh.isBlocked)
+        XCTAssertEqual(fresh.counts().docs, 0)
+        XCTAssertTrue(fresh.isOpen)
+        encryptionLocked = true
+        fresh.close()
+        XCTAssertTrue(fresh.isBlocked)
+    }
+
+    func testUnlockingOneLockDoesNotReopenBehindTheOther() {
+        var appLocked = false, encryptionLocked = false
+        var kicks = 0
+        index.mayOpen = { !appLocked && !encryptionLocked }
+        index.onReopen = { kicks += 1 }
+        populate()
+        appLocked = true; encryptionLocked = true
+        index.close()
+        appLocked = false
+        index.reopen()
+        XCTAssertTrue(index.isBlocked)
+        XCTAssertEqual(index.counts().docs, 0)
+        XCTAssertFalse(index.isOpen, "the encryption lock is still engaged")
+        XCTAssertEqual(kicks, 0)
+        encryptionLocked = false
+        index.reopen()
+        XCTAssertFalse(index.isBlocked)
+        XCTAssertEqual(index.counts().docs, 1, "an app lock alone keeps the file")
+        XCTAssertEqual(kicks, 1, "reopening re-kicks the sweep")
+    }
+
+    func testEncryptionLockDeletesTheIndexAndRememberedKeyReopensIt() throws {
+        let dataRoot = root.appendingPathComponent("data")
+        try FileManager.default.createDirectory(at: dataRoot, withIntermediateDirectories: true)
+        let keys = FakeKeys()
+        let manager = EncryptionManager(dataRootProvider: { dataRoot }, deviceKeys: keys)
+        try manager.enable(passphrase: "pw", iterations: 1_000)
+        populate()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: indexFile.path))
+
+        manager.lock()   // nothing remembered: stays locked
+        XCTAssertEqual(manager.state, .lockedNeedsPassphrase)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: indexFile.path))
+        XCTAssertFalse(index.isOpen)
+        XCTAssertEqual(index.counts().docs, 0)
+        XCTAssertFalse(index.isOpen, "search stays off while locked")
+
+        try manager.unlock(passphrase: "pw")
+        try manager.rememberOnDevice()
+        populate()
+        manager.lock()   // refresh() re-reads the remembered key and ends unlocked
+        XCTAssertEqual(manager.state, .unlocked)
+        XCTAssertFalse(index.isBlocked, "an unlocked folder reopens the index")
+        XCTAssertEqual(index.counts().docs, 0, "rebuilt empty; the sweep refills it")
+    }
+
+    func testDisablingEncryptionDeletesTheIndexAndAppLockAloneKeepsIt() throws {
+        let dataRoot = root.appendingPathComponent("data")
+        try FileManager.default.createDirectory(at: dataRoot, withIntermediateDirectories: true)
+        let manager = EncryptionManager(dataRootProvider: { dataRoot }, deviceKeys: FakeKeys())
+        try manager.enable(passphrase: "pw", iterations: 1_000)
+        populate()
+        SessionSearch.closeIndex()   // the app lock
+        XCTAssertTrue(FileManager.default.fileExists(atPath: indexFile.path), "the app lock alone doesn't delete")
+        SessionSearch.openIndex()
+        XCTAssertEqual(index.counts().docs, 1)
+        try manager.disable()
+        XCTAssertEqual(index.counts().docs, 0, "deleted, then rebuilt empty")
+    }
+
+    // MARK: - Words
+
+    func testCombiningMarksSplitWordsTheSameWayInTheIndexAndTheTokenizer() {
+        let word = "ह\u{093F}न\u{094D}द\u{0940}"   // synthetic Hindi word with vowel signs and a virama
+        XCTAssertEqual(SessionSearch.tokenize(word), SessionSearch.tokenize("ह न द"))
+        let id = UUID()
+        let text = "[00:01] A: मैंने \(word) लिखा।"
+        XCTAssertEqual(search([doc(text, session: id)], word).totalMentions, 1)
+        XCTAssertEqual(search([doc(text, session: id)], "\"\(word)\"").totalMentions, 1)
     }
 
     func testIndexIsRebuiltWhenItsFileIsDeletedOrCorrupt() throws {

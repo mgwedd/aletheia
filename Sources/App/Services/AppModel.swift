@@ -45,6 +45,8 @@ final class AppModel: ObservableObject {
     /// encryption is off or locked it's a passthrough, so the stores behave as
     /// they always have.
     private let encryption: EncryptionManager
+    /// Whether the app lock is up; with the encryption lock, decides whether the search index may open.
+    private let appLocked: () -> Bool
     private let spotlightIndexer: SpotlightIndexing
     /// The feature modules this build ships, composed once at launch from the
     /// full catalog. See `FeatureRegistry`.
@@ -53,11 +55,13 @@ final class AppModel: ObservableObject {
     init(
         settings: AppSettings,
         encryption: EncryptionManager,
+        appLocked: @escaping () -> Bool = { false },
         spotlightIndexer: SpotlightIndexing = SpotlightIndexer.shared,
         featureRegistry: FeatureRegistry = .compose(tier: .current, from: FeatureRegistry.allModules)
     ) {
         self.settings = settings
         self.encryption = encryption
+        self.appLocked = appLocked
         self.spotlightIndexer = spotlightIndexer
         self.featureRegistry = featureRegistry
         rebuildStore()
@@ -120,18 +124,16 @@ final class AppModel: ObservableObject {
         let indexURL = root.appendingPathComponent("search.sqlite")
         let index = searchIndex?.url == indexURL ? searchIndex! : SearchIndex(url: indexURL)
         searchIndex = index
+        let manager = encryption, appLocked = self.appLocked
+        index.mayOpen = { !appLocked() && manager.state != .lockedNeedsPassphrase }
+        index.onReopen = { [weak self] in DispatchQueue.main.async { self?.startSearchSync() } }
+        // The file is a plaintext copy: not to be left behind while the folder is locked (e.g. from the last session).
+        if encryption.isEnabled && !encryption.isUnlocked { index.destroy() }
         SessionSearch.index = index
         let newStore = Store(
             root: root, protector: protector, commentStore: newCommentStore, openDatabaseIfMissing: false, searchIndex: index)
         store = newStore
-        // Bring the index up to date in the background (launch, unlock, folder change); not while
-        // locked, when no transcript can be read.
-        searchSync?.cancel()
-        if !encryption.isEnabled || encryption.isUnlocked {
-            searchSync = Task.detached(priority: .utility) {
-                newStore.syncSearchIndex(shouldContinue: { !Task.isCancelled })
-            }
-        }
+        startSearchSync()
         if case let .needsNewerApp(dataVersion, appVersion) = newStore.schemaCompatibility {
             schemaWarning = """
             This folder's data was created by a newer version of Aletheia \
@@ -143,6 +145,17 @@ final class AppModel: ObservableObject {
             schemaWarning = nil
         }
         refreshPatients()
+    }
+
+    /// Brings the index up to date in the background (launch, unlock, folder change). Not while either
+    /// lock is engaged, when no transcript may be read, and it stops as soon as one engages.
+    private func startSearchSync() {
+        searchSync?.cancel()
+        searchSync = nil
+        guard let store, let index = searchIndex, !index.isBlocked else { return }
+        searchSync = Task.detached(priority: .utility) {
+            store.syncSearchIndex(shouldContinue: { !Task.isCancelled && !index.isBlocked })
+        }
     }
 
     /// Runs a save that goes to the database and, if it throws, raises the
