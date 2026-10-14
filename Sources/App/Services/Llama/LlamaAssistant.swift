@@ -46,14 +46,10 @@ final class LlamaAssistant: Assistant {
     }
 
     func generate(model _: String, system: String, prompt: String) async throws -> String {
-        // The pinned model's chat template would be the ideal home for the
-        // system prompt; we prepend it plainly for now.
-        let trimmed = system.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fullPrompt = trimmed.isEmpty ? prompt : "System: \(trimmed)\n\n\(prompt)"
         // Inference is blocking; run it off the calling thread.
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                do { continuation.resume(returning: try self.runInference(prompt: fullPrompt)) }
+                do { continuation.resume(returning: try self.runInference(system: system, prompt: prompt)) }
                 catch { continuation.resume(throwing: error) }
             }
         }
@@ -64,8 +60,6 @@ final class LlamaAssistant: Assistant {
     /// of only returning at the end. Honors cancellation so a Stop in the UI
     /// halts generation promptly.
     func stream(model _: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
-        let trimmed = system.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fullPrompt = trimmed.isEmpty ? prompt : "System: \(trimmed)\n\n\(prompt)"
         let cancelled = CancellationFlag()
         return AsyncThrowingStream { continuation in
             continuation.onTermination = { _ in cancelled.cancel() }
@@ -73,7 +67,8 @@ final class LlamaAssistant: Assistant {
                 guard let self else { continuation.finish(); return }
                 do {
                     try self.runInference(
-                        prompt: fullPrompt,
+                        system: system,
+                        prompt: prompt,
                         isCancelled: { cancelled.isCancelled }
                     ) { soFar in
                         continuation.yield(soFar)
@@ -101,13 +96,14 @@ final class LlamaAssistant: Assistant {
     /// streaming caller stop generation early. Returns the final trimmed text.
     @discardableResult
     private func runInference(
+        system: String,
         prompt: String,
         isCancelled: @escaping () -> Bool = { false },
         onToken: ((String) -> Void)? = nil
     ) throws -> String {
         try ensureModelLoaded()
         guard let model else { throw LlamaError.modelLoadFailed }
-        let vocab = llama_model_get_vocab(model)
+        guard let vocab = llama_model_get_vocab(model) else { throw LlamaError.tokenizeFailed }
 
         var contextParams = llama_context_default_params()
         contextParams.n_ctx = 4096
@@ -117,14 +113,9 @@ final class LlamaAssistant: Assistant {
         }
         defer { llama_free(context) }
 
-        // Tokenize the prompt (add BOS, parse special tokens).
-        let byteCount = Int32(prompt.utf8.count)
-        let needed = -llama_tokenize(vocab, prompt, byteCount, nil, 0, true, true)
-        guard needed > 0 else { throw LlamaError.tokenizeFailed }
-        var tokens = [llama_token](repeating: 0, count: Int(needed))
-        guard llama_tokenize(vocab, prompt, byteCount, &tokens, needed, true, true) >= 0 else {
-            throw LlamaError.tokenizeFailed
-        }
+        guard let promptTokens = LlamaPrompt.tokens(model: model, vocab: vocab, system: system, prompt: prompt),
+              !promptTokens.isEmpty else { throw LlamaError.tokenizeFailed }
+        var tokens = promptTokens
 
         // Greedy sampler for stable, reproducible clinical summaries.
         guard let sampler = llama_sampler_chain_init(llama_sampler_chain_default_params()) else {

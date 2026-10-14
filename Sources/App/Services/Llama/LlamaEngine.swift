@@ -262,7 +262,7 @@ final class LlamaEngine: LocalLLMEngine {
 
     // MARK: - Decoding (queue-confined)
 
-    /// Tokenizes `request.composedPrompt`, builds a sampler chain matching
+    /// Tokenizes the request (through the model's chat template), builds a sampler chain matching
     /// `request.sampling` (and `request.grammar`, if set), then decodes
     /// token-by-token until end-of-generation or `sampling.maxTokens`.
     /// `onToken`, when given, is called with the growing full text after
@@ -280,18 +280,9 @@ final class LlamaEngine: LocalLLMEngine {
             throw LocalLLMEngineError.generationFailed("The built-in model has no vocabulary.")
         }
 
-        let prompt = request.composedPrompt
-        let promptLength = Int32(prompt.utf8.count)
-
-        // First call with a nil buffer reports the token count as a negative
-        // number (llama_tokenize's documented "how many would fit" signal);
-        // negate it to size the real buffer.
-        let needed = -llama_tokenize(vocab, prompt, promptLength, nil, 0, true, true)
-        guard needed > 0 else {
-            throw LocalLLMEngineError.generationFailed("Couldn't tokenize the prompt.")
-        }
-        var tokens = [llama_token](repeating: 0, count: Int(needed))
-        guard llama_tokenize(vocab, prompt, promptLength, &tokens, needed, true, true) >= 0 else {
+        guard let tokens = LlamaPrompt.tokens(
+            model: model, vocab: vocab, system: request.system, prompt: request.prompt
+        ), !tokens.isEmpty else {
             throw LocalLLMEngineError.generationFailed("Couldn't tokenize the prompt.")
         }
 
