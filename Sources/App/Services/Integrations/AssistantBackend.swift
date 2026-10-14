@@ -16,8 +16,7 @@ enum AssistantBackend: String, CaseIterable, Identifiable, Codable, Hashable {
     case appleIntelligence
     /// A local Ollama server reached over its HTTP API.
     case ollama
-    /// Embedded llama.cpp runtime bundled in the app (staged — see
-    /// `Integrations.makeAssistant()` and the README for the rollout plan).
+    /// Embedded llama.cpp runtime bundled in the app.
     case localLlama
 
     var id: String { rawValue }

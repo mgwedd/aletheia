@@ -125,7 +125,7 @@ enum LocalLLMEngineFactory {
     /// Build an engine for a `ModelLoadPlan` — a base model, optionally with a LoRA
     /// adapter. Compatibility is already enforced when the plan is constructed, so
     /// this only routes the base weights (and, on-device, the adapter) to the
-    /// runtime. Same staging as `make(modelURL:)`.
+    /// runtime. Routes to either the real engine (when the package is linked) or a stub.
     static func make(
         plan: ModelLoadPlan,
         sampling: LocalLLMSampling = .deterministic

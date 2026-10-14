@@ -37,10 +37,6 @@ final class LlamaEngineSmokeTests: XCTestCase {
         let out = try await engine.generate(request)
         print("LLAMA_SMOKE grammar: \(out.debugDescription)")
         XCTAssertTrue(out.hasPrefix("## Subjective\n"))
-        for heading in ["## Subjective", "## Objective", "## Assessment", "## Plan"] {
-            // The token cap may truncate late sections; the first must always be present.
-            if heading == "## Subjective" { XCTAssertTrue(out.contains(heading)) }
-        }
         engine.unload()
     }
 }

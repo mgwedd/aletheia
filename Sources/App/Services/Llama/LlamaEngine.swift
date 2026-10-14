@@ -380,7 +380,7 @@ final class LlamaEngine: LocalLLMEngine {
 /// A thread-safe one-way "stop" flag for a single `stream(_:)` call — the
 /// same small pattern `LlamaAssistant` uses for its own streaming decode
 /// loop, kept private and duplicated here (rather than shared) since each
-/// file is independently staged behind `#if canImport(llama)`.
+/// file has its own copy.
 private final class LlamaEngineCancellationFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var flag = false

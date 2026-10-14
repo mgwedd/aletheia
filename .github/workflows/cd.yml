@@ -46,12 +46,12 @@ jobs:
         run: xcodebuild -version
 
       # Same SPM cache key as smoke-test so the two workflows share the
-      # resolved whisper.cpp XCFramework.
+      # resolved whisper.cpp and llama.cpp XCFrameworks.
       - name: Cache Swift packages
         uses: actions/cache@v5
         with:
           path: build/SourcePackages
-          key: spm-macos-15-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift') }}
+          key: spm-macos-15-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
           restore-keys: spm-macos-15-
 
       - name: Build Release app (ad-hoc signed)

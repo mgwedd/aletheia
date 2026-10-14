@@ -4,7 +4,7 @@ import XCTest
 /// The local-LLM engine seam is package-free and compiled in every build, so its
 /// contract — request assembly, sampling defaults, and graceful behavior when no
 /// runtime is linked — is unit-tested here regardless of tier. The real llama.cpp
-/// engine plugs in behind `#if canImport(llama)` at the pin step.
+/// engine is always compiled in since the package is now linked.
 final class LocalLLMEngineTests: XCTestCase {
     // MARK: Request / sampling / grammar value types
 
