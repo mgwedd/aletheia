@@ -54,6 +54,12 @@ public final class WhisperEngine {
         TimeInterval(value) / 100
     }
 
+    /// Silero VAD v6.2.0 (MIT), bundled in this framework. From
+    /// huggingface.co/ggml-org/whisper-vad at 9ffd54a1, SHA-256
+    /// 2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987.
+    static let vadModelPath = Bundle(for: WhisperEngine.self)
+        .path(forResource: "ggml-silero-v6.2.0", ofType: "bin")!
+
     private let context: OpaquePointer
 
     /// Loads the ggml model at `modelPath`. `useGPU` runs the encoder on Metal;
@@ -102,12 +108,19 @@ public final class WhisperEngine {
             return Unmanaged<Callbacks>.fromOpaque(userData).takeUnretainedValue().shouldAbort()
         }
         params.abort_callback_user_data = userData
+        // Silero VAD hands whisper only the stretches with speech. Long
+        // silences otherwise make larger models loop on a phrase ("Okay." for
+        // minutes); segment times still come back on the original timeline.
+        params.vad = true
 
         let status: Int32 = withExtendedLifetime(callbacks) {
             language.withCString { languagePointer in
-                params.language = languagePointer
-                return samples.withUnsafeBufferPointer { buffer in
-                    whisper_full(context, params, buffer.baseAddress, Int32(buffer.count))
+                Self.vadModelPath.withCString { vadPointer in
+                    params.language = languagePointer
+                    params.vad_model_path = vadPointer
+                    return samples.withUnsafeBufferPointer { buffer in
+                        whisper_full(context, params, buffer.baseAddress, Int32(buffer.count))
+                    }
                 }
             }
         }

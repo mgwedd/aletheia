@@ -14,7 +14,7 @@ enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
     var displayName: String {
         switch self {
         case .baseEn: return "Base (English) — fastest, least accurate"
-        case .smallEn: return "Small (English) — recommended"
+        case .smallEn: return "Small (English) — fast, good accuracy"
         case .mediumEn: return "Medium (English) — slower, more accurate"
         case .largeV3: return "Large v3 (multilingual) — slowest, most accurate"
         }
