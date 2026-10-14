@@ -247,17 +247,16 @@ CI runs on macOS runners (the only place the Swift code compiles). Developer ID 
 
 ### Embedded llama.cpp
 
-The embedded llama.cpp engine (`LlamaEngine`) is linked into every build on Apple Silicon. It is offered as the "Built-in model" backend in developer builds only (production and preview use Ollama).
+The official llama.cpp XCFramework (`Packages/LlamaCpp`, pinned by URL and checksum) is linked into every build. The "Built-in model" backend is offered in developer builds; Ollama is the default.
 
-Downloadable models from ggml-org on Hugging Face, pinned to a revision and verified by SHA-256:
+Models come from ggml-org on Hugging Face, pinned to a revision and verified by SHA-256 before install:
 
-| Mac | Model |
+| Mac | Default model |
 |---|---|
 | 16 GB+ | Llama 3.1 8B Instruct Q4_0 (~6.0 GB) |
-| 8–15 GB | Gemma 2 9B Q4_0 (~5.2 GB) |
-| Under 8 GB | Gemma 2 2B Q4_0 (~1.6 GB) |
+| Under 16 GB | Gemma 4 E2B Q4_0 (~2.8 GB) |
 
-The engine applies the model's chat template. Context window is sized to the prompt plus reply, rounded up to a power of two (8K minimum), and capped at the RAM-based context budget and the model's training context limit. A prompt over the cap fails with a clear error, never silently truncated. Flash attention and 8-bit KV cache are on. The model unloads on app lock, on backend or model change, and after 30 minutes idle.
+The engine applies the model's chat template. The context is sized to the prompt plus the reply, rounded up to a power of two (8K minimum) and capped at the context budget and the model's limit; a prompt over budget fails rather than being truncated. Flash attention and an 8-bit KV cache are on. The model unloads on app lock, on a model or backend change, and after 30 minutes idle.
 
 ### Releases
 
