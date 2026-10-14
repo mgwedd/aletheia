@@ -7,6 +7,7 @@ struct AIEngineActions {
     var openDownloadPage: () -> Void
     var startOllama: () async throws -> Void
     var pullModel: (_ name: String, _ onProgress: @escaping (Double, String) -> Void) async throws -> Void
+    var downloadBuiltInModel: (_ onProgress: @escaping (Double, String) -> Void) async throws -> Void = { _ in }
 
     @MainActor
     static func live(integrations: Integrations) -> AIEngineActions {
@@ -18,6 +19,9 @@ struct AIEngineActions {
             },
             pullModel: { name, onProgress in
                 try await integrations.makeAssistant().pullModel(name, onProgress: onProgress)
+            },
+            downloadBuiltInModel: { onProgress in
+                try await integrations.downloadBuiltInModel { onProgress($0, "") }
             }
         )
     }
@@ -34,6 +38,7 @@ enum AIEngineRecovery {
         case .getOllama: actions.openDownloadPage()
         case .startOllama: try await actions.startOllama()
         case .downloadModel(let name): try await actions.pullModel(name, onProgress)
+        case .downloadBuiltInModel: try await actions.downloadBuiltInModel(onProgress)
         case .retry: break
         }
     }
@@ -58,7 +63,10 @@ final class AIEngineRecoveryController: ObservableObject {
         failure = nil
         progress = nil
         status = Self.startingStatus(for: problem)
-        if case .downloadModel = problem.action { progress = 0 }
+        switch problem.action {
+        case .downloadModel, .downloadBuiltInModel: progress = 0
+        default: break
+        }
         defer { isWorking = false }
         do {
             try await perform(problem) { [weak self] fraction, text in
@@ -81,6 +89,7 @@ final class AIEngineRecoveryController: ObservableObject {
         case .getOllama: return "Opening the Ollama download page…"
         case .startOllama: return "Starting Ollama…"
         case .downloadModel(let name): return "Downloading \(name)…"
+        case .downloadBuiltInModel: return "Downloading the AI model…"
         case .retry: return "Trying again…"
         }
     }
@@ -113,7 +122,7 @@ private func copyDetails(_ incident: AIEngineIncident, integrations: Integration
         appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
         macOS: ProcessInfo.processInfo.operatingSystemVersionString,
         backend: integrations.effectiveAssistantBackend.displayName,
-        model: integrations.ollamaModelName
+        model: integrations.activeModelName
     )
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(text, forType: .string)
@@ -185,8 +194,7 @@ extension View {
 
 /// A passive banner shown where an AI feature lives when the engine isn't ready,
 /// so the first sign isn't a failed request. Checks when it appears and each
-/// time the app becomes active; shows nothing while the engine is fine or when
-/// the active backend isn't Ollama.
+/// time the app becomes active; shows nothing while the engine is fine.
 struct AIEngineBanner: View {
     @EnvironmentObject private var integrations: Integrations
     @StateObject private var controller = AIEngineRecoveryController()
@@ -266,12 +274,15 @@ struct AIEngineBanner: View {
 enum AIEngineHealth {
     static func problem(integrations: Integrations) async -> AIEngineProblem? {
         let assistant = integrations.makeAssistant()
+        let modelURL = integrations.llamaModelURL
         return await AIEngineProbe(
             isOllamaBackend: integrations.effectiveAssistantBackend == .ollama,
             modelName: integrations.ollamaModelName,
             isReachable: { await assistant.isReachable() },
             hasModel: { await assistant.hasModel($0) },
-            isInstalled: { OllamaAppLocator.isInstalled() }
+            isInstalled: { OllamaAppLocator.isInstalled() },
+            isBuiltInBackend: integrations.effectiveAssistantBackend == .localLlama,
+            builtInModelPresent: { FileManager.default.fileExists(atPath: modelURL.path) }
         ).problem()
     }
 }

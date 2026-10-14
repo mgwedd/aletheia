@@ -74,8 +74,18 @@ final class LlamaAssistant: Assistant {
 
     /// The model isn't downloaded: a setup step, said plainly instead of a load error.
     private var missingModel: LocalLLMEngineError? {
-        FileManager.default.fileExists(atPath: modelURL.path) ? nil
-            : .unavailable("The AI model isn't downloaded yet. Download it in Settings › AI and models.")
+        FileManager.default.fileExists(atPath: modelURL.path) ? nil : .modelNotDownloaded
+    }
+
+    /// Loads the weights in the background (on session open) so the first note
+    /// or question doesn't wait for them. The idle unload still applies.
+    func warmUp(model _: String) {
+        guard missingModel == nil else { return }
+        let engine = engine
+        Task.detached(priority: .utility) {
+            try? await engine.load()
+            engine.scheduleIdleUnload()
+        }
     }
 
     func generate(model _: String, system: String, prompt: String) async throws -> String {

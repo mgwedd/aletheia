@@ -4,8 +4,8 @@ import Foundation
 /// the resolver/UI can ask "can we actually run a local model right now?".
 ///
 /// `isBuilt` is true only when the app was compiled with the llama.cpp package
-/// linked in (`Packages/LlamaCpp`). It's driven by `#if canImport(llama)`; where
-/// it's false the tiered backend resolves `localLlama` down to Ollama.
+/// linked in (`Packages/LlamaCpp`), as every shipping build is. It's driven by
+/// `#if canImport(llama)`.
 enum LlamaRuntime {
     /// Whether the llama.cpp module is linked into this build.
     static var isBuilt: Bool {
@@ -42,11 +42,5 @@ enum LlamaRuntime {
         modelsDirectory
             .appendingPathComponent("Adapters", isDirectory: true)
             .appendingPathComponent(adapter.fileName)
-    }
-
-    /// True only when the runtime is linked *and* the model file is present, so
-    /// the backend can actually answer.
-    static func isAvailable(model: LlamaModel) -> Bool {
-        isBuilt && FileManager.default.fileExists(atPath: modelURL(for: model).path)
     }
 }

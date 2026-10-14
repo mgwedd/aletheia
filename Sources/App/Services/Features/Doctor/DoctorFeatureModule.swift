@@ -15,8 +15,8 @@ import Foundation
 ///
 /// The checks themselves are pure and unit-tested with stub probes; the only
 /// I/O lives in `LiveDoctorProbes`. Nothing here leaves the Mac: the sole network
-/// touch is the existing Ollama reachability check, and only when Ollama's
-/// address is loopback.
+/// touch is the Ollama reachability check, only when Ollama is the chosen
+/// engine and its address is loopback.
 struct DoctorFeatureModule: FeatureModule {
     /// Also usable as `DoctorFeatureModule.id` at call sites that only need the
     /// identifier to query the registry, without constructing an instance.

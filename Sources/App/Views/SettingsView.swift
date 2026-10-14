@@ -20,7 +20,7 @@ struct SettingsView: View {
     @EnvironmentObject private var updateService: UpdateService
     @EnvironmentObject private var encryption: EncryptionManager
     @StateObject private var whisperDownloader = WhisperModelDownloader()
-    @StateObject private var llamaDownloader = LlamaModelDownloader()
+    @ObservedObject private var llamaDownloader = LlamaModelDownloader.shared
     @State private var ollamaPullProgress: Double = 0
     @State private var ollamaPullStatus: String = ""
     @State private var isPullingOllamaModel = false
@@ -417,11 +417,9 @@ struct SettingsView: View {
                     // Apple Intelligence is intentionally hidden for now (see
                     // Integrations.appleIntelligenceBlocked) — keep AI fully on
                     // backends we can prove stay on this Mac. "Built-in model"
-                    // (embedded llama.cpp) is a .dev-tier module until stable, so
-                    // production/preview don't advertise a backend that today
-                    // falls back to Ollama. See EmbeddedLlamaFeatureModule and
-                    // AssistantBackend.selectableOptions, which this defers to
-                    // so the gating itself is unit-tested.
+                    // shows when EmbeddedLlamaFeatureModule is registered (every
+                    // tier); AssistantBackend.selectableOptions does the gating
+                    // so it's unit-tested.
                     ForEach(AssistantBackend.selectableOptions(
                         embeddedLlamaAvailable: appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id),
                         appleIntelligenceBlocked: Integrations.appleIntelligenceBlocked

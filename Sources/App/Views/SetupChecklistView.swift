@@ -9,7 +9,7 @@ struct SetupChecklistView: View {
     @EnvironmentObject private var integrations: Integrations
 
     @StateObject private var whisperDownloader = WhisperModelDownloader()
-    @StateObject private var llamaDownloader = LlamaModelDownloader()
+    @ObservedObject private var llamaDownloader = LlamaModelDownloader.shared
     @State private var items: [SetupItem] = []
     @State private var isChecking = false
     @State private var busyAction: SetupAction?

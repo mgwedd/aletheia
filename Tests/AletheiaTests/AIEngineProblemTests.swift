@@ -112,8 +112,15 @@ final class AIEngineProblemTests: XCTestCase {
                 self.calls.append("pull:\(name)")
                 onProgress(0.5, "halfway")
                 if let error = self.failure { throw error }
-            }
+            },
+            downloadBuiltInModel: { [unowned self] _ in self.calls.append("builtIn") }
         )
+    }
+
+    func testBuiltInModelMissingRoutesToTheBuiltInDownload() async throws {
+        let log = ActionLog()
+        try await AIEngineRecovery.perform(.builtInModelMissing, actions: log.actions)
+        XCTAssertEqual(log.calls, ["builtIn"])
     }
 
     func testEachProblemRoutesToItsOwnAction() async throws {
@@ -269,6 +276,29 @@ final class AIEngineProblemTests: XCTestCase {
         )
         _ = await p.problem()
         XCTAssertFalse(asked)
+    }
+
+    func testMissingBuiltInModelErrorBecomesADownloadThatRetries() {
+        let problem = AIEngineProblem.from(error: LocalLLMEngineError.modelNotDownloaded, ollamaInstalled: false)
+        XCTAssertEqual(problem, .builtInModelMissing)
+        XCTAssertEqual(problem?.action, .downloadBuiltInModel)
+        XCTAssertEqual(problem?.actionTitle, "Download Model")
+        XCTAssertEqual(problem?.retriesAfterAction, true)
+        XCTAssertNil(AIEngineProblem.from(error: LocalLLMEngineError.loadFailed("x"), ollamaInstalled: false))
+    }
+
+    func testProbeOnBuiltInEngineReportsOnlyAMissingModel() async {
+        func builtIn(present: Bool) -> AIEngineProbe {
+            AIEngineProbe(
+                isOllamaBackend: false, modelName: "m",
+                isReachable: { false }, hasModel: { _ in false }, isInstalled: { false },
+                isBuiltInBackend: true, builtInModelPresent: { present }
+            )
+        }
+        let missing = await builtIn(present: false).problem()
+        let present = await builtIn(present: true).problem()
+        XCTAssertEqual(missing, .builtInModelMissing)
+        XCTAssertNil(present)
     }
 
     // MARK: - Retry once

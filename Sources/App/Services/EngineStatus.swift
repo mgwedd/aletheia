@@ -84,7 +84,10 @@ enum EngineStatusProbe {
         let resolvedModelName = modelName(for: backend, settings: settings)
         let assistant = integrations.makeAssistant()
 
-        guard await assistant.isReachable() else {
+        // The built-in engine has no server to reach; a missing model file is
+        // "no model", not "unreachable".
+        let reachable = backend == .localLlama ? true : await assistant.isReachable()
+        guard reachable else {
             return .unreachable(engineName: resolvedEngineName)
         }
         let hasModel = await assistant.hasModel(resolvedModelName)
