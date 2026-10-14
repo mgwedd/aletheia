@@ -19,9 +19,33 @@ final class AppLockPolicyTests: XCTestCase {
         XCTAssertFalse(AppLockPolicy.shouldPromptNow(isLocked: false, appIsActive: true))
     }
 
-    func testMainWindowIsPickedByItsSwiftUIIdentifier() {
-        XCTAssertEqual(MainWindow.index(ofIdentifiers: [nil, "aletheia-doctor-AppWindow-1", "main-AppWindow-1"]), 2)
-        XCTAssertNil(MainWindow.index(ofIdentifiers: [nil, "aletheia-doctor-AppWindow-1"]))
+    func testMainWindowOpensOnlyWhenMissingOrClosed() {
+        func open(_ exists: Bool, _ visible: Bool, _ mini: Bool, _ hidden: Bool = false) -> Bool {
+            MainWindow.needsOpen(exists: exists, isVisible: visible, isMiniaturized: mini, appHidden: hidden)
+        }
+        XCTAssertTrue(open(false, false, false))
+        XCTAssertTrue(open(true, false, false))          // closed
+        XCTAssertFalse(open(true, true, false))          // on screen
+        XCTAssertFalse(open(true, false, true))          // minimised
+        XCTAssertFalse(open(true, false, false, true))   // app merely hidden
+    }
+
+    func testCancelThenActivationChurnDoesNotReprompt() {
+        var gate = AutoPromptGate()
+        XCTAssertTrue(gate.allowsAutoPrompt)
+        gate.userCancelled()
+        XCTAssertFalse(gate.allowsAutoPrompt)            // became active again, no resign in between
+        gate.appResigned()
+        XCTAssertTrue(gate.allowsAutoPrompt)             // really left and came back
+        gate.reset()
+        XCTAssertTrue(gate.allowsAutoPrompt)
+    }
+
+    func testResignBeforeCancelDoesNotCount() {
+        var gate = AutoPromptGate()
+        gate.appResigned()
+        gate.userCancelled()
+        XCTAssertFalse(gate.allowsAutoPrompt)
     }
 
     // MARK: - Idle auto-lock (HIPAA §164.312(a)(2)(iii) "automatic logoff")

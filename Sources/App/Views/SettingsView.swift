@@ -772,7 +772,7 @@ struct SettingsView: View {
         )
         SettingsRow(
             title: "Lock after inactivity",
-            detail: "Automatically re-locks after this much time with no activity — HIPAA's required \"automatic logoff.\" Needs App lock turned on."
+            detail: "Optional. Aletheia already locks when your Mac locks or sleeps (set that in System Settings > Lock Screen). Choose a time to also lock after this long with no activity in Aletheia. Needs App lock turned on."
         ) {
             Picker("Auto-lock after", selection: idleAutoLockSelection) {
                 ForEach(IdleAutoLockTimeout.allCases) { timeout in

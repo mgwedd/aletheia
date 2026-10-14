@@ -33,6 +33,20 @@ extension AppLockPolicy {
     }
 }
 
+/// After the user cancels the system sheet, don't auto-prompt again until the app
+/// has really been left and come back: the sheet's own activation changes would
+/// otherwise re-prompt in a loop. The Unlock button is never gated.
+struct AutoPromptGate: Equatable {
+    private var cancelled = false
+    private var resignedSinceCancel = false
+
+    var allowsAutoPrompt: Bool { !cancelled || resignedSinceCancel }
+
+    mutating func userCancelled() { cancelled = true; resignedSinceCancel = false }
+    mutating func appResigned() { if cancelled { resignedSinceCancel = true } }
+    mutating func reset() { cancelled = false; resignedSinceCancel = false }
+}
+
 /// Admits one operation at a time: `begin()` returns true only if nothing is
 /// running, until `end()`. Used so two triggers for the same unlock prompt
 /// (launch, becoming active, a click) don't stack a second system dialog or
@@ -85,6 +99,8 @@ final class AppLock: ObservableObject {
     private var screensDidSleepObserver: NSObjectProtocol?
     private var screenLockObserver: NSObjectProtocol?
     private var didBecomeActiveObserver: NSObjectProtocol?
+    private var didResignActiveObserver: NSObjectProtocol?
+    private var promptGate = AutoPromptGate()
     private var settingsCancellable: AnyCancellable?
 
     /// How often the idle timer checks elapsed time against the configured
@@ -107,6 +123,11 @@ final class AppLock: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in await self?.unlockIfActive() }
         }
+        didResignActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.promptGate.appResigned() }
+        }
         observeActivity()
         observeSystemSleep()
         // Re-evaluate whenever a relevant setting changes (app lock toggled,
@@ -122,6 +143,7 @@ final class AppLock: ObservableObject {
     deinit {
         idleTimer?.invalidate()
         if let didBecomeActiveObserver { NotificationCenter.default.removeObserver(didBecomeActiveObserver) }
+        if let didResignActiveObserver { NotificationCenter.default.removeObserver(didResignActiveObserver) }
         settingsCancellable?.cancel()
         if let activityMonitor { NSEvent.removeMonitor(activityMonitor) }
         let workspaceCenter = NSWorkspace.shared.notificationCenter
@@ -150,7 +172,9 @@ final class AppLock: ObservableObject {
 
     /// The automatic prompt: only when locked and the app is frontmost.
     func unlockIfActive() async {
-        guard AppLockPolicy.shouldPromptNow(isLocked: isLocked, appIsActive: NSApp.isActive) else { return }
+        guard AppLockPolicy.shouldPromptNow(isLocked: isLocked, appIsActive: NSApp.isActive),
+              promptGate.allowsAutoPrompt else { return }
+        promptGate.reset()
         await unlock()
     }
 
@@ -178,6 +202,10 @@ final class AppLock: ObservableObject {
                 if NSApp.isActive { MainWindow.makeKey() }
             }
         } catch {
+            if let laError = error as? LAError,
+               [.userCancel, .appCancel, .systemCancel].contains(laError.code) {
+                promptGate.userCancelled()
+            }
             lastError = error.localizedDescription
         }
     }

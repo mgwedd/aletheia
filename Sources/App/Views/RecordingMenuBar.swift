@@ -236,6 +236,8 @@ struct RecordingMenuBar: View {
     }
 
     private func start(for patient: Patient) async {
+        // Taken now: after the awaits below, a system panel may be the key window.
+        let panel = MainWindow.menuBarPanel()
         // Before creating a session, so a refused start leaves no empty one behind.
         guard !recorder.isBusy else { return }
         guard let store = appModel.store,
@@ -256,7 +258,7 @@ struct RecordingMenuBar: View {
         )
         // Stay on the menu when it didn't start, so the reason is read here.
         guard startProblem == nil else { return }
-        MainWindow.show(openWindow: openWindow)
+        MainWindow.show(openWindow: openWindow, panel: panel)
         AppNavigator.shared.requestOpen(patientID: patient.id)
     }
 }
