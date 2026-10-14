@@ -4,12 +4,12 @@ Open decisions that need an owner call. Each section states what the code does
 today (checked against `main`), the options, a recommendation, and what is
 needed from the owner.
 
-- [1. Patient-wide chat sees ~6,000 characters of transcript (#164)](#1-patient-wide-chat-transcript-budget-164)
-- [2. Retranscribe a session (#175)](#2-retranscribe-a-session-175)
+- [1. Patient-wide chat context budget](#1-patient-wide-chat-context-budget)
+- [2. Retranscribe a session](#2-retranscribe-a-session)
 
 ---
 
-## 1. Patient-wide chat transcript budget (#164)
+## 1. Patient-wide chat context budget
 
 ### What the chat sees today
 
@@ -17,100 +17,98 @@ needed from the owner.
 flowchart TD
   S[Every session] --> T[transcript.txt]
   S --> X["Extras per session, capped at 3,000 chars:<br/>therapist notes, margin comments,<br/>generated notes"]
-  T --> R{"all transcripts fit<br/>in 6,000 chars,<br/>or no query terms?"}
+  T --> R{"all transcripts fit<br/>in budget,<br/>or no query terms?"}
   R -->|yes| W[whole transcripts, newest first]
-  R -->|no| K["SessionSearch (BM25, whole words, typo and<br/>sound-alike matching): top hits with ±2 lines,<br/>up to 6,000 chars"]
+  R -->|no| K["SessionSearch (BM25, whole words, typo and<br/>sound-alike matching): top hits with ±2 lines,<br/>up to budget"]
   W --> C[Context]
   K --> C
   X --> C
   B["Patient background<br/>(history, medications)"] --> C
-  C --> M["Model: no num_ctx set,<br/>Ollama default applies"]
+  C --> M["Model: num_ctx sized<br/>from Mac memory"]
 ```
 
 | Part | Limit | Source |
 |---|---|---|
-| Transcript text, all sessions together | 6,000 chars (about 1,500 tokens) | `PatientContextRetriever.defaultCharacterBudget` |
+| Transcript text, all sessions together | Mac-dependent: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB+ (Intel one tier lower) | `ModelAdvisor.contextBudgetTokens` |
+| Characters per token | ~3 characters | `ContextBudget.charactersPerToken` |
 | Extras per session (notes, comments, generated notes) | 3,000 chars, ordered therapist words first | `Store.patientChatSessionExtrasLimit` |
 | Patient background | none | `Patient.aiBackgroundBlock` |
-| Total prompt | none (see below) | |
-| Model context window | not set by Aletheia | `OllamaClient` sends no `num_ctx` |
+| Total prompt | 10% headroom kept to allow budget margin | `ContextBudget.availableCharacters` |
+| Model context window | sized to prompt per budget | `ContextBudget.neededTokens` |
 
 An hour of speech is tens of thousands of characters, so a long history is cut
 to a small fraction of the transcript text. Ranking is TF-IDF over substring
 matches (`TextSearch.queryTerms` keeps every word, no stopword filter), so a
 vague question matches weakly and ranks poorly.
 
-**Total prompt size is unbounded.** The 6,000 limit covers transcript text
-only. Extras add up to 3,000 chars for each session, so 20 sessions can add
-about 60,000 chars (about 15,000 tokens), well above the transcript budget. If
-the model's real window is smaller than the prompt, Ollama truncates silently.
-The default `num_ctx` depends on the Ollama version and has not been verified
-here. Treat this as the first thing to measure (see Decisions needed).
+**Prompt is sized to the Mac.** The budget covers transcript text only. Extras
+add up to 3,000 chars for each session, so 20 sessions can add about 60,000
+chars (about 20,000 tokens), which exceeds the smallest Mac's budget. The app
+sets `num_ctx` at runtime from the Mac's memory and refuses over-budget prompts
+with a clear message, so Ollama never truncates silently.
 
-### What changed with this document
+### Implementation notes
 
-Behaviour-preserving transparency only; the budget is unchanged.
-
-- The chat sheet subtitle states the limit instead of claiming it "searches
-  every session's transcript".
-- After each question, a caption reports about what percentage of transcript
-  text was included and how many sessions had no transcript passage included
+- The chat sheet subtitle discloses the budget constraint instead of claiming it
+  "searches every session's transcript".
+- After each question, a caption reports what percentage of transcript text was
+  included and how many sessions had no transcript passage included
   (`TranscriptCoverage`, computed in `Store.gatherCitedPatientContext`). It is
-  hidden when everything fit. Notes and comments are not counted in it.
-- `PatientContextRetriever.defaultCharacterBudget` names the former literal
-  `6000` so the UI and docs quote one value.
-
-Citations are already limited to sessions that appear in the context. They can
-still include a session whose only material was notes, not transcript text; the
-caption covers that gap.
+  hidden when everything fits within budget. Notes and comments are not counted.
+- Citations are already limited to sessions that appear in the context. A
+  session whose only material was notes (no transcript passage) can still be
+  cited; the coverage caption clarifies this.
 
 ### Options
 
 | Option | Recall | Latency and memory | Risk | Effort |
 |---|---|---|---|---|
-| **A. Keep 6,000, disclose** (done) | unchanged | none | user still gets partial-evidence answers, now labelled | done |
-| **B. Larger fixed budget** (for example 24,000) | up to 4x | KV cache and time-to-first-token grow with prompt; an 8 GB Mac can swap | needs `num_ctx` set to match or Ollama truncates the front of the prompt; changing `num_ctx` reloads the model (cold start) | small, but needs measurement |
+| **A. Per-Mac dynamic budget** (current) | unchanged | none | user still gets partial-evidence answers, now with coverage labels | done |
+| **B. Larger fixed budget** (e.g., 24,000 tokens) | up to 4x | KV cache and time-to-first-token grow with prompt; an 8 GB Mac can swap | needs `num_ctx` set to match or Ollama truncates the front of the prompt; changing `num_ctx` reloads the model (cold start) | small, but needs measurement |
 | **C. Per-model dynamic budget** | scales with hardware | same as B, bounded by tier | needs a table of context sizes per model tag and per `ModelAdvisor` tier; table goes stale as models change; Ollama's reported window may differ from what fits in RAM | medium |
 | **D. Map-reduce summaries** (summarise per session, answer over summaries) | every session represented | one model call per session, slow on 3B models; cache per session keyed on transcript hash to amortise | compounding error; a summary drops the detail a clinician asks about; a wrong "not discussed" is plausible | large |
-| **E. Embeddings per #69** (NaturalLanguage, on-device) | best for vague questions | index build once per session; query is cheap | index is PHI: must be sealed (`FileProtector`), migrated by `DataMigrator`, excluded from export and covered by backup rules | large |
+| **E. Embeddings** (NaturalLanguage, on-device) | best for vague questions | index build once per session; query is cheap | index is PHI: must be sealed (`FileProtector`), migrated by `DataMigrator`, excluded from export and covered by backup rules | large |
 | **F. Lexical fixes** (stopwords, whole-word match) | small gain | none | low | small |
 
 ### Recommendation
 
 ```mermaid
 flowchart LR
-  A["now: A (done)<br/>+ total prompt cap"] --> F["next: F<br/>stopwords, whole word"]
-  F --> BC["then: measure B/C<br/>on 8 GB Apple Silicon<br/>and Intel"]
-  BC --> E["real fix: E (#69)"]
+  A["Current: A<br/>per-Mac budget<br/>+ coverage labels"] --> F["Next: F<br/>stopwords, whole word"]
+  F --> BC["Then: measure B/C<br/>on 8 GB Apple Silicon<br/>and Intel"]
+  BC --> E["Real fix: E<br/>embeddings"]
 ```
 
-1. Ship A (this change) and add a **total** prompt cap (extras across all
-   sessions), so the prompt cannot exceed the window by session count.
-2. Do F with it; it is a small, test-covered change in `TextSearch` and the
-   retriever.
-3. Do B or C only after measuring memory and time-to-first-token on an 8 GB
-   Apple Silicon Mac and an Intel Mac. If done, set `num_ctx` explicitly and
-   derive the budget from it (C), not a fixed constant (B). Do not raise the
-   budget without setting `num_ctx`.
+1. A (per-Mac budget with coverage labels) is the current approach. It surfaces
+   the partial-coverage constraint to the user clearly.
+2. Do F next; it is a small, test-covered change in `TextSearch` and the
+   retriever to improve ranking on vague questions.
+3. Do B or C only after measuring memory and time-to-first-token on 8 GB
+   Apple Silicon and Intel Macs. If done, derive the budget from `num_ctx`
+   explicitly (C), not a fixed constant (B). Do not raise the budget without
+   setting `num_ctx`.
 4. Skip D: it is slow on the small models `ModelAdvisor` picks for 8 GB Macs,
-   and its failure mode (confident summary that omits the detail) is the one
-   the issue is trying to remove.
-5. Treat E (#69) as the real fix for vague cross-session questions.
+   and its failure mode (confident summary that omits the detail) is the core
+   problem to avoid.
+5. Treat E (embeddings) as the real fix for vague cross-session questions.
 
-### Decisions needed
+### Open questions
 
-1. Is the coverage caption enough, or should a hard "I could not read the full
-   record" state block answers?
-2. Minimum supported Mac for the chat feature (8 GB Apple Silicon?).
-3. Does longer time-to-first-token matter more than recall for your workflow?
-4. Approve a total prompt cap (which value) or a measured `num_ctx` first.
+1. Is the coverage caption enough, or should over-budget questions block answers
+   with "I could not read the full record" instead of searching?
+2. Should the minimum supported Mac for multi-session chat be 8 GB Apple
+   Silicon, 8 GB Intel, or 16 GB across the board?
+3. For vague questions, does reducing latency (smaller context) or improving
+   recall (larger context) matter more to your workflow?
+4. Should per-Mac budgets be bounded by a lower limit, e.g., never below 8K
+   tokens, even on under-8GB hardware?
 
 ---
 
-## 2. Retranscribe a session (#175)
+## 2. Retranscribe a session
 
-Status: not planned. This records what would break and the smallest safe
-design if it is built. No code changes.
+This records what would break and the smallest safe design if a retranscribe
+feature is built. No code changes currently.
 
 ### Current data flow
 
@@ -230,11 +228,11 @@ Steps and constraints:
 Not recommended: an automatic retranscribe on model change, bulk retranscribe,
 and any path that overwrites without the previous-version write succeeding.
 
-### Decisions needed
+### Open questions
 
-1. Build retranscribe at all, or ship only option 1 (confirm before
-   overwrite)? Option 1 is recommended now either way.
+1. Build a full retranscribe feature, or implement option 1 (confirm before
+   overwrite) only? Option 1 is recommended either way as a safety fix.
 2. Accept keeping one previous revision as extra sealed PHI, with an explicit
-   delete action? The alternative, no history, repeats the silent loss.
-3. Accept that `anchorSeconds` may be stale after a retranscribe in the first
-   cut?
+   delete action? The alternative (no history) repeats the silent-loss problem.
+3. If building the feature, is it acceptable that `anchorSeconds` on comments
+   may be stale after a retranscribe, leaving time labels potentially off?
