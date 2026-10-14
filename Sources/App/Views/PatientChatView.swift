@@ -9,9 +9,9 @@ import SwiftUI
 /// is imported on first open (see `Store.loadChatThreads`).
 ///
 /// This chat covers every session's generated notes and the therapist's own
-/// notes and comments in full (per-session cap), but only a ranked ~6,000
-/// characters of transcript per question (see docs/DESIGN-DECISIONS.md). Each
-/// session's own chat lives inside that session.
+/// notes and comments (per-session cap), plus the transcript passages that a
+/// search of every session finds for the question (see `SessionSearch`), up to
+/// a character budget. Each session's own chat lives inside that session.
 struct PatientChatView: View {
     let patient: Patient
     var onDone: () -> Void
@@ -38,6 +38,8 @@ struct PatientChatView: View {
     /// How much transcript text the last question's context held; nil until a
     /// question is asked or when everything fit.
     @State private var coverageNotice: String?
+    /// Shown while the sessions are being decrypted and searched, before the model starts.
+    @State private var searchingNotice: String?
 
     @StateObject private var chatRunner = ChatStreamRunner()
 
@@ -118,15 +120,16 @@ struct PatientChatView: View {
     }
 
     /// What the answers draw on, matching what `gatherCitedPatientContext`
-    /// sends: every session's generated notes, notes and comments, and a ranked
-    /// slice of transcript within the character budget.
+    /// sends: every session's generated notes, notes and comments, and the
+    /// transcript passages a search of all sessions finds for the question.
     private var scopeNote: String {
-        "Answers come from every session's generated notes, your notes and comments, plus about \(PatientContextRetriever.defaultCharacterBudget.formatted()) characters of transcript chosen for each question. To ask about one session in full, open it and use its Ask tab."
+        "Answers come from every session's generated notes, your notes and comments, plus the transcript passages found by searching all sessions for the names and words in your question. Each answer shows what it read. To ask about one session in full, open it and use its Ask tab."
     }
 
     /// Caveats about the last question's context, shown above the composer.
     private var notices: [String] {
         var lines: [String] = []
+        if let searchingNotice { lines.append(searchingNotice) }
         if let coverageNotice { lines.append(coverageNotice) }
         if unreadableSessions > 0 {
             lines.append("\(unreadableSessions) session(s) could not be read; answers may be incomplete.")
@@ -309,12 +312,51 @@ struct PatientChatView: View {
         messages.append(userMessage)
         isSending = true
         let assistantID = UUID()
-        let context = store.gatherCitedPatientContext(for: patient, relevantTo: question)
-        unreadableSessions = context.unreadableSessions
-        coverageNotice = context.coverage.notice
         // Snapshot everything the prompt needs now; the request itself is only
         // made when the queue starts this job.
         let service = integrations.makeAssistantService(report: chatRunner.reporter)
+        // The whole context is sized from this Mac's budget less the
+        // instructions, the conversation and the question.
+        let characterBudget = service.patientContextCharacters(history: history, question: question)
+        guard characterBudget >= Self.minimumContextCharacters else {
+            messages.removeAll { $0.id == userMessage.id }
+            isSending = false
+            errorMessage = PatientContextBudgetError().localizedDescription
+            return
+        }
+        // Decrypting and searching every session takes a moment on a long
+        // history, so it runs off the main thread with a line saying so.
+        let sessionCount = (try? store.listSessions(for: patient))?.count ?? 0
+        searchingNotice = "Searching \(sessionCount) session\(sessionCount == 1 ? "" : "s")…"
+        let patient = patient
+        Task {
+            let context = await Task.detached(priority: .userInitiated) {
+                store.gatherCitedPatientContext(for: patient, relevantTo: question, characterBudget: characterBudget)
+            }.value
+            searchingNotice = nil
+            startAnswer(
+                service: service, context: context, history: history, question: question,
+                userMessage: userMessage, assistantID: assistantID, threadID: threadID
+            )
+        }
+    }
+
+    /// Room (characters) below which a patient question can't be answered
+    /// usefully: the instructions and conversation have used the budget.
+    private static let minimumContextCharacters = 2_000
+
+    private func startAnswer(
+        service: AssistantService, context: PatientContext, history: [ChatMessage], question: String,
+        userMessage: ChatMessage, assistantID: UUID, threadID: UUID
+    ) {
+        // What the notice and caption say comes from what was sent: they are
+        // set once the answer starts (or ends), never for a run that was refused.
+        func showCoverage() {
+            unreadableSessions = context.unreadableSessions
+            coverageNotice = context.coverage.label
+        }
+        unreadableSessions = 0
+        coverageNotice = nil
         chatRunner.start(
             queue: integrations.inferenceQueue,
             kind: .patientChat,
@@ -326,7 +368,10 @@ struct PatientChatView: View {
             },
             // Stream the raw answer live; fold in the numbered source footer once
             // the full text is in, so citations don't flicker mid-stream.
-            onReveal: { text in messages.upsert(id: assistantID, role: .assistant, text: text) },
+            onReveal: { text in
+                showCoverage()
+                messages.upsert(id: assistantID, role: .assistant, text: text)
+            },
             onError: { error in
                 isSending = false
                 if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
@@ -338,12 +383,16 @@ struct PatientChatView: View {
                         send(question)
                     }, for: "chat")
                     engineIncident = incident
+                } else if error is ContextBudgetError {
+                    // Refused before anything was sent: no coverage to show.
+                    errorMessage = PatientContextBudgetError().localizedDescription
                 } else {
                     errorMessage = error.localizedDescription
                 }
                 persist(threadID: threadID)
             },
             onFinish: { finalText in
+                showCoverage()
                 // Builds without the SourceCitationsFeatureModule show the raw
                 // answer, without the sources footer.
                 let decorated = Citations.display(

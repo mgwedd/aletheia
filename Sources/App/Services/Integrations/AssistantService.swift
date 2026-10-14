@@ -155,6 +155,14 @@ struct AssistantService {
     }
 
     /// Streams the answer to a whole-patient question as the growing full text.
+    /// How many characters of session material a patient-wide question can
+    /// carry on this Mac, after the instructions, conversation and question.
+    func patientContextCharacters(history: [ChatMessage], question: String) -> Int {
+        let system = Prompts.chatSystemPrompt(systemPrompt, question: question)
+        let wrapper = Prompts.patientChat(context: "", history: history, question: question)
+        return budget.availableCharacters(reserving: system.count + wrapper.count)
+    }
+
     func streamAnswerAboutPatient(
         context: String,
         history: [ChatMessage],

@@ -27,6 +27,14 @@ struct ContextBudget: Equatable {
         estimatedTokens(forCharacters: characters) + replyHeadroomTokens
     }
 
+    /// How many more characters a prompt can carry on top of `reserved`
+    /// characters already spoken for (instructions, history, question). Keeps
+    /// a tenth back, so a rough header or count can't tip it over.
+    func availableCharacters(reserving reserved: Int) -> Int {
+        let usable = max(0, tokens - Self.replyHeadroomTokens) * Self.charactersPerToken * 9 / 10
+        return max(0, usable - reserved)
+    }
+
     func fits(promptCharacters: Int) -> Bool {
         Self.neededTokens(forCharacters: promptCharacters) <= tokens
     }
@@ -35,6 +43,14 @@ struct ContextBudget: Equatable {
     /// 1,100 characters a minute), for the message shown when one doesn't.
     var approximateMinutes: Int {
         max(0, tokens - Self.replyHeadroomTokens) * Self.charactersPerToken / 1100
+    }
+}
+
+/// A patient-wide question whose instructions and conversation leave no room
+/// for session material on this Mac. Nothing is sent.
+struct PatientContextBudgetError: LocalizedError, Equatable {
+    var errorDescription: String? {
+        "This conversation leaves no room to read the sessions on this Mac. Use Compact to shorten it, or start a new chat, and ask again."
     }
 }
 

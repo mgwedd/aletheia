@@ -178,6 +178,7 @@ final class EncryptionManager: ObservableObject {
     func lock() {
         guard dek != nil else { return }
         dek = nil
+        SessionSearch.clearCache()   // holds transcript text
         refresh()
         onProtectionChanged?()
     }

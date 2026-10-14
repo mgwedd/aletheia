@@ -19,7 +19,7 @@ flowchart TD
   S --> X["Extras per session, capped at 3,000 chars:<br/>therapist notes, margin comments,<br/>generated notes"]
   T --> R{"all transcripts fit<br/>in 6,000 chars,<br/>or no query terms?"}
   R -->|yes| W[whole transcripts, newest first]
-  R -->|no| K["TF-IDF over ~600-char passages,<br/>keep top passages up to 6,000 chars"]
+  R -->|no| K["SessionSearch (BM25, whole words, typo and<br/>sound-alike matching): top hits with ±2 lines,<br/>up to 6,000 chars"]
   W --> C[Context]
   K --> C
   X --> C
