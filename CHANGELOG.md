@@ -9,6 +9,17 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.43.0] - 2026-10-14
+
+### Added
+- long-session notes from digest plus transcript passages (#299)
+- per-model speed history in SQLite, time left while writing (#298)
+
+### Fixed
+- tag overlap only when talk-over is real, draw the tag faintly (#302)
+- no background Touch ID prompt, idle lock off by default, menu bar focus, Ollama residency (#301)
+- compact transcripts before they enter a prompt (#297)
+
 ## [2.42.0] - 2026-10-14
 
 ### Added
