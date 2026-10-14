@@ -43,6 +43,9 @@ enum LongSessionNote {
         }
     }
 
+    /// Added to the coverage line when the user stopped while the note was being written.
+    static let stoppedEarlyText = "Stopped early: this note is only what was written before you stopped."
+
     // MARK: - Run
 
     static func stream(
@@ -53,6 +56,7 @@ enum LongSessionNote {
         verbosity: SummaryVerbosity = .default,
         instructions: String? = nil,
         effort: AnswerEffort = .default,
+        riskPhrases: [String],
         service: AssistantService,
         builder: DigestBuilder,
         sessionID: UUID,
@@ -98,15 +102,18 @@ enum LongSessionNote {
                     // `riskLimit`); the digest shrinks, or goes, to fit what is left.
                     let riskLimit = min(riskReserve, room / 3)
                     let transcriptCopy = transcript
-                    let flaggedCost = await offMain { riskCost(in: transcriptCopy) }
+                    let flaggedCost = await offMain { strongCost(in: transcriptCopy, phrases: riskPhrases) }
                     try Task.checkCancellation()
+                    let strongBudget = min(flaggedCost, room * 2 / 3)
                     let (digestText, cut) = fit(
-                        Prompts.longSessionDigest(digest.sessionDigest), to: room - min(flaggedCost, room * 2 / 3) - riskLimit)
+                        Prompts.longSessionDigest(digest.sessionDigest), to: room - strongBudget - riskLimit)
                     let omitted = cut && digestText.isEmpty
                     let shortened = cut && !omitted
                     let limit = room - digestText.count
                     let found = await offMain {
-                        passages(in: transcriptCopy, format: format, limit: limit, riskLimit: riskLimit)
+                        passages(
+                            in: transcriptCopy, format: format, limit: limit, riskLimit: riskLimit,
+                            phrases: riskPhrases, strongBudget: strongBudget)
                     }
                     try Task.checkCancellation()
                     let material = Prompts.longSessionMaterial(digest: digestText, passages: found.text)
@@ -134,7 +141,7 @@ enum LongSessionNote {
 
                     if effort == .focus, plannedCheck == nil, !draft.isEmpty {
                         let outcome = await check(
-                            draft: draft, material: material, format: format, service: service,
+                            draft: draft, material: material, format: format, phrases: riskPhrases, service: service,
                             builder: builder, live: live, accept: { continuation.yield($0) })
                         // The truncation notice judges the note's own read, not the check's. A new
                         // start time makes any late event from the check stage drop.
@@ -155,15 +162,15 @@ enum LongSessionNote {
     /// One call that corrects `draft` against `material`. The corrected note is
     /// handed to `accept` only if it looks complete; anything else keeps the draft.
     private static func check(
-        draft: String, material: String, format: ProgressNoteFormat, service: AssistantService,
-        builder: DigestBuilder, live: @escaping DigestBuilder.Live, accept: (String) -> Void
+        draft: String, material: String, format: ProgressNoteFormat, phrases: [String],
+        service: AssistantService, builder: DigestBuilder, live: @escaping DigestBuilder.Live, accept: (String) -> Void
     ) async -> CheckOutcome {
         let prompt = Prompts.noteCheck(draft: draft, material: material)
         guard service.fits(prompt: prompt) else { return .tooLong }
         do {
             let corrected = try await builder.runStage(
                 prompt, read: "Checking", write: "Writing corrections", task: .note, service: service, live: live)
-            if let why = rejection(corrected, draft: draft, format: format) { return why }
+            if let why = rejection(corrected, draft: draft, format: format, phrases: phrases) { return why }
             accept(corrected)
             return .ran
         } catch is CancellationError {
@@ -177,21 +184,26 @@ enum LongSessionNote {
 
     /// A corrected note is taken only if it is at least 60% as long as the draft,
     /// keeps every section heading line, and leaves risk statements alone: every
-    /// draft sentence with a strong risk phrase must be in the correction word
+    /// draft sentence with a risk phrase must be in the correction word
     /// for word, in the same section, and the correction may add no such
     /// sentence of its own (so no flipped, dropped, moved or invented denial).
-    nonisolated static func plausiblyComplete(_ corrected: String, draft: String, format: ProgressNoteFormat) -> Bool {
-        rejection(corrected, draft: draft, format: format) == nil
+    nonisolated static func plausiblyComplete(
+        _ corrected: String, draft: String, format: ProgressNoteFormat, phrases: [String]
+    ) -> Bool {
+        rejection(corrected, draft: draft, format: format, phrases: phrases) == nil
     }
 
     /// Why a corrected note is not taken, or nil if it is.
-    nonisolated static func rejection(_ corrected: String, draft: String, format: ProgressNoteFormat) -> CheckOutcome? {
+    nonisolated static func rejection(
+        _ corrected: String, draft: String, format: ProgressNoteFormat, phrases: [String]
+    ) -> CheckOutcome? {
         guard corrected.count * 10 >= draft.count * 6 else { return .incomplete }
         guard headingLines(draft, format).isSubset(of: headingLines(corrected, format)) else { return .incomplete }
-        let before = Set(sentences(draft, format, strongOnly: false))
-        let after = Set(sentences(corrected, format, strongOnly: false))
-        if sentences(draft, format, strongOnly: true).contains(where: { !after.contains($0) }) { return .alteredRisk }
-        if sentences(corrected, format, strongOnly: true).contains(where: { !before.contains($0) }) { return .alteredRisk }
+        let matcher = RiskPhraseMatcher(phrases)
+        let before = Set(sentences(draft, format, matcher: nil))
+        let after = Set(sentences(corrected, format, matcher: nil))
+        if sentences(draft, format, matcher: matcher).contains(where: { !after.contains($0) }) { return .alteredRisk }
+        if sentences(corrected, format, matcher: matcher).contains(where: { !before.contains($0) }) { return .alteredRisk }
         return nil
     }
 
@@ -203,22 +215,20 @@ enum LongSessionNote {
     }
 
     /// The sentences of `text`, each tagged with the section it is in and
-    /// whitespace-normalised; only those with a strong risk match if `strongOnly`.
-    private nonisolated static func sentences(_ text: String, _ format: ProgressNoteFormat, strongOnly: Bool) -> [String] {
+    /// whitespace-normalised; only those with a risk phrase if a `matcher` is given.
+    private nonisolated static func sentences(_ text: String, _ format: ProgressNoteFormat, matcher: RiskPhraseMatcher?) -> [String] {
         let wanted = Set(format.sections.map { $0.heading.lowercased() })
         let marks = CharacterSet(charactersIn: "#*_: \t")
-        let regexes = Array(riskRegexes().prefix(2))
         var section = ""
         var out: [String] = []
         func add(_ piece: String) {
-            let squashed = piece.replacingOccurrences(of: "\u{2019}", with: "'")
+            var straight = piece
+            for mark in ["\u{2018}", "\u{2019}", "\u{02BC}"] { straight = straight.replacingOccurrences(of: mark, with: "'") }
+            let squashed = straight
                 .split(whereSeparator: \.isWhitespace).joined(separator: " ")
                 .trimmingCharacters(in: CharacterSet(charactersIn: "-*\u{2022} .!?"))
             guard !squashed.isEmpty else { return }
-            if strongOnly {
-                let range = NSRange(squashed.startIndex..., in: squashed)
-                guard regexes.contains(where: { $0.firstMatch(in: squashed, range: range) != nil }) else { return }
-            }
+            if let matcher, matcher.firstMatch(in: squashed) == nil { return }
             out.append(section + "\u{1}" + squashed)
         }
         for line in text.split(separator: "\n") {
@@ -283,105 +293,71 @@ enum LongSessionNote {
 
     // MARK: - Passages
 
-    /// Lines that mention risk, in tiers. Tiers 1 and 2 hold only specific
-    /// phrases, never a bare word that is common in ordinary talk: tier 1 is
-    /// explicit statements and violence to or by the client (ending it, not
-    /// wanting to be here, hurting someone, "hit me", "denies SI"); tier 2 is
-    /// specific acts (stopped taking my meds, took all my pills, has a gun).
-    /// Tier 3 is bare words (died, cut, knife, burden, SI) and weak context
-    /// (plan, alcohol); those lines only get the neighbour allowance and are
-    /// never warned about. Case-insensitive except SI/HI/SH/SA/OD. A negation like
-    /// "don't" has no word boundary before "n't", so those alternatives carry
-    /// their own anchors.
-    private nonisolated static let ap = #"['\u2019]"#
-    private nonisolated static let family =
-        #"(?:my|our|his|her|their|the) (?:kids?|child(?:ren)?|baby|son|daughter|wife|husband|partner|mother|mom|father|dad|sister|brother)"#
-    private nonisolated static let person =
-        #"(?:me|him|her|them|my ?self|him ?self|her ?self|them ?selves|\#(family))"#
-    private nonisolated static let abbr = #"(?-i:(?:SI|HI|SH|SA)\b)"#
+    /// The phrases a new install starts with: suicide, self-harm and violence,
+    /// worded so they don't turn up in ordinary talk. The user can edit the list
+    /// in Settings (add, remove, clear, reset to this). Matching is case-insensitive
+    /// and whole-word; ' and ’ are the same character.
+    nonisolated static let defaultRiskPhrases: [String] = [
+        // Suicide: statements
+        "suicide", "suicidal", "kill myself", "killing myself", "end my life",
+        "ending my life", "take my life", "end it all", "want to die",
+        "wanna die", "wish I was dead",
+        "better off dead", "better off without me", "rather be dead",
+        // Suicide: passive
+        "don't want to be here", "don't want to live",
+        "don't want to wake up", "hope I don't wake up", "not wake up", "nothing to live for",
+        "reason to live",
+        // Suicide: plans and means
+        "plan to kill", "overdose", "overdosed", "took all my pills",
+        "took a whole bottle", "hang myself", "walk into traffic",
+        // Suicide: clinical shorthand
+        "denies SI", "endorses SI", "no SI", "history of SI", "SI/HI",
+        "denies HI", "endorses HI",
+        // Self-harm
+        "cut myself", "cutting myself", "I've been cutting", "burn myself", "burning myself",
+        "hurt myself", "hurting myself", "harm myself", "harming myself", "self-harm",
+        "self harm", "hit myself", "starving myself", "denies SH", "endorses SH",
+        // Violence to others and by others
+        "kill him", "kill her", "want to kill", "going to kill",
+        "threatened to kill", "murder", "homicidal", "want to hurt",
+        "shooting up", "hit me", "hits me", "beat me",
+        "choked me",
+    ]
 
-    private nonisolated static let riskPatterns: [String] = {
-        let words = [
-            #"suicid\w*"#, #"homicid\w*"#, #"self.?harm\w*"#, #"kms"#,
-            #"kill(?:s|ing|ed)? (?:me|you|someone|somebody|him|her|them|my ?self|him ?self|her ?self|them ?selves)"#,
-            #"(?:hurt|harm)(?:s|ing)? (?:someone|somebody|others|my ?self|him ?self|her ?self|them ?selves|him|her|them|\#(family))"#,
-            #"(?:hit|beat|slap|kick)(?:s|ting|ing|ped|ed)? (?:me|\#(family)|(?:him|her|them)\b(?! (?:at|in|on|to|by|out|back)\b))"#,
-            #"(?:punch|chok|strangl|stab|assault)\w* \#(person)"#,
-            #"(?:shoot|shoots|shooting|shot) \#(person)"#,
-            #"(?:sexual|physical|emotional)ly (?:abus|assault|harass)\w*"#, #"abus(?:e|es|ed|ing) \#(person)"#,
-            #"rap(?:e|ed|es|ing)"#, #"molest\w*"#, #"fondl\w*"#, #"forc(?:ed|es|ing) (?:him|her|them)self on"#,
-            #"touch(?:ed|es|ing)? \#(person) (?:inappropriately|sexually)"#,
-            #"threaten\w* (?:\#(person)|to (?:kill|hurt|harm|shoot|stab|beat|hit|leave|take)|my \w+)"#,
-            #"(?:push|shov)\w* me (?:down|into|against|off|around)"#,
-            #"grab\w* (?:me by|my (?:throat|neck|hair|arm|wrist))"#,
-            #"(?:end|ending|ended) (?:my (?:own )?life|it all)"#,
-            #"(?:going to|want to|wanna|ready to|planning to|thinking (?:of|about)|thoughts (?:of|about)) end(?:ing)? it"#,
-            #"take my (?:own )?life"#, #"(?:want|wanted|wish)\w* (?:to )?(?:die|be dead|disappear)"#,
-            #"wish i (?:was|were) (?:dead|gone)"#,
-            #"wish i (?:wouldn\#(ap)t|would not|didn\#(ap)t|did not) (?:wake|exist)"#,
-            #"better off (?:dead|without me)"#, #"(?:better|easier) without me"#,
-            #"(?:nobody|no ?one) (?:would|will|\#(ap)d) (?:even )?miss me"#, #"be here any ?more"#,
-            #"(?:thinking|thought|thoughts) (?:of|about) (?:dying|death|ending)"#,
-            #"hang\w* (?:my ?self|him ?self|her ?self)"#, #"starv\w* (?:my ?self|him ?self|her ?self)"#,
-            #"cut(?:s|ting)? (?:my ?self|him ?self|her ?self|my (?:wrists?|arms?|legs?))"#,
-            #"(?:been|kept|keep|started) cutting(?! (?:back|down|out|it|corners|costs))"#,
-            #"jump(?:ing)? (?:off|from)"#, #"(?:walk|step|run)\w* (?:out )?(?:in)?to traffic"#,
-            #"in front of (?:a |the )?(?:train|truck|bus)"#, #"sleep and (?:just |then )?(?:not|never) wake"#,
-            #"no (?:reason|point) (?:to|in) (?:live|living|go on|going on|keep going|keep living|continue)"#,
-            #"what\#(ap)?s the point (?:of|in) (?:anything|living|it all|going on|everything)"#,
-            #"life (?:is not|isn\#(ap)t) worth"#, #"i (?:just )?(?:give|gave) up(?! on)"#,
-            #"(?:can\#(ap)t|cannot|can not) (?:go on|do this any ?more|take (?:it|this) any ?more|keep going|keep doing this|carry on)"#,
-            #"(?:scared|afraid|frightened|terrified) (?:to go home|of (?:him|her|them|going home|my (?:husband|wife|partner|boyfriend|girlfriend|dad|father|mom|mother|ex)))"#,
-        ]
-        let anchored = [
-            #"(?:\bnot|n\#(ap)t) (?:want|wanna) (?:to )?(?:be here|go on|live|be alive|exist)"#,
-            #"(?:\bnot|n\#(ap)t) see (?:the |any |a )?(?:point|reason)(?: (?:to|in))? ?(?:go on|going on|living|live|keep going|continue|any ?more)"#,
-            #"(?:\bnot|n\#(ap)t) worth (?:living|it all)"#,
-            #"\b(?:denies|denied|denying|endorses|endorsed|endorsing|reports|reported|no|negative for|positive for|passive|active|history of|hx of|hx)\s+\#(abbr)"#,
-            #"[+/\-]\s?\#(abbr)"#,
-        ]
-        let acts = [
-            #"(?:(?:stopp?ed|stopping|quit|quitting|refus\w*) taking|haven\#(ap)t been taking|hasn\#(ap)t been taking|have not been taking|not been taking|not taking) (?:my|his|her|their|the) (?:meds?|medications?|medicine|pills|antidepressants?|lithium|prescriptions?)"#,
-            #"(?:took|taken|swallow\w*|downed) (?:all (?:of )?(?:my|the|his|her) |too many |an? (?:whole )?(?:bottle|handful) of |a lot of )(?:\w+ )?(?:pills|meds|medications?|tablets|capsules)"#,
-            #"swallow\w* an? (?:whole )?(?:bottle|handful) of"#, #"overdos(?:e|ed|ing) (?:on|myself)"#,
-            #"(?:have|has|own|owns|bought|access to|keeps?) (?:a |the )?(?:gun|guns|firearms?|pistol|rifle)"#,
-        ]
-        let weak = [
-            #"die|dying|died|dead|death|overdos\w*|pills|gun|guns|weapon\w*|knife|cut(?:ting)?|cuts|worthless|hopeless|burden|abus\w*|unsafe"#,
-            #"(?-i:OD)"#, #"(?-i:SI|HI|SH|SA)"#,
-            #"(?:skipp?ed|skipping|missed|off) (?:taking )?(?:my |his |her |their |the )?(?:meds?|medications?|medicine|pills|antidepressants?|lithium|prescriptions?)"#,
-            #"plan|intent|intend\w*|safe|safety|drink\w*|drunk|alcohol|drugs?|high"#,
-        ]
-        return [
-            #"\b(?:"# + words.joined(separator: "|") + #")\b|"# + anchored.joined(separator: "|"),
-            #"\b(?:"# + acts.joined(separator: "|") + #")\b"#,
-            #"\b(?:"# + weak.joined(separator: "|") + #")\b"#,
-        ]
-    }()
-
-    /// The risk patterns compiled, in tier order.
-    nonisolated static func riskRegexes() -> [NSRegularExpression] {
-        riskPatterns.compactMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
-    }
-
-    /// Each line that matches a risk tier (the first, most specific, that does).
-    private nonisolated static func flaggedLines(_ lines: [String]) -> [(tier: Int, line: Int)] {
-        let regexes = riskRegexes()
-        var flagged: [(tier: Int, line: Int)] = []
+    /// Each line that holds a risk phrase, with where the first one sits.
+    private nonisolated static func flaggedLines(
+        _ lines: [String], matcher: RiskPhraseMatcher
+    ) -> [(line: Int, match: NSRange)] {
+        var flagged: [(line: Int, match: NSRange)] = []
         for (index, text) in lines.enumerated() {
             if Task.isCancelled { return [] }
-            let range = NSRange(text.startIndex..., in: text)
-            if let tier = regexes.firstIndex(where: { $0.firstMatch(in: text, range: range) != nil }) {
-                flagged.append((tier, index))
-            }
+            if let match = matcher.firstMatch(in: text) { flagged.append((index, match)) }
         }
         return flagged
     }
 
-    /// Characters the strong risk lines (tiers 1 and 2) take on their own.
-    nonisolated static func riskCost(in transcript: String) -> Int {
+    /// Characters the risk-phrase lines take on their own.
+    nonisolated static func strongCost(in transcript: String, phrases: [String]) -> Int {
         let lines = transcript.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        return flaggedLines(lines).filter { $0.tier < 2 }.reduce(0) { $0 + lines[$1.line].count + 1 }
+        return flaggedLines(lines, matcher: RiskPhraseMatcher(phrases)).reduce(0) { $0 + lines[$1.line].count + 1 }
+    }
+
+    /// `text` cut to about `width` characters around `match`, with a marker at each cut end.
+    nonisolated static func window(_ text: String, around match: NSRange, width: Int) -> String {
+        let marker = "[…truncated]"
+        guard let found = Range(match, in: text) else { return String(text.prefix(width)) + " " + marker }
+        let start = text.distance(from: text.startIndex, to: found.lowerBound)
+        let length = text.distance(from: found.lowerBound, to: found.upperBound)
+        let total = text.count
+        var low = start
+        var high = min(total, start + width)
+        if length < width {
+            low = max(0, start - (width - length) / 2)
+            high = min(total, low + width)
+            low = max(0, high - width)
+        }
+        let body = String(text.dropFirst(low).prefix(high - low))
+        return (low > 0 ? marker + " " : "") + body + (high < total ? " " + marker : "")
     }
 
     /// `items` reordered so any prefix is spread over the whole list: both ends
@@ -426,16 +402,17 @@ enum LongSessionNote {
     }
 
     /// Passages of `transcript` up to `limit` characters. Risk lines come first:
-    /// every strong risk line (tiers 1 and 2, spread over the session if they
-    /// don't all fit; one too long for the room is cut with a marker), then their
-    /// neighbours and the weak tier, from `riskLimit` only. Then each note topic's
+    /// every line with one of `phrases` (spread over the session if they don't
+    /// all fit; one too long for the room is cut around its phrase, with a
+    /// marker), then the neighbours of those that fit, from `riskLimit` only. Then each note topic's
     /// best matches, the topics taking turns; each hit brings its neighbouring
     /// lines. The result is in transcript order with `[…]` between gaps;
     /// `lineCount` counts the non-blank lines it holds and `droppedRisk` the
-    /// strong risk lines that did not fit or were cut short. Topic search is the app's own
+    /// risk lines that did not fit or were cut short. Topic search is the app's own
     /// `SessionSearch`. Stops early (returning nothing) if its task is cancelled.
     nonisolated static func passages(
-        in transcript: String, format: ProgressNoteFormat, limit: Int, riskLimit: Int
+        in transcript: String, format: ProgressNoteFormat, limit: Int, riskLimit: Int,
+        phrases: [String], strongBudget: Int = 0
     ) -> (text: String, lineCount: Int, droppedRisk: Int) {
         let lines = transcript.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         var chosen: [Int: String] = [:]
@@ -453,38 +430,39 @@ enum LongSessionNote {
             return true
         }
 
-        let flagged = flaggedLines(lines)
-        let strong = (0...1).flatMap { tier in spread(flagged.filter { $0.tier == tier }.map(\.line)) }
-        let weak = spread(flagged.filter { $0.tier >= 2 }.map(\.line))
+        let flagged = flaggedLines(lines, matcher: RiskPhraseMatcher(phrases))
+        let matches = Dictionary(flagged.map { ($0.line, $0.match) }, uniquingKeysWith: { first, _ in first })
+        let strong = spread(flagged.map(\.line))
         guard limit > 0 else { return ("", 0, strong.count) }
-        // Each strong risk line on its own, before anything else, but never more
-        // than two thirds of the room, so the topics always get some.
-        let strongCap = limit * 2 / 3
+        // Each risk line on its own, before anything else: up to what `stream` set
+        // aside for them (`strongBudget`) or two thirds of the room, whichever is
+        // more, and never past the room itself.
+        let strongCap = min(limit, max(limit * 2 / 3, strongBudget))
         var shortened = 0
         for line in strong where chosen[line] == nil {
             let room = strongCap - used
             if lines[line].count + 1 <= room {
                 take([(line, lines[line])], cap: strongCap)
-            } else if room >= 60 {
-                let cut = String(lines[line].prefix(room - 16)) + " […truncated]"
+            } else if room >= 60, let match = matches[line] {
+                // Keep the part that holds the phrase.
+                let cut = window(lines[line], around: match, width: room - 30)
                 chosen[line] = cut
                 used += cut.count + 1
                 shortened += 1
             }
         }
-        // Neighbours and weak-tier lines, from their own allowance.
+        // Neighbours of the lines that made it in, from their own allowance.
         var extras = 0
         func extra(_ line: Int) {
             let before = used
             take([(line, lines[line])], cap: min(limit, before + riskLimit - extras))
             extras += used - before
         }
-        for line in strong {
+        for line in strong where chosen[line] != nil {
             if Task.isCancelled { return ("", 0, 0) }
             if line > 0 { extra(line - 1) }
             if line + 1 < lines.count { extra(line + 1) }
         }
-        weak.forEach(extra)
 
         // Then the note's own topics, taking turns, until the room is used.
         let document = SessionSearch.Document(date: Date(), tag: "S1", kind: .transcript, text: transcript)
@@ -579,5 +557,34 @@ extension Prompts {
         Draft note:
         \(draft)
         """
+    }
+}
+
+
+/// Finds lines holding any of a list of plain phrases: case-insensitive, whole
+/// word, any run of spaces for a space, and ' ‘ ’ ʼ all the same character.
+/// Phrases are escaped, so no pattern syntax reaches the regex engine.
+struct RiskPhraseMatcher {
+    private let regex: NSRegularExpression?
+
+    init(_ phrases: [String]) {
+        let apostrophes: [Character] = ["'", "\u{2018}", "\u{2019}", "\u{02BC}"]
+        let apostrophe = #"['\u2018\u2019\u02BC]"#
+        let parts = phrases.compactMap { raw -> String? in
+            let words = raw.split(whereSeparator: \.isWhitespace)
+            guard !words.isEmpty else { return nil }
+            return words.map { word in
+                word.map { apostrophes.contains($0) ? apostrophe : NSRegularExpression.escapedPattern(for: String($0)) }
+                    .joined()
+            }.joined(separator: #"\s+"#)
+        }
+        regex = parts.isEmpty ? nil : try? NSRegularExpression(
+            pattern: #"(?<![\p{L}\p{N}])(?:"# + parts.joined(separator: "|") + #")(?![\p{L}\p{N}])"#,
+            options: [.caseInsensitive])
+    }
+
+    /// Where the first phrase sits in `text`, if any does.
+    func firstMatch(in text: String) -> NSRange? {
+        regex?.firstMatch(in: text, range: NSRange(text.startIndex..., in: text))?.range
     }
 }

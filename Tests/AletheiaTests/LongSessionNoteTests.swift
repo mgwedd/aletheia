@@ -1,6 +1,8 @@
 import XCTest
 @testable import Aletheia
 
+private let defaultPhrases = LongSessionNote.defaultRiskPhrases
+
 /// A stub model that answers by the kind of prompt it is given and records them all.
 private final class StubModel: Assistant, @unchecked Sendable {
     var prompts: [String] = []
@@ -67,7 +69,7 @@ final class LongSessionNoteTests: XCTestCase {
 
     private func run(
         transcript: String, effort: AnswerEffort = .normal, stored: SessionDigest? = nil, tokens: Int = 8192,
-        format: ProgressNoteFormat = .soap, configure: (StubModel) -> Void = { _ in }
+        format: ProgressNoteFormat = .soap, phrases: [String] = defaultPhrases, configure: (StubModel) -> Void = { _ in }
     ) async throws -> Run {
         let stub = StubModel()
         configure(stub)
@@ -75,7 +77,7 @@ final class LongSessionNoteTests: XCTestCase {
         service.budget = ContextBudget(tokens: tokens)
         var coverage: [String] = []
         let stream = LongSessionNote.stream(
-            format: format, transcript: transcript, effort: effort, service: service,
+            format: format, transcript: transcript, effort: effort, riskPhrases: phrases, service: service,
             builder: DigestBuilder(queue: InferenceQueue()), sessionID: UUID(),
             loadDigest: { stored }, saveDigest: { _ in },
             live: { _, _ in }, coverage: { coverage.append($0) })
@@ -141,7 +143,7 @@ final class LongSessionNoteTests: XCTestCase {
 
     func testBlankLinesAreNotCounted() {
         let text = "[00:00] You: hello\n[00:20] Client: I want to end my life\n[00:40] You: tell me more\n\n\n"
-        let found = LongSessionNote.passages(in: text, format: .soap, limit: 5_000, riskLimit: 2_000)
+        let found = LongSessionNote.passages(in: text, format: .soap, limit: 5_000, riskLimit: 2_000, phrases: defaultPhrases)
         XCTAssertEqual(found.lineCount, 3)
         XCTAssertEqual(LongSessionNote.nonBlankLines(text).count, 3)
     }
@@ -151,11 +153,11 @@ final class LongSessionNoteTests: XCTestCase {
     func testRiskParaphrasesAreFoundAndSurviveATightRoom() {
         var lines = (0..<400).map { String(format: "[%02d:%02d] You: Tell me more about topic number %d, the safe route and a drink with friends.", $0 / 3, ($0 % 3) * 20, $0) }
         lines[300] = "[100:00] Client: Honestly I don't want to be here anymore."
-        lines[350] = "[116:40] Client: I have been thinking about ending it."
-        lines[200] = "[66:40] Client: I took too many pills last year."
-        let found = LongSessionNote.passages(in: lines.joined(separator: "\n"), format: .soap, limit: 1_500, riskLimit: 900)
+        lines[350] = "[116:40] Client: I have been thinking about ending my life."
+        lines[200] = "[66:40] Client: I took all my pills last year."
+        let found = LongSessionNote.passages(in: lines.joined(separator: "\n"), format: .soap, limit: 1_500, riskLimit: 900, phrases: defaultPhrases)
         XCTAssertTrue(found.text.contains("don't want to be here anymore"))
-        XCTAssertTrue(found.text.contains("thinking about ending it"))
+        XCTAssertTrue(found.text.contains("thinking about ending my life"))
         XCTAssertTrue(found.text.contains("pills"))
         XCTAssertLessThanOrEqual(found.text.count, 1_500 + found.lineCount)
     }
@@ -164,20 +166,20 @@ final class LongSessionNoteTests: XCTestCase {
         // Many generic "drinking"/"safe" lines come first; the one explicit line must still make a small risk room.
         var lines = (0..<200).map { "[\($0)] Client: I was drinking again and felt safe at home, drinking with Sam." + String(repeating: " x", count: 5) + " \($0)" }
         lines[190] = "[190] Client: I want to kill myself some days."
-        let found = LongSessionNote.passages(in: lines.joined(separator: "\n"), format: .soap, limit: 800, riskLimit: 300)
+        let found = LongSessionNote.passages(in: lines.joined(separator: "\n"), format: .soap, limit: 800, riskLimit: 300, phrases: defaultPhrases)
         XCTAssertTrue(found.text.contains("kill myself"))
     }
 
     func testRiskLinesReachThePromptOnATightBudget() async throws {
         var lines = (0..<600).map { String(format: "[%02d:%02d] You: Tell me more about topic number %d and how the week went.", $0 / 3, ($0 % 3) * 20, $0) }
         lines[500] = "[166:40] Client: I don't want to be here anymore."
-        lines[510] = "[170:00] Client: I have been thinking about ending it."
+        lines[510] = "[170:00] Client: I have been thinking about ending my life."
         let text = lines.joined(separator: "\n")
         for effort in [AnswerEffort.normal, .focus] {
             let result = try await run(transcript: text, effort: effort, stored: storedDigest(for: text), tokens: 4600)
             let final = try XCTUnwrap(result.prompts.first)
             XCTAssertTrue(final.contains("don't want to be here anymore"), "\(effort)")
-            XCTAssertTrue(final.contains("thinking about ending it"), "\(effort)")
+            XCTAssertTrue(final.contains("thinking about ending my life"), "\(effort)")
             var service = AssistantService(assistant: StubModel(), model: "m")
             service.budget = ContextBudget(tokens: 4600)
             XCTAssertTrue(service.fits(prompt: final), "\(effort)")
@@ -240,53 +242,192 @@ final class LongSessionNoteTests: XCTestCase {
 
     func testPlausiblyCompleteNeedsLengthAndHeadings() {
         let draft = "Subjective\nShe slept badly all week and worried a lot.\nPlan\nTry the sleep diary next week."
-        XCTAssertTrue(LongSessionNote.plausiblyComplete(draft.replacingOccurrences(of: "badly", with: "poorly"), draft: draft, format: .soap))
-        XCTAssertFalse(LongSessionNote.plausiblyComplete("Subjective\nSlept.", draft: draft, format: .soap))
-        XCTAssertFalse(LongSessionNote.plausiblyComplete(draft.replacingOccurrences(of: "Plan", with: "Next"), draft: draft, format: .soap))
+        XCTAssertTrue(LongSessionNote.plausiblyComplete(draft.replacingOccurrences(of: "badly", with: "poorly"), draft: draft, format: .soap, phrases: defaultPhrases))
+        XCTAssertFalse(LongSessionNote.plausiblyComplete("Subjective\nSlept.", draft: draft, format: .soap, phrases: defaultPhrases))
+        XCTAssertFalse(LongSessionNote.plausiblyComplete(draft.replacingOccurrences(of: "Plan", with: "Next"), draft: draft, format: .soap, phrases: defaultPhrases))
     }
 
-    // MARK: - Risk lexicon
+    // MARK: - Risk phrases
 
-    /// The most specific tier (0 is strongest) that matches `line`, or nil.
-    private func riskTier(_ line: String) -> Int? {
-        let range = NSRange(line.startIndex..., in: line)
-        return LongSessionNote.riskRegexes().firstIndex { $0.firstMatch(in: line, range: range) != nil }
+    private func isRisk(_ line: String, _ phrases: [String] = defaultPhrases) -> Bool {
+        RiskPhraseMatcher(phrases).firstMatch(in: line) != nil
     }
 
-    func testAllRiskPatternsCompile() {
-        XCTAssertEqual(LongSessionNote.riskRegexes().count, 3)
+    func testTheDefaultListIsAReadableSizeWithNoDuplicates() {
+        XCTAssertTrue((30...70).contains(defaultPhrases.count), "\(defaultPhrases.count) phrases")
+        XCTAssertEqual(Set(defaultPhrases.map { $0.lowercased() }).count, defaultPhrases.count)
+        XCTAssertFalse(defaultPhrases.contains { $0.trimmingCharacters(in: .whitespaces) != $0 || $0.isEmpty })
     }
 
-    func testCommonRiskLanguageMatchesAStrongTier() {
-        let strong = [
-            "I don't want to be here", "I don\u{2019}t want to be here", "I don't want to live", "I don\u{2019}t want to live",
-            "I'm going to shoot him", "She punches me and chokes me", "I want to jump off the bridge",
-            "I can't go on", "I can\u{2019}t do this anymore", "I don't see the point anymore", "I don\u{2019}t see the point anymore",
-            "life isn't worth living", "no reason to keep going", "I wish I wouldn't wake up", "I wish I wouldn\u{2019}t wake up",
-            "I hurt my kids", "my husband raped me", "he threatens me, I'm scared to go home",
-            "He hits me when he drinks", "Client denies SI", "Client denies SI/HI", "No SI", "Client denies SI and HI",
-            "Reports SH last month", "history of SA",
+    func testDefaultsMatchSuicideSelfHarmAndViolence() {
+        let risky = [
+            "I want to kill myself", "I don't want to be here", "I don\u{2019}t want to be here",
+            "I don\u{2018}t want to live", "I don\u{02BC}t want to live", "he threatened to kill me",
+            "I'm going to kill him", "I wish I was dead", "He hits me when he drinks", "Client denies SI",
+            "client DENIES si/hi", "No SI", "Client endorses SH", "I've been cutting", "I\u{2019}ve been cutting",
+            "I cut myself", "I overdosed last year", "she would murder him", "I want to hurt someone",
+            "he beat me", "I hope I don't wake up", "I took all my pills", "I might walk into traffic",
+            "history of SI", "Reports HI: no. Denies HI.", "I think about self-harm",
         ]
-        for phrase in strong {
-            XCTAssertEqual(riskTier(phrase), 0, "\(phrase) should be tier 1")
+        for line in risky { XCTAssertTrue(isRisk(line), line) }
+    }
+
+    func testAmbiguousShortPhrasesAreNotDefaults() {
+        for line in [
+            "I give up on this recipe", "He shot me a look", "I threaten to leave the group", "She ended it with him",
+            "I hit him with a serve", "I hurt her feelings once", "I took a shot at it", "He put his hands on the table",
+        ] { XCTAssertFalse(isRisk(line), line) }
+    }
+
+    func testTheMainFalsePositivesAreAcceptedBecauseTheListIsEditable() {
+        XCTAssertTrue(isRisk("It hit me that I was late"))
+        XCTAssertTrue(isRisk("I want to die laughing at that show"))
+        XCTAssertTrue(isRisk("She found a reason to live it up"))
+    }
+
+    func testDefaultsMissNothingBenign() {
+        for line in [
+            "I hit my target at work this quarter", "I beat him at chess on Sunday", "I choked up when I spoke",
+            "There is a threat of layoffs", "I cut the onions for dinner", "My grandmother died last year",
+            "The photo shoot went well", "The SI units were converted", "I missed my pills once and the pharmacy called",
+            "Death of a salesman was on at the theatre", "The weapon in the video game was a sword",
+        ] { XCTAssertFalse(isRisk(line), line) }
+    }
+
+    func testAPhraseMatchesWholeWordsIgnoringCase() {
+        XCTAssertTrue(isRisk("My GOLDFISH died", ["goldfish"]))
+        XCTAssertTrue(isRisk("Goldfish.", ["goldfish"]))
+        XCTAssertFalse(isRisk("two goldfishes", ["goldfish"]))
+        XCTAssertFalse(isRisk("a gold fish", ["goldfish"]))
+        XCTAssertFalse(isRisk("a waterfall", ["fall"]))
+        XCTAssertTrue(isRisk("a bad Fall, again", ["fall"]))
+        XCTAssertTrue(isRisk("kill   myself", ["kill myself"]), "any run of spaces")
+    }
+
+    func testRegexCharactersInAPhraseAreMatchedLiterally() {
+        let phrases = ["a.b", "(x", "c+", "what?", "[z]", "^start", "end$", "a|b", "\\d"]
+        for phrase in phrases {
+            XCTAssertTrue(isRisk("here: \(phrase) there", [phrase]), phrase)
+        }
+        XCTAssertFalse(isRisk("axb", ["a.b"]))
+        XCTAssertFalse(isRisk("123", ["\\d"]))
+        XCTAssertFalse(isRisk("a", ["a|b"]), "an alternation typed by the user is plain text")
+        XCTAssertFalse(isRisk("zzz", ["[z]"]))
+    }
+
+    func testApostropheFormsAreTheSameCharacter() {
+        let forms = ["'", "\u{2019}", "\u{2018}", "\u{02BC}"]
+        for typed in forms {
+            for spoken in forms {
+                XCTAssertTrue(isRisk("I don\(spoken)t want to live", ["don\(typed)t want to live"]), "\(typed) vs \(spoken)")
+            }
         }
     }
 
-    func testStoppingMedicationIsTierTwo() {
-        XCTAssertEqual(riskTier("I stopped taking my medication"), 1)
-        XCTAssertEqual(riskTier("I haven\u{2019}t been taking my meds"), 1)
-        XCTAssertEqual(riskTier("I haven't been taking my meds"), 1)
-        XCTAssertEqual(riskTier("She is off her meds again"), 2, "skipping is a weak sign")
+    func testBlankPhrasesMatchNothing() {
+        XCTAssertFalse(isRisk("anything at all", ["", "   "]))
+        XCTAssertFalse(isRisk("anything at all", []))
     }
 
-    func testHitsMeReachesAHighTierNotJustTheDrinkWord() {
-        XCTAssertEqual(riskTier("He hits me when he drinks"), 0)
-        XCTAssertEqual(riskTier("He drinks on weekends"), 2)
+    // MARK: - Risk phrases in settings
+
+    func testUnsetKeyLoadsTheDefaultsAndAStoredEmptyListStaysEmpty() throws {
+        let name = "riskPhrasesTest-\(UUID().uuidString)"
+        let suite = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { suite.removePersistentDomain(forName: name) }
+        XCTAssertEqual(AppSettings.loadRiskPhrases(from: suite), defaultPhrases)
+        suite.set([String](), forKey: "riskPhrases")
+        XCTAssertEqual(AppSettings.loadRiskPhrases(from: suite), [])
+        suite.set(["only this"], forKey: "riskPhrases")
+        XCTAssertEqual(AppSettings.loadRiskPhrases(from: suite), ["only this"])
     }
 
-    func testAbbreviationsAreCaseSensitive() {
-        XCTAssertNil(riskTier("hi there, how was the si"), "lowercase si/hi is not an abbreviation")
-        XCTAssertNil(riskTier("Hi, how are you"))
+    @MainActor
+    func testClearAddAndResetRiskPhrases() {
+        let settings = AppSettings.shared
+        let original = settings.riskPhrases
+        defer { settings.riskPhrases = original }
+        settings.resetRiskPhrases()
+        XCTAssertEqual(settings.riskPhrases, defaultPhrases)
+        XCTAssertNil(UserDefaults.standard.object(forKey: "riskPhrases"), "the defaults are stored as never set")
+        settings.riskPhrases = []
+        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: "riskPhrases"), [])
+        XCTAssertEqual(AppSettings.loadRiskPhrases(from: .standard), [])
+        settings.addRiskPhrase("  my phrase ")
+        settings.addRiskPhrase("MY PHRASE")
+        settings.addRiskPhrase("   ")
+        XCTAssertEqual(settings.riskPhrases, ["my phrase"])
+        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: "riskPhrases"), ["my phrase"])
+        settings.resetRiskPhrases()
+        XCTAssertEqual(settings.riskPhrases, defaultPhrases)
+        XCTAssertNil(UserDefaults.standard.object(forKey: "riskPhrases"))
+    }
+
+    func testAnEmptyListFlagsNoLines() {
+        let text = tightRiskTranscript()
+        XCTAssertGreaterThan(LongSessionNote.strongCost(in: text, phrases: defaultPhrases), 0)
+        XCTAssertEqual(LongSessionNote.strongCost(in: text, phrases: []), 0)
+        let found = LongSessionNote.passages(in: text, format: .soap, limit: 1_000, riskLimit: 300, phrases: [])
+        XCTAssertEqual(found.droppedRisk, 0)
+        XCTAssertFalse(found.text.contains("kill myself"))
+    }
+
+    func testACustomPhraseIsFoundAndKeptFirst() {
+        var lines = (0..<400).map { "[\($0)] You: Tell me more about topic number \($0) and how the week went." }
+        lines[300] = "[300] Client: The goldfish situation is getting worse."
+        let text = lines.joined(separator: "\n")
+        let defaults = LongSessionNote.passages(in: text, format: .soap, limit: 1_500, riskLimit: 300, phrases: defaultPhrases)
+        XCTAssertFalse(defaults.text.contains("goldfish"))
+        let custom = LongSessionNote.passages(in: text, format: .soap, limit: 1_500, riskLimit: 300, phrases: ["goldfish"])
+        XCTAssertTrue(custom.text.contains("goldfish situation"))
+    }
+
+    func testTheAlteredRiskRuleUsesTheGivenList() {
+        let draft = "## Subjective\nShe slept badly all week. Her goldfish died last week.\n\n## Plan\nTry the sleep diary next week."
+        let corrected = draft.replacingOccurrences(of: " Her goldfish died last week.", with: "")
+        XCTAssertEqual(LongSessionNote.rejection(corrected, draft: draft, format: .soap, phrases: ["goldfish"]), .alteredRisk)
+        XCTAssertNil(LongSessionNote.rejection(corrected, draft: draft, format: .soap, phrases: defaultPhrases))
+        XCTAssertNil(LongSessionNote.rejection(corrected, draft: draft, format: .soap, phrases: []))
+    }
+
+    // MARK: - Risk room structure
+
+    func testPassagesKeepAsManyRiskLinesAsStreamSetAside() {
+        let lines = (0..<20).map { "[\($0)] Client: Some days I want to kill myself, thought number \($0)." }
+        let text = lines.joined(separator: "\n")
+        let cost = LongSessionNote.strongCost(in: text, phrases: defaultPhrases)
+        let capped = LongSessionNote.passages(in: text, format: .soap, limit: cost + 100, riskLimit: 0, phrases: defaultPhrases)
+        XCTAssertGreaterThan(capped.droppedRisk, 0, "two thirds of the room is not enough by itself")
+        let reserved = LongSessionNote.passages(
+            in: text, format: .soap, limit: cost + 100, riskLimit: 0, phrases: defaultPhrases, strongBudget: cost)
+        XCTAssertEqual(reserved.droppedRisk, 0)
+    }
+
+    func testNeighboursOfDroppedRiskLinesAreNotAdded() {
+        var lines = (0..<40).map { "[\($0)] Client: ordinary chat number \($0) about the garden." }
+        lines[5] = "[5] Client: I want to kill myself."
+        lines[35] = "[35] Client: I want to kill myself again."
+        let found = LongSessionNote.passages(
+            in: lines.joined(separator: "\n"), format: .soap, limit: 90, riskLimit: 300, phrases: defaultPhrases)
+        XCTAssertTrue(found.text.contains("kill myself."))
+        XCTAssertFalse(found.text.contains("kill myself again"))
+        XCTAssertEqual(found.droppedRisk, 1)
+        XCTAssertFalse(found.text.contains("chat number 34"))
+        XCTAssertFalse(found.text.contains("chat number 36"))
+    }
+
+    func testACutRiskLineKeepsThePartWithThePhrase() {
+        let line = "[00:00] Client: " + String(repeating: "and so on ", count: 80) + "and then I said I want to kill myself " + String(repeating: "more words ", count: 80)
+        let found = LongSessionNote.passages(in: line, format: .soap, limit: 300, riskLimit: 0, phrases: defaultPhrases)
+        XCTAssertTrue(found.text.contains("kill myself"))
+        XCTAssertTrue(found.text.hasPrefix("[…truncated]"))
+        XCTAssertTrue(found.text.hasSuffix("[…truncated]"))
+        XCTAssertLessThanOrEqual(found.text.count, 300)
+        XCTAssertEqual(found.droppedRisk, 1)
+    }
+
+    func testTheStoppedEarlyNoticeSaysThePartialNoteIsPartial() {
+        XCTAssertTrue(LongSessionNote.stoppedEarlyText.contains("Stopped early"))
     }
 
     // MARK: - Risk room
@@ -294,21 +435,21 @@ final class LongSessionNoteTests: XCTestCase {
     private func tightRiskTranscript() -> String {
         var lines = (0..<300).map { String(format: "[%02d:%02d] You: Tell me more about topic number %d and how it went.", $0 / 3, ($0 % 3) * 20, $0) }
         for i in 10..<30 { lines[i] = "[00:\(i)] Client: Some days I want to kill myself, thought \(i)." }
-        lines[280] = "[93:20] Client: I took too many pills last year."
+        lines[280] = "[93:20] Client: I took all my pills last year."
         lines[290] = "[96:40] Client: I don't want to be here anymore."
         return lines.joined(separator: "\n")
     }
 
     func testLateRiskLinesSurviveEarlyChatterOnATightRoom() {
-        let found = LongSessionNote.passages(in: tightRiskTranscript(), format: .soap, limit: 1_000, riskLimit: 300)
-        XCTAssertTrue(found.text.contains("don't want to be here"), "the late tier-1 line must not be starved")
-        XCTAssertTrue(found.text.contains("pills") || found.droppedRisk > 0, "tier 2 is kept or reported")
+        let found = LongSessionNote.passages(in: tightRiskTranscript(), format: .soap, limit: 1_000, riskLimit: 300, phrases: defaultPhrases)
+        XCTAssertTrue(found.text.contains("don't want to be here"), "the late risk line must not be starved")
+        XCTAssertTrue(found.text.contains("pills") || found.droppedRisk > 0, "kept or reported")
         XCTAssertGreaterThan(found.droppedRisk, 0, "about 20 lines cannot all fit in 1,000 characters")
         XCTAssertLessThanOrEqual(found.text.count, 1_000 + found.lineCount)
     }
 
     func testEveryRiskLineIsKeptWhenThereIsRoom() {
-        let found = LongSessionNote.passages(in: tightRiskTranscript(), format: .soap, limit: 6_000, riskLimit: 300)
+        let found = LongSessionNote.passages(in: tightRiskTranscript(), format: .soap, limit: 6_000, riskLimit: 300, phrases: defaultPhrases)
         XCTAssertEqual(found.droppedRisk, 0)
         XCTAssertTrue(found.text.contains("pills"))
         XCTAssertTrue(found.text.contains("don't want to be here"))
@@ -321,15 +462,15 @@ final class LongSessionNoteTests: XCTestCase {
         var withRisk = lines
         withRisk[25] = "[25] Client: I want to kill myself."
         let text = withRisk.joined(separator: "\n")
-        let bare = LongSessionNote.passages(in: text, format: .soap, limit: 400, riskLimit: 0)
+        let bare = LongSessionNote.passages(in: text, format: .soap, limit: 400, riskLimit: 0, phrases: defaultPhrases)
         XCTAssertFalse(bare.text.contains("chat number 24"))
-        let roomy = LongSessionNote.passages(in: text, format: .soap, limit: 400, riskLimit: 300)
+        let roomy = LongSessionNote.passages(in: text, format: .soap, limit: 400, riskLimit: 300, phrases: defaultPhrases)
         XCTAssertTrue(roomy.text.contains("chat number 24"))
     }
 
     func testAFlaggedLineLongerThanTheRoomIsCutWithAMarker() {
         let long = "[00:00] Client: I want to kill myself " + String(repeating: "and so on ", count: 500)
-        let found = LongSessionNote.passages(in: "[00:00] You: hello\n" + long, format: .soap, limit: 400, riskLimit: 100)
+        let found = LongSessionNote.passages(in: "[00:00] You: hello\n" + long, format: .soap, limit: 400, riskLimit: 100, phrases: defaultPhrases)
         XCTAssertTrue(found.text.contains("kill myself"))
         XCTAssertTrue(found.text.contains("[…truncated]"))
         XCTAssertLessThanOrEqual(found.text.count, 400)
@@ -366,7 +507,7 @@ final class LongSessionNoteTests: XCTestCase {
         let text = tightRiskTranscript()
         let task = Task.detached { () -> Int in
             while !Task.isCancelled { await Task.yield() }
-            return LongSessionNote.passages(in: text, format: .soap, limit: 6_000, riskLimit: 300).lineCount
+            return LongSessionNote.passages(in: text, format: .soap, limit: 6_000, riskLimit: 300, phrases: LongSessionNote.defaultRiskPhrases).lineCount
         }
         task.cancel()
         let lines = await task.value
@@ -384,39 +525,37 @@ final class LongSessionNoteTests: XCTestCase {
         """
 
     func testACorrectionThatDropsADenialIsRejected() {
-        XCTAssertTrue(LongSessionNote.plausiblyComplete(checkedDraft, draft: checkedDraft, format: .soap))
+        XCTAssertTrue(LongSessionNote.plausiblyComplete(checkedDraft, draft: checkedDraft, format: .soap, phrases: defaultPhrases))
         let dropped = checkedDraft.replacingOccurrences(of: " Client denies SI/HI.", with: "")
-        XCTAssertFalse(LongSessionNote.plausiblyComplete(dropped, draft: checkedDraft, format: .soap))
+        XCTAssertFalse(LongSessionNote.plausiblyComplete(dropped, draft: checkedDraft, format: .soap, phrases: defaultPhrases))
         for variant in ["Client denies SI.", "No SI.", "Client denies SI and HI."] {
             let draft = checkedDraft.replacingOccurrences(of: "Client denies SI/HI.", with: variant)
             let gone = draft.replacingOccurrences(of: variant, with: "")
-            XCTAssertFalse(LongSessionNote.plausiblyComplete(gone, draft: draft, format: .soap), variant)
-            XCTAssertTrue(LongSessionNote.plausiblyComplete(draft, draft: draft, format: .soap), variant)
+            XCTAssertFalse(LongSessionNote.plausiblyComplete(gone, draft: draft, format: .soap, phrases: defaultPhrases), variant)
+            XCTAssertTrue(LongSessionNote.plausiblyComplete(draft, draft: draft, format: .soap, phrases: defaultPhrases), variant)
         }
     }
 
     func testACorrectionThatDropsAStatedRiskIsRejected() {
         let draft = checkedDraft + "\nShe said \"I don't want to be here anymore\" in week two."
         let gone = draft.replacingOccurrences(of: "She said \"I don't want to be here anymore\" in week two.", with: "She was low in week two and worried.")
-        XCTAssertFalse(LongSessionNote.plausiblyComplete(gone, draft: draft, format: .soap))
-        let medication = checkedDraft.replacingOccurrences(of: "She said she stopped taking her medication in May.", with: "She talked about May and her prescriptions at length.")
-        XCTAssertFalse(LongSessionNote.plausiblyComplete(medication, draft: checkedDraft, format: .soap))
+        XCTAssertFalse(LongSessionNote.plausiblyComplete(gone, draft: draft, format: .soap, phrases: defaultPhrases))
     }
 
     func testACorrectionThatAddsADenialIsRejected() {
         let draft = checkedDraft.replacingOccurrences(of: " Client denies SI/HI.", with: "")
         let added = checkedDraft
-        XCTAssertFalse(LongSessionNote.plausiblyComplete(added, draft: draft, format: .soap))
+        XCTAssertFalse(LongSessionNote.plausiblyComplete(added, draft: draft, format: .soap, phrases: defaultPhrases))
     }
 
     func testHeadingsMustBeWholeLines() {
         let sneaky = checkedDraft.replacingOccurrences(of: "## Plan", with: "Next steps").replacingOccurrences(of: "review the safety plan", with: "review the Plan")
-        XCTAssertFalse(LongSessionNote.plausiblyComplete(sneaky, draft: checkedDraft, format: .soap), "'Plan' in the body is not the heading")
+        XCTAssertFalse(LongSessionNote.plausiblyComplete(sneaky, draft: checkedDraft, format: .soap, phrases: defaultPhrases), "'Plan' in the body is not the heading")
     }
 
     // MARK: - Round 3
 
-    func testBenignTalkFlagsNoStrongLines() {
+    func testBenignSessionFlagsNoLines() {
         let pool = [
             "I hit my target at work this quarter", "I beat him at chess on Sunday", "I choked up when I spoke",
             "There is a threat of layoffs", "I cut the onions for dinner", "My grandmother died last year",
@@ -424,43 +563,26 @@ final class LongSessionNoteTests: XCTestCase {
             "The knife set in the kitchen is new", "Abuse of the expense system annoys me", "He took a shot at the goal", "The SI units were converted",
             "I missed my pills once and the pharmacy called", "Death of a salesman was on at the theatre",
         ]
-        for phrase in pool {
-            XCTAssertTrue([nil, 2].contains(riskTier(phrase)), "\(phrase) must not be a strong line")
-        }
+        for phrase in pool { XCTAssertFalse(isRisk(phrase), phrase) }
         let lines = (0..<3_000).map { "[\($0)] Client: \(pool[$0 % pool.count]), number \($0)." }
         let text = lines.joined(separator: "\n")
-        XCTAssertEqual(LongSessionNote.riskCost(in: text), 0)
-        let found = LongSessionNote.passages(in: text, format: .soap, limit: 6_000, riskLimit: 1_000)
+        XCTAssertEqual(LongSessionNote.strongCost(in: text, phrases: defaultPhrases), 0)
+        let found = LongSessionNote.passages(in: text, format: .soap, limit: 6_000, riskLimit: 1_000, phrases: defaultPhrases)
         XCTAssertEqual(found.droppedRisk, 0)
         XCTAssertGreaterThan(found.lineCount, 20, "topics still get the room")
         let label = LongSessionNote.coverageLabel(digestParts: 3, passageLines: found.lineCount, totalLines: 3_000, effort: .normal, droppedRisk: found.droppedRisk, check: nil)
         XCTAssertFalse(label.contains("risk-flagged"))
     }
 
-    func testMoreRiskLanguageIsStrong() {
-        let tierOne = [
-            "he said he would kill me", "he's going to kill me", "I shot myself", "going to hang myself",
-            "I want to go to sleep and not wake up", "everyone would be better without me", "nobody would miss me",
-            "I don't see a reason to go on", "life isn't worth it", "what's the point of anything", "I give up",
-            "I might walk into traffic", "he pushed me down the stairs", "he grabbed my throat",
-            "he forced himself on me", "he touched me inappropriately", "kms", "I have been starving myself",
-            "I've been cutting", "I cut myself", "I would be better off dead", "he beat her up",
-        ]
-        for phrase in tierOne { XCTAssertEqual(riskTier(phrase), 0, "\(phrase) should be tier 1") }
-        let tierTwo = ["I swallowed a bottle of aspirin", "I took all my pills", "I overdosed on sleeping tablets", "he has a gun at home"]
-        for phrase in tierTwo { XCTAssertEqual(riskTier(phrase), 1, "\(phrase) should be tier 2") }
-        XCTAssertEqual(riskTier("I give up on this recipe"), nil)
-    }
-
     func testStrongLinesAreCappedAtTwoThirdsOfTheRoom() {
         let lines = (0..<200).map { "[\($0)] Client: Some days I want to kill myself, thought number \($0) to share." }
-        let found = LongSessionNote.passages(in: lines.joined(separator: "\n"), format: .soap, limit: 3_000, riskLimit: 500)
+        let found = LongSessionNote.passages(in: lines.joined(separator: "\n"), format: .soap, limit: 3_000, riskLimit: 500, phrases: defaultPhrases)
         XCTAssertLessThanOrEqual(found.text.count, 3_000 + found.lineCount)
         XCTAssertGreaterThan(found.droppedRisk, 0)
     }
 
     func testNothingFitsStillReportsDroppedRiskLines() {
-        let found = LongSessionNote.passages(in: tightRiskTranscript(), format: .soap, limit: 0, riskLimit: 0)
+        let found = LongSessionNote.passages(in: tightRiskTranscript(), format: .soap, limit: 0, riskLimit: 0, phrases: defaultPhrases)
         XCTAssertEqual(found.text, "")
         XCTAssertEqual(found.droppedRisk, 22)
     }
@@ -469,25 +591,25 @@ final class LongSessionNoteTests: XCTestCase {
 
     func testFlippedRiskStatementsAreRejected() {
         let draft = "## Subjective\nThe client is suicidal. Client endorses SI. She slept badly.\n\n## Plan\nTry the sleep diary next week and review safety."
-        XCTAssertEqual(LongSessionNote.rejection(draft.replacingOccurrences(of: "is suicidal", with: "is not suicidal"), draft: draft, format: .soap), .alteredRisk)
-        XCTAssertEqual(LongSessionNote.rejection(draft.replacingOccurrences(of: "endorses SI", with: "SI absent"), draft: draft, format: .soap), .alteredRisk)
+        XCTAssertEqual(LongSessionNote.rejection(draft.replacingOccurrences(of: "is suicidal", with: "is not suicidal"), draft: draft, format: .soap, phrases: defaultPhrases), .alteredRisk)
+        XCTAssertEqual(LongSessionNote.rejection(draft.replacingOccurrences(of: "endorses SI", with: "SI absent"), draft: draft, format: .soap, phrases: defaultPhrases), .alteredRisk)
     }
 
     func testRemovedMovedOrInventedRiskStatementsAreRejected() {
         let draft = "## Subjective\nShe slept badly all week. Client denies SI/HI. She worried about work.\n\n## Plan\nTry the sleep diary next week and review safety."
         let removed = draft.replacingOccurrences(of: " Client denies SI/HI.", with: "")
-        XCTAssertEqual(LongSessionNote.rejection(removed, draft: draft, format: .soap), .alteredRisk)
+        XCTAssertEqual(LongSessionNote.rejection(removed, draft: draft, format: .soap, phrases: defaultPhrases), .alteredRisk)
         let moved = removed.replacingOccurrences(of: "review safety.", with: "review safety. Client denies SI/HI.")
-        XCTAssertEqual(LongSessionNote.rejection(moved, draft: draft, format: .soap), .alteredRisk, "same sentence, wrong section")
+        XCTAssertEqual(LongSessionNote.rejection(moved, draft: draft, format: .soap, phrases: defaultPhrases), .alteredRisk, "same sentence, wrong section")
         let calm = draft.replacingOccurrences(of: " Client denies SI/HI.", with: "")
         let invented = draft
-        XCTAssertEqual(LongSessionNote.rejection(invented, draft: calm, format: .soap), .alteredRisk)
+        XCTAssertEqual(LongSessionNote.rejection(invented, draft: calm, format: .soap, phrases: defaultPhrases), .alteredRisk)
     }
 
     func testACorrectionThatLeavesRiskSentencesAloneIsAccepted() {
         let draft = "## Subjective\nShe slept badly all week. Client denies SI/HI. She worried about work.\n\n## Plan\nTry the sleep diary next week and review safety."
         let fixed = draft.replacingOccurrences(of: "slept badly all week", with: "slept poorly most of the week")
-        XCTAssertNil(LongSessionNote.rejection(fixed, draft: draft, format: .soap))
+        XCTAssertNil(LongSessionNote.rejection(fixed, draft: draft, format: .soap, phrases: defaultPhrases))
         XCTAssertTrue(LongSessionNote.CheckOutcome.alteredRisk.text.contains("changed a risk statement"))
     }
 
@@ -502,7 +624,7 @@ final class LongSessionNoteTests: XCTestCase {
 
     func testPassagesStayInOrderWithinLimitAndMarkGaps() {
         let text = syntheticTranscript(minutes: 120)
-        let found = LongSessionNote.passages(in: text, format: .soap, limit: 3_000, riskLimit: 800)
+        let found = LongSessionNote.passages(in: text, format: .soap, limit: 3_000, riskLimit: 800, phrases: defaultPhrases)
         XCTAssertLessThanOrEqual(found.text.count, 3_000 + found.lineCount)
         XCTAssertGreaterThan(found.lineCount, 0)
         XCTAssertTrue(found.text.contains("[…]"))

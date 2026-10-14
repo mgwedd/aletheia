@@ -1363,7 +1363,8 @@ struct SessionDetailView: View {
                     while integrations.inferenceQueue.hasJob(labelled: jobLabel), !Task.isCancelled, Date() < deadline {
                         try? await Task.sleep(nanoseconds: 100_000_000)
                     }
-                    noteWaiter = nil
+                    // A cancelled waiter may already have been replaced; leave the new one alone.
+                    if !Task.isCancelled { noteWaiter = nil }
                     guard !Task.isCancelled, noteStopping else { return }
                     noteStopping = false
                     // Still running after the wait: say so, as for any second Generate.
@@ -1389,6 +1390,7 @@ struct SessionDetailView: View {
         let notes = sessionNote
         let sessionComments = comments
         let effort = settings.noteEffort
+        let riskPhrases = settings.riskPhrases
         let model = service.model
         let produced = CoverageBox()
         noteRunner.start(
@@ -1409,6 +1411,7 @@ struct SessionDetailView: View {
                     verbosity: verbosity,
                     instructions: instructions,
                     effort: effort,
+                    riskPhrases: riskPhrases,
                     service: service,
                     builder: integrations.digests,
                     sessionID: session.id,
@@ -1443,6 +1446,11 @@ struct SessionDetailView: View {
                 // Save the tidied text, so copy, export and edit see the same
                 // paragraphs and labels the pane shows.
                 let final = NoteMarkdown.tidy(raw)
+                // Stopped part-way: say the saved note is only what was written so far.
+                if noteStopping, !final.isEmpty, !(produced.text ?? "").contains(LongSessionNote.CheckOutcome.stopped.text) {
+                    produced.text = [produced.text, LongSessionNote.stoppedEarlyText].compactMap { $0 }.joined(separator: " ")
+                    if settings.progressNoteFormat == format { noteCoverage = produced.text }
+                }
                 guard !final.isEmpty else {
                     // Stopped before the first token, or empty output: the pane
                     // was cleared at start, so put back what is saved.
@@ -1468,6 +1476,8 @@ struct SessionDetailView: View {
                 if settings.progressNoteFormat == format {
                     refreshHasPreviousNote()
                     noteFingerprint = NoteFreshness.fingerprint(of: transcript)
+                    // The format may have been switched away and back during the run.
+                    noteCoverage = savedCoverage(for: format)
                 }
                 onSessionUpdated()
                 Task {

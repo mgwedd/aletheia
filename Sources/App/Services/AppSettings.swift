@@ -97,6 +97,7 @@ final class AppSettings: ObservableObject {
         static let noteInstructions = "noteInstructions"
         static let modelSpeeds = "modelSpeeds"
         static let noteEffort = "noteEffort"
+        static let riskPhrases = "riskPhrases"
         static let sessionChatEffort = "sessionChatEffort"
         static let patientChatEffort = "patientChatEffort"
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
@@ -198,6 +199,27 @@ final class AppSettings: ObservableObject {
     @Published var patientChatEffort: AnswerEffort {
         didSet { defaults.set(patientChatEffort.rawValue, forKey: Keys.patientChatEffort) }
     }
+    /// Phrases whose lines a long session's note always includes first (and warns
+    /// about if they don't fit). Plain text, not PHI. Never set means the built-in
+    /// defaults; an empty list is the user's own choice of none. A list equal to the
+    /// defaults is stored as "never set", so a later change to the defaults reaches
+    /// anyone who hasn't edited them.
+    @Published var riskPhrases: [String] {
+        didSet {
+            if riskPhrases == LongSessionNote.defaultRiskPhrases {
+                defaults.removeObject(forKey: Keys.riskPhrases)
+            } else {
+                defaults.set(riskPhrases, forKey: Keys.riskPhrases)
+            }
+        }
+    }
+    /// Adds a phrase (trimmed; ignored if empty or already listed, ignoring case).
+    func addRiskPhrase(_ text: String) {
+        let phrase = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !phrase.isEmpty, !riskPhrases.contains(where: { $0.caseInsensitiveCompare(phrase) == .orderedSame }) else { return }
+        riskPhrases.append(phrase)
+    }
+    func resetRiskPhrases() { riskPhrases = LongSessionNote.defaultRiskPhrases }
     /// Saves custom instructions for a format; text that is empty or equal to
     /// the default removes the override.
     func setNoteInstructions(_ text: String, for format: ProgressNoteFormat) {
@@ -338,6 +360,7 @@ final class AppSettings: ObservableObject {
             .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
         noteInstructions = defaults.dictionary(forKey: Keys.noteInstructions) as? [String: String] ?? [:]
         modelSpeeds = defaults.dictionary(forKey: Keys.modelSpeeds) as? [String: [String: Double]] ?? [:]
+        riskPhrases = Self.loadRiskPhrases(from: defaults)
         noteEffort = defaults.string(forKey: Keys.noteEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         sessionChatEffort = defaults.string(forKey: Keys.sessionChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         patientChatEffort = defaults.string(forKey: Keys.patientChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
@@ -353,6 +376,12 @@ final class AppSettings: ObservableObject {
         // Re-assert the backup-exclusion policy on the resolved folder each launch
         // (best-effort: the folder may not be accessible yet this early).
         applyBackupExclusion()
+    }
+
+    /// The stored risk phrases; the built-in ones when the key was never set (an
+    /// empty stored list stays empty).
+    static func loadRiskPhrases(from defaults: UserDefaults) -> [String] {
+        defaults.stringArray(forKey: Keys.riskPhrases) ?? LongSessionNote.defaultRiskPhrases
     }
 
     /// On when never chosen; an explicit stored choice is respected.
