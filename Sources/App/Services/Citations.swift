@@ -71,14 +71,18 @@ struct TranscriptCoverage: Equatable {
         if transcriptSessions > 0 {
             var search = ""
             if searched {
-                search = " (search: \(mentions) mention\(mentions == 1 ? "" : "s")"
-                search += similarMentions > 0 ? ", \(similarMentions) similar)" : ")"
+                search = " (\(mentions) match\(mentions == 1 ? "" : "es") for your words"
+                search += similarMentions > 0 ? ", \(similarMentions) more with similar spelling)" : ")"
             }
-            parts.append(wholeTranscripts
-                ? "full transcripts from \(sessions(sessionsWithPassages))" + search
-                : (fullTexts ? "full transcripts" : "transcript passages") + " from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
+            if wholeTranscripts {
+                parts.append("full transcripts of \(sessions(sessionsWithPassages))" + search)
+            } else if fullTexts {
+                parts.append("full transcripts of the newest \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
+            } else {
+                parts.append("transcript passages from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
+            }
         }
-        if unreadableSessions > 0 { parts.append("\(sessions(unreadableSessions)) unreadable, not read") }
+        if unreadableSessions > 0 { parts.append("\(sessions(unreadableSessions)) could not be read, so answers may be incomplete") }
         return parts.isEmpty ? nil : "Read: " + parts.joined(separator: " · ")
     }
 }

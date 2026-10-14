@@ -34,7 +34,6 @@ struct PatientChatView: View {
     @State private var renameText = ""
     /// Sessions whose transcript couldn't be read when the last question was
     /// asked; non-zero shows a caption that answers may be incomplete.
-    @State private var unreadableSessions = 0
     /// How much transcript text the last question's context held; nil until a
     /// question is asked or when everything fit.
     @State private var coverageNotice: String?
@@ -78,6 +77,7 @@ struct PatientChatView: View {
                         queuedStatus: chatRunner.queuedStatus,
                         scopeNote: scopeNote,
                         notices: notices,
+                        busyNotice: searchingNotice,
                         onCompact: { compact($0) },
                         progress: chatRunner.progress,
                         readTokensPerSecond: integrations.readTokensPerSecond
@@ -94,7 +94,6 @@ struct PatientChatView: View {
         .onChange(of: selectedThreadID) { _, newID in
             // The notice belongs to the question just asked, not to other threads.
             if !isSending {
-                unreadableSessions = 0
                 coverageNotice = nil
             }
             // Load the newly-selected thread's messages, but never clobber an
@@ -129,11 +128,7 @@ struct PatientChatView: View {
     /// Caveats about the last question's context, shown above the composer.
     private var notices: [String] {
         var lines: [String] = []
-        if let searchingNotice { lines.append(searchingNotice) }
         if let coverageNotice { lines.append(coverageNotice) }
-        if unreadableSessions > 0 {
-            lines.append("\(unreadableSessions) session(s) could not be read; answers may be incomplete.")
-        }
         if chatRunner.progress.stats?.possiblyTruncated == true && !isSending {
             lines.append(AIRunStats.truncationNotice)
         }
@@ -352,10 +347,8 @@ struct PatientChatView: View {
         // What the notice and caption say comes from what was sent: they are
         // set once the answer starts (or ends), never for a run that was refused.
         func showCoverage() {
-            unreadableSessions = context.unreadableSessions
             coverageNotice = context.coverage.label
         }
-        unreadableSessions = 0
         coverageNotice = nil
         chatRunner.start(
             queue: integrations.inferenceQueue,
