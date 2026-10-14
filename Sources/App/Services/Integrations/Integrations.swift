@@ -64,8 +64,8 @@ final class Integrations: ObservableObject {
     /// The configured Ollama model tag, for status and support text.
     var ollamaModelName: String { settings.ollamaModelName }
 
-    /// Measured prompt tokens a second for the configured model, once it has run.
-    var readTokensPerSecond: Double? { settings.speed(for: settings.ollamaModelName).read }
+    /// Measured speeds for the configured model, once it has run here.
+    var modelSpeed: ModelSpeed { settings.speed(for: settings.ollamaModelName) }
 
     /// The backend that `makeAssistant()` will actually use, after resolving the
     /// user's preference against what this Mac supports. The Settings and setup

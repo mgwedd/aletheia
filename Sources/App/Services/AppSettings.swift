@@ -95,7 +95,6 @@ final class AppSettings: ObservableObject {
         static let progressNoteFormat = "progressNoteFormat"
         static let summaryVerbosity = "summaryVerbosity"
         static let noteInstructions = "noteInstructions"
-        static let modelSpeeds = "modelSpeeds"
         static let noteEffort = "noteEffort"
         static let sessionChatEffort = "sessionChatEffort"
         static let patientChatEffort = "patientChatEffort"
@@ -174,18 +173,15 @@ final class AppSettings: ObservableObject {
     @Published var noteInstructions: [String: String] {
         didSet { defaults.set(noteInstructions, forKey: Keys.noteInstructions) }
     }
-    /// Per-model read and write speeds measured on this Mac (tokens a second, a
-    /// moving average), keyed by model tag. They give the progress line its
-    /// "about 1 min left" once a model has run here.
-    @Published var modelSpeeds: [String: [String: Double]] {
-        didSet { defaults.set(modelSpeeds, forKey: Keys.modelSpeeds) }
-    }
+    /// Per-model speeds measured on this Mac live in the SQLite store (set by
+    /// `AppModel` whenever it opens the database). They give the progress line
+    /// its "about 1 min left" once a model has run here.
+    var speedStore: ModelSpeedRepository?
     func speed(for model: String) -> ModelSpeed {
-        ModelSpeed(stored: modelSpeeds[model] ?? [:])
+        speedStore?.speed(for: model) ?? ModelSpeed()
     }
     func recordSpeeds(model: String, from stats: AIRunStats) {
-        let updated = speed(for: model).folding(stats)
-        if updated != speed(for: model) { modelSpeeds[model] = updated.stored }
+        speedStore?.record(model: model, from: stats)
     }
     /// How much effort each feature puts in (`AnswerEffort`). Stored per
     /// feature; no control or behaviour reads them yet.
@@ -337,7 +333,6 @@ final class AppSettings: ObservableObject {
         summaryVerbosity = defaults.string(forKey: Keys.summaryVerbosity)
             .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
         noteInstructions = defaults.dictionary(forKey: Keys.noteInstructions) as? [String: String] ?? [:]
-        modelSpeeds = defaults.dictionary(forKey: Keys.modelSpeeds) as? [String: [String: Double]] ?? [:]
         noteEffort = defaults.string(forKey: Keys.noteEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         sessionChatEffort = defaults.string(forKey: Keys.sessionChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         patientChatEffort = defaults.string(forKey: Keys.patientChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default

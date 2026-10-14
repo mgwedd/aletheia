@@ -14,10 +14,18 @@ struct AIRunStats: Equatable {
     var expectedPromptTokens: Int = 0
 
     /// Prompt tokens read per second. Needs enough tokens to be a real
-    /// measurement; a short prompt's timing is mostly noise.
+    /// measurement; a short prompt's timing is mostly noise. Nil for a run that
+    /// hit Ollama's prompt cache (read far less than we sent, or implausibly
+    /// fast), which says nothing about how fast this Mac reads.
     var readTokensPerSecond: Double? {
-        Self.rate(tokens: promptTokens, nanos: promptNanos, minimumTokens: 200)
+        if let promptTokens, expectedPromptTokens >= 500, promptTokens * 2 < expectedPromptTokens { return nil }
+        guard let rate = Self.rate(tokens: promptTokens, nanos: promptNanos, minimumTokens: 200),
+              rate <= Self.maxPlausibleReadRate else { return nil }
+        return rate
     }
+
+    /// Well above what any supported model reads on a Mac; faster means a cache hit.
+    static let maxPlausibleReadRate = 30_000.0
 
     /// Reply tokens written per second.
     var writeTokensPerSecond: Double? {
@@ -69,36 +77,39 @@ struct AIRunProgress: Equatable {
     var stats: AIRunStats?
 }
 
-/// Measured speeds for one model on this Mac, as a moving average.
-struct ModelSpeed: Equatable {
+/// Measured speeds for one model on this Mac, as a moving average. Numbers
+/// only (no text from any session), so it is stored unsealed.
+struct ModelSpeed: Codable, Equatable {
     var read: Double?
     var write: Double?
+    /// Typical reply length in tokens, the expected output when a caller has none.
+    var output: Double?
 
     /// Weight of the newest run: recent enough to follow a thermal slowdown,
     /// steady enough that one odd run doesn't swing the estimate.
     private static let newest = 0.3
 
-    init(read: Double? = nil, write: Double? = nil) {
+    init(read: Double? = nil, write: Double? = nil, output: Double? = nil) {
         self.read = read
         self.write = write
-    }
-
-    /// From the UserDefaults form (a property-list dictionary).
-    init(stored: [String: Double]) {
-        self.init(read: stored["read"], write: stored["write"])
-    }
-
-    var stored: [String: Double] {
-        var out: [String: Double] = [:]
-        if let read { out["read"] = read }
-        if let write { out["write"] = write }
-        return out
+        self.output = output
     }
 
     func folding(_ stats: AIRunStats) -> ModelSpeed {
         ModelSpeed(
             read: Self.blend(read, stats.readTokensPerSecond),
-            write: Self.blend(write, stats.writeTokensPerSecond)
+            write: Self.blend(write, stats.writeTokensPerSecond),
+            output: Self.blend(output, stats.writeTokensPerSecond == nil ? nil : stats.outputTokens.map(Double.init))
+        )
+    }
+
+    /// Seconds to read `promptTokens` and to write `outputTokens` (the typical
+    /// reply when nil); each nil until that speed has been measured.
+    func estimate(promptTokens: Int, outputTokens: Int? = nil) -> (read: TimeInterval?, write: TimeInterval?) {
+        let expected = outputTokens ?? output.map { Int($0) }
+        return (
+            read.map { Double(promptTokens) / $0 },
+            write.flatMap { rate in expected.map { Double($0) / rate } }
         )
     }
 

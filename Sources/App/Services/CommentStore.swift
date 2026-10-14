@@ -78,6 +78,8 @@ final class CommentStore {
     private let core: SQLitePersistenceCore
     private let annotations: AnnotationRepository
     private let chats: ChatRepository
+    /// Measured model speeds (numbers only), in the same database.
+    let modelSpeeds: ModelSpeedRepository
     /// Kept only for `reencrypt(to:)`, which needs to know the protector the
     /// store's current payloads are sealed under before re-sealing them.
     private let protector: FileProtector
@@ -111,6 +113,7 @@ final class CommentStore {
         self.protector = protector
         self.annotations = AnnotationRepository(core: core, protector: protector)
         self.chats = ChatRepository(core: core, protector: protector)
+        self.modelSpeeds = ModelSpeedRepository(core: core)
     }
 
     // MARK: - Comments

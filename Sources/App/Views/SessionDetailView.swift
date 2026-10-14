@@ -1070,7 +1070,7 @@ struct SessionDetailView: View {
     /// Shown between pressing Generate and the first token, which can take a
     /// minute on a long session.
     private var noteWorkingRow: some View {
-        AIProgressView(progress: noteRunner.progress, readTokensPerSecond: settings.speed(for: settings.ollamaModelName).read)
+        AIProgressView(progress: noteRunner.progress, speed: settings.speed(for: settings.ollamaModelName))
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1155,7 +1155,7 @@ struct SessionDetailView: View {
     }
 
     private var chatTab: some View {
-        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() }, queuedStatus: chatRunner.queuedStatus, notices: chatRunner.progress.stats?.possiblyTruncated == true && !isChatSending ? [AIRunStats.truncationNotice] : [], onCompact: { compactChat($0) }, progress: chatRunner.progress, readTokensPerSecond: settings.speed(for: settings.ollamaModelName).read)
+        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() }, queuedStatus: chatRunner.queuedStatus, notices: chatRunner.progress.stats?.possiblyTruncated == true && !isChatSending ? [AIRunStats.truncationNotice] : [], onCompact: { compactChat($0) }, progress: chatRunner.progress, speed: settings.speed(for: settings.ollamaModelName))
     }
 
     /// Builds this session's digest if it has none, or its digest is stale (the
