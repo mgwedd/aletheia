@@ -1,15 +1,15 @@
 import Foundation
 
-/// In-memory search over one patient's material (#286): BM25 over passages,
-/// with whole-word matching, one-letter typo tolerance and a sound-alike match
-/// for names (whisper misspells them). Pure and deterministic; nothing is
-/// written to disk and the model never sees anything the code didn't count.
+/// Search over one patient's material (#286): FTS5 BM25 over passages (see
+/// `SearchIndex`), with whole-word matching, one-letter typo tolerance and a
+/// sound-alike match for names (whisper misspells them). Deterministic; the
+/// model never sees anything the code didn't count.
 ///
 /// A passage is one transcript line, or one paragraph of notes. The counts in
 /// `Result` are exact over every document passed in (after the date filter),
 /// whatever part of them ends up in a prompt.
 enum SessionSearch {
-    enum Kind: Equatable { case transcript, note, sessionNotes, comment }
+    enum Kind: String, Equatable { case transcript, note, sessionNotes, comment }
 
     /// One piece of a session's material. `tag` is the citation tag ("S1").
     struct Document {
@@ -17,6 +17,12 @@ enum SessionSearch {
         let tag: String
         let kind: Kind
         let text: String
+        /// The session and patient the text belongs to, when the caller knows
+        /// them. They let the index replace a session's older text and drop it
+        /// when the session goes; without them the text is indexed but only
+        /// cleaned up by the launch sweep.
+        var session: UUID? = nil
+        var patient: UUID? = nil
     }
 
     /// A search term: one or more words. Quoted phrases keep all their words
@@ -26,6 +32,8 @@ enum SessionSearch {
         let isName: Bool
         /// Typed in quotes: matches exactly, with no typo or sound-alike matching.
         var quoted = false
+        /// Typed with a trailing `*` ("wor*"): matches every word starting with it.
+        var prefix = false
         var text: String { words.joined(separator: " ") }
     }
 
@@ -51,6 +59,10 @@ enum SessionSearch {
         /// Line number of `context[0]` within the document.
         let contextStart: Int
         let score: Double
+        /// The session the passage belongs to, when the document named one.
+        var sessionID: UUID? = nil
+        /// Positions (in indexed words, stopwords included) of the matches within the passage at `lineIndex`.
+        var tokenOffsets: [Int] = []
     }
 
     struct TermCount: Equatable {
@@ -101,6 +113,16 @@ enum SessionSearch {
             }
         }
         rest = quoted?.stringByReplacingMatches(in: rest, range: whole, withTemplate: " ") ?? rest
+
+        // Prefixes: a word of two or more letters or digits ending in `*`.
+        let starred = try? NSRegularExpression(pattern: #"([\p{L}\p{N}]{2,})\*"#)
+        let remaining = NSRange(rest.startIndex..., in: rest)
+        for match in starred?.matches(in: rest, range: remaining) ?? [] {
+            if let r = Range(match.range(at: 1), in: rest), let word = tokenize(String(rest[r])).first {
+                add(Term(words: [word], isName: false, prefix: true))
+            }
+        }
+        rest = starred?.stringByReplacingMatches(in: rest, range: remaining, withTemplate: " ") ?? rest
 
         for raw in rest.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "’" }) {
             guard let word = tokenize(String(raw)).first, word.count > 1, !stopwords.contains(word) else { continue }
@@ -219,275 +241,188 @@ enum SessionSearch {
 
     // MARK: - Index
 
-    /// An immutable in-memory inverted index over one document, like a
-    /// Lucene segment: term -> postings (passage, position). Terms are
-    /// stemmed, stopwords are skipped but keep their position so phrases
-    /// still line up. Never written to disk.
-    final class DocumentIndex {
-        /// Passage start line (a transcript line, or the first line of a paragraph).
-        let passageLines: [Int]
-        /// Indexed (non-stopword) tokens per passage, for BM25 length normalisation.
-        let passageLengths: [Int]
-        /// Parallel arrays, one entry per occurrence, in passage order.
-        let postings: [String: (passages: [Int32], positions: [Int32])]
-        /// An original spelling for each stem, to report what a term matched as.
-        let surface: [String: String]
-        let lines: [String]
+    /// The persistent index every search runs against. In memory until the app
+    /// points it at `<dataRoot>/search.sqlite` (see `AppModel`).
+    nonisolated(unsafe) static var index = SearchIndex()
 
-        init(text: String, kind: Kind) {
-            lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-            var passages: [[String]] = []
-            var starts: [Int] = []
-            if kind == .transcript {
-                for (i, line) in lines.enumerated() {
-                    let tokens = SessionSearch.tokenize(TranscriptTimeline.spokenText(line))
-                    if !tokens.isEmpty { passages.append(tokens); starts.append(i) }
-                }
-            } else {
-                // Paragraphs: runs of non-blank lines.
-                var start: Int?
-                for i in 0...lines.count {
-                    let blank = i == lines.count || lines[i].trimmingCharacters(in: .whitespaces).isEmpty
-                    if !blank, start == nil { start = i }
-                    if blank, let s = start {
-                        let tokens = SessionSearch.tokenize(lines[s..<i].joined(separator: " "))
-                        if !tokens.isEmpty { passages.append(tokens); starts.append(s) }
-                        start = nil
-                    }
-                }
-            }
-            var postings: [String: (passages: [Int32], positions: [Int32])] = [:]
-            var surface: [String: String] = [:]
-            var lengths: [Int] = []
-            for (p, tokens) in passages.enumerated() {
-                var kept = 0
-                for (position, token) in tokens.enumerated() where !SessionSearch.stopwords.contains(token) {
-                    let stem = SessionSearch.stem(token)
-                    postings[stem, default: ([], [])].passages.append(Int32(p))
-                    postings[stem]!.positions.append(Int32(position))
-                    if surface[stem] == nil { surface[stem] = token }
-                    kept += 1
-                }
-                lengths.append(kept)
-            }
-            passageLines = starts
-            passageLengths = lengths
-            self.postings = postings
-            self.surface = surface
-        }
-    }
-
-    /// Indexes by content, so editing one session rebuilds only that session.
-    /// In memory only (it holds transcript text; `clearCache()` runs when the
-    /// app or the data folder locks). Each search marks the entries it uses;
-    /// when the cache is full, only entries the current search is not using
-    /// are evicted, so one search can't evict its own sessions. A patient with
-    /// more documents than `cacheLimit` leaves the surplus uncached. A search
-    /// running when the cache is cleared adds nothing more to it, so a lock
-    /// mid-search doesn't leave transcript text behind.
-    private static let cacheLock = NSLock()
-    nonisolated(unsafe) private static var cache: [String: (index: DocumentIndex, generation: Int)] = [:]
-    nonisolated(unsafe) private static var generation = 0
-    nonisolated(unsafe) private static var clears = 0
-    static let cacheLimit = 1_500
-
-    /// Returns the clear count at the start, for `index(for:clearsAtStart:)`.
-    private static func beginSearch() -> Int {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        generation += 1
-        return clears
-    }
-
-    static func index(for document: Document, clearsAtStart: Int? = nil) -> DocumentIndex {
-        let key = "\(document.kind)-" + NoteFreshness.fingerprint(of: document.text)
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        if let hit = cache[key] {
-            cache[key] = (hit.index, generation)
-            return hit.index
-        }
-        let built = DocumentIndex(text: document.text, kind: document.kind)
-        if let clearsAtStart, clearsAtStart != clears { return built }
-        if cache.count >= cacheLimit { cache = cache.filter { $0.value.generation == generation } }
-        if cache.count < cacheLimit { cache[key] = (built, generation) }
-        return built
-    }
-
-    static func clearCache() {
-        cacheLock.lock()
-        cache.removeAll()
-        clears += 1
-        cacheLock.unlock()
-    }
-
-    /// Entries held, for tests.
-    static var cachedIndexCount: Int {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        return cache.count
-    }
+    /// Closes the index's database connection so no indexed text stays in
+    /// SQLite's memory while the app or data folder is locked. The next search
+    /// reopens it.
+    static func closeIndex() { index.close() }
 
     // MARK: - Search
 
+    /// How one term is matched against a stored passage.
+    private enum Matcher {
+        /// Stored word -> weight (1 exact, below 1 a typo or sound-alike).
+        case words([String: Double])
+        /// Stored words, `SearchIndex.stopToken` standing for a stopword.
+        case phrase([String])
+        case prefix(String)
+    }
+
     /// Searches `documents` for the terms in `question`. Documents dated
     /// outside a range the question names are skipped (and not counted).
-    /// Per-document indexes are combined here: passage counts, lengths and
-    /// document frequencies are summed across them for BM25.
+    /// Documents are stored in the persistent index the first time they are
+    /// seen (keyed by session, kind and a fingerprint of their text, so only
+    /// changed text is re-indexed); candidates and ranking come from FTS5
+    /// MATCH + bm25, and the exact counts are taken from the matched passages.
     static func search(
         _ documents: [Document], question: String, now: Date = Date(), calendar: Calendar = .current
     ) -> Result {
-        let clearsAtStart = beginSearch()
         let range = dateRange(in: question, now: now, calendar: calendar)
         let terms = terms(from: question)
         let inRange = documents.indices.filter { range?.contains(documents[$0].date) ?? true }
         let sessionsSearched = Set(inRange.map { documents[$0].tag }).count
-        guard !terms.isEmpty else {
-            return Result(
-                terms: [], dateRange: range, hits: [], totalMentions: 0, similarMentions: 0, termCounts: [],
+        func empty(_ terms: [Term]) -> Result {
+            Result(
+                terms: terms, dateRange: range, hits: [], totalMentions: 0, similarMentions: 0,
+                termCounts: terms.map { TermCount(term: $0, exact: 0, similar: 0) },
                 sessionsWithHits: 0, sessionsSearched: sessionsSearched, matchedVariants: [:]
             )
         }
+        guard !terms.isEmpty else { return empty([]) }
 
-        let indexes = inRange.map { index(for: documents[$0], clearsAtStart: clearsAtStart) }
-        let passageCount = indexes.reduce(0) { $0 + $1.passageLengths.count }
-        let totalLength = indexes.reduce(0) { $0 + $1.passageLengths.reduce(0, +) }
-        let avgLength = max(1, Double(totalLength) / Double(max(1, passageCount)))
+        let items = inRange.map { i -> SearchIndex.Item in
+            let d = documents[i]
+            return SearchIndex.Item(
+                session: d.session?.uuidString ?? "", patient: d.patient?.uuidString, kind: d.kind.rawValue,
+                date: d.date.timeIntervalSinceReferenceDate, fingerprint: SearchIndex.fingerprint(of: d.text), text: d.text
+            )
+        }
+        // Tokenize what isn't stored yet outside the index's lock.
+        let current = index
+        var prepared: [Int: [SearchIndex.Passage]] = [:]
+        for i in current.missing(items) { prepared[i] = SearchIndex.passages(of: items[i].text, kind: documents[inRange[i]].kind) }
+        // One retry: a database that turned out corrupt was reset, and storing the documents again refills it.
+        var found: (rows: [SearchIndex.Row], docs: [Int64: [Int]], info: [Matcher]?)?
+        for _ in 0..<2 where found == nil {
+            found = current.query(items: items, passages: prepared) { vocabulary in matchPlan(for: terms, vocabulary: vocabulary) }
+        }
+        guard let found, let matchers = found.info else { return empty(terms) }
 
-        // Per term: weighted frequency by (document, passage), mentions, and the
-        // spellings it matched besides its own.
-        struct Key: Hashable { let doc: Int, passage: Int32 }
-        var frequencies: [[Key: Double]] = Array(repeating: [:], count: terms.count)
-        var exactCounts = Array(repeating: 0, count: terms.count)
-        var similarCounts = Array(repeating: 0, count: terms.count)
+        var exact = Array(repeating: 0, count: terms.count)
+        var similar = Array(repeating: 0, count: terms.count)
         var variants: [String: [String]] = [:]
-        for (ti, term) in terms.enumerated() {
-            for (n, index) in indexes.enumerated() {
-                if term.words.count == 1 {
-                    for (key, weight) in expand(term, in: index) {
-                        guard let list = index.postings[key] else { continue }
-                        if weight < 1, let spelling = index.surface[key], !(variants[term.text]?.contains(spelling) ?? false) {
-                            variants[term.text, default: []].append(spelling)
+        struct Candidate { let position: Int; let line: Int; let offsets: [Int]; let score: Double }
+        var candidates: [Candidate] = []
+        for row in found.rows {
+            for position in found.docs[row.doc] ?? [] {
+                var offsets: [Int] = []
+                for (ti, matcher) in matchers.enumerated() {
+                    switch matcher {
+                    case .words(let weights):
+                        for (at, token) in row.tokens.enumerated() {
+                            guard let weight = weights[token] else { continue }
+                            offsets.append(at)
+                            if weight < 1 {
+                                similar[ti] += 1
+                                if !(variants[terms[ti].text]?.contains(token) ?? false) { variants[terms[ti].text, default: []].append(token) }
+                            } else {
+                                exact[ti] += 1
+                            }
                         }
-                        for p in list.passages { frequencies[ti][Key(doc: n, passage: p), default: 0] += weight }
-                        if weight < 1 { similarCounts[ti] += list.passages.count } else { exactCounts[ti] += list.passages.count }
-                    }
-                } else {
-                    for p in phraseMatches(term, in: index) {
-                        frequencies[ti][Key(doc: n, passage: p), default: 0] += 1
-                        exactCounts[ti] += 1
+                    case .prefix(let prefix):
+                        for (at, token) in row.tokens.enumerated() where token.hasPrefix(prefix) { offsets.append(at); exact[ti] += 1 }
+                    case .phrase(let pattern):
+                        var at = 0
+                        while at + pattern.count <= row.tokens.count {
+                            if pattern.indices.allSatisfy({ row.tokens[at + $0] == pattern[$0] }) {
+                                offsets.append(at)
+                                exact[ti] += 1
+                                at += pattern.count
+                            } else {
+                                at += 1
+                            }
+                        }
                     }
                 }
-            }
-        }
-
-        let k1: Double = 1.2
-        let b: Double = 0.75
-        let total = Double(passageCount)
-        let idf: [Double] = frequencies.map { (freq: [Key: Double]) -> Double in
-            let n: Double = Double(freq.count)
-            let ratio: Double = (total - n + 0.5) / (n + 0.5)
-            return log(1 + ratio)
-        }
-        var scores: [Key: Double] = [:]
-        for (ti, freq) in frequencies.enumerated() {
-            for (key, tf) in freq {
-                let length: Double = Double(indexes[key.doc].passageLengths[Int(key.passage)])
-                let lengthRatio: Double = length / avgLength
-                let norm: Double = k1 * (1 - b + b * lengthRatio)
-                let gain: Double = tf * (k1 + 1) / (tf + norm)
-                scores[key, default: 0] += idf[ti] * gain
+                if !offsets.isEmpty { candidates.append(Candidate(position: position, line: row.line, offsets: offsets.sorted(), score: row.score)) }
             }
         }
         // Best first; ties go to the more recent session, then the earlier line.
-        let ranked = scores.sorted { l, r in
-            if l.value != r.value { return l.value > r.value }
-            let (ld, rd) = (documents[inRange[l.key.doc]].date, documents[inRange[r.key.doc]].date)
+        candidates.sort { l, r in
+            if l.score != r.score { return l.score > r.score }
+            let (ld, rd) = (documents[inRange[l.position]].date, documents[inRange[r.position]].date)
             if ld != rd { return ld > rd }
-            if l.key.doc != r.key.doc { return l.key.doc < r.key.doc }
-            return l.key.passage < r.key.passage
+            if l.position != r.position { return l.position < r.position }
+            return l.line < r.line
         }
 
-        let hits = ranked.map { item -> Hit in
-            let d = inRange[item.key.doc]
+        var lineCache: [Int: LineTable] = [:]
+        let hits = candidates.map { c -> Hit in
+            let d = inRange[c.position]
             let doc = documents[d]
-            let index = indexes[item.key.doc]
-            let i = index.passageLines[Int(item.key.passage)]
+            let lines = lineCache[d] ?? LineTable(doc.text)
+            lineCache[d] = lines
+            let i = c.line
             var context = [String](), start = i, seconds: Int?
             if doc.kind == .transcript {
                 start = max(0, i - 2)
-                context = Array(index.lines[start..<min(index.lines.count, i + 3)])
+                context = (start..<min(lines.count, i + 3)).map { lines[$0] }
                 var j = i
                 while j >= 0, seconds == nil {
-                    seconds = TranscriptTimeline.leadingSeconds(of: index.lines[j])
+                    seconds = TranscriptTimeline.leadingSeconds(of: lines[j])
                     j -= 1
                 }
             }
             return Hit(
                 documentIndex: d, date: doc.date, tag: doc.tag, kind: doc.kind, seconds: seconds,
-                lineIndex: i, line: index.lines[i], context: context, contextStart: start, score: item.value
+                lineIndex: i, line: lines[i], context: context, contextStart: start, score: c.score,
+                sessionID: doc.session, tokenOffsets: c.offsets
             )
         }
         return Result(
             terms: terms, dateRange: range, hits: hits,
-            totalMentions: exactCounts.reduce(0, +) + similarCounts.reduce(0, +), similarMentions: similarCounts.reduce(0, +),
-            termCounts: terms.indices.map { TermCount(term: terms[$0], exact: exactCounts[$0], similar: similarCounts[$0]) },
+            totalMentions: exact.reduce(0, +) + similar.reduce(0, +), similarMentions: similar.reduce(0, +),
+            termCounts: terms.indices.map { TermCount(term: terms[$0], exact: exact[$0], similar: similar[$0]) },
             sessionsWithHits: Set(hits.map(\.tag)).count, sessionsSearched: sessionsSearched,
             matchedVariants: variants.mapValues { Array($0.sorted().prefix(5)) }
         )
     }
 
-    /// The dictionary entries a single-word term matches in `index`, with
-    /// weights: the term itself, one-letter typos, and sound-alike names.
-    /// Expanding over the dictionary (distinct stems) rather than every token
-    /// is what keeps fuzzy matching cheap. Names are not stemmed; they match
-    /// the stored stem of their own spelling ("Jane" finds "jan") or a
-    /// one-letter variant of it.
-    private static func expand(_ term: Term, in index: DocumentIndex) -> [(String, Double)] {
-        let word = term.words[0]
-        let stemmed = stem(word)
-        var result: [(String, Double)] = []
-        for key in index.postings.keys {
-            let weight: Double?
-            if key == stemmed || (term.isName && key == word) {
-                weight = 1
-            } else if term.quoted {
-                weight = nil
-            } else {
-                weight = matchWeight(token: key, term: term.isName ? word : stemmed, isName: term.isName)
+    /// The FTS5 MATCH string for `terms` and how to count each term in a
+    /// matched passage. Single words expand over the index vocabulary to the
+    /// word itself, one-letter typos and sound-alike names (the vocabulary is
+    /// the distinct stored words, which is what keeps this cheap). Names are
+    /// not stemmed; they match the stored stem of their own spelling ("Jane"
+    /// finds "jan") or a one-letter variant of it.
+    private static func matchPlan(for terms: [Term], vocabulary: () -> [String]) -> (match: String, info: [Matcher])? {
+        var clauses: [String] = []
+        var matchers: [Matcher] = []
+        var words: [String]?
+        for term in terms {
+            if term.prefix {
+                let prefix = SearchIndex.ftsToken(term.words[0])
+                matchers.append(.prefix(prefix))
+                clauses.append("\"\(prefix)\" *")
+                continue
             }
-            if let weight { result.append((key, weight)) }
-        }
-        return result
-    }
-
-    /// Passages where the phrase's words occur at consecutive positions
-    /// (stopwords inside the phrase take a position but are not checked, as
-    /// the index doesn't store them).
-    private static func phraseMatches(_ term: Term, in index: DocumentIndex) -> [Int32] {
-        let content = term.words.enumerated().filter { !stopwords.contains($0.element) }
-        guard let first = content.first, let lead = index.postings[stem(first.element)] else { return [] }
-        func packed(_ passage: Int32, _ position: Int32) -> Int64 {
-            let high: Int64 = Int64(passage) << 32
-            return high | Int64(position)
-        }
-        var others: [(offset: Int, positions: Set<Int64>)] = []
-        for (offset, word) in content.dropFirst() {
-            guard let list = index.postings[stem(word)] else { return [] }
-            var positions = Set<Int64>()
-            for (p, position) in zip(list.passages, list.positions) { positions.insert(packed(p, position)) }
-            others.append((offset - first.offset, positions))
-        }
-        var found: [Int32] = []
-        for (p, position) in zip(lead.passages, lead.positions) {
-            var all = true
-            for other in others where !other.positions.contains(packed(p, position + Int32(other.offset))) {
-                all = false
-                break
+            if term.words.count > 1 {
+                var pattern = term.words.map { stopwords.contains($0) ? SearchIndex.stopToken : SearchIndex.ftsToken(stem($0)) }
+                while pattern.first == SearchIndex.stopToken { pattern.removeFirst() }
+                while pattern.last == SearchIndex.stopToken { pattern.removeLast() }
+                if !pattern.isEmpty {
+                    matchers.append(.phrase(pattern))
+                    clauses.append("\"\(pattern.joined(separator: " "))\"")
+                    continue
+                }
             }
-            if all { found.append(p) }
+            let word = SearchIndex.ftsToken(term.words[0])
+            let stemmed = SearchIndex.ftsToken(stem(term.words[0]))
+            let target = term.isName ? word : stemmed
+            var weights: [String: Double] = [stemmed: 1]
+            if term.isName { weights[word] = 1 }
+            if !term.quoted {
+                if words == nil { words = vocabulary() }
+                for key in words ?? [] where weights[key] == nil && abs(key.count - target.count) <= 2 {
+                    if let weight = matchWeight(token: key, term: target, isName: term.isName) { weights[key] = weight }
+                }
+            }
+            matchers.append(.words(weights))
+            clauses.append(weights.keys.sorted().map { "\"\($0)\"" }.joined(separator: " OR "))
         }
-        return found
+        return clauses.isEmpty ? nil : (clauses.joined(separator: " OR "), matchers)
     }
 
     /// Conservative English stemmer in the spirit of Lucene's minimal stemmers:

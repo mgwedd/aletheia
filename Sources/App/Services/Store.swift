@@ -92,6 +92,9 @@ final class Store {
     /// when not injected, so direct `Store(root:)` construction (tests) still
     /// gets a working thread store.
     private let commentStore: CommentStore?
+    /// The persistent search index kept in step with transcripts (see
+    /// `SearchIndex`). nil for stores that don't maintain one (tests, App Intents).
+    private let searchIndex: SearchIndex?
     /// Patient/session records found on disk but unreadable, as of the most
     /// recent listing of each. Guarded by a lock because listings can run from
     /// App Intents and background work as well as the UI.
@@ -111,8 +114,9 @@ final class Store {
     ///   try opening the database here. `AppModel` passes `false` because it has
     ///   already tried (and recorded *why* it failed); a second attempt here could
     ///   disagree with the state it published.
-    init(root: URL, protector: FileProtector = .passthrough, commentStore: CommentStore? = nil, openDatabaseIfMissing: Bool = true) {
+    init(root: URL, protector: FileProtector = .passthrough, commentStore: CommentStore? = nil, openDatabaseIfMissing: Bool = true, searchIndex: SearchIndex? = nil) {
         self.root = root
+        self.searchIndex = searchIndex
         self.protector = protector
         self.commentStore = commentStore ?? (openDatabaseIfMissing ? CommentStore(root: root, protector: protector) : nil)
         self.schemaCompatibility = Store.reconcileSchema(at: root)
@@ -467,6 +471,84 @@ final class Store {
     func saveTranscript(_ text: String, for patient: Patient, session: SessionRecord) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
         try protector.write(text, to: url)
+        // Index in the background; the save itself never waits on it.
+        if let index = searchIndex {
+            let item = Store.indexItem(SessionSearch.Document(
+                date: session.date, tag: "", kind: .transcript, text: text, session: session.id, patient: patient.id))
+            let stamp = Store.stamp(of: url)
+            index.async {
+                index.replace(
+                    session: session.id.uuidString, patient: patient.id.uuidString, kinds: [.transcript],
+                    items: [item], stamp: stamp)
+            }
+        }
+    }
+
+    // MARK: - Search index
+
+    /// Modification time and size of a file: enough to tell whether a transcript changed.
+    private static func stamp(of url: URL) -> String? {
+        guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
+              let modified = values.contentModificationDate, let size = values.fileSize else { return nil }
+        return "\(modified.timeIntervalSinceReferenceDate)-\(size)"
+    }
+
+    private static func indexItem(_ d: SessionSearch.Document) -> SearchIndex.Item {
+        SearchIndex.Item(
+            session: d.session?.uuidString ?? "", patient: d.patient?.uuidString, kind: d.kind.rawValue,
+            date: d.date.timeIntervalSinceReferenceDate, fingerprint: SearchIndex.fingerprint(of: d.text), text: d.text)
+    }
+
+    /// Brings the search index in line with the data folder: indexes sessions
+    /// whose transcript changed since last time (by modification time and
+    /// size), refreshes their notes and comments, and drops sessions that no
+    /// longer exist. Run in the background at launch and unlock. A transcript
+    /// that can't be read (folder locked) is left as it was, and nothing is
+    /// dropped unless every patient and session listed cleanly.
+    func syncSearchIndex(shouldContinue: () -> Bool = { true }) {
+        guard let index = searchIndex else { return }
+        var live = Set<String>()
+        var complete = true
+        guard let listing = try? patientListing() else { return }
+        // A patient record sealed while locked is skipped silently by the listing, so count folders too.
+        let folders = ((try? fileManager.contentsOfDirectory(at: patientsDir, includingPropertiesForKeys: nil)) ?? [])
+            .filter { fileManager.fileExists(atPath: $0.appendingPathComponent("patient.json").path) }
+        if folders.count != listing.patients.count || !listing.unreadable.isEmpty { complete = false }
+        for patient in listing.patients {
+            guard let sessions = try? sessionListing(for: patient) else { complete = false; continue }
+            if !sessions.unreadable.isEmpty { complete = false }
+            for session in sessions.sessions {
+                guard shouldContinue() else { return }
+                let id = session.id.uuidString
+                live.insert(id)
+                var documents: [SessionSearch.Document] = []
+                var kinds: [SessionSearch.Kind] = [.sessionNotes, .comment, .note]
+                let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
+                let stamp = Store.stamp(of: url)
+                if stamp == nil || stamp != index.stamp(session: id) {
+                    kinds.append(.transcript)
+                    if stamp != nil {
+                        do {
+                            if let text = try readTranscript(for: patient, session: session) {
+                                documents.append(.init(
+                                    date: session.date, tag: "", kind: .transcript, text: text, session: session.id, patient: patient.id))
+                            }
+                        } catch {
+                            complete = false
+                            continue   // unreadable: keep what is indexed, retry next time
+                        }
+                    }
+                }
+                for part in sessionMaterialParts(for: patient, session: session) {
+                    documents.append(.init(
+                        date: session.date, tag: "", kind: part.kind, text: part.text, session: session.id, patient: patient.id))
+                }
+                index.replace(
+                    session: id, patient: patient.id.uuidString, kinds: kinds,
+                    items: documents.map(Store.indexItem), stamp: kinds.contains(.transcript) ? stamp : nil)
+            }
+        }
+        if complete, shouldContinue() { index.drop(sessionsNotIn: live) }
     }
 
     func summary(for patient: Patient, session: SessionRecord) -> String? {
@@ -1084,10 +1166,12 @@ final class Store {
             let tag = labels[session.date] ?? ""
             if !transcriptText.isEmpty {
                 documents.append(TranscriptDocument(date: session.date, text: transcriptText))
-                searchDocuments.append(.init(date: session.date, tag: tag, kind: .transcript, text: transcriptText))
+                searchDocuments.append(.init(
+                    date: session.date, tag: tag, kind: .transcript, text: transcriptText, session: session.id, patient: patient.id))
             }
             for part in parts {
-                searchDocuments.append(.init(date: session.date, tag: tag, kind: part.kind, text: part.text))
+                searchDocuments.append(.init(
+                    date: session.date, tag: tag, kind: part.kind, text: part.text, session: session.id, patient: patient.id))
             }
             if hasNotes { notesDates.insert(session.date) }
             extras[session.date, default: []].append(contentsOf: material)

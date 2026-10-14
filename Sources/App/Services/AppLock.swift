@@ -164,8 +164,8 @@ final class AppLock: ObservableObject {
     func lockIfEnabled() {
         if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: Self.canAuthenticate()) {
             isLocked = true
-            // The search cache holds transcript text; don't keep it behind the lock screen.
-            SessionSearch.clearCache()
+            // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
+            SessionSearch.closeIndex()
             OllamaClient.unloadLoaded()
         }
     }

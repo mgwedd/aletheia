@@ -178,7 +178,7 @@ final class EncryptionManager: ObservableObject {
     func lock() {
         guard dek != nil else { return }
         dek = nil
-        SessionSearch.clearCache()   // holds transcript text
+        SessionSearch.closeIndex()   // SQLite's page cache holds indexed text
         OllamaClient.unloadLoaded()
         refresh()
         onProtectionChanged?()

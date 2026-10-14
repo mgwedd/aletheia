@@ -6,7 +6,7 @@ final class SessionSearchTests: XCTestCase {
     private let calendar = Calendar(identifier: .gregorian)
 
     override func setUp() {
-        SessionSearch.clearCache()
+        SessionSearch.index = SearchIndex()
     }
 
     private func date(_ y: Int, _ m: Int, _ d: Int) -> Date {
@@ -239,8 +239,8 @@ final class SessionSearchTests: XCTestCase {
 
     // MARK: - Performance
 
-    /// ~50 sessions of ~60k characters. The first search builds a per-session
-    /// index (cold); later searches reuse them (warm).
+    /// ~50 sessions of ~60k characters. The first search indexes them (cold);
+    /// later searches find them already stored (warm).
     func testFiftyLongSessionsSearchQuickly() {
         let words = ["weather", "errands", "sleep", "mother", "garden", "work", "walk", "dinner", "tired", "weekend", "friends", "plans"]
         var generator = SystemRandomNumberGenerator()
@@ -274,13 +274,6 @@ final class SessionSearchTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(second.hits.count, 8)
         XCTAssertLessThan(coldSeconds, 5, "generous bound; see the printed timing")
         XCTAssertLessThan(warmSeconds, 1)
-    }
-
-    func testEditedSessionRebuildsOnlyItsIndex() {
-        let a = doc("[00:01] A: Dana called.")
-        let b = doc("[00:01] A: Dana called.\n[00:02] A: and again.")
-        XCTAssertTrue(SessionSearch.index(for: a) === SessionSearch.index(for: a))
-        XCTAssertFalse(SessionSearch.index(for: a) === SessionSearch.index(for: b))
     }
 
     // MARK: - Fixes from review
@@ -323,45 +316,18 @@ final class SessionSearchTests: XCTestCase {
         XCTAssertEqual(SessionSearch.terms(from: "Didn't Dana?").map(\.text), ["dana"])
     }
 
-    func testCacheKeepsEverythingASearchUsesAndEvictsOnlyOlderSearches() {
-        SessionSearch.clearCache()
-        func docs(_ prefix: String, _ n: Int) -> [SessionSearch.Document] {
-            (0..<n).map { doc("[00:01] A: Dana \(prefix) \($0)", 2026, 1 + $0 % 12, 1 + $0 % 28, tag: "S\($0)") }
-        }
-        let first = docs("alpha", 1_000)
-        _ = search(first, "Dana")
-        XCTAssertEqual(SessionSearch.cachedIndexCount, 1_000)
-        let second = docs("beta", 1_000)
-        _ = search(second, "Dana")
-        XCTAssertEqual(SessionSearch.cachedIndexCount, 1_000, "the first search's entries made room; the second kept all of its own")
-        let oversize = docs("gamma", SessionSearch.cacheLimit + 100)
-        _ = search(oversize, "Dana")
-        XCTAssertEqual(SessionSearch.cachedIndexCount, SessionSearch.cacheLimit, "surplus is left uncached, not the whole cache cleared")
-        SessionSearch.clearCache()
-        XCTAssertEqual(SessionSearch.cachedIndexCount, 0)
-    }
-
-    func testASearchRunningWhenTheCacheClearsDoesNotRefillIt() {
-        SessionSearch.clearCache()
-        let a = doc("[00:01] A: Dana called.")
-        let startedBeforeClear = 0   // clears seen by a search that began before the clear below
-        SessionSearch.clearCache()
-        _ = SessionSearch.index(for: a, clearsAtStart: startedBeforeClear)
-        XCTAssertEqual(SessionSearch.cachedIndexCount, 0)
-        _ = search([a], "Dana")
-        XCTAssertEqual(SessionSearch.cachedIndexCount, 1, "a search that starts after the clear caches as usual")
-    }
-
-    func testEncryptionLockClearsTheSearchCache() throws {
-        _ = search([doc("[00:01] A: Dana called.")], "Dana")
-        XCTAssertGreaterThan(SessionSearch.cachedIndexCount, 0)
+    func testEncryptionLockClosesTheSearchIndex() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("lock-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        SessionSearch.index = SearchIndex(url: root.appendingPathComponent("search.sqlite"))
+        _ = search([doc("[00:01] A: Dana called.")], "Dana")
+        XCTAssertTrue(SessionSearch.index.isOpen)
         let manager = EncryptionManager(dataRootProvider: { root })
         try manager.enable(passphrase: "pw", iterations: 1_000)
         _ = search([doc("[00:01] A: Dana called.")], "Dana")
         manager.lock()
-        XCTAssertEqual(SessionSearch.cachedIndexCount, 0)
+        XCTAssertFalse(SessionSearch.index.isOpen, "no connection (and no page cache) is left holding indexed text")
+        XCTAssertEqual(search([doc("[00:01] A: Dana called.")], "Dana").totalMentions, 1, "reopens on the next search")
     }
 }

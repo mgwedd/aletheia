@@ -32,6 +32,9 @@ final class AppModel: ObservableObject {
     /// On-device, append-only audit log of ePHI-affecting actions (HIPAA
     /// §164.312(b)), living in the data folder beside the stores.
     private(set) var audit: AuditLog?
+    /// The persistent search index (`<dataRoot>/search.sqlite`), reused while the data folder is unchanged.
+    private var searchIndex: SearchIndex?
+    private var searchSync: Task<Void, Never>?
     // Previous encryption on/unlocked state, so `rebuildStore` (which fires on
     // every protection change) can derive what changed and record it. Both are
     // `nil` until the first build, so launching the app isn't logged as a change.
@@ -114,8 +117,21 @@ final class AppModel: ObservableObject {
             ))
         }
         commentStore = newCommentStore
-        let newStore = Store(root: root, protector: protector, commentStore: newCommentStore, openDatabaseIfMissing: false)
+        let indexURL = root.appendingPathComponent("search.sqlite")
+        let index = searchIndex?.url == indexURL ? searchIndex! : SearchIndex(url: indexURL)
+        searchIndex = index
+        SessionSearch.index = index
+        let newStore = Store(
+            root: root, protector: protector, commentStore: newCommentStore, openDatabaseIfMissing: false, searchIndex: index)
         store = newStore
+        // Bring the index up to date in the background (launch, unlock, folder change); not while
+        // locked, when no transcript can be read.
+        searchSync?.cancel()
+        if !encryption.isEnabled || encryption.isUnlocked {
+            searchSync = Task.detached(priority: .utility) {
+                newStore.syncSearchIndex(shouldContinue: { !Task.isCancelled })
+            }
+        }
         if case let .needsNewerApp(dataVersion, appVersion) = newStore.schemaCompatibility {
             schemaWarning = """
             This folder's data was created by a newer version of Aletheia \
