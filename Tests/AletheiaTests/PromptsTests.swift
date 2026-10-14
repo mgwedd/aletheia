@@ -36,8 +36,10 @@ final class PromptsTests: XCTestCase {
     func testLegendExplainsLabelsOverlapAndOrdering() {
         let legend = Prompts.transcriptLegend
         XCTAssertTrue(legend.contains("not from voice analysis"))
-        XCTAssertTrue(legend.contains("\"Call audio\" is normally the client"))
-        XCTAssertTrue(legend.contains("both people may appear as \"You\""))
+        XCTAssertTrue(legend.contains("\"C\" (Call audio) is normally the client"))
+        XCTAssertTrue(legend.contains("both people may appear as \"Y\""))
+        XCTAssertTrue(legend.contains("\"C~\""))
+        XCTAssertTrue(legend.contains("(repeated ×N)"))
         XCTAssertTrue(legend.contains("(overlapping)"))
         XCTAssertTrue(legend.contains("approximate"))
     }

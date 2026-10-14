@@ -28,7 +28,7 @@ extension Prompts {
         \(transcriptLegend)
 
         Transcript section \(anchor):
-        \(text)
+        \(TranscriptCompactor.compact(text))
         """
     }
 

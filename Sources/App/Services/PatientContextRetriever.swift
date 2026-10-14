@@ -68,10 +68,12 @@ enum PatientContextRetriever {
         characterBudget: Int,
         labels: [Date: String] = [:]
     ) -> Selection {
+        // Compacted for the model (`TranscriptCompactor`), so the budget below
+        // measures what is actually sent.
         let usable = transcripts.filter {
             !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && (search.dateRange?.contains($0.date) ?? true)
-        }
+        }.map { TranscriptDocument(date: $0.date, text: TranscriptCompactor.compact($0.text)) }
         guard !usable.isEmpty else { return Selection(excerpts: [], hitsShown: 0, whole: true, fullTexts: true) }
         let transcriptHits = search.hits.filter { $0.kind == .transcript }
 
@@ -130,7 +132,7 @@ enum PatientContextRetriever {
             }
             byDate[dateOf[document]!, default: []].append(text)
         }
-        let excerpts = byDate.keys.sorted(by: >).map { Excerpt(date: $0, text: byDate[$0]!.joined(separator: "\n…\n")) }
+        let excerpts = byDate.keys.sorted(by: >).map { Excerpt(date: $0, text: TranscriptCompactor.compact(byDate[$0]!.joined(separator: "\n…\n"))) }
         return Selection(excerpts: excerpts, hitsShown: shown, whole: false, fullTexts: false)
     }
 
