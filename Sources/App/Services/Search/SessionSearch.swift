@@ -282,19 +282,24 @@ enum SessionSearch {
     /// app or the data folder locks). Each search marks the entries it uses;
     /// when the cache is full, only entries the current search is not using
     /// are evicted, so one search can't evict its own sessions. A patient with
-    /// more documents than `cacheLimit` leaves the surplus uncached.
+    /// more documents than `cacheLimit` leaves the surplus uncached. A search
+    /// running when the cache is cleared adds nothing more to it, so a lock
+    /// mid-search doesn't leave transcript text behind.
     private static let cacheLock = NSLock()
     nonisolated(unsafe) private static var cache: [String: (index: DocumentIndex, generation: Int)] = [:]
     nonisolated(unsafe) private static var generation = 0
+    nonisolated(unsafe) private static var clears = 0
     static let cacheLimit = 1_500
 
-    private static func beginSearch() {
+    /// Returns the clear count at the start, for `index(for:clearsAtStart:)`.
+    private static func beginSearch() -> Int {
         cacheLock.lock()
+        defer { cacheLock.unlock() }
         generation += 1
-        cacheLock.unlock()
+        return clears
     }
 
-    static func index(for document: Document) -> DocumentIndex {
+    static func index(for document: Document, clearsAtStart: Int? = nil) -> DocumentIndex {
         let key = "\(document.kind)-" + NoteFreshness.fingerprint(of: document.text)
         cacheLock.lock()
         defer { cacheLock.unlock() }
@@ -303,6 +308,7 @@ enum SessionSearch {
             return hit.index
         }
         let built = DocumentIndex(text: document.text, kind: document.kind)
+        if let clearsAtStart, clearsAtStart != clears { return built }
         if cache.count >= cacheLimit { cache = cache.filter { $0.value.generation == generation } }
         if cache.count < cacheLimit { cache[key] = (built, generation) }
         return built
@@ -311,6 +317,7 @@ enum SessionSearch {
     static func clearCache() {
         cacheLock.lock()
         cache.removeAll()
+        clears += 1
         cacheLock.unlock()
     }
 
@@ -330,7 +337,7 @@ enum SessionSearch {
     static func search(
         _ documents: [Document], question: String, now: Date = Date(), calendar: Calendar = .current
     ) -> Result {
-        beginSearch()
+        let clearsAtStart = beginSearch()
         let range = dateRange(in: question, now: now, calendar: calendar)
         let terms = terms(from: question)
         let inRange = documents.indices.filter { range?.contains(documents[$0].date) ?? true }
@@ -342,7 +349,7 @@ enum SessionSearch {
             )
         }
 
-        let indexes = inRange.map { index(for: documents[$0]) }
+        let indexes = inRange.map { index(for: documents[$0], clearsAtStart: clearsAtStart) }
         let passageCount = indexes.reduce(0) { $0 + $1.passageLengths.count }
         let totalLength = indexes.reduce(0) { $0 + $1.passageLengths.reduce(0, +) }
         let avgLength = max(1, Double(totalLength) / Double(max(1, passageCount)))
