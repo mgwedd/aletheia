@@ -43,6 +43,7 @@ enum StoreError: LocalizedError {
 ///       summary.txt        (the most recently generated note, any format)
 ///       note.<format>.txt  (one progress note per format, e.g. note.soap.txt)
 ///       note.<format>.meta.json  (fingerprint of the transcript that note was generated from)
+///       digest.json        (section + session digests of the transcript, see `SessionDigest`)
 ///
 /// Identity is a persisted `UUID`, never the path. A patient's id lives in
 /// `patient.json`, a session's in `session.json` — both assigned once at
@@ -568,6 +569,32 @@ final class Store {
             let record = try NoteFreshness.encode(fingerprint: NoteFreshness.fingerprint(of: transcript))
             try protector.write(record, to: dir.appendingPathComponent(Store.noteMetaFileName(for: format)))
         }
+    }
+
+    // MARK: - Session digests
+
+    static let digestFileName = "digest.json"
+
+    private func digestURL(for patient: Patient, session: SessionRecord) -> URL {
+        sessionDir(for: patient, session: session).appendingPathComponent(Store.digestFileName)
+    }
+
+    func saveDigest(_ digest: SessionDigest, for patient: Patient, session: SessionRecord) throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try protector.write(try encoder.encode(digest), to: digestURL(for: patient, session: session))
+    }
+
+    /// The session's digest if one is stored and still matches the current
+    /// transcript, `model` and prompts; nil when missing, unreadable or stale.
+    func digest(for patient: Patient, session: SessionRecord, model: String) -> SessionDigest? {
+        guard let data = (try? protector.dataIfPresent(at: digestURL(for: patient, session: session))) ?? nil,
+              let transcript = transcript(for: patient, session: session) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let digest = try? decoder.decode(SessionDigest.self, from: data),
+              digest.isCurrent(transcript: transcript, model: model) else { return nil }
+        return digest
     }
 
     // MARK: - Editing generated notes

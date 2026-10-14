@@ -1,7 +1,8 @@
 import Foundation
 
 /// Serializes the app's AI generations (progress notes, session chat, patient
-/// chat) so only one runs at a time, first come first served.
+/// chat) so only one runs at a time, first come first served (background
+/// digests yield to everything else).
 ///
 /// Why app-side: every request goes to the same local model. Ollama may queue
 /// or interleave concurrent requests on its own, but that is invisible to the
@@ -19,6 +20,8 @@ final class InferenceQueue: ObservableObject {
         case note
         case sessionChat
         case patientChat
+        /// Background digest building: runs only when no note or chat is waiting.
+        case digest
     }
 
     struct JobInfo: Identifiable, Equatable, Sendable {
@@ -83,6 +86,8 @@ final class InferenceQueue: ObservableObject {
     }
 
     static func statusText(requesting: Kind, behind: Kind) -> String {
+        if requesting == .digest { return "Waiting for other work to finish…" }
+        if behind == .digest { return "Finishing a background digest, yours will run next." }
         if requesting == .note {
             if behind == .note { return "Waiting for another note to finish…" }
             return "Waiting for the chat answer to finish…"
@@ -96,7 +101,10 @@ final class InferenceQueue: ObservableObject {
             waiting = pending.map { $0.info }
             return
         }
-        let next = pending.removeFirst()
+        // Digests are background work: a note or chat waiting anywhere in the
+        // line goes first. Otherwise first come first served.
+        let nextIndex = pending.firstIndex(where: { $0.info.kind != .digest }) ?? 0
+        let next = pending.remove(at: nextIndex)
         waiting = pending.map { $0.info }
         running = next.info
         runningTask = Task { [weak self] in

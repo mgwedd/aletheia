@@ -29,6 +29,21 @@ enum NotesPane: Hashable, Identifiable {
     }
 }
 
+/// One muted line while the session's digest is being built in the background.
+private struct DigestStatusLine: View {
+    @ObservedObject var builder: DigestBuilder
+    let sessionID: UUID
+
+    var body: some View {
+        if let text = builder.status[sessionID] {
+            Text(text)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .padding([.horizontal, .top], 20)
+        }
+    }
+}
+
 struct SessionDetailView: View {
     let patient: Patient
     let session: SessionRecord
@@ -517,6 +532,7 @@ struct SessionDetailView: View {
 
     private var transcriptTab: some View {
         VStack(alignment: .leading, spacing: 0) {
+            DigestStatusLine(builder: integrations.digests, sessionID: session.id)
             if let notice = noSpeechNotice {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle")
@@ -792,6 +808,7 @@ struct SessionDetailView: View {
         }
         transcriptText = text
         hasTranscript = true
+        integrations.buildDigest(for: patient, session: session, transcript: text, store: store)
         onSessionUpdated()
         return true
     }
