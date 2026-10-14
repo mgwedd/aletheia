@@ -10,7 +10,7 @@ enum AudioResamplerError: LocalizedError {
 
 enum AudioResampler {
     /// Reads an audio file and returns 16kHz mono Float32 samples — the
-    /// format whisper.cpp (and SwiftWhisper) expects. Multi-channel files are
+    /// format whisper.cpp expects. Multi-channel files are
     /// reduced to their loudest channel first: the converter's default
     /// "downmix" remaps channels rather than mixing, so a file whose speech
     /// sits on a later channel would otherwise come out silent.

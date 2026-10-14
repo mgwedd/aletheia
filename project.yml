@@ -35,11 +35,11 @@ settings:
       ENABLE_HARDENED_RUNTIME: YES
 
 packages:
-  SwiftWhisper:
-    url: https://github.com/exPHAT/SwiftWhisper.git
-    # 1.2.0, pinned by commit: the generated project has no checked-in
-    # Package.resolved, so a version range would float in CI.
-    revision: a192004db08de7c6eaa169eede77f1625e7d23fb
+  # The current official whisper.cpp (ggml-org) as its prebuilt XCFramework,
+  # pinned by URL + checksum in the local package, wrapped by the WhisperEngine
+  # framework target.
+  WhisperCpp:
+    path: Packages/WhisperCpp
   # Embedded llama.cpp fallback — staged (see README › Embedded llama.cpp).
   # Uncomment, pin to a verified revision, and add `- package: llama` to the
   # Aletheia target dependencies below to compile the local LLM backend;
@@ -94,10 +94,27 @@ targets:
         Release:
           CODE_SIGN_ENTITLEMENTS: Sources/App/Resources/Aletheia.entitlements
     dependencies:
-      - package: SwiftWhisper
+      - target: WhisperEngine
+      # Listed so Xcode copies whisper.framework into the app bundle (it only
+      # embeds a package's binary framework for the target that names it).
+      - package: WhisperCpp
       # - package: llama   # staged: uncomment with the packages stanza above
       - sdk: ScreenCaptureKit.framework
       - sdk: AVFoundation.framework
+
+  # The Swift surface over whisper.cpp; the C API stays inside it.
+  WhisperEngine:
+    type: framework
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/WhisperEngine
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.WhisperEngine
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - package: WhisperCpp
 
   AletheiaTests:
     type: bundle.unit-test
@@ -111,6 +128,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: Aletheia
+      - target: WhisperEngine
+        embed: false
 
 schemes:
   Aletheia:
