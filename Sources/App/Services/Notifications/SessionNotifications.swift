@@ -18,6 +18,16 @@ enum SessionNotifications {
         )
     }
 
+    /// A transcription that failed or found no speech, so someone who stepped
+    /// away isn't left assuming the transcript is on its way.
+    static func transcriptionProblem(patientName: String, date: Date) -> AppNotificationContent {
+        AppNotificationContent(
+            identifier: "transcription-problem-\(patientName)-\(date.timeIntervalSince1970)",
+            title: "Transcription needs attention",
+            body: "\(patientName)'s session from \(dateFormatter.string(from: date)) wasn't transcribed. Open the session to see why."
+        )
+    }
+
     static func summaryReady(patientName: String, date: Date) -> AppNotificationContent {
         AppNotificationContent(
             identifier: "summary-\(patientName)-\(date.timeIntervalSince1970)",

@@ -18,6 +18,18 @@ enum RecordingLimit {
     }
 }
 
+/// One recording at a time: why a new one can't begin, or nil when it can.
+enum RecordingStartPolicy {
+    static func refusal(isRecording: Bool, isStarting: Bool, activePatientName: String?) -> String? {
+        if isRecording {
+            let whose = activePatientName.map { "\($0)'s session" } ?? "Another session"
+            return "\(whose) is still recording. Stop that recording before starting a new one."
+        }
+        if isStarting { return "A recording is already starting." }
+        return nil
+    }
+}
+
 /// Elapsed recording time that stops while paused: the time since start,
 /// minus every paused span (including one still open).
 struct RecordingClock: Equatable {
@@ -106,6 +118,12 @@ final class SessionRecorder: ObservableObject {
     }
 
     @Published private(set) var state: RecordingState = .idle
+    /// True from the moment `start()` is accepted until it is recording or has
+    /// failed: asking for permission and opening the captures takes a moment,
+    /// and a second start in that window must not open them twice.
+    @Published private(set) var isStarting = false
+    /// Recording, or about to be.
+    var isBusy: Bool { isRecording || isStarting }
     /// True while recording is paused (captures still running, buffers dropped).
     @Published private(set) var isPaused = false
     /// Drives the elapsed-time display; frozen while paused.
@@ -120,6 +138,12 @@ final class SessionRecorder: ObservableObject {
     /// `CallAudioWatch`), so the UI can say the other side isn't being captured.
     @Published private(set) var callAudioSilent = false
     private var callWatch = CallAudioWatch()
+    /// Called after a recording has been stopped and saved (not when sealing it
+    /// failed), with the session it belonged to.
+    var onStopped: ((ActiveRecording) -> Void)?
+    /// Called once when a recording passes `RecordingLimit.reminderThreshold`,
+    /// whatever screen (if any) is showing.
+    var onLongRunning: ((ActiveRecording) -> Void)?
     /// Why call audio isn't being captured for the current recording (it never
     /// started, or stopped part-way), or nil when it's fine. Shown on the
     /// recording screen so a mic-only session is never a silent surprise.
@@ -146,14 +170,26 @@ final class SessionRecorder: ObservableObject {
     private var protector: FileProtector = .passthrough
     private var micURL: URL?
     private var callURL: URL?
+    private var isStopping = false
 
-    func start(micURL: URL, callURL: URL, context: ActiveRecording, protector: FileProtector = .passthrough) async {
-        if case .recording = state { return }
+    /// Starts recording. Returns nil once recording, or why it isn't: another
+    /// recording is in the way (which is left untouched), or this one failed to
+    /// start (also left in `state`).
+    @discardableResult
+    func start(micURL: URL, callURL: URL, context: ActiveRecording, protector: FileProtector = .passthrough) async -> String? {
+        if let refusal = RecordingStartPolicy.refusal(
+            isRecording: isRecording, isStarting: isStarting, activePatientName: active?.patientName
+        ) {
+            return refusal
+        }
+        isStarting = true
+        defer { isStarting = false }
 
         let micGranted = await MicRecorder.requestPermission()
         guard micGranted else {
-            state = .error(MicRecorderError.permissionDenied.localizedDescription)
-            return
+            let message = MicRecorderError.permissionDenied.localizedDescription
+            state = .error(message)
+            return message
         }
 
         systemAudio.onError = { [weak self] error in
@@ -216,11 +252,13 @@ final class SessionRecorder: ObservableObject {
             callWatch.reset()
             callAudioSilent = false
             startLevelPolling()
+            return nil
         } catch {
             mic.stop()
             await systemAudio.stop()
             active = nil
             state = .error(error.localizedDescription)
+            return error.localizedDescription
         }
     }
 
@@ -246,6 +284,11 @@ final class SessionRecorder: ObservableObject {
     }
 
     func stop() async {
+        // A second Stop while the first is still sealing must not seal the
+        // same files again or report the recording finished twice.
+        guard !isStopping else { return }
+        isStopping = true
+        defer { isStopping = false }
         reminderTask?.cancel()
         reminderTask = nil
         stopLevelPolling()
@@ -258,10 +301,12 @@ final class SessionRecorder: ObservableObject {
         isPaused = false
         clock = nil
         let sealError = await sealRecordingsIfNeeded()
+        let finished = active
         active = nil
         micURL = nil
         callURL = nil
         state = sealError.map { .error($0) } ?? .idle
+        if let finished, sealError == nil { onStopped?(finished) }
     }
 
     /// Seals both recordings in place when encryption is on. Runs off the main
@@ -290,7 +335,9 @@ final class SessionRecorder: ObservableObject {
         reminderTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(RecordingLimit.reminderThreshold * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
-            if self.isRecording { self.longRunningReminder = true }
+            guard self.isRecording else { return }
+            self.longRunningReminder = true
+            if let active = self.active { self.onLongRunning?(active) }
         }
     }
 

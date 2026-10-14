@@ -6,6 +6,7 @@ struct RootView: View {
     @EnvironmentObject private var integrations: Integrations
     @EnvironmentObject private var updateService: UpdateService
     @EnvironmentObject private var encryption: EncryptionManager
+    @EnvironmentObject private var recorder: SessionRecorder
     @ObservedObject private var navigator = AppNavigator.shared
     @Environment(\.openWindow) private var openWindow
     @State private var selectedPatient: Patient?
@@ -98,6 +99,16 @@ struct RootView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(appModel.schemaWarning ?? "")
+        }
+        // Here rather than on the session screen, so it appears whatever is on
+        // screen and names the session that is actually recording.
+        .alert("Still recording", isPresented: $recorder.longRunningReminder) {
+            Button("Keep Recording", role: .cancel) {}
+            Button("Stop Now", role: .destructive) { Task { await recorder.stop() } }
+        } message: {
+            Text(SessionNotifications.longRecordingReminder(
+                patientName: recorder.active?.patientName ?? "This patient"
+            ).body)
         }
         // `selectedPatient` is a snapshot; keep it in step with saves (matched by
         // id) so the detail view and sidebar selection never hold a stale copy.

@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let log = Logger(subsystem: "com.aletheia", category: "Transcription")
 
 /// Runs session transcriptions at app level, so a transcription outlives the
 /// screen that started it: leaving the session (or the patient) and coming back
@@ -7,6 +10,7 @@ import Foundation
 ///
 /// One transcription at a time — each loads the speech model and holds a whole
 /// session's audio in memory, so running them side by side would only slow both.
+/// A session asked for while another is running waits its turn (`queue`).
 ///
 /// Nothing is written until the transcript is complete: a cancelled or failed run
 /// leaves the session folder exactly as it was (the recordings are untouched and
@@ -19,7 +23,12 @@ final class TranscriptionCoordinator: ObservableObject {
     /// `takeOutcome(for:)` (it may not have been on screen when they finished).
     @Published private(set) var outcomes: [UUID: TranscriptionOutcome] = [:]
 
+    /// Which session is running and which are waiting, in order.
+    @Published private(set) var queue = TranscriptionQueue()
+
     private var tasks: [UUID: Task<Void, Never>] = [:]
+    /// What to transcribe for each waiting session, until its turn comes.
+    private var pending: [UUID: (patient: Patient, session: SessionRecord)] = [:]
     private let appModel: AppModel
     private let integrations: Integrations
     private let settings: AppSettings
@@ -35,7 +44,12 @@ final class TranscriptionCoordinator: ObservableObject {
     }
 
     /// Whether any session is being transcribed.
-    var isBusy: Bool { !jobs.isEmpty }
+    var isBusy: Bool { queue.running != nil }
+
+    /// Whether `sessionID` is waiting for another transcription to finish.
+    func isWaiting(_ sessionID: UUID) -> Bool {
+        queue.isWaiting(sessionID)
+    }
 
     /// Compact status for the menu bar; nil when idle.
     var statusLine: String? {
@@ -47,23 +61,72 @@ final class TranscriptionCoordinator: ObservableObject {
         outcomes.removeValue(forKey: sessionID)
     }
 
-    /// Starts transcribing a session. A no-op while another transcription runs.
+    /// Starts transcribing a session, or queues it behind the one that is
+    /// running. Asking again for a session already running or waiting is a no-op.
     func start(patient: Patient, session: SessionRecord) {
-        guard !isBusy, let store = appModel.store else { return }
+        switch queue.submit(session.id) {
+        case .alreadyKnown:
+            return
+        case .queued:
+            outcomes[session.id] = nil
+            pending[session.id] = (patient, session)
+        case .startNow:
+            outcomes[session.id] = nil
+            begin(patient: patient, session: session)
+        }
+    }
+
+    /// Runs the session `queue` has just marked running.
+    private func begin(patient: Patient, session: SessionRecord) {
         let sessionID = session.id
-        outcomes[sessionID] = nil
+        // Read here, not when queued: the store is rebuilt when encryption is
+        // unlocked or locked, and a waiting session must use the current one.
+        guard let store = appModel.store else {
+            finish(sessionID, outcome: .failed(
+                message: "This session couldn't be transcribed because the data folder isn't available. Check it in Settings, then press Transcribe."
+            ))
+            return
+        }
         jobs[sessionID] = TranscriptionJob(startedAt: Date())
         let protector = appModel.currentProtector
         tasks[sessionID] = Task { [weak self] in
             guard let self else { return }
             let outcome = await self.run(patient: patient, session: session, store: store, protector: protector)
+            // Tell someone who stepped away that no transcript is coming.
+            switch outcome {
+            case .failed, .blank:
+                await self.integrations.makeNotifier().post(
+                    SessionNotifications.transcriptionProblem(patientName: patient.name, date: session.date)
+                )
+            case .completed, .cancelled:
+                break
+            }
             self.finish(sessionID, outcome: outcome)
         }
     }
 
-    /// Stops a running transcription. Returns once the stop has been requested;
+    /// Starts transcribing the session whose recording just stopped, when the
+    /// user has turned on "Transcribe automatically".
+    func startAfterRecording(_ recording: SessionRecorder.ActiveRecording) {
+        guard settings.autoTranscribeAfterRecording else { return }
+        guard let patient = appModel.patients.first(where: { $0.id == recording.patientID }),
+              let session = try? appModel.store?.listSessions(for: patient)
+                  .first(where: { $0.folderName == recording.sessionFolder })
+        else {
+            // The recording is saved either way; Transcribe still works by hand.
+            log.error("Automatic transcription skipped: the recorded session could not be found")
+            return
+        }
+        start(patient: patient, session: session)
+    }
+
+    /// Stops a running transcription, or takes a waiting one out of the queue. Returns once the stop has been requested;
     /// the job ends (as `.cancelled`) when the transcriber has wound down.
     func cancel(sessionID: UUID) {
+        if queue.withdraw(sessionID) {
+            pending[sessionID] = nil
+            return
+        }
         guard var job = jobs[sessionID], job.requestCancel() else { return }
         jobs[sessionID] = job
         tasks[sessionID]?.cancel()
@@ -79,6 +142,9 @@ final class TranscriptionCoordinator: ObservableObject {
         tasks[sessionID] = nil
         jobs[sessionID] = nil
         outcomes[sessionID] = outcome
+        if let next = queue.finishRunning(), let waiting = pending.removeValue(forKey: next) {
+            begin(patient: waiting.patient, session: waiting.session)
+        }
     }
 
     private func run(
@@ -88,6 +154,10 @@ final class TranscriptionCoordinator: ObservableObject {
         protector: FileProtector
     ) async -> TranscriptionOutcome {
         let sessionID = session.id
+        // Keep the Mac from idle-sleeping (or App Nap throttling the work)
+        // while the user is away; the display can still sleep and lock.
+        let activity = ProcessInfo.processInfo.beginActivity(options: .userInitiated, reason: "Transcribing a session")
+        defer { ProcessInfo.processInfo.endActivity(activity) }
         // Ask in context: transcription can take minutes, and we want to tell
         // her when it's done if she's stepped away.
         await integrations.makeNotifier().requestAuthorization()

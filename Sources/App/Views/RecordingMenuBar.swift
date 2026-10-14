@@ -25,6 +25,8 @@ struct RecordingMenuBar: View {
     /// The patient chosen in the picker; falls back to the first one when unset
     /// or when that patient is gone.
     @State private var selectedPatientID: UUID?
+    /// Why the last Start didn't begin recording, shown under the button.
+    @State private var startProblem: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -207,7 +209,13 @@ struct RecordingMenuBar: View {
             }
             .buttonStyle(.themePrimary)
             .controlSize(.large)
-            .disabled(selectedPatient == nil)
+            .disabled(selectedPatient == nil || recorder.isStarting)
+            if let startProblem {
+                Text(startProblem)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text("Records a new session. Make sure your client has consented first.")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
@@ -227,9 +235,14 @@ struct RecordingMenuBar: View {
     }
 
     private func start(for patient: Patient) async {
+        // Before creating a session, so a refused start leaves no empty one behind.
+        guard !recorder.isBusy else { return }
         guard let store = appModel.store,
-              let session = appModel.startNewSession(for: patient) else { return }
-        await recorder.start(
+              let session = appModel.startNewSession(for: patient) else {
+            startProblem = "Couldn't create a session. Check the data folder in Settings."
+            return
+        }
+        startProblem = await recorder.start(
             micURL: store.micRecordingURL(for: patient, session: session),
             callURL: store.callRecordingURL(for: patient, session: session),
             context: .init(
@@ -240,6 +253,8 @@ struct RecordingMenuBar: View {
             ),
             protector: appModel.currentProtector
         )
+        // Stay on the menu when it didn't start, so the reason is read here.
+        guard startProblem == nil else { return }
         NSApp.activate(ignoringOtherApps: true)
         AppNavigator.shared.requestOpen(patientID: patient.id)
     }
