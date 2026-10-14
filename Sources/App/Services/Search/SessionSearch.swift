@@ -53,13 +53,26 @@ enum SessionSearch {
         let score: Double
     }
 
+    struct TermCount: Equatable {
+        let term: Term
+        /// Occurrences of the word itself (or the phrase).
+        let exact: Int
+        /// Occurrences of a one-letter typo or sound-alike of it.
+        let similar: Int
+    }
+
     struct Result {
         let terms: [Term]
         let dateRange: DateRange?
         /// Passages with at least one match, best first.
         let hits: [Hit]
-        /// Every matching word occurrence (a quoted phrase counts once).
+        /// Every matching word occurrence (a quoted phrase counts once),
+        /// exact and similar spellings together.
         let totalMentions: Int
+        /// Of `totalMentions`, those that matched a typo or sound-alike, not the word itself.
+        let similarMentions: Int
+        /// One entry per term, in order, so a claim about one word rests on its own count.
+        let termCounts: [TermCount]
         let sessionsWithHits: Int
         /// Sessions (by tag) with any document inside the date range.
         let sessionsSearched: Int
@@ -99,7 +112,9 @@ enum SessionSearch {
     static let stopwords: Set<String> = Set("""
         a about above after again all also am an and any are as at be because been before being between both but by \
         can could did do does doing done down during each few for from further get got had has have having he her here \
-        hers herself don't didn't doesn't isn't wasn't i'm i've him himself his how i if in into is it its itself just let like me might more most my myself no nor \
+        hers herself don't didn't doesn't isn't wasn't aren't weren't haven't hasn't hadn't won't wouldn't can't couldn't shouldn't mustn't \
+        i'm i've i'll i'd you're you've you'll you'd we're we've we'll we'd they're they've they'll they'd he'll he'd she'll she'd \
+        it'll that'll who're what're him himself his how i if in into is it its itself just let like me might more most my myself no nor \
         not now of off on once only or other our ours ourselves out over own really same she should so some such than \
         that the their theirs them themselves then there these they this those through to too under until up very was \
         we were what when where which while who whom why will with would you your yours yourself yourselves \
@@ -225,7 +240,7 @@ enum SessionSearch {
             var starts: [Int] = []
             if kind == .transcript {
                 for (i, line) in lines.enumerated() {
-                    let tokens = SessionSearch.tokenize(line)
+                    let tokens = SessionSearch.tokenize(TranscriptTimeline.spokenText(line))
                     if !tokens.isEmpty { passages.append(tokens); starts.append(i) }
                 }
             } else {
@@ -263,19 +278,33 @@ enum SessionSearch {
     }
 
     /// Indexes by content, so editing one session rebuilds only that session.
-    /// In memory only; cleared wholesale if it grows past `cacheLimit`.
+    /// In memory only (it holds transcript text; `clearCache()` runs when the
+    /// app or the data folder locks). Each search marks the entries it uses;
+    /// when the cache is full, only entries the current search is not using
+    /// are evicted, so one search can't evict its own sessions. A patient with
+    /// more documents than `cacheLimit` leaves the surplus uncached.
     private static let cacheLock = NSLock()
-    nonisolated(unsafe) private static var cache: [String: DocumentIndex] = [:]
-    private static let cacheLimit = 600
+    nonisolated(unsafe) private static var cache: [String: (index: DocumentIndex, generation: Int)] = [:]
+    nonisolated(unsafe) private static var generation = 0
+    static let cacheLimit = 1_500
+
+    private static func beginSearch() {
+        cacheLock.lock()
+        generation += 1
+        cacheLock.unlock()
+    }
 
     static func index(for document: Document) -> DocumentIndex {
         let key = "\(document.kind)-" + NoteFreshness.fingerprint(of: document.text)
         cacheLock.lock()
         defer { cacheLock.unlock() }
-        if let hit = cache[key] { return hit }
+        if let hit = cache[key] {
+            cache[key] = (hit.index, generation)
+            return hit.index
+        }
         let built = DocumentIndex(text: document.text, kind: document.kind)
-        if cache.count >= cacheLimit { cache.removeAll() }
-        cache[key] = built
+        if cache.count >= cacheLimit { cache = cache.filter { $0.value.generation == generation } }
+        if cache.count < cacheLimit { cache[key] = (built, generation) }
         return built
     }
 
@@ -283,6 +312,13 @@ enum SessionSearch {
         cacheLock.lock()
         cache.removeAll()
         cacheLock.unlock()
+    }
+
+    /// Entries held, for tests.
+    static var cachedIndexCount: Int {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return cache.count
     }
 
     // MARK: - Search
@@ -294,14 +330,15 @@ enum SessionSearch {
     static func search(
         _ documents: [Document], question: String, now: Date = Date(), calendar: Calendar = .current
     ) -> Result {
+        beginSearch()
         let range = dateRange(in: question, now: now, calendar: calendar)
         let terms = terms(from: question)
         let inRange = documents.indices.filter { range?.contains(documents[$0].date) ?? true }
         let sessionsSearched = Set(inRange.map { documents[$0].tag }).count
         guard !terms.isEmpty else {
             return Result(
-                terms: [], dateRange: range, hits: [], totalMentions: 0, sessionsWithHits: 0,
-                sessionsSearched: sessionsSearched, matchedVariants: [:]
+                terms: [], dateRange: range, hits: [], totalMentions: 0, similarMentions: 0, termCounts: [],
+                sessionsWithHits: 0, sessionsSearched: sessionsSearched, matchedVariants: [:]
             )
         }
 
@@ -314,7 +351,8 @@ enum SessionSearch {
         // spellings it matched besides its own.
         struct Key: Hashable { let doc: Int, passage: Int32 }
         var frequencies: [[Key: Double]] = Array(repeating: [:], count: terms.count)
-        var mentionTotal = 0
+        var exactCounts = Array(repeating: 0, count: terms.count)
+        var similarCounts = Array(repeating: 0, count: terms.count)
         var variants: [String: [String]] = [:]
         for (ti, term) in terms.enumerated() {
             for (n, index) in indexes.enumerated() {
@@ -325,26 +363,33 @@ enum SessionSearch {
                             variants[term.text, default: []].append(spelling)
                         }
                         for p in list.passages { frequencies[ti][Key(doc: n, passage: p), default: 0] += weight }
-                        mentionTotal += list.passages.count
+                        if weight < 1 { similarCounts[ti] += list.passages.count } else { exactCounts[ti] += list.passages.count }
                     }
                 } else {
                     for p in phraseMatches(term, in: index) {
                         frequencies[ti][Key(doc: n, passage: p), default: 0] += 1
-                        mentionTotal += 1
+                        exactCounts[ti] += 1
                     }
                 }
             }
         }
 
-        let k1 = 1.2, b = 0.75
+        let k1: Double = 1.2
+        let b: Double = 0.75
         let total = Double(passageCount)
-        let idf = frequencies.map { log(1 + (total - Double($0.count) + 0.5) / (Double($0.count) + 0.5)) }
+        let idf: [Double] = frequencies.map { (freq: [Key: Double]) -> Double in
+            let n: Double = Double(freq.count)
+            let ratio: Double = (total - n + 0.5) / (n + 0.5)
+            return log(1 + ratio)
+        }
         var scores: [Key: Double] = [:]
         for (ti, freq) in frequencies.enumerated() {
             for (key, tf) in freq {
-                let length = Double(indexes[key.doc].passageLengths[Int(key.passage)])
-                let norm = k1 * (1 - b + b * length / avgLength)
-                scores[key, default: 0] += idf[ti] * tf * (k1 + 1) / (tf + norm)
+                let length: Double = Double(indexes[key.doc].passageLengths[Int(key.passage)])
+                let lengthRatio: Double = length / avgLength
+                let norm: Double = k1 * (1 - b + b * lengthRatio)
+                let gain: Double = tf * (k1 + 1) / (tf + norm)
+                scores[key, default: 0] += idf[ti] * gain
             }
         }
         // Best first; ties go to the more recent session, then the earlier line.
@@ -377,7 +422,9 @@ enum SessionSearch {
             )
         }
         return Result(
-            terms: terms, dateRange: range, hits: hits, totalMentions: mentionTotal,
+            terms: terms, dateRange: range, hits: hits,
+            totalMentions: exactCounts.reduce(0, +) + similarCounts.reduce(0, +), similarMentions: similarCounts.reduce(0, +),
+            termCounts: terms.indices.map { TermCount(term: terms[$0], exact: exactCounts[$0], similar: similarCounts[$0]) },
             sessionsWithHits: Set(hits.map(\.tag)).count, sessionsSearched: sessionsSearched,
             matchedVariants: variants.mapValues { Array($0.sorted().prefix(5)) }
         )
@@ -413,14 +460,25 @@ enum SessionSearch {
     private static func phraseMatches(_ term: Term, in index: DocumentIndex) -> [Int32] {
         let content = term.words.enumerated().filter { !stopwords.contains($0.element) }
         guard let first = content.first, let lead = index.postings[stem(first.element)] else { return [] }
+        func packed(_ passage: Int32, _ position: Int32) -> Int64 {
+            let high: Int64 = Int64(passage) << 32
+            return high | Int64(position)
+        }
         var others: [(offset: Int, positions: Set<Int64>)] = []
         for (offset, word) in content.dropFirst() {
             guard let list = index.postings[stem(word)] else { return [] }
-            others.append((offset - first.offset, Set(zip(list.passages, list.positions).map { Int64($0) << 32 | Int64($1) })))
+            var positions = Set<Int64>()
+            for (p, position) in zip(list.passages, list.positions) { positions.insert(packed(p, position)) }
+            others.append((offset - first.offset, positions))
         }
         var found: [Int32] = []
         for (p, position) in zip(lead.passages, lead.positions) {
-            if others.allSatisfy({ $0.positions.contains(Int64(p) << 32 | (Int64(position) + Int64($0.offset))) }) { found.append(p) }
+            var all = true
+            for other in others where !other.positions.contains(packed(p, position + Int32(other.offset))) {
+                all = false
+                break
+            }
+            if all { found.append(p) }
         }
         return found
     }
@@ -476,7 +534,7 @@ enum SessionSearch {
 
     /// Lowercase, accent-free words; `'s` stripped so "Dana's" is "dana".
     static func tokenize(_ text: String) -> [String] {
-        var folded = text.lowercased()
+        var folded = text.lowercased().replacingOccurrences(of: "’", with: "'")
         if folded.utf8.contains(where: { $0 >= 128 }) {
             folded = folded.folding(options: .diacriticInsensitive, locale: nil)
         }

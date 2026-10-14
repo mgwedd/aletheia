@@ -1026,7 +1026,24 @@ final class Store {
     /// kept one), then that session's generated notes, the therapist's own
     /// notes and her transcript comments. `sources` lists only the sessions
     /// that appear in the text.
-    func gatherCitedPatientContext(for patient: Patient, relevantTo question: String) -> PatientContext {
+    ///
+    /// `characterBudget` is the most the whole text may run to (see
+    /// `AssistantService.patientContextCharacters`): background, search block,
+    /// notes and comments (newest sessions first, up to a third of what is
+    /// left) and transcripts all come out of it.
+    func gatherCitedPatientContext(
+        for patient: Patient,
+        relevantTo question: String,
+        characterBudget: Int = ContextBudget.current.availableCharacters(reserving: 0)
+    ) -> PatientContext {
+        // Always prepend the patient's background (clinical history + meds) so the
+        // assistant can draw on it whenever it's relevant, without it having to be
+        // requested. Empty when nothing has been entered.
+        let background = patient.aiBackgroundBlock
+        let room = max(0, characterBudget - background.count)
+        var extrasRemaining = room / 3
+        var extrasUsed = 0
+        var notesCut = 0
         let sessions = ((try? listSessions(for: patient)) ?? []).sorted { $0.date > $1.date }
         // Same-day sessions share a date key (the retriever groups by date too),
         // so they share one tag and cite as one source.
@@ -1041,7 +1058,13 @@ final class Store {
         var index = 1
         for session in sessions {
             let parts = sessionMaterialParts(for: patient, session: session)
-            var material = Store.capped(parts.map(\.text), limit: Store.patientChatSessionExtrasLimit)
+            let limit = min(Store.patientChatSessionExtrasLimit, extrasRemaining)
+            var material = limit > 0 ? Store.capped(parts.map(\.text), limit: limit) : []
+            if parts.reduce(0, { $0 + $1.text.count }) > limit { notesCut += 1 }
+            let materialSize = material.reduce(0) { $0 + $1.count }
+            extrasRemaining -= materialSize
+            let hasNotes = !material.isEmpty
+            extrasUsed += materialSize + (hasNotes ? 80 : 0)   // 80: its session header
             var transcript: String?
             do {
                 transcript = try readTranscript(for: patient, session: session)
@@ -1066,14 +1089,20 @@ final class Store {
             for part in parts {
                 searchDocuments.append(.init(date: session.date, tag: tag, kind: part.kind, text: part.text))
             }
-            if !parts.isEmpty { notesDates.insert(session.date) }
+            if hasNotes { notesDates.insert(session.date) }
             extras[session.date, default: []].append(contentsOf: material)
         }
 
         // Search every transcript, note and comment; counts are exact, and the
         // prompt states them. Transcript text comes from the best hits.
         let search = SessionSearch.search(searchDocuments, question: question)
-        let selection = PatientContextRetriever.select(transcripts: documents, search: search, labels: labels)
+        // What the transcripts may use: the room left after the background, the
+        // notes kept and the search block (about 120 characters a term).
+        let searchBlockReserve = 400 + 120 * search.terms.count
+        let selection = PatientContextRetriever.select(
+            transcripts: documents, search: search,
+            characterBudget: max(0, room - extrasUsed - searchBlockReserve), labels: labels
+        )
         let excerpts = selection.excerpts
         let excerptsByDate = Dictionary(grouping: excerpts, by: { $0.date })
         var blocks: [String] = []
@@ -1087,27 +1116,29 @@ final class Store {
             sources.append(CitationSource(tag: tag, date: date, folderName: folderName))
         }
         let sessionsText = blocks.joined(separator: "\n\n")
-        let searchBlock = Prompts.searchBlock(
-            search, shown: selection.hitsShown, whole: selection.whole, unreadableSessions: unreadable
-        )
-        // Always prepend the patient's background (clinical history + meds) so the
-        // assistant can draw on it whenever it's relevant, without it having to be
-        // requested. Empty when nothing has been entered.
-        let background = patient.aiBackgroundBlock
-        let text = [background, searchBlock, sessionsText]
-            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .joined(separator: "\n\n")
         // Counted from what is in `text`: a session whose transcript is
         // unreadable is not counted as read.
         let transcriptDates = Set(documents.map { $0.date }.filter { search.dateRange?.contains($0) ?? true })
+        let sessionsRead = transcriptDates.intersection(excerptsByDate.keys).count
+        let searchBlock = Prompts.searchBlock(
+            search, shown: selection.hitsShown, whole: selection.whole,
+            newest: selection.fullTexts ? (sessionsRead, transcriptDates.count) : nil,
+            unreadableSessions: unreadable
+        )
+        let text = [background, searchBlock, sessionsText]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n\n")
         let coverage = TranscriptCoverage(
             transcriptSessions: transcriptDates.count,
-            sessionsWithPassages: transcriptDates.intersection(excerptsByDate.keys).count,
+            sessionsWithPassages: sessionsRead,
             notesSessions: notesDates.count,
             unreadableSessions: unreadable,
-            mentions: search.totalMentions,
+            mentions: search.totalMentions - search.similarMentions,
+            similarMentions: search.similarMentions,
             searched: !search.terms.isEmpty,
-            wholeTranscripts: selection.whole
+            wholeTranscripts: selection.whole,
+            fullTexts: selection.fullTexts,
+            notesCutSessions: notesCut
         )
         return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)
     }

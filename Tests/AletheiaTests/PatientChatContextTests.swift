@@ -20,6 +20,9 @@ final class PatientChatContextTests: XCTestCase {
         try? FileManager.default.removeItem(at: tempRoot)
     }
 
+    /// A context budget the ranked history below overflows, so the search path runs.
+    private static let tight = 6_000
+
     private func date(_ y: Int, _ m: Int, _ d: Int) -> Date {
         Calendar(identifier: .gregorian).date(from: DateComponents(year: y, month: m, day: d))!
     }
@@ -150,7 +153,7 @@ final class PatientChatContextTests: XCTestCase {
         annotations.saveNote(sessionID: jan.id, text: "January therapist note.")
         try store.saveNote("January generated body.", for: patient, session: jan, format: .dap)
 
-        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking")
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking", characterBudget: Self.tight)
 
         // Newest first: Mar = S1, Feb = S2, Jan = S3.
         XCTAssertTrue(section(context.text, tag: "S1").contains("kayaking"))
@@ -166,7 +169,7 @@ final class PatientChatContextTests: XCTestCase {
         let annotations = try XCTUnwrap(CommentStore(root: tempRoot))
         annotations.saveNote(sessionID: jan.id, text: "January therapist note.")
 
-        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking")
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking", characterBudget: Self.tight)
 
         // Feb's transcript was dropped by the ranker and it has no other
         // material, so it is neither in the text nor a citable source.
@@ -187,7 +190,7 @@ final class PatientChatContextTests: XCTestCase {
         let annotations = try XCTUnwrap(CommentStore(root: tempRoot))
         annotations.saveNote(sessionID: jan.id, text: "January therapist note.")
 
-        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking")
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking", characterBudget: Self.tight)
 
         // Three sessions have transcripts; only March mentions kayaking.
         XCTAssertEqual(context.coverage.transcriptSessions, 3)
@@ -236,9 +239,10 @@ final class PatientChatContextTests: XCTestCase {
         let patient = try store.createPatient(name: "Jane Doe")
         _ = try makeRankedHistory(patient)
 
-        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking")
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking", characterBudget: Self.tight)
 
-        XCTAssertTrue(context.text.contains("Search for \"kayaking\": 1 mention in 1 of 3 sessions searched; showing the top 1 transcript passage."))
+        XCTAssertTrue(context.text.contains("- \"kayaking\": 1 mention"))
+        XCTAssertTrue(context.text.contains("Matching passages are in 1 of 3 sessions searched; showing the top 1 transcript passage."))
         XCTAssertTrue(section(context.text, tag: "S1").contains("kayaking"))
     }
 
@@ -246,11 +250,11 @@ final class PatientChatContextTests: XCTestCase {
         let patient = try store.createPatient(name: "Jane Doe")
         _ = try makeRankedHistory(patient)
 
-        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "zeppelin")
-        XCTAssertTrue(context.text.contains("Search for \"zeppelin\": 0 matches in 3 sessions searched."))
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "zeppelin", characterBudget: Self.tight)
+        XCTAssertTrue(context.text.contains("Search results (3 sessions searched):\n- \"zeppelin\": 0 matches"))
 
         let prompt = Prompts.patientChat(context: context.text, history: [], question: "zeppelin?")
-        XCTAssertTrue(prompt.contains("Search for \"zeppelin\": 0 matches"))
+        XCTAssertTrue(prompt.contains("- \"zeppelin\": 0 matches"))
         XCTAssertTrue(prompt.contains("no match found in the recorded sessions"))
         XCTAssertFalse(prompt.contains("say you don't see that in the recorded sessions"))
     }
@@ -263,10 +267,12 @@ final class PatientChatContextTests: XCTestCase {
         try store.saveTranscript("Michael called twice. Michael again.", for: patient, session: recent)
 
         let all = store.gatherCitedPatientContext(for: patient, relevantTo: "Michael")
-        XCTAssertTrue(all.text.contains("Search for \"michael\" (also matched: micheal): 3 mentions in 2 of 2 sessions searched"))
+        XCTAssertTrue(all.text.contains("- \"michael\": 2 mentions; 1 similar spelling (not exact: micheal)"))
+        XCTAssertTrue(all.text.contains("Matching passages are in 2 of 2 sessions searched"))
 
         let recentOnly = store.gatherCitedPatientContext(for: patient, relevantTo: "Michael in the past 6 months")
-        XCTAssertTrue(recentOnly.text.contains("2 mentions in 1 of 1 session searched"))
+        XCTAssertTrue(recentOnly.text.contains("- \"michael\": 2 mentions"))
+        XCTAssertTrue(recentOnly.text.contains("Matching passages are in 1 of 1 session searched"))
         XCTAssertTrue(recentOnly.text.contains("were searched."))
         XCTAssertEqual(recentOnly.coverage.transcriptSessions, 1)
     }
@@ -362,4 +368,114 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertTrue(prompt.contains("Therapist's margin comments"))
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("cite"))
     }
+
+    // MARK: - Sizing from the per-Mac budget
+
+    private func makeLongHistory(_ patient: Patient, sessions: Int, lines: Int) throws {
+        for i in 0..<sessions {
+            let session = try store.createSession(for: patient, on: date(2026, 1 + i / 20, 1 + i % 20))
+            try store.saveTranscript(filler(lines: lines), for: patient, session: session)
+        }
+    }
+
+    func testTermlessQuestionOverAHistoryLargerThanTheBudgetFitsAndSaysWhatItRead() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        try makeLongHistory(patient, sessions: 8, lines: 60)   // ~4,500 characters each
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "What did we talk about last time?", characterBudget: 12_000)
+
+        XCTAssertLessThanOrEqual(context.text.count, 12_000)
+        let read = context.coverage.sessionsWithPassages
+        XCTAssertTrue((1..<8).contains(read), "some, not all, of the sessions fit")
+        XCTAssertFalse(context.coverage.wholeTranscripts)
+        XCTAssertEqual(context.coverage.label, "Read: full transcripts from \(read) of 8 sessions")
+        XCTAssertTrue(context.text.contains("only the full transcripts of the newest \(read) of 8 sessions are included below"))
+        XCTAssertTrue(section(context.text, tag: "S1").contains("weather"), "the newest session is the one kept")
+    }
+
+    func testWholeContextFitsAnEightGBMacWithManyNotes() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let annotations = try XCTUnwrap(CommentStore(root: tempRoot))
+        for i in 0..<30 {
+            let session = try store.createSession(for: patient, on: date(2026, 1 + i / 20, 1 + i % 20))
+            try store.saveTranscript(filler(lines: 150), for: patient, session: session)
+            annotations.saveNote(sessionID: session.id, text: String(repeating: "note ", count: 700))   // 3,500 characters
+            try store.saveNote(String(repeating: "generated ", count: 300), for: patient, session: session, format: .soap)
+        }
+        let budget = ContextBudget(tokens: 16_384)   // an 8 GB Mac
+        let service = AssistantService(assistant: NoopAssistant(), model: "m", budget: budget)
+        let question = "What did we talk about last time?"
+        let characters = service.patientContextCharacters(history: [], question: question)
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: question, characterBudget: characters)
+
+        let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question)
+        let prompt = Prompts.patientChat(context: context.text, history: [], question: question)
+        XCTAssertTrue(budget.fits(promptCharacters: system.count + prompt.count), "never over budget through patient chat")
+        XCTAssertGreaterThan(context.coverage.notesCutSessions, 0)
+        XCTAssertTrue(try XCTUnwrap(context.coverage.label).contains("cut short or left out for"))
+        XCTAssertFalse(context.coverage.wholeTranscripts)
+    }
+
+    func testNoRoomLeftForSessionsIsReportedNotSent() {
+        let service = AssistantService(assistant: NoopAssistant(), model: "m", budget: ContextBudget(tokens: 16_384))
+        let huge = [ChatMessage(role: .user, text: String(repeating: "word ", count: 12_000))]
+        XCTAssertEqual(service.patientContextCharacters(history: huge, question: "Q?"), 0)
+        XCTAssertFalse(PatientContextBudgetError().localizedDescription.contains("session is longer"))
+    }
+
+    func testNotesOnlyMatchWithDroppedSessionsSaysKOfM() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        try makeLongHistory(patient, sessions: 6, lines: 60)
+
+        // A word only a note has: transcript terms find nothing, so the newest sessions that fit go in.
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "zeppelin", characterBudget: 12_000)
+
+        let read = context.coverage.sessionsWithPassages
+        XCTAssertLessThan(read, 6)
+        XCTAssertFalse(context.coverage.wholeTranscripts)
+        XCTAssertTrue(try XCTUnwrap(context.coverage.label).contains("full transcripts from \(read) of 6 sessions"))
+        XCTAssertFalse(context.text.contains("the full transcripts are included below"))
+    }
+
+    func testTranscriptBudgetIsTrimmedForTheBestHitInsteadOfKeptWhole() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let session = try store.createSession(for: patient, on: date(2026, 3, 5))
+        try store.saveTranscript("[00:01] Patient: kayaking " + String(repeating: "paddle ", count: 400), for: patient, session: session)
+        let other = try store.createSession(for: patient, on: date(2026, 3, 6))
+        try store.saveTranscript(filler(lines: 60), for: patient, session: other)
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking", characterBudget: 1_500)
+
+        XCTAssertLessThanOrEqual(context.text.count, 1_500)
+        XCTAssertTrue(context.text.contains("kayaking"))
+    }
+
+    func testExtrasCutIsSaidInTheLabel() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let session = try store.createSession(for: patient, on: date(2026, 3, 5))
+        try store.saveTranscript("Short.", for: patient, session: session)
+        let annotations = try XCTUnwrap(CommentStore(root: tempRoot))
+        annotations.saveNote(sessionID: session.id, text: String(repeating: "n", count: 10_000))
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "x", characterBudget: 50_000)
+
+        XCTAssertEqual(context.coverage.notesCutSessions, 1)
+        XCTAssertTrue(try XCTUnwrap(context.coverage.label).contains("notes and comments from 1 session (cut short or left out for 1 session)"))
+    }
+
+    func testCoverageLabelWithSimilarSpellingsKeepsThemApart() {
+        let coverage = TranscriptCoverage(
+            transcriptSessions: 2, sessionsWithPassages: 2, mentions: 3, similarMentions: 2, searched: true, wholeTranscripts: true
+        )
+        XCTAssertEqual(coverage.label, "Read: full transcripts from 2 sessions (search: 3 mentions, 2 similar)")
+    }
+}
+
+private final class NoopAssistant: Assistant, @unchecked Sendable {
+    func isReachable() async -> Bool { true }
+    func listModels() async throws -> [String] { [] }
+    func hasModel(_ name: String) async -> Bool { true }
+    func generate(model: String, system: String, prompt: String) async throws -> String { "" }
+    func pullModel(_ name: String, onProgress: @escaping (Double, String) -> Void) async throws {}
 }

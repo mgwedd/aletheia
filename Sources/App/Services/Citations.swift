@@ -47,23 +47,36 @@ struct TranscriptCoverage: Equatable {
     var notesSessions: Int = 0
     /// Sessions whose transcript exists but could not be read.
     var unreadableSessions: Int = 0
-    /// Search mentions across every searched document (see `SessionSearch.Result`).
+    /// Exact search mentions across every searched document (see `SessionSearch.Result`).
     var mentions: Int = 0
+    /// Matches on a similar spelling, counted apart from `mentions`.
+    var similarMentions: Int = 0
     /// The question had words to search for.
     var searched = false
-    /// Whole transcripts were sent rather than search passages.
+    /// Every session's whole transcript was sent; nothing was left out.
     var wholeTranscripts = false
+    /// What was sent are whole transcripts (the newest that fit), not search passages.
+    var fullTexts = false
+    /// Sessions whose notes or comments were cut short or left out to fit.
+    var notesCutSessions: Int = 0
 
     /// A plain-language line for the chat sheet, or nil when nothing was read.
     var label: String? {
         func sessions(_ n: Int) -> String { "\(n) session\(n == 1 ? "" : "s")" }
         var parts: [String] = []
-        if notesSessions > 0 { parts.append("notes and comments from \(sessions(notesSessions))") }
+        if notesSessions > 0 || notesCutSessions > 0 {
+            let cut = notesCutSessions > 0 ? " (cut short or left out for \(sessions(notesCutSessions)))" : ""
+            parts.append("notes and comments from \(sessions(notesSessions))" + cut)
+        }
         if transcriptSessions > 0 {
-            let search = searched ? " (search: \(mentions) mention\(mentions == 1 ? "" : "s"))" : ""
+            var search = ""
+            if searched {
+                search = " (search: \(mentions) mention\(mentions == 1 ? "" : "s")"
+                search += similarMentions > 0 ? ", \(similarMentions) similar)" : ")"
+            }
             parts.append(wholeTranscripts
                 ? "full transcripts from \(sessions(sessionsWithPassages))" + search
-                : "transcript passages from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
+                : (fullTexts ? "full transcripts" : "transcript passages") + " from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
         }
         if unreadableSessions > 0 { parts.append("\(sessions(unreadableSessions)) unreadable, not read") }
         return parts.isEmpty ? nil : "Read: " + parts.joined(separator: " · ")

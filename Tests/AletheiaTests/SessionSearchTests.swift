@@ -282,4 +282,75 @@ final class SessionSearchTests: XCTestCase {
         XCTAssertTrue(SessionSearch.index(for: a) === SessionSearch.index(for: a))
         XCTAssertFalse(SessionSearch.index(for: a) === SessionSearch.index(for: b))
     }
+
+    // MARK: - Fixes from review
+
+    func testBareNumberDoesNotMatchTimestamps() {
+        let docs = [doc("[00:30] A: hello\n[01:30] A: and then\n[02:05] A: I take 30 mg now\n[30:00] A: bye")]
+        let result = search(docs, "30 mg")
+        XCTAssertEqual(result.termCounts.first { $0.term.text == "30" }?.exact, 1, "only the dose, not the time stamps")
+        XCTAssertEqual(result.hits.first?.lineIndex, 2)
+        XCTAssertEqual(search([doc("[00:01] Therapist: hello")], "Therapist").totalMentions, 0, "speaker labels are not searched")
+    }
+
+    func testCountsAreKeptPerTermAndOnlyAZeroTermIsAbsent() {
+        let docs = [doc("[00:01] A: Dana's sister came by.\n[00:02] A: Dana mentioned it again.")]
+        let result = search(docs, "Did Dana mention her sister Jess?")
+        XCTAssertEqual(result.termCounts.map(\.term.text), ["dana", "sister", "jess"])
+        XCTAssertEqual(result.termCounts.map(\.exact), [2, 1, 0])
+        XCTAssertEqual(result.termCounts.map(\.similar), [0, 0, 0])
+        let block = Prompts.searchBlock(result, shown: 2, whole: true, unreadableSessions: 0)
+        XCTAssertTrue(block.contains("- \"dana\": 2 mentions"))
+        XCTAssertTrue(block.contains("- \"jess\": 0 matches"))
+        XCTAssertFalse(block.contains("- \"dana\": 0"))
+    }
+
+    func testSimilarSpellingsAreCountedApartFromExactMentions() {
+        let result = search([doc("[00:01] A: Micheal called.\n[00:02] A: Michael too.")], "Michael")
+        XCTAssertEqual(result.termCounts.first?.exact, 1)
+        XCTAssertEqual(result.termCounts.first?.similar, 1)
+        XCTAssertEqual(result.totalMentions, 2)
+        XCTAssertEqual(result.similarMentions, 1)
+        let onlySimilar = search([doc("[00:01] A: Micheal called.")], "Michael")
+        let block = Prompts.searchBlock(onlySimilar, shown: 1, whole: true, unreadableSessions: 0)
+        XCTAssertTrue(block.contains("no exact mentions; 1 similar spelling (not exact: micheal)"))
+        XCTAssertFalse(block.contains("0 matches"))
+    }
+
+    func testContractionsAreNotTerms() {
+        XCTAssertTrue(SessionSearch.terms(from: "Can't they talk? Didn't she? They're here, we won't.").isEmpty)
+        XCTAssertTrue(SessionSearch.terms(from: "Can\u{2019}t Won\u{2019}t Wouldn\u{2019}t").isEmpty, "curly apostrophes too")
+        XCTAssertEqual(SessionSearch.terms(from: "Didn't Dana?").map(\.text), ["dana"])
+    }
+
+    func testCacheKeepsEverythingASearchUsesAndEvictsOnlyOlderSearches() {
+        SessionSearch.clearCache()
+        func docs(_ prefix: String, _ n: Int) -> [SessionSearch.Document] {
+            (0..<n).map { doc("[00:01] A: Dana \(prefix) \($0)", 2026, 1 + $0 % 12, 1 + $0 % 28, tag: "S\($0)") }
+        }
+        let first = docs("alpha", 1_000)
+        _ = search(first, "Dana")
+        XCTAssertEqual(SessionSearch.cachedIndexCount, 1_000)
+        let second = docs("beta", 1_000)
+        _ = search(second, "Dana")
+        XCTAssertEqual(SessionSearch.cachedIndexCount, 1_000, "the first search's entries made room; the second kept all of its own")
+        let oversize = docs("gamma", SessionSearch.cacheLimit + 100)
+        _ = search(oversize, "Dana")
+        XCTAssertEqual(SessionSearch.cachedIndexCount, SessionSearch.cacheLimit, "surplus is left uncached, not the whole cache cleared")
+        SessionSearch.clearCache()
+        XCTAssertEqual(SessionSearch.cachedIndexCount, 0)
+    }
+
+    func testEncryptionLockClearsTheSearchCache() throws {
+        _ = search([doc("[00:01] A: Dana called.")], "Dana")
+        XCTAssertGreaterThan(SessionSearch.cachedIndexCount, 0)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lock-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manager = EncryptionManager(dataRootProvider: { root })
+        try manager.enable(passphrase: "pw", iterations: 1_000)
+        _ = search([doc("[00:01] A: Dana called.")], "Dana")
+        manager.lock()
+        XCTAssertEqual(SessionSearch.cachedIndexCount, 0)
+    }
 }
