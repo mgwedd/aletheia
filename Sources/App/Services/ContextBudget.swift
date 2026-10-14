@@ -59,6 +59,6 @@ struct ContextBudgetError: LocalizedError, Equatable {
     let minutes: Int
 
     var errorDescription: String? {
-        "This session is longer than this Mac can read at once (~\(minutes) min). Long-session support is coming; for now, ask about a shorter stretch or write this note from your own notes."
+        "This session is longer than this Mac can read at once (~\(minutes) min). For a note, shorten your note instructions or comments and try again. For a question, ask about a shorter stretch."
     }
 }

@@ -99,8 +99,9 @@ struct SessionDetailView: View {
     /// Fingerprint of the transcript the displayed format's note was generated
     /// from, if one was recorded. See `NoteFreshness`.
     @State private var noteFingerprint: String?
-/// What a long session's note was written from, when it was not the whole transcript.
-@State private var noteCoverage: String?
+    /// What the displayed format's note was written from, when it was not the
+    /// whole transcript (a long session).
+    @State private var noteCoverage: String?
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
     @State private var sessionNote: String = ""
@@ -247,6 +248,7 @@ struct SessionDetailView: View {
             isEditingNote = false
             summaryText = savedNote(for: newFormat)
             noteFingerprint = savedFingerprint(for: newFormat)
+            noteCoverage = savedCoverage(for: newFormat)
             refreshHasPreviousNote()
         }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
@@ -1157,6 +1159,10 @@ struct SessionDetailView: View {
         }
     }
 
+    private func savedCoverage(for format: ProgressNoteFormat) -> String? {
+        appModel.store?.noteCoverage(for: patient, session: session, format: format)
+    }
+
     private func refreshHasPreviousNote() {
         guard let store = appModel.store else { hasPreviousNote = false; return }
         hasPreviousNote = store.previousNote(for: patient, session: session, format: settings.progressNoteFormat) != nil
@@ -1189,6 +1195,7 @@ struct SessionDetailView: View {
         )
         summaryText = savedNote(for: settings.progressNoteFormat)
         noteFingerprint = savedFingerprint(for: settings.progressNoteFormat)
+        noteCoverage = savedCoverage(for: settings.progressNoteFormat)
         isEditingNote = false
         refreshHasPreviousNote()
         chatMessages = store.loadSessionChat(for: patient, session: session)
@@ -1337,6 +1344,12 @@ struct SessionDetailView: View {
     /// misfile the result into another format's note.
     private func generateNote() {
         guard let store = appModel.store else { return }
+        // One note per session at a time, even across leaving and reopening the session.
+        let jobLabel = "progress note \(session.id.uuidString)"
+        guard !integrations.inferenceQueue.hasJob(labelled: jobLabel) else {
+            errorMessage = "A note for this session is already being written."
+            return
+        }
         let format = settings.progressNoteFormat
         let verbosity = settings.summaryVerbosity
         let instructions = settings.noteInstructions[format.rawValue]
@@ -1349,10 +1362,11 @@ struct SessionDetailView: View {
         let effort = settings.noteEffort
         let model = service.model
         noteCoverage = nil
+        let produced = CoverageBox()
         noteRunner.start(
             queue: integrations.inferenceQueue,
             kind: .note,
-            label: "progress note",
+            label: jobLabel,
             readTitle: "Reading the session",
             writeTitle: "Writing the note",
             makeStream: {
@@ -1375,7 +1389,10 @@ struct SessionDetailView: View {
                     },
                     saveDigest: { [patient, session] in try store.saveDigest($0, for: patient, session: session) },
                     live: { started, change in noteRunner.update(started: started, change) },
-                    coverage: { noteCoverage = $0 }
+                    coverage: {
+                        produced.text = $0
+                        if settings.progressNoteFormat == format { noteCoverage = $0 }
+                    }
                 )
             },
             onReveal: { text in
@@ -1389,7 +1406,10 @@ struct SessionDetailView: View {
                     errorMessage = error.localizedDescription
                 }
                 // The reveal blanked the pane; put back what is actually saved.
-                if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
+                if settings.progressNoteFormat == format {
+                    summaryText = savedNote(for: format)
+                    noteCoverage = savedCoverage(for: format)
+                }
             },
             onFinish: { raw in
                 // Save the tidied text, so copy, export and edit see the same
@@ -1398,15 +1418,21 @@ struct SessionDetailView: View {
                 guard !final.isEmpty else {
                     // Stopped before the first token, or empty output: the pane
                     // was cleared at start, so put back what is saved.
-                    if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
+                    if settings.progressNoteFormat == format {
+                        summaryText = savedNote(for: format)
+                        noteCoverage = savedCoverage(for: format)
+                    }
                     return
                 }
                 if settings.progressNoteFormat == format { summaryText = final }
                 do {
-                    try store.saveGeneratedNote(final, for: patient, session: session, format: format, generatedFromTranscript: transcript)
+                    try store.saveGeneratedNote(final, for: patient, session: session, format: format, generatedFromTranscript: transcript, coverage: produced.text)
                 } catch {
                     errorMessage = error.localizedDescription
-                    if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
+                    if settings.progressNoteFormat == format {
+                        summaryText = savedNote(for: format)
+                        noteCoverage = savedCoverage(for: format)
+                    }
                     return
                 }
                 // Record which transcript this note came from (the snapshot the
@@ -1626,4 +1652,10 @@ private struct InlineCommentComposerCard: View {
             .themeField(isFocused: focused)
             .accessibilityLabel("Comment")
     }
+}
+
+/// Holds what a long-session note says it was written from, between the run's
+/// first report and the save, whatever the picker shows meanwhile.
+private final class CoverageBox {
+    var text: String?
 }

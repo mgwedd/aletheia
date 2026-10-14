@@ -46,18 +46,24 @@ final class ChatStreamRunner: ObservableObject {
         return { [weak self] event in Task { @MainActor in self?.apply(event, run: run) } }
     }
 
-    private var currentRun = UUID()
+    private(set) var currentRun = UUID()
+    /// Set once a run reports its own stages through `update`; then the run's
+    /// token counts and stats are the stages', not the reveal's.
+    private var externalStages = false
 
     /// Lets a multi-stage run (digest, passages, check) report its own stage.
     /// A change from a stage that has since been replaced (`started` no longer
     /// matches) is dropped; nil applies to whatever is current.
     func update(started: Date?, _ change: (inout AIRunProgress) -> Void) {
+        externalStages = true
         if let started, let current = progress.startedAt, started != current { return }
         change(&progress)
     }
 
     func apply(_ event: AIRunEvent, run: UUID) {
-        guard run == currentRun else { return }
+        // A run that reports its own stages (see `update`) filters its events by
+        // stage, so a late event from an earlier stage can't land on a later one.
+        guard run == currentRun, !externalStages else { return }
         switch event {
         case .reading(let tokens):
             progress.estimatedPromptTokens = tokens
@@ -192,6 +198,7 @@ final class ChatStreamRunner: ObservableObject {
         finishedReceiving = false
         failure = nil
         wasStopped = false
+        externalStages = false
         chunkCount = 0
         progress = AIRunProgress(readTitle: titles.read, writeTitle: titles.write, startedAt: Date())
         isStreaming = true
@@ -222,7 +229,7 @@ final class ChatStreamRunner: ObservableObject {
                     onReveal(StreamSmoother.prefix(of: self.target, count: displayed))
                 }
                 // The real count replaces this once the run reports its stats.
-                if self.progress.stats == nil, self.chunkCount > 0, self.progress.tokensWritten != self.chunkCount {
+                if self.progress.stats == nil, !self.externalStages, self.chunkCount > 0, self.progress.tokensWritten != self.chunkCount {
                     self.progress.tokensWritten = self.chunkCount
                 }
                 if self.finishedReceiving && displayed >= self.target.count { break }

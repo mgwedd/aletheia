@@ -60,6 +60,11 @@ final class InferenceQueue: ObservableObject {
         return info
     }
 
+    /// Whether a job with this label is running or waiting.
+    func hasJob(labelled label: String) -> Bool {
+        running?.label == label || waiting.contains { $0.label == label }
+    }
+
     /// Cancels a job. A waiting job is dropped and never runs. The running job
     /// has its task cancelled; the next job starts once its body returns.
     func cancel(_ id: UUID) {

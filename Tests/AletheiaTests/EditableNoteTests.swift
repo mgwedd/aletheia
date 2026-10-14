@@ -203,7 +203,7 @@ final class EditableNoteTests: XCTestCase {
         let (patient, session) = try makeSession(store)
         try store.saveGeneratedNote("PHI generated", for: patient, session: session, format: .soap)
         try store.saveEditedNote("PHI edited", for: patient, session: session, format: .soap)
-        try store.saveGeneratedNote("PHI v2", for: patient, session: session, format: .soap)
+        try store.saveGeneratedNote("PHI v2", for: patient, session: session, format: .soap, coverage: "PHI partly read")
 
         let dir = store.sessionDir(for: patient, session: session)
         for kind in Store.NoteSidecar.allCases {

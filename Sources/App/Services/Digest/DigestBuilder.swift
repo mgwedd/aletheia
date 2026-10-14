@@ -24,6 +24,8 @@ final class DigestBuilder: ObservableObject {
 
     private let queue: InferenceQueue
     private var builds: [UUID: Build] = [:]
+    /// Sessions a note is building a digest for right now, inline.
+    private var inlineBuilds: Set<UUID> = []
 
     /// Applies a change to the live progress of the call that started at
     /// `started` (nil: whichever call is current). Events from an earlier call
@@ -48,7 +50,7 @@ final class DigestBuilder: ObservableObject {
         service: AssistantService
     ) {
         let key = NoteFreshness.fingerprint(of: transcript) + "|" + service.model
-        if builds[session.id]?.key == key { return }
+        if builds[session.id]?.key == key || inlineBuilds.contains(session.id) { return }
         cancel(session.id)
         let id = UUID()
         let task = Task { [weak self] in
@@ -82,6 +84,18 @@ final class DigestBuilder: ObservableObject {
             self.progress[session.id] = nil
         }
         builds[session.id] = Build(id: id, key: key, task: task)
+    }
+
+    /// Builds a digest in the caller's own queue job (a note), cancelling any
+    /// background build of the same session and keeping a new one from starting
+    /// until this is done.
+    func buildInline(
+        sessionID: UUID, transcript: String, service: AssistantService, live: @escaping Live
+    ) async throws -> SessionDigest {
+        cancel(sessionID)
+        inlineBuilds.insert(sessionID)
+        defer { inlineBuilds.remove(sessionID) }
+        return try await build(transcript: transcript, service: service, live: live, inline: true)
     }
 
     func cancel(_ sessionID: UUID) {
@@ -208,7 +222,7 @@ final class DigestBuilder: ObservableObject {
     /// `write` once text arrives), elapsed time and token count reach `live`.
     func runStage(
         _ prompt: String, read: String, write: String, task: AITask = .digest,
-        service: AssistantService, live: @escaping Live
+        service: AssistantService, live: @escaping Live, onSnapshot: ((String) -> Void)? = nil
     ) async throws -> String {
         let started = Date()
         live(nil) { $0 = AIRunProgress(readTitle: read, writeTitle: write, startedAt: started) }
@@ -232,6 +246,7 @@ final class DigestBuilder: ObservableObject {
         for try await snapshot in run.streamDigest(prompt: prompt, task: task) {
             text = snapshot
             chunks += 1
+            onSnapshot?(snapshot)
             live(started) { progress in
                 if progress.firstTokenAt == nil { progress.firstTokenAt = Date() }
                 if progress.stats == nil { progress.tokensWritten = chunks }
