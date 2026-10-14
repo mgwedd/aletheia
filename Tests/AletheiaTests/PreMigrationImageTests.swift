@@ -119,7 +119,9 @@ final class PreMigrationImageTests: XCTestCase {
         try MigrationBackup.copyStructuredJSON(fromDataRoot: root, to: MigrationBackup.filesBundleURL(forSnapshot: snapshot))
 
         XCTAssertEqual(MigrationBackup.existing(for: dbURL).map(\.lastPathComponent), [snapshot.lastPathComponent])
-        XCTAssertEqual(MigrationBackup.prunable(MigrationBackup.existing(for: dbURL), keepMostRecent: 0), [snapshot])
+        // Listings can come back as /private/var while the temp dir is /var.
+        let prunable = MigrationBackup.prunable(MigrationBackup.existing(for: dbURL), keepMostRecent: 0)
+        XCTAssertEqual(prunable.map { $0.resolvingSymlinksInPath() }, [snapshot.resolvingSymlinksInPath()])
     }
 
     // MARK: - The whole image, through the real database core
