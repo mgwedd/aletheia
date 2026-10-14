@@ -9,9 +9,9 @@ import SwiftUI
 /// is imported on first open (see `Store.loadChatThreads`).
 ///
 /// This chat covers every session's generated notes and the therapist's own
-/// notes and comments in full (per-session cap), but only a ranked ~6,000
-/// characters of transcript per question (see docs/DESIGN-DECISIONS.md). Each
-/// session's own chat lives inside that session.
+/// notes and comments (per-session cap), plus the transcript passages that a
+/// search of every session finds for the question (see `SessionSearch`), up to
+/// a character budget. Each session's own chat lives inside that session.
 struct PatientChatView: View {
     let patient: Patient
     var onDone: () -> Void
@@ -116,10 +116,10 @@ struct PatientChatView: View {
     }
 
     /// What the answers draw on, matching what `gatherCitedPatientContext`
-    /// sends: every session's generated notes, notes and comments, and a ranked
-    /// slice of transcript within the character budget.
+    /// sends: every session's generated notes, notes and comments, and the
+    /// transcript passages a search of all sessions finds for the question.
     private var scopeNote: String {
-        "Answers come from every session's generated notes, your notes and comments, plus about \(PatientContextRetriever.defaultCharacterBudget.formatted()) characters of transcript chosen for each question. To ask about one session in full, open it and use its Ask tab."
+        "Answers come from every session's generated notes, your notes and comments, plus the transcript passages found by searching all sessions for the names and words in your question. Each answer shows what it read. To ask about one session in full, open it and use its Ask tab."
     }
 
     /// Caveats about the last question's context, shown above the composer.
@@ -306,7 +306,7 @@ struct PatientChatView: View {
         let assistantID = UUID()
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: question)
         unreadableSessions = context.unreadableSessions
-        coverageNotice = context.coverage.notice
+        coverageNotice = context.coverage.label
         // Snapshot everything the prompt needs now; the request itself is only
         // made when the queue starts this job.
         let service = integrations.makeAssistantService()

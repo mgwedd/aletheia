@@ -181,42 +181,94 @@ final class PatientChatContextTests: XCTestCase {
 
     // MARK: - Transcript coverage
 
-    func testCoverageReportsSessionsAndCharactersTheRankerLeftOut() throws {
+    func testCoverageLabelComesFromWhatWasSent() throws {
         let patient = try store.createPatient(name: "Jane Doe")
-        _ = try makeRankedHistory(patient)
+        let (jan, _, _) = try makeRankedHistory(patient)
+        let annotations = try XCTUnwrap(CommentStore(root: tempRoot))
+        annotations.saveNote(sessionID: jan.id, text: "January therapist note.")
 
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking")
 
-        // Three sessions have transcripts; the 60-line filler ones are mostly
-        // dropped, and February has no passage at all.
-        XCTAssertEqual(context.coverage.sessions, 3)
-        XCTAssertGreaterThanOrEqual(context.coverage.sessionsWithoutPassages, 1)
-        XCTAssertLessThan(context.coverage.includedCharacters, context.coverage.totalCharacters)
-        XCTAssertTrue(context.coverage.isPartial)
-        let notice = try XCTUnwrap(context.coverage.notice)
-        XCTAssertTrue(notice.contains("% of the transcript text"))
+        // Three sessions have transcripts; only March mentions kayaking.
+        XCTAssertEqual(context.coverage.transcriptSessions, 3)
+        XCTAssertEqual(context.coverage.sessionsWithPassages, 1)
+        XCTAssertEqual(context.coverage.notesSessions, 1)
+        XCTAssertEqual(context.coverage.mentions, 1)
+        XCTAssertFalse(context.coverage.wholeTranscripts)
+        XCTAssertEqual(
+            context.coverage.label,
+            "Read: notes and comments from 1 session · transcript passages from 1 of 3 sessions (search: 1 mention)"
+        )
     }
 
-    func testCoverageHasNoNoticeWhenEverythingFits() throws {
+    func testCoverageLabelWhenEverythingFits() throws {
         let patient = try store.createPatient(name: "Jane Doe")
         let jan = try store.createSession(for: patient, on: date(2026, 1, 5))
         try store.saveTranscript("Short transcript.", for: patient, session: jan)
 
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "anything")
 
-        XCTAssertEqual(context.coverage.sessions, 1)
-        XCTAssertEqual(context.coverage.sessionsWithoutPassages, 0)
-        XCTAssertFalse(context.coverage.isPartial)
-        XCTAssertNil(context.coverage.notice)
+        XCTAssertEqual(context.coverage.label, "Read: full transcripts from 1 session")
+        XCTAssertNil(TranscriptCoverage().label)
     }
 
-    func testCoveragePercentRoundsDownAndNeverShowsFullWhenPartial() {
-        let coverage = TranscriptCoverage(
-            sessions: 2, sessionsWithoutPassages: 1, totalCharacters: 1000, includedCharacters: 999
-        )
-        XCTAssertEqual(coverage.percentIncluded, 99)
-        XCTAssertEqual(TranscriptCoverage().percentIncluded, 100)
-        XCTAssertNil(TranscriptCoverage().notice)
+    func testUnreadableSessionIsNotCountedAsRead() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let good = try store.createSession(for: patient, on: date(2026, 3, 5))
+        try store.saveTranscript("Dana came up today.", for: patient, session: good)
+        let locked = try store.createSession(for: patient, on: date(2026, 1, 5))
+        let url = store.sessionDir(for: patient, session: locked).appendingPathComponent("transcript.txt")
+        try FileProtector(key: SymmetricKey(size: .bits256)).write("Dana secret", to: url)
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "Dana")
+
+        XCTAssertEqual(context.coverage.transcriptSessions, 1)
+        XCTAssertEqual(context.coverage.sessionsWithPassages, 1)
+        XCTAssertEqual(context.coverage.unreadableSessions, 1)
+        XCTAssertEqual(context.coverage.mentions, 1, "the unreadable transcript is not searched")
+        XCTAssertTrue(try XCTUnwrap(context.coverage.label).hasSuffix("1 session unreadable, not read"))
+        XCTAssertTrue(context.text.contains("1 session transcript could not be read and was not searched."))
+    }
+
+    // MARK: - Search block and the not-discussed rule
+
+    func testSearchBlockStatesExactCounts() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        _ = try makeRankedHistory(patient)
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking")
+
+        XCTAssertTrue(context.text.contains("Search for \"kayaking\": 1 mention in 1 of 3 sessions searched; showing the top 1 transcript passage."))
+        XCTAssertTrue(section(context.text, tag: "S1").contains("kayaking"))
+    }
+
+    func testSearchBlockSaysZeroMatchesAndThePromptCarriesTheRule() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        _ = try makeRankedHistory(patient)
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "zeppelin")
+        XCTAssertTrue(context.text.contains("Search for \"zeppelin\": 0 matches in 3 sessions searched."))
+
+        let prompt = Prompts.patientChat(context: context.text, history: [], question: "zeppelin?")
+        XCTAssertTrue(prompt.contains("Search for \"zeppelin\": 0 matches"))
+        XCTAssertTrue(prompt.contains("no match found in the recorded sessions"))
+        XCTAssertFalse(prompt.contains("say you don't see that in the recorded sessions"))
+    }
+
+    func testSearchBlockNamesDateRangeAndVariants() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let old = try store.createSession(for: patient, on: date(2020, 1, 5))
+        try store.saveTranscript("Micheal called.", for: patient, session: old)
+        let recent = try store.createSession(for: patient, on: Date().addingTimeInterval(-86_400 * 3))
+        try store.saveTranscript("Michael called twice. Michael again.", for: patient, session: recent)
+
+        let all = store.gatherCitedPatientContext(for: patient, relevantTo: "Michael")
+        XCTAssertTrue(all.text.contains("Search for \"michael\" (also matched: micheal): 3 mentions in 2 of 2 sessions searched"))
+
+        let recentOnly = store.gatherCitedPatientContext(for: patient, relevantTo: "Michael in the past 6 months")
+        XCTAssertTrue(recentOnly.text.contains("2 mentions in 1 of 1 session searched"))
+        XCTAssertTrue(recentOnly.text.contains("were searched."))
+        XCTAssertEqual(recentOnly.coverage.transcriptSessions, 1)
     }
 
     // MARK: - Per-session cap

@@ -241,13 +241,13 @@ enum Prompts {
         "Generated progress note" were drafted by the assistant from that \
         transcript; blocks labelled "Therapist's session notes" and \
         "Therapist's margin comments" are the therapist's own words and \
-        carry her clinical judgment. Answer only from this material — if \
-        the answer isn't in it, say you don't see that in the recorded \
-        sessions. A line saying a transcript could not be read means that \
+        carry her clinical judgment. Answer only from this material. A line saying a transcript could not be read means that \
         session is missing, not that nothing was discussed. When you use \
         something from a session, cite it inline with its tag exactly as \
         written, e.g. [S1]; cite every session you drew from. Never \
         speculate and never invent a tag that isn't listed.
+
+        \(patientSearchRule)
 
         \(transcriptLegend)
 

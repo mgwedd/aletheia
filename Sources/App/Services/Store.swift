@@ -1008,10 +1008,13 @@ final class Store {
         var firstFolder: [Date: String] = [:]
         var extras: [Date: [String]] = [:]
         var documents: [TranscriptDocument] = []
+        var searchDocuments: [SessionSearch.Document] = []
+        var notesDates = Set<Date>()
         var unreadable = 0
         var index = 1
         for session in sessions {
-            var material = sessionMaterial(for: patient, session: session)
+            let parts = sessionMaterialParts(for: patient, session: session)
+            var material = Store.capped(parts.map(\.text), limit: Store.patientChatSessionExtrasLimit)
             var transcript: String?
             do {
                 transcript = try readTranscript(for: patient, session: session)
@@ -1028,13 +1031,23 @@ final class Store {
                 dates.append(session.date)
                 firstFolder[session.date] = session.folderName
             }
+            let tag = labels[session.date] ?? ""
             if !transcriptText.isEmpty {
                 documents.append(TranscriptDocument(date: session.date, text: transcriptText))
+                searchDocuments.append(.init(date: session.date, tag: tag, kind: .transcript, text: transcriptText))
             }
+            for part in parts {
+                searchDocuments.append(.init(date: session.date, tag: tag, kind: part.kind, text: part.text))
+            }
+            if !parts.isEmpty { notesDates.insert(session.date) }
             extras[session.date, default: []].append(contentsOf: material)
         }
 
-        let excerpts = PatientContextRetriever.excerpts(for: documents, question: question, labels: labels)
+        // Search every transcript, note and comment; counts are exact, and the
+        // prompt states them. Transcript text comes from the best hits.
+        let search = SessionSearch.search(searchDocuments, question: question)
+        let selection = PatientContextRetriever.select(transcripts: documents, search: search, labels: labels)
+        let excerpts = selection.excerpts
         let excerptsByDate = Dictionary(grouping: excerpts, by: { $0.date })
         var blocks: [String] = []
         var sources: [CitationSource] = []
@@ -1047,46 +1060,55 @@ final class Store {
             sources.append(CitationSource(tag: tag, date: date, folderName: folderName))
         }
         let sessionsText = blocks.joined(separator: "\n\n")
+        let searchBlock = Prompts.searchBlock(
+            search, shown: selection.hitsShown, whole: selection.whole, unreadableSessions: unreadable
+        )
         // Always prepend the patient's background (clinical history + meds) so the
         // assistant can draw on it whenever it's relevant, without it having to be
         // requested. Empty when nothing has been entered.
         let background = patient.aiBackgroundBlock
-        let text = [background, sessionsText]
+        let text = [background, searchBlock, sessionsText]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n\n")
-        let transcriptDates = Set(documents.map { $0.date })
+        // Counted from what is in `text`: a session whose transcript is
+        // unreadable is not counted as read.
+        let transcriptDates = Set(documents.map { $0.date }.filter { search.dateRange?.contains($0) ?? true })
         let coverage = TranscriptCoverage(
-            sessions: transcriptDates.count,
-            sessionsWithoutPassages: transcriptDates.subtracting(excerptsByDate.keys).count,
-            totalCharacters: documents.reduce(0) { $0 + $1.text.count },
-            includedCharacters: excerpts.reduce(0) { $0 + $1.text.count }
+            transcriptSessions: transcriptDates.count,
+            sessionsWithPassages: transcriptDates.intersection(excerptsByDate.keys).count,
+            notesSessions: notesDates.count,
+            unreadableSessions: unreadable,
+            mentions: search.totalMentions,
+            searched: !search.terms.isEmpty,
+            wholeTranscripts: selection.whole
         )
         return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)
     }
 
     /// The blocks the patient-wide chat adds under a session's header besides the
-    /// transcript, capped to `patientChatSessionExtrasLimit` in total. Order is
-    /// the therapist's own words first (her notes, then her comments, as the
-    /// single-session chat renders them), then generated notes, so a long
-    /// generated note is what gets cut. Unreadable notes are skipped.
-    private func sessionMaterial(for patient: Patient, session: SessionRecord) -> [String] {
-        var blocks: [String] = []
+    /// transcript (the caller caps them to `patientChatSessionExtrasLimit` in
+    /// total). Order is the therapist's own words first (her notes, then her
+    /// comments, as the single-session chat renders them), then generated
+    /// notes, so a long generated note is what gets cut. Unreadable notes are
+    /// skipped. Each block's kind says what it is, for search.
+    private func sessionMaterialParts(for patient: Patient, session: SessionRecord) -> [(kind: SessionSearch.Kind, text: String)] {
+        var blocks: [(kind: SessionSearch.Kind, text: String)] = []
 
         let notes = commentStore?.note(sessionID: session.id) ?? ""
         let comments = AssistantService.formatComments(commentStore?.comments(sessionID: session.id) ?? [])
-        let therapistSections = [
-            Prompts.therapistMaterial(notes: notes, comments: []),
-            Prompts.therapistMaterial(notes: "", comments: comments),
+        let therapistSections: [(SessionSearch.Kind, String)] = [
+            (.sessionNotes, Prompts.therapistMaterial(notes: notes, comments: [])),
+            (.comment, Prompts.therapistMaterial(notes: "", comments: comments)),
         ]
-        for section in therapistSections {
+        for (kind, section) in therapistSections {
             let trimmed = section.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { blocks.append(trimmed) }
+            if !trimmed.isEmpty { blocks.append((kind, trimmed)) }
         }
 
         for (label, text) in generatedNotes(for: patient, session: session) {
-            blocks.append("Generated progress note (\(label)):\n\(text)")
+            blocks.append((.note, "Generated progress note (\(label)):\n\(text)"))
         }
-        return Store.capped(blocks, limit: Store.patientChatSessionExtrasLimit)
+        return blocks
     }
 
     /// A session's generated notes, one per format that has been generated, as

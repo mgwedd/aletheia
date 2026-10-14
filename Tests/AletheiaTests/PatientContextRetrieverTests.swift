@@ -55,4 +55,27 @@ final class PatientContextRetrieverTests: XCTestCase {
         let context = PatientContextRetriever.context(for: docs, question: "anxiety", characterBudget: 10_000)
         XCTAssertTrue(context.contains("===== Session"), "a dated header should prefix each session's content")
     }
+
+    func testHitsComeWithTwoLinesOfContextAndGapsAreMarked() {
+        let lines = (1...40).map { "[00:\(String(format: "%02d", $0))] Patient: filler line number \($0) about errands" }
+        var text = lines
+        text[9] = "[00:10] Patient: Then Dana called."
+        text[30] = "[00:31] Patient: Dana again."
+        let docs = [TranscriptDocument(date: date(2026, 1, 1), text: text.joined(separator: "\n"))]
+        let context = PatientContextRetriever.context(for: docs, question: "Dana", characterBudget: 600)
+        XCTAssertTrue(context.contains("[00:08]") && context.contains("[00:12]"), "two lines either side")
+        XCTAssertFalse(context.contains("[00:07]") || context.contains("[00:13]"))
+        XCTAssertTrue(context.contains("\n…\n"), "a gap between windows is marked")
+    }
+
+    func testSelectionCountsShownHitsAndMatchesWholeWordsOnly() {
+        let filler = (1...40).map { "[00:\(String(format: "%02d", $0))] Patient: the name and the time of the medication" }
+        let docs = [TranscriptDocument(date: date(2026, 1, 1), text: filler.joined(separator: "\n"))]
+        let search = SessionSearch.search(
+            [SessionSearch.Document(date: docs[0].date, tag: "S1", kind: .transcript, text: docs[0].text)], question: "me"
+        )
+        XCTAssertEqual(search.totalMentions, 0, "'me' must not match name, time or medication")
+        let selection = PatientContextRetriever.select(transcripts: docs, search: search, characterBudget: 100)
+        XCTAssertTrue(selection.whole, "no search terms sends the history")
+    }
 }

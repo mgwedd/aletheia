@@ -9,23 +9,14 @@ struct TranscriptDocument {
 /// cross-session chat can answer from a large history without stuffing every
 /// word into the prompt.
 ///
-/// This is the retrieval behind `Store.gatherPatientContext`'s designed
-/// "swap point": when a patient's transcripts fit comfortably in the budget
-/// it returns them whole (the original naive behavior, unchanged); past
-/// that, it ranks passages by TF-IDF term overlap with the question and
-/// keeps the top ones — regrouped by session date, newest first, with the
-/// same `===== Session <date> =====` headers so the model can still cite
-/// when something was said.
+/// Relevance comes from `SessionSearch` (BM25, whole words, typo and
+/// sound-alike matching). When a patient's transcripts fit the budget, or the
+/// question has no search terms, whole transcripts go in newest first;
+/// otherwise the best hits' context
+/// windows are kept, merged per session and regrouped by date, newest first,
+/// with the same `===== Session <date> =====` headers so the model can still
+/// cite when something was said.
 enum PatientContextRetriever {
-    private struct ScoredChunk {
-        let date: Date
-        /// Position within its source transcript, so a session's kept
-        /// passages stay in spoken order when regrouped.
-        let order: Int
-        let text: String
-        let score: Double
-    }
-
     /// The transcript text kept for one session date, before any header is put
     /// on it. Exposed so a caller that adds its own per-session material (see
     /// `Store.gatherCitedPatientContext`) can tell which sessions the ranker
@@ -35,8 +26,16 @@ enum PatientContextRetriever {
         let text: String
     }
 
-    /// Transcript characters the patient-wide chat sends per question. Also the
-    /// figure quoted in the chat sheet and docs/DESIGN-DECISIONS.md.
+    /// What `select` kept, and how many transcript hits it shows.
+    struct Selection {
+        let excerpts: [Excerpt]
+        /// Search hits in transcripts whose text is in `excerpts`.
+        let hitsShown: Int
+        /// Whole transcripts were sent, not search windows.
+        let whole: Bool
+    }
+
+    /// Transcript characters the patient-wide chat sends per question.
     static let defaultCharacterBudget = 6000
 
     static func context(
@@ -45,114 +44,79 @@ enum PatientContextRetriever {
         characterBudget: Int = PatientContextRetriever.defaultCharacterBudget,
         labels: [Date: String] = [:]
     ) -> String {
-        let kept = excerpts(for: documents, question: question, characterBudget: characterBudget, labels: labels)
-        return kept
+        let search = SessionSearch.search(
+            documents.map { SessionSearch.Document(date: $0.date, tag: labels[$0.date] ?? "", kind: .transcript, text: $0.text) },
+            question: question
+        )
+        return select(transcripts: documents, search: search, characterBudget: characterBudget, labels: labels)
+            .excerpts
             .map { "\(header($0.date, labels: labels))\n\($0.text)" }
             .joined(separator: "\n\n")
     }
 
-    /// The selection step behind `context`: which transcript text survives the
-    /// budget, newest session first. `labels` is only used to measure header
+    /// Which transcript text survives the budget, newest session first.
+    /// `search` must have been run over (at least) `transcripts`; its date
+    /// filter applies here too. `labels` is only used to measure header
     /// length against the budget, exactly as the rendered context does.
-    static func excerpts(
-        for documents: [TranscriptDocument],
-        question: String,
+    static func select(
+        transcripts: [TranscriptDocument],
+        search: SessionSearch.Result,
         characterBudget: Int = PatientContextRetriever.defaultCharacterBudget,
         labels: [Date: String] = [:]
-    ) -> [Excerpt] {
-        let usable = documents.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard !usable.isEmpty else { return [] }
+    ) -> Selection {
+        let usable = transcripts.filter {
+            !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && (search.dateRange?.contains($0.date) ?? true)
+        }
+        guard !usable.isEmpty else { return Selection(excerpts: [], hitsShown: 0, whole: true) }
+        let transcriptHits = search.hits.filter { $0.kind == .transcript }
 
+        // No terms to rank on, or everything fits: all of it, newest first, so
+        // nothing a search could have found is left out.
         let totalChars = usable.reduce(0) { $0 + $1.text.count }
-        let terms = TextSearch.queryTerms(question)
-
-        // Small enough, or no usable query terms to rank on: return the whole
-        // history, newest first — identical to the naive path.
-        if terms.isEmpty || totalChars <= characterBudget {
-            return wholeExcerpts(usable, labels: labels)
+        if search.terms.isEmpty || totalChars <= characterBudget {
+            return Selection(excerpts: wholeExcerpts(usable, labels: labels), hitsShown: transcriptHits.count, whole: true)
+        }
+        // Terms but no transcript match: the most recent history that fits,
+        // rather than nothing (the search block says there were no matches).
+        guard !transcriptHits.isEmpty else {
+            return Selection(excerpts: wholeExcerpts(usable, budget: characterBudget, labels: labels), hitsShown: 0, whole: true)
         }
 
-        var chunks: [(date: Date, order: Int, text: String)] = []
-        for doc in usable {
-            for (index, passage) in passages(of: doc.text).enumerated() {
-                chunks.append((doc.date, index, passage))
-            }
-        }
-
-        let idf = idf(chunkTexts: chunks.map(\.text), terms: terms)
-        let scored = chunks.compactMap { chunk -> ScoredChunk? in
-            let s = score(text: chunk.text, terms: terms, idf: idf)
-            guard s > 0 else { return nil }
-            return ScoredChunk(date: chunk.date, order: chunk.order, text: chunk.text, score: s)
-        }
-
-        // No passage mentions the question: hand back the most recent history
-        // that fits, rather than nothing.
-        guard !scored.isEmpty else { return wholeExcerpts(usable, budget: characterBudget, labels: labels) }
-
-        var selected: [ScoredChunk] = []
+        // Best hits first; each adds only the context lines not already kept
+        // by an earlier hit in the same transcript.
+        struct Slot: Hashable { let document: Int; let line: Int }
+        var kept: [Slot: String] = [:]
+        var dateOf: [Int: Date] = [:]
         var used = 0
-        for chunk in scored.sorted(by: { $0.score > $1.score }) {
-            if !selected.isEmpty && used + chunk.text.count > characterBudget { continue }
-            selected.append(chunk)
-            used += chunk.text.count
+        var shown = 0
+        for hit in transcriptHits {
+            let fresh = hit.context.enumerated().filter { kept[Slot(document: hit.documentIndex, line: hit.contextStart + $0.offset)] == nil }
+            let cost = fresh.reduce(0) { $0 + $1.element.count + 1 }
+            if shown > 0 && used + cost > characterBudget { continue }
+            for (offset, line) in fresh { kept[Slot(document: hit.documentIndex, line: hit.contextStart + offset)] = line }
+            dateOf[hit.documentIndex] = hit.date
+            used += cost
+            shown += 1
             if used >= characterBudget { break }
         }
-        return selectedExcerpts(selected)
-    }
 
-    // MARK: - Chunking
-
-    /// Splits a transcript into passages of roughly `targetChars`, breaking
-    /// only on line boundaries so a `[MM:SS] Speaker: …` line stays intact.
-    private static func passages(of text: String, targetChars: Int = 600) -> [String] {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        var result: [String] = []
-        var current = ""
-        for line in lines {
-            if current.isEmpty {
-                current = line
-            } else if current.count + 1 + line.count > targetChars {
-                result.append(current)
-                current = line
-            } else {
-                current += "\n" + line
+        // Per transcript in line order, "…" between gaps; transcripts of one
+        // date are joined under it.
+        var byDate: [Date: [String]] = [:]
+        for document in Set(kept.keys.map(\.document)) {
+            let slots = kept.keys.filter { $0.document == document }.sorted { $0.line < $1.line }
+            var text = ""
+            var previous: Int?
+            for slot in slots {
+                if let previous { text += slot.line == previous + 1 ? "\n" : "\n…\n" }
+                text += kept[slot]!
+                previous = slot.line
             }
+            byDate[dateOf[document]!, default: []].append(text)
         }
-        if !current.isEmpty { result.append(current) }
-        return result.isEmpty ? [text] : result
-    }
-
-    // MARK: - Scoring
-
-    private static func idf(chunkTexts: [String], terms: [String]) -> [String: Double] {
-        let n = Double(chunkTexts.count)
-        var result: [String: Double] = [:]
-        for term in Set(terms) {
-            let df = chunkTexts.reduce(0) { $0 + ($1.range(of: term, options: TextSearch.compareOptions) != nil ? 1 : 0) }
-            // Smoothed so it's always positive even when a term is in every chunk.
-            result[term] = log(1.0 + n / Double(1 + df))
-        }
-        return result
-    }
-
-    private static func score(text: String, terms: [String], idf: [String: Double]) -> Double {
-        var total = 0.0
-        for term in terms {
-            let count = occurrences(of: term, in: text)
-            if count > 0 { total += Double(count) * (idf[term] ?? 0) }
-        }
-        return total
-    }
-
-    private static func occurrences(of term: String, in text: String) -> Int {
-        var count = 0
-        var range = text.startIndex..<text.endIndex
-        while let found = text.range(of: term, options: TextSearch.compareOptions, range: range) {
-            count += 1
-            range = found.upperBound..<text.endIndex
-        }
-        return count
+        let excerpts = byDate.keys.sorted(by: >).map { Excerpt(date: $0, text: byDate[$0]!.joined(separator: "\n…\n")) }
+        return Selection(excerpts: excerpts, hitsShown: shown, whole: false)
     }
 
     // MARK: - Formatting
@@ -184,15 +148,5 @@ enum PatientContextRetriever {
             used += blockLength
         }
         return result
-    }
-
-    private static func selectedExcerpts(_ chunks: [ScoredChunk]) -> [Excerpt] {
-        let byDate = Dictionary(grouping: chunks, by: { $0.date })
-        return byDate.keys.sorted(by: >).map { date in
-            let passages = byDate[date]!
-                .sorted { $0.order < $1.order }
-                .map(\.text)
-            return Excerpt(date: date, text: passages.joined(separator: "\n…\n"))
-        }
     }
 }

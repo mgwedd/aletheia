@@ -35,38 +35,38 @@ struct PatientContext {
     }
 }
 
-/// How much of the readable transcript text reached the model for one patient
-/// chat question. Informational only: it describes what the retriever kept and
-/// never changes what is sent. Notes and comments are not counted here; they
-/// are added per session on top, up to their own cap.
+/// What one patient chat question was built from, counted from what was
+/// actually put in the prompt, never from what was meant to be. Unreadable
+/// sessions are not counted as read.
 struct TranscriptCoverage: Equatable {
-    /// Sessions (by date) that have readable transcript text.
-    var sessions: Int = 0
-    /// Of those, how many have no transcript passage in the context.
-    var sessionsWithoutPassages: Int = 0
-    /// Characters of readable transcript text across `sessions`.
-    var totalCharacters: Int = 0
-    /// Characters of transcript text kept for the model.
-    var includedCharacters: Int = 0
+    /// Sessions (by date) with readable transcript text inside the question's date range.
+    var transcriptSessions: Int = 0
+    /// Of those, how many have transcript text in the context.
+    var sessionsWithPassages: Int = 0
+    /// Sessions whose notes, generated notes or comments are in the context.
+    var notesSessions: Int = 0
+    /// Sessions whose transcript exists but could not be read.
+    var unreadableSessions: Int = 0
+    /// Search mentions across every searched document (see `SessionSearch.Result`).
+    var mentions: Int = 0
+    /// The question had words to search for.
+    var searched = false
+    /// Whole transcripts were sent rather than search passages.
+    var wholeTranscripts = false
 
-    /// True when part of the readable transcript text was left out.
-    var isPartial: Bool { totalCharacters > 0 && includedCharacters < totalCharacters }
-
-    /// Whole percent of transcript text included, rounded down, so a partial
-    /// read never shows as 100%.
-    var percentIncluded: Int {
-        guard totalCharacters > 0 else { return 100 }
-        return min(100, Int(Double(includedCharacters) / Double(totalCharacters) * 100))
-    }
-
-    /// A plain-language line for the chat sheet, or nil when everything fit.
-    var notice: String? {
-        guard isPartial else { return nil }
-        var line = "Last answer was built from about \(percentIncluded)% of the transcript text"
-        if sessionsWithoutPassages > 0 {
-            line += "; \(sessionsWithoutPassages) of \(sessions) session(s) had no transcript passage included"
+    /// A plain-language line for the chat sheet, or nil when nothing was read.
+    var label: String? {
+        func sessions(_ n: Int) -> String { "\(n) session\(n == 1 ? "" : "s")" }
+        var parts: [String] = []
+        if notesSessions > 0 { parts.append("notes and comments from \(sessions(notesSessions))") }
+        if transcriptSessions > 0 {
+            let search = searched ? " (search: \(mentions) mention\(mentions == 1 ? "" : "s"))" : ""
+            parts.append(wholeTranscripts
+                ? "full transcripts from \(sessions(sessionsWithPassages))" + search
+                : "transcript passages from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
         }
-        return line + ". Check important details in the session itself."
+        if unreadableSessions > 0 { parts.append("\(sessions(unreadableSessions)) unreadable, not read") }
+        return parts.isEmpty ? nil : "Read: " + parts.joined(separator: " · ")
     }
 }
 
