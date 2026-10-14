@@ -94,6 +94,7 @@ final class AppSettings: ObservableObject {
         static let acceptedLegalDate = "acceptedLegalDate"
         static let progressNoteFormat = "progressNoteFormat"
         static let summaryVerbosity = "summaryVerbosity"
+        static let noteInstructions = "noteInstructions"
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
@@ -163,6 +164,21 @@ final class AppSettings: ObservableObject {
     /// How long a generated Summary runs (`SummaryVerbosity`). Natural by default.
     @Published var summaryVerbosity: SummaryVerbosity {
         didSet { defaults.set(summaryVerbosity.rawValue, forKey: Keys.summaryVerbosity) }
+    }
+    /// Per-format replacements for the note prompt's instruction text, keyed by
+    /// `ProgressNoteFormat.rawValue`. A missing key means the default.
+    @Published var noteInstructions: [String: String] {
+        didSet { defaults.set(noteInstructions, forKey: Keys.noteInstructions) }
+    }
+    /// Saves custom instructions for a format; text that is empty or equal to
+    /// the default removes the override.
+    func setNoteInstructions(_ text: String, for format: ProgressNoteFormat) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == Prompts.defaultInstructions(for: format) {
+            noteInstructions[format.rawValue] = nil
+        } else {
+            noteInstructions[format.rawValue] = trimmed
+        }
     }
     /// Opt-in: keep an end-to-end-encrypted backup copy of the database on this
     /// Mac (in addition to whatever Time Machine already does). The default is
@@ -292,6 +308,7 @@ final class AppSettings: ObservableObject {
         }
         summaryVerbosity = defaults.string(forKey: Keys.summaryVerbosity)
             .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
+        noteInstructions = defaults.dictionary(forKey: Keys.noteInstructions) as? [String: String] ?? [:]
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil

@@ -77,6 +77,11 @@ struct SessionDetailView: View {
     @State private var noteDraft = ""
     @State private var confirmRegenerate = false
     @State private var hasPreviousNote = false
+    /// When the running note job actually started; drives the "Reading the
+    /// session…" elapsed time before the first token arrives.
+    @State private var noteStartedAt: Date?
+    @State private var noteCopied = false
+    @State private var editingInstructions = false
     /// The note text as last read from / written to the store. `load()` assigns
     /// `sessionNote` programmatically, which fires `onChange`; comparing against
     /// this keeps that echo (and any no-op change) from being saved back.
@@ -887,6 +892,9 @@ struct SessionDetailView: View {
                         .keyboardShortcut("g", modifiers: .command)
                         .disabled(transcriptText.isEmpty || isEditingNote)
                     }
+                    if !noteRunner.isStreaming && !noteRunner.isQueued && !isEditingNote {
+                        noteLengthMenu
+                    }
                     if !summaryText.isEmpty && !noteRunner.isStreaming {
                         if hasPreviousNote && !isEditingNote && !noteRunner.isQueued {
                             Button { restorePreviousNote() } label: {
@@ -906,8 +914,13 @@ struct SessionDetailView: View {
                         }
                         Button {
                             copyToPasteboard(NoteMarkdown.tidy(summaryText))
+                            noteCopied = true
+                            Task {
+                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                noteCopied = false
+                            }
                         } label: {
-                            Label("Copy", systemImage: "doc.on.doc")
+                            Label(noteCopied ? "Copied" : "Copy", systemImage: noteCopied ? "checkmark" : "doc.on.doc")
                         }
                         .help("Copy the note to paste into your EHR")
                     }
@@ -942,6 +955,8 @@ struct SessionDetailView: View {
 
             if summaryText.isEmpty && !noteRunner.isStreaming {
                 emptyNoteCard
+            } else if summaryText.isEmpty {
+                noteWorkingRow
             } else if isEditingNote {
                 HStack(spacing: 8) {
                     Label("Editing the \(settings.progressNoteFormat.shortName) note. Regenerating asks before replacing your edits.", systemImage: "pencil")
@@ -969,12 +984,69 @@ struct SessionDetailView: View {
                 }
             }
         }
+        .sheet(isPresented: $editingInstructions) {
+            let format = settings.progressNoteFormat
+            NoteInstructionsSheet(
+                format: format,
+                current: settings.noteInstructions[format.rawValue] ?? Prompts.defaultInstructions(for: format),
+                onSave: { text in
+                    settings.setNoteInstructions(text, for: format)
+                    editingInstructions = false
+                },
+                onCancel: { editingInstructions = false }
+            )
+        }
         .alert("Replace your edited note?", isPresented: $confirmRegenerate) {
             Button("Regenerate", role: .destructive) { generateNote() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You edited this \(settings.progressNoteFormat.shortName) note. Regenerating replaces it; your edited version is kept and can be brought back with Restore Previous.")
         }
+    }
+
+    /// Length for every format, and the per-format prompt. Changing the length
+    /// takes effect on the next Regenerate.
+    private var noteLengthMenu: some View {
+        let format = settings.progressNoteFormat
+        let customized = settings.noteInstructions[format.rawValue] != nil
+        return Menu {
+            Picker("Length", selection: $settings.summaryVerbosity) {
+                ForEach(SummaryVerbosity.allCases) { level in
+                    Text(level.displayName).tag(level)
+                }
+            }
+            .pickerStyle(.inline)
+            Divider()
+            Button("Edit \(format.shortName) Prompt…\(customized ? " (customized)" : "")") {
+                editingInstructions = true
+            }
+        } label: {
+            Label("Length: \(settings.summaryVerbosity.displayName)", systemImage: "text.alignleft")
+        }
+        .fixedSize()
+        .help("How long the note is. Regenerate to apply a change.")
+    }
+
+    /// Shown between pressing Generate and the first token, which can take a
+    /// minute on a long session.
+    private var noteWorkingRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let elapsed = max(0, Int(context.date.timeIntervalSince(noteStartedAt ?? context.date)))
+                    Text("Reading the session… \(elapsed / 60):\(String(format: "%02d", elapsed % 60))")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.text.color)
+                        .monospacedDigit()
+                }
+            }
+            Text("Long sessions take a minute before writing starts.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+        }
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// No note in this format yet: say why, and offer the one action.
@@ -1225,6 +1297,7 @@ struct SessionDetailView: View {
         guard let store = appModel.store else { return }
         let format = settings.progressNoteFormat
         let verbosity = settings.summaryVerbosity
+        let instructions = settings.noteInstructions[format.rawValue]
         // Snapshot the inputs now; the request itself is only made when the
         // queue starts this job (it may be waiting behind a chat answer).
         let service = integrations.makeAssistantService()
@@ -1236,12 +1309,17 @@ struct SessionDetailView: View {
             kind: .note,
             label: "progress note",
             makeStream: {
-                service.streamProgressNote(
+                // The job has started: drop the old note so the pane can show
+                // progress until the first token.
+                if settings.progressNoteFormat == format { summaryText = "" }
+                noteStartedAt = Date()
+                return service.streamProgressNote(
                     format: format,
                     transcript: transcript,
                     notes: notes,
                     comments: sessionComments,
-                    verbosity: verbosity
+                    verbosity: verbosity,
+                    instructions: instructions
                 )
             },
             onReveal: { text in
@@ -1261,7 +1339,12 @@ struct SessionDetailView: View {
                 // Save the tidied text, so copy, export and edit see the same
                 // paragraphs and labels the pane shows.
                 let final = NoteMarkdown.tidy(raw)
-                guard !final.isEmpty else { return }
+                guard !final.isEmpty else {
+                    // Stopped before the first token, or empty output: the pane
+                    // was cleared at start, so put back what is saved.
+                    if settings.progressNoteFormat == format { summaryText = savedNote(for: format) }
+                    return
+                }
                 if settings.progressNoteFormat == format { summaryText = final }
                 do {
                     try store.saveGeneratedNote(final, for: patient, session: session, format: format, generatedFromTranscript: transcript)

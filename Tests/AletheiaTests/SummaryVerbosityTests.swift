@@ -2,7 +2,7 @@ import XCTest
 @testable import Aletheia
 
 /// Summary length setting: each level reaches the Summary prompt with the
-/// clarity rule, and the structured formats are untouched by it.
+/// clarity rule, and the structured formats apply it per section.
 final class SummaryVerbosityTests: XCTestCase {
     private let transcript = "[00:00] Call audio: I barely slept this week."
 
@@ -37,12 +37,15 @@ final class SummaryVerbosityTests: XCTestCase {
         XCTAssertTrue(prompt.contains(SummaryVerbosity.natural.promptGuidance))
     }
 
-    func testStructuredFormatsIgnoreTheSetting() {
+    func testStructuredFormatsCarryTheNoteGuidanceAndClarityRule() {
+        XCTAssertEqual(Set(SummaryVerbosity.allCases.map(\.noteGuidance)).count, 3)
         for format in ProgressNoteFormat.allCases where format != .narrative {
-            let detailed = Prompts.progressNote(format: format, transcript: transcript, verbosity: .detailed)
-            let concise = Prompts.progressNote(format: format, transcript: transcript, verbosity: .concise)
-            XCTAssertEqual(detailed, concise, "\(format) should not vary with summary length")
-            XCTAssertFalse(detailed.contains(SummaryVerbosity.clarityRule))
+            for level in SummaryVerbosity.allCases {
+                let prompt = Prompts.progressNote(format: format, transcript: transcript, verbosity: level)
+                XCTAssertTrue(prompt.contains(level.noteGuidance), "\(format) \(level) guidance missing")
+                XCTAssertTrue(prompt.contains(SummaryVerbosity.clarityRule))
+                XCTAssertFalse(prompt.contains(level.promptGuidance), "\(format) should not carry the Summary word range")
+            }
         }
     }
 
