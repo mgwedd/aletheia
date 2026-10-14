@@ -104,6 +104,8 @@ struct SessionDetailView: View {
     @State private var noteCoverage: String?
     /// Stop was pressed and the stopped note's job may still be unwinding.
     @State private var noteStopping = false
+    /// Waits for a stopped note's job to unwind before starting the next one.
+    @State private var noteWaiter: Task<Void, Never>?
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
     @State private var sessionNote: String = ""
@@ -233,6 +235,9 @@ struct SessionDetailView: View {
             // keep the unsaved edits for the next time this session opens.
             UnsavedTranscriptDrafts.stash(transcriptDraft, saved: transcriptText, for: session.id)
             editGuard?.detach()
+            // A note must not start after the user has left.
+            noteWaiter?.cancel()
+            noteWaiter = nil
         }
         .onChange(of: transcriptText) { old, new in
             if !new.isEmpty { hasTranscript = true; transcriptReadError = nil }
@@ -1352,13 +1357,21 @@ struct SessionDetailView: View {
             if noteStopping {
                 // Just stopped: start again once the old job has unwound, with no alert.
                 // Only the first waiter goes on; a second click finds the flag already cleared.
-                Task { @MainActor in
-                    while integrations.inferenceQueue.hasJob(labelled: jobLabel) {
+                guard noteWaiter == nil else { return }
+                noteWaiter = Task { @MainActor in
+                    let deadline = Date().addingTimeInterval(10)
+                    while integrations.inferenceQueue.hasJob(labelled: jobLabel), !Task.isCancelled, Date() < deadline {
                         try? await Task.sleep(nanoseconds: 100_000_000)
                     }
-                    guard noteStopping else { return }
+                    noteWaiter = nil
+                    guard !Task.isCancelled, noteStopping else { return }
                     noteStopping = false
-                    generateNote()
+                    // Still running after the wait: say so, as for any second Generate.
+                    if integrations.inferenceQueue.hasJob(labelled: jobLabel) {
+                        errorMessage = "A note for this session is already being written."
+                    } else {
+                        generateNote()
+                    }
                 }
             } else {
                 errorMessage = "A note for this session is already being written."
@@ -1377,7 +1390,6 @@ struct SessionDetailView: View {
         let sessionComments = comments
         let effort = settings.noteEffort
         let model = service.model
-        noteCoverage = nil
         let produced = CoverageBox()
         noteRunner.start(
             queue: integrations.inferenceQueue,
@@ -1388,7 +1400,7 @@ struct SessionDetailView: View {
             makeStream: {
                 // The job has started: drop the old note so the pane can show
                 // progress until the first token.
-                if settings.progressNoteFormat == format { summaryText = "" }
+                if settings.progressNoteFormat == format { summaryText = ""; noteCoverage = nil }
                 return LongSessionNote.stream(
                     format: format,
                     transcript: transcript,
