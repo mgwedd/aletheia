@@ -10,8 +10,8 @@ final class FineTunedModelTests: XCTestCase {
 
     /// A therapy adapter trained against the recommended 3B base.
     private func therapyAdapter(
-        base: LlamaModel = .llama32_3b,
-        sha: String? = "abc123"
+        base: LlamaModel = .llama31_8b,
+        sha: String = "abc123"
     ) -> LoRAAdapter {
         LoRAAdapter(
             id: "therapy-soap-v1",
@@ -37,63 +37,63 @@ final class FineTunedModelTests: XCTestCase {
     }
 
     func testAdapterResolvesItsBaseModel() {
-        XCTAssertEqual(therapyAdapter(base: .llama32_3b).baseModel, .llama32_3b)
+        XCTAssertEqual(therapyAdapter(base: .llama31_8b).baseModel, .llama31_8b)
         // An adapter naming a base the app doesn't know about resolves to nil
         // rather than crashing — the compatibility check still fails it closed.
         let unknown = LoRAAdapter(
             id: "x", displayName: "X", fileName: "x.gguf",
             remoteURL: URL(string: "https://example.invalid/x.gguf")!,
-            expectedSHA256: nil, approximateSizeMB: 1, baseModelID: "not-a-real-model")
+            expectedSHA256: "abc123", approximateSizeMB: 1, baseModelID: "not-a-real-model")
         XCTAssertNil(unknown.baseModel)
     }
 
     // MARK: - Compatibility (fail closed)
 
     func testCompatibleAdapterMatchesItsBase() {
-        let adapter = therapyAdapter(base: .llama32_3b)
-        XCTAssertTrue(adapter.isCompatible(with: .llama32_3b))
-        XCTAssertNoThrow(try adapter.validate(against: .llama32_3b))
+        let adapter = therapyAdapter(base: .llama31_8b)
+        XCTAssertTrue(adapter.isCompatible(with: .llama31_8b))
+        XCTAssertNoThrow(try adapter.validate(against: .llama31_8b))
     }
 
     func testMismatchedAdapterFailsClosedWithClearError() {
-        let adapter = therapyAdapter(base: .llama32_3b)
-        XCTAssertFalse(adapter.isCompatible(with: .llama32_1b))
-        XCTAssertThrowsError(try adapter.validate(against: .llama32_1b)) { error in
+        let adapter = therapyAdapter(base: .llama31_8b)
+        XCTAssertFalse(adapter.isCompatible(with: .gemma4_e2b))
+        XCTAssertThrowsError(try adapter.validate(against: .gemma4_e2b)) { error in
             guard case let LoRACompatibilityError.baseMismatch(name, expected, actual) = error else {
                 return XCTFail("expected a baseMismatch, got \(error)")
             }
             XCTAssertEqual(name, adapter.displayName)
-            XCTAssertEqual(expected, LlamaModel.llama32_3b.shortName)
-            XCTAssertEqual(actual, LlamaModel.llama32_1b.shortName)
+            XCTAssertEqual(expected, LlamaModel.llama31_8b.shortName)
+            XCTAssertEqual(actual, LlamaModel.gemma4_e2b.shortName)
             // The message names both sides so the user can fix the pairing.
             let message = (error as? LoRACompatibilityError)?.errorDescription ?? ""
-            XCTAssertTrue(message.contains(LlamaModel.llama32_3b.shortName))
-            XCTAssertTrue(message.contains(LlamaModel.llama32_1b.shortName))
+            XCTAssertTrue(message.contains(LlamaModel.llama31_8b.shortName))
+            XCTAssertTrue(message.contains(LlamaModel.gemma4_e2b.shortName))
         }
     }
 
     // MARK: - ModelLoadPlan
 
     func testPlanWithoutAdapterUsesBaseOnly() {
-        let plan = ModelLoadPlan(base: .llama32_3b)
+        let plan = ModelLoadPlan(base: .llama31_8b)
         XCTAssertFalse(plan.usesAdapter)
         XCTAssertNil(plan.adapter)
         XCTAssertNil(plan.adapterURL)
-        XCTAssertEqual(plan.baseURL, LlamaRuntime.modelURL(for: .llama32_3b))
+        XCTAssertEqual(plan.baseURL, LlamaRuntime.modelURL(for: .llama31_8b))
     }
 
     func testPlanWithCompatibleAdapterResolvesBothURLs() throws {
-        let adapter = therapyAdapter(base: .llama32_3b)
-        let plan = try ModelLoadPlan(base: .llama32_3b, adapter: adapter)
+        let adapter = therapyAdapter(base: .llama31_8b)
+        let plan = try ModelLoadPlan(base: .llama31_8b, adapter: adapter)
         XCTAssertTrue(plan.usesAdapter)
         XCTAssertEqual(plan.adapter, adapter)
-        XCTAssertEqual(plan.baseURL, LlamaRuntime.modelURL(for: .llama32_3b))
+        XCTAssertEqual(plan.baseURL, LlamaRuntime.modelURL(for: .llama31_8b))
         XCTAssertEqual(plan.adapterURL, LlamaRuntime.adapterURL(for: adapter))
     }
 
     func testPlanRejectsMismatchedAdapter() {
-        let adapter = therapyAdapter(base: .llama32_3b)
-        XCTAssertThrowsError(try ModelLoadPlan(base: .llama32_1b, adapter: adapter)) { error in
+        let adapter = therapyAdapter(base: .llama31_8b)
+        XCTAssertThrowsError(try ModelLoadPlan(base: .gemma4_e2b, adapter: adapter)) { error in
             XCTAssertTrue(error is LoRACompatibilityError)
         }
     }
@@ -117,7 +117,7 @@ final class FineTunedModelTests: XCTestCase {
         // The plan routes through the same seam, proving adapter selection needs
         // no call-site change. With the runtime linked the engine is the real one
         // (weights absent here, so it must fail to load rather than answer).
-        let plan = ModelLoadPlan(base: .llama32_3b)
+        let plan = ModelLoadPlan(base: .llama31_8b)
         let engine = LocalLLMEngineFactory.make(plan: plan)
         if case .unavailable = engine.state {
             XCTAssertFalse(LlamaRuntime.isBuilt, "an unavailable engine means the runtime isn't linked")

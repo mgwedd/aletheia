@@ -16,9 +16,8 @@ final class LlamaModelDownloader: NSObject, ObservableObject {
     private var continuation: CheckedContinuation<Void, Error>?
     private var destinationURL: URL?
     /// Digest to verify the finished download against, captured from the asset at
-    /// download start; `nil` means the model isn't pinned yet (download accepted
-    /// unverified — see `LlamaModel.expectedSHA256`).
-    private var expectedSHA256: String?
+    /// download start. Always set before a transfer begins; there is no unverified path.
+    private var expectedSHA256 = ""
     /// Progress sink for the in-flight fetch, so a caller using the seam gets
     /// updates too — not only the `@Published progress` the Settings UI binds to.
     private var progressHandler: ((Double) -> Void)?
@@ -57,16 +56,16 @@ final class LlamaModelDownloader: NSObject, ObservableObject {
         }
     }
 
-    /// Verifies the file just moved into place against the pinned digest, if any.
+    /// Verifies the file just moved into place against the pinned digest.
     /// A mismatch deletes the file (so a corrupt or tampered model is never left
     /// behind looking valid) and throws. Runs on the delegate's background queue,
     /// so hashing multi-gigabyte weights never blocks the main thread.
     private func verifyIntegrity(of fileURL: URL) throws {
-        guard let expectedSHA256 else { return }
-        let actual = try ModelDigest.sha256(ofFileAt: fileURL)
-        guard actual.caseInsensitiveCompare(expectedSHA256) == .orderedSame else {
+        do {
+            try ModelDigest.verify(fileAt: fileURL, expectedSHA256: expectedSHA256)
+        } catch {
             try? FileManager.default.removeItem(at: fileURL)
-            throw ModelDownloadError.integrityCheckFailed(expected: expectedSHA256, actual: actual)
+            throw error
         }
     }
 }

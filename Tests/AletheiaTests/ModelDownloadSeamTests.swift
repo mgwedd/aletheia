@@ -28,9 +28,9 @@ final class ModelDownloadSeamTests: XCTestCase {
 
         var progress: [Double] = []
         let dest = URL(fileURLWithPath: "/tmp/aletheia-test/model.gguf")
-        try await provider.fetch(LlamaModel.llama32_3b.asset, to: dest) { progress.append($0) }
+        try await provider.fetch(LlamaModel.llama31_8b.asset, to: dest) { progress.append($0) }
 
-        XCTAssertEqual(fake.fetchedAssets.map(\.id), [LlamaModel.llama32_3b.rawValue])
+        XCTAssertEqual(fake.fetchedAssets.map(\.id), [LlamaModel.llama31_8b.rawValue])
         XCTAssertEqual(fake.destinations, [dest])
         XCTAssertEqual(progress.last, 1.0, "a completed fetch must report full progress")
         XCTAssertEqual(progress, progress.sorted(), "progress must be monotonically non-decreasing")
@@ -73,7 +73,7 @@ private final class FakeModelDownloadProvider: ModelDownloadProvider {
         fetchedAssets.append(asset)
         destinations.append(destinationURL)
         for step in stride(from: 0.0, through: 1.0, by: 0.25) { onProgress(step) }
-        if simulateIntegrityMismatch, asset.expectedSHA256 != nil {
+        if simulateIntegrityMismatch {
             throw Failure.integrityMismatch
         }
     }
