@@ -84,22 +84,37 @@ ollama_run() {
     jq -n --rawfile p "$1" --arg m "$OLLAMA_MODEL" --argjson ctx "$2" \
         '{model:$m, prompt:$p, stream:false, options:{num_ctx:$ctx, num_predict:256, temperature:0, seed:1}}' |
     curl -sf "$OLLAMA/api/generate" -d @- |
-    jq -r '[.prompt_eval_count, .prompt_eval_duration / 1e9, .prompt_eval_count / (.prompt_eval_duration / 1e9),
-            .eval_count / (.eval_duration / 1e9), (.total_duration - .load_duration) / 1e9] | @tsv'
+    jq -r '(.prompt_eval_duration / 1e9) as $pd | (.eval_duration / 1e9) as $ed |
+        [.prompt_eval_count, $pd, (if $pd > 0 then .prompt_eval_count / $pd else 0 end),
+         (if $ed > 0 then .eval_count / $ed else 0 end), (.total_duration - .load_duration) / 1e9] | @tsv'
 }
 
 # Same fields from mlx_lm.generate's summary lines, plus peak memory in GB.
 # Each call is a new process that loads the model, so wall time is derived
 # from its own rates (prefill + 256 tokens), excluding the load.
 mlx_run() {
-    mlx_lm.generate --model "$MLX_MODEL" --prompt "$(cat "$1")" --max-tokens 256 --temp 0 --seed 1 2>&1 |
-    awk '/^Prompt:/ { pt = $2; ptps = $4 }
+    local stderr_file
+    stderr_file=$(mktemp)
+    trap "rm -f '$stderr_file'" RETURN
+
+    mlx_lm.generate --model "$MLX_MODEL" --prompt "$(cat "$1")" --max-tokens 256 --temp 0 --seed 1 2>"$stderr_file" |
+    awk -v stderrfile="$stderr_file" '/^Prompt:/ { pt = $2; ptps = $4 }
         /^Generation:/ { gt = $2; gtps = $4 }
         /^Peak memory:/ { mem = $3 }
-        END { printf "%s\t%.2f\t%s\t%s\t%.2f\t%s\n", pt, pt / ptps, ptps, gtps, pt / ptps + gt / gtps, mem }'
+        END {
+            if (!pt || !ptps || !gt || !gtps || !mem) {
+                print "mlx_lm.generate: no summary line (context too large?); last stderr lines:" > "/dev/stderr"
+                linecount = 0; while ((getline line < stderrfile) > 0) saved_lines[linecount++ % 5] = line
+                start = (linecount < 5) ? 0 : linecount - 5
+                for (i = start; i < linecount; i++) print "  " saved_lines[i % 5] > "/dev/stderr"
+            } else {
+                printf "%s\t%.2f\t%s\t%s\t%.2f\t%s\n", pt, pt / ptps, ptps, gtps, pt / ptps + gt / gtps, mem
+            }
+        }'
 }
 
-# Median of each column over runs 2..N (run 1 is load/warm-up).
+# Median of each column over runs 2..N (run 1 is load/warm-up). A failed MLX
+# run prints no row, so the median covers only the runs that finished.
 median_rows() {
     tail -n +2 | awk -F'\t' '{ for (i = 1; i <= NF; i++) v[i, NR] = $i; nf = NF; n = NR }
         END { for (i = 1; i <= nf; i++) {
@@ -129,6 +144,7 @@ for k in ${SIZES//,/ }; do
         for i in $(seq "$RUNS"); do mlx_run "$(variant "$prompt" "$i")"; done > "$WORK/m-$k.tsv"
         median_rows < "$WORK/m-$k.tsv" | awk -F'\t' -v row="$ROW" -v k="${k}K" \
             '{ printf row, "mlx", k, $1, sprintf("%.1f", $2), sprintf("%.0f", $3), sprintf("%.1f", $4), sprintf("%.1f", $5), sprintf("%.1f", $6) }'
+        [ "$(wc -l < "$WORK/m-$k.tsv")" -ge 2 ] || printf "$ROW" mlx "${k}K" failed - - - - -
     fi
 done
 echo
