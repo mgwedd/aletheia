@@ -178,7 +178,7 @@ Debug builds are `dev`; Release builds are `production`. Tiers are set by Swift 
 
 ### Why native Swift
 
-A sandboxed native app can capture call audio with ScreenCaptureKit and run Whisper in-process, which keeps the privacy boundary small enough to audit. The only third-party dependency is SwiftWhisper.
+A sandboxed native app can capture call audio with ScreenCaptureKit and run Whisper in-process, which keeps the privacy boundary small enough to audit. The only third-party dependency is the official whisper.cpp XCFramework (ggml-org, pinned by checksum), which transcribes on the GPU via Metal.
 
 ---
 
