@@ -90,6 +90,8 @@ enum SessionSearch {
         let sessionsSearched: Int
         /// Other spellings each term matched (by the term's text), e.g. "micheal" for "michael".
         let matchedVariants: [String: [String]]
+        /// Every transcript passage that matched; `hits` holds only the best `maxHitsPerKind` of each kind.
+        var transcriptHitCount = 0
     }
 
     // MARK: - Terms
@@ -252,21 +254,140 @@ enum SessionSearch {
 
     // MARK: - Search
 
+    /// Hits kept per kind (transcript, notes), best first. Counts are exact over
+    /// every match; only the passages handed back are limited, which is far more
+    /// than any prompt can use and keeps a query that matches a quarter of all
+    /// lines from building a hundred thousand hits.
+    static let maxHitsPerKind = 1000
+
+    /// A stored word a term matches, as the bytes it has in the index.
+    private struct Key {
+        let bytes: [UInt8]
+        let text: String
+        let weight: Double
+    }
+
     /// How one term is matched against a stored passage.
     private enum Matcher {
-        /// Stored word -> weight (1 exact, below 1 a typo or sound-alike).
-        case words([String: Double])
+        /// Stored words by byte length (weight 1 exact, below 1 a typo or sound-alike).
+        case words([[Key]])
         /// Stored words, `SearchIndex.stopToken` standing for a stopword.
-        case phrase([String])
-        case prefix(String)
+        case phrase([[UInt8]])
+        case prefix([UInt8])
+    }
+
+    /// Reads matched passages as raw bytes: counts every match, remembers a
+    /// compact row per matching passage for ranking, and (second pass, for the
+    /// returned hits only) lists the token positions of the matches.
+    private final class Scanner {
+        let matchers: [Matcher]
+        let texts: [String]
+        private var spans: [(start: Int, end: Int)] = []
+        private(set) var variants: [String: [String]] = [:]
+        /// Match counts per document, so a document searched twice counts twice.
+        private(set) var perDoc: [Int64: (exact: [Int], similar: [Int])] = [:]
+        private var current: Int64 = -1
+        private var exact: [Int], similar: [Int]
+        /// One entry per matching passage; `tfs` holds `matchers.count` entries per row.
+        private(set) var rowDoc: [Int64] = [], rowLine: [Int32] = [], rowLength: [Int32] = [], tfs: [UInt16] = []
+        private var tf: [UInt16]
+        private var offsets: [Int] = []
+
+        init(matchers: [Matcher], texts: [String]) {
+            self.matchers = matchers
+            self.texts = texts
+            exact = Array(repeating: 0, count: matchers.count)
+            similar = exact
+            tf = Array(repeating: 0, count: matchers.count)
+        }
+
+        private func flush() {
+            guard current >= 0 else { return }
+            var entry = perDoc[current] ?? (exact: exact.map { _ in 0 }, similar: exact.map { _ in 0 })
+            for i in exact.indices { entry.exact[i] += exact[i]; entry.similar[i] += similar[i]; exact[i] = 0; similar[i] = 0 }
+            perDoc[current] = entry
+        }
+
+        func finish() { flush(); current = -1 }
+
+        func visit(doc: Int64, line: Int, text: SearchIndex.Bytes) {
+            if doc != current { flush(); current = doc }
+            scan(text, tally: true)
+            guard tf.contains(where: { $0 > 0 }) else { return }
+            rowDoc.append(doc)
+            rowLine.append(Int32(line))
+            rowLength.append(Int32(spans.count))
+            tfs.append(contentsOf: tf)
+        }
+
+        /// Token positions of every match in `text`, in order.
+        func positions(in text: SearchIndex.Bytes) -> [Int] {
+            scan(text, tally: false)
+            return offsets.sorted()
+        }
+
+        private func scan(_ text: SearchIndex.Bytes, tally: Bool) {
+            for i in tf.indices { tf[i] = 0 }
+            offsets.removeAll(keepingCapacity: true)
+            spans.removeAll(keepingCapacity: true)
+            guard let base = text.baseAddress else { return }
+            var start = 0
+            for i in 0...text.count where i == text.count || base[i] == 32 {
+                if i > start { spans.append((start, i)) }
+                start = i + 1
+            }
+            for (ti, matcher) in matchers.enumerated() {
+                switch matcher {
+                case .words(let byLength):
+                    for (at, span) in spans.enumerated() {
+                        let length = span.end - span.start
+                        guard length < byLength.count else { continue }
+                        for key in byLength[length] where memcmp(base + span.start, key.bytes, length) == 0 {
+                            tf[ti] &+= 1
+                            if tally { record(ti, key) } else { offsets.append(at) }
+                            break
+                        }
+                    }
+                case .prefix(let prefix):
+                    for (at, span) in spans.enumerated()
+                    where span.end - span.start >= prefix.count && memcmp(base + span.start, prefix, prefix.count) == 0 {
+                        tf[ti] &+= 1
+                        if tally { exact[ti] += 1 } else { offsets.append(at) }
+                    }
+                case .phrase(let pattern):
+                    var at = 0
+                    while at + pattern.count <= spans.count {
+                        let found = pattern.indices.allSatisfy { j in
+                            let span = spans[at + j]
+                            return span.end - span.start == pattern[j].count && memcmp(base + span.start, pattern[j], pattern[j].count) == 0
+                        }
+                        if found {
+                            tf[ti] &+= 1
+                            if tally { exact[ti] += 1 } else { offsets.append(at) }
+                            at += pattern.count
+                        } else {
+                            at += 1
+                        }
+                    }
+                }
+            }
+        }
+
+        private func record(_ ti: Int, _ key: Key) {
+            if key.weight >= 1 { exact[ti] += 1; return }
+            similar[ti] += 1
+            if !(variants[texts[ti]]?.contains(key.text) ?? false) { variants[texts[ti], default: []].append(key.text) }
+        }
     }
 
     /// Searches `documents` for the terms in `question`. Documents dated
     /// outside a range the question names are skipped (and not counted).
     /// Documents are stored in the persistent index the first time they are
     /// seen (keyed by session, kind and a fingerprint of their text, so only
-    /// changed text is re-indexed); candidates and ranking come from FTS5
-    /// MATCH + bm25, and the exact counts are taken from the matched passages.
+    /// changed text is re-indexed). FTS5 MATCH finds the passages; they are
+    /// counted and ranked (Okapi BM25, the formula behind FTS5's bm25()) as they
+    /// stream past, without being copied out of SQLite, and only the best
+    /// `maxHitsPerKind` of each kind are built into hits.
     static func search(
         _ documents: [Document], question: String, now: Date = Date(), calendar: Calendar = .current
     ) -> Result {
@@ -294,63 +415,83 @@ enum SessionSearch {
         let current = index
         var prepared: [Int: [SearchIndex.Passage]] = [:]
         for i in current.missing(items) { prepared[i] = SearchIndex.passages(of: items[i].text, kind: documents[inRange[i]].kind) }
-        // One retry: a database that turned out corrupt was reset, and storing the documents again refills it.
-        var found: (rows: [SearchIndex.Row], docs: [Int64: [Int]], info: [Matcher]?)?
-        for _ in 0..<2 where found == nil {
-            found = current.query(items: items, passages: prepared) { vocabulary in matchPlan(for: terms, vocabulary: vocabulary) }
-        }
-        guard let found, let matchers = found.info else { return empty(terms) }
 
+        struct Candidate { let score: Double; let date: Double; let position: Int; let doc: Int64; let line: Int }
+        var chosen: [Candidate] = []
         var exact = Array(repeating: 0, count: terms.count)
-        var similar = Array(repeating: 0, count: terms.count)
-        var variants: [String: [String]] = [:]
-        struct Candidate { let position: Int; let line: Int; let offsets: [Int]; let score: Double }
-        var candidates: [Candidate] = []
-        for row in found.rows {
-            for position in found.docs[row.doc] ?? [] {
-                var offsets: [Int] = []
-                for (ti, matcher) in matchers.enumerated() {
-                    switch matcher {
-                    case .words(let weights):
-                        for (at, token) in row.tokens.enumerated() {
-                            guard let weight = weights[token] else { continue }
-                            offsets.append(at)
-                            if weight < 1 {
-                                similar[ti] += 1
-                                if !(variants[terms[ti].text]?.contains(token) ?? false) { variants[terms[ti].text, default: []].append(token) }
-                            } else {
-                                exact[ti] += 1
-                            }
+        var similar = exact
+        var sessions = Set<String>()
+        var transcriptHitCount = 0
+        var offsetsByRow: [Int64: [Int]] = [:]
+        // One retry: a database that turned out corrupt was reset, and storing the documents again refills it.
+        var found: (docs: [Int64: [Int]], info: Scanner?)?
+        for _ in 0..<2 where found == nil {
+            chosen = []; sessions = []; transcriptHitCount = 0; offsetsByRow = [:]
+            exact = exact.map { _ in 0 }; similar = exact
+            found = current.query(
+                items: items, passages: prepared,
+                plan: { vocabulary in matchPlan(for: terms, vocabulary: vocabulary) },
+                visit: { scanner, doc, line, text in scanner.visit(doc: doc, line: line, text: text) },
+                top: { scanner, stats, docs in
+                    scanner.finish()
+                    let count = terms.count
+                    for (doc, entry) in scanner.perDoc {
+                        let copies = docs[doc]?.count ?? 0
+                        for t in 0..<count { exact[t] += entry.exact[t] * copies; similar[t] += entry.similar[t] * copies }
+                    }
+                    // Okapi BM25 as FTS5 computes it (k1 1.2, b 0.75); a term is the
+                    // group of words it matches, so a typo shares its term's weight.
+                    let rows = scanner.rowDoc.count
+                    var containing = Array(repeating: 0.0, count: count)
+                    for r in 0..<rows { for t in 0..<count where scanner.tfs[r * count + t] > 0 { containing[t] += 1 } }
+                    let total = Double(max(stats.passages, rows))
+                    let average = max(1, Double(stats.tokens) / Double(max(1, stats.passages)))
+                    let idf = containing.map { max(1e-6, log((total - $0 + 0.5) / ($0 + 0.5))) }
+                    var candidates: [Candidate] = []
+                    var lastDoc: Int64 = -1
+                    var positions: [Int] = []
+                    for r in 0..<rows {
+                        let doc = scanner.rowDoc[r]
+                        if doc != lastDoc { lastDoc = doc; positions = docs[doc] ?? [] }
+                        let norm = 1.2 * (0.25 + 0.75 * Double(scanner.rowLength[r]) / average)
+                        var score = 0.0
+                        for t in 0..<count {
+                            let f = Double(scanner.tfs[r * count + t])
+                            if f > 0 { score += idf[t] * f * 2.2 / (f + norm) }
                         }
-                    case .prefix(let prefix):
-                        for (at, token) in row.tokens.enumerated() where token.hasPrefix(prefix) { offsets.append(at); exact[ti] += 1 }
-                    case .phrase(let pattern):
-                        var at = 0
-                        while at + pattern.count <= row.tokens.count {
-                            if pattern.indices.allSatisfy({ row.tokens[at + $0] == pattern[$0] }) {
-                                offsets.append(at)
-                                exact[ti] += 1
-                                at += pattern.count
-                            } else {
-                                at += 1
-                            }
+                        for position in positions {
+                            let document = documents[inRange[position]]
+                            if document.kind == .transcript { transcriptHitCount += 1 }
+                            sessions.insert(document.tag)
+                            candidates.append(Candidate(
+                                score: score, date: document.date.timeIntervalSinceReferenceDate, position: position,
+                                doc: doc, line: Int(scanner.rowLine[r])))
                         }
                     }
-                }
-                if !offsets.isEmpty { candidates.append(Candidate(position: position, line: row.line, offsets: offsets.sorted(), score: row.score)) }
-            }
+                    // Best first; ties go to the more recent session, then the earlier line.
+                    candidates.sort { l, r in
+                        if l.score != r.score { return l.score > r.score }
+                        if l.date != r.date { return l.date > r.date }
+                        if l.position != r.position { return l.position < r.position }
+                        return l.line < r.line
+                    }
+                    var kept: [Kind: Int] = [:]
+                    for c in candidates {
+                        let kind = documents[inRange[c.position]].kind
+                        guard kept[kind, default: 0] < maxHitsPerKind else { continue }
+                        kept[kind, default: 0] += 1
+                        chosen.append(c)
+                    }
+                    var seen = Set<Int64>()
+                    return chosen.map { SearchIndex.rowid(doc: $0.doc, line: $0.line) }.filter { seen.insert($0).inserted }
+                },
+                again: { scanner, rowid, text in offsetsByRow[rowid] = scanner.positions(in: text) }
+            )
         }
-        // Best first; ties go to the more recent session, then the earlier line.
-        candidates.sort { l, r in
-            if l.score != r.score { return l.score > r.score }
-            let (ld, rd) = (documents[inRange[l.position]].date, documents[inRange[r.position]].date)
-            if ld != rd { return ld > rd }
-            if l.position != r.position { return l.position < r.position }
-            return l.line < r.line
-        }
+        guard let found, let scanner = found.info else { return empty(terms) }
 
         var lineCache: [Int: LineTable] = [:]
-        let hits = candidates.map { c -> Hit in
+        let hits = chosen.map { c -> Hit in
             let d = inRange[c.position]
             let doc = documents[d]
             let lines = lineCache[d] ?? LineTable(doc.text)
@@ -369,15 +510,16 @@ enum SessionSearch {
             return Hit(
                 documentIndex: d, date: doc.date, tag: doc.tag, kind: doc.kind, seconds: seconds,
                 lineIndex: i, line: lines[i], context: context, contextStart: start, score: c.score,
-                sessionID: doc.session, tokenOffsets: c.offsets
+                sessionID: doc.session, tokenOffsets: offsetsByRow[SearchIndex.rowid(doc: c.doc, line: c.line)] ?? []
             )
         }
         return Result(
             terms: terms, dateRange: range, hits: hits,
             totalMentions: exact.reduce(0, +) + similar.reduce(0, +), similarMentions: similar.reduce(0, +),
             termCounts: terms.indices.map { TermCount(term: terms[$0], exact: exact[$0], similar: similar[$0]) },
-            sessionsWithHits: Set(hits.map(\.tag)).count, sessionsSearched: sessionsSearched,
-            matchedVariants: variants.mapValues { Array($0.sorted().prefix(5)) }
+            sessionsWithHits: sessions.count, sessionsSearched: sessionsSearched,
+            matchedVariants: scanner.variants.mapValues { Array($0.sorted().prefix(5)) },
+            transcriptHitCount: transcriptHitCount
         )
     }
 
@@ -387,14 +529,23 @@ enum SessionSearch {
     /// the distinct stored words, which is what keeps this cheap). Names are
     /// not stemmed; they match the stored stem of their own spelling ("Jane"
     /// finds "jan") or a one-letter variant of it.
-    private static func matchPlan(for terms: [Term], vocabulary: () -> [String]) -> (match: String, info: [Matcher])? {
+    private static func matchPlan(for terms: [Term], vocabulary: () -> [String]) -> (match: String, info: Scanner)? {
         var clauses: [String] = []
         var matchers: [Matcher] = []
         var words: [String]?
+        func wordMatcher(_ weights: [String: Double]) -> Matcher {
+            var byLength: [[Key]] = []
+            for (text, weight) in weights {
+                let bytes = Array(text.utf8)
+                while byLength.count <= bytes.count { byLength.append([]) }
+                byLength[bytes.count].append(Key(bytes: bytes, text: text, weight: weight))
+            }
+            return .words(byLength)
+        }
         for term in terms {
             if term.prefix {
                 let prefix = SearchIndex.ftsToken(term.words[0])
-                matchers.append(.prefix(prefix))
+                matchers.append(.prefix(Array(prefix.utf8)))
                 clauses.append("\"\(prefix)\" *")
                 continue
             }
@@ -403,7 +554,7 @@ enum SessionSearch {
                 while pattern.first == SearchIndex.stopToken { pattern.removeFirst() }
                 while pattern.last == SearchIndex.stopToken { pattern.removeLast() }
                 if !pattern.isEmpty {
-                    matchers.append(.phrase(pattern))
+                    matchers.append(.phrase(pattern.map { Array($0.utf8) }))
                     clauses.append("\"\(pattern.joined(separator: " "))\"")
                     continue
                 }
@@ -419,10 +570,10 @@ enum SessionSearch {
                     if let weight = matchWeight(token: key, term: target, isName: term.isName) { weights[key] = weight }
                 }
             }
-            matchers.append(.words(weights))
+            matchers.append(wordMatcher(weights))
             clauses.append(weights.keys.sorted().map { "\"\($0)\"" }.joined(separator: " OR "))
         }
-        return clauses.isEmpty ? nil : (clauses.joined(separator: " OR "), matchers)
+        return clauses.isEmpty ? nil : (clauses.joined(separator: " OR "), Scanner(matchers: matchers, texts: terms.map(\.text)))
     }
 
     /// Conservative English stemmer in the spirit of Lucene's minimal stemmers:

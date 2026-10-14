@@ -96,7 +96,7 @@ enum PatientContextRetriever {
         if totalChars <= characterBudget {
             return Selection(
                 excerpts: wholeExcerpts(usable, budget: characterBudget, labels: labels).excerpts,
-                hitsShown: transcriptHits.count, whole: true, fullTexts: true,
+                hitsShown: search.transcriptHitCount, whole: true, fullTexts: true,
                 wholeCount: usable.count, totalCount: usable.count
             )
         }

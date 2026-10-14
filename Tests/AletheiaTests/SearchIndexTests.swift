@@ -208,4 +208,14 @@ final class SearchIndexTests: XCTestCase {
         XCTAssertEqual(wrong, 0)
         XCTAssertEqual(index.counts().docs, 1, "one version is stored for the session")
     }
+
+    func testHitsAreCappedButCountsStayExact() {
+        let lines = (0..<(SessionSearch.maxHitsPerKind + 250)).map { "[00:\(String(format: "%02d", $0 % 60))] A: Dana called \($0)." }
+        let result = search([doc(lines.joined(separator: "\n"), session: UUID())], "Dana")
+        XCTAssertEqual(result.totalMentions, SessionSearch.maxHitsPerKind + 250)
+        XCTAssertEqual(result.hits.count, SessionSearch.maxHitsPerKind)
+        XCTAssertEqual(result.transcriptHitCount, SessionSearch.maxHitsPerKind + 250)
+        XCTAssertEqual(result.sessionsWithHits, 1)
+        XCTAssertFalse(result.hits[0].tokenOffsets.isEmpty, "offsets are filled for the hits that are returned")
+    }
 }

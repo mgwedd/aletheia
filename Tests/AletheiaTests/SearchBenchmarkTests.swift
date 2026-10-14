@@ -3,8 +3,9 @@ import XCTest
 
 /// 500 generated sessions of about 10,000 words, with invented names. Slow, so
 /// it only runs when ALETHEIA_BENCH is set (xcodebuild: TEST_RUNNER_ALETHEIA_BENCH=1).
-/// Uses only `SessionSearch.search`, so the same file measures the previous
-/// in-memory implementation on an older commit.
+/// Runs against a file-backed index. "cold" is the first run of each query
+/// after `closeIndex()` (connection and SQLite page cache gone, as after a lock;
+/// the OS file cache is still warm), "warm" the next run.
 final class SearchBenchmarkTests: XCTestCase {
     func testFiveHundredSessionsOfTenThousandWords() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["ALETHEIA_BENCH"] != nil, "set ALETHEIA_BENCH to run")
@@ -35,15 +36,27 @@ final class SearchBenchmarkTests: XCTestCase {
             work()
             return Date().timeIntervalSince(start) * 1000
         }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("bench-\(UUID().uuidString)/search.sqlite")
+        let saved = SessionSearch.index
+        SessionSearch.index = SearchIndex(url: file)
+        defer {
+            SessionSearch.index = saved
+            try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
+        }
         var result: SessionSearch.Result?
         let cold = time { result = SessionSearch.search(docs, question: "Vasha sleep") }
-        var warm: [Double] = []
-        for q in ["Vasha sleep", "\"quiet kitchen\"", "Tarquin work", "Isolde", "worr*", "Marenka garden evening"] {
-            warm.append(time { _ = SessionSearch.search(docs, question: q) })
+        var warm: [Double] = [], afterClose: [Double] = []
+        let queries = ["Vasha sleep", "\"quiet kitchen\"", "Tarquin work", "Isolde", "worr*", "Marenka garden evening"]
+        for q in queries { _ = SessionSearch.search(docs, question: q) }
+        for q in queries { warm.append(time { _ = SessionSearch.search(docs, question: q) }) }
+        for q in queries {
+            SessionSearch.closeIndex()
+            afterClose.append(time { _ = SessionSearch.search(docs, question: q) })
         }
-        print(String(format: "BENCH sessions=500 words=%d cold(index build + first query)=%.0f ms warm queries(ms)=%@ hits=%d mentions=%d",
-                     500 * 10_000, cold, warm.map { String(format: "%.0f", $0) }.joined(separator: "/"),
-                     result?.hits.count ?? 0, result?.totalMentions ?? 0))
+        func list(_ v: [Double]) -> String { v.map { String(format: "%.0f", $0) }.joined(separator: "/") }
+        print(String(format: "BENCH sessions=500 words=%d build+first query=%.0f ms warm(ms)=%@ after close(ms)=%@ hits=%d of %d mentions=%d",
+                     500 * 10_000, cold, list(warm), list(afterClose),
+                     result?.hits.count ?? 0, result?.transcriptHitCount ?? 0, result?.totalMentions ?? 0))
         XCTAssertEqual(result?.sessionsSearched, 500)
     }
 }

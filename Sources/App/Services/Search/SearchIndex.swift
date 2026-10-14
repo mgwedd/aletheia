@@ -33,7 +33,7 @@ import SQLite3
 /// it, so a search can run while another thread is indexing.
 final class SearchIndex {
     static let stopToken = "qzstop"
-    private static let schemaVersion: Int32 = 1
+    private static let schemaVersion: Int32 = 2
     private static let lineBits: Int64 = 24
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -52,19 +52,21 @@ final class SearchIndex {
         let text: String
     }
 
-    struct Row {
-        let doc: Int64
-        let line: Int
-        let tokens: [String]
-        /// Higher is better (negated FTS5 bm25).
-        let score: Double
+    /// Size of the searched documents, for ranking.
+    struct Stats {
+        let passages: Int
+        let tokens: Int
     }
+
+    /// One stored passage: its row id, and the text as UTF-8 words separated by single spaces.
+    typealias Bytes = UnsafeBufferPointer<UInt8>
 
     /// nil file = in memory (tests, and before a data folder is chosen).
     let url: URL?
     private let lock = NSLock()
     private var db: OpaquePointer?
     private var corrupt = false
+    private var verified = false
     private let worker = DispatchQueue(label: "aletheia.search-index", qos: .utility)
 
     init(url: URL? = nil) { self.url = url }
@@ -93,8 +95,28 @@ final class SearchIndex {
 
     /// Stable key for a document's text. The length keeps texts that differ
     /// only in leading whitespace (which shifts line numbers) apart.
+    /// Two 64-bit multiplicative hashes over the bytes, eight at a time (a
+    /// cryptographic hash of every transcript on every search cost more than the
+    /// query). It only has to tell edited text from unedited text.
     static func fingerprint(of text: String) -> String {
-        "\(text.utf8.count)-" + NoteFreshness.fingerprint(of: text)
+        var text = text
+        let (a, b) = text.withUTF8 { bytes -> (UInt64, UInt64) in
+            var h1: UInt64 = 0x9E37_79B9_7F4A_7C15, h2: UInt64 = 0xC2B2_AE3D_27D4_EB4F
+            var i = 0
+            while i + 8 <= bytes.count {
+                let w = UnsafeRawPointer(bytes.baseAddress! + i).loadUnaligned(as: UInt64.self)
+                h1 = (h1 ^ w) &* 0x0000_0100_0000_01B3 &+ (h1 >> 29)
+                h2 = ((h2 &+ w) &* 0xFF51_AFD7_ED55_8CCD) ^ (h2 >> 31)
+                i += 8
+            }
+            while i < bytes.count {
+                h1 = (h1 ^ UInt64(bytes[i])) &* 0x0000_0100_0000_01B3
+                h2 = (h2 &+ UInt64(bytes[i])) &* 0xFF51_AFD7_ED55_8CCD
+                i += 1
+            }
+            return (h1, h2)
+        }
+        return "\(text.utf8.count)-" + String(a, radix: 16) + String(b, radix: 16)
     }
 
     /// The FTS form of a stem: letters and digits only, so FTS5's tokenizer and
@@ -149,12 +171,19 @@ final class SearchIndex {
     /// Makes sure every item is stored, drops older versions of the same
     /// (session, kind), then runs one MATCH over just these documents.
     /// `plan` turns the vocabulary into the MATCH string plus whatever the
-    /// caller needs to read the rows (nil: nothing can match). Returns nil if
-    /// the database failed and was reset; the caller may retry once.
+    /// caller needs to read the rows (nil: nothing can match). `visit` sees every
+    /// matching passage as raw bytes (nothing is copied or decoded, so a query
+    /// that matches a quarter of all lines stays cheap); `top` then names the
+    /// passages the caller wants again, and `again` gets just those. All three
+    /// run inside the lock. Returns nil if the database failed and was reset;
+    /// the caller may retry once.
     func query<Info>(
         items: [Item], passages: [Int: [Passage]],
-        plan: (_ vocabulary: () -> [String]) -> (match: String, info: Info)?
-    ) -> (rows: [Row], docs: [Int64: [Int]], info: Info?)? {
+        plan: (_ vocabulary: () -> [String]) -> (match: String, info: Info)?,
+        visit: (Info, _ doc: Int64, _ line: Int, Bytes) -> Void,
+        top: (Info, Stats, _ docs: [Int64: [Int]]) -> [Int64],
+        again: (Info, _ rowid: Int64, Bytes) -> Void
+    ) -> (docs: [Int64: [Int]], info: Info?)? {
         lock.lock()
         defer { lock.unlock() }
         guard let db = open() else { return nil }
@@ -178,7 +207,7 @@ final class SearchIndex {
             self.each(db, "SELECT term FROM word") { words.append(Self.text($0, 0)) }
             return words
         }
-        guard let planned = plan(vocabulary) else { return settle() ? ([], docs, nil) : nil }
+        guard let planned = plan(vocabulary) else { return settle() ? (docs, nil) : nil }
 
         exec(db, "CREATE TEMP TABLE IF NOT EXISTS want(id INTEGER PRIMARY KEY)")
         exec(db, "DELETE FROM want")
@@ -190,20 +219,31 @@ final class SearchIndex {
             }
             sqlite3_finalize(insert)
         }
-        var rows: [Row] = []
+        var stats = Stats(passages: 0, tokens: 0)
+        each(db, "SELECT sum(lines), sum(tokens) FROM doc WHERE id IN (SELECT id FROM want)") {
+            stats = Stats(passages: Int(sqlite3_column_int64($0, 0)), tokens: Int(sqlite3_column_int64($0, 1)))
+        }
+        func bytes(_ stmt: OpaquePointer, _ column: Int32) -> Bytes {
+            Bytes(start: sqlite3_column_text(stmt, column), count: Int(sqlite3_column_bytes(stmt, column)))
+        }
         each(
             db,
-            "SELECT rowid, text, bm25(passage) FROM passage WHERE passage MATCH ?1 AND (rowid >> \(Self.lineBits)) IN (SELECT id FROM want)",
+            "SELECT rowid, text FROM passage WHERE passage MATCH ?1 AND (rowid >> \(Self.lineBits)) IN (SELECT id FROM want)",
             binds: [.text(planned.match)]
         ) { stmt in
             let rowid = sqlite3_column_int64(stmt, 0)
-            rows.append(Row(
-                doc: rowid >> Self.lineBits, line: Int(rowid & ((1 << Self.lineBits) - 1)),
-                tokens: Self.text(stmt, 1).split(separator: " ").map(String.init),
-                score: -sqlite3_column_double(stmt, 2)
-            ))
+            visit(planned.info, rowid >> Self.lineBits, Int(rowid & ((1 << Self.lineBits) - 1)), bytes(stmt, 1))
         }
-        return settle() ? (rows, docs, planned.info) : nil
+        let wanted = top(planned.info, stats, docs)
+        if !wanted.isEmpty, let stmt = prepare(db, "SELECT text FROM passage WHERE rowid = ?1") {
+            for rowid in wanted {
+                sqlite3_bind_int64(stmt, 1, rowid)
+                if sqlite3_step(stmt) == SQLITE_ROW { again(planned.info, rowid, bytes(stmt, 0)) }
+                sqlite3_reset(stmt)
+            }
+            sqlite3_finalize(stmt)
+        }
+        return settle() ? (docs, planned.info) : nil
     }
 
     private func kindOf(_ item: Item) -> SessionSearch.Kind { SessionSearch.Kind(rawValue: item.kind) ?? .transcript }
@@ -316,13 +356,16 @@ final class SearchIndex {
         exec(db, "PRAGMA secure_delete = ON")
         exec(db, "PRAGMA synchronous = OFF")   // a cache: a crash is repaired by the rebuild below
         exec(db, "PRAGMA temp_store = MEMORY")
+        exec(db, "PRAGMA mmap_size = 268435456")   // reads come straight from the file's pages, no copy
+        exec(db, "PRAGMA cache_size = -65536")
         var version: Int32 = 0
         each(db, "PRAGMA user_version") { version = sqlite3_column_int($0, 0) }
         var ok = version == 0 || version == Self.schemaVersion
         ok = ok && exec(db, """
             CREATE TABLE IF NOT EXISTS doc(
                 id INTEGER PRIMARY KEY, patient TEXT, session TEXT NOT NULL, kind TEXT NOT NULL,
-                date REAL NOT NULL, fp TEXT NOT NULL, UNIQUE(session, kind, fp));
+                date REAL NOT NULL, fp TEXT NOT NULL, lines INTEGER NOT NULL, tokens INTEGER NOT NULL,
+                UNIQUE(session, kind, fp));
             CREATE TABLE IF NOT EXISTS session(id TEXT PRIMARY KEY, patient TEXT, stamp TEXT);
             CREATE VIRTUAL TABLE IF NOT EXISTS passage USING fts5(
                 line UNINDEXED, text, tokenize = 'unicode61 remove_diacritics 0');
@@ -331,7 +374,8 @@ final class SearchIndex {
             """)
         // Touch each table so a damaged file fails here, not mid-search.
         ok = ok && exec(db, "SELECT count(*) FROM doc; SELECT count(*) FROM session; SELECT 1 FROM word LIMIT 1; SELECT 1 FROM passage LIMIT 1;")
-        ok = ok && exec(db, "INSERT INTO passage(passage) VALUES('integrity-check')")
+        // Walks the whole index (a few hundred ms for a large one), so once per launch, not on every reopen after a lock.
+        if ok, !verified { ok = exec(db, "INSERT INTO passage(passage) VALUES('integrity-check')"); verified = ok }
         guard ok, !corrupt else {
             sqlite3_close(db)
             corrupt = false
@@ -353,6 +397,7 @@ final class SearchIndex {
     private func settle() -> Bool {
         guard corrupt else { return true }
         corrupt = false
+        verified = false
         sqlite3_close(db)
         db = nil
         if let url { Self.removeFiles(url) }
@@ -431,14 +476,15 @@ final class SearchIndex {
     /// The document's id, inserting it and its passages if new. nil on failure.
     private func store(_ db: OpaquePointer, _ item: Item, _ passages: @autoclosure () -> [Passage]) -> Int64? {
         if let id = docID(db, item) { return id }
-        guard run(db, "INSERT INTO doc(patient, session, kind, date, fp) VALUES(?1, ?2, ?3, ?4, ?5)",
+        let rows = passages()
+        let tokens = rows.reduce(0) { sum, p in sum + p.text.utf8.reduce(1) { $0 + ($1 == 32 ? 1 : 0) } }
+        guard run(db, "INSERT INTO doc(patient, session, kind, date, fp, lines, tokens) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                   binds: [item.patient.map { .text($0) } ?? .null, .text(item.session), .text(item.kind),
-                          .double(item.date), .text(item.fingerprint)]) else { return nil }
+                          .double(item.date), .text(item.fingerprint), .int(Int64(rows.count)), .int(Int64(tokens))]) else { return nil }
         let id = sqlite3_last_insert_rowid(db)
         guard let insert = prepare(db, "INSERT INTO passage(rowid, line, text) VALUES(?1, ?2, ?3)") else { return nil }
         defer { sqlite3_finalize(insert) }
         var words = Set<Substring>()
-        let rows = passages()
         for p in rows {
             words.formUnion(p.text.split(separator: " "))
             sqlite3_bind_int64(insert, 1, Self.rowid(doc: id, line: p.line))
