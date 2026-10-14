@@ -290,6 +290,10 @@ final class OllamaClient: Assistant {
     /// pin ~5 GB forever. Locking the app unloads it at once (`unloadLoaded`).
     static let keepAlive = "30m"
 
+    /// Extra request options (`seed`, `temperature`); empty in the app. Only the
+    /// Debug eval harness (`HarnessEval`) sets it, for reproducible runs.
+    nonisolated(unsafe) static var extraOptions: [String: Any] = [:]
+
     /// The `/api/generate` request. `num_ctx` is always this Mac's budget, never
     /// sized to the prompt: a different `num_ctx` makes Ollama reload the model
     /// (a multi-second stall) and drops its prompt-prefix cache. The default
@@ -299,12 +303,14 @@ final class OllamaClient: Assistant {
         model: String, system: String, prompt: String, stream: Bool,
         task: AITask = .chat, contextTokens: Int = ContextBudget.current.tokens
     ) -> [String: Any] {
+        var options: [String: Any] = ["num_ctx": contextTokens, "temperature": task.temperature]
+        options.merge(extraOptions) { _, extra in extra }
         var body: [String: Any] = [
             "model": model,
             "prompt": prompt,
             "stream": stream,
             "keep_alive": keepAlive,
-            "options": ["num_ctx": contextTokens, "temperature": task.temperature],
+            "options": options,
         ]
         if !system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             body["system"] = system
