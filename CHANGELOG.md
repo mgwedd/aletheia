@@ -9,6 +9,17 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.44.0] - 2026-10-14
+
+### Added
+- offer Llama 3.1 8B and Gemma 4 E2B with pinned checksums (#311)
+- link llama.cpp b11149 xcframework and compile the embedded engine (#310)
+- persistent SQLite FTS5 index replaces the in-memory search cache (#304)
+
+### Fixed
+- don't abort when mlx_lm prints no summary (#309)
+- review fixes for long-session notes; risk phrases are user settings (#306)
+
 ## [2.43.2] - 2026-10-14
 
 ### Fixed
