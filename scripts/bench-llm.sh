@@ -103,7 +103,6 @@ mlx_run() {
         /^Peak memory:/ { mem = $3 }
         END {
             if (!pt || !ptps || !gt || !gtps || !mem) {
-                printf "-\t-\t-\t-\t-\t-\n"
                 print "mlx_lm.generate: no summary line (context too large?); last stderr lines:" > "/dev/stderr"
                 linecount = 0; while ((getline line < stderrfile) > 0) saved_lines[linecount++ % 5] = line
                 start = (linecount < 5) ? 0 : linecount - 5
@@ -114,7 +113,8 @@ mlx_run() {
         }'
 }
 
-# Median of each column over runs 2..N (run 1 is load/warm-up).
+# Median of each column over runs 2..N (run 1 is load/warm-up). A failed MLX
+# run prints no row, so the median covers only the runs that finished.
 median_rows() {
     tail -n +2 | awk -F'\t' '{ for (i = 1; i <= NF; i++) v[i, NR] = $i; nf = NF; n = NR }
         END { for (i = 1; i <= nf; i++) {
@@ -144,6 +144,7 @@ for k in ${SIZES//,/ }; do
         for i in $(seq "$RUNS"); do mlx_run "$(variant "$prompt" "$i")"; done > "$WORK/m-$k.tsv"
         median_rows < "$WORK/m-$k.tsv" | awk -F'\t' -v row="$ROW" -v k="${k}K" \
             '{ printf row, "mlx", k, $1, sprintf("%.1f", $2), sprintf("%.0f", $3), sprintf("%.1f", $4), sprintf("%.1f", $5), sprintf("%.1f", $6) }'
+        [ "$(wc -l < "$WORK/m-$k.tsv")" -ge 2 ] || printf "$ROW" mlx "${k}K" failed - - - - -
     fi
 done
 echo
