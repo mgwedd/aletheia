@@ -102,15 +102,8 @@ final class OllamaClient: Assistant {
         // timeout, so give it plenty of headroom rather than failing a slow
         // (but working) local generation.
         request.timeoutInterval = 600
-        var body: [String: Any] = [
-            "model": model,
-            "prompt": prompt,
-            "stream": false,
-        ]
-        if !system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            body["system"] = system
-        }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: Self.generateBody(model: model, system: system, prompt: prompt, stream: false))
 
         let (data, response) = try await mappingConnectionErrors { try await session.data(for: request) }
         guard let http = response as? HTTPURLResponse else { throw OllamaError.notReachable }
@@ -133,11 +126,8 @@ final class OllamaClient: Assistant {
                     request.httpMethod = "POST"
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.timeoutInterval = 600
-                    var body: [String: Any] = ["model": model, "prompt": prompt, "stream": true]
-                    if !system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        body["system"] = system
-                    }
-                    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                    request.httpBody = try JSONSerialization.data(
+                        withJSONObject: Self.generateBody(model: model, system: system, prompt: prompt, stream: true))
 
                     let (bytes, response) = try await mappingConnectionErrors { try await session.bytes(for: request) }
                     guard let http = response as? HTTPURLResponse else { throw OllamaError.notReachable }
@@ -160,6 +150,34 @@ final class OllamaClient: Assistant {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// The `/api/generate` request. `num_ctx` is sized to the prompt: Ollama's
+    /// default window (4096 tokens unless the user changed it) silently drops
+    /// the start of anything longer, so a long session's note would be written
+    /// from its last few minutes, without the instructions.
+    static func generateBody(model: String, system: String, prompt: String, stream: Bool) -> [String: Any] {
+        var body: [String: Any] = [
+            "model": model,
+            "prompt": prompt,
+            "stream": stream,
+            "options": ["num_ctx": contextSize(forCharacters: system.count + prompt.count)],
+        ]
+        if !system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["system"] = system
+        }
+        return body
+    }
+
+    /// Tokens to reserve: the prompt (English runs about 4 characters a token;
+    /// 3 leaves margin) plus room for the reply, rounded up to a power of two so
+    /// similar requests share a size and Ollama doesn't reload the model for
+    /// each. 8K floor, 128K cap (the Llama 3 models' limit).
+    static func contextSize(forCharacters characters: Int) -> Int {
+        let needed = characters / 3 + 2048
+        var size = 8192
+        while size < needed && size < 131_072 { size *= 2 }
+        return size
     }
 
     /// Parses one NDJSON line from `/api/generate` streaming into its text delta
