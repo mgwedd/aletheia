@@ -9,6 +9,17 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.42.0] - 2026-10-14
+
+### Added
+- in-memory search and honest coverage for all-session chat (#290)
+
+### Fixed
+- stable num_ctx, keep_alive, warm-up and unload, low temperature (#296)
+- plainer coverage wording, one unreadable notice, spinner on searching (#295)
+- don't refill the cache from a search that spans a lock (#293)
+- follow-ups to digests and context budget (#287, #288) (#291)
+
 ## [2.41.0] - 2026-10-14
 
 ### Added
