@@ -16,9 +16,17 @@ final class Integrations: ObservableObject {
     /// Serializes every LLM generation (notes and both chats) so a new request
     /// waits for the running one instead of hanging behind it in the model.
     let inferenceQueue = InferenceQueue()
+    /// Builds session digests in the background, at low priority on the queue.
+    let digests: DigestBuilder
 
     init(settings: AppSettings) {
         self.settings = settings
+        self.digests = DigestBuilder(queue: inferenceQueue)
+    }
+
+    /// Starts a background digest for the session unless a current one exists.
+    func buildDigest(for patient: Patient, session: SessionRecord, transcript: String, store: Store) {
+        digests.ensureDigest(for: patient, session: session, transcript: transcript, store: store, service: makeAssistantService())
     }
 
     /// Speech-to-text: whisper.cpp with Metal (see `WhisperTranscriber`).
