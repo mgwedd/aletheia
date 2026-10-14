@@ -240,8 +240,8 @@ final class SessionSearchTests: XCTestCase {
     // MARK: - Performance
 
     /// ~50 sessions of ~60k characters. The first search indexes them (cold);
-    /// later searches find them already stored (warm).
-    func testFiftyLongSessionsSearchQuickly() {
+    /// later searches find them already stored (warm). Timings: PRBenchmarkTests.
+    func testFiftyLongSessionsAreAllSearched() {
         let words = ["weather", "errands", "sleep", "mother", "garden", "work", "walk", "dinner", "tired", "weekend", "friends", "plans"]
         var generator = SystemRandomNumberGenerator()
         var docs: [SessionSearch.Document] = []
@@ -260,20 +260,12 @@ final class SessionSearchTests: XCTestCase {
             docs.append(doc(lines.joined(separator: "\n"), 2026, 1 + s / 28, 1 + s % 28, tag: "S\(s + 1)"))
         }
 
-        let cold = Date()
         let first = search(docs, "Michael sleep")
-        let coldSeconds = Date().timeIntervalSince(cold)
-        let warm = Date()
         let second = search(docs, "Michael garden")
-        let warmSeconds = Date().timeIntervalSince(warm)
-        print(String(format: "SessionSearch: cold (50 index builds + query) %.3fs = %.1f ms per 60k-char transcript; warm query %.3fs",
-                     coldSeconds, coldSeconds / 50 * 1000, warmSeconds))
 
         XCTAssertEqual(first.sessionsSearched, 50)
         XCTAssertEqual(second.sessionsSearched, 50)
         XCTAssertGreaterThanOrEqual(second.hits.count, 8)
-        XCTAssertLessThan(coldSeconds, 5, "generous bound; see the printed timing")
-        XCTAssertLessThan(warmSeconds, 3, "generous bound: shared CI runners take ~1.1s; see the printed timing")
     }
 
     // MARK: - Fixes from review
