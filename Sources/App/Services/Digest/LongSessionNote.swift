@@ -93,21 +93,28 @@ enum LongSessionNote {
                             room = total - reserve
                         }
                     }
-                    // Risk lines get their room first; the digest shrinks to fit what is left.
+                    // Risk lines get their room first (every flagged line, then neighbours from
+                    // `riskLimit`); the digest shrinks, or goes, to fit what is left.
                     let riskLimit = min(riskReserve, room / 3)
-                    let (digestBlock, shortened) = fit(Prompts.longSessionDigest(digest.sessionDigest), to: room - riskLimit)
-                    let digestText = digestBlock
                     let transcriptCopy = transcript
+                    let flaggedCost = await offMain { riskCost(in: transcriptCopy) }
+                    try Task.checkCancellation()
+                    let (digestText, cut) = fit(
+                        Prompts.longSessionDigest(digest.sessionDigest), to: room - min(flaggedCost, room * 2 / 3) - riskLimit)
+                    let omitted = cut && digestText.isEmpty
+                    let shortened = cut && !omitted
                     let limit = room - digestText.count
-                    let found = await Task.detached {
+                    let found = await offMain {
                         passages(in: transcriptCopy, format: format, limit: limit, riskLimit: riskLimit)
-                    }.value
+                    }
+                    try Task.checkCancellation()
                     let material = Prompts.longSessionMaterial(digest: digestText, passages: found.text)
                     let totalLines = nonBlankLines(transcript).count
                     @MainActor func label(_ check: CheckOutcome?) -> String {
                         coverageLabel(
-                            digestParts: digest.sections.count, digestShortened: shortened, passageLines: found.lineCount,
-                            totalLines: totalLines, effort: effort, check: check)
+                            digestParts: digest.sections.count, digestShortened: shortened, digestOmitted: omitted,
+                            passageLines: found.lineCount, totalLines: totalLines, effort: effort,
+                            droppedRisk: found.droppedRisk, check: check)
                     }
                     coverage(label(plannedCheck))
 
@@ -165,13 +172,44 @@ enum LongSessionNote {
         }
     }
 
-    /// A corrected note is taken only if it is at least 60% as long as the draft
-    /// and keeps every section heading the draft had.
-    static func plausiblyComplete(_ corrected: String, draft: String, format: ProgressNoteFormat) -> Bool {
+    /// A corrected note is taken only if it is at least 60% as long as the draft,
+    /// keeps every section heading line the draft had, keeps every risk term the
+    /// draft had (including "denies SI"), and adds no risk negation of its own.
+    nonisolated static func plausiblyComplete(_ corrected: String, draft: String, format: ProgressNoteFormat) -> Bool {
         guard corrected.count * 10 >= draft.count * 6 else { return false }
-        return format.sections.map(\.heading).allSatisfy { heading in
-            !draft.localizedCaseInsensitiveContains(heading) || corrected.localizedCaseInsensitiveContains(heading)
+        guard headingLines(draft, format).isSubset(of: headingLines(corrected, format)) else { return false }
+        let after = riskTerms(corrected)
+        for (term, count) in riskTerms(draft) where (after[term] ?? 0) < count { return false }
+        return negatedRiskCount(corrected) <= negatedRiskCount(draft)
+    }
+
+    /// Which of the format's headings stand on a line of their own in `text`.
+    private nonisolated static func headingLines(_ text: String, _ format: ProgressNoteFormat) -> Set<String> {
+        let wanted = Set(format.sections.map { $0.heading.lowercased() })
+        let marks = CharacterSet(charactersIn: "#*_: \t")
+        return Set(text.split(separator: "\n").map { $0.trimmingCharacters(in: marks).lowercased() }.filter(wanted.contains))
+    }
+
+    /// Each strong risk phrase in `text` (tiers 1 and 2), lowercased, with how often it appears.
+    private nonisolated static func riskTerms(_ text: String) -> [String: Int] {
+        var counts: [String: Int] = [:]
+        for regex in riskRegexes().prefix(2) {
+            for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+                guard let range = Range(match.range, in: text) else { continue }
+                counts[normalised(String(text[range])), default: 0] += 1
+            }
         }
+        return counts
+    }
+
+    private nonisolated static func negatedRiskCount(_ text: String) -> Int {
+        guard let regex = try? NSRegularExpression(pattern: negatedRiskPattern, options: [.caseInsensitive]) else { return 0 }
+        return regex.numberOfMatches(in: text, range: NSRange(text.startIndex..., in: text))
+    }
+
+    private nonisolated static func normalised(_ text: String) -> String {
+        text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     /// The stored digest if current, else one built now. A background build for
@@ -194,6 +232,12 @@ enum LongSessionNote {
         return built
     }
 
+    /// Runs `work` off the main actor; cancelling the caller cancels it too.
+    private static func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
+        let task = Task.detached(operation: work)
+        return await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+    }
+
     private final class StatsBox: @unchecked Sendable {
         var value: AIRunStats?
     }
@@ -214,16 +258,67 @@ enum LongSessionNote {
 
     // MARK: - Passages
 
-    /// Lines that mention risk, most specific first: explicit statements (ending
-    /// it, wanting to die, hurting someone), then single words that can mean
-    /// risk (pills, gun, worthless), then weaker context (plan, alcohol). Lines
-    /// are matched on their own words, not through the search index, so
-    /// paraphrases like "I don't want to be here anymore" are found.
+    /// Lines that mention risk, most specific first: explicit statements and
+    /// violence (ending it, not wanting to be here, hurting someone, being hit,
+    /// SI/HI), then single words that can mean risk (pills, gun, worthless,
+    /// stopping medication), then weaker context (plan, alcohol). Lines are
+    /// matched on their own words, not through the search index, so paraphrases
+    /// are found. Case-insensitive except SI/HI/SH/SA/OD. A negation like
+    /// "don't" has no word boundary before "n't", so those alternatives carry
+    /// their own anchors.
     private nonisolated static let riskPatterns = [
-        #"\b(suicid\w*|homicid\w*|kill(ing)? (my ?self|him ?self|her ?self|them ?selves|someone|somebody|you|him|her|them)|(hurt|hurting|harm|harming) (my ?self|someone|somebody|others|him|her|them)|(end|ending|ended) (it|my life|things|everything)|take my (own )?life|(want|wanted|wish)\w* (to )?(die|be dead|disappear)|wish i (was|were) (dead|gone)|better off without me|(not|n't) (want|wanna) (to )?(be here|go on|live)|be here any ?more|no (reason|point) (to|in) (live|living)|(thinking|thought|thoughts) (of|about) (dying|death|ending))\b"#,
-        #"\b(die|dying|died|dead|death|overdos\w*|pills|gun|guns|weapon\w*|knife|cut(ting)?|cuts|worthless|hopeless|burden|abus\w*|unsafe|self.?harm|(?-i:OD))\b"#,
-        #"\b(plan|intent|intend\w*|safe|safety|drink\w*|drunk|alcohol|drugs?|high)\b"#,
+        #"\b(?:suicid\w*|homicid\w*|kill(?:ing|ed)? (?:my ?self|him ?self|her ?self|them ?selves|someone|somebody|you|him|her|them)|(?:hurt|harm|hit|beat|slap|kick)(?:s|ting|ing|ped)? (?:my ?self|someone|somebody|others|him|her|them|(?:my|our|the|his|her|their) (?:kids?|child(?:ren)?|baby|son|daughter|wife|husband|partner))|(?:hit|beat|slap|kick)(?:s|ting|ing|ped)? (?:me|my|up)|(?:end|ending|ended) (?:it|my life|things|everything)|take my (?:own )?life|(?:want|wanted|wish)\w* (?:to )?(?:die|be dead|disappear)|wish i (?:was|were) (?:dead|gone)|wish i (?:wouldn['\u2019]t|would not|didn['\u2019]t|did not) (?:wake|exist)|better off without me|be here any ?more|no (?:reason|point) (?:to|in) (?:live|living|go on|going on|keep going|keep living|continue)|(?:thinking|thought|thoughts) (?:of|about) (?:dying|death|ending)|jump(?:ing)? (?:off|from)|shoot(?:s|ing)?|stab(?:s|bing|bed)?|chok\w*|strangl\w*|punch\w*|rap(?:e|ed|es|ing)|molest\w*|assault\w*|threat\w*)\b|\b(?:can['\u2019]t|cannot|can not) (?:go on|do this any ?more|take (?:it|this) any ?more|keep going|keep doing this|carry on)|\b(?:scared|afraid|frightened|terrified) (?:to go home|of (?:him|her|them|my \w+))|(?-i:\b(?:SI|HI|SH|SA)\b)|(?:\bnot|n['\u2019]t) (?:want|wanna) (?:to )?(?:be here|go on|live|be alive|exist)|(?:\bnot|n['\u2019]t) see (?:the |any )?point|(?:\bnot|n['\u2019]t) worth (?:living|it all)"#,
+        #"\b(?:die|dying|died|dead|death|overdos\w*|pills|gun|guns|weapon\w*|knife|cut(?:ting)?|cuts|worthless|hopeless|burden|abus\w*|unsafe|self.?harm|(?-i:OD)|(?:stopp?ed|stopping|quit|skipp?ed|skipping|missed|off) (?:taking )?(?:my |his |her |their |the )?(?:meds?|medications?|medicine|pills|antidepressants?|lithium|prescriptions?))\b"#,
+        #"\b(?:plan|intent|intend\w*|safe|safety|drink\w*|drunk|alcohol|drugs?|high)\b"#,
     ]
+
+    /// "Denies SI", "no suicidal ideation": a negated risk term.
+    private nonisolated static let negatedRiskPattern =
+        #"\b(?:denies|denied|denying|deny|no|nor|negative for|without|reports no|(?:did not|didn['\u2019]t|does not|doesn['\u2019]t) endorse)\s+(?:(?:any|current|active|thoughts of|history of)\s+)*(?:suicid\w*|homicid\w*|self.?harm|(?-i:SI|HI|SH|SA)\b)"#
+
+    /// The risk patterns compiled, in tier order.
+    nonisolated static func riskRegexes() -> [NSRegularExpression] {
+        riskPatterns.compactMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
+    }
+
+    /// Each line that matches a risk tier (the first, most specific, that does).
+    private nonisolated static func flaggedLines(_ lines: [String]) -> [(tier: Int, line: Int)] {
+        let regexes = riskRegexes()
+        var flagged: [(tier: Int, line: Int)] = []
+        for (index, text) in lines.enumerated() {
+            if Task.isCancelled { return [] }
+            let range = NSRange(text.startIndex..., in: text)
+            if let tier = regexes.firstIndex(where: { $0.firstMatch(in: text, range: range) != nil }) {
+                flagged.append((tier, index))
+            }
+        }
+        return flagged
+    }
+
+    /// Characters the strong risk lines (tiers 1 and 2) take on their own.
+    nonisolated static func riskCost(in transcript: String) -> Int {
+        let lines = transcript.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        return flaggedLines(lines).filter { $0.tier < 2 }.reduce(0) { $0 + lines[$1.line].count + 1 }
+    }
+
+    /// `items` reordered so any prefix is spread over the whole list: both ends
+    /// first, then midpoints. Keeps early chatter from starving later lines.
+    nonisolated static func spread<T>(_ items: [T]) -> [T] {
+        guard items.count > 2 else { return items }
+        var out = [items[0], items[items.count - 1]]
+        var queue = [(lo: 1, hi: items.count - 1)]
+        var next = 0
+        while next < queue.count {
+            let (lo, hi) = queue[next]
+            next += 1
+            guard lo < hi else { continue }
+            let mid = (lo + hi) / 2
+            out.append(items[mid])
+            queue.append((lo, mid))
+            queue.append((mid + 1, hi))
+        }
+        return out
+    }
 
     /// Search queries, one set of words per kind of content a note section needs
     /// (risk is handled separately, and first).
@@ -247,15 +342,19 @@ enum LongSessionNote {
         return out
     }
 
-    /// Passages of `transcript` up to `limit` characters: risk lines first (their
-    /// own `riskLimit`), then each note topic's best matches, the topics taking
-    /// turns. Each hit brings its neighbouring lines; the result is in transcript
-    /// order with `[…]` between gaps, and `lineCount` counts the non-blank lines
-    /// it holds. Topic search is the app's own `SessionSearch`.
+    /// Passages of `transcript` up to `limit` characters. Risk lines come first:
+    /// every strong risk line (tiers 1 and 2, spread over the session if they
+    /// don't all fit; one too long for the room is cut with a marker), then their
+    /// neighbours and the weak tier, from `riskLimit` only. Then each note topic's
+    /// best matches, the topics taking turns; each hit brings its neighbouring
+    /// lines. The result is in transcript order with `[…]` between gaps;
+    /// `lineCount` counts the non-blank lines it holds and `droppedRisk` the
+    /// strong risk lines that did not fit. Topic search is the app's own
+    /// `SessionSearch`. Stops early (returning nothing) if its task is cancelled.
     nonisolated static func passages(
         in transcript: String, format: ProgressNoteFormat, limit: Int, riskLimit: Int
-    ) -> (text: String, lineCount: Int) {
-        guard limit > 0 else { return ("", 0) }
+    ) -> (text: String, lineCount: Int, droppedRisk: Int) {
+        guard limit > 0 else { return ("", 0, 0) }
         let lines = transcript.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         var chosen: [Int: String] = [:]
         var used = 0
@@ -272,33 +371,49 @@ enum LongSessionNote {
             return true
         }
 
-        // Risk first, most specific tier first, within its own room.
-        let regexes = riskPatterns.compactMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
-        var flagged: [(tier: Int, line: Int)] = []
-        for (index, text) in lines.enumerated() {
-            let range = NSRange(text.startIndex..., in: text)
-            if let tier = regexes.firstIndex(where: { $0.firstMatch(in: text, range: range) != nil }) {
-                flagged.append((tier, index))
+        let flagged = flaggedLines(lines)
+        let strong = (0...1).flatMap { tier in spread(flagged.filter { $0.tier == tier }.map(\.line)) }
+        let weak = spread(flagged.filter { $0.tier >= 2 }.map(\.line))
+        // Each strong risk line on its own, before anything else.
+        for line in strong where chosen[line] == nil {
+            let room = limit - used
+            if lines[line].count + 1 <= room {
+                take([(line, lines[line])], cap: limit)
+            } else if room >= 60 {
+                chosen[line] = String(lines[line].prefix(room - 16)) + " […truncated]"
+                used = limit
             }
         }
-        for item in flagged.sorted(by: { ($0.tier, $0.line) < ($1.tier, $1.line) }) where used < min(riskLimit, limit) {
-            let around = max(0, item.line - 1)...min(lines.count - 1, item.line + 1)
-            let cap = min(riskLimit, limit)
-            // Neighbouring lines if they fit, else the flagged line alone.
-            if !take(around.map { ($0, lines[$0]) }, cap: cap) { take([(item.line, lines[item.line])], cap: cap) }
+        // Neighbours and weak-tier lines, from their own allowance.
+        var extras = 0
+        func extra(_ line: Int) {
+            let before = used
+            take([(line, lines[line])], cap: min(limit, before + riskLimit - extras))
+            extras += used - before
         }
+        for line in strong {
+            if Task.isCancelled { return ("", 0, 0) }
+            if line > 0 { extra(line - 1) }
+            if line + 1 < lines.count { extra(line + 1) }
+        }
+        weak.forEach(extra)
 
         // Then the note's own topics, taking turns, until the room is used.
         let document = SessionSearch.Document(date: Date(), tag: "S1", kind: .transcript, text: transcript)
-        let hits = topics(for: format).map { SessionSearch.search([document], question: $0).hits }
+        var hits: [[SessionSearch.Hit]] = []
+        for topic in topics(for: format) {
+            if Task.isCancelled { break }
+            hits.append(SessionSearch.search([document], question: topic).hits)
+        }
         var next = Array(repeating: 0, count: hits.count)
-        while used < limit, hits.indices.contains(where: { next[$0] < hits[$0].count }) {
+        while used < limit, !Task.isCancelled, hits.indices.contains(where: { next[$0] < hits[$0].count }) {
             for topic in hits.indices where next[topic] < hits[topic].count {
                 let hit = hits[topic][next[topic]]
                 next[topic] += 1
                 take(hit.context.enumerated().map { (hit.contextStart + $0.offset, $0.element) }, cap: limit)
             }
         }
+        if Task.isCancelled { return ("", 0, 0) }
 
         var out: [String] = []
         var previous: Int?
@@ -307,7 +422,7 @@ enum LongSessionNote {
             out.append(chosen[index] ?? "")
             previous = index
         }
-        return (out.joined(separator: "\n"), chosen.count)
+        return (out.joined(separator: "\n"), chosen.count, strong.filter { chosen[$0] == nil }.count)
     }
 
     // MARK: - Coverage
@@ -315,12 +430,18 @@ enum LongSessionNote {
     /// What the note was written from, as sent. `check` is nil when no check
     /// applies (not Focus).
     static func coverageLabel(
-        digestParts: Int, digestShortened: Bool = false, passageLines: Int, totalLines: Int,
-        effort: AnswerEffort, check: CheckOutcome?
+        digestParts: Int, digestShortened: Bool = false, digestOmitted: Bool = false, passageLines: Int,
+        totalLines: Int, effort: AnswerEffort, droppedRisk: Int = 0, check: CheckOutcome?
     ) -> String {
-        var text = "Read: a summary of the whole session (\(digestParts) parts"
-            + (digestShortened ? ", shortened to fit" : "")
-            + ") plus \(passageLines) of \(totalLines) transcript lines · \(effort.displayName). Details outside those lines may be missing."
+        let summary = digestOmitted
+            ? "no summary of the whole session (it didn't fit)"
+            : "a summary of the whole session (\(digestParts) part\(digestParts == 1 ? "" : "s")"
+                + (digestShortened ? ", shortened to fit" : "") + ")"
+        var text = "Read: \(summary) plus \(passageLines) of \(totalLines) transcript lines · \(effort.displayName). "
+            + "Details outside those lines may be missing."
+        if droppedRisk > 0 {
+            text += " \(droppedRisk) risk-flagged line\(droppedRisk == 1 ? "" : "s") didn't fit; check the transcript for risk."
+        }
         if let check { text += " " + check.text }
         return text
     }

@@ -102,6 +102,8 @@ struct SessionDetailView: View {
     /// What the displayed format's note was written from, when it was not the
     /// whole transcript (a long session).
     @State private var noteCoverage: String?
+    /// Stop was pressed and the stopped note's job may still be unwinding.
+    @State private var noteStopping = false
     @State private var summaryText: String = ""
     @State private var chatMessages: [ChatMessage] = []
     @State private var sessionNote: String = ""
@@ -908,13 +910,13 @@ struct SessionDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 12)
                     if noteRunner.isStreaming {
-                        Button(role: .destructive) { noteRunner.stop() } label: {
+                        Button(role: .destructive) { noteStopping = true; noteRunner.stop() } label: {
                             Label("Stop", systemImage: "stop.fill")
                         }
                     } else if noteRunner.isQueued {
                         // Waiting behind another generation: offer to back out
                         // rather than a Generate button that looks stuck.
-                        Button(role: .cancel) { noteRunner.stop() } label: {
+                        Button(role: .cancel) { noteStopping = true; noteRunner.stop() } label: {
                             Label("Cancel", systemImage: "xmark")
                         }
                     } else if !summaryText.isEmpty {
@@ -1347,9 +1349,23 @@ struct SessionDetailView: View {
         // One note per session at a time, even across leaving and reopening the session.
         let jobLabel = "progress note \(session.id.uuidString)"
         guard !integrations.inferenceQueue.hasJob(labelled: jobLabel) else {
-            errorMessage = "A note for this session is already being written."
+            if noteStopping {
+                // Just stopped: start again once the old job has unwound, with no alert.
+                // Only the first waiter goes on; a second click finds the flag already cleared.
+                Task { @MainActor in
+                    while integrations.inferenceQueue.hasJob(labelled: jobLabel) {
+                        try? await Task.sleep(nanoseconds: 100_000_000)
+                    }
+                    guard noteStopping else { return }
+                    noteStopping = false
+                    generateNote()
+                }
+            } else {
+                errorMessage = "A note for this session is already being written."
+            }
             return
         }
+        noteStopping = false
         let format = settings.progressNoteFormat
         let verbosity = settings.summaryVerbosity
         let instructions = settings.noteInstructions[format.rawValue]
