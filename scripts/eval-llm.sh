@@ -29,6 +29,7 @@
 # Use synthetic transcripts for anything you share.
 
 set -uo pipefail
+CWD="$PWD"   # user-supplied paths are relative to where they ran this, not the repo
 cd "$(dirname "$0")/.."
 REPO="$(pwd -P)"
 
@@ -41,11 +42,15 @@ while [ $# -gt 0 ]; do
         --model) EXTRA+=(--model "$2"); shift 2 ;;
         --budget) EXTRA+=(--budget "$2"); shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
-        --app) APP="$2"; shift 2 ;;
+        --app) APP="$2"; APP_FROM_USER=1; shift 2 ;;
         -h|--help) sed -n '2,/^$/p' "$0"; exit 0 ;;
         *) sed -n '2,/^$/p' "$0"; exit 2 ;;
     esac
 done
+
+abs() { case "$1" in /*|"") printf '%s' "$1" ;; *) printf '%s' "$CWD/$1" ;; esac; }
+SESSION="$(abs "$SESSION")"; TRANSCRIPT="$(abs "$TRANSCRIPT")"; OUT="$(abs "$OUT")"
+case "$APP" in /*) ;; *) [ "${APP_FROM_USER:-}" = 1 ] && APP="$CWD/$APP" ;; esac
 
 [ -z "$TRANSCRIPT" ] && [ -n "$SESSION" ] && TRANSCRIPT="$SESSION/transcript.txt"
 [ -f "$TRANSCRIPT" ] || { echo "Give --session DIR (with transcript.txt) or --transcript FILE" >&2; exit 2; }
@@ -54,8 +59,10 @@ done
 if [ -n "$OUT" ]; then
     mkdir -p "$OUT" || exit 2
     OUT="$(cd "$OUT" && pwd -P)"
-    case "$OUT/" in
-        "$REPO"/*) echo "Refusing --out inside the repo ($OUT): reports contain PHI." >&2; rmdir "$OUT" 2>/dev/null; exit 2 ;;
+    # APFS is case-insensitive by default, so compare lowercased.
+    lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+    case "$(lc "$OUT")/" in
+        "$(lc "$REPO")"/*) echo "Refusing --out inside the repo ($OUT): reports contain PHI." >&2; rmdir "$OUT" 2>/dev/null; exit 2 ;;
     esac
 fi
 
@@ -63,12 +70,17 @@ BIN="$APP/Contents/MacOS/Aletheia"
 [ -x "$BIN" ] || { echo "No app binary at $BIN (build the Debug config first, or pass --app)" >&2; exit 2; }
 
 # The app is sandboxed: stage the transcript and its output in its container.
-WORK="$HOME/Library/Containers/com.aletheia.app/Data/tmp/eval.$$"
-mkdir -p "$WORK/out" && chmod 700 "$WORK"
-cp "$TRANSCRIPT" "$WORK/transcript.txt"
+STAGE="$HOME/Library/Containers/com.aletheia.app/Data/tmp"
+# Leftovers from runs that were killed; a run still going keeps its own.
+for dir in "$STAGE"/eval.*; do
+    [ -d "$dir" ] || continue
+    kill -0 "${dir##*.}" 2>/dev/null || rm -rf "$dir"
+done
+WORK="$STAGE/eval.$$"
 
 APP_PID=""
 finish() {
+    [ -n "${DONE:-}" ] && return; DONE=1
     [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null
     if [ -n "$OUT" ]; then
         chmod 700 "$OUT"
@@ -76,7 +88,12 @@ finish() {
     fi
     rm -rf "$WORK"
 }
-trap 'finish; exit 130' INT TERM
+trap finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+mkdir -p "$WORK/out" && chmod 700 "$WORK"
+cp "$TRANSCRIPT" "$WORK/transcript.txt"
 
 ARGS=(--harness-eval "$WORK/transcript.txt")
 [ -n "$OUT" ] && ARGS+=(--out "$WORK/out")
