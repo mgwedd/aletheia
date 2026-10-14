@@ -77,7 +77,7 @@ struct ChatPaneView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     if let busyNotice {
                         HStack(spacing: 6) {
-                            ProgressView().controlSize(.mini)
+                            ProgressView().controlSize(.mini).accessibilityHidden(true)
                             Text(busyNotice)
                                 .font(Theme.Typography.caption)
                                 .foregroundStyle(Theme.muted.color)

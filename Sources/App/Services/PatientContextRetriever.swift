@@ -178,14 +178,15 @@ enum PatientContextRetriever {
         header(doc.date, labels: labels).count + 1 + doc.text.count + 2
     }
 
-    /// Whole transcripts, newest first, each only if it still fits `budget`
-    /// (a session too long for what is left is skipped, not cut).
+    /// Whole transcripts, newest first, stopping at the first one that does not
+    /// fit `budget` (never cut, never skipped over), so what is kept is always
+    /// exactly "the newest K sessions".
     private static func wholeExcerpts(_ documents: [TranscriptDocument], budget: Int, labels: [Date: String]) -> [Excerpt] {
         var result: [Excerpt] = []
         var used = 0
         for doc in documents.sorted(by: { $0.date > $1.date }) {
             let length = blockLength(doc, labels: labels)
-            guard used + length <= budget else { continue }
+            guard used + length <= budget else { break }
             result.append(Excerpt(date: doc.date, text: doc.text))
             used += length
         }

@@ -77,7 +77,12 @@ struct TranscriptCoverage: Equatable {
             if wholeTranscripts {
                 parts.append("full transcripts of \(sessions(sessionsWithPassages))" + search)
             } else if fullTexts {
-                parts.append("full transcripts of the newest \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
+                let read = sessionsWithPassages == 0
+                    ? "no full transcripts (the newest session is too long to fit)"
+                    : sessionsWithPassages == 1
+                        ? "the full transcript of the newest session (1 of \(sessions(transcriptSessions)))"
+                        : "full transcripts of the newest \(sessionsWithPassages) of \(sessions(transcriptSessions))"
+                parts.append(read + search)
             } else {
                 parts.append("transcript passages from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
             }

@@ -51,6 +51,17 @@ final class PatientContextRetrieverTests: XCTestCase {
         XCTAssertLessThanOrEqual(rendered, 1_000)
     }
 
+    func testBigNewestSessionStopsTheSelectionInsteadOfSkippingToOlderOnes() {
+        let big = TranscriptDocument(date: date(2026, 3, 1), text: String(repeating: "x", count: 900))
+        let small = [1, 2].map { TranscriptDocument(date: date(2026, $0, 1), text: "short session \($0)") }
+        let docs = small + [big]
+        let search = SessionSearch.search(docs.map { .init(date: $0.date, tag: "", kind: .transcript, text: $0.text) }, question: "???")
+        let selection = PatientContextRetriever.select(transcripts: docs, search: search, characterBudget: 500)
+        XCTAssertTrue(selection.excerpts.isEmpty, "the newest did not fit, so no older one is passed off as the newest")
+        XCTAssertFalse(selection.whole)
+        XCTAssertTrue(selection.fullTexts)
+    }
+
     func testTermlessQuestionOverAHistoryLargerThanTheBudgetStaysWithinIt() {
         // "What did we talk about last time?" has no searchable words.
         let docs = (1...12).map { TranscriptDocument(date: date(2026, $0, 1), text: String(repeating: "word ", count: 2_000)) }

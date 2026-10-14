@@ -32,7 +32,11 @@ extension Prompts {
         if whole {
             included = "the full transcripts are included below"
         } else if let newest {
-            included = "only the full transcripts of the newest \(newest.included) of \(plural(newest.of, "session")) are included below; the older ones were not read"
+            included = newest.included == 0
+                ? "no full transcript fits, so none of the \(plural(newest.of, "session")) was read"
+                : newest.included == 1
+                    ? "only the full transcript of the newest session (1 of \(newest.of)) is included below; the older ones were not read"
+                    : "only the full transcripts of the newest \(newest.included) of \(plural(newest.of, "session")) are included below; the older ones were not read"
         } else {
             included = "showing the top \(plural(shown, "transcript passage"))"
         }

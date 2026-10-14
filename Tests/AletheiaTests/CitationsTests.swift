@@ -165,7 +165,40 @@ extension TranscriptCoverageEdgeTests {
         let whole = TranscriptCoverage(transcriptSessions: 1, sessionsWithPassages: 1, unreadableSessions: 1, wholeTranscripts: true)
         XCTAssertEqual(whole.label, "Read: full transcripts of 1 session · 1 session could not be read, so answers may be incomplete")
         let newest = TranscriptCoverage(transcriptSessions: 2, sessionsWithPassages: 1, fullTexts: true)
-        XCTAssertEqual(newest.label, "Read: full transcripts of the newest 1 of 2 sessions")
+        XCTAssertEqual(newest.label, "Read: the full transcript of the newest session (1 of 2 sessions)")
+    }
+}
+
+extension TranscriptCoverageEdgeTests {
+    func testNothingFitsReadsPlainlyNotNewestZero() {
+        let c = TranscriptCoverage(transcriptSessions: 3, sessionsWithPassages: 0, fullTexts: true)
+        XCTAssertEqual(c.label, "Read: no full transcripts (the newest session is too long to fit)")
+        let block = Prompts.searchBlock(
+            SessionSearch.search([], question: "Dana"), shown: 0, whole: false, newest: (0, 3), unreadableSessions: 0
+        )
+        XCTAssertTrue(block.contains("no full transcript fits, so none of the 3 sessions was read"))
+        XCTAssertFalse(block.contains("newest 0"))
+    }
+
+    func testSingularMatchSimilarSpellingAndUnreadableWithNewest() {
+        let c = TranscriptCoverage(
+            transcriptSessions: 4, sessionsWithPassages: 1, unreadableSessions: 1, mentions: 1, similarMentions: 1,
+            searched: true, fullTexts: true
+        )
+        XCTAssertEqual(
+            c.label,
+            "Read: the full transcript of the newest session (1 of 4 sessions) (1 match for your words, 1 more with similar spelling) · 1 session could not be read, so answers may be incomplete"
+        )
+        let block = Prompts.searchBlock(
+            SessionSearch.search([], question: "Dana"), shown: 0, whole: false, newest: (1, 4), unreadableSessions: 1
+        )
+        XCTAssertTrue(block.contains("only the full transcript of the newest session (1 of 4) is included below"))
+    }
+
+    func testSearchingNoticeCountAndPlural() {
+        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 0), "Searching…")
+        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 1), "Searching 1 session…")
+        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 7), "Searching 7 sessions…")
     }
 }
 

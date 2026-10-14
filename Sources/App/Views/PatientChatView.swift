@@ -321,8 +321,8 @@ struct PatientChatView: View {
         }
         // Decrypting and searching every session takes a moment on a long
         // history, so it runs off the main thread with a line saying so.
-        let sessionCount = (try? store.listSessions(for: patient))?.count ?? 0
-        searchingNotice = "Searching \(sessionCount) session\(sessionCount == 1 ? "" : "s")…"
+        let sessionCount = (try? store.listSessions(for: patient))?.filter(\.hasTranscript).count ?? 0
+        searchingNotice = Self.searchingNotice(sessions: sessionCount)
         let patient = patient
         Task {
             let context = await Task.detached(priority: .userInitiated) {
@@ -334,6 +334,11 @@ struct PatientChatView: View {
                 userMessage: userMessage, assistantID: assistantID, threadID: threadID
             )
         }
+    }
+
+    /// The line shown while the history is searched; no count when none is known.
+    static func searchingNotice(sessions n: Int) -> String {
+        n > 0 ? "Searching \(n) session\(n == 1 ? "" : "s")…" : "Searching…"
     }
 
     /// Room (characters) below which a patient question can't be answered
