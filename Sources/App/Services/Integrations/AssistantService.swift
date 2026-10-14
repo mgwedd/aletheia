@@ -35,11 +35,22 @@ struct AssistantService {
         } catch {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
-        report?(.reading(estimatedTokens: (system.count + prompt.count) / 4))
+        report?(.reading(estimatedTokens: ContextBudget.estimatedTokens(forCharacters: system.count + prompt.count)))
         let report = report
         return assistant.stream(
             model: model, system: system, prompt: prompt,
             onStats: report.map { report in { report(.finished($0)) } })
+    }
+
+    /// Whether `prompt` (with the standing instructions) is within the budget.
+    func fits(prompt: String) -> Bool {
+        budget.fits(promptCharacters: systemPrompt.count + prompt.count)
+    }
+
+    /// Streams a digest prompt: the same budget check, progress report and
+    /// truncation tripwire as a note or an answer.
+    func streamDigest(prompt: String) -> AsyncThrowingStream<String, Error> {
+        run(system: systemPrompt, prompt: prompt)
     }
 
     func summarize(transcript: String) async throws -> String {

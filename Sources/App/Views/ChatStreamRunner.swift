@@ -37,13 +37,19 @@ final class ChatStreamRunner: ObservableObject {
     /// run's own stats once it ends (for the truncation notice).
     @Published private(set) var progress = AIRunProgress()
 
-    /// Hand this to `makeAssistantService(report:)` so the run's events reach
-    /// `progress`. Safe to call from any thread.
+    /// Hand this to `makeAssistantService(report:)` just before `start`, so the
+    /// run's events reach `progress`. Each call mints a new run id: events from an
+    /// earlier reporter (a late `.finished` from the previous run) are ignored.
     var reporter: @Sendable (AIRunEvent) -> Void {
-        { [weak self] event in Task { @MainActor in self?.apply(event) } }
+        let run = UUID()
+        currentRun = run
+        return { [weak self] event in Task { @MainActor in self?.apply(event, run: run) } }
     }
 
-    private func apply(_ event: AIRunEvent) {
+    private var currentRun = UUID()
+
+    func apply(_ event: AIRunEvent, run: UUID) {
+        guard run == currentRun else { return }
         switch event {
         case .reading(let tokens):
             progress.estimatedPromptTokens = tokens

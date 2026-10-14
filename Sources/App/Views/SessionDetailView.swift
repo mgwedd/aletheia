@@ -29,17 +29,32 @@ enum NotesPane: Hashable, Identifiable {
     }
 }
 
-/// One muted line while the session's digest is being built in the background.
+/// Live progress (stage, elapsed time, tokens) while the session's digest is
+/// being built in the background, or a short failure with a retry.
 private struct DigestStatusLine: View {
     @ObservedObject var builder: DigestBuilder
     let sessionID: UUID
+    let retry: () -> Void
 
     var body: some View {
-        if let text = builder.status[sessionID] {
-            Text(text)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.muted.color)
-                .padding([.horizontal, .top], 20)
+        if let progress = builder.progress[sessionID] {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Building digest")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                AIProgressView(progress: progress)
+            }
+            .padding([.horizontal, .top], 20)
+        } else if let failure = builder.failures[sessionID] {
+            HStack(spacing: 8) {
+                Text(failure)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                Button("Retry", action: retry)
+                    .buttonStyle(ThemeButtonStyle())
+                    .controlSize(.small)
+            }
+            .padding([.horizontal, .top], 20)
         }
     }
 }
@@ -202,6 +217,7 @@ struct SessionDetailView: View {
         .background(Theme.window.color)
         .onAppear {
             load()
+            ensureDigest()
             // A transcription that finished while this screen was away.
             consumeTranscriptionOutcome()
         }
@@ -529,7 +545,7 @@ struct SessionDetailView: View {
 
     private var transcriptTab: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DigestStatusLine(builder: integrations.digests, sessionID: session.id)
+            DigestStatusLine(builder: integrations.digests, sessionID: session.id, retry: ensureDigest)
             if let notice = noSpeechNotice {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle")
@@ -1138,6 +1154,14 @@ struct SessionDetailView: View {
 
     private var chatTab: some View {
         ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() }, queuedStatus: chatRunner.queuedStatus, notices: chatRunner.progress.stats?.possiblyTruncated == true && !isChatSending ? [AIRunStats.truncationNotice] : [], onCompact: { compactChat($0) }, progress: chatRunner.progress, readTokensPerSecond: settings.speed(for: settings.ollamaModelName).read)
+    }
+
+    /// Builds this session's digest if it has none, or its digest is stale (the
+    /// model or the digest prompts changed since it was made). Opening a session
+    /// is the only trigger, so nothing is rebuilt in bulk.
+    private func ensureDigest() {
+        guard let store = appModel.store, transcriptReadError == nil, !transcriptText.isEmpty else { return }
+        integrations.buildDigest(for: patient, session: session, transcript: transcriptText, store: store)
     }
 
     private func load() {
