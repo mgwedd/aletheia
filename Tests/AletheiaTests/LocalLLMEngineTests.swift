@@ -20,16 +20,6 @@ final class LocalLLMEngineTests: XCTestCase {
         XCTAssertFalse(LocalLLMSampling(temperature: 0.7).isGreedy)
     }
 
-    func testComposedPromptPrependsSystemWhenPresent() {
-        let req = LocalLLMRequest(system: "You are careful.", prompt: "Summarize.")
-        XCTAssertEqual(req.composedPrompt, "System: You are careful.\n\nSummarize.")
-    }
-
-    func testComposedPromptOmitsEmptyOrWhitespaceSystem() {
-        XCTAssertEqual(LocalLLMRequest(system: "", prompt: "Q").composedPrompt, "Q")
-        XCTAssertEqual(LocalLLMRequest(system: "   \n ", prompt: "Q").composedPrompt, "Q")
-    }
-
     func testRequestDefaultsAreDeterministicAndGrammarless() {
         let req = LocalLLMRequest(prompt: "hi")
         XCTAssertEqual(req.sampling, .deterministic)

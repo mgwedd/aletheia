@@ -66,8 +66,6 @@ enum LlamaPrompt {
             if bos >= 0, let bosText = llama_vocab_get_text(vocab, bos), text.hasPrefix(String(cString: bosText)) {
                 addSpecial = false
             }
-        } else {
-            log.notice("Model has no usable chat template; using the raw prompt")
         }
 
         let length = Int32(text.utf8.count)

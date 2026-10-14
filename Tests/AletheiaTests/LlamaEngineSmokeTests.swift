@@ -18,6 +18,7 @@ final class LlamaEngineSmokeTests: XCTestCase {
         try await engine.load()
         let start = Date()
         let out = try await engine.generate(LocalLLMRequest(
+            system: "Answer in one sentence.",
             prompt: "Write one short sentence about the weather.",
             sampling: LocalLLMSampling(maxTokens: 24)
         ))
