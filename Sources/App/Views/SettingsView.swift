@@ -136,6 +136,11 @@ struct SettingsView: View {
             isOn: $settings.keepAudioRecordings
         )
         .disabled(!encryption.isEnabled)
+        SettingsSwitchRow(
+            title: "Transcribe automatically when a recording ends",
+            detail: "Starts transcription as soon as you stop recording, so the transcript is ready when you come back. It keeps running while Aletheia is locked, and you get a notification when it's done.",
+            isOn: $settings.autoTranscribeAfterRecording
+        )
         SettingsRow(title: "Appearance") {
             ThemeSegmentedControl(
                 options: [AppearancePreference.light, .system, .dark].map { ThemeTab(value: $0, title: $0.title) },

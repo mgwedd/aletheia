@@ -64,6 +64,74 @@ enum TranscriptionProgressMath {
     }
 }
 
+/// Which session is being transcribed and which are waiting their turn. One
+/// runs at a time (see `TranscriptionCoordinator`); the rest start in the order
+/// they were asked for.
+struct TranscriptionQueue: Equatable {
+    enum Admission: Equatable {
+        case startNow
+        case queued
+        /// Already running or waiting; asking again changes nothing.
+        case alreadyKnown
+    }
+
+    private(set) var running: UUID?
+    private(set) var waiting: [UUID] = []
+
+    func isWaiting(_ id: UUID) -> Bool { waiting.contains(id) }
+
+    mutating func submit(_ id: UUID) -> Admission {
+        if running == id || waiting.contains(id) { return .alreadyKnown }
+        guard running != nil else {
+            running = id
+            return .startNow
+        }
+        waiting.append(id)
+        return .queued
+    }
+
+    /// The running one ended (however it ended); returns the next to start,
+    /// now marked running, or nil when nothing is waiting.
+    mutating func finishRunning() -> UUID? {
+        running = waiting.isEmpty ? nil : waiting.removeFirst()
+        return running
+    }
+
+    /// Drops a session that hasn't started yet. False if it wasn't waiting.
+    mutating func withdraw(_ id: UUID) -> Bool {
+        guard let index = waiting.firstIndex(of: id) else { return false }
+        waiting.remove(at: index)
+        return true
+    }
+}
+
+/// Why the session screen's Record or Transcribe button is unavailable, in
+/// words for its tooltip; nil when the action can go ahead. Pure so every
+/// blocked case is explained (and tested) rather than a silently dead button.
+enum SessionActionPolicy {
+    static func recordBlocker(isTranscribing: Bool, isQueued: Bool, isStarting: Bool) -> String? {
+        if isStarting { return "A recording is starting" }
+        if isTranscribing { return "Finish transcribing first" }
+        if isQueued { return "This session is waiting to be transcribed. Cancel that first to record again" }
+        return nil
+    }
+
+    static func transcribeBlocker(
+        isRecordingThisSession: Bool,
+        isRecordingElsewhere: Bool,
+        isTranscribing: Bool,
+        isQueued: Bool,
+        hasRecording: Bool
+    ) -> String? {
+        if isRecordingThisSession { return "Stop the recording first" }
+        if isTranscribing { return "This session is being transcribed" }
+        if isQueued { return "Waiting for another transcription to finish" }
+        if isRecordingElsewhere { return "Another session is recording. Stop it first" }
+        if !hasRecording { return "Record this session first — there is no audio to transcribe" }
+        return nil
+    }
+}
+
 /// The state of one session's transcription, as the UI sees it. A value type so
 /// every rule (cancel, stage ordering, estimates) is testable without a
 /// transcriber, a store, or a clock.
