@@ -170,6 +170,7 @@ final class EncryptionManager: ObservableObject {
         }
         dek = try keystore.unlock(passphrase: passphrase)
         state = .unlocked
+        SessionSearch.openIndex()
         onProtectionChanged?()
     }
 

@@ -10,6 +10,7 @@ final class PatientChatContextTests: XCTestCase {
     private var store: Store!
 
     override func setUpWithError() throws {
+        SessionSearch.index = SearchIndex()   // earlier tests may have left a locked file index behind
         tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("PatientChatContextTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)

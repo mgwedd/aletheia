@@ -67,6 +67,8 @@ final class SearchIndex {
     private var db: OpaquePointer?
     private var corrupt = false
     private var verified = false
+    /// Set by `close()` (the app or data folder locked): nothing reopens the file until `reopen()`.
+    private var locked = false
     private let worker = DispatchQueue(label: "aletheia.search-index", qos: .utility)
 
     init(url: URL? = nil) { self.url = url }
@@ -86,10 +88,19 @@ final class SearchIndex {
     func close() {
         guard url != nil else { return }
         lock.lock()
+        locked = true
         sqlite3_close(db)
         db = nil
         lock.unlock()
     }
+
+    /// Allows the file to be opened again (the app or data folder unlocked).
+    func reopen() {
+        lock.lock()
+        locked = false
+        lock.unlock()
+    }
+
 
     // MARK: - Pure helpers
 
@@ -116,7 +127,8 @@ final class SearchIndex {
             }
             return (h1, h2)
         }
-        return "\(text.utf8.count)-" + String(a, radix: 16) + String(b, radix: 16)
+        func hex(_ v: UInt64) -> String { let h = String(v, radix: 16); return String(repeating: "0", count: 16 - h.count) + h }
+        return "\(text.utf8.count)-" + hex(a) + hex(b)
     }
 
     /// The FTS form of a stem: letters and digits only, so FTS5's tokenizer and
@@ -161,15 +173,17 @@ final class SearchIndex {
     func missing(_ items: [Item]) -> Set<Int> {
         lock.lock()
         defer { lock.unlock() }
-        guard let db = open() else { return Set(items.indices) }
+        guard let db = open() else { return locked ? [] : Set(items.indices) }
         var result = Set<Int>()
         for (i, item) in items.enumerated() where docID(db, item) == nil { result.insert(i) }
         settle()
         return result
     }
 
-    /// Makes sure every item is stored, drops older versions of the same
-    /// (session, kind), then runs one MATCH over just these documents.
+    /// Makes sure every item is stored (never deleting other versions of a
+    /// session, which only `replace` and the sweep do, so a search built from
+    /// older text can't undo a newer save), then runs one MATCH over just these
+    /// documents.
     /// `plan` turns the vocabulary into the MATCH string plus whatever the
     /// caller needs to read the rows (nil: nothing can match). `visit` sees every
     /// matching passage as raw bytes (nothing is copied or decoded, so a query
@@ -197,7 +211,6 @@ final class SearchIndex {
             }
             ids.append(id)
         }
-        prune(db, items: items, ids: ids)
         exec(db, "COMMIT")
         var docs: [Int64: [Int]] = [:]
         for (i, id) in ids.enumerated() { docs[id, default: []].append(i) }
@@ -336,6 +349,7 @@ final class SearchIndex {
 
     /// Opens (creating, and rebuilding from scratch if the file is unusable).
     private func open() -> OpaquePointer? {
+        if locked { return nil }
         if let db { return db }
         for attempt in 0..<2 {
             if let handle = openOnce() { db = handle; return handle }
@@ -356,8 +370,13 @@ final class SearchIndex {
         exec(db, "PRAGMA secure_delete = ON")
         exec(db, "PRAGMA synchronous = OFF")   // a cache: a crash is repaired by the rebuild below
         exec(db, "PRAGMA temp_store = MEMORY")
-        exec(db, "PRAGMA mmap_size = 268435456")   // reads come straight from the file's pages, no copy
         exec(db, "PRAGMA cache_size = -65536")
+        // Reads straight from the file's pages (a third faster on broad queries), but a mapped file that
+        // disappears (unplugged drive, dropped network share) crashes the app, so only on the internal disk.
+        if let url, let volume = try? url.deletingLastPathComponent().resourceValues(forKeys: [.volumeIsLocalKey, .volumeIsInternalKey]),
+           volume.volumeIsLocal == true, volume.volumeIsInternal == true {
+            exec(db, "PRAGMA mmap_size = 268435456")
+        }
         var version: Int32 = 0
         each(db, "PRAGMA user_version") { version = sqlite3_column_int($0, 0) }
         var ok = version == 0 || version == Self.schemaVersion
@@ -512,25 +531,6 @@ final class SearchIndex {
             run(db, "DELETE FROM doc WHERE id = ?1", binds: [.int(id)])
         }
         pendingDelete.removeAll()
-    }
-
-    /// For each (session, kind) present among the session-tagged `items`,
-    /// removes stored documents with a different fingerprint: older versions.
-    private func prune(_ db: OpaquePointer, items: [Item], ids: [Int64]) {
-        var keep: [String: Set<Int64>] = [:]
-        var scopes: [String: (session: String, kind: String)] = [:]
-        for (i, item) in items.enumerated() where !item.session.isEmpty {
-            let key = item.session + "|" + item.kind
-            keep[key, default: []].insert(ids[i])
-            scopes[key] = (item.session, item.kind)
-        }
-        for (key, scope) in scopes {
-            each(db, "SELECT id FROM doc WHERE session = ?1 AND kind = ?2", binds: [.text(scope.session), .text(scope.kind)]) { stmt in
-                let id = sqlite3_column_int64(stmt, 0)
-                if !(keep[key]?.contains(id) ?? false) { self.pendingDelete.append(id) }
-            }
-        }
-        removeDocs(db)
     }
 }
 

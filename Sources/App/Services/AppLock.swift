@@ -192,6 +192,7 @@ final class AppLock: ObservableObject {
             )
             if ok {
                 isLocked = false
+                SessionSearch.openIndex()
                 lastError = nil
                 onUnlock?()
                 // Otherwise the next idle check would see a stale (very old)

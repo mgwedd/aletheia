@@ -321,6 +321,7 @@ final class SessionSearchTests: XCTestCase {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         SessionSearch.index = SearchIndex(url: root.appendingPathComponent("search.sqlite"))
+        defer { SessionSearch.index = SearchIndex() }
         _ = search([doc("[00:01] A: Dana called.")], "Dana")
         XCTAssertTrue(SessionSearch.index.isOpen)
         let manager = EncryptionManager(dataRootProvider: { root })
@@ -328,6 +329,9 @@ final class SessionSearchTests: XCTestCase {
         _ = search([doc("[00:01] A: Dana called.")], "Dana")
         manager.lock()
         XCTAssertFalse(SessionSearch.index.isOpen, "no connection (and no page cache) is left holding indexed text")
-        XCTAssertEqual(search([doc("[00:01] A: Dana called.")], "Dana").totalMentions, 1, "reopens on the next search")
+        XCTAssertEqual(search([doc("[00:01] A: Dana called.")], "Dana").totalMentions, 0, "a search behind the lock finds nothing")
+        XCTAssertFalse(SessionSearch.index.isOpen, "and does not reopen the file")
+        try manager.unlock(passphrase: "pw")
+        XCTAssertEqual(search([doc("[00:01] A: Dana called.")], "Dana").totalMentions, 1, "unlocking lets it open again")
     }
 }

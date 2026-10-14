@@ -1179,7 +1179,7 @@ final class Store {
 
         // Search every transcript, note and comment; counts are exact, and the
         // prompt states them. Transcript text comes from the best hits.
-        let search = SessionSearch.search(searchDocuments, question: question)
+        let search = SessionSearch.search(searchDocuments, question: question, characterBudget: room)
         // What the transcripts may use: the room left after the background, the
         // notes kept and the search block (about 120 characters a term).
         let searchBlockReserve = 400 + 120 * search.terms.count

@@ -1,3 +1,4 @@
+import SQLite3
 import XCTest
 @testable import Aletheia
 
@@ -89,6 +90,7 @@ final class SearchIndexTests: XCTestCase {
         XCTAssertEqual(index.counts().docs, 1)
 
         manager.lock()
+        index.reopen()   // the app never sweeps behind the lock; this checks the sweep itself is safe
         let locked = Store(root: dataRoot, protector: manager.protector, searchIndex: index)
         locked.syncSearchIndex()
         XCTAssertEqual(index.counts().docs, 1, "sealed records read as missing, which must not look like deletion")
@@ -100,13 +102,13 @@ final class SearchIndexTests: XCTestCase {
         index.flush()
         let file = root.appendingPathComponent("search.sqlite")
 
-        index.close()
+        index.close(); index.reopen()
         try FileManager.default.removeItem(at: file)
         XCTAssertEqual(index.counts().docs, 0, "starts empty, no error")
         store.syncSearchIndex()
         XCTAssertEqual(index.counts().docs, 1)
 
-        index.close()
+        index.close(); index.reopen()
         try Data("this is not a database, just text".utf8).write(to: file)
         XCTAssertEqual(index.counts().docs, 0, "a damaged file is replaced")
         store.syncSearchIndex()
@@ -206,16 +208,111 @@ final class SearchIndexTests: XCTestCase {
         }
         writer.wait()
         XCTAssertEqual(wrong, 0)
-        XCTAssertEqual(index.counts().docs, 1, "one version is stored for the session")
+        XCTAssertLessThanOrEqual(index.counts().docs, 21, "searches never delete versions; only the writer does")
     }
 
     func testHitsAreCappedButCountsStayExact() {
-        let lines = (0..<(SessionSearch.maxHitsPerKind + 250)).map { "[00:\(String(format: "%02d", $0 % 60))] A: Dana called \($0)." }
+        let lines = (0..<(SessionSearch.minHitsPerKind + 250)).map { "[00:\(String(format: "%02d", $0 % 60))] A: Dana called \($0)." }
         let result = search([doc(lines.joined(separator: "\n"), session: UUID())], "Dana")
-        XCTAssertEqual(result.totalMentions, SessionSearch.maxHitsPerKind + 250)
-        XCTAssertEqual(result.hits.count, SessionSearch.maxHitsPerKind)
-        XCTAssertEqual(result.transcriptHitCount, SessionSearch.maxHitsPerKind + 250)
+        XCTAssertEqual(result.totalMentions, SessionSearch.minHitsPerKind + 250)
+        XCTAssertEqual(result.hits.count, SessionSearch.minHitsPerKind)
+        XCTAssertEqual(result.transcriptHitCount, SessionSearch.minHitsPerKind + 250)
         XCTAssertEqual(result.sessionsWithHits, 1)
         XCTAssertFalse(result.hits[0].tokenOffsets.isEmpty, "offsets are filled for the hits that are returned")
+    }
+
+    func testLockedIndexDoesNotReopen() {
+        let id = UUID()
+        _ = search([doc("[00:01] A: Dana called.", session: id)], "Dana")
+        index.close()
+        XCTAssertFalse(index.isOpen)
+        let item = SearchIndex.Item(
+            session: id.uuidString, patient: nil, kind: "transcript", date: 0, fingerprint: "x", text: "[00:01] A: Dana called.")
+        index.replace(session: id.uuidString, patient: "p", kinds: [.transcript], items: [item], stamp: "1")
+        _ = index.stamp(session: id.uuidString)
+        index.drop(sessionsNotIn: [])
+        XCTAssertEqual(search([doc("[00:01] A: Dana called.", session: id)], "Dana").totalMentions, 0)
+        XCTAssertFalse(index.isOpen, "writes, sweeps and searches behind the lock leave it closed")
+        index.reopen()
+        XCTAssertEqual(search([doc("[00:01] A: Dana called.", session: id)], "Dana").totalMentions, 1)
+        XCTAssertTrue(index.isOpen)
+    }
+
+    func testOlderSearchDoesNotDeleteNewerSave() {
+        let id = UUID()
+        let old = doc("[00:01] A: Dana called.", session: id)
+        let new = doc("[00:01] A: Dana called twice. Dana.", session: id)
+        _ = search([new], "Dana")
+        _ = search([old], "Dana")   // a search that started from older text
+        XCTAssertEqual(search([new], "Dana").totalMentions, 2)
+    }
+
+    func testTypoRanksBelowExactSpelling() {
+        let result = search([doc("[00:01] A: Micheal called today.\n[00:02] A: Michael called today.")], "Michael")
+        XCTAssertEqual(result.hits.count, 2)
+        XCTAssertEqual(result.hits[0].lineIndex, 1, "the exact spelling outranks the typo")
+        XCTAssertGreaterThan(result.hits[0].score, result.hits[1].score)
+    }
+
+    func testShortPassageBeatsLongOneWithSameCount() {
+        let long = "[00:01] A: garden walk with the long quiet river bread coffee window letters winter ladder paper summer story"
+        let result = search([doc(long + "\n[00:02] A: garden walk")], "garden")
+        XCTAssertEqual(result.hits.first?.lineIndex, 1)
+    }
+
+    func testVersionOneFileIsRebuiltNotMisread() throws {
+        let file = root.appendingPathComponent("old.sqlite")
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(file.path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db, "CREATE TABLE doc(id INTEGER PRIMARY KEY, fp TEXT); PRAGMA user_version = 1;", nil, nil, nil), SQLITE_OK)
+        sqlite3_close(db)
+        SessionSearch.index = SearchIndex(url: file)
+        XCTAssertEqual(search([doc("[00:01] A: Dana called.", session: UUID())], "Dana").totalMentions, 1)
+    }
+
+    func testAccentsEmojiAndCRLF() {
+        let text = "[00:01] A: José called.\r\n[00:02] A: \u{1F600} happy day\r\n[00:03] A: Jose again"
+        let jose = search([doc(text)], "Jose")
+        XCTAssertEqual(jose.totalMentions, 2, "José and Jose are one word")
+        XCTAssertEqual(Set(jose.hits.map(\.lineIndex)), [0, 2])
+        let happy = search([doc(text)], "happy")
+        XCTAssertEqual(happy.hits.map(\.lineIndex), [1])
+        XCTAssertEqual(happy.hits[0].context.count, 3)
+        XCTAssertEqual(happy.hits[0].seconds, 2)
+    }
+
+    func testFingerprintHalvesArePadded() {
+        XCTAssertEqual(SearchIndex.fingerprint(of: "").count, "0-".count + 32)
+    }
+
+    func testLargeBudgetKeepsMoreThanTheMinimumOfHits() {
+        let count = SessionSearch.minHitsPerKind + 500
+        let text = (0..<count).map { "[00:\(String(format: "%02d", $0 % 60))] A: Dana called \($0)." }.joined(separator: "\n")
+        let small = SessionSearch.search([doc(text, session: UUID())], question: "Dana", characterBudget: 6_000, now: now, calendar: calendar)
+        let large = SessionSearch.search([doc(text, session: UUID())], question: "Dana", characterBudget: 200_000, now: now, calendar: calendar)
+        XCTAssertEqual(small.hits.count, SessionSearch.minHitsPerKind)
+        XCTAssertEqual(large.hits.count, count)
+        XCTAssertEqual(large.totalMentions, count)
+    }
+
+    func testSwappingTheIndexWhileSearchesRun() {
+        let first = SearchIndex(url: root.appendingPathComponent("a.sqlite"))
+        let second = SearchIndex(url: root.appendingPathComponent("b.sqlite"))
+        SessionSearch.index = first
+        let docs = [doc("[00:01] A: Dana called.", session: UUID())]
+        let done = DispatchGroup()
+        for _ in 0..<4 {
+            DispatchQueue.global().async(group: done) {
+                for _ in 0..<60 { _ = SessionSearch.search(docs, question: "Dana", now: self.now, calendar: self.calendar) }
+            }
+        }
+        for i in 0..<30 { SessionSearch.index = i % 2 == 0 ? second : first }
+        done.wait()
+        SessionSearch.index = second
+        XCTAssertFalse(first.isOpen, "the replaced index is closed")
+        // A search that still holds the replaced index finds nothing and doesn't reopen its file.
+        XCTAssertNil(first.stamp(session: "x"))
+        XCTAssertTrue(first.missing([]).isEmpty)
+        XCTAssertFalse(first.isOpen)
     }
 }

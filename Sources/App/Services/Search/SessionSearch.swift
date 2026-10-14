@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Search over one patient's material (#286): FTS5 BM25 over passages (see
 /// `SearchIndex`), with whole-word matching, one-letter typo tolerance and a
@@ -90,7 +91,7 @@ enum SessionSearch {
         let sessionsSearched: Int
         /// Other spellings each term matched (by the term's text), e.g. "micheal" for "michael".
         let matchedVariants: [String: [String]]
-        /// Every transcript passage that matched; `hits` holds only the best `maxHitsPerKind` of each kind.
+        /// Every transcript passage that matched; `hits` holds only the best of each kind (see `hitLimit(forCharacterBudget:)`).
         var transcriptHitCount = 0
     }
 
@@ -245,20 +246,43 @@ enum SessionSearch {
 
     /// The persistent index every search runs against. In memory until the app
     /// points it at `<dataRoot>/search.sqlite` (see `AppModel`).
-    nonisolated(unsafe) static var index = SearchIndex()
+    static var index: SearchIndex {
+        get { indexBox.withLock { $0 } }
+        set {
+            let old = indexBox.withLock { box -> SearchIndex in
+                let old = box
+                box = newValue
+                return old
+            }
+            // A search still holding the old index finds nothing and can't reopen its file.
+            if old !== newValue { old.close() }
+        }
+    }
+
+    private static let indexBox = OSAllocatedUnfairLock<SearchIndex>(initialState: SearchIndex())
 
     /// Closes the index's database connection so no indexed text stays in
-    /// SQLite's memory while the app or data folder is locked. The next search
-    /// reopens it.
+    /// SQLite's memory while the app or data folder is locked. Nothing reopens
+    /// it (searches find nothing, writes are dropped) until `openIndex()`; the
+    /// unlock sweep brings it up to date again.
     static func closeIndex() { index.close() }
+
+    /// Lets the index open again, after the app or data folder unlocked.
+    static func openIndex() { index.reopen() }
 
     // MARK: - Search
 
-    /// Hits kept per kind (transcript, notes), best first. Counts are exact over
-    /// every match; only the passages handed back are limited, which is far more
-    /// than any prompt can use and keeps a query that matches a quarter of all
-    /// lines from building a hundred thousand hits.
-    static let maxHitsPerKind = 1000
+    /// Fewest hits kept per kind (transcript, notes), best first. Counts are exact
+    /// over every match; only the passages handed back are limited, so a query that
+    /// matches a quarter of all lines doesn't build a hundred thousand hits.
+    static let minHitsPerKind = 1000
+
+    /// Hits worth keeping for a prompt of `characterBudget` characters: twice as
+    /// many as it could hold if every hit were a 20-character line, and never
+    /// fewer than `minHitsPerKind`.
+    static func hitLimit(forCharacterBudget characterBudget: Int) -> Int {
+        max(minHitsPerKind, characterBudget / 20 * 2)
+    }
 
     /// A stored word a term matches, as the bytes it has in the index.
     private struct Key {
@@ -289,8 +313,8 @@ enum SessionSearch {
         private var current: Int64 = -1
         private var exact: [Int], similar: [Int]
         /// One entry per matching passage; `tfs` holds `matchers.count` entries per row.
-        private(set) var rowDoc: [Int64] = [], rowLine: [Int32] = [], rowLength: [Int32] = [], tfs: [UInt16] = []
-        private var tf: [UInt16]
+        private(set) var rowDoc: [Int64] = [], rowLine: [Int32] = [], rowLength: [Int32] = [], tfs: [Float] = []
+        private var tf: [Float]
         private var offsets: [Int] = []
 
         init(matchers: [Matcher], texts: [String]) {
@@ -343,7 +367,7 @@ enum SessionSearch {
                         let length = span.end - span.start
                         guard length < byLength.count else { continue }
                         for key in byLength[length] where memcmp(base + span.start, key.bytes, length) == 0 {
-                            tf[ti] &+= 1
+                            tf[ti] += Float(key.weight)   // a typo or sound-alike counts for less than the word
                             if tally { record(ti, key) } else { offsets.append(at) }
                             break
                         }
@@ -351,7 +375,7 @@ enum SessionSearch {
                 case .prefix(let prefix):
                     for (at, span) in spans.enumerated()
                     where span.end - span.start >= prefix.count && memcmp(base + span.start, prefix, prefix.count) == 0 {
-                        tf[ti] &+= 1
+                        tf[ti] += 1
                         if tally { exact[ti] += 1 } else { offsets.append(at) }
                     }
                 case .phrase(let pattern):
@@ -362,7 +386,7 @@ enum SessionSearch {
                             return span.end - span.start == pattern[j].count && memcmp(base + span.start, pattern[j], pattern[j].count) == 0
                         }
                         if found {
-                            tf[ti] &+= 1
+                            tf[ti] += 1
                             if tally { exact[ti] += 1 } else { offsets.append(at) }
                             at += pattern.count
                         } else {
@@ -387,10 +411,11 @@ enum SessionSearch {
     /// changed text is re-indexed). FTS5 MATCH finds the passages; they are
     /// counted and ranked (Okapi BM25, the formula behind FTS5's bm25()) as they
     /// stream past, without being copied out of SQLite, and only the best
-    /// `maxHitsPerKind` of each kind are built into hits.
+    /// the best `hitLimit(forCharacterBudget:)` of each kind are built into hits.
     static func search(
-        _ documents: [Document], question: String, now: Date = Date(), calendar: Calendar = .current
+        _ documents: [Document], question: String, characterBudget: Int = 0, now: Date = Date(), calendar: Calendar = .current
     ) -> Result {
+        let keepPerKind = hitLimit(forCharacterBudget: characterBudget)
         let range = dateRange(in: question, now: now, calendar: calendar)
         let terms = terms(from: question)
         let inRange = documents.indices.filter { range?.contains(documents[$0].date) ?? true }
@@ -478,7 +503,7 @@ enum SessionSearch {
                     var kept: [Kind: Int] = [:]
                     for c in candidates {
                         let kind = documents[inRange[c.position]].kind
-                        guard kept[kind, default: 0] < maxHitsPerKind else { continue }
+                        guard kept[kind, default: 0] < keepPerKind else { continue }
                         kept[kind, default: 0] += 1
                         chosen.append(c)
                     }

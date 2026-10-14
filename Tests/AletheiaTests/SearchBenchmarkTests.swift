@@ -51,11 +51,41 @@ final class SearchBenchmarkTests: XCTestCase {
         for q in queries { warm.append(time { _ = SessionSearch.search(docs, question: q) }) }
         for q in queries {
             SessionSearch.closeIndex()
+            SessionSearch.openIndex()
             afterClose.append(time { _ = SessionSearch.search(docs, question: q) })
         }
+        // Queries while another thread keeps indexing new sessions (the launch sweep, or saves).
+        let writing = DispatchGroup()
+        var stop = false
+        var written = 0
+        let flag = NSLock()
+        writing.enter()
+        DispatchQueue.global(qos: .utility).async {
+            var n = 0
+            while true {
+                flag.lock(); let done = stop; flag.unlock()
+                if done { break }
+                let d = docs[n % docs.count]
+                let id = UUID().uuidString
+                let text = d.text + "\n[99:00] Patient: extra \(n)"
+                SessionSearch.index.replace(
+                    session: id, patient: id, kinds: [.transcript],
+                    items: [SearchIndex.Item(session: id, patient: id, kind: "transcript", date: 0, fingerprint: SearchIndex.fingerprint(of: text), text: text)],
+                    stamp: nil)
+                n += 1
+                flag.lock(); written = n; flag.unlock()
+            }
+            writing.leave()
+        }
+        var whileIndexing: [Double] = []
+        for q in queries { whileIndexing.append(time { _ = SessionSearch.search(docs, question: q) }) }
+        flag.lock(); stop = true; flag.unlock()
+        writing.wait()
+        var large: [Double] = []   // a 200,000-character budget keeps up to 20,000 hits per kind
+        for q in queries { large.append(time { result = SessionSearch.search(docs, question: q, characterBudget: 200_000) }) }
         func list(_ v: [Double]) -> String { v.map { String(format: "%.0f", $0) }.joined(separator: "/") }
-        print(String(format: "BENCH sessions=500 words=%d build+first query=%.0f ms warm(ms)=%@ after close(ms)=%@ hits=%d of %d mentions=%d",
-                     500 * 10_000, cold, list(warm), list(afterClose),
+        print(String(format: "BENCH sessions=500 words=%d build+first query=%.0f ms warm(ms)=%@ after close(ms)=%@ while indexing %d sessions(ms)=%@ large budget(ms)=%@ hits=%d of %d mentions=%d",
+                     500 * 10_000, cold, list(warm), list(afterClose), written, list(whileIndexing), list(large),
                      result?.hits.count ?? 0, result?.transcriptHitCount ?? 0, result?.totalMentions ?? 0))
         XCTAssertEqual(result?.sessionsSearched, 500)
     }
