@@ -9,6 +9,12 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.41.0] - 2026-10-14
+
+### Added
+- live progress, per-Mac context budget and truncation tripwire (#288)
+- anchored section and session digests, built in the background (#287)
+
 ## [2.40.0] - 2026-10-14
 
 ### Added

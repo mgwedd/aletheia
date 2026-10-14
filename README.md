@@ -8,7 +8,9 @@ Aletheia records a video-call therapy session, transcribes it, drafts a progress
 
 > **License:** source-available, not open source. All rights reserved; see [LICENSE](LICENSE), [Terms](TERMS.md) and [Privacy](PRIVACY.md).
 
-### Privacy, stated precisely
+---
+
+### Privacy First
 
 - No patient content leaves the Mac. Recording, transcription, notes and chat are all local.
 - The app makes a few requests that carry no patient data: a check for new versions (a plain download of a small file from GitHub), and downloads of the speech and AI models you choose to install.
