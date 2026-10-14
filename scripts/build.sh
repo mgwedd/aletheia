@@ -80,6 +80,15 @@ cp -R "$APP_PATH" "dist/Aletheia.app"
 
 if [ "$IDENTITY" != "-" ]; then
     echo "Signing with ${IDENTITY}…"
+    # Embedded frameworks (whisper, WhisperEngine) first: re-signing the app
+    # doesn't touch them, and ad-hoc nested code fails notarization and, under
+    # the hardened runtime, library validation at launch.
+    for framework in dist/Aletheia.app/Contents/Frameworks/*.framework; do
+        [ -e "$framework" ] || continue
+        # shellcheck disable=SC2086
+        codesign --force --options runtime $EXTRA_CODE_SIGN_FLAGS \
+            --sign "$IDENTITY" "$framework"
+    done
     # Explicit entitlements, not --preserve-metadata: a plain `xcodebuild build`
     # injects get-task-allow, which Apple's notary service rejects.
     # shellcheck disable=SC2086

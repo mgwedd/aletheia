@@ -9,9 +9,30 @@ enum WhisperTranscriberError: LocalizedError {
     }
 }
 
-/// Wraps SwiftWhisper — an in-process Swift binding for whisper.cpp — so
-/// transcription never needs a Homebrew install or a shelled-out CLI tool;
-/// it runs inside the sandboxed app itself, entirely offline.
+/// One line of speech from a single track, in seconds from its start.
+struct SpeechSegment: Equatable {
+    var start: TimeInterval
+    var end: TimeInterval
+    var text: String
+}
+
+/// The whisper.cpp build that turns one track's samples into segments. The
+/// seam between the session logic in `WhisperTranscriber` (tracks, merging,
+/// cleaning) and the runtime doing the inference, so the runtime can change
+/// without touching the rest. See `Integrations.makeTranscriber()`.
+protocol SpeechEngine {
+    /// Transcribes 16 kHz mono samples; `onProgress` gets 0...1 from any
+    /// thread. Honors task cancellation by throwing `CancellationError`.
+    func segments(
+        for samples: [Float],
+        modelPath: URL,
+        onProgress: @escaping (Double) -> Void
+    ) async throws -> [SpeechSegment]
+}
+
+/// Transcribes a session with whisper.cpp, in-process — no Homebrew install or
+/// shelled-out CLI tool; it runs inside the sandboxed app itself, entirely
+/// offline.
 ///
 /// Deliberately not MainActor-isolated: resampling and whisper.cpp
 /// inference are both CPU-heavy and can take minutes for a long session,
@@ -20,9 +41,11 @@ enum WhisperTranscriberError: LocalizedError {
 /// touching UI state.
 final class WhisperTranscriber: Transcribing {
     private let modelPath: URL
+    private let engine: SpeechEngine
 
-    init(modelPath: URL) {
+    init(modelPath: URL, engine: SpeechEngine = SwiftWhisperEngine()) {
         self.modelPath = modelPath
+        self.engine = engine
     }
 
     var isReady: Bool {
@@ -97,10 +120,33 @@ final class WhisperTranscriber: Transcribing {
         // Whisper hallucinates tags and filler on silence, so skip it.
         guard !AudioResampler.isEssentiallySilent(samples) else { return [] }
 
-        let whisper = Whisper(fromFileURL: modelPath)
-        let forwarder = ProgressForwarder(onProgress: { report(stage, $0) })
-        whisper.delegate = forwarder
         report(stage, 0)
+        let segments = try await engine.segments(for: samples, modelPath: modelPath) { report(stage, $0) }
+        // Cancel can land before the engine has started; never hand back text
+        // for a cancelled run.
+        try Task.checkCancellation()
+        return segments.map { segment in
+            TranscribedLine(
+                source: source,
+                startTime: segment.start,
+                endTime: segment.end,
+                text: segment.text
+            )
+        }
+    }
+}
+
+/// whisper.cpp via SwiftWhisper: an early-2023 build, CPU only. What the
+/// production build ships.
+struct SwiftWhisperEngine: SpeechEngine {
+    func segments(
+        for samples: [Float],
+        modelPath: URL,
+        onProgress: @escaping (Double) -> Void
+    ) async throws -> [SpeechSegment] {
+        let whisper = Whisper(fromFileURL: modelPath)
+        let forwarder = ProgressForwarder(onProgress: onProgress)
+        whisper.delegate = forwarder
 
         // whisper.cpp can't be interrupted mid-window, but SwiftWhisper checks a
         // cancel flag before each ~30 s window and then throws `.cancelled`, so
@@ -116,9 +162,6 @@ final class WhisperTranscriber: Transcribing {
         } catch WhisperError.cancelled {
             throw CancellationError()
         }
-        // Cancel can land before whisper has started (nothing to flag yet);
-        // never hand back text for a cancelled run.
-        try Task.checkCancellation()
         // SwiftWhisper holds `delegate` weakly; nothing else retains
         // `forwarder`, so without this the optimizer could release it right
         // after the assignment above and silently drop every progress
@@ -126,10 +169,9 @@ final class WhisperTranscriber: Transcribing {
         // the whole transcription.
         withExtendedLifetime(forwarder) {}
         return segments.map { segment in
-            TranscribedLine(
-                source: source,
-                startTime: TimeInterval(segment.startTime) / 1000.0,
-                endTime: TimeInterval(segment.endTime) / 1000.0,
+            SpeechSegment(
+                start: TimeInterval(segment.startTime) / 1000.0,
+                end: TimeInterval(segment.endTime) / 1000.0,
                 text: segment.text
             )
         }

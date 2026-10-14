@@ -95,14 +95,14 @@ jobs:
         run: xcodegen generate
 
       # Cache the resolved Swift packages (SwiftWhisper + its whisper.cpp
-      # sources) so we don't re-clone/rebuild them every run. Keyed on the
-      # project spec (where dependency versions live) and the runner image, so
-      # each Xcode toolchain keeps its own cache.
+      # sources, and the pinned whisper.cpp XCFramework) so we don't
+      # re-download/rebuild them every run. Keyed on where dependency versions
+      # live and the runner image, so each Xcode toolchain keeps its own cache.
       - name: Cache Swift packages
         uses: actions/cache@v5
         with:
           path: build/SourcePackages
-          key: spm-${{ matrix.runner }}-${{ hashFiles('project.yml') }}
+          key: spm-${{ matrix.runner }}-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift') }}
           restore-keys: spm-${{ matrix.runner }}-
 
       # Resolving SwiftWhisper (which compiles whisper.cpp) is the slow,
