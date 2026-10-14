@@ -14,6 +14,9 @@ enum TranscriptStyler {
     enum Role: Equatable {
         case timestamp
         case speaker(String)
+        /// The " (overlapping)" suffix after a label: a hint the note model
+        /// reads, drawn faintly so it doesn't shout on every busy line.
+        case overlapTag
     }
 
     struct Span: Equatable {
@@ -43,7 +46,7 @@ enum TranscriptStyler {
     // label (no colon or bracket), an optional " (overlapping)" suffix and the
     // colon. A stamp with no label yet is still a stamp.
     private static let linePattern = try! NSRegularExpression(
-        pattern: #"^(\[(?:\d+:)?\d{1,3}:\d{2}\])(?:[ \t]*([^:\n\[\]]{1,40}?)(?: \(overlapping\))?:)?"#,
+        pattern: #"^(\[(?:\d+:)?\d{1,3}:\d{2}\])(?:[ \t]*([^:\n\[\]]{1,40}?)( \(overlapping\))?:)?"#,
         options: [.anchorsMatchLines]
     )
 
@@ -56,6 +59,10 @@ enum TranscriptStyler {
             let label = match.range(at: 2)
             if label.location != NSNotFound, label.length > 0 {
                 result.append(Span(range: label, role: .speaker(ns.substring(with: label))))
+            }
+            let tag = match.range(at: 3)
+            if tag.location != NSNotFound {
+                result.append(Span(range: tag, role: .overlapTag))
             }
         }
         return result

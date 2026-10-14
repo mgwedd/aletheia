@@ -8,8 +8,8 @@ import Foundation
 ///   Call audio          |-- B --|  |-- D --|
 ///   time ------>
 ///
-///   A and B intersect by more than `overlapTolerance`: both are marked.
-///   D only touches C (within the tolerance): neither is marked.
+///   B spends most of its time under A, and A a good share of its time under
+///   B: both are marked. D only touches C: neither is marked.
 ///
 ///   [00:10] You (overlapping): ...A
 ///   [00:14] Call audio (overlapping): ...B
@@ -18,10 +18,12 @@ import Foundation
 ///
 /// Rules:
 ///   - Lines are printed in start-time order (ties keep input order).
-///   - Two lines overlap only if they are from DIFFERENT sources and their
-///     [start, end] intervals intersect by more than `overlapTolerance`.
-///     Lines of one source never overlap each other.
-///   - Both sides of an overlap are marked.
+///   - A line is marked when lines from OTHER sources cover at least
+///     `minimumOverlap` seconds of it AND at least `minimumOverlapShare` of
+///     its length. Lines of one source never overlap each other.
+///   - So each side is judged on its own: a brief "mm-hmm" under a long turn
+///     marks neither (too short), and a two-second aside inside a 30-second
+///     turn marks the aside but not the turn (too small a share of it).
 ///   - Order is approximate: a segment's start is only as precise as the
 ///     speech model's timestamps (see `Prompts.transcriptLegend`).
 ///
@@ -29,11 +31,14 @@ import Foundation
 /// lines must tolerate the suffix: `TranscriptTimeline` only reads the leading
 /// `[...]`, so it is unaffected.
 enum TranscriptFormatter {
-    /// Intersections shorter than this are not overlaps. Whisper segment
-    /// boundaries are only good to a few tenths of a second, and a normal
-    /// hand-off between speakers often touches or briefly abuts; without a
-    /// tolerance almost every turn change would be flagged.
-    static let overlapTolerance: TimeInterval = 0.3
+    /// Whisper segments run 5-15 seconds and their boundaries are only good to
+    /// a few tenths of a second, so a bare "any intersection" rule marks nearly
+    /// every line of a lively conversation: one backchannel tags a whole
+    /// sentence. A line is only marked when the talk-over is real for it:
+    /// at least this many seconds...
+    static let minimumOverlap: TimeInterval = 1
+    /// ...and at least this share of the line's own length.
+    static let minimumOverlapShare = 0.3
 
     /// Appended to the speaker label of an overlapping line.
     static let overlapSuffix = " (overlapping)"
@@ -51,14 +56,15 @@ enum TranscriptFormatter {
         return printed.joined(separator: "\n")
     }
 
-    /// Indices into `ordered` (sorted by start time) of every line that
-    /// overlaps a line from another source.
+    /// Indices into `ordered` (sorted by start time) of every line that other
+    /// sources talk over enough to mark (see `minimumOverlap`).
     ///
-    /// Sweep: for line i, only later lines starting before i's end (less the
-    /// tolerance) can overlap it, so the scan stops at the first one that
-    /// starts later than that.
+    /// Sweep: for line i, only later lines starting before i's end can
+    /// intersect it, so the scan stops at the first one that starts later.
     static func overlappingIndices(in ordered: [TranscribedLine]) -> Set<Int> {
-        var result = Set<Int>()
+        // ponytail: sums intersections, so two other-source lines covering the
+        // same stretch count it twice; same-source lines rarely overlap.
+        var covered = [TimeInterval](repeating: 0, count: ordered.count)
         for i in 0..<ordered.count {
             let a = ordered[i]
             var j = i + 1
@@ -66,15 +72,19 @@ enum TranscriptFormatter {
                 let b = ordered[j]
                 // b starts at or after a, so the intersection is
                 // [b.start, min(a.end, b.end)].
-                if b.startTime >= a.endTime - overlapTolerance { break }
-                if b.source != a.source, min(a.endTime, b.endTime) - b.startTime > overlapTolerance {
-                    result.insert(i)
-                    result.insert(j)
+                if b.startTime >= a.endTime { break }
+                if b.source != a.source {
+                    let shared = min(a.endTime, b.endTime) - b.startTime
+                    covered[i] += shared
+                    covered[j] += shared
                 }
                 j += 1
             }
         }
-        return result
+        return Set(ordered.indices.filter { index in
+            let length = ordered[index].endTime - ordered[index].startTime
+            return covered[index] >= minimumOverlap && covered[index] >= minimumOverlapShare * length
+        })
     }
 
     /// `MM:SS`; minutes are not wrapped, so a long session reads `[75:12]`

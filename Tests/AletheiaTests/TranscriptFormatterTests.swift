@@ -63,12 +63,40 @@ final class TranscriptFormatterTests: XCTestCase {
         XCTAssertFalse(out.contains { $0.contains("(overlapping)") })
     }
 
-    func testIntersectionBeyondToleranceIsAnOverlap() {
+    func testHalfSecondIntersectionIsNotAnOverlap() {
         let out = printed([
             line("A", 10, 12.5),
             line("B", 12, 14, "Call audio"),
         ])
+        XCTAssertFalse(out.contains { $0.contains("(overlapping)") })
+    }
+
+    func testSustainedTalkOverMarksBothSides() {
+        let out = printed([
+            line("A", 10, 14),
+            line("B", 12, 15, "Call audio"),
+        ])
         XCTAssertEqual(out.filter { $0.contains("(overlapping)") }.count, 2)
+    }
+
+    func testBackchannelUnderALongTurnMarksNothing() {
+        let out = printed([
+            line("A long sentence of mine", 18, 30),
+            line("uh-huh", 21, 21.6, "Call audio"),
+            line("right", 25, 25.4, "Call audio"),
+        ])
+        XCTAssertFalse(out.contains { $0.contains("(overlapping)") })
+    }
+
+    func testManySmallInterruptionsAddUpOnTheLongTurn() {
+        // Three 1.5s interjections cover 4.5s of a 10s turn: 45% of it.
+        let out = printed([
+            line("Turn", 0, 10),
+            line("one", 1, 2.5, "Call audio"),
+            line("two", 4, 5.5, "Call audio"),
+            line("three", 7, 8.5, "Call audio"),
+        ])
+        XCTAssertEqual(out.filter { $0.contains("(overlapping)") }.count, 4)
     }
 
     func testSameSourceLinesNeverOverlapEachOther() {
@@ -79,14 +107,14 @@ final class TranscriptFormatterTests: XCTestCase {
         XCTAssertFalse(out.contains { $0.contains("(overlapping)") })
     }
 
-    func testLongLineMarksOnlyTheLinesItActuallyOverlaps() {
+    func testAsideMarksItselfButNotTheLongTurnAroundIt() {
         let out = printed([
             line("Long turn", 0, 30),
             line("Quick aside", 5, 7, "Call audio"),
             line("Later", 40, 41, "Call audio"),
         ])
         XCTAssertEqual(out, [
-            "[00:00] Therapist (overlapping): Long turn",
+            "[00:00] Therapist: Long turn",
             "[00:05] Call audio (overlapping): Quick aside",
             "[00:40] Call audio: Later",
         ])
@@ -95,14 +123,14 @@ final class TranscriptFormatterTests: XCTestCase {
     func testOverlapDetectedAcrossIntermediateLines() {
         // The line between the two overlapping ones must not stop the scan.
         let out = printed([
-            line("Long turn", 0, 30),
-            line("Middle", 5, 6),
-            line("Aside", 10, 12, "Call audio"),
+            line("Turn", 0, 10),
+            line("Middle", 1, 2),
+            line("Talk-over", 3, 10, "Call audio"),
         ])
         XCTAssertEqual(out, [
-            "[00:00] Therapist (overlapping): Long turn",
-            "[00:05] Therapist: Middle",
-            "[00:10] Call audio (overlapping): Aside",
+            "[00:00] Therapist (overlapping): Turn",
+            "[00:01] Therapist: Middle",
+            "[00:03] Call audio (overlapping): Talk-over",
         ])
     }
 
@@ -137,7 +165,7 @@ final class TranscriptFormatterTests: XCTestCase {
         )
     }
 
-    func testCleanThenFormatShowsInterjectionInPlace() {
+    func testCleanThenFormatShowsBackchannelInPlaceUnmarked() {
         let cleaned = TranscriptCleaner.clean([
             line("I was saying", 10, 11),
             line("that it got hard", 11.5, 13),
@@ -145,8 +173,8 @@ final class TranscriptFormatterTests: XCTestCase {
             line("and then more.", 13.2, 15),
         ])
         XCTAssertEqual(printed(cleaned), [
-            "[00:10] Therapist (overlapping): I was saying that it got hard",
-            "[00:12] Call audio (overlapping): Mm-hm.",
+            "[00:10] Therapist: I was saying that it got hard",
+            "[00:12] Call audio: Mm-hm.",
             "[00:13] Therapist: and then more.",
         ])
     }
