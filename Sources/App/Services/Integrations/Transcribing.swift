@@ -3,7 +3,7 @@ import Foundation
 /// The speech-to-text integration.
 ///
 /// Another adapter seam: the only implementation is `WhisperTranscriber`
-/// (whisper.cpp compiled into the app via SwiftWhisper — no external CLI,
+/// (whisper.cpp linked into the app — no external CLI,
 /// no MacWhisper, no Homebrew), but any engine that turns the session's
 /// audio files into a transcript can conform. The recording/transcription
 /// UI depends on this protocol, not on Whisper specifically.

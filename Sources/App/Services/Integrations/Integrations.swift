@@ -21,7 +21,7 @@ final class Integrations: ObservableObject {
         self.settings = settings
     }
 
-    /// Speech-to-text. Currently whisper.cpp via SwiftWhisper.
+    /// Speech-to-text: whisper.cpp with Metal (see `WhisperTranscriber`).
     func makeTranscriber() -> Transcribing {
         WhisperTranscriber(modelPath: settings.whisperModelPath)
     }
