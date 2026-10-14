@@ -29,16 +29,14 @@ struct ChatPaneView: View {
     /// Compacts the conversation, with an optional focus: the Compact button
     /// and the `/compact [focus]` command. Nil hides both.
     var onCompact: ((String) -> Void)? = nil
+    /// Live state of the running answer, and the model's measured read speed
+    /// (for the time estimate); drives the progress line under the conversation.
+    var progress = AIRunProgress()
+    var readTokensPerSecond: Double? = nil
 
     @State private var draft: String = ""
     @FocusState private var inputFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    /// Show the "Thinking…" spinner only until the first streamed token lands —
-    /// once the assistant bubble has text, the growing bubble is the progress.
-    private var isWaitingForFirstToken: Bool {
-        isSending && (messages.last?.role == .user || (messages.last?.text.isEmpty ?? true))
-    }
 
     private var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
@@ -103,7 +101,7 @@ struct ChatPaneView: View {
                     ForEach(messages) { message in
                         ChatBubble(message: message).id(message.id)
                     }
-                    if isWaitingForFirstToken {
+                    if isSending {
                         progressIndicator
                             .id("sending-indicator")
                     }
@@ -158,13 +156,7 @@ struct ChatPaneView: View {
                 }
             }
         } else {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Thinking…")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-            }
-            .accessibilityElement(children: .combine)
+            AIProgressView(progress: progress, readTokensPerSecond: readTokensPerSecond)
         }
     }
 
@@ -217,7 +209,7 @@ struct ChatPaneView: View {
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
         withAnimation(reduceMotion ? nil : Animation.easeOut(duration: 0.15)) {
-            if isWaitingForFirstToken {
+            if isSending {
                 proxy.scrollTo("sending-indicator", anchor: .bottom)
             } else if let last = messages.last {
                 proxy.scrollTo(last.id, anchor: .bottom)

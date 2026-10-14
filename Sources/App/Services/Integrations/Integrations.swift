@@ -64,6 +64,9 @@ final class Integrations: ObservableObject {
     /// The configured Ollama model tag, for status and support text.
     var ollamaModelName: String { settings.ollamaModelName }
 
+    /// Measured prompt tokens a second for the configured model, once it has run.
+    var readTokensPerSecond: Double? { settings.speed(for: settings.ollamaModelName).read }
+
     /// The backend that `makeAssistant()` will actually use, after resolving the
     /// user's preference against what this Mac supports. The Settings and setup
     /// screens read this so they describe (and troubleshoot) the real backend.
@@ -96,8 +99,19 @@ final class Integrations: ObservableObject {
 
     /// The use-case layer over the LLM adapter, preconfigured with the
     /// currently selected model. This is what summary/chat call sites use.
-    func makeAssistantService() -> AssistantService {
-        AssistantService(assistant: makeAssistant(), model: settings.ollamaModelName, systemPrompt: settings.systemPrompt)
+    /// `report` hears about the run (see `ChatStreamRunner.reporter`); a finished
+    /// run also updates this model's measured speeds.
+    func makeAssistantService(report: (@Sendable (AIRunEvent) -> Void)? = nil) -> AssistantService {
+        let settings = settings
+        let model = settings.ollamaModelName
+        var service = AssistantService(assistant: makeAssistant(), model: model, systemPrompt: settings.systemPrompt)
+        service.report = { event in
+            if case .finished(let stats) = event {
+                Task { @MainActor in settings.recordSpeeds(model: model, from: stats) }
+            }
+            report?(event)
+        }
+        return service
     }
 
     /// System notifications (transcript/summary ready). Created once so the

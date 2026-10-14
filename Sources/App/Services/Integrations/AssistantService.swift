@@ -10,9 +10,40 @@ struct AssistantService {
     let model: String
     /// Standing instructions sent with every request (see `AppSettings.systemPrompt`).
     var systemPrompt: String = Prompts.defaultSystemPrompt
+    /// What this Mac can read at once. A prompt over it is refused, never cut.
+    var budget: ContextBudget = .current
+    /// Told when a run is about to read its prompt and when it finishes (see
+    /// `ChatStreamRunner.reporter`).
+    var report: (@Sendable (AIRunEvent) -> Void)?
+
+    private func checkBudget(system: String, prompt: String) throws {
+        guard budget.fits(promptCharacters: system.count + prompt.count) else {
+            throw ContextBudgetError(minutes: budget.approximateMinutes)
+        }
+    }
+
+    private func generate(system: String, prompt: String) async throws -> String {
+        try checkBudget(system: system, prompt: prompt)
+        return try await assistant.generate(model: model, system: system, prompt: prompt)
+    }
+
+    /// Streams `prompt` after the budget check; an over-budget prompt fails the
+    /// stream with `ContextBudgetError` and nothing is sent.
+    private func run(system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
+        do {
+            try checkBudget(system: system, prompt: prompt)
+        } catch {
+            return AsyncThrowingStream { $0.finish(throwing: error) }
+        }
+        report?(.reading(estimatedTokens: (system.count + prompt.count) / 4))
+        let report = report
+        return assistant.stream(
+            model: model, system: system, prompt: prompt,
+            onStats: report.map { report in { report(.finished($0)) } })
+    }
 
     func summarize(transcript: String) async throws -> String {
-        try await assistant.generate(model: model, system: systemPrompt, prompt: Prompts.summarize(transcript: transcript))
+        try await generate(system: systemPrompt, prompt: Prompts.summarize(transcript: transcript))
     }
 
     /// Drafts a clinical progress note in the given documentation format
@@ -26,8 +57,7 @@ struct AssistantService {
         verbosity: SummaryVerbosity = .default,
         instructions: String? = nil
     ) async throws -> String {
-        try await assistant.generate(
-            model: model,
+        try await generate(
             system: systemPrompt,
             prompt: Prompts.progressNote(
                 format: format,
@@ -50,8 +80,7 @@ struct AssistantService {
         verbosity: SummaryVerbosity = .default,
         instructions: String? = nil
     ) -> AsyncThrowingStream<String, Error> {
-        assistant.stream(
-            model: model,
+        run(
             system: systemPrompt,
             prompt: Prompts.progressNote(
                 format: format,
@@ -71,8 +100,7 @@ struct AssistantService {
         history: [ChatMessage],
         question: String
     ) async throws -> String {
-        return try await assistant.generate(
-            model: model,
+        return try await generate(
             system: Prompts.chatSystemPrompt(systemPrompt, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
@@ -85,8 +113,7 @@ struct AssistantService {
     }
 
     func answerAboutPatient(context: String, history: [ChatMessage], question: String) async throws -> String {
-        try await assistant.generate(
-            model: model,
+        try await generate(
             system: Prompts.chatSystemPrompt(systemPrompt, question: question),
             prompt: Prompts.patientChat(context: context, history: history, question: question)
         )
@@ -104,8 +131,7 @@ struct AssistantService {
         history: [ChatMessage],
         question: String
     ) -> AsyncThrowingStream<String, Error> {
-        assistant.stream(
-            model: model,
+        run(
             system: Prompts.chatSystemPrompt(systemPrompt, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
@@ -123,8 +149,7 @@ struct AssistantService {
         history: [ChatMessage],
         question: String
     ) -> AsyncThrowingStream<String, Error> {
-        assistant.stream(
-            model: model,
+        run(
             system: Prompts.chatSystemPrompt(systemPrompt, question: question),
             prompt: Prompts.patientChat(context: context, history: history, question: question)
         )
@@ -132,7 +157,7 @@ struct AssistantService {
 
     /// Streams a summary that replaces the conversation so far (`/compact`).
     func streamCompaction(history: [ChatMessage], focus: String) -> AsyncThrowingStream<String, Error> {
-        assistant.stream(model: model, system: systemPrompt, prompt: Prompts.compactChat(history: history, focus: focus))
+        run(system: systemPrompt, prompt: Prompts.compactChat(history: history, focus: focus))
     }
 
     /// Renders stored margin comments into the plain lines the prompt expects.

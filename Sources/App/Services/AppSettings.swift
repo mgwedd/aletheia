@@ -95,6 +95,10 @@ final class AppSettings: ObservableObject {
         static let progressNoteFormat = "progressNoteFormat"
         static let summaryVerbosity = "summaryVerbosity"
         static let noteInstructions = "noteInstructions"
+        static let modelSpeeds = "modelSpeeds"
+        static let noteEffort = "noteEffort"
+        static let sessionChatEffort = "sessionChatEffort"
+        static let patientChatEffort = "patientChatEffort"
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
@@ -169,6 +173,30 @@ final class AppSettings: ObservableObject {
     /// `ProgressNoteFormat.rawValue`. A missing key means the default.
     @Published var noteInstructions: [String: String] {
         didSet { defaults.set(noteInstructions, forKey: Keys.noteInstructions) }
+    }
+    /// Per-model read and write speeds measured on this Mac (tokens a second, a
+    /// moving average), keyed by model tag. They give the progress line its
+    /// "about 1 min left" once a model has run here.
+    @Published var modelSpeeds: [String: [String: Double]] {
+        didSet { defaults.set(modelSpeeds, forKey: Keys.modelSpeeds) }
+    }
+    func speed(for model: String) -> ModelSpeed {
+        ModelSpeed(stored: modelSpeeds[model] ?? [:])
+    }
+    func recordSpeeds(model: String, from stats: AIRunStats) {
+        let updated = speed(for: model).folding(stats)
+        if updated != speed(for: model) { modelSpeeds[model] = updated.stored }
+    }
+    /// How much effort each feature puts in (`AnswerEffort`). Stored per
+    /// feature; no control or behaviour reads them yet.
+    @Published var noteEffort: AnswerEffort {
+        didSet { defaults.set(noteEffort.rawValue, forKey: Keys.noteEffort) }
+    }
+    @Published var sessionChatEffort: AnswerEffort {
+        didSet { defaults.set(sessionChatEffort.rawValue, forKey: Keys.sessionChatEffort) }
+    }
+    @Published var patientChatEffort: AnswerEffort {
+        didSet { defaults.set(patientChatEffort.rawValue, forKey: Keys.patientChatEffort) }
     }
     /// Saves custom instructions for a format; text that is empty or equal to
     /// the default removes the override.
@@ -309,6 +337,10 @@ final class AppSettings: ObservableObject {
         summaryVerbosity = defaults.string(forKey: Keys.summaryVerbosity)
             .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
         noteInstructions = defaults.dictionary(forKey: Keys.noteInstructions) as? [String: String] ?? [:]
+        modelSpeeds = defaults.dictionary(forKey: Keys.modelSpeeds) as? [String: [String: Double]] ?? [:]
+        noteEffort = defaults.string(forKey: Keys.noteEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
+        sessionChatEffort = defaults.string(forKey: Keys.sessionChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
+        patientChatEffort = defaults.string(forKey: Keys.patientChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil
