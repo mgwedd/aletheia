@@ -68,10 +68,12 @@ enum PatientContextRetriever {
         characterBudget: Int,
         labels: [Date: String] = [:]
     ) -> Selection {
+        // Compacted for the model (`TranscriptCompactor`), so the budget below
+        // measures what is actually sent.
         let usable = transcripts.filter {
             !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && (search.dateRange?.contains($0.date) ?? true)
-        }
+        }.map { TranscriptDocument(date: $0.date, text: TranscriptCompactor.compact($0.text)) }
         guard !usable.isEmpty else { return Selection(excerpts: [], hitsShown: 0, whole: true, fullTexts: true) }
         let transcriptHits = search.hits.filter { $0.kind == .transcript }
 
@@ -97,7 +99,9 @@ enum PatientContextRetriever {
         var used = 0
         var shown = 0
         for hit in transcriptHits {
+            // Lines are compacted before they are counted, so the room saved admits more hits.
             var fresh = hit.context.enumerated().filter { kept[Slot(document: hit.documentIndex, line: hit.contextStart + $0.offset)] == nil }
+                .map { (offset: $0.offset, element: TranscriptCompactor.compact($0.element)) }
             let headerCost = headed.contains(hit.date) ? 0 : header(hit.date, labels: labels).count + 3
             var cost = fresh.reduce(0) { $0 + $1.element.count + 1 } + headerCost
             if used + cost > characterBudget {
@@ -130,7 +134,7 @@ enum PatientContextRetriever {
             }
             byDate[dateOf[document]!, default: []].append(text)
         }
-        let excerpts = byDate.keys.sorted(by: >).map { Excerpt(date: $0, text: byDate[$0]!.joined(separator: "\n…\n")) }
+        let excerpts = byDate.keys.sorted(by: >).map { Excerpt(date: $0, text: TranscriptCompactor.compact(byDate[$0]!.joined(separator: "\n…\n"))) }
         return Selection(excerpts: excerpts, hitsShown: shown, whole: false, fullTexts: false)
     }
 

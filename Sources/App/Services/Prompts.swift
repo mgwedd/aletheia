@@ -56,20 +56,26 @@ enum Prompts {
         asksForDiagram(question) ? base + "\n\n" + diagramGuidance : base
     }
 
-    /// How to read a transcript line (`[MM:SS] Label: text`, as printed by
-    /// `TranscriptFormatter`). Embedded in every prompt that includes a
-    /// transcript so the model does not over-read the labels or the ordering.
-    /// Keep in step with the labels in `WhisperTranscriber` and the
+    /// How to read a transcript (`[MM:SS] Y: text` turns, as shrunk by
+    /// `TranscriptCompactor` from the stored `[MM:SS] You: text` lines).
+    /// Embedded in every prompt that includes a transcript so the model does
+    /// not over-read the labels or the ordering. The short labels are defined
+    /// only here. Keep in step with the labels in `WhisperTranscriber` and the
     /// "(overlapping)" suffix in `TranscriptFormatter`.
     static let transcriptLegend = """
-    How to read the transcript: each line is "[MM:SS] Label: text". The \
-    label comes from which audio track the words were recorded on, not from \
-    voice analysis. "You" is the microphone, normally the therapist; it \
-    never means you, the reader. "Call audio" is normally the client. In a \
-    session recorded with the microphone only, both people may appear as \
-    "You". "(overlapping)" after a label means both tracks had speech \
-    at the same time, so the two people spoke over each other. Line order is \
-    approximate to within a few seconds.
+    How to read the transcript: each turn is "[MM:SS] Y: text" or \
+    "[MM:SS] C: text" (minutes can exceed 59 in a long session, e.g. \
+    "[75:12]"). The time is when the turn started; a long turn repeats its label and a new time about every \
+    minute. The label comes from which audio track the words were recorded \
+    on, not from voice analysis. "Y" (You) is the microphone, normally the \
+    therapist; it never means you, the reader. "C" (Call audio) is normally \
+    the client. In a session recorded with the microphone only, both people \
+    may appear as "Y". A "~" after the letter ("Y~", "C~") means \
+    "(overlapping)": both tracks had speech at the same time, so the two \
+    people spoke over each other. "(repeated ×N)" after a sentence means the same \
+    sentence was repeated N times in a row (often a transcription loop, but it \
+    can be the speaker repeating it). Filler sounds such as "um" and "uh" were left out. Line order \
+    is approximate to within a few seconds.
     """
 
     static func summarize(transcript: String) -> String {
@@ -84,7 +90,7 @@ enum Prompts {
         \(transcriptLegend)
 
         Transcript:
-        \(transcript)
+        \(TranscriptCompactor.compact(transcript))
         """
     }
 
@@ -174,7 +180,7 @@ enum Prompts {
         \(transcriptLegend)
 
         Transcript:
-        \(transcript)
+        \(TranscriptCompactor.compact(transcript))
         \(therapistMaterial(notes: notes, comments: comments))
         """
     }
@@ -209,7 +215,7 @@ enum Prompts {
         \(transcriptLegend)
 
         Transcript:
-        \(transcript)
+        \(TranscriptCompactor.compact(transcript))
         \(therapistMaterial(notes: notes, comments: comments))
         \(formatHistory(history, question: question))
         Therapist's question: \(question)

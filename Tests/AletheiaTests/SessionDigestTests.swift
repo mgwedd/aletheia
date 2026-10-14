@@ -80,7 +80,7 @@ final class DigestPromptTests: XCTestCase {
         XCTAssertTrue(prompt.contains(Prompts.transcriptLegend))
         XCTAssertTrue(prompt.contains("Use only what is in this text"))
         XCTAssertTrue(prompt.contains("Risk: none noted"))
-        XCTAssertTrue(prompt.contains("[12:30] You: hello"))
+        XCTAssertTrue(prompt.contains("[12:30] Y: hello"))
     }
 
     func testSessionPromptKeepsEachAnchorAndTheCap() {
