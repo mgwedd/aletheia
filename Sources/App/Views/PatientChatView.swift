@@ -80,7 +80,7 @@ struct PatientChatView: View {
                         busyNotice: searchingNotice,
                         onCompact: { compact($0) },
                         progress: chatRunner.progress,
-                        readTokensPerSecond: integrations.readTokensPerSecond
+                        speed: integrations.modelSpeed
                     )
                     .frame(minWidth: 360)
                 } else {

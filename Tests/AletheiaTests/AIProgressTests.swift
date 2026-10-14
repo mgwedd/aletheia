@@ -96,9 +96,94 @@ final class AIProgressTests: XCTestCase {
         XCTAssertEqual(speed.read, 100)
     }
 
-    func testSpeedRoundTripsThroughDefaultsForm() {
-        let speed = ModelSpeed(read: 120, write: 30)
+    func testCacheHitRunsDoNotCountAsReadSpeed() {
+        // Read far less than we sent: a cached prefix.
+        XCTAssertNil(AIRunStats(promptTokens: 300, promptNanos: 1_000_000_000, expectedPromptTokens: 5000).readTokensPerSecond)
+        // Implausibly fast.
+        XCTAssertNil(AIRunStats(promptTokens: 4000, promptNanos: 40_000_000, expectedPromptTokens: 4000).readTokensPerSecond)
+        XCTAssertNotNil(AIRunStats(promptTokens: 4000, promptNanos: 4_000_000_000, expectedPromptTokens: 4500).readTokensPerSecond)
+        let speed = ModelSpeed(read: 100).folding(AIRunStats(promptTokens: 300, promptNanos: 1_000_000_000, expectedPromptTokens: 5000))
+        XCTAssertEqual(speed.read, 100)
+    }
+
+    func testPartialPrefixHitIsNotRecordedAsReadSpeed() {
+        // 8K prompt, 6K cached: Ollama counts all 8K but spent time on 2K only.
+        var stats = AIRunStats(promptTokens: 8000, promptNanos: 4_000_000_000, expectedPromptTokens: 2200)
+        XCTAssertNotNil(stats.readTokensPerSecond)
+        stats.reusedPrefix = true
+        XCTAssertNil(stats.readTokensPerSecond)
+        XCTAssertEqual(ModelSpeed(read: 100).folding(stats).read, 100)
+    }
+
+    func testCacheFilterBoundaries() {
+        // Exactly half of what was expected still counts; just under does not.
+        XCTAssertNotNil(AIRunStats(promptTokens: 2500, promptNanos: 25_000_000_000, expectedPromptTokens: 5000).readTokensPerSecond)
+        XCTAssertNil(AIRunStats(promptTokens: 2499, promptNanos: 25_000_000_000, expectedPromptTokens: 5000).readTokensPerSecond)
+        // No expectation (0) never filters on size.
+        XCTAssertNotNil(AIRunStats(promptTokens: 300, promptNanos: 3_000_000_000, expectedPromptTokens: 0).readTokensPerSecond)
+    }
+
+    func testWritingLineShowsTimeLeftOnceSpeedKnown() {
+        var progress = AIRunProgress(startedAt: Date(timeIntervalSince1970: 0))
+        progress.firstTokenAt = Date(timeIntervalSince1970: 10)
+        progress.tokensWritten = 50
+        let now = Date(timeIntervalSince1970: 20)
+        let lines = AIProgressFormat.lines(
+            progress, now: now, readTokensPerSecond: nil, writeTokensPerSecond: 10, expectedOutputTokens: 650)
+        XCTAssertEqual(lines[1].text, "Writing · 50 tokens · 0:10 · about 1 min left")  // 600 left at 10/s
+        let unknown = AIProgressFormat.lines(progress, now: now, readTokensPerSecond: nil)
+        XCTAssertEqual(unknown[1].text, "Writing · 50 tokens · 0:10")
+    }
+
+    func testWritingLineHidesTimeLeftPastExpectedLength() {
+        var progress = AIRunProgress(startedAt: Date(timeIntervalSince1970: 0))
+        progress.firstTokenAt = Date(timeIntervalSince1970: 10)
+        progress.tokensWritten = 500
+        let lines = AIProgressFormat.lines(
+            progress, now: Date(timeIntervalSince1970: 20), readTokensPerSecond: nil,
+            writeTokensPerSecond: 10, expectedOutputTokens: 400)
+        XCTAssertEqual(lines[1].text, "Writing · 500 tokens · 0:10")
+    }
+
+    func testOutputLengthIsAveragedPerTask() throws {
+        func run(_ task: AITask, tokens: Int) -> AIRunStats {
+            AIRunStats(outputTokens: tokens, outputNanos: 5_000_000_000, task: task)
+        }
+        var speed = ModelSpeed()
+        speed = speed.folding(run(.note, tokens: 1000)).folding(run(.chat, tokens: 100))
+        XCTAssertEqual(speed.expectedOutput(for: .note), 1000)
+        XCTAssertEqual(speed.expectedOutput(for: .chat), 100)
+        XCTAssertNil(speed.expectedOutput(for: .digest))
+        speed = speed.folding(run(.chat, tokens: 200))
+        XCTAssertEqual(try XCTUnwrap(speed.expectedOutput(for: .chat)), 130)
+        XCTAssertEqual(speed.expectedOutput(for: .note), 1000)
+        // A run without a task, or too short to time, leaves outputs alone.
+        XCTAssertEqual(speed.folding(AIRunStats(outputTokens: 900, outputNanos: 5_000_000_000)).outputs, speed.outputs)
+        XCTAssertEqual(speed.folding(run(.note, tokens: 10)).outputs, speed.outputs)
+    }
+
+    func testStoredFormRoundTripsAndToleratesLegacyOrJunk() {
+        let speed = ModelSpeed(read: 120, write: 30, outputs: ["note": 800, "chat": 150])
         XCTAssertEqual(ModelSpeed(stored: speed.stored), speed)
+        // What main stored before per-task outputs: read and write only.
+        XCTAssertEqual(ModelSpeed(stored: ["read": 120, "write": 30]), ModelSpeed(read: 120, write: 30))
+        XCTAssertEqual(ModelSpeed(stored: ["bogus": 1, "output.": 2]).read, nil)
+        XCTAssertEqual(ModelSpeed(stored: [:]), ModelSpeed())
+    }
+
+    @MainActor
+    func testSettingsRecordSpeedsOverLegacyStoredHistory() throws {
+        let settings = AppSettings.shared
+        let original = settings.modelSpeeds
+        defer { settings.modelSpeeds = original }
+        // The shape main stored: read and write only.
+        settings.modelSpeeds = ["m": ["read": 90, "write": 12]]
+        XCTAssertEqual(settings.speed(for: "m"), ModelSpeed(read: 90, write: 12))
+        XCTAssertEqual(settings.speed(for: "other"), ModelSpeed())
+        settings.recordSpeeds(model: "m", from: AIRunStats(
+            promptTokens: 1000, promptNanos: 10_000_000_000, outputTokens: 100, outputNanos: 5_000_000_000, task: .note))
+        XCTAssertEqual(settings.speed(for: "m").outputs, ["note": 100])
+        XCTAssertEqual(try XCTUnwrap(settings.speed(for: "m").read), 93, accuracy: 0.001)
     }
 
     // MARK: Budget

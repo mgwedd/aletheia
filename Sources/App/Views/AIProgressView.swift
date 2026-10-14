@@ -46,7 +46,10 @@ enum AIProgressFormat {
     }
 
     /// The stage list for a run at `now`: read, then write.
-    static func lines(_ progress: AIRunProgress, now: Date, readTokensPerSecond: Double?) -> [AIProgressLine] {
+    static func lines(
+        _ progress: AIRunProgress, now: Date, readTokensPerSecond: Double?,
+        writeTokensPerSecond: Double? = nil, expectedOutputTokens: Int? = nil
+    ) -> [AIProgressLine] {
         let started = progress.startedAt ?? now
         let readDetail = progress.estimatedPromptTokens.map(estimatedTokens)
         func join(_ parts: [String?]) -> String { parts.compactMap { $0 }.joined(separator: " · ") }
@@ -62,6 +65,12 @@ enum AIProgressFormat {
                 AIProgressLine(state: .pending, text: progress.writeTitle),
             ]
         }
+        let writingFor = now.timeIntervalSince(firstToken)
+        // Hidden once the reply passes its typical length: nothing honest to say.
+        let writeLeft = expectedOutputTokens.flatMap { expected in
+            writeTokensPerSecond.flatMap { $0 > 0 && progress.tokensWritten < expected
+                ? Double(expected - progress.tokensWritten) / $0 : nil }
+        }
         return [
             AIProgressLine(state: .done, text: join([
                 progress.readTitle, readDetail, elapsed(firstToken.timeIntervalSince(started)),
@@ -69,7 +78,8 @@ enum AIProgressFormat {
             AIProgressLine(state: .current, text: join([
                 progress.writeTitle,
                 progress.tokensWritten > 0 ? tokens(progress.tokensWritten) : nil,
-                elapsed(now.timeIntervalSince(firstToken)),
+                elapsed(writingFor),
+                writeLeft.map(remaining),
             ])),
         ]
     }
@@ -80,12 +90,15 @@ enum AIProgressFormat {
 /// has run on this Mac, a time estimate with a bar; writing shows a token count.
 struct AIProgressView: View {
     let progress: AIRunProgress
-    /// Measured prompt tokens a second for this model, when known.
-    var readTokensPerSecond: Double?
+    /// Measured speeds for this model, when known.
+    var speed: ModelSpeed?
+    var task: AITask = .chat
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            let lines = AIProgressFormat.lines(progress, now: context.date, readTokensPerSecond: readTokensPerSecond)
+            let lines = AIProgressFormat.lines(
+                progress, now: context.date, readTokensPerSecond: speed?.read,
+                writeTokensPerSecond: speed?.write, expectedOutputTokens: speed?.expectedOutput(for: task))
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                     HStack(spacing: 6) {
@@ -98,7 +111,7 @@ struct AIProgressView: View {
                 }
                 if progress.firstTokenAt == nil, let fraction = AIProgressFormat.readingFraction(
                     estimatedTokens: progress.estimatedPromptTokens,
-                    tokensPerSecond: readTokensPerSecond,
+                    tokensPerSecond: speed?.read,
                     elapsed: context.date.timeIntervalSince(progress.startedAt ?? context.date)
                 ) {
                     ThemeProgressBar(value: fraction)

@@ -12,12 +12,26 @@ struct AIRunStats: Equatable {
     /// `ContextBudget.estimatedTokens`), minus any leading part of the prompt it already holds from the
     /// previous request (see `PromptPrefixMemory`). 0 when unknown.
     var expectedPromptTokens: Int = 0
+    /// What the run was for, and whether `PromptPrefixMemory` found a prefix
+    /// Ollama probably still held (it counts the whole prompt in
+    /// `prompt_eval_count` but spends almost no time on the cached part).
+    var task: AITask?
+    var reusedPrefix = false
 
     /// Prompt tokens read per second. Needs enough tokens to be a real
-    /// measurement; a short prompt's timing is mostly noise.
+    /// measurement; a short prompt's timing is mostly noise. Nil for a run that
+    /// hit Ollama's prompt cache (a shared prefix, read far less than we sent, or
+    /// implausibly fast), which says nothing about how fast this Mac reads.
     var readTokensPerSecond: Double? {
-        Self.rate(tokens: promptTokens, nanos: promptNanos, minimumTokens: 200)
+        if reusedPrefix { return nil }
+        if let promptTokens, expectedPromptTokens >= 500, promptTokens * 2 < expectedPromptTokens { return nil }
+        guard let rate = Self.rate(tokens: promptTokens, nanos: promptNanos, minimumTokens: 200),
+              rate <= Self.maxPlausibleReadRate else { return nil }
+        return rate
     }
+
+    /// Well above what any supported model reads on a Mac; faster means a cache hit.
+    static let maxPlausibleReadRate = 30_000.0
 
     /// Reply tokens written per second.
     var writeTokensPerSecond: Double? {
@@ -69,37 +83,53 @@ struct AIRunProgress: Equatable {
     var stats: AIRunStats?
 }
 
-/// Measured speeds for one model on this Mac, as a moving average.
+/// Measured speeds for one model on this Mac, as a moving average. Numbers
+/// only, kept in UserDefaults (per Mac) as a flat `[String: Double]`:
+/// "read", "write" and "output.<task>" (typical reply tokens for that task).
 struct ModelSpeed: Equatable {
     var read: Double?
     var write: Double?
+    var outputs: [String: Double] = [:]
 
     /// Weight of the newest run: recent enough to follow a thermal slowdown,
     /// steady enough that one odd run doesn't swing the estimate.
     private static let newest = 0.3
+    private static let outputPrefix = "output."
 
-    init(read: Double? = nil, write: Double? = nil) {
+    init(read: Double? = nil, write: Double? = nil, outputs: [String: Double] = [:]) {
         self.read = read
         self.write = write
+        self.outputs = outputs
     }
 
-    /// From the UserDefaults form (a property-list dictionary).
+    /// From the UserDefaults form (a property-list dictionary); unknown keys are ignored.
     init(stored: [String: Double]) {
         self.init(read: stored["read"], write: stored["write"])
+        for (key, value) in stored where key.hasPrefix(Self.outputPrefix) {
+            outputs[String(key.dropFirst(Self.outputPrefix.count))] = value
+        }
     }
 
     var stored: [String: Double] {
         var out: [String: Double] = [:]
         if let read { out["read"] = read }
         if let write { out["write"] = write }
+        for (task, value) in outputs { out[Self.outputPrefix + task] = value }
         return out
     }
 
+    /// Typical reply length in tokens for `task`, once one has run.
+    func expectedOutput(for task: AITask) -> Int? { outputs[task.rawValue].map { Int($0) } }
+
     func folding(_ stats: AIRunStats) -> ModelSpeed {
-        ModelSpeed(
+        var next = ModelSpeed(
             read: Self.blend(read, stats.readTokensPerSecond),
-            write: Self.blend(write, stats.writeTokensPerSecond)
-        )
+            write: Self.blend(write, stats.writeTokensPerSecond),
+            outputs: outputs)
+        if let task = stats.task, stats.writeTokensPerSecond != nil, let tokens = stats.outputTokens {
+            next.outputs[task.rawValue] = Self.blend(outputs[task.rawValue], Double(tokens))
+        }
+        return next
     }
 
     private static func blend(_ old: Double?, _ sample: Double?) -> Double? {

@@ -34,7 +34,7 @@ struct ChatPaneView: View {
     /// Live state of the running answer, and the model's measured read speed
     /// (for the time estimate); drives the progress line under the conversation.
     var progress = AIRunProgress()
-    var readTokensPerSecond: Double? = nil
+    var speed: ModelSpeed? = nil
 
     @State private var draft: String = ""
     @FocusState private var inputFocused: Bool
@@ -166,7 +166,7 @@ struct ChatPaneView: View {
                 }
             }
         } else {
-            AIProgressView(progress: progress, readTokensPerSecond: readTokensPerSecond)
+            AIProgressView(progress: progress, speed: speed)
         }
     }
 
