@@ -12,6 +12,17 @@ final class SessionNotificationsTests: XCTestCase {
         XCTAssertTrue(content.identifier.hasPrefix("transcription-"))
     }
 
+    func testTranscriptionProblemMentionsPatientAndIsDistinctFromSuccess() {
+        let content = SessionNotifications.transcriptionProblem(patientName: "Jane Doe", date: date)
+        XCTAssertEqual(content.title, "Transcription needs attention")
+        XCTAssertTrue(content.body.contains("Jane Doe"))
+        XCTAssertTrue(content.body.contains("2026"))
+        XCTAssertNotEqual(
+            content.identifier,
+            SessionNotifications.transcriptionComplete(patientName: "Jane Doe", date: date).identifier
+        )
+    }
+
     func testSummaryReadyMentionsPatientAndDate() {
         let content = SessionNotifications.summaryReady(patientName: "John Smith", date: date)
         XCTAssertEqual(content.title, "Summary ready")

@@ -1,14 +1,45 @@
 import SwiftUI
 
-/// What the Transcript tab shows while a session is being transcribed: an
-/// info-tinted band across the top with a spinner, the title, a determinate
+/// The same band for a session waiting its turn behind another transcription.
+struct TranscriptionQueuedView: View {
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "clock")
+                .foregroundStyle(Theme.info.color)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Waiting to transcribe")
+                    .font(Theme.Typography.body.weight(.semibold))
+                    .foregroundStyle(Theme.text.color)
+                Text("Another session is being transcribed. This one starts by itself when that finishes — you can leave this screen.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Button("Cancel", role: .cancel, action: onCancel)
+                .buttonStyle(.themed)
+                .help("Take this session out of the queue. The recordings are kept.")
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.infoTint.color)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.info.color).frame(height: 1)
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// What the session screen shows above every tab while the session is being
+/// transcribed: an info-tinted band with a spinner, the title, a determinate
 /// bar, the percentage and (once there is enough data) a time estimate, what
-/// is happening now, and a Cancel. `compact` is shown above an existing
-/// transcript (when re-transcribing) so the current text stays readable
-/// meanwhile; otherwise the band sits at the top of an otherwise empty tab.
+/// is happening now, and a Cancel.
 struct TranscriptionProgressView: View {
     let job: TranscriptionJob
-    var compact = false
     /// The session's own date, for the title ("Transcribing Oct 8, 2:14 PM").
     /// Without it the title reads "Transcribing this session".
     var sessionDate: Date? = nil
@@ -37,18 +68,6 @@ struct TranscriptionProgressView: View {
     }
 
     var body: some View {
-        if compact {
-            band
-        } else {
-            VStack(spacing: 0) {
-                band
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    private var band: some View {
         HStack(spacing: 16) {
             ProgressView()
                 .controlSize(.small)

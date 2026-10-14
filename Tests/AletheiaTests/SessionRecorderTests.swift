@@ -11,6 +11,38 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertNil(recorder.startedAt)
     }
 
+    func testIdleRecorderIsNotBusy() {
+        let recorder = SessionRecorder()
+        XCTAssertFalse(recorder.isStarting)
+        XCTAssertFalse(recorder.isBusy)
+    }
+
+    func testStartIsAllowedOnlyWhenNothingIsRecordingOrStarting() {
+        XCTAssertNil(RecordingStartPolicy.refusal(isRecording: false, isStarting: false, activePatientName: nil))
+        XCTAssertEqual(
+            RecordingStartPolicy.refusal(isRecording: true, isStarting: false, activePatientName: "Jane Doe"),
+            "Jane Doe's session is still recording. Stop that recording before starting a new one."
+        )
+        XCTAssertEqual(
+            RecordingStartPolicy.refusal(isRecording: true, isStarting: false, activePatientName: nil),
+            "Another session is still recording. Stop that recording before starting a new one."
+        )
+        XCTAssertEqual(
+            RecordingStartPolicy.refusal(isRecording: false, isStarting: true, activePatientName: nil),
+            "A recording is already starting."
+        )
+    }
+
+    func testStoppingAnIdleRecorderDoesNotReportAFinishedRecording() async {
+        let recorder = SessionRecorder()
+        var finished: [SessionRecorder.ActiveRecording] = []
+        recorder.onStopped = { finished.append($0) }
+        await recorder.stop()
+        // Nothing was recorded, so nothing may be sent off for transcription.
+        XCTAssertTrue(finished.isEmpty)
+        XCTAssertFalse(recorder.isRecording)
+    }
+
     func testPauseAndResumeAreNoOpsWhenNotRecording() {
         let recorder = SessionRecorder()
         // Guard clauses must keep pause/resume harmless before any recording.

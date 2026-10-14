@@ -46,7 +46,7 @@ struct AletheiaApp: App {
     @StateObject private var encryption: EncryptionManager
     /// One recorder for the whole app, shared by the session view and the
     /// menu-bar control so both drive (and reflect) the same recording.
-    @StateObject private var recorder = SessionRecorder()
+    @StateObject private var recorder: SessionRecorder
     /// App-level transcription runner, so progress survives leaving the session
     /// screen and shows in the sidebar and menu bar.
     @StateObject private var transcription: TranscriptionCoordinator
@@ -62,11 +62,24 @@ struct AletheiaApp: App {
         _appModel = StateObject(wrappedValue: appModel)
         let integrations = Integrations(settings: settings)
         _integrations = StateObject(wrappedValue: integrations)
-        _transcription = StateObject(wrappedValue: TranscriptionCoordinator(
+        let transcription = TranscriptionCoordinator(
             appModel: appModel,
             integrations: integrations,
             settings: settings
-        ))
+        )
+        _transcription = StateObject(wrappedValue: transcription)
+        let recorder = SessionRecorder()
+        recorder.onStopped = { [weak transcription] in transcription?.startAfterRecording($0) }
+        // Also a system notification, so it's noticed when the app isn't
+        // focused (the therapist has likely switched to the call window).
+        recorder.onLongRunning = { [weak integrations] recording in
+            Task {
+                await integrations?.makeNotifier().post(
+                    SessionNotifications.longRecordingReminder(patientName: recording.patientName)
+                )
+            }
+        }
+        _recorder = StateObject(wrappedValue: recorder)
         _updateService = StateObject(wrappedValue: UpdateService(
             checker: AppcastUpdateChecker(feedURL: settings.updateFeedURL),
             currentVersion: UpdateService.bundleVersion()
