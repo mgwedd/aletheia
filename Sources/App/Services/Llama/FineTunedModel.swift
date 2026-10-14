@@ -23,9 +23,8 @@ struct LoRAAdapter: Equatable, Identifiable, Codable, Hashable {
     let fileName: String
     /// Where a direct-download provider fetches the adapter.
     let remoteURL: URL
-    /// SHA-256 the finished file must match, or `nil` when not pinned yet
-    /// (accepted unverified — mirrors `LlamaModel.expectedSHA256`).
-    let expectedSHA256: String?
+    /// SHA-256 the finished file must match (mirrors `LlamaModel.expectedSHA256`).
+    let expectedSHA256: String
     /// Rough download size, for progress UI. Adapters are small vs. base weights.
     let approximateSizeMB: Int
     /// Raw value of the `LlamaModel` this adapter was trained against. An adapter

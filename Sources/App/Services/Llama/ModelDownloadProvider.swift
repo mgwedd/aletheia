@@ -2,8 +2,7 @@ import Foundation
 
 /// A model's weights to acquire, described independently of *where* they come
 /// from. Identity (`id`, `fileName`) is stable across sources; `remoteURL` is
-/// what a direct-download provider fetches; `expectedSHA256` (when the model is
-/// pinned) is verified before the file is accepted.
+/// what a direct-download provider fetches; `expectedSHA256` is verified before the file is accepted.
 ///
 /// This is the currency of the model-download seam: the direct-download MVP and
 /// a later Apple Background Assets / CDN / App Store provider all take a
@@ -16,9 +15,8 @@ struct ModelAsset: Equatable {
     let fileName: String
     /// Where a direct-download (HTTP) provider fetches the weights.
     let remoteURL: URL
-    /// SHA-256 the finished file must match, or `nil` when the model isn't pinned
-    /// yet (accepted unverified — see `LlamaModel.expectedSHA256`).
-    let expectedSHA256: String?
+    /// SHA-256 the finished file must match; there is no unverified path.
+    let expectedSHA256: String
     /// Rough download size, for progress/plumbing UI.
     let approximateSizeMB: Int
 }
@@ -33,7 +31,7 @@ struct ModelAsset: Equatable {
 protocol ModelDownloadProvider: AnyObject {
     /// Fetches `asset` to `destinationURL`, reporting fractional progress in
     /// `0...1` via `onProgress`. Verifies the finished file against
-    /// `asset.expectedSHA256` when it's set and throws on mismatch — a corrupt or
+    /// `asset.expectedSHA256` and throws on mismatch — a corrupt or
     /// tampered model is never left in place.
     @MainActor
     func fetch(
