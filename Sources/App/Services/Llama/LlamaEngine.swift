@@ -36,9 +36,25 @@ final class LlamaEngine: LocalLLMEngine {
     /// What this Mac can read at once; caps the context window.
     private let budget: ContextBudget
     /// The current context's `n_ctx`; it only grows (see `contextOnQueue`).
-    private(set) var contextTokens = 0
+    /// Written on `queue`, read from anywhere, so both go through `stateLock`.
+    private(set) var contextTokens: Int {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return _contextTokens }
+        set { stateLock.lock(); _contextTokens = newValue; stateLock.unlock() }
+    }
     /// The last request's prompt size in tokens (for tests and diagnostics).
-    private(set) var lastPromptTokens = 0
+    private(set) var lastPromptTokens: Int {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return _lastPromptTokens }
+        set { stateLock.lock(); _lastPromptTokens = newValue; stateLock.unlock() }
+    }
+    private var _contextTokens = 0
+    private var _lastPromptTokens = 0
+
+    /// How long the model may sit unused before it is unloaded (matches Ollama's
+    /// `keep_alive`). Tests shorten it.
+    var idleDelay: TimeInterval = 30 * 60
+    private var idleGeneration = 0
+    /// How many idle unloads have fired (for tests).
+    private(set) var idleUnloads = 0
 
     /// Serializes every touch of `model`/`context`/`adapter`: load, decode,
     /// unload. See the threading note on the type.
@@ -100,12 +116,40 @@ final class LlamaEngine: LocalLLMEngine {
                 do {
                     try self.ensureLoadedOnQueue()
                     // Warm the floor-size context too, so the first request skips it.
-                    _ = try self.contextOnQueue(promptTokens: 0, replyTokens: self.defaultSampling.maxTokens)
+                    // Clamped so a small budget can't make the warm-up throw ContextBudgetError.
+                    _ = try self.contextOnQueue(
+                        promptTokens: 0, replyTokens: min(self.defaultSampling.maxTokens, self.budget.tokens))
                     continuation.resume()
                 } catch {
                     continuation.resume(throwing: error)
                 }
             }
+        }
+    }
+
+    /// Marks the engine in use: cancels any pending idle unload. Call when a
+    /// request is submitted.
+    func markActive() {
+        stateLock.lock()
+        idleGeneration += 1
+        stateLock.unlock()
+    }
+
+    /// Unloads after `idleDelay` unless a request is submitted first.
+    /// Call when a request finishes.
+    func scheduleIdleUnload() {
+        stateLock.lock()
+        idleGeneration += 1
+        let generation = idleGeneration
+        stateLock.unlock()
+        // ponytail: one timer per finished request, each a cheap no-op once superseded; fine at this request rate.
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + idleDelay) { [weak self] in
+            guard let self else { return }
+            self.stateLock.lock()
+            let stale = self.idleGeneration != generation
+            if !stale { self.idleUnloads += 1 }
+            self.stateLock.unlock()
+            if !stale { self.unload() }
         }
     }
 
@@ -117,7 +161,8 @@ final class LlamaEngine: LocalLLMEngine {
     }
 
     func generate(_ request: LocalLLMRequest) async throws -> String {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+        markActive()
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
             queue.async { [weak self] in
                 guard let self else {
                     continuation.resume(throwing: LocalLLMEngineError.generationFailed(
@@ -125,6 +170,7 @@ final class LlamaEngine: LocalLLMEngine {
                     ))
                     return
                 }
+                defer { self.scheduleIdleUnload() }
                 do {
                     try self.ensureLoadedOnQueue()
                     let text = try self.decodeOnQueue(request: request, isCancelled: { false }, onToken: nil)
@@ -138,6 +184,7 @@ final class LlamaEngine: LocalLLMEngine {
 
     func stream(_ request: LocalLLMRequest) -> AsyncThrowingStream<String, Error> {
         let cancelled = LlamaEngineCancellationFlag()
+        markActive()
         return AsyncThrowingStream { continuation in
             // The consumer going away (Stop button, or the Task backing this
             // stream being cancelled) tears the stream down, which fires
@@ -147,6 +194,7 @@ final class LlamaEngine: LocalLLMEngine {
             continuation.onTermination = { _ in cancelled.cancel() }
             queue.async { [weak self] in
                 guard let self else { continuation.finish(); return }
+                defer { self.scheduleIdleUnload() }
                 do {
                     try self.ensureLoadedOnQueue()
                     _ = try self.decodeOnQueue(

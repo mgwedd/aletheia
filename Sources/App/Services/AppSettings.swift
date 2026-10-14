@@ -121,10 +121,16 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(whisperModel.rawValue, forKey: Keys.whisperModel) }
     }
     @Published var assistantBackend: AssistantBackend {
-        didSet { defaults.set(assistantBackend.rawValue, forKey: Keys.assistantBackend) }
+        didSet {
+            defaults.set(assistantBackend.rawValue, forKey: Keys.assistantBackend)
+            if assistantBackend != oldValue { LlamaRuntime.unloadAll() }
+        }
     }
     @Published var llamaModel: LlamaModel {
-        didSet { defaults.set(llamaModel.rawValue, forKey: Keys.llamaModel) }
+        didSet {
+            defaults.set(llamaModel.rawValue, forKey: Keys.llamaModel)
+            if llamaModel != oldValue { LlamaRuntime.unloadAll() }
+        }
     }
     @Published var ollamaModelName: String {
         didSet { defaults.set(ollamaModelName, forKey: Keys.ollamaModelName) }

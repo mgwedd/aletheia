@@ -17,6 +17,32 @@ final class LlamaAssistant: Assistant {
     private static let enginesLock = NSLock()
     nonisolated(unsafe) private static var engines: [URL: LlamaEngine] = [:]
 
+    /// Frees every loaded model, context and KV cache (lock, model or backend
+    /// change). The cache is emptied now; the teardown runs on each engine's
+    /// own queue, behind any decode in flight, off the caller's thread so
+    /// locking never waits on a long generation.
+    static func unloadAll() {
+        enginesLock.lock()
+        let all = Array(engines.values)
+        engines.removeAll()
+        enginesLock.unlock()
+        for engine in all { DispatchQueue.global(qos: .userInitiated).async { engine.unload() } }
+    }
+
+    /// Number of cached engines (for tests).
+    static var cachedEngineCount: Int {
+        enginesLock.lock()
+        defer { enginesLock.unlock() }
+        return engines.count
+    }
+
+    /// Caches an engine for tests, without loading anything.
+    static func cacheForTesting(_ engine: LlamaEngine, at url: URL) {
+        enginesLock.lock()
+        engines[url] = engine
+        enginesLock.unlock()
+    }
+
     private var engine: LlamaEngine {
         Self.enginesLock.lock()
         defer { Self.enginesLock.unlock() }
