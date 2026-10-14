@@ -200,7 +200,7 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertFalse(context.coverage.wholeTranscripts)
         XCTAssertEqual(
             context.coverage.label,
-            "Read: notes and comments from 1 session · transcript passages from 1 of 3 sessions (search: 1 mention)"
+            "Read: notes and comments from 1 session · transcript passages from 1 of 3 sessions (1 match for your words)"
         )
     }
 
@@ -211,7 +211,7 @@ final class PatientChatContextTests: XCTestCase {
 
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "anything")
 
-        XCTAssertEqual(context.coverage.label, "Read: full transcripts from 1 session")
+        XCTAssertEqual(context.coverage.label, "Read: full transcripts of 1 session")
         XCTAssertNil(TranscriptCoverage().label)
     }
 
@@ -229,7 +229,7 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertEqual(context.coverage.sessionsWithPassages, 1)
         XCTAssertEqual(context.coverage.unreadableSessions, 1)
         XCTAssertEqual(context.coverage.mentions, 1, "the unreadable transcript is not searched")
-        XCTAssertTrue(try XCTUnwrap(context.coverage.label).hasSuffix("1 session unreadable, not read"))
+        XCTAssertTrue(try XCTUnwrap(context.coverage.label).hasSuffix("1 session could not be read, so answers may be incomplete"))
         XCTAssertTrue(context.text.contains("1 session transcript could not be read and was not searched."))
     }
 
@@ -388,7 +388,7 @@ final class PatientChatContextTests: XCTestCase {
         let read = context.coverage.sessionsWithPassages
         XCTAssertTrue((1..<8).contains(read), "some, not all, of the sessions fit")
         XCTAssertFalse(context.coverage.wholeTranscripts)
-        XCTAssertEqual(context.coverage.label, "Read: full transcripts from \(read) of 8 sessions")
+        XCTAssertEqual(context.coverage.label, "Read: full transcripts of the newest \(read) of 8 sessions")
         XCTAssertTrue(context.text.contains("only the full transcripts of the newest \(read) of 8 sessions are included below"))
         XCTAssertTrue(section(context.text, tag: "S1").contains("weather"), "the newest session is the one kept")
     }
@@ -434,7 +434,7 @@ final class PatientChatContextTests: XCTestCase {
         let read = context.coverage.sessionsWithPassages
         XCTAssertLessThan(read, 6)
         XCTAssertFalse(context.coverage.wholeTranscripts)
-        XCTAssertTrue(try XCTUnwrap(context.coverage.label).contains("full transcripts from \(read) of 6 sessions"))
+        XCTAssertTrue(try XCTUnwrap(context.coverage.label).contains("full transcripts of the newest \(read) of 6 sessions"))
         XCTAssertFalse(context.text.contains("the full transcripts are included below"))
     }
 
@@ -468,7 +468,7 @@ final class PatientChatContextTests: XCTestCase {
         let coverage = TranscriptCoverage(
             transcriptSessions: 2, sessionsWithPassages: 2, mentions: 3, similarMentions: 2, searched: true, wholeTranscripts: true
         )
-        XCTAssertEqual(coverage.label, "Read: full transcripts from 2 sessions (search: 3 mentions, 2 similar)")
+        XCTAssertEqual(coverage.label, "Read: full transcripts of 2 sessions (3 matches for your words, 2 more with similar spelling)")
     }
 }
 

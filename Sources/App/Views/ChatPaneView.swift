@@ -26,6 +26,8 @@ struct ChatPaneView: View {
     var scopeNote: String = "Answers come from this session's transcript, your notes and comments."
     /// Caveats about the last answer, shown above the composer in muted type.
     var notices: [String] = []
+    /// A caveat shown with a small spinner while work is under way (e.g. searching).
+    var busyNotice: String?
     /// Compacts the conversation, with an optional focus: the Compact button
     /// and the `/compact [focus]` command. Nil hides both.
     var onCompact: ((String) -> Void)? = nil
@@ -71,8 +73,16 @@ struct ChatPaneView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
             }
-            if !notices.isEmpty {
+            if !notices.isEmpty || busyNotice != nil {
                 VStack(alignment: .leading, spacing: 2) {
+                    if let busyNotice {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.mini)
+                            Text(busyNotice)
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(Theme.muted.color)
+                        }
+                    }
                     ForEach(notices, id: \.self) { notice in
                         Text(notice)
                             .font(Theme.Typography.caption)

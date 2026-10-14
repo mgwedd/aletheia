@@ -137,15 +137,35 @@ final class TranscriptCoverageEdgeTests: XCTestCase {
         )
         XCTAssertEqual(
             c.label,
-            "Read: notes and comments from 22 sessions · transcript passages from 6 of 22 sessions (search: 14 mentions)"
+            "Read: notes and comments from 22 sessions · transcript passages from 6 of 22 sessions (14 matches for your words)"
         )
         let one = TranscriptCoverage(transcriptSessions: 1, sessionsWithPassages: 1, mentions: 1, searched: true)
-        XCTAssertEqual(one.label, "Read: transcript passages from 1 of 1 session (search: 1 mention)")
+        XCTAssertEqual(one.label, "Read: transcript passages from 1 of 1 session (1 match for your words)")
     }
 
     func testUnreadableSessionsAreLabelledNotRead() {
         let c = TranscriptCoverage(transcriptSessions: 2, sessionsWithPassages: 2, unreadableSessions: 2, wholeTranscripts: true)
-        XCTAssertEqual(c.label, "Read: full transcripts from 2 sessions · 2 sessions unreadable, not read")
+        XCTAssertEqual(c.label, "Read: full transcripts of 2 sessions · 2 sessions could not be read, so answers may be incomplete")
+    }
+}
+
+extension TranscriptCoverageEdgeTests {
+    func testNewestFullTranscriptsAndSimilarSpelling() {
+        let c = TranscriptCoverage(
+            transcriptSessions: 12, sessionsWithPassages: 5, notesSessions: 12, mentions: 7, similarMentions: 2,
+            searched: true, fullTexts: true, notesCutSessions: 4
+        )
+        XCTAssertEqual(
+            c.label,
+            "Read: notes and comments from 12 sessions (cut short or left out for 4 sessions) · full transcripts of the newest 5 of 12 sessions (7 matches for your words, 2 more with similar spelling)"
+        )
+    }
+
+    func testSingularForms() {
+        let whole = TranscriptCoverage(transcriptSessions: 1, sessionsWithPassages: 1, unreadableSessions: 1, wholeTranscripts: true)
+        XCTAssertEqual(whole.label, "Read: full transcripts of 1 session · 1 session could not be read, so answers may be incomplete")
+        let newest = TranscriptCoverage(transcriptSessions: 2, sessionsWithPassages: 1, fullTexts: true)
+        XCTAssertEqual(newest.label, "Read: full transcripts of the newest 1 of 2 sessions")
     }
 }
 
