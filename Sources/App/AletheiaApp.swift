@@ -114,15 +114,10 @@ struct AletheiaApp: App {
                 .frame(minWidth: 900, minHeight: 600)
                 .task { await updateService.checkForUpdates() }
                 .onChange(of: scenePhase) { _, phase in
-                    switch phase {
-                    case .active:
+                    // Switching apps doesn't re-lock: AppLock does that on
+                    // idle timeout, sleep and screen lock.
+                    if phase == .active {
                         Task { await updateService.checkForUpdates() }
-                    case .background:
-                        // Re-lock when the app is hidden, so stepping away
-                        // re-requires Touch ID / password to see PHI again.
-                        appLock.lockIfEnabled()
-                    default:
-                        break
                     }
                 }
                 .spotlightContinuation(enabled: appModel.featureRegistry.contains(id: SpotlightFeatureModule.id))
