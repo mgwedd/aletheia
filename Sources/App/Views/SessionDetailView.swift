@@ -218,6 +218,8 @@ struct SessionDetailView: View {
         .onAppear {
             load()
             ensureDigest()
+            // Load the model now so the first note or question skips the load.
+            integrations.makeAssistant().warmUp(model: settings.ollamaModelName)
             // A transcription that finished while this screen was away.
             consumeTranscriptionOutcome()
         }

@@ -75,6 +75,62 @@ final class PromptPrefixMemory: @unchecked Sendable {
     }
 }
 
+/// What a request is for. Notes, digests and factual chat want the same
+/// answer every time, so they run cool; this is the one place that says how cool.
+enum AITask {
+    case note, digest, chat, compaction
+
+    var temperature: Double {
+        switch self {
+        case .note, .digest, .compaction: return 0.2
+        case .chat: return 0.3
+        }
+    }
+}
+
+/// Tracks which Ollama model this app has loaded and whether a request is
+/// running, so a session opening can warm the model at most once in a while
+/// and a lock can unload whatever is loaded without being handed a client.
+final class OllamaResidency: @unchecked Sendable {
+    static let shared = OllamaResidency()
+    /// Don't warm again within this long of the last request or warm-up.
+    static let warmInterval: TimeInterval = 5 * 60
+    private let lock = NSLock()
+    private var target: (baseURL: URL, model: String)?
+    private var inFlight = 0
+    private var lastActivity: Date?
+
+    func began(baseURL: URL, model: String, now: Date = Date()) {
+        lock.lock(); defer { lock.unlock() }
+        target = (baseURL, model)
+        inFlight += 1
+        lastActivity = now
+    }
+
+    func ended(now: Date = Date()) {
+        lock.lock(); defer { lock.unlock() }
+        inFlight = max(0, inFlight - 1)
+        lastActivity = now
+    }
+
+    /// True (and counts as a warm-up) unless a request is running or one ran or warmed recently.
+    func claimWarmUp(baseURL: URL, model: String, now: Date = Date()) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if inFlight > 0 { return false }
+        if target?.model == model, let last = lastActivity, now.timeIntervalSince(last) < Self.warmInterval { return false }
+        target = (baseURL, model)
+        lastActivity = now
+        return true
+    }
+
+    /// The model to unload, forgetting it (a later warm-up must reload).
+    func takeLoaded() -> (baseURL: URL, model: String)? {
+        lock.lock(); defer { lock.unlock() }
+        defer { target = nil; lastActivity = nil }
+        return target
+    }
+}
+
 private struct OllamaPullProgress: Decodable {
     let status: String
     let total: Int64?
@@ -141,6 +197,12 @@ final class OllamaClient: Assistant {
     }
 
     func generate(model: String, system: String, prompt: String) async throws -> String {
+        try await generate(model: model, system: system, prompt: prompt, task: .chat)
+    }
+
+    func generate(model: String, system: String, prompt: String, task: AITask) async throws -> String {
+        OllamaResidency.shared.began(baseURL: baseURL, model: model)
+        defer { OllamaResidency.shared.ended() }
         var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -151,7 +213,7 @@ final class OllamaClient: Assistant {
         // (but working) local generation.
         request.timeoutInterval = 600
         request.httpBody = try JSONSerialization.data(
-            withJSONObject: Self.generateBody(model: model, system: system, prompt: prompt, stream: false))
+            withJSONObject: Self.generateBody(model: model, system: system, prompt: prompt, stream: false, task: task))
 
         let (data, response) = try await mappingConnectionErrors { try await session.data(for: request) }
         guard let http = response as? HTTPURLResponse else { throw OllamaError.notReachable }
@@ -167,26 +229,34 @@ final class OllamaClient: Assistant {
     /// `{response, done}` chunk. We accumulate the deltas and yield the growing
     /// full text so callers see one uniform "text so far" shape.
     func stream(model: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
-        stream(model: model, system: system, prompt: prompt, onStats: nil)
+        stream(model: model, system: system, prompt: prompt, task: .chat, onStats: nil)
+    }
+
+    func stream(
+        model: String, system: String, prompt: String, onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        stream(model: model, system: system, prompt: prompt, task: .chat, onStats: onStats)
     }
 
     /// `onStats` gets the run's own numbers (tokens read and written, and how
     /// long each took) from Ollama's final chunk.
     func stream(
-        model: String, system: String, prompt: String, onStats: (@Sendable (AIRunStats) -> Void)?
+        model: String, system: String, prompt: String, task: AITask, onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {
         let cached = onStats == nil ? 0
             : PromptPrefixMemory.shared.sharedPrefixCharacters(model: model, text: system + "\n" + prompt)
         let expectedTokens = ContextBudget.estimatedTokens(forCharacters: max(0, system.count + prompt.count - cached))
         return AsyncThrowingStream { continuation in
-            let task = Task {
+            OllamaResidency.shared.began(baseURL: baseURL, model: model)
+            let job = Task {
+                defer { OllamaResidency.shared.ended() }
                 do {
                     var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
                     request.httpMethod = "POST"
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.timeoutInterval = 600
                     request.httpBody = try JSONSerialization.data(
-                        withJSONObject: Self.generateBody(model: model, system: system, prompt: prompt, stream: true))
+                        withJSONObject: Self.generateBody(model: model, system: system, prompt: prompt, stream: true, task: task))
 
                     let (bytes, response) = try await mappingConnectionErrors { try await session.bytes(for: request) }
                     guard let http = response as? HTTPURLResponse else { throw OllamaError.notReachable }
@@ -211,20 +281,30 @@ final class OllamaClient: Assistant {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { _ in job.cancel() }
         }
     }
 
-    /// The `/api/generate` request. `num_ctx` is sized to the prompt: Ollama's
-    /// default window (4096 tokens unless the user changed it) silently drops
-    /// the start of anything longer, so a long session's note would be written
-    /// from its last few minutes, without the instructions.
-    static func generateBody(model: String, system: String, prompt: String, stream: Bool) -> [String: Any] {
+    /// How long Ollama keeps the model loaded after a request. Long enough to
+    /// span a therapist's gaps between notes; short enough that a quit app doesn't
+    /// pin ~5 GB forever. Locking the app unloads it at once (`unloadLoaded`).
+    static let keepAlive = "30m"
+
+    /// The `/api/generate` request. `num_ctx` is always this Mac's budget, never
+    /// sized to the prompt: a different `num_ctx` makes Ollama reload the model
+    /// (a multi-second stall) and drops its prompt-prefix cache. The default
+    /// window (4096 tokens) would silently drop the start of a long prompt;
+    /// `AssistantService` refuses anything over the budget before it gets here.
+    static func generateBody(
+        model: String, system: String, prompt: String, stream: Bool,
+        task: AITask = .chat, contextTokens: Int = ContextBudget.current.tokens
+    ) -> [String: Any] {
         var body: [String: Any] = [
             "model": model,
             "prompt": prompt,
             "stream": stream,
-            "options": ["num_ctx": contextSize(forCharacters: system.count + prompt.count)],
+            "keep_alive": keepAlive,
+            "options": ["num_ctx": contextTokens, "temperature": task.temperature],
         ]
         if !system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             body["system"] = system
@@ -232,17 +312,38 @@ final class OllamaClient: Assistant {
         return body
     }
 
-    /// Tokens to reserve: the prompt (English runs about 4 characters a token;
-    /// 3 leaves margin) plus room for the reply, rounded up to a power of two so
-    /// similar requests share a size and Ollama doesn't reload the model for
-    /// each. 8K floor, 128K cap (the Llama 3 models' limit), and never above this
-    /// Mac's `ContextBudget`. `AssistantService` refuses a prompt over the budget
-    /// before it gets here, so the cap only guards the Mac's memory.
-    static func contextSize(forCharacters characters: Int, budget: Int = ContextBudget.current.tokens) -> Int {
-        let needed = ContextBudget.neededTokens(forCharacters: characters)
-        var size = 8192
-        while size < needed && size < 131_072 { size *= 2 }
-        return min(size, budget)
+    /// Loads the model with the same `num_ctx` and `keep_alive` real requests use
+    /// (an empty prompt only loads it), so the first real call doesn't pay the load.
+    static func warmUpBody(model: String, contextTokens: Int = ContextBudget.current.tokens) -> [String: Any] {
+        ["model": model, "prompt": "", "stream": false, "keep_alive": keepAlive,
+         "options": ["num_ctx": contextTokens]]
+    }
+
+    /// Asks Ollama to free the model now.
+    static func unloadBody(model: String) -> [String: Any] {
+        ["model": model, "prompt": "", "stream": false, "keep_alive": 0]
+    }
+
+    private static func fireAndForget(_ baseURL: URL, _ body: [String: Any]) {
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 120
+        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
+        request.httpBody = data
+        Task.detached { _ = try? await URLSession.shared.data(for: request) }
+    }
+
+    func warmUp(model: String) {
+        guard OllamaResidency.shared.claimWarmUp(baseURL: baseURL, model: model) else { return }
+        Self.fireAndForget(baseURL, Self.warmUpBody(model: model))
+    }
+
+    /// Unloads the model this app last used. Called when the app locks; never
+    /// waits on Ollama and ignores any failure.
+    static func unloadLoaded() {
+        guard let loaded = OllamaResidency.shared.takeLoaded() else { return }
+        fireAndForget(loaded.baseURL, unloadBody(model: loaded.model))
     }
 
     /// Parses one NDJSON line from `/api/generate` streaming into its text delta,

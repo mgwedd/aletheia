@@ -123,6 +123,7 @@ final class AppLock: ObservableObject {
             isLocked = true
             // The search cache holds transcript text; don't keep it behind the lock screen.
             SessionSearch.clearCache()
+            OllamaClient.unloadLoaded()
         }
     }
 
