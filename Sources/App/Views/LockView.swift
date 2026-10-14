@@ -104,6 +104,7 @@ struct LockView: View {
         // Opaque, not translucent: nothing behind the cover may show through.
         .background(Theme.sidebar.color)
         .onAppear { method = UnlockMethod.current() }
-        .task { await appLock.unlock() }
+        // Not while backgrounded: AppLock prompts when the app becomes active.
+        .task { await appLock.unlockIfActive() }
     }
 }

@@ -21,6 +21,7 @@ struct RecordingMenuBar: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var integrations: Integrations
+    @Environment(\.openWindow) private var openWindow
     @State private var engineState: EngineRunState = .loading
     /// The patient chosen in the picker; falls back to the first one when unset
     /// or when that patient is gone.
@@ -57,12 +58,12 @@ struct RecordingMenuBar: View {
         VStack(alignment: .leading, spacing: 2) {
             if let active = recorder.active {
                 Button("Show this session") {
-                    NSApp.activate(ignoringOtherApps: true)
+                    MainWindow.show(openWindow: openWindow)
                     AppNavigator.shared.requestOpen(patientID: active.patientID)
                 }
                 .buttonStyle(MenuBarQuietRowStyle())
             }
-            Button("Open Aletheia") { NSApp.activate(ignoringOtherApps: true) }
+            Button("Open Aletheia") { MainWindow.show(openWindow: openWindow) }
                 .buttonStyle(MenuBarQuietRowStyle())
             Button("Quit Aletheia") { NSApp.terminate(nil) }
                 .buttonStyle(MenuBarQuietRowStyle())
@@ -255,7 +256,7 @@ struct RecordingMenuBar: View {
         )
         // Stay on the menu when it didn't start, so the reason is read here.
         guard startProblem == nil else { return }
-        NSApp.activate(ignoringOtherApps: true)
+        MainWindow.show(openWindow: openWindow)
         AppNavigator.shared.requestOpen(patientID: patient.id)
     }
 }

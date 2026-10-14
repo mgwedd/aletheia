@@ -61,19 +61,55 @@ final class OllamaRequestTests: XCTestCase {
         XCTAssertEqual(body["keep_alive"] as? Int, 0)
     }
 
-    func testWarmUpIsDebouncedAndSkippedWhileARequestRuns() {
+    private let url = URL(string: "http://127.0.0.1:11434")!
+
+    func testFailedWarmUpDoesNotDebounce() {
         let residency = OllamaResidency()
-        let url = URL(string: "http://127.0.0.1:11434")!
         let t0 = Date()
         XCTAssertTrue(residency.claimWarmUp(baseURL: url, model: "m", now: t0))
+        // No `warmed` (the request failed), so an immediate retry is allowed.
+        XCTAssertTrue(residency.claimWarmUp(baseURL: url, model: "m", now: t0.addingTimeInterval(1)))
+        XCTAssertTrue(residency.takeLoaded().isEmpty)
+    }
+
+    func testChangingBaseURLIsNotDebounced() {
+        let residency = OllamaResidency()
+        let t0 = Date()
+        residency.warmed(baseURL: url, model: "m", now: t0)
+        let other = URL(string: "http://127.0.0.1:11435")!
+        XCTAssertTrue(residency.claimWarmUp(baseURL: other, model: "m", now: t0.addingTimeInterval(1)))
+    }
+
+    func testLockUnloadsEveryModelUsedSinceTheLastUnload() {
+        let residency = OllamaResidency()
+        residency.began(baseURL: url, model: "a"); residency.ended()
+        residency.began(baseURL: url, model: "b"); residency.ended()
+        residency.warmed(baseURL: url, model: "c")
+        XCTAssertEqual(Set(residency.takeLoaded().map(\.model)), ["a", "b", "c"])
+        XCTAssertTrue(residency.takeLoaded().isEmpty)
+    }
+
+    func testNoWarmUpWhileLocked() {
+        let residency = OllamaResidency()
+        residency.setLocked(true)
+        XCTAssertFalse(residency.claimWarmUp(baseURL: url, model: "m"))
+        residency.setLocked(false)
+        XCTAssertTrue(residency.claimWarmUp(baseURL: url, model: "m"))
+    }
+
+    func testWarmUpIsDebouncedAndSkippedWhileARequestRuns() {
+        let residency = OllamaResidency()
+        let t0 = Date()
+        XCTAssertTrue(residency.claimWarmUp(baseURL: url, model: "m", now: t0))
+        residency.warmed(baseURL: url, model: "m", now: t0)
         XCTAssertFalse(residency.claimWarmUp(baseURL: url, model: "m", now: t0.addingTimeInterval(60)))
         XCTAssertTrue(residency.claimWarmUp(
             baseURL: url, model: "m", now: t0.addingTimeInterval(OllamaResidency.warmInterval + 1)))
         residency.began(baseURL: url, model: "m", now: t0)
         XCTAssertFalse(residency.claimWarmUp(baseURL: url, model: "m", now: t0.addingTimeInterval(3600)))
         residency.ended(now: t0)
-        XCTAssertEqual(residency.takeLoaded()?.model, "m")
-        XCTAssertNil(residency.takeLoaded())
+        XCTAssertEqual(residency.takeLoaded().map(\.model), ["m"])
+        XCTAssertTrue(residency.takeLoaded().isEmpty)
     }
 
     func testServiceTagsRequestsWithTheirTask() async throws {

@@ -13,6 +13,17 @@ final class AppLockPolicyTests: XCTestCase {
         XCTAssertFalse(AppLockPolicy.shouldLock(enabled: false, canAuthenticate: false))
     }
 
+    func testPromptsOnlyWhenLockedAndAppIsActive() {
+        XCTAssertTrue(AppLockPolicy.shouldPromptNow(isLocked: true, appIsActive: true))
+        XCTAssertFalse(AppLockPolicy.shouldPromptNow(isLocked: true, appIsActive: false))
+        XCTAssertFalse(AppLockPolicy.shouldPromptNow(isLocked: false, appIsActive: true))
+    }
+
+    func testMainWindowIsPickedByItsSwiftUIIdentifier() {
+        XCTAssertEqual(MainWindow.index(ofIdentifiers: [nil, "aletheia-doctor-AppWindow-1", "main-AppWindow-1"]), 2)
+        XCTAssertNil(MainWindow.index(ofIdentifiers: [nil, "aletheia-doctor-AppWindow-1"]))
+    }
+
     // MARK: - Idle auto-lock (HIPAA §164.312(a)(2)(iii) "automatic logoff")
 
     func testAutoLocksOnceTheIdleIntervalHasElapsed() {

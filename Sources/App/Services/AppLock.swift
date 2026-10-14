@@ -24,6 +24,15 @@ enum AppLockPolicy {
     }
 }
 
+extension AppLockPolicy {
+    /// Whether to show the system Touch ID sheet right now. Only while the app
+    /// is frontmost: a lock that happened in the background (idle, sleep) waits
+    /// until the user comes back, instead of popping a prompt over another app.
+    static func shouldPromptNow(isLocked: Bool, appIsActive: Bool) -> Bool {
+        isLocked && appIsActive
+    }
+}
+
 /// Admits one operation at a time: `begin()` returns true only if nothing is
 /// running, until `end()`. Used so two triggers for the same unlock prompt
 /// (launch, becoming active, a click) don't stack a second system dialog or
@@ -52,7 +61,9 @@ struct SingleFlight: Equatable {
 @MainActor
 final class AppLock: ObservableObject {
     /// True while the lock screen should cover the app.
-    @Published private(set) var isLocked: Bool
+    @Published private(set) var isLocked: Bool {
+        didSet { OllamaResidency.shared.setLocked(isLocked) }
+    }
     /// Set when an unlock attempt fails, for the lock screen to show.
     @Published var lastError: String?
 
@@ -73,6 +84,7 @@ final class AppLock: ObservableObject {
     private var willSleepObserver: NSObjectProtocol?
     private var screensDidSleepObserver: NSObjectProtocol?
     private var screenLockObserver: NSObjectProtocol?
+    private var didBecomeActiveObserver: NSObjectProtocol?
     private var settingsCancellable: AnyCancellable?
 
     /// How often the idle timer checks elapsed time against the configured
@@ -87,6 +99,14 @@ final class AppLock: ObservableObject {
             enabled: settings.appLockEnabled,
             canAuthenticate: Self.canAuthenticate()
         )
+        OllamaResidency.shared.setLocked(isLocked)   // didSet doesn't run in init
+        // A lock that happened (or a launch) while another app was frontmost
+        // prompts once the user comes back.
+        didBecomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.unlockIfActive() }
+        }
         observeActivity()
         observeSystemSleep()
         // Re-evaluate whenever a relevant setting changes (app lock toggled,
@@ -101,6 +121,7 @@ final class AppLock: ObservableObject {
 
     deinit {
         idleTimer?.invalidate()
+        if let didBecomeActiveObserver { NotificationCenter.default.removeObserver(didBecomeActiveObserver) }
         settingsCancellable?.cancel()
         if let activityMonitor { NSEvent.removeMonitor(activityMonitor) }
         let workspaceCenter = NSWorkspace.shared.notificationCenter
@@ -127,6 +148,12 @@ final class AppLock: ObservableObject {
         }
     }
 
+    /// The automatic prompt: only when locked and the app is frontmost.
+    func unlockIfActive() async {
+        guard AppLockPolicy.shouldPromptNow(isLocked: isLocked, appIsActive: NSApp.isActive) else { return }
+        await unlock()
+    }
+
     /// Prompt for Touch ID / password and unlock on success. Password fallback
     /// is built into `.deviceOwnerAuthentication`, so there's always a way in.
     func unlock() async {
@@ -147,6 +174,8 @@ final class AppLock: ObservableObject {
                 // `lastActivity` from before the app was locked and put the
                 // lock screen right back up.
                 lastActivity = Date()
+                // The sheet can leave no window key; hand focus back.
+                if NSApp.isActive { MainWindow.makeKey() }
             }
         } catch {
             lastError = error.localizedDescription
