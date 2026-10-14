@@ -1378,19 +1378,19 @@ private struct InlineCommentComposerCard: View {
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
             }
-            Text("“\(quote)”")
+            Text("“\(TranscriptTimeline.spokenText(quote))”")
                 .font(.system(size: 13).italic())
                 .foregroundStyle(Theme.muted.color)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             editor
+            Text("Comments are included when the progress note is drafted.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             HStack(alignment: .center, spacing: 12) {
-                Text("Comments are included when the progress note is drafted.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 300, alignment: .leading)
                 Spacer(minLength: 0)
                 HStack(spacing: 8) {
                     KeyCap("⌘ return")
