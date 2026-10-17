@@ -5,10 +5,15 @@ import Foundation
 /// `WhisperModelDownloader`; weights land in Application Support and refresh
 /// independently of the app binary.
 ///
-/// Concurrency note: one transfer at a time (the Settings button disables while
-/// in flight), so `destinationURL`/`continuation` are safe to touch from the
-/// delegate's background queue without extra locking.
+/// One app-wide instance (`shared`), so Settings, the setup checklist and the
+/// AI-engine alert all see the same transfer: progress survives closing a
+/// window, and a second request joins the running download instead of
+/// racing it on the `.partial` file. One transfer at a time, so
+/// `destinationURL`/`continuation` are safe to touch from the delegate's
+/// background queue without extra locking.
 final class LlamaModelDownloader: NSObject, ObservableObject {
+    static let shared = LlamaModelDownloader()
+
     @Published var progress: Double = 0
     @Published var isDownloading = false
     @Published var lastError: String?
@@ -22,12 +27,28 @@ final class LlamaModelDownloader: NSObject, ObservableObject {
     /// updates too — not only the `@Published progress` the Settings UI binds to.
     private var progressHandler: ((Double) -> Void)?
     private lazy var session: URLSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+    /// The running `download`, so a second caller waits on it.
+    @MainActor private var inFlight: (destination: URL, task: Task<Void, Error>)?
 
-    /// Convenience for the built-in models the Settings UI offers: fetch a
-    /// `LlamaModel` and drive `@Published progress`. Callers unchanged.
+    /// Fetches a built-in `LlamaModel`, driving `@Published progress`. A call
+    /// while the same file is downloading waits for that download; a different
+    /// file is refused. Loaded weights are dropped after a successful download
+    /// so a re-downloaded model is the one that runs.
     @MainActor
-    func download(_ model: LlamaModel, to destinationURL: URL) async throws {
-        try await fetch(model.asset, to: destinationURL, onProgress: { _ in })
+    func download(_ model: LlamaModel, to destinationURL: URL, onProgress: @escaping (Double) -> Void = { _ in }) async throws {
+        if let inFlight {
+            guard inFlight.destination == destinationURL else {
+                throw ModelDownloadError.downloadFailed("Another AI model is downloading. Try again when it finishes.")
+            }
+            return try await inFlight.task.value
+        }
+        let task = Task { @MainActor in
+            try await fetch(model.asset, to: destinationURL, onProgress: onProgress)
+            LlamaRuntime.unloadAll()
+        }
+        inFlight = (destinationURL, task)
+        defer { inFlight = nil }
+        try await task.value
     }
 
     /// `ModelDownloadProvider`: the direct-download (HTTP) implementation of the

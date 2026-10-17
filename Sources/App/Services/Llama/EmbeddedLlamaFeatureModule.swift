@@ -2,12 +2,8 @@ import Foundation
 
 /// The embedded llama.cpp backend ("Built-in Model") as a `FeatureModule`.
 ///
-/// This is a *must-have* for production eventually — a therapist should get
-/// working AI with nothing to install — but it isn't stable yet (the runtime is
-/// linked in every tier but the in-wizard model download hasn't launched
-/// reliably). So it
-/// ships developer-build-only (`.dev`) until it's proven, then graduates to
-/// preview and finally production.
+/// Shipped in every tier: a therapist gets working AI with nothing to
+/// install. Ollama stays available as an alternative engine.
 ///
 /// Gating governs whether the backend is *offered* — the "Built-in model" engine
 /// option and the llama.cpp model-management section. It's independent of, and
@@ -22,5 +18,5 @@ struct EmbeddedLlamaFeatureModule: FeatureModule {
 
     var id: String { Self.id }
     let title = "Built-in Model"
-    let tier: BuildTier = .dev
+    let tier: BuildTier = .production
 }

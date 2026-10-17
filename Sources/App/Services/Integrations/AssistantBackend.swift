@@ -34,13 +34,13 @@ enum AssistantBackend: String, CaseIterable, Identifiable, Codable, Hashable {
     var summary: String {
         switch self {
         case .automatic:
-            return "Pick the best local backend automatically — the built-in model if present, otherwise Ollama."
+            return "Use the AI model built into Aletheia."
         case .appleIntelligence:
             return "Runs entirely on your Mac with nothing to install. Requires a Mac that supports Apple Intelligence."
         case .ollama:
             return "Runs a model through the free Ollama app. Works on older Macs; needs a one-time install."
         case .localLlama:
-            return "A model built into Aletheia itself."
+            return "A model built into Aletheia itself. Nothing else to install."
         }
     }
 }
@@ -52,10 +52,9 @@ extension AssistantBackend {
     /// instance — the view just forwards its two facts in.
     ///
     /// `.localLlama` ("Built-in model") is withheld unless the embedded
-    /// llama.cpp module is present in this build's `FeatureRegistry` — see
-    /// `EmbeddedLlamaFeatureModule`, `.dev`-tier until proven, so production
-    /// and preview never advertise an engine that would silently fall back to
-    /// Ollama. `.appleIntelligence` is withheld while
+    /// llama.cpp module is present in this build's `FeatureRegistry` (see
+    /// `EmbeddedLlamaFeatureModule`), so a build without it never advertises
+    /// an engine that would silently fall back to Ollama. `.appleIntelligence` is withheld while
     /// `Integrations.appleIntelligenceBlocked` holds it off (kept provably
     /// on-device — see project README). Neither flag changes
     /// `AssistantBackendResolver`'s fallback behavior for an already-selected
@@ -77,7 +76,8 @@ struct AssistantBackendResolver {
     /// Whether Apple's Foundation Models are usable right now (supported Mac,
     /// Apple Intelligence enabled, model downloaded).
     var appleIntelligenceAvailable: Bool
-    /// Whether the embedded llama.cpp runtime is bundled and ready.
+    /// Whether the embedded llama.cpp runtime is linked into this build. Its
+    /// model may still need downloading; that's a setup step, not a fallback.
     var localLlamaAvailable: Bool
 
     func resolve(_ preference: AssistantBackend) -> AssistantBackend {

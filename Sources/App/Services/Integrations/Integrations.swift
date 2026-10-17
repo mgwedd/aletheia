@@ -35,10 +35,8 @@ final class Integrations: ObservableObject {
     }
 
     /// Low-level LLM adapter, chosen by the resolved backend (see
-    /// `effectiveAssistantBackend`). Apple Intelligence is preferred where it's
-    /// supported because it needs no install or model download; otherwise the
-    /// app uses Ollama. The embedded llama.cpp runtime is used when selected and
-    /// its model is downloaded.
+    /// `effectiveAssistantBackend`): the built-in llama.cpp engine by default,
+    /// Ollama only when the user picks it.
     func makeAssistant() -> Assistant {
         switch effectiveAssistantBackend {
         case .appleIntelligence:
@@ -48,12 +46,11 @@ final class Integrations: ObservableObject {
             return OllamaClient(baseURL: settings.ollamaBaseURL)
         case .localLlama:
             #if canImport(llama)
-            if LlamaRuntime.isAvailable(model: settings.llamaModel) {
-                return LlamaAssistant(modelURL: LlamaRuntime.modelURL(for: settings.llamaModel))
-            }
-            #endif
-            // Runtime not linked or model not downloaded: fall back to Ollama.
+            return LlamaAssistant(modelURL: llamaModelURL)
+            #else
+            // Unreachable: the resolver only picks `.localLlama` when it's linked.
             return OllamaClient(baseURL: settings.ollamaBaseURL)
+            #endif
         case .ollama, .automatic:
             return OllamaClient(baseURL: settings.ollamaBaseURL)
         }
@@ -62,8 +59,21 @@ final class Integrations: ObservableObject {
     /// The configured Ollama model tag, for status and support text.
     var ollamaModelName: String { settings.ollamaModelName }
 
-    /// Measured speeds for the configured model, once it has run here.
-    var modelSpeed: ModelSpeed { settings.speed(for: settings.ollamaModelName) }
+    /// The active backend's model name: the built-in model or the Ollama tag.
+    /// Keys measured speeds and names the model in status and support text.
+    var activeModelName: String { EngineStatusProbe.modelName(for: effectiveAssistantBackend, settings: settings) }
+
+    /// The built-in model the user chose, and where its weights live.
+    var llamaModel: LlamaModel { settings.llamaModel }
+    var llamaModelURL: URL { LlamaRuntime.modelURL(for: settings.llamaModel) }
+
+    /// Downloads the chosen built-in model (joining a download already running).
+    func downloadBuiltInModel(onProgress: @escaping (Double) -> Void = { _ in }) async throws {
+        try await LlamaModelDownloader.shared.download(settings.llamaModel, to: llamaModelURL, onProgress: onProgress)
+    }
+
+    /// Measured speeds for the active model, once it has run here.
+    var modelSpeed: ModelSpeed { settings.speed(for: activeModelName) }
 
     /// The backend that `makeAssistant()` will actually use, after resolving the
     /// user's preference against what this Mac supports. The Settings and setup
@@ -71,7 +81,10 @@ final class Integrations: ObservableObject {
     var effectiveAssistantBackend: AssistantBackend {
         AssistantBackendResolver(
             appleIntelligenceAvailable: Self.appleIntelligenceAvailable,
-            localLlamaAvailable: LlamaRuntime.isAvailable(model: settings.llamaModel)
+            // The built-in engine is first-class: chosen whenever it's linked, model
+            // downloaded or not. A missing model is a setup step, never a silent
+            // switch to Ollama.
+            localLlamaAvailable: LlamaRuntime.isBuilt
         ).resolve(settings.assistantBackend)
     }
 
@@ -101,7 +114,7 @@ final class Integrations: ObservableObject {
     /// run also updates this model's measured speeds.
     func makeAssistantService(report: (@Sendable (AIRunEvent) -> Void)? = nil) -> AssistantService {
         let settings = settings
-        let model = settings.ollamaModelName
+        let model = activeModelName
         var service = AssistantService(assistant: makeAssistant(), model: model, systemPrompt: settings.systemPrompt)
         service.report = { event in
             if case .finished(let stats) = event {

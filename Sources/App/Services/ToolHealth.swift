@@ -16,6 +16,7 @@ struct ToolHealthCheck: Identifiable, Equatable {
         case screenRecording
         case whisperModel
         case ollama
+        case builtInModel
         case appleIntelligence
         case calendar
         case reminders
@@ -207,9 +208,27 @@ enum ToolHealth {
             // Shouldn't normally happen (the backend only resolves to Apple
             // Intelligence when it's available), but guard the race anyway.
             return ToolHealthCheck(kind: .appleIntelligence, title: "AI summaries & chat", status: .failed, detail: "Turn on Apple Intelligence in System Settings › Apple Intelligence & Siri, then reload this screen.")
-        case .ollama, .automatic, .localLlama:
+        case .localLlama:
+            return builtInModelCheck(settings: settings)
+        case .ollama, .automatic:
             return await ollamaCheck(settings: settings, assistant: assistant)
         }
+    }
+
+    static func builtInModelCheck(settings: AppSettings) -> ToolHealthCheck {
+        classifyBuiltInModel(
+            installed: FileManager.default.fileExists(atPath: LlamaRuntime.modelURL(for: settings.llamaModel).path),
+            modelName: settings.llamaModel.shortName,
+            sizeMB: settings.llamaModel.approximateSizeMB
+        )
+    }
+
+    /// Pure mapping from "is the built-in model on disk?" to a check row.
+    static func classifyBuiltInModel(installed: Bool, modelName: String, sizeMB: Int) -> ToolHealthCheck {
+        if installed {
+            return ToolHealthCheck(kind: .builtInModel, title: "AI summaries & chat", status: .ok, detail: "\(modelName) is ready, built into Aletheia.")
+        }
+        return ToolHealthCheck(kind: .builtInModel, title: "AI summaries & chat", status: .failed, detail: "Download the AI model (\(modelName), about \(sizeMB) MB). It runs inside Aletheia on this Mac; nothing else to install.")
     }
 
     static func ollamaCheck(settings: AppSettings, assistant: Assistant) async -> ToolHealthCheck {

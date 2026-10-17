@@ -9,6 +9,7 @@ import Foundation
 ///                           └─ app installed ─────▶ notRunning       [Start Ollama]
 /// OllamaError.modelNotFound ───────────────────────▶ modelMissing     [Download model]
 /// OllamaError.badResponse ─────────────────────────▶ erroring         [Try again]
+/// LocalLLMEngineError.modelNotDownloaded ──────────▶ builtInModelMissing [Download model]
 /// anything else ───────────────────────────────────▶ nil (normal error alert)
 /// ```
 enum AIEngineProblem: Equatable {
@@ -16,11 +17,14 @@ enum AIEngineProblem: Equatable {
     case notRunning
     case modelMissing(String)
     case erroring(String)
+    /// The built-in engine's model isn't downloaded yet.
+    case builtInModelMissing
 
     enum Action: Equatable {
         case getOllama
         case startOllama
         case downloadModel(String)
+        case downloadBuiltInModel
         case retry
     }
 
@@ -37,6 +41,7 @@ enum AIEngineProblem: Equatable {
     }
 
     static func from(error: Error, ollamaInstalled: Bool) -> AIEngineProblem? {
+        if error as? LocalLLMEngineError == .modelNotDownloaded { return .builtInModelMissing }
         guard let ollama = error as? OllamaError else { return nil }
         switch ollama {
         case .notReachable: return ollamaInstalled ? .notRunning : .notInstalled
@@ -49,7 +54,7 @@ enum AIEngineProblem: Equatable {
         switch self {
         case .notInstalled: return "The local AI engine isn't installed"
         case .notRunning: return "The local AI engine isn't running"
-        case .modelMissing: return "The AI model isn't downloaded"
+        case .modelMissing, .builtInModelMissing: return "The AI model isn't downloaded"
         case .erroring: return "The local AI engine hit a problem"
         }
     }
@@ -64,6 +69,8 @@ enum AIEngineProblem: Equatable {
             return "The “\(name)” model hasn't been downloaded yet. Download it and Aletheia will retry your request."
         case .erroring(let detail):
             return detail
+        case .builtInModelMissing:
+            return "Aletheia's AI model downloads once and then runs on this Mac. Download it and Aletheia will retry your request."
         }
     }
 
@@ -73,6 +80,7 @@ enum AIEngineProblem: Equatable {
         case .notRunning: return .startOllama
         case .modelMissing(let name): return .downloadModel(name)
         case .erroring: return .retry
+        case .builtInModelMissing: return .downloadBuiltInModel
         }
     }
 
@@ -80,7 +88,7 @@ enum AIEngineProblem: Equatable {
         switch action {
         case .getOllama: return "Get Ollama"
         case .startOllama: return "Start Ollama"
-        case .downloadModel: return "Download Model"
+        case .downloadModel, .downloadBuiltInModel: return "Download Model"
         case .retry: return "Try Again"
         }
     }
@@ -91,7 +99,7 @@ enum AIEngineProblem: Equatable {
     var retriesAfterAction: Bool {
         switch action {
         case .getOllama: return false
-        case .startOllama, .downloadModel, .retry: return true
+        case .startOllama, .downloadModel, .downloadBuiltInModel, .retry: return true
         }
     }
 }
@@ -140,9 +148,14 @@ struct AIEngineProbe {
     var isReachable: () async -> Bool
     var hasModel: (String) async -> Bool
     var isInstalled: () -> Bool
+    /// The built-in engine is active; its only problem is a missing model.
+    var isBuiltInBackend = false
+    var builtInModelPresent: () -> Bool = { true }
 
-    /// The problem to show, or nil when the engine is fine or isn't Ollama.
+    /// The problem to show, or nil when the engine is fine or is neither
+    /// Ollama nor the built-in engine.
     func problem() async -> AIEngineProblem? {
+        if isBuiltInBackend { return builtInModelPresent() ? nil : .builtInModelMissing }
         guard isOllamaBackend else { return nil }
         let reachable = await isReachable()
         var model: Bool?

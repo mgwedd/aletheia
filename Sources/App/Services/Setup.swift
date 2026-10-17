@@ -11,6 +11,7 @@ enum SetupAction: Equatable {
     case installOrOpenOllama
     case launchOllama
     case downloadOllamaModel
+    case downloadBuiltInModel
     case enableAppleIntelligence
     case requestCalendarAccess
     case requestRemindersAccess
@@ -26,6 +27,7 @@ enum SetupAction: Equatable {
         case .installOrOpenOllama: return "Get Ollama"
         case .launchOllama: return "Launch Ollama"
         case .downloadOllamaModel: return "Download Model"
+        case .downloadBuiltInModel: return "Download"
         case .enableAppleIntelligence: return "Open Settings"
         case .requestCalendarAccess: return "Allow"
         case .requestRemindersAccess: return "Allow"
@@ -73,6 +75,8 @@ enum Setup {
             return check.ollamaState == .installedNotRunning ? .launchOllama : .installOrOpenOllama
         case (.ollama, .warning):
             return .downloadOllamaModel      // running, model missing
+        case (.builtInModel, _):
+            return .downloadBuiltInModel
         case (.appleIntelligence, .failed):
             return .enableAppleIntelligence  // supported but turned off
         case (.appleIntelligence, .warning):

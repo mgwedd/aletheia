@@ -16,15 +16,20 @@ enum LocalLLMEngineState: Equatable {
     var isReady: Bool { self == .ready }
 }
 
-/// Errors surfaced by a local-LLM engine. All are non-fatal — callers degrade
-/// (e.g. fall back to Ollama) rather than crash.
+/// Errors surfaced by a local-LLM engine. All are non-fatal: the request fails
+/// with a message (or a fix, for a missing model) rather than crashing.
 enum LocalLLMEngineError: LocalizedError, Equatable {
     case unavailable(String)
     case loadFailed(String)
     case generationFailed(String)
+    /// The built-in model's weights aren't on this Mac yet: a setup step the
+    /// AI-engine alert offers to fix with a Download button.
+    case modelNotDownloaded
 
     var errorDescription: String? {
         switch self {
+        case .modelNotDownloaded:
+            return "The AI model isn't downloaded yet. Download it in Settings › AI and models."
         case .unavailable(let reason),
              .loadFailed(let reason),
              .generationFailed(let reason):
@@ -39,8 +44,7 @@ enum LocalLLMEngineError: LocalizedError, Equatable {
 /// The rest of the app talks to this — never the llama.cpp C API directly — so
 /// the runtime, GBNF-constrained decoding, and fine-tuned / LoRA models can
 /// evolve behind a stable contract. A build without the runtime linked gets
-/// `UnavailableLocalLLMEngine`, which fails clearly instead of crashing, so the
-/// production build (which ships no runtime) is unaffected.
+/// `UnavailableLocalLLMEngine`, which fails clearly instead of crashing.
 protocol LocalLLMEngine: AnyObject {
     /// Current lifecycle state.
     var state: LocalLLMEngineState { get }

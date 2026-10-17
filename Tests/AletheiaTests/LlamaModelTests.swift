@@ -62,13 +62,6 @@ final class LlamaRuntimeTests: XCTestCase {
         XCTAssertEqual(url.lastPathComponent, LlamaModel.llama31_8b.fileName)
         XCTAssertTrue(url.deletingLastPathComponent().lastPathComponent == "Models")
     }
-
-    func testUnavailableWhenModelFileMissing() {
-        // Whether or not the runtime is linked, a model with no file on disk is
-        // not "available" — so the resolver falls back rather than trying to
-        // load a missing model.
-        XCTAssertFalse(LlamaRuntime.isAvailable(model: .gemma4_e2b))
-    }
 }
 
 final class LlamaInstallVerifiedTests: XCTestCase {

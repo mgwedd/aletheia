@@ -226,7 +226,7 @@ struct SessionDetailView: View {
             load()
             ensureDigest()
             // Load the model now so the first note or question skips the load.
-            integrations.makeAssistant().warmUp(model: settings.ollamaModelName)
+            integrations.makeAssistant().warmUp(model: integrations.activeModelName)
             // A transcription that finished while this screen was away.
             consumeTranscriptionOutcome()
         }
@@ -1087,7 +1087,7 @@ struct SessionDetailView: View {
     /// Shown between pressing Generate and the first token, which can take a
     /// minute on a long session.
     private var noteWorkingRow: some View {
-        AIProgressView(progress: noteRunner.progress, speed: settings.speed(for: settings.ollamaModelName), task: .note)
+        AIProgressView(progress: noteRunner.progress, speed: integrations.modelSpeed, task: .note)
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1176,7 +1176,7 @@ struct SessionDetailView: View {
     }
 
     private var chatTab: some View {
-        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() }, queuedStatus: chatRunner.queuedStatus, notices: chatRunner.progress.stats?.possiblyTruncated == true && !isChatSending ? [AIRunStats.truncationNotice] : [], onCompact: { compactChat($0) }, progress: chatRunner.progress, speed: settings.speed(for: settings.ollamaModelName))
+        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() }, queuedStatus: chatRunner.queuedStatus, notices: chatRunner.progress.stats?.possiblyTruncated == true && !isChatSending ? [AIRunStats.truncationNotice] : [], onCompact: { compactChat($0) }, progress: chatRunner.progress, speed: integrations.modelSpeed)
     }
 
     /// Builds this session's digest if it has none, or its digest is stale (the

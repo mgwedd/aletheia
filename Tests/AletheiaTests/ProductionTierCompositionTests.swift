@@ -28,12 +28,9 @@ final class ProductionTierCompositionTests: XCTestCase {
 
     // MARK: Specific known facts — pinned in addition to the derived check
 
-    func testEmbeddedLlamaIsAbsentFromProduction() {
-        XCTAssertFalse(production.contains(id: EmbeddedLlamaFeatureModule.id))
-    }
-
-    func testEmbeddedLlamaIsPresentInDev() {
-        XCTAssertTrue(dev.contains(id: EmbeddedLlamaFeatureModule.id))
+    /// The built-in model is the default AI engine, so it ships in production.
+    func testEmbeddedLlamaIsPresentInProduction() {
+        XCTAssertTrue(production.contains(id: EmbeddedLlamaFeatureModule.id))
     }
 
     /// Aletheia Doctor is a data-safety diagnostic a clinician needs when the

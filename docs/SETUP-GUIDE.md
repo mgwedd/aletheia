@@ -14,12 +14,12 @@ responsibility; the app does not handle them for you.
 - **macOS 14 or newer.** Apple Silicon with 16 GB of memory gives the best
   results. 8 GB works with smaller models, which the app picks for you.
 - **Free disk space.** The speech model is roughly 150 MB to 3 GB depending
-  on size, and the AI model is 1 to 5 GB or more. Both download once.
-- **Nothing else to install first.** Speech-to-text runs inside Aletheia, and
-  call audio is captured with a built-in macOS feature, so there is no
-  Homebrew, ffmpeg, or virtual audio driver. The one outside piece is
-  [Ollama](https://ollama.com), which runs the AI model. The checklist links
-  you to it and starts it for you once it is installed.
+  on size, and the AI model is about 3 to 6 GB. Both download once.
+- **Nothing else to install.** Speech-to-text and the AI model both run
+  inside Aletheia, and call audio is captured with a built-in macOS feature,
+  so there is no Homebrew, ffmpeg, virtual audio driver, or separate AI app.
+  If you already use [Ollama](https://ollama.com), you can pick it instead
+  under **Settings → AI and models**.
 
 ## Getting the app
 
@@ -44,9 +44,9 @@ Start with the built-in checks. They are faster than guessing:
 - **Settings → Status** lists in plain language what is ready and what is
   not.
 - **Help → Aletheia Doctor** runs a health check of the data folder, the
-  database, the encryption key store, snapshots, and whether Ollama is
-  reachable. Its report contains no client information, so it is safe to
-  copy into a support request.
+  database, the encryption key store, snapshots, and the AI engine. Its
+  report contains no client information, so it is safe to copy into a
+  support request.
 
 ### Recording
 
@@ -71,10 +71,11 @@ Start with the built-in checks. They are faster than guessing:
 
 | Symptom | Likely cause and fix |
 |---|---|
-| "AI is unavailable" or nothing is generated | Ollama is not running. Open the Ollama app (its icon appears in the menu bar) or use the **Launch Ollama** step in the setup checklist. |
-| Ollama is installed but not detected | Open it once manually so it finishes its own first-run setup, then check Settings → Status again. Aletheia only talks to Ollama on your own Mac. |
-| Model download is stuck | Models are downloaded through Ollama and are large. Keep the Mac awake and online, and retry. Restarting Ollama also clears most stalls. |
-| Slow or low-quality answers | The model may be too large for this Mac's memory (slow) or too small (shallow). Pick another under **Settings → AI Summaries & Chat**. |
+| "The AI model isn't downloaded" | Click **Download Model** in the message, or download it under **Settings → AI and models**. Aletheia retries your request when it finishes. |
+| Model download fails or stalls | The model is large. Keep the Mac awake and online, check free disk space, and retry. It is verified against a pinned checksum, so a partial file is never used. |
+| The first note after opening the app is slow | The model loads into memory first. Later requests in the same session are faster. |
+| Slow or low-quality answers | The model may be too large for this Mac's memory (slow) or too small (shallow). Pick another under **Settings → AI and models**. |
+| Using Ollama and nothing is generated | Ollama is not running. Open the Ollama app or use the **Launch Ollama** step in the setup checklist. Aletheia only talks to Ollama on your own Mac. |
 | A note format looks wrong | Set the format (narrative, SOAP, DAP, BIRP, GIRP) in Settings, then regenerate. |
 
 ### Data folder and storage

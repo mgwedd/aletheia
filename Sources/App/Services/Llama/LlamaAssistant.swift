@@ -52,7 +52,9 @@ final class LlamaAssistant: Assistant {
         return created
     }
 
-    init(modelURL: URL, maxTokens: Int = 512) {
+    /// `maxTokens` defaults to the reply room every prompt budget keeps, so a
+    /// long note isn't cut short.
+    init(modelURL: URL, maxTokens: Int = ContextBudget.replyHeadroomTokens) {
         self.modelURL = modelURL
         self.maxTokens = maxTokens
     }
@@ -70,15 +72,33 @@ final class LlamaAssistant: Assistant {
         LocalLLMRequest(system: system, prompt: prompt, sampling: LocalLLMSampling(maxTokens: maxTokens))
     }
 
+    /// The model isn't downloaded: a setup step, said plainly instead of a load error.
+    private var missingModel: LocalLLMEngineError? {
+        FileManager.default.fileExists(atPath: modelURL.path) ? nil : .modelNotDownloaded
+    }
+
+    /// Loads the weights in the background (on session open) so the first note
+    /// or question doesn't wait for them. The idle unload still applies.
+    func warmUp(model _: String) {
+        guard missingModel == nil else { return }
+        let engine = engine
+        Task.detached(priority: .utility) {
+            try? await engine.load()
+            engine.scheduleIdleUnload()
+        }
+    }
+
     func generate(model _: String, system: String, prompt: String) async throws -> String {
-        try await engine.generate(request(system: system, prompt: prompt))
+        if let missingModel { throw missingModel }
+        return try await engine.generate(request(system: system, prompt: prompt))
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Token-by-token streaming of the growing full text; a Stop in the UI
     /// cancels the engine's decode loop.
     func stream(model _: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
-        engine.stream(request(system: system, prompt: prompt))
+        if let missingModel { return AsyncThrowingStream { $0.finish(throwing: missingModel) } }
+        return engine.stream(request(system: system, prompt: prompt))
     }
 }
 #endif

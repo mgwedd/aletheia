@@ -62,9 +62,8 @@ final class AssistantBackendResolverTests: XCTestCase {
     // MARK: selectableOptions — the picker's gating, pulled out so it's testable
     // without a view or a `FeatureRegistry` instance.
 
-    /// A production build: the embedded llama.cpp module isn't in the
-    /// registry, so "Built-in model" must not be offered — the leak this whole
-    /// function exists to prevent (see `EmbeddedLlamaFeatureModule`).
+    /// A build without the embedded llama.cpp module in the registry must not
+    /// offer "Built-in model" (see `EmbeddedLlamaFeatureModule`).
     func testProductionLikeBuildHidesLocalLlama() {
         let options = AssistantBackend.selectableOptions(embeddedLlamaAvailable: false, appleIntelligenceBlocked: true)
         XCTAssertFalse(options.contains(.localLlama))
@@ -72,8 +71,8 @@ final class AssistantBackendResolverTests: XCTestCase {
         XCTAssertTrue(options.contains(.ollama))
     }
 
-    /// A dev build with the embedded runtime module present: "Built-in model"
-    /// is offered.
+    /// With the embedded runtime module present (every shipping tier),
+    /// "Built-in model" is offered.
     func testDevLikeBuildOffersLocalLlamaWhenModulePresent() {
         let options = AssistantBackend.selectableOptions(embeddedLlamaAvailable: true, appleIntelligenceBlocked: true)
         XCTAssertTrue(options.contains(.localLlama))
