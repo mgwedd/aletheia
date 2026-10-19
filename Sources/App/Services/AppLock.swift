@@ -86,6 +86,7 @@ final class AppLock: ObservableObject {
     var onUnlock: (() -> Void)?
 
     private let settings: AppSettings
+    private let canAuthenticateProvider: () -> Bool
     private var unlockFlight = SingleFlight()
 
     /// The last time the user interacted with the app (mouse/keyboard event
@@ -98,6 +99,7 @@ final class AppLock: ObservableObject {
     private var willSleepObserver: NSObjectProtocol?
     private var screensDidSleepObserver: NSObjectProtocol?
     private var screenLockObserver: NSObjectProtocol?
+    private var didHideObserver: NSObjectProtocol?
     private var didBecomeActiveObserver: NSObjectProtocol?
     private var didResignActiveObserver: NSObjectProtocol?
     private var promptGate = AutoPromptGate()
@@ -109,11 +111,12 @@ final class AppLock: ObservableObject {
     /// shortest offered timeout is a minute.
     private static let idleCheckInterval: TimeInterval = 10
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, canAuthenticate: @escaping () -> Bool = AppLock.canAuthenticate) {
         self.settings = settings
+        self.canAuthenticateProvider = canAuthenticate
         self.isLocked = AppLockPolicy.shouldLock(
             enabled: settings.appLockEnabled,
-            canAuthenticate: Self.canAuthenticate()
+            canAuthenticate: canAuthenticate()
         )
         OllamaResidency.shared.setLocked(isLocked)   // didSet doesn't run in init
         // A lock that happened (or a launch) while another app was frontmost
@@ -127,6 +130,14 @@ final class AppLock: ObservableObject {
             forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.promptGate.appResigned() }
+        }
+        // Hiding the app (⌘H) re-locks across every window (including when the
+        // main window was closed with ⌘W and only the patient chat window is
+        // open), whereas merely switching to another app does not.
+        didHideObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didHideNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.lockIfEnabled() }
         }
         observeActivity()
         observeSystemSleep()
@@ -144,6 +155,7 @@ final class AppLock: ObservableObject {
         idleTimer?.invalidate()
         if let didBecomeActiveObserver { NotificationCenter.default.removeObserver(didBecomeActiveObserver) }
         if let didResignActiveObserver { NotificationCenter.default.removeObserver(didResignActiveObserver) }
+        if let didHideObserver { NotificationCenter.default.removeObserver(didHideObserver) }
         settingsCancellable?.cancel()
         if let activityMonitor { NSEvent.removeMonitor(activityMonitor) }
         let workspaceCenter = NSWorkspace.shared.notificationCenter
@@ -159,10 +171,10 @@ final class AppLock: ObservableObject {
         return ok
     }
 
-    /// Re-lock now (e.g. when the app is hidden or sent to the background), so
+    /// Re-lock now (e.g. when the app is hidden or the Mac sleeps/locks), so
     /// stepping away re-requires authentication. No-op when the lock is off.
     func lockIfEnabled() {
-        if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: Self.canAuthenticate()) {
+        if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: canAuthenticateProvider()) {
             isLocked = true
             SessionSearch.setAppLocked(true)
             // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
@@ -170,6 +182,12 @@ final class AppLock: ObservableObject {
             OllamaClient.unloadLoaded()
             LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript
         }
+    }
+
+    /// Test seam: puts the lock into the unlocked state without prompting Touch ID.
+    func simulateUnlockedForTesting() {
+        isLocked = false
+        SessionSearch.setAppLocked(false)
     }
 
     /// The automatic prompt: only when locked and the app is frontmost.

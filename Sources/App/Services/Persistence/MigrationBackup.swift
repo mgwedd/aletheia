@@ -81,6 +81,33 @@ enum MigrationBackup {
             .map(\.url)
     }
 
+    /// Deletes the prunable snapshots from `urls` (keeping the `keepMostRecent`
+    /// newest) together with each snapshot's paired `files/<snapshot-name>/`
+    /// JSON bundle, and removes the `files/` folder itself if it becomes empty.
+    /// Returns the snapshot URLs that were pruned.
+    @discardableResult
+    static func prune(_ urls: [URL], keepMostRecent keep: Int, fileManager: FileManager = .default) -> [URL] {
+        let toDelete = prunable(urls, keepMostRecent: keep)
+        for snapshot in toDelete {
+            try? fileManager.removeItem(at: snapshot)
+            let bundle = filesBundleURL(forSnapshot: snapshot)
+            try? fileManager.removeItem(at: bundle)
+            let filesDir = bundle.deletingLastPathComponent()
+            if let remaining = try? fileManager.contentsOfDirectory(atPath: filesDir.path),
+               remaining.filter({ $0 != ".DS_Store" }).isEmpty {
+                try? fileManager.removeItem(at: filesDir)
+            }
+        }
+        return toDelete
+    }
+
+    /// Convenience that lists existing snapshots for `dbURL` and prunes both the
+    /// older `.sqlite` files and their paired `files/` bundles.
+    @discardableResult
+    static func prune(for dbURL: URL, keepMostRecent keep: Int, fileManager: FileManager = .default) -> [URL] {
+        prune(existing(for: dbURL, fileManager: fileManager), keepMostRecent: keep, fileManager: fileManager)
+    }
+
     // MARK: - Structured JSON (patient.json / session.json)
 
     /// Sub-folder of the migrations folder that holds, per pre-image, a copy of
@@ -141,15 +168,24 @@ enum MigrationBackup {
             throw CocoaError(.fileWriteFileExists)
         }
         let relativePaths = structuredJSONFiles(inDataRoot: dataRoot, fileManager: fileManager)
+        var currentFile: String?
         do {
             try fileManager.createDirectory(at: bundle, withIntermediateDirectories: true)
             for relative in relativePaths {
+                currentFile = URL(fileURLWithPath: relative).lastPathComponent
                 let destination = bundle.appendingPathComponent(relative)
                 try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try fileManager.copyItem(at: dataRoot.appendingPathComponent(relative), to: destination)
             }
         } catch {
             try? fileManager.removeItem(at: bundle)
+            if let currentFile {
+                throw NSError(
+                    domain: (error as NSError).domain,
+                    code: (error as NSError).code,
+                    userInfo: [NSLocalizedDescriptionKey: "\(currentFile): \(error.localizedDescription)"]
+                )
+            }
             throw error
         }
         return relativePaths.count

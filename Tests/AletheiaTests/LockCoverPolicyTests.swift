@@ -20,6 +20,17 @@ final class LockCoverPolicyTests: XCTestCase {
             LockCoverPolicy.cover(appLocked: true, hasDataFolder: true, encryption: .lockedNeedsPassphrase),
             [.appLock, .passphrase]
         )
+        XCTAssertEqual(
+            LockCoverPolicy.topCover(appLocked: true, hasDataFolder: true, encryption: .lockedNeedsPassphrase),
+            .appLock
+        )
+        XCTAssertEqual(
+            LockCoverPolicy.topCover(appLocked: false, hasDataFolder: true, encryption: .lockedNeedsPassphrase),
+            .passphrase
+        )
+        XCTAssertNil(
+            LockCoverPolicy.topCover(appLocked: false, hasDataFolder: true, encryption: .unlocked)
+        )
     }
 
     func testNoPassphraseCoverWithoutADataFolder() {

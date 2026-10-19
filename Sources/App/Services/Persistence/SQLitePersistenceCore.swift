@@ -108,19 +108,11 @@ final class SQLitePersistenceCore: PersistenceCore {
             // (current 0) has nothing to protect, so no snapshot is taken.
             if let backupURL = MigrationBackup.snapshotURL(forDatabaseAt: url, fromVersion: current),
                let problem = takePreMigrationImage(to: backupURL) {
-                let code = sqlite3_extended_errcode(db)
-                let detail = code == SQLITE_OK ? "" : " (\(DatabaseOpenFailure.describe(sqliteCode: code)))"
-                let what: String
-                switch problem {
-                case .database: what = "the database"
-                case .files: what = "the patient and session files"
-                }
-                return DatabaseOpenFailure(
-                    kind: .migrationRefused,
-                    reason: "Couldn't write the safety copy of \(what) needed before upgrading the database from v\(current) to v\(target)\(detail).",
-                    sqliteCode: code == SQLITE_OK ? nil : code,
-                    dataVersion: current,
-                    appVersion: target
+                return Self.migrationRefusedFailure(
+                    problem: problem,
+                    from: current,
+                    to: target,
+                    sqliteCode: sqlite3_extended_errcode(db)
                 )
             }
             // One transaction: either the schema reaches `target` or nothing
@@ -142,6 +134,38 @@ final class SQLitePersistenceCore: PersistenceCore {
             guard exec("COMMIT;") else { return currentFailure(fallback: .migrationFailed) }
             return nil
         }
+    }
+
+    /// Builds the `.migrationRefused` failure for a pre-migration image problem.
+    /// Database snapshot failures include the SQLite error code (when non-OK);
+    /// file-copy failures include the file error detail and never attach an
+    /// unrelated SQLite error code.
+    static func migrationRefusedFailure(
+        problem: PreImageFailure,
+        from current: Int,
+        to target: Int,
+        sqliteCode rawCode: Int32
+    ) -> DatabaseOpenFailure {
+        let what: String
+        let detail: String
+        let sqliteCode: Int32?
+        switch problem {
+        case .database:
+            what = "the database"
+            sqliteCode = rawCode == SQLITE_OK ? nil : rawCode
+            detail = sqliteCode.map { " (\(DatabaseOpenFailure.describe(sqliteCode: $0)))" } ?? ""
+        case .files(let message):
+            what = "the patient and session files"
+            sqliteCode = nil
+            detail = message.isEmpty ? "" : " (\(message))"
+        }
+        return DatabaseOpenFailure(
+            kind: .migrationRefused,
+            reason: "Couldn't write the safety copy of \(what) needed before upgrading the database from v\(current) to v\(target)\(detail).",
+            sqliteCode: sqliteCode,
+            dataVersion: current,
+            appVersion: target
+        )
     }
 
     /// The failure for whatever SQLite last reported on this connection. A code

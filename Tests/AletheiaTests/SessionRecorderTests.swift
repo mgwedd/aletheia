@@ -163,4 +163,45 @@ final class CallAudioWatchTests: XCTestCase {
     func testIdleRecorderIsNotFlaggedSilent() {
         XCTAssertFalse(SessionRecorder().callAudioSilent)
     }
+
+    @MainActor
+    func testUpdateLevelsFeedsCallAudioWatchAndExcludesPausedTime() async {
+        let recorder = SessionRecorder()
+        recorder.beginSimulatedRecordingForTesting(grace: 10)
+        XCTAssertTrue(recorder.isRecording)
+        XCTAssertFalse(recorder.callAudioSilent)
+
+        // 9 seconds of unpaused silence on the call track (< 10s grace).
+        for _ in 0..<9 {
+            recorder.updateLevels(dt: 1.0, rawMicLevel: 0.4, rawCallLevel: 0)
+        }
+        XCTAssertFalse(recorder.callAudioSilent)
+        XCTAssertGreaterThan(recorder.levels.mic, 0)
+
+        // Pause the recording: meters drop to zero and 30 seconds of polling
+        // while paused must not advance CallAudioWatch.
+        recorder.pause()
+        XCTAssertTrue(recorder.isPaused)
+        XCTAssertEqual(recorder.levels.mic, 0)
+        XCTAssertEqual(recorder.levels.call, 0)
+        for _ in 0..<30 {
+            recorder.updateLevels(dt: 1.0, rawMicLevel: 0.4, rawCallLevel: 0)
+        }
+        XCTAssertFalse(recorder.callAudioSilent, "paused time must not count toward call-audio silence")
+
+        // Resume and poll 1 more unpaused second of silence -> reaches 10s grace.
+        recorder.resume()
+        XCTAssertFalse(recorder.isPaused)
+        recorder.updateLevels(dt: 1.0, rawMicLevel: 0.4, rawCallLevel: 0)
+        XCTAssertTrue(recorder.callAudioSilent)
+
+        // Audible call audio clears the warning and updates the call meter.
+        recorder.updateLevels(dt: 1.0, rawMicLevel: 0.4, rawCallLevel: 0.5)
+        XCTAssertFalse(recorder.callAudioSilent)
+        XCTAssertGreaterThan(recorder.levels.call, 0)
+
+        await recorder.stop()
+        XCTAssertFalse(recorder.isRecording)
+        XCTAssertFalse(recorder.callAudioSilent)
+    }
 }

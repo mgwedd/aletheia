@@ -74,4 +74,30 @@ final class AppLockPolicyTests: XCTestCase {
         let now = Date()
         XCTAssertFalse(AppLockPolicy.shouldAutoLock(lastActivity: now, timeoutMinutes: 1, now: now))
     }
+
+    @MainActor
+    func testAppLockRelocksOnHideAndNotOnResignActive() async {
+        let settings = AppSettings.shared
+        let priorEnabled = settings.appLockEnabled
+        defer { settings.appLockEnabled = priorEnabled }
+        settings.appLockEnabled = true
+
+        let appLock = AppLock(settings: settings, canAuthenticate: { true })
+        XCTAssertTrue(appLock.isLocked)
+
+        appLock.simulateUnlockedForTesting()
+        XCTAssertFalse(appLock.isLocked)
+
+        // Switching to another app (or closing the main window while the chat
+        // window stays open) resigns active status without hiding — must not re-lock.
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: nil)
+        await Task.yield()
+        XCTAssertFalse(appLock.isLocked)
+
+        // Explicitly hiding Aletheia (⌘H) posts didHideNotification at the app
+        // level regardless of which window is open, and must re-lock.
+        NotificationCenter.default.post(name: NSApplication.didHideNotification, object: nil)
+        await Task.yield()
+        XCTAssertTrue(appLock.isLocked)
+    }
 }

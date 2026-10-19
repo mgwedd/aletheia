@@ -192,14 +192,72 @@ final class PreMigrationImageTests: XCTestCase {
         XCTAssertTrue(MigrationBackup.existing(for: dbURL).isEmpty)
     }
 
-    // MARK: - Restore guidance
+    // MARK: - Restore guidance, refusal text, and bundle pruning
 
     func testRestoreStepsPointToTheFilesFolderAndWarnAgainstReplace() {
         let failure = DatabaseOpenFailure(kind: .unknown, reason: "r")
         let steps = DatabaseFailureGuidance.guidance(for: failure, dataFolder: "/Users/mike/Aletheia").steps
-        let step = steps.first { $0.contains(MigrationBackup.filesFolderName) && $0.contains("Merge") }
-        XCTAssertNotNil(step, "the manual restore must cover the patient and session files")
-        XCTAssertTrue(step?.contains("never Replace") ?? false, "Replace would remove recordings")
+        let step = steps.first {
+            $0.contains(MigrationBackup.filesFolderName)
+                && $0.contains("patient.json")
+                && $0.contains("session.json")
+                && $0.contains("ditto")
+        }
+        XCTAssertNotNil(step, "the manual restore must cover per-file and ditto restore of patient.json and session.json")
+        XCTAssertFalse(step?.contains("Merge") ?? true, "Finder does not offer Merge when same-named items differ")
+        XCTAssertTrue(step?.contains("Replace") ?? false, "must still warn against Replace")
         XCTAssertTrue(step?.contains(DatabaseFailureGuidance.preUpgradeFolderName) ?? false)
+    }
+
+    func testMigrationRefusedForFilesKeepsFileDetailAndOmitsSQLiteCode() {
+        let filesFailure = SQLitePersistenceCore.migrationRefusedFailure(
+            problem: .files("patient.json: Permission denied"),
+            from: 1,
+            to: 2,
+            sqliteCode: 5 // SQLITE_BUSY — must be ignored for a file-copy error
+        )
+        XCTAssertEqual(filesFailure.kind, .migrationRefused)
+        XCTAssertNil(filesFailure.sqliteCode, "a file-copy failure must not attach an unrelated SQLite error code")
+        XCTAssertTrue(filesFailure.reason.contains("patient and session files"))
+        XCTAssertTrue(filesFailure.reason.contains("patient.json: Permission denied"))
+        XCTAssertFalse(filesFailure.reason.contains("SQLite error"))
+
+        let dbFailure = SQLitePersistenceCore.migrationRefusedFailure(
+            problem: .database,
+            from: 1,
+            to: 2,
+            sqliteCode: 13 // SQLITE_FULL
+        )
+        XCTAssertEqual(dbFailure.kind, .migrationRefused)
+        XCTAssertEqual(dbFailure.sqliteCode, 13)
+        XCTAssertTrue(dbFailure.reason.contains("the database"))
+        XCTAssertTrue(dbFailure.reason.contains("SQLite error 13"))
+    }
+
+    func testPruningSnapshotsAlsoDeletesMatchingFilesBundles() throws {
+        try plantDataFolder()
+        let (core, dbURL) = try makeCore()
+        let t0 = Date(timeIntervalSince1970: 1_600_000_000)
+        let oldSnapshot = try XCTUnwrap(MigrationBackup.snapshotURL(forDatabaseAt: dbURL, fromVersion: 1, now: t0))
+        let newSnapshot = try XCTUnwrap(MigrationBackup.snapshotURL(forDatabaseAt: dbURL, fromVersion: 2, now: t0.addingTimeInterval(86_400)))
+
+        XCTAssertNil(core.takePreMigrationImage(to: oldSnapshot))
+        XCTAssertNil(core.takePreMigrationImage(to: newSnapshot))
+
+        let oldBundle = MigrationBackup.filesBundleURL(forSnapshot: oldSnapshot)
+        let newBundle = MigrationBackup.filesBundleURL(forSnapshot: newSnapshot)
+        XCTAssertTrue(fm.fileExists(atPath: oldBundle.path))
+        XCTAssertTrue(fm.fileExists(atPath: newBundle.path))
+
+        let pruned = MigrationBackup.prune(for: dbURL, keepMostRecent: 1)
+        XCTAssertEqual(pruned.map(\.lastPathComponent), [oldSnapshot.lastPathComponent])
+        XCTAssertFalse(fm.fileExists(atPath: oldSnapshot.path))
+        XCTAssertFalse(fm.fileExists(atPath: oldBundle.path), "pruning a snapshot must also delete its paired files/ bundle")
+        XCTAssertTrue(fm.fileExists(atPath: newSnapshot.path))
+        XCTAssertTrue(fm.fileExists(atPath: newBundle.path))
+
+        // Pruning the last snapshot cleans up the now-empty files/ directory too.
+        _ = MigrationBackup.prune(for: dbURL, keepMostRecent: 0)
+        XCTAssertFalse(fm.fileExists(atPath: newBundle.deletingLastPathComponent().path))
     }
 }
