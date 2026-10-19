@@ -73,6 +73,7 @@ extension LocalLLMRequest {
         transcript: String,
         notes: String = "",
         comments: [String] = [],
+        patientBackground: String = "",
         verbosity: SummaryVerbosity = .default,
         instructions: String? = nil,
         system: String = ""
@@ -84,6 +85,7 @@ extension LocalLLMRequest {
                 transcript: transcript,
                 notes: notes,
                 comments: comments,
+                patientBackground: patientBackground,
                 verbosity: verbosity,
                 instructions: instructions
             ),

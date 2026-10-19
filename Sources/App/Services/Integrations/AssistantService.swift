@@ -61,8 +61,8 @@ struct AssistantService {
         run(task: task, system: systemPrompt, prompt: prompt, grammar: grammar)
     }
 
-    func summarize(transcript: String) async throws -> String {
-        try await generate(task: .note, system: systemPrompt, prompt: Prompts.summarize(transcript: transcript))
+    func summarize(transcript: String, patientBackground: String = "") async throws -> String {
+        try await generate(task: .note, system: systemPrompt, prompt: Prompts.summarize(transcript: transcript, patientBackground: patientBackground))
     }
 
     /// Drafts a clinical progress note in the given documentation format
@@ -73,6 +73,7 @@ struct AssistantService {
         transcript: String,
         notes: String = "",
         comments: [SessionComment] = [],
+        patientBackground: String = "",
         verbosity: SummaryVerbosity = .default,
         instructions: String? = nil
     ) async throws -> String {
@@ -83,6 +84,7 @@ struct AssistantService {
                 transcript: transcript,
                 notes: notes,
                 comments: Self.formatComments(comments),
+                patientBackground: patientBackground,
                 verbosity: verbosity,
                 instructions: instructions
             ),
@@ -97,6 +99,7 @@ struct AssistantService {
         transcript: String,
         notes: String = "",
         comments: [SessionComment] = [],
+        patientBackground: String = "",
         verbosity: SummaryVerbosity = .default,
         instructions: String? = nil
     ) -> AsyncThrowingStream<String, Error> {
@@ -107,6 +110,7 @@ struct AssistantService {
                 transcript: transcript,
                 notes: notes,
                 comments: Self.formatComments(comments),
+                patientBackground: patientBackground,
                 verbosity: verbosity,
                 instructions: instructions
             ),
@@ -118,6 +122,7 @@ struct AssistantService {
         transcript: String,
         notes: String = "",
         comments: [SessionComment] = [],
+        patientBackground: String = "",
         history: [ChatMessage],
         question: String
     ) async throws -> String {
@@ -127,6 +132,7 @@ struct AssistantService {
                 transcript: transcript,
                 notes: notes,
                 comments: Self.formatComments(comments),
+                patientBackground: patientBackground,
                 history: history,
                 question: question
             )
@@ -149,6 +155,7 @@ struct AssistantService {
         transcript: String,
         notes: String = "",
         comments: [SessionComment] = [],
+        patientBackground: String = "",
         history: [ChatMessage],
         question: String
     ) -> AsyncThrowingStream<String, Error> {
@@ -158,6 +165,7 @@ struct AssistantService {
                 transcript: transcript,
                 notes: notes,
                 comments: Self.formatComments(comments),
+                patientBackground: patientBackground,
                 history: history,
                 question: question
             )

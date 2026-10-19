@@ -1146,12 +1146,13 @@ final class Store {
     func gatherCitedPatientContext(
         for patient: Patient,
         relevantTo question: String,
-        characterBudget: Int = ContextBudget.current.availableCharacters(reserving: 0)
+        characterBudget: Int = ContextBudget.current.availableCharacters(reserving: 0),
+        includeBackground: Bool = true
     ) -> PatientContext {
-        // Always prepend the patient's background (clinical history + meds) so the
-        // assistant can draw on it whenever it's relevant, without it having to be
-        // requested. Empty when nothing has been entered.
-        let background = patient.aiBackgroundBlock
+        // Prepend the patient's background (clinical history + meds) when enabled
+        // so the assistant can draw on it whenever it's relevant, without it having
+        // to be requested. Empty when nothing has been entered or when disabled.
+        let background = includeBackground ? patient.aiBackgroundBlock : ""
         let room = max(0, characterBudget - background.count)
         var extrasRemaining = room / 3
         var extrasUsed = 0

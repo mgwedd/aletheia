@@ -78,7 +78,7 @@ enum Prompts {
     is approximate to within a few seconds.
     """
 
-    static func summarize(transcript: String) -> String {
+    static func summarize(transcript: String, patientBackground: String = "") -> String {
         """
         You are helping a therapist review her own session notes. Summarize \
         the following therapy session transcript into concise clinical notes: \
@@ -88,7 +88,7 @@ enum Prompts {
         to summarize, say so plainly.
 
         \(transcriptLegend)
-
+        \(backgroundMaterial(patientBackground))
         Transcript:
         \(TranscriptCompactor.compact(transcript))
         """
@@ -165,6 +165,7 @@ enum Prompts {
         transcript: String,
         notes: String = "",
         comments: [String] = [],
+        patientBackground: String = "",
         verbosity: SummaryVerbosity = .default,
         instructions: String? = nil
     ) -> String {
@@ -178,7 +179,7 @@ enum Prompts {
         \(noteFormattingRules)
 
         \(transcriptLegend)
-
+        \(backgroundMaterial(patientBackground))
         Transcript:
         \(TranscriptCompactor.compact(transcript))
         \(therapistMaterial(notes: notes, comments: comments))
@@ -201,6 +202,7 @@ enum Prompts {
         transcript: String,
         notes: String = "",
         comments: [String] = [],
+        patientBackground: String = "",
         history: [ChatMessage],
         question: String
     ) -> String {
@@ -213,13 +215,19 @@ enum Prompts {
         session. Never speculate.
 
         \(transcriptLegend)
-
+        \(backgroundMaterial(patientBackground))
         Transcript:
         \(TranscriptCompactor.compact(transcript))
         \(therapistMaterial(notes: notes, comments: comments))
         \(formatHistory(history, question: question))
         Therapist's question: \(question)
         """
+    }
+
+    /// Renders the patient background block or empty if none.
+    static func backgroundMaterial(_ background: String) -> String {
+        let trimmed = background.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "" : "\n" + trimmed + "\n"
     }
 
     /// Renders the therapist's own notes/comments as a clearly-labeled block,

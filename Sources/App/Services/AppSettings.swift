@@ -95,6 +95,8 @@ final class AppSettings: ObservableObject {
         static let acceptedLegalDate = "acceptedLegalDate"
         static let progressNoteFormat = "progressNoteFormat"
         static let summaryVerbosity = "summaryVerbosity"
+        static let includeCommentsInDrafts = "includeCommentsInDrafts"
+        static let includePatientBackground = "includePatientBackground"
         static let noteInstructions = "noteInstructions"
         static let modelSpeeds = "modelSpeeds"
         static let noteEffort = "noteEffort"
@@ -182,6 +184,16 @@ final class AppSettings: ObservableObject {
     /// How long a generated Summary runs (`SummaryVerbosity`). Natural by default.
     @Published var summaryVerbosity: SummaryVerbosity {
         didSet { defaults.set(summaryVerbosity.rawValue, forKey: Keys.summaryVerbosity) }
+    }
+    /// Whether transcript margin comments are included when drafting progress notes.
+    /// On by default.
+    @Published var includeCommentsInDrafts: Bool {
+        didSet { defaults.set(includeCommentsInDrafts, forKey: Keys.includeCommentsInDrafts) }
+    }
+    /// Whether the patient's clinical history, profile notes, and medications are included in AI context.
+    /// On by default.
+    @Published var includePatientBackground: Bool {
+        didSet { defaults.set(includePatientBackground, forKey: Keys.includePatientBackground) }
     }
     /// Per-format replacements for the note prompt's instruction text, keyed by
     /// `ProgressNoteFormat.rawValue`. A missing key means the default.
@@ -372,6 +384,8 @@ final class AppSettings: ObservableObject {
         }
         summaryVerbosity = defaults.string(forKey: Keys.summaryVerbosity)
             .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
+        includeCommentsInDrafts = defaults.object(forKey: Keys.includeCommentsInDrafts) as? Bool ?? true
+        includePatientBackground = defaults.object(forKey: Keys.includePatientBackground) as? Bool ?? true
         noteInstructions = defaults.dictionary(forKey: Keys.noteInstructions) as? [String: String] ?? [:]
         modelSpeeds = defaults.dictionary(forKey: Keys.modelSpeeds) as? [String: [String: Double]] ?? [:]
         riskPhrases = Self.loadRiskPhrases(from: defaults)

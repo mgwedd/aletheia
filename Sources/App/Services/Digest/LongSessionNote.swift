@@ -56,6 +56,7 @@ enum LongSessionNote {
         transcript: String,
         notes: String = "",
         comments: [SessionComment] = [],
+        patientBackground: String = "",
         verbosity: SummaryVerbosity = .default,
         instructions: String? = nil,
         effort: AnswerEffort = .default,
@@ -72,11 +73,13 @@ enum LongSessionNote {
         func prompt(_ material: String) -> String {
             Prompts.progressNote(
                 format: format, transcript: material, notes: notes, comments: commentLines,
+                patientBackground: patientBackground,
                 verbosity: verbosity, instructions: instructions)
         }
         if service.fits(prompt: prompt(transcript)) {
             return service.streamProgressNote(
                 format: format, transcript: transcript, notes: notes, comments: comments,
+                patientBackground: patientBackground,
                 verbosity: verbosity, instructions: instructions)
         }
 
