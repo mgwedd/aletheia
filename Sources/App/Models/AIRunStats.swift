@@ -71,6 +71,9 @@ enum AIRunEvent {
 
 /// Live state of one run, for `AIProgressView`.
 struct AIRunProgress: Equatable {
+    /// Earlier stages that have already finished in this multi-stage run,
+    /// shown with a checkmark above the active read/write pair.
+    var completedStages: [String] = []
     /// Stage names: "Reading the session", "Writing the note".
     var readTitle = "Reading"
     var writeTitle = "Writing"
@@ -81,6 +84,32 @@ struct AIRunProgress: Equatable {
     /// Streamed chunks (about one per token) until Ollama reports the real count.
     var tokensWritten = 0
     var stats: AIRunStats?
+
+    /// Advances to a new read/write stage, keeping a one-line summary of the
+    /// stage that just finished in `completedStages`.
+    mutating func beginStage(readTitle: String, writeTitle: String, startedAt: Date) {
+        var history = completedStages
+        if let prevStart = self.startedAt,
+           self.firstTokenAt != nil || self.tokensWritten > 0 || self.stats != nil {
+            let detail = self.estimatedPromptTokens.map(AIProgressFormat.estimatedTokens)
+            let elapsed = AIProgressFormat.elapsed(startedAt.timeIntervalSince(prevStart))
+            let summary = [self.readTitle, detail, elapsed].compactMap { $0 }.joined(separator: " · ")
+            history.append(summary)
+        }
+        self = AIRunProgress(
+            completedStages: history,
+            readTitle: readTitle,
+            writeTitle: writeTitle,
+            startedAt: startedAt
+        )
+    }
+
+    /// Appends a completed step (such as a deterministic search or a local tool call)
+    /// to the stage list above the active model stage.
+    mutating func recordCompletedStage(_ text: String) {
+        guard !text.isEmpty else { return }
+        completedStages.append(text)
+    }
 }
 
 /// Measured speeds for one model on this Mac, as a moving average. Numbers

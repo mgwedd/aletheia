@@ -18,6 +18,7 @@ struct PatientChatView: View {
 
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
+    @EnvironmentObject private var settings: AppSettings
 
     @State private var threads: [ChatThread] = []
     @State private var selectedThreadID: UUID?
@@ -80,7 +81,8 @@ struct PatientChatView: View {
                         busyNotice: searchingNotice,
                         onCompact: { compact($0) },
                         progress: chatRunner.progress,
-                        speed: integrations.modelSpeed
+                        speed: integrations.modelSpeed,
+                        effort: $settings.patientChatEffort
                     )
                     .frame(minWidth: 360)
                 } else {
@@ -319,6 +321,8 @@ struct PatientChatView: View {
             errorMessage = PatientContextBudgetError().localizedDescription
             return
         }
+        let effort = settings.patientChatEffort
+        let initialBudget = PatientChatAnswer.initialContextBudget(for: effort, totalBudget: characterBudget)
         // Decrypting and searching every session takes a moment on a long
         // history, so it runs off the main thread with a line saying so.
         let sessionCount = (try? store.listSessions(for: patient))?.count ?? 0
@@ -326,11 +330,12 @@ struct PatientChatView: View {
         let patient = patient
         Task {
             let context = await Task.detached(priority: .userInitiated) {
-                store.gatherCitedPatientContext(for: patient, relevantTo: question, characterBudget: characterBudget)
+                store.gatherCitedPatientContext(for: patient, relevantTo: question, characterBudget: initialBudget)
             }.value
             searchingNotice = nil
             startAnswer(
                 service: service, context: context, history: history, question: question,
+                effort: effort, totalBudget: characterBudget,
                 userMessage: userMessage, assistantID: assistantID, threadID: threadID
             )
         }
@@ -347,12 +352,18 @@ struct PatientChatView: View {
 
     private func startAnswer(
         service: AssistantService, context: PatientContext, history: [ChatMessage], question: String,
+        effort: AnswerEffort, totalBudget: Int,
         userMessage: ChatMessage, assistantID: UUID, threadID: UUID
     ) {
+        guard let store = appModel.store else { return }
+        let patient = patient
+        var initialCoverage = context.coverage
+        initialCoverage.effort = effort
+        var latestCoverageLabel = initialCoverage.label
         // What the notice and caption say comes from what was sent: they are
         // set once the answer starts (or ends), never for a run that was refused.
         func showCoverage() {
-            coverageNotice = context.coverage.label
+            coverageNotice = latestCoverageLabel
         }
         coverageNotice = nil
         chatRunner.start(
@@ -362,7 +373,25 @@ struct PatientChatView: View {
             readTitle: "Reading the sessions",
             writeTitle: "Writing the answer",
             makeStream: {
-                service.streamAnswerAboutPatient(context: context.text, history: history, question: question)
+                PatientChatAnswer.stream(
+                    context: context,
+                    history: history,
+                    question: question,
+                    effort: effort,
+                    totalBudget: totalBudget,
+                    scope: {
+                        await Task.detached(priority: .userInitiated) {
+                            store.localToolScope(for: patient)
+                        }.value
+                    },
+                    service: service,
+                    builder: integrations.digests,
+                    live: { started, change in chatRunner.update(started: started, change) },
+                    onCoverage: { updated in
+                        latestCoverageLabel = updated.label
+                        if isSending { coverageNotice = updated.label }
+                    }
+                )
             },
             // Stream the raw answer live; fold in the numbered source footer once
             // the full text is in, so citations don't flicker mid-stream.

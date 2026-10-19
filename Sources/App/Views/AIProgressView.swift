@@ -45,11 +45,12 @@ enum AIProgressFormat {
         return min(0.95, max(0, elapsed / total))
     }
 
-    /// The stage list for a run at `now`: read, then write.
+    /// The stage list for a run at `now`: any earlier completed stages, then read, then write.
     static func lines(
         _ progress: AIRunProgress, now: Date, readTokensPerSecond: Double?,
         writeTokensPerSecond: Double? = nil, expectedOutputTokens: Int? = nil
     ) -> [AIProgressLine] {
+        let earlier = progress.completedStages.map { AIProgressLine(state: .done, text: $0) }
         let started = progress.startedAt ?? now
         let readDetail = progress.estimatedPromptTokens.map(estimatedTokens)
         func join(_ parts: [String?]) -> String { parts.compactMap { $0 }.joined(separator: " · ") }
@@ -58,7 +59,7 @@ enum AIProgressFormat {
             let elapsedNow = now.timeIntervalSince(started)
             let left = readingRemaining(
                 estimatedTokens: progress.estimatedPromptTokens, tokensPerSecond: readTokensPerSecond, elapsed: elapsedNow)
-            return [
+            return earlier + [
                 AIProgressLine(state: .current, text: join([
                     progress.readTitle, readDetail, elapsed(elapsedNow), left.map(remaining),
                 ])),
@@ -71,7 +72,7 @@ enum AIProgressFormat {
             writeTokensPerSecond.flatMap { $0 > 0 && progress.tokensWritten < expected
                 ? Double(expected - progress.tokensWritten) / $0 : nil }
         }
-        return [
+        return earlier + [
             AIProgressLine(state: .done, text: join([
                 progress.readTitle, readDetail, elapsed(firstToken.timeIntervalSince(started)),
             ])),

@@ -25,6 +25,9 @@ enum LongSessionNote {
     static let passageFloor = 4_000
     /// The most of the material room the digest may take.
     static let digestShare = 2_500
+    /// Maximum material room (digest + risk lines + top topic hits) used at Fast effort
+    /// so the model reads a compact prompt quickly while still keeping risk lines.
+    static let fastMaterialLimit = 8_000
 
     /// How the Focus check ended.
     enum CheckOutcome: Equatable {
@@ -87,9 +90,14 @@ enum LongSessionNote {
                     // Room for material, after the instructions, the note's own wrapper and headings.
                     let total = service.budget.availableCharacters(
                         reserving: service.systemPrompt.count + prompt("").count + headerReserve)
+                    let transcriptCopy = transcript
+                    let flaggedCost = await offMain { strongCost(in: transcriptCopy, phrases: riskPhrases) }
+                    try Task.checkCancellation()
                     var room = total
                     var plannedCheck: CheckOutcome?
-                    if effort == .focus {
+                    if effort == .fast {
+                        room = min(total, max(fastMaterialLimit, flaggedCost + digestShare))
+                    } else if effort == .focus {
                         let reserve = min(draftReserve, total / 3)
                         let digestSize = min(digest.sessionDigest.count, digestShare)
                         if total - reserve - digestSize < passageFloor {
@@ -101,9 +109,6 @@ enum LongSessionNote {
                     // Risk lines get their room first (every flagged line, then neighbours from
                     // `riskLimit`); the digest shrinks, or goes, to fit what is left.
                     let riskLimit = min(riskReserve, room / 3)
-                    let transcriptCopy = transcript
-                    let flaggedCost = await offMain { strongCost(in: transcriptCopy, phrases: riskPhrases) }
-                    try Task.checkCancellation()
                     let strongBudget = min(flaggedCost, room * 2 / 3)
                     let (digestText, cut) = fit(
                         Prompts.longSessionDigest(digest.sessionDigest), to: room - strongBudget - riskLimit)

@@ -471,6 +471,46 @@ final class PatientChatContextTests: XCTestCase {
         )
         XCTAssertEqual(coverage.label, "Read: full transcripts of 2 sessions (3 matches for your words, 2 more with similar spelling)")
     }
+
+    func testStoredDigestsAndMonthMergedHistoryAreIncludedAndCitable() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let sessionDates: [(Int, Int, Int)] = [
+            (2025, 10, 4), (2025, 10, 18), (2025, 11, 8),
+            (2025, 12, 1), (2025, 12, 15), (2026, 1, 10),
+            (2026, 2, 7), (2026, 3, 1), (2026, 3, 15),
+        ]
+        for (idx, (y, m, d)) in sessionDates.enumerated() {
+            let s = try store.createSession(for: patient, on: date(y, m, d))
+            let transcript = filler(lines: 60) + (idx == 8 ? "\n[15:00] Patient: kayaking trip helped." : "")
+            try store.saveTranscript(transcript, for: patient, session: s)
+            let digest = SessionDigest(
+                model: "m",
+                promptVersion: Prompts.digestVersion,
+                transcriptFingerprint: NoteFreshness.fingerprint(of: transcript),
+                sections: [.init(start: 0, end: 540, digest: "part 1")],
+                sessionDigest: "Digest summary for session \(idx + 1) on \(y)-\(m)-\(d).",
+                createdAt: Date()
+            )
+            try store.saveDigest(digest, for: patient, session: s)
+        }
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking", characterBudget: 12_000)
+
+        XCTAssertFalse(context.coverage.wholeTranscripts)
+        XCTAssertEqual(context.coverage.digestSessions, 9)
+        XCTAssertEqual(context.coverage.monthMergedSessions, 3)
+        // Recent 6 sessions (S1..S6) get individual digests; older 3 (S7..S9 in Oct/Nov 2025) are merged by month.
+        XCTAssertTrue(section(context.text, tag: "S1").contains("Session digest:\nDigest summary for session 9"))
+        XCTAssertTrue(context.text.contains("===== Earlier Sessions: November 2025 [S7] ====="))
+        XCTAssertTrue(context.text.contains("===== Earlier Sessions: October 2025 [S8, S9] ====="))
+        XCTAssertEqual(Set(context.sources.map(\.tag)), Set((1...9).map { "S\($0)" }))
+
+        var coverageWithEffort = context.coverage
+        coverageWithEffort.effort = .normal
+        let label = try XCTUnwrap(coverageWithEffort.label)
+        XCTAssertTrue(label.contains("digests of 9 sessions (3 merged by month)"), label)
+        XCTAssertTrue(label.hasSuffix("· Normal"), label)
+    }
 }
 
 private final class NoopAssistant: Assistant, @unchecked Sendable {
