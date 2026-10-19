@@ -6,6 +6,7 @@ import Foundation
 /// any clinical content.
 enum AuditAction: String, Codable, CaseIterable {
     case appUnlocked
+    case appUnlockFailed
     case encryptionEnabled
     case encryptionDisabled
     case encryptionUnlocked
@@ -18,6 +19,7 @@ enum AuditAction: String, Codable, CaseIterable {
     var displayName: String {
         switch self {
         case .appUnlocked: return "App unlocked"
+        case .appUnlockFailed: return "App unlock failed"
         case .encryptionEnabled: return "Encryption enabled"
         case .encryptionDisabled: return "Encryption disabled"
         case .encryptionUnlocked: return "Encryption unlocked"
