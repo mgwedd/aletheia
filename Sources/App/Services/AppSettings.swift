@@ -87,6 +87,7 @@ final class AppSettings: ObservableObject {
         static let ollamaBaseURL = "ollamaBaseURL"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
         static let updateFeedURL = "updateFeedURL"
+        static let autoCheckForUpdates = "autoCheckForUpdates"
         static let spotlightIndexingEnabled = "spotlightIndexingEnabled"
         static let appLockEnabled = "appLockEnabled"
         static let idleAutoLockMinutes = "idleAutoLockMinutes"
@@ -148,6 +149,12 @@ final class AppSettings: ObservableObject {
     }
     @Published var updateFeedURL: URL {
         didSet { defaults.set(updateFeedURL.absoluteString, forKey: Keys.updateFeedURL) }
+    }
+    /// Whether to check for software updates automatically on launch and when the app
+    /// becomes active. On by default. When off, updates are only checked when the
+    /// user clicks "Check for Updates" in Settings.
+    @Published var autoCheckForUpdates: Bool {
+        didSet { defaults.set(autoCheckForUpdates, forKey: Keys.autoCheckForUpdates) }
     }
     /// Off by default: putting patient names into system-wide Spotlight is a
     /// privacy trade-off (anyone at the Mac can see them), so the user opts in.
@@ -379,6 +386,7 @@ final class AppSettings: ObservableObject {
         } else {
             updateFeedURL = AppSettings.defaultUpdateFeedURL
         }
+        autoCheckForUpdates = defaults.object(forKey: Keys.autoCheckForUpdates) as? Bool ?? true
         dataRootURL = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark)
         // Re-assert the backup-exclusion policy on the resolved folder each launch
         // (best-effort: the folder may not be accessible yet this early).

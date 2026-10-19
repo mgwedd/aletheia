@@ -118,11 +118,15 @@ struct AletheiaApp: App {
                         .environmentObject(encryption)
                 }
                 .frame(minWidth: 900, minHeight: 600)
-                .task { await updateService.checkForUpdates() }
+                .task {
+                    if settings.autoCheckForUpdates {
+                        await updateService.checkForUpdates()
+                    }
+                }
                 .onChange(of: scenePhase) { _, phase in
                     // Switching apps doesn't re-lock: AppLock does that on
                     // app hide (⌘H), idle timeout, sleep and screen lock.
-                    if phase == .active {
+                    if phase == .active, settings.autoCheckForUpdates {
                         Task { await updateService.checkForUpdates() }
                     }
                 }
@@ -143,7 +147,7 @@ struct AletheiaApp: App {
             // so updates aren't only a silent on-launch check.
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") {
-                    Task { await updateService.checkForUpdates() }
+                    Task { await updateService.checkForUpdates(force: true) }
                 }
             }
             // "Aletheia Doctor…" in the Help menu: the on-demand health check

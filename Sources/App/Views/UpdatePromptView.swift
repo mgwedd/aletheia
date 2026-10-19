@@ -72,6 +72,9 @@ struct UpdatePromptView: View {
             }
 
             HStack(spacing: 8) {
+                Link("View on GitHub", destination: release.releasePageOrWebURL)
+                    .font(Theme.Typography.control)
+                    .foregroundStyle(Theme.accent.color)
                 Spacer(minLength: 0)
                 Button("Skip this version", action: onSkip)
                     .buttonStyle(.plain)

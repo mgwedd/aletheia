@@ -7,6 +7,7 @@ struct ReleaseInfo: Decodable, Equatable {
     let releaseNotes: String
     let minimumSystemVersion: String?
     let publishedAt: Date?
+    let releasePageURL: URL?
 
     enum CodingKeys: String, CodingKey {
         case version
@@ -14,6 +15,33 @@ struct ReleaseInfo: Decodable, Equatable {
         case releaseNotes
         case minimumSystemVersion
         case publishedAt
+        case releasePageURL
+    }
+
+    init(
+        version: String,
+        downloadURL: URL,
+        releaseNotes: String,
+        minimumSystemVersion: String? = nil,
+        publishedAt: Date? = nil,
+        releasePageURL: URL? = nil
+    ) {
+        self.version = version
+        self.downloadURL = downloadURL
+        self.releaseNotes = releaseNotes
+        self.minimumSystemVersion = minimumSystemVersion
+        self.publishedAt = publishedAt
+        self.releasePageURL = releasePageURL
+    }
+
+    /// URL to view this release in a browser (e.g. GitHub release page).
+    var releasePageOrWebURL: URL {
+        if let releasePageURL { return releasePageURL }
+        if downloadURL.host?.contains("github.com") == true {
+            return URL(string: "https://github.com/mgwedd/aletheia/releases/tag/v\(version)")
+                ?? URL(string: "https://github.com/mgwedd/aletheia/releases")!
+        }
+        return downloadURL
     }
 }
 

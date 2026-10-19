@@ -136,4 +136,111 @@ final class UpdateServiceTests: XCTestCase {
         service.installAvailableUpdate()
         XCTAssertTrue(installer.installed.isEmpty)
     }
+
+    func testManualCheckWhenUpToDateRecordsResultAndNotice() async {
+        let service = makeService(checker: FakeChecker(.success(makeRelease("1.0.0"))))
+        await service.checkForUpdates(force: true)
+        if case .upToDate(let checkedAt) = service.manualCheckResult {
+            XCTAssertLessThanOrEqual(checkedAt.timeIntervalSinceNow, 1.0)
+        } else {
+            XCTFail("Expected .upToDate manualCheckResult, got \(String(describing: service.manualCheckResult))")
+        }
+        XCTAssertEqual(service.manualNotice, .upToDate(currentVersion: "1.0.0"))
+    }
+
+    func testAutomaticCheckDoesNotRecordManualNoticeOrResult() async {
+        let service = makeService(checker: FakeChecker(.success(makeRelease("1.0.0"))))
+        await service.checkForUpdates(force: false)
+        XCTAssertNil(service.manualCheckResult)
+        XCTAssertNil(service.manualNotice)
+    }
+
+    func testManualCheckWhenUpdateAvailableRecordsResultAndClearsNotice() async {
+        let service = makeService(checker: FakeChecker(.success(makeRelease("1.1.0"))))
+        await service.checkForUpdates(force: true)
+        XCTAssertEqual(service.manualCheckResult, .updateAvailable(version: "1.1.0"))
+        XCTAssertNil(service.manualNotice)
+    }
+
+    func testManualCheckFailureRecordsCouldNotCheck() async {
+        let service = makeService(checker: FakeChecker(.failure(URLError(.notConnectedToInternet))))
+        await service.checkForUpdates(force: true)
+        if case .couldNotCheck(let reason) = service.manualCheckResult {
+            XCTAssertFalse(reason.isEmpty)
+        } else {
+            XCTFail("Expected .couldNotCheck, got \(String(describing: service.manualCheckResult))")
+        }
+        if case .couldNotCheck(let reason) = service.manualNotice {
+            XCTAssertFalse(reason.isEmpty)
+        } else {
+            XCTFail("Expected .couldNotCheck notice, got \(String(describing: service.manualNotice))")
+        }
+
+        service.clearManualNotice()
+        XCTAssertNil(service.manualNotice)
+    }
+
+    func testReleasePageOrWebURLFallback() {
+        let customURL = URL(string: "https://example.com/custom-release")!
+        let withPage = ReleaseInfo(
+            version: "1.2.0",
+            downloadURL: URL(string: "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg")!,
+            releaseNotes: "Notes",
+            releasePageURL: customURL
+        )
+        XCTAssertEqual(withPage.releasePageOrWebURL, customURL)
+
+        let gitHubWithoutPage = ReleaseInfo(
+            version: "1.2.0",
+            downloadURL: URL(string: "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg")!,
+            releaseNotes: "Notes"
+        )
+        XCTAssertEqual(
+            gitHubWithoutPage.releasePageOrWebURL,
+            URL(string: "https://github.com/mgwedd/aletheia/releases/tag/v1.2.0")!
+        )
+
+        let thirdParty = ReleaseInfo(
+            version: "1.2.0",
+            downloadURL: URL(string: "https://mycdn.example.org/downloads/Aletheia.dmg")!,
+            releaseNotes: "Notes"
+        )
+        XCTAssertEqual(
+            thirdParty.releasePageOrWebURL,
+            URL(string: "https://mycdn.example.org/downloads/Aletheia.dmg")!
+        )
+    }
+
+    func testCodeSigningStatusInspectorAndDescriptions() {
+        let notarized = CodeSigningStatus.current(inspector: { .developerIDNotarized(teamID: "ABCDE12345") })
+        XCTAssertEqual(notarized, .developerIDNotarized(teamID: "ABCDE12345"))
+        XCTAssertTrue(notarized.description.contains("Developer ID signed and notarized"))
+
+        let adHoc = CodeSigningStatus.current(inspector: { .adHoc })
+        XCTAssertEqual(adHoc, .adHoc)
+        XCTAssertTrue(adHoc.description.contains("Ad-hoc"))
+
+        let dev = CodeSigningStatus.current(inspector: { .devBuild })
+        XCTAssertEqual(dev, .devBuild)
+        XCTAssertTrue(dev.description.contains("Development build"))
+
+        let unsigned = CodeSigningStatus.current(inspector: { .unsigned })
+        XCTAssertEqual(unsigned, .unsigned)
+        XCTAssertTrue(unsigned.description.contains("Unsigned build"))
+
+        let other = CodeSigningStatus.current(inspector: { .other("Apple Development") })
+        XCTAssertEqual(other, .other("Apple Development"))
+        XCTAssertTrue(other.description.contains("Apple Development"))
+    }
+
+    func testAppSettingsAutoCheckForUpdatesDefaultAndPersistence() {
+        let original = AppSettings.shared.autoCheckForUpdates
+        defer { AppSettings.shared.autoCheckForUpdates = original }
+
+        AppSettings.shared.autoCheckForUpdates = false
+        XCTAssertFalse(AppSettings.shared.autoCheckForUpdates)
+
+        AppSettings.shared.autoCheckForUpdates = true
+        XCTAssertTrue(AppSettings.shared.autoCheckForUpdates)
+    }
 }
