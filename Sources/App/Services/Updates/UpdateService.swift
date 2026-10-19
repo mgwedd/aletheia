@@ -5,9 +5,50 @@ import Foundation
 /// polling is driven from the app on launch and on resume.
 @MainActor
 final class UpdateService: ObservableObject {
+    /// Result of an explicit, user-initiated update check (Settings or Menu bar).
+    enum ManualCheckResult: Equatable {
+        case upToDate(checkedAt: Date)
+        case updateAvailable(version: String)
+        case couldNotCheck(reason: String)
+    }
+
+    /// Notice presented as an alert when a manual update check completes
+    /// without a new release prompt (i.e. already up to date or network failure).
+    enum ManualNotice: Identifiable, Equatable {
+        case upToDate(currentVersion: String)
+        case couldNotCheck(reason: String)
+
+        var id: String {
+            switch self {
+            case .upToDate: return "upToDate"
+            case .couldNotCheck(let r): return "couldNotCheck-\(r)"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .upToDate: return "You're Up to Date"
+            case .couldNotCheck: return "Couldn't Check for Updates"
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .upToDate(let v):
+                return "Aletheia \(v) is currently the newest version available."
+            case .couldNotCheck(let r):
+                return "Aletheia couldn't check for updates: \(r). Check your internet connection and try again."
+            }
+        }
+    }
+
     /// Non-nil when a newer, non-skipped release is available to offer.
     @Published private(set) var available: ReleaseInfo?
     @Published private(set) var isChecking = false
+    /// Outcome of the last manual check, surfaced in Settings and alerts.
+    @Published private(set) var manualCheckResult: ManualCheckResult?
+    /// Alert to display to the user when a manual check completes without a download prompt.
+    @Published var manualNotice: ManualNotice?
 
     private let checker: UpdateChecking
     private let installer: UpdateInstalling
@@ -43,8 +84,8 @@ final class UpdateService: ObservableObject {
     }
 
     /// Checks the feed if enough time has passed (or `force`). Network/decoding
-    /// failures are swallowed on purpose — a missing feed or offline machine
-    /// simply means "no update to offer", never an error in the user's face.
+    /// failures are swallowed on automatic runs, but recorded into `manualCheckResult`
+    /// and `manualNotice` when initiated manually (`force == true`).
     func checkForUpdates(force: Bool = false) async {
         guard !isChecking else { return }
         if !force, let last = lastCheck, Date().timeIntervalSince(last) < minimumInterval { return }
@@ -57,17 +98,40 @@ final class UpdateService: ObservableObject {
             let release = try await checker.fetchLatest()
             guard let releaseVersion = SemanticVersion(release.version), releaseVersion > currentVersion else {
                 available = nil
+                if force {
+                    let now = Date()
+                    manualCheckResult = .upToDate(checkedAt: now)
+                    manualNotice = .upToDate(currentVersion: currentVersion.description)
+                }
                 return
             }
             if defaults.string(forKey: Self.skipKey) == release.version
                 || downloadStartedVersion == release.version {
                 available = nil
+                if force {
+                    let now = Date()
+                    manualCheckResult = .upToDate(checkedAt: now)
+                    manualNotice = .upToDate(currentVersion: currentVersion.description)
+                }
                 return
             }
             available = release
+            if force {
+                manualCheckResult = .updateAvailable(version: release.version)
+                manualNotice = nil
+            }
         } catch {
-            // Offline or no published release yet — nothing to offer.
+            available = nil
+            if force {
+                let detail = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+                manualCheckResult = .couldNotCheck(reason: detail)
+                manualNotice = .couldNotCheck(reason: detail)
+            }
         }
+    }
+
+    func clearManualNotice() {
+        manualNotice = nil
     }
 
     /// Starts the download and closes the prompt. The app is deliberately not

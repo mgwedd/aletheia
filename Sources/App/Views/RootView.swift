@@ -100,6 +100,14 @@ struct RootView: View {
         } message: {
             Text(appModel.schemaWarning ?? "")
         }
+        .alert(
+            updateService.manualNotice?.title ?? "",
+            isPresented: manualNoticeBinding
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(updateService.manualNotice?.message ?? "")
+        }
         // Here rather than on the session screen, so it appears whatever is on
         // screen and names the session that is actually recording.
         .alert("Still recording", isPresented: $recorder.longRunningReminder) {
@@ -179,6 +187,13 @@ struct RootView: View {
         Binding(
             get: { appModel.schemaWarning != nil },
             set: { if !$0 { appModel.schemaWarning = nil } }
+        )
+    }
+
+    private var manualNoticeBinding: Binding<Bool> {
+        Binding(
+            get: { updateService.manualNotice != nil },
+            set: { if !$0 { updateService.clearManualNotice() } }
         )
     }
 }

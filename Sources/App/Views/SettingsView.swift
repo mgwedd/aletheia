@@ -203,20 +203,51 @@ struct SettingsView: View {
                 .padding(.vertical, 12)
                 SettingsHairline()
                 SettingsRow(
-                    title: "Check for updates",
-                    detail: "Aletheia checks for a new version on launch and lets you know when one is ready."
+                    title: "Notarization",
+                    detail: "Signed with Developer ID and notarized by Apple so macOS Gatekeeper allows it to run without warnings."
                 ) {
-                    if updateService.isChecking {
-                        HStack(spacing: 8) {
+                    Text(CodeSigningStatus.current().description)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.muted.color)
+                }
+                .padding(.vertical, 12)
+                SettingsHairline()
+                SettingsSwitchRow(
+                    title: "Check for updates automatically",
+                    detail: "Aletheia checks on launch and when switching back to the app.",
+                    isOn: $settings.autoCheckForUpdates
+                )
+                .padding(.vertical, 12)
+                SettingsHairline()
+                SettingsRow(
+                    title: "Check for updates",
+                    detail: "Aletheia can check GitHub for published releases. No patient or client data is ever transmitted."
+                ) {
+                    HStack(spacing: 8) {
+                        if updateService.isChecking {
                             ProgressView().controlSize(.small)
-                            Text("Checking…").font(Theme.Typography.caption).foregroundStyle(Theme.muted.color)
+                            Text("Checking…")
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(Theme.muted.color)
+                        } else {
+                            if let status = manualCheckStatusText {
+                                Text(status)
+                                    .font(Theme.Typography.caption)
+                                    .foregroundStyle(Theme.muted.color)
+                            }
+                            Button("Check for Updates") {
+                                Task { await updateService.checkForUpdates(force: true) }
+                            }
+                            .buttonStyle(.themed)
                         }
-                    } else {
-                        Button("Check for Updates") {
-                            Task { await updateService.checkForUpdates(force: true) }
-                        }
-                        .buttonStyle(.themed)
                     }
+                }
+                .padding(.vertical, 12)
+                SettingsHairline()
+                HStack {
+                    Link("View Releases on GitHub", destination: URL(string: "https://github.com/mgwedd/aletheia/releases")!)
+                        .font(Theme.Typography.body)
+                    Spacer()
                 }
                 .padding(.vertical, 12)
             }
@@ -1100,6 +1131,20 @@ struct SettingsView: View {
 
     private var appVersionString: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+    }
+
+    private var manualCheckStatusText: String? {
+        guard let result = updateService.manualCheckResult else { return nil }
+        switch result {
+        case .upToDate(let checkedAt):
+            let formatter = DateFormatter()
+            formatter.timeStyle = .short
+            return "You're up to date (checked at \(formatter.string(from: checkedAt)))"
+        case .couldNotCheck:
+            return "Couldn't check for updates"
+        case .updateAvailable(let version):
+            return "v\(version) available"
+        }
     }
 
     private func runHealthChecks(authoritative: Bool = true) async {
