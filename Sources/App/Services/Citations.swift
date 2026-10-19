@@ -61,6 +61,12 @@ struct TranscriptCoverage: Equatable {
     var newestCutShort = false
     /// Sessions whose notes or comments were cut short or left out to fit.
     var notesCutSessions: Int = 0
+    /// Sessions whose AI-built digest was included (individually or merged by month).
+    var digestSessions: Int = 0
+    /// Subset of `digestSessions` whose digests were merged into calendar-month blocks.
+    var monthMergedSessions: Int = 0
+    /// The effort level chosen for this answer, when reported by the caller.
+    var effort: AnswerEffort? = nil
 
     /// A plain-language line for the chat sheet, or nil when nothing was read.
     var label: String? {
@@ -69,6 +75,10 @@ struct TranscriptCoverage: Equatable {
         if notesSessions > 0 || notesCutSessions > 0 {
             let cut = notesCutSessions > 0 ? " (cut short or left out for \(sessions(notesCutSessions)))" : ""
             parts.append("notes and comments from \(sessions(notesSessions))" + cut)
+        }
+        if digestSessions > 0 {
+            let merged = monthMergedSessions > 0 ? " (\(monthMergedSessions) merged by month)" : ""
+            parts.append("digests of \(sessions(digestSessions))" + merged)
         }
         if transcriptSessions > 0 {
             var search = ""
@@ -92,7 +102,9 @@ struct TranscriptCoverage: Equatable {
             }
         }
         if unreadableSessions > 0 { parts.append("\(sessions(unreadableSessions)) could not be read, so answers may be incomplete") }
-        return parts.isEmpty ? nil : "Read: " + parts.joined(separator: " · ")
+        guard !parts.isEmpty else { return nil }
+        let suffix = effort.map { " · \($0.displayName)" } ?? ""
+        return "Read: " + parts.joined(separator: " · ") + suffix
     }
 }
 

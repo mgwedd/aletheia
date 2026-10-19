@@ -672,12 +672,26 @@ final class Store {
     /// The session's digest if one is stored and still matches the current
     /// transcript, `model` and prompts; nil when missing, unreadable or stale.
     func digest(for patient: Patient, session: SessionRecord, model: String) -> SessionDigest? {
+        anyCurrentDigest(for: patient, session: session, model: model)
+    }
+
+    /// Reads the stored digest if its version, prompt version, and transcript
+    /// fingerprint match the current transcript (and `model`, when specified).
+    func anyCurrentDigest(
+        for patient: Patient,
+        session: SessionRecord,
+        transcript: String? = nil,
+        model: String? = nil
+    ) -> SessionDigest? {
         guard let data = (try? protector.dataIfPresent(at: digestURL(for: patient, session: session))) ?? nil,
-              let transcript = transcript(for: patient, session: session) else { return nil }
+              let actualTranscript = transcript ?? self.transcript(for: patient, session: session) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let digest = try? decoder.decode(SessionDigest.self, from: data),
-              digest.isCurrent(transcript: transcript, model: model) else { return nil }
+              digest.version == SessionDigest.currentVersion,
+              digest.promptVersion == Prompts.digestVersion,
+              digest.transcriptFingerprint == NoteFreshness.fingerprint(of: actualTranscript) else { return nil }
+        if let model, digest.model != model { return nil }
         return digest
     }
 
@@ -1151,6 +1165,7 @@ final class Store {
         var extras: [Date: [String]] = [:]
         var documents: [TranscriptDocument] = []
         var searchDocuments: [SessionSearch.Document] = []
+        var datedDigests: [PatientDigestMerger.DatedDigest] = []
         var notesDates = Set<Date>()
         var unreadable = 0
         var index = 1
@@ -1184,6 +1199,14 @@ final class Store {
                 documents.append(TranscriptDocument(date: session.date, text: transcriptText))
                 searchDocuments.append(.init(
                     date: session.date, tag: tag, kind: .transcript, text: transcriptText, session: session.id, patient: patient.id))
+                if let storedDigest = anyCurrentDigest(for: patient, session: session, transcript: transcriptText) {
+                    datedDigests.append(.init(
+                        tag: tag,
+                        date: session.date,
+                        folderName: session.folderName,
+                        digest: storedDigest.sessionDigest
+                    ))
+                }
             }
             for part in parts {
                 searchDocuments.append(.init(
@@ -1199,21 +1222,55 @@ final class Store {
         // What the transcripts may use: the room left after the background, the
         // notes kept and the search block (about 120 characters a term).
         let searchBlockReserve = 400 + 120 * search.terms.count
-        let selection = PatientContextRetriever.select(
+        let remainingAfterExtras = max(0, room - extrasUsed - searchBlockReserve)
+        let filteredDigests = datedDigests.filter { search.dateRange?.contains($0.date) ?? true }
+        // Only reserve room for digests when stored digests exist and the transcripts won't fit whole.
+        let probeSelection = PatientContextRetriever.select(
             transcripts: documents, search: search,
-            characterBudget: max(0, room - extrasUsed - searchBlockReserve), labels: labels
+            characterBudget: remainingAfterExtras, labels: labels
         )
+        let digestReserve = (!probeSelection.whole && !filteredDigests.isEmpty)
+            ? min(remainingAfterExtras / 3, filteredDigests.count * 600)
+            : 0
+        let selection = digestReserve > 0
+            ? PatientContextRetriever.select(
+                transcripts: documents, search: search,
+                characterBudget: max(0, remainingAfterExtras - digestReserve), labels: labels
+            )
+            : probeSelection
         let excerpts = selection.excerpts
         let excerptsByDate = Dictionary(grouping: excerpts, by: { $0.date })
+        let excerptsChars = excerpts.reduce(0) { $0 + $1.text.count + 90 }
+        let digestPlan = (!selection.whole && !filteredDigests.isEmpty)
+            ? PatientDigestMerger.plan(
+                digests: filteredDigests,
+                characterBudget: max(digestReserve, remainingAfterExtras - excerptsChars)
+            )
+            : PatientDigestMerger.Plan(individualByDate: [:], monthBlocks: [], digestSessionCount: 0, monthMergedSessionCount: 0)
+
         var blocks: [String] = []
         var sources: [CitationSource] = []
+        var seenTags = Set<String>()
         for date in dates {
-            let parts = (excerptsByDate[date] ?? []).map { $0.text } + (extras[date] ?? [])
+            var parts: [String] = []
+            if let digestBlock = digestPlan.individualByDate[date] {
+                parts.append(digestBlock)
+            }
+            parts.append(contentsOf: (excerptsByDate[date] ?? []).map { $0.text })
+            parts.append(contentsOf: extras[date] ?? [])
             // Nothing from this session made it into the context: don't cite it.
             guard !parts.isEmpty, let tag = labels[date], let folderName = firstFolder[date] else { continue }
             let header = PatientContextRetriever.header(date, labels: labels)
             blocks.append("\(header)\n\(parts.joined(separator: "\n\n"))")
-            sources.append(CitationSource(tag: tag, date: date, folderName: folderName))
+            if seenTags.insert(tag).inserted {
+                sources.append(CitationSource(tag: tag, date: date, folderName: folderName))
+            }
+        }
+        for month in digestPlan.monthBlocks {
+            blocks.append(month.text)
+            for source in month.sources where seenTags.insert(source.tag).inserted {
+                sources.append(source)
+            }
         }
         let sessionsText = blocks.joined(separator: "\n\n")
         // Counted from what is in `text`: a session whose transcript is
@@ -1244,9 +1301,51 @@ final class Store {
             wholeTranscripts: selection.whole,
             fullTexts: selection.fullTexts,
             newestCutShort: selection.cutShort,
-            notesCutSessions: notesCut
+            notesCutSessions: notesCut,
+            digestSessions: digestPlan.digestSessionCount,
+            monthMergedSessions: digestPlan.monthMergedSessionCount
         )
         return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)
+    }
+
+    /// Builds a read-only `LocalToolScope` over all readable sessions of `patient`,
+    /// tagged `S1`, `S2`, … in newest-first order matching `gatherCitedPatientContext`.
+    func localToolScope(for patient: Patient) -> LocalToolScope {
+        let sessions = ((try? listSessions(for: patient)) ?? []).sorted { $0.date > $1.date }
+        var labels: [Date: String] = [:]
+        var index = 1
+        var toolSessions: [LocalToolSession] = []
+        for session in sessions {
+            let transcriptText = (try? readTranscript(for: patient, session: session)) ?? ""
+            let notes = commentStore?.note(sessionID: session.id) ?? ""
+            let comments = AssistantService.formatComments(commentStore?.comments(sessionID: session.id) ?? [])
+            let generated = generatedNotes(for: patient, session: session)
+                .map { "Generated progress note (\($0.0)):\n\($0.1)" }
+            let combinedNotes = ([notes] + generated)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n\n")
+            guard !transcriptText.isEmpty || !combinedNotes.isEmpty || !comments.isEmpty else { continue }
+            if labels[session.date] == nil {
+                labels[session.date] = "S\(index)"
+                index += 1
+            }
+            let tag = labels[session.date] ?? "S\(index)"
+            let digest = !transcriptText.isEmpty
+                ? anyCurrentDigest(for: patient, session: session, transcript: transcriptText)
+                : nil
+            toolSessions.append(LocalToolSession(
+                id: session.id,
+                tag: tag,
+                date: session.date,
+                folderName: session.folderName,
+                transcript: transcriptText,
+                digest: digest,
+                notes: combinedNotes,
+                comments: comments
+            ))
+        }
+        return LocalToolScope(sessions: toolSessions)
     }
 
     /// The blocks the patient-wide chat adds under a session's header besides the

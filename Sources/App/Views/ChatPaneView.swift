@@ -35,6 +35,8 @@ struct ChatPaneView: View {
     /// (for the time estimate); drives the progress line under the conversation.
     var progress = AIRunProgress()
     var speed: ModelSpeed? = nil
+    /// Optional Fast / Normal / Focus selector shown in the composer (#286 Step 5b).
+    var effort: Binding<AnswerEffort>? = nil
 
     @State private var draft: String = ""
     @FocusState private var inputFocused: Bool
@@ -196,6 +198,9 @@ struct ChatPaneView: View {
                     .padding(.vertical, 10)
                     .frame(minHeight: 40)
                     .themeField(isFocused: inputFocused)
+                if let effort {
+                    effortMenu(effort)
+                }
                 if isSending, let onStop {
                     Button(role: .destructive, action: onStop) {
                         Label("Stop", systemImage: "stop.fill")
@@ -215,6 +220,24 @@ struct ChatPaneView: View {
         .padding(.top, 14)
         .padding(.bottom, 18)
         .themeDivider(.top)
+    }
+
+    private func effortMenu(_ effort: Binding<AnswerEffort>) -> some View {
+        Menu {
+            Picker("Effort", selection: effort) {
+                ForEach(AnswerEffort.allCases) { level in
+                    Text("\(level.displayName) — \(level.blurb)").tag(level)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Text(effort.wrappedValue.displayName)
+        }
+        .controlSize(.large)
+        .fixedSize()
+        .disabled(isSending)
+        .help(effort.wrappedValue.blurb)
+        .accessibilityLabel("Effort: \(effort.wrappedValue.displayName)")
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {

@@ -10,6 +10,7 @@ import llama
 final class LlamaAssistant: Assistant {
     private let modelURL: URL
     private let maxTokensOverride: Int?
+    private let engineOverride: LocalLLMEngine?
 
     /// One engine per model file, shared by every assistant made for it: the
     /// app builds a new assistant per use, and the loaded weights and context
@@ -55,12 +56,17 @@ final class LlamaAssistant: Assistant {
         return created
     }
 
+    private var activeEngine: LocalLLMEngine {
+        engineOverride ?? engine
+    }
+
     /// `maxTokens` defaults to nil so each `AITask` picks its own reply cap
     /// (`ContextBudget.replyHeadroomTokens` for notes and chat, smaller caps for
     /// digests and compaction). Passing an explicit value overrides the task cap.
-    init(modelURL: URL, maxTokens: Int? = nil) {
+    init(modelURL: URL, maxTokens: Int? = nil, engineOverride: LocalLLMEngine? = nil) {
         self.modelURL = modelURL
         self.maxTokensOverride = maxTokens
+        self.engineOverride = engineOverride
     }
 
     func isReachable() async -> Bool { FileManager.default.fileExists(atPath: modelURL.path) }
@@ -88,7 +94,8 @@ final class LlamaAssistant: Assistant {
 
     /// The model isn't downloaded: a setup step, said plainly instead of a load error.
     private var missingModel: LocalLLMEngineError? {
-        FileManager.default.fileExists(atPath: modelURL.path) ? nil : .modelNotDownloaded
+        if engineOverride != nil { return nil }
+        return FileManager.default.fileExists(atPath: modelURL.path) ? nil : .modelNotDownloaded
     }
 
     /// Loads the weights in the background (on session open) so the first note
@@ -114,7 +121,7 @@ final class LlamaAssistant: Assistant {
         model _: String, system: String, prompt: String, task: AITask, grammar: LocalLLMGrammar?
     ) async throws -> String {
         if let missingModel { throw missingModel }
-        return try await engine.generate(request(system: system, prompt: prompt, task: task, grammar: grammar))
+        return try await activeEngine.generate(request(system: system, prompt: prompt, task: task, grammar: grammar))
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -146,7 +153,7 @@ final class LlamaAssistant: Assistant {
     ) -> AsyncThrowingStream<String, Error> {
         if let missingModel { return AsyncThrowingStream { $0.finish(throwing: missingModel) } }
         let expectedTokens = ContextBudget.estimatedTokens(forCharacters: system.count + prompt.count)
-        return engine.stream(
+        return activeEngine.stream(
             request(system: system, prompt: prompt, task: task, grammar: grammar),
             onStats: onStats.map { callback in
                 { raw in

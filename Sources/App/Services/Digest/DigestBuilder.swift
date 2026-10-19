@@ -226,7 +226,7 @@ final class DigestBuilder: ObservableObject {
         service: AssistantService, live: @escaping Live, onSnapshot: ((String) -> Void)? = nil
     ) async throws -> String {
         let started = Date()
-        live(nil) { $0 = AIRunProgress(readTitle: read, writeTitle: write, startedAt: started) }
+        live(nil) { $0.beginStage(readTitle: read, writeTitle: write, startedAt: started) }
         var run = service
         let outer = service.report
         run.report = { event in

@@ -759,4 +759,18 @@ final class LongSessionNoteTests: XCTestCase {
         XCTAssertEqual(noteCalls.map(\.task), [.note, .note])
         XCTAssertEqual(noteCalls.map(\.grammar), [ProgressNoteFormat.soap.grammar, ProgressNoteFormat.soap.grammar])
     }
+
+    func testFastEffortUsesSmallerPromptThanNormalAndKeepsRiskLines() async throws {
+        let text = syntheticTranscript(minutes: 120)
+        let digest = storedDigest(for: text)
+        let fast = try await run(transcript: text, effort: .fast, stored: digest)
+        let normal = try await run(transcript: text, effort: .normal, stored: digest)
+
+        let fastPrompt = try XCTUnwrap(fast.prompts.last)
+        let normalPrompt = try XCTUnwrap(normal.prompts.last)
+        XCTAssertLessThan(fastPrompt.count, normalPrompt.count)
+        XCTAssertTrue(fastPrompt.contains("think about hurting myself"))
+        XCTAssertTrue(fastPrompt.contains("I would never do it"))
+        XCTAssertTrue(try XCTUnwrap(fast.coverage.last).contains("· Fast."))
+    }
 }

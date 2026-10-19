@@ -322,11 +322,40 @@ final class AIProgressTests: XCTestCase {
         ])
     }
 
-    // MARK: Effort
+    // MARK: Effort & Multi-Stage Progress
 
     func testEffortDefaultsToNormal() {
         XCTAssertEqual(AnswerEffort.default, .normal)
         XCTAssertEqual(AnswerEffort.allCases.map(\.displayName), ["Fast", "Normal", "Focus"])
+        XCTAssertEqual(AnswerEffort.fast.maxToolCalls, 0)
+        XCTAssertEqual(AnswerEffort.normal.maxToolCalls, 4)
+        XCTAssertEqual(AnswerEffort.focus.maxToolCalls, 10)
+        XCTAssertEqual(AnswerEffort.fast.maxRefinementRounds, 0)
+        XCTAssertEqual(AnswerEffort.normal.maxRefinementRounds, 1)
+        XCTAssertEqual(AnswerEffort.focus.maxRefinementRounds, 2)
+    }
+
+    func testCompletedStagesAppearAsDoneLinesAboveCurrentStage() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        var progress = AIRunProgress(readTitle: "Reading part 1 of 2", writeTitle: "Summarizing part 1 of 2", startedAt: t0)
+        progress.estimatedPromptTokens = 2_000
+        progress.tokensWritten = 120
+        progress.recordCompletedStage("Searched 12 sessions · 4 matching passages")
+        progress.beginStage(readTitle: "Checking what to look up", writeTitle: "Selecting passages", startedAt: t0.addingTimeInterval(5))
+        progress.tokensWritten = 30
+        progress.recordCompletedStage("Read S3 [10:00–20:00]")
+        progress.beginStage(readTitle: "Reading the sessions", writeTitle: "Writing the answer", startedAt: t0.addingTimeInterval(12))
+        progress.estimatedPromptTokens = 4_000
+
+        let lines = AIProgressFormat.lines(progress, now: t0.addingTimeInterval(15), readTokensPerSecond: nil)
+        XCTAssertEqual(lines, [
+            AIProgressLine(state: .done, text: "Searched 12 sessions · 4 matching passages"),
+            AIProgressLine(state: .done, text: "Reading part 1 of 2 · ~2K tokens · 0:05"),
+            AIProgressLine(state: .done, text: "Read S3 [10:00–20:00]"),
+            AIProgressLine(state: .done, text: "Checking what to look up · 0:07"),
+            AIProgressLine(state: .current, text: "Reading the sessions · ~4K tokens · 0:03"),
+            AIProgressLine(state: .pending, text: "Writing the answer"),
+        ])
     }
 }
 

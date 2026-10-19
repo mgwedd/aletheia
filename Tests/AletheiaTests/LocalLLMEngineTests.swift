@@ -198,4 +198,139 @@ final class LocalLLMEngineTests: XCTestCase {
         XCTAssertEqual(spy.calls.last?.task, .compaction)
         XCTAssertNil(spy.calls.last?.grammar)
     }
+
+    func testAutomaticBackendResolvesToBuiltInLlamaWhilePreservingExplicitOllama() {
+        let resolver = AssistantBackendResolver(appleIntelligenceAvailable: false, localLlamaAvailable: true)
+        XCTAssertEqual(resolver.resolve(.automatic), .localLlama)
+        XCTAssertEqual(resolver.resolve(.localLlama), .localLlama)
+        XCTAssertEqual(resolver.resolve(.ollama), .ollama)
+    }
+
+    @MainActor
+    func testEndToEndBuiltInAssistantFlowAcrossNotesDigestsAndChats() async throws {
+        final class FakeBuiltInEngine: LocalLLMEngine, @unchecked Sendable {
+            var requests: [LocalLLMRequest] = []
+            var state: LocalLLMEngineState { .ready }
+            func load() async throws {}
+            func unload() {}
+            func generate(_ request: LocalLLMRequest) async throws -> String {
+                requests.append(request)
+                if request.grammar == LocalToolLoop.grammar {
+                    return #"{"calls":[]}"#
+                }
+                return "generated:\(request.grammar?.label ?? "plain")"
+            }
+            func stream(
+                _ request: LocalLLMRequest,
+                onStats: (@Sendable (AIRunStats) -> Void)?
+            ) -> AsyncThrowingStream<String, Error> {
+                requests.append(request)
+                let reply: String
+                if request.grammar == LocalToolLoop.grammar {
+                    reply = #"{"calls":[]}"#
+                } else if request.prompt.contains("Transcript section") {
+                    reply = "Section digest [0:00–1:00]: Client discussed sleep and lithium."
+                } else {
+                    reply = "streamed:\(request.grammar?.label ?? "plain")"
+                }
+                let tokens = max(400, ContextBudget.estimatedTokens(forCharacters: request.system.count + request.prompt.count))
+                return AsyncThrowingStream { continuation in
+                    continuation.yield(reply)
+                    onStats?(AIRunStats(
+                        promptTokens: tokens,
+                        promptNanos: 500_000_000,
+                        outputTokens: 30,
+                        outputNanos: 200_000_000
+                    ))
+                    continuation.finish()
+                }
+            }
+        }
+
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BuiltInEndToEnd-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let store = Store(root: tempRoot)
+        let patient = try store.createPatient(name: "Alex Rivera")
+        let session = try store.createSession(for: patient)
+        let transcript = "[00:00] Therapist: How has sleep been?\n[00:30] Client: Better since starting lithium 300 mg."
+        try store.saveTranscript(transcript, for: patient, session: session)
+
+        let engine = FakeBuiltInEngine()
+        let llamaAssistant = LlamaAssistant(
+            modelURL: tempRoot.appendingPathComponent("model.gguf"),
+            engineOverride: engine
+        )
+        var recordedStats: [AIRunStats] = []
+        var service = AssistantService(assistant: llamaAssistant, model: LlamaModel.gemma4_e2b.rawValue)
+        service.report = { (event: AIRunEvent) in
+            if case .finished(let stats) = event {
+                recordedStats.append(stats)
+            }
+        }
+
+        // 1. Notes in every format (verifying GBNF grammar attachment on structured formats).
+        for format in ProgressNoteFormat.allCases {
+            var note = ""
+            for try await partial in service.streamProgressNote(format: format, transcript: transcript) {
+                note = partial
+            }
+            XCTAssertEqual(note, "streamed:\(format.grammar?.label ?? "plain")")
+            XCTAssertEqual(engine.requests.last?.grammar, format.grammar)
+        }
+
+        // 2. Digest build.
+        let builder = DigestBuilder(queue: InferenceQueue())
+        let digest = try await builder.build(transcript: transcript, service: service)
+        try store.saveDigest(digest, for: patient, session: session)
+        XCTAssertNotNil(store.anyCurrentDigest(for: patient, session: session, transcript: transcript, model: LlamaModel.gemma4_e2b.rawValue))
+
+        // 3. Session chat (with Normal effort tool loop).
+        var sessionReply = ""
+        for try await partial in LongSessionChat.stream(
+            transcript: transcript,
+            history: [],
+            question: "What dose of lithium was mentioned?",
+            effort: .normal,
+            sessionID: session.id,
+            service: service,
+            builder: builder,
+            loadDigest: { digest },
+            saveDigest: { _ in },
+            live: { _, _ in },
+            coverage: { _ in }
+        ) {
+            sessionReply = partial
+        }
+        XCTAssertEqual(sessionReply, "streamed:plain")
+
+        // 4. Patient-wide chat (using stored digest + Normal effort tool loop).
+        let context = await store.gatherCitedPatientContext(
+            for: patient,
+            relevantTo: "Summarize sleep progress across sessions.",
+            characterBudget: 12_000
+        )
+        var patientReply = ""
+        for try await partial in PatientChatAnswer.stream(
+            context: context,
+            history: [],
+            question: "Summarize sleep progress across sessions.",
+            effort: .normal,
+            totalBudget: 12_000,
+            scope: { store.localToolScope(for: patient) },
+            service: service,
+            builder: builder,
+            live: { _, _ in },
+            onCoverage: { _ in }
+        ) {
+            patientReply = partial
+        }
+        XCTAssertEqual(patientReply, "streamed:plain")
+        XCTAssertFalse(recordedStats.isEmpty)
+        XCTAssertNotNil(recordedStats.last?.readTokensPerSecond)
+        XCTAssertNotNil(recordedStats.last?.writeTokensPerSecond)
+    }
 }
+

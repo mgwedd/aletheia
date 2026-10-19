@@ -102,6 +102,8 @@ struct SessionDetailView: View {
     /// What the displayed format's note was written from, when it was not the
     /// whole transcript (a long session).
     @State private var noteCoverage: String?
+    /// What the last session chat answer was written from when the session was too long to send whole.
+    @State private var sessionChatCoverage: String?
     /// Stop was pressed and the stopped note's job may still be unwinding.
     @State private var noteStopping = false
     /// Waits for a stopped note's job to unwind before starting the next one.
@@ -1061,8 +1063,8 @@ struct SessionDetailView: View {
         }
     }
 
-    /// Length for every format, and the per-format prompt. Changing the length
-    /// takes effect on the next Regenerate.
+    /// Length for every format, effort for long sessions, and the per-format
+    /// prompt. Changing length or effort takes effect on the next Regenerate.
     private var noteLengthMenu: some View {
         let format = settings.progressNoteFormat
         let customized = settings.noteInstructions[format.rawValue] != nil
@@ -1074,14 +1076,21 @@ struct SessionDetailView: View {
             }
             .pickerStyle(.inline)
             Divider()
+            Picker("Effort", selection: $settings.noteEffort) {
+                ForEach(AnswerEffort.allCases) { level in
+                    Text("\(level.displayName) — \(level.blurb)").tag(level)
+                }
+            }
+            .pickerStyle(.inline)
+            Divider()
             Button("Edit \(format.shortName) Prompt…\(customized ? " (customized)" : "")") {
                 editingInstructions = true
             }
         } label: {
-            Label("Length: \(settings.summaryVerbosity.displayName)", systemImage: "text.alignleft")
+            Label("Length: \(settings.summaryVerbosity.displayName) · \(settings.noteEffort.displayName)", systemImage: "text.alignleft")
         }
         .fixedSize()
-        .help("How long the note is. Regenerate to apply a change.")
+        .help("How long the note is and how thoroughly long sessions are checked. Regenerate to apply a change.")
     }
 
     /// Shown between pressing Generate and the first token, which can take a
@@ -1175,8 +1184,30 @@ struct SessionDetailView: View {
         hasPreviousNote = store.previousNote(for: patient, session: session, format: settings.progressNoteFormat) != nil
     }
 
+    private var sessionChatNotices: [String] {
+        var list: [String] = []
+        if let sessionChatCoverage { list.append(sessionChatCoverage) }
+        if chatRunner.progress.stats?.possiblyTruncated == true && !isChatSending {
+            list.append(AIRunStats.truncationNotice)
+        }
+        return list
+    }
+
     private var chatTab: some View {
-        ChatPaneView(title: "this session", messages: $chatMessages, isSending: isChatSending, suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [], onSend: sendChat, onStop: { chatRunner.stop() }, queuedStatus: chatRunner.queuedStatus, notices: chatRunner.progress.stats?.possiblyTruncated == true && !isChatSending ? [AIRunStats.truncationNotice] : [], onCompact: { compactChat($0) }, progress: chatRunner.progress, speed: integrations.modelSpeed)
+        ChatPaneView(
+            title: "this session",
+            messages: $chatMessages,
+            isSending: isChatSending,
+            suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [],
+            onSend: sendChat,
+            onStop: { chatRunner.stop() },
+            queuedStatus: chatRunner.queuedStatus,
+            notices: sessionChatNotices,
+            onCompact: { compactChat($0) },
+            progress: chatRunner.progress,
+            speed: integrations.modelSpeed,
+            effort: $settings.sessionChatEffort
+        )
     }
 
     /// Builds this session's digest if it has none, or its digest is stale (the
@@ -1515,6 +1546,11 @@ struct SessionDetailView: View {
         let notes = sessionNote
         let sessionComments = comments
         let history = chatMessages
+        let effort = settings.sessionChatEffort
+        let model = service.model
+        let patient = patient
+        let session = session
+        sessionChatCoverage = nil
         chatRunner.start(
             queue: integrations.inferenceQueue,
             kind: .sessionChat,
@@ -1522,12 +1558,24 @@ struct SessionDetailView: View {
             readTitle: "Reading the session",
             writeTitle: "Writing the answer",
             makeStream: {
-                service.streamAnswerAboutSession(
+                LongSessionChat.stream(
                     transcript: transcript,
                     notes: notes,
                     comments: sessionComments,
                     history: history,
-                    question: question
+                    question: question,
+                    effort: effort,
+                    sessionID: session.id,
+                    sessionDate: session.date,
+                    folderName: session.folderName,
+                    service: service,
+                    builder: integrations.digests,
+                    loadDigest: {
+                        await Task.detached { store.digest(for: patient, session: session, model: model) }.value
+                    },
+                    saveDigest: { try store.saveDigest($0, for: patient, session: session) },
+                    live: { started, change in chatRunner.update(started: started, change) },
+                    coverage: { sessionChatCoverage = $0 }
                 )
             },
             onReveal: { text in chatMessages.upsert(id: assistantID, role: .assistant, text: text) },
