@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.50.0] - 2026-10-19
+
+### Added
+- show lock reason, password fallback, and audit failed unlocks (#323)
+
 ## [2.49.0] - 2026-10-19
 
 ### Added
