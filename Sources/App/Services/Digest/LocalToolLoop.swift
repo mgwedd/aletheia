@@ -823,6 +823,7 @@ enum LongSessionChat {
         transcript: String,
         notes: String = "",
         comments: [SessionComment] = [],
+        patientBackground: String = "",
         history: [ChatMessage],
         question: String,
         effort: AnswerEffort = .default,
@@ -843,6 +844,7 @@ enum LongSessionChat {
                 transcript: material,
                 notes: notes,
                 comments: commentLines,
+                patientBackground: patientBackground,
                 history: history,
                 question: question
             )
@@ -853,6 +855,7 @@ enum LongSessionChat {
                 transcript: transcript,
                 notes: notes,
                 comments: comments,
+                patientBackground: patientBackground,
                 history: history,
                 question: question
             )

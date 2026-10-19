@@ -715,6 +715,17 @@ struct SettingsView: View {
             .accessibilityLabel("Summary length")
             SettingsCaption(settings.summaryVerbosity.blurb + " Clarity comes first at every length.")
         }
+        SettingsHairline()
+        SettingsSwitchRow(
+            title: "Include comments in drafts",
+            detail: "Margin comments on the transcript are folded into generated progress notes and summaries.",
+            isOn: $settings.includeCommentsInDrafts
+        )
+        SettingsSwitchRow(
+            title: "Include patient background",
+            detail: "The patient's clinical history, profile notes, and current medications are provided to the assistant.",
+            isOn: $settings.includePatientBackground
+        )
     }
 
     // MARK: - Encryption

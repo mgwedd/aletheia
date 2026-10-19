@@ -328,9 +328,15 @@ struct PatientChatView: View {
         let sessionCount = (try? store.listSessions(for: patient))?.count ?? 0
         searchingNotice = Self.searchingNotice(sessions: sessionCount)
         let patient = patient
+        let includeBackground = settings.includePatientBackground
         Task {
             let context = await Task.detached(priority: .userInitiated) {
-                store.gatherCitedPatientContext(for: patient, relevantTo: question, characterBudget: initialBudget)
+                store.gatherCitedPatientContext(
+                    for: patient,
+                    relevantTo: question,
+                    characterBudget: initialBudget,
+                    includeBackground: includeBackground
+                )
             }.value
             searchingNotice = nil
             startAnswer(

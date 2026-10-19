@@ -511,6 +511,22 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertTrue(label.contains("digests of 9 sessions (3 merged by month)"), label)
         XCTAssertTrue(label.hasSuffix("· Normal"), label)
     }
+
+    func testPatientBackgroundOmittedWhenIncludeBackgroundIsFalse() throws {
+        var patient = try store.createPatient(name: "Jane Doe")
+        patient.clinicalHistory = "Anxiety disorder"
+        patient.notes = "Client prefers afternoon"
+        let session = try store.createSession(for: patient, on: date(2026, 3, 5))
+        try store.saveTranscript("March transcript.", for: patient, session: session)
+
+        let withBg = store.gatherCitedPatientContext(for: patient, relevantTo: "anxiety", includeBackground: true)
+        XCTAssertTrue(withBg.text.contains("Anxiety disorder"))
+        XCTAssertTrue(withBg.text.contains("Client prefers afternoon"))
+
+        let withoutBg = store.gatherCitedPatientContext(for: patient, relevantTo: "anxiety", includeBackground: false)
+        XCTAssertFalse(withoutBg.text.contains("Anxiety disorder"))
+        XCTAssertFalse(withoutBg.text.contains("Client prefers afternoon"))
+    }
 }
 
 private final class NoopAssistant: Assistant, @unchecked Sendable {

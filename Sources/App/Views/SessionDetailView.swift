@@ -1419,7 +1419,8 @@ struct SessionDetailView: View {
         let service = integrations.makeAssistantService(report: noteRunner.reporter)
         let transcript = transcriptText
         let notes = sessionNote
-        let sessionComments = comments
+        let sessionComments = settings.includeCommentsInDrafts ? comments : []
+        let patientBackground = settings.includePatientBackground ? patient.aiBackgroundBlock : ""
         let effort = settings.noteEffort
         let riskPhrases = settings.riskPhrases
         let model = service.model
@@ -1439,6 +1440,7 @@ struct SessionDetailView: View {
                     transcript: transcript,
                     notes: notes,
                     comments: sessionComments,
+                    patientBackground: patientBackground,
                     verbosity: verbosity,
                     instructions: instructions,
                     effort: effort,
@@ -1545,6 +1547,7 @@ struct SessionDetailView: View {
         let transcript = transcriptText
         let notes = sessionNote
         let sessionComments = comments
+        let patientBackground = settings.includePatientBackground ? patient.aiBackgroundBlock : ""
         let history = chatMessages
         let effort = settings.sessionChatEffort
         let model = service.model
@@ -1562,6 +1565,7 @@ struct SessionDetailView: View {
                     transcript: transcript,
                     notes: notes,
                     comments: sessionComments,
+                    patientBackground: patientBackground,
                     history: history,
                     question: question,
                     effort: effort,
