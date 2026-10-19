@@ -65,6 +65,38 @@ struct SingleFlight: Equatable {
     }
 }
 
+/// The cause of the app presenting its lock screen, recorded so `LockView`
+/// can display a clear, context-aware explanation to the user.
+enum LockReason: Equatable {
+    case launch
+    case idle(minutes: Int)
+    case appHidden
+    case systemSleep
+    case screenLock
+    case manual
+
+    var explanation: String {
+        switch self {
+        case .launch:
+            return "Locked on launch to protect client notes."
+        case .idle(let minutes):
+            if minutes == 1 {
+                return "Locked after 1 minute of inactivity."
+            } else {
+                return "Locked after \(minutes) minutes of inactivity."
+            }
+        case .appHidden:
+            return "Locked because Aletheia was hidden."
+        case .systemSleep:
+            return "Locked because your Mac went to sleep."
+        case .screenLock:
+            return "Locked because your screen was locked."
+        case .manual:
+            return "Locked to protect client notes."
+        }
+    }
+}
+
 /// Tier-1 protection: gate opening the app behind Touch ID / the login password.
 ///
 /// This is a *presentation* lock (it keeps the UI, and the PHI it shows, behind
@@ -78,12 +110,17 @@ final class AppLock: ObservableObject {
     @Published private(set) var isLocked: Bool {
         didSet { OllamaResidency.shared.setLocked(isLocked) }
     }
+    /// Why the app is currently locked.
+    @Published private(set) var lockReason: LockReason = .launch
     /// Set when an unlock attempt fails, for the lock screen to show.
     @Published var lastError: String?
 
     /// Called once on each successful unlock, so the composition root can record
     /// an audit entry (HIPAA §164.312(b)) without `AppLock` depending on the log.
     var onUnlock: (() -> Void)?
+    /// Called when an unlock attempt fails (not user cancellation), to record
+    /// failed authentication attempts in the audit log (HIPAA §164.312(b)).
+    var onUnlockFailed: ((String) -> Void)?
 
     private let settings: AppSettings
     private let canAuthenticateProvider: () -> Bool
@@ -137,7 +174,7 @@ final class AppLock: ObservableObject {
         didHideObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didHideNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.lockIfEnabled() }
+            Task { @MainActor in self?.lockIfEnabled(reason: .appHidden) }
         }
         observeActivity()
         observeSystemSleep()
@@ -173,8 +210,9 @@ final class AppLock: ObservableObject {
 
     /// Re-lock now (e.g. when the app is hidden or the Mac sleeps/locks), so
     /// stepping away re-requires authentication. No-op when the lock is off.
-    func lockIfEnabled() {
+    func lockIfEnabled(reason: LockReason = .manual) {
         if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: canAuthenticateProvider()) {
+            lockReason = reason
             isLocked = true
             SessionSearch.setAppLocked(true)
             // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
@@ -188,6 +226,12 @@ final class AppLock: ObservableObject {
     func simulateUnlockedForTesting() {
         isLocked = false
         SessionSearch.setAppLocked(false)
+    }
+
+    /// Test seam: simulate a failed unlock attempt with a specific error message.
+    func simulateUnlockFailedForTesting(reason: String = "Authentication failed") {
+        lastError = reason
+        onUnlockFailed?(reason)
     }
 
     /// The automatic prompt: only when locked and the app is frontmost.
@@ -224,11 +268,14 @@ final class AppLock: ObservableObject {
                 if NSApp.isActive { MainWindow.makeKey() }
             }
         } catch {
+            let detail = error.localizedDescription
             if let laError = error as? LAError,
                [.userCancel, .appCancel, .systemCancel].contains(laError.code) {
                 promptGate.userCancelled()
+            } else {
+                onUnlockFailed?(detail)
             }
-            lastError = error.localizedDescription
+            lastError = detail
         }
     }
 
@@ -260,19 +307,19 @@ final class AppLock: ObservableObject {
         willSleepObserver = workspaceCenter.addObserver(
             forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.lockIfEnabled() }
+            Task { @MainActor in self?.lockIfEnabled(reason: .systemSleep) }
         }
         screensDidSleepObserver = workspaceCenter.addObserver(
             forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.lockIfEnabled() }
+            Task { @MainActor in self?.lockIfEnabled(reason: .systemSleep) }
         }
         // Belt-and-suspenders: the screen saver / lock screen engaging
         // doesn't always coincide with the display or machine sleeping.
         screenLockObserver = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.lockIfEnabled() }
+            Task { @MainActor in self?.lockIfEnabled(reason: .screenLock) }
         }
     }
 
@@ -295,7 +342,7 @@ final class AppLock: ObservableObject {
     private func checkIdleTimeout() {
         guard !isLocked else { return }
         if AppLockPolicy.shouldAutoLock(lastActivity: lastActivity, timeoutMinutes: settings.idleAutoLockMinutes, now: Date()) {
-            lockIfEnabled()
+            lockIfEnabled(reason: .idle(minutes: settings.idleAutoLockMinutes))
         }
     }
 }

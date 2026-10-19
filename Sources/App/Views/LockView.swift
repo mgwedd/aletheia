@@ -12,6 +12,7 @@ struct LockView: View {
     private struct UnlockMethod {
         var title = "Unlock"
         var symbol = "lock.open"
+        var isBiometric = false
 
         /// Touch ID / Face ID when the Mac has enrolled biometrics, else a plain
         /// "Unlock" (the system sheet then asks for the Mac password).
@@ -22,8 +23,8 @@ struct LockView: View {
                 return UnlockMethod()
             }
             switch context.biometryType {
-            case .touchID: return UnlockMethod(title: "Unlock with Touch ID", symbol: "touchid")
-            case .faceID: return UnlockMethod(title: "Unlock with Face ID", symbol: "faceid")
+            case .touchID: return UnlockMethod(title: "Unlock with Touch ID", symbol: "touchid", isBiometric: true)
+            case .faceID: return UnlockMethod(title: "Unlock with Face ID", symbol: "faceid", isBiometric: true)
             default: return UnlockMethod()
             }
         }
@@ -48,23 +49,40 @@ struct LockView: View {
                         .font(Theme.Typography.display)
                         .foregroundStyle(Theme.text.color)
                         .accessibilityAddTraits(.isHeader)
-                    Text("No client names or notes are shown while it is locked. Unlock with Touch ID or your Mac password.")
+                    Text(appLock.lockReason.explanation)
                         .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.text.color)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 380)
+                    Text("No client names or notes are shown while it is locked. Unlock with Touch ID or your Mac password.")
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.muted.color)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 380)
                 }
 
-                Button {
-                    Task { await appLock.unlock() }
-                } label: {
-                    Label(method.title, systemImage: method.symbol)
-                        .frame(minWidth: 140)
+                VStack(spacing: 10) {
+                    Button {
+                        Task { await appLock.unlock() }
+                    } label: {
+                        Label(method.title, systemImage: method.symbol)
+                            .frame(minWidth: 160)
+                    }
+                    .buttonStyle(.themePrimary)
+                    .keyboardShortcut(.defaultAction)
+                    .controlSize(.large)
+
+                    if method.isBiometric {
+                        Button("Use Mac Password…") {
+                            Task { await appLock.unlock() }
+                        }
+                        .buttonStyle(.plain)
+                        .font(Theme.Typography.control)
+                        .foregroundStyle(Theme.muted.color)
+                    }
                 }
-                .buttonStyle(.themePrimary)
-                .keyboardShortcut(.defaultAction)
-                .controlSize(.large)
 
                 if let error = appLock.lastError {
                     Text(error)

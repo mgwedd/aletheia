@@ -100,4 +100,50 @@ final class AppLockPolicyTests: XCTestCase {
         await Task.yield()
         XCTAssertTrue(appLock.isLocked)
     }
+
+    func testLockReasonExplanations() {
+        XCTAssertEqual(LockReason.launch.explanation, "Locked on launch to protect client notes.")
+        XCTAssertEqual(LockReason.idle(minutes: 1).explanation, "Locked after 1 minute of inactivity.")
+        XCTAssertEqual(LockReason.idle(minutes: 5).explanation, "Locked after 5 minutes of inactivity.")
+        XCTAssertEqual(LockReason.appHidden.explanation, "Locked because Aletheia was hidden.")
+        XCTAssertEqual(LockReason.systemSleep.explanation, "Locked because your Mac went to sleep.")
+        XCTAssertEqual(LockReason.screenLock.explanation, "Locked because your screen was locked.")
+        XCTAssertEqual(LockReason.manual.explanation, "Locked to protect client notes.")
+    }
+
+    @MainActor
+    func testAppLockSetsReasonWhenRelocking() async {
+        let settings = AppSettings.shared
+        let priorEnabled = settings.appLockEnabled
+        defer { settings.appLockEnabled = priorEnabled }
+        settings.appLockEnabled = true
+
+        let appLock = AppLock(settings: settings, canAuthenticate: { true })
+        XCTAssertEqual(appLock.lockReason, .launch)
+
+        appLock.simulateUnlockedForTesting()
+        XCTAssertFalse(appLock.isLocked)
+
+        appLock.lockIfEnabled(reason: .idle(minutes: 15))
+        XCTAssertTrue(appLock.isLocked)
+        XCTAssertEqual(appLock.lockReason, .idle(minutes: 15))
+
+        appLock.simulateUnlockedForTesting()
+        NotificationCenter.default.post(name: NSApplication.didHideNotification, object: nil)
+        await Task.yield()
+        XCTAssertTrue(appLock.isLocked)
+        XCTAssertEqual(appLock.lockReason, .appHidden)
+    }
+
+    @MainActor
+    func testAppLockNotifiesFailedUnlock() {
+        let settings = AppSettings.shared
+        let appLock = AppLock(settings: settings, canAuthenticate: { true })
+        var failedReason: String?
+        appLock.onUnlockFailed = { failedReason = $0 }
+
+        appLock.simulateUnlockFailedForTesting(reason: "Biometry lockout")
+        XCTAssertEqual(failedReason, "Biometry lockout")
+        XCTAssertEqual(appLock.lastError, "Biometry lockout")
+    }
 }

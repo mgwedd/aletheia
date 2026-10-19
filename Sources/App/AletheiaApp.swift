@@ -93,6 +93,9 @@ struct AletheiaApp: App {
             // Reload only what the lock unloaded; not ~5 GB on every unlock.
             OllamaClient.warmUpResumed()
         }
+        appLock.onUnlockFailed = { [weak appModel] reason in
+            appModel?.recordAudit(.appUnlockFailed, detail: reason)
+        }
         _appLock = StateObject(wrappedValue: appLock)
     }
 
@@ -267,6 +270,7 @@ private struct LockCover: ViewModifier {
                 if covers.contains(.appLock) {
                     LockView()
                         .environmentObject(appLock)
+                        .environmentObject(settings)
                         .transition(.opacity)
                 }
             }
