@@ -1,9 +1,10 @@
 import Foundation
 
-enum ModelDownloadError: LocalizedError {
+enum ModelDownloadError: LocalizedError, Equatable {
     case noDestination
     case downloadFailed(String)
     case integrityCheckFailed(expected: String, actual: String)
+    case insufficientDiskSpace(neededMB: Int)
 
     var errorDescription: String? {
         switch self {
@@ -11,6 +12,9 @@ enum ModelDownloadError: LocalizedError {
         case .downloadFailed(let message): return "Couldn't download the model: \(message)"
         case .integrityCheckFailed:
             return "The downloaded model failed its integrity check and was discarded. Please try downloading it again."
+        case .insufficientDiskSpace(let neededMB):
+            let formatted = String(format: "%.1f GB", Double(neededMB) / 1024.0)
+            return "Not enough free disk space to download the model (at least \(formatted) required)."
         }
     }
 }

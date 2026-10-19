@@ -86,6 +86,15 @@ enum AITask: String {
         case .chat: return 0.3
         }
     }
+
+    /// Maximum tokens a reply for this task may generate.
+    var maxTokens: Int {
+        switch self {
+        case .note, .chat: return ContextBudget.replyHeadroomTokens
+        case .digest: return 768
+        case .compaction: return 512
+        }
+    }
 }
 
 /// Tracks which Ollama model this app has loaded and whether a request is

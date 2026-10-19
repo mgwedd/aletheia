@@ -22,6 +22,8 @@ enum LocalLLMEngineError: LocalizedError, Equatable {
     case unavailable(String)
     case loadFailed(String)
     case generationFailed(String)
+    /// Context allocation failed because the system is out of memory for the requested window.
+    case outOfMemory
     /// The built-in model's weights aren't on this Mac yet: a setup step the
     /// AI-engine alert offers to fix with a Download button.
     case modelNotDownloaded
@@ -30,6 +32,8 @@ enum LocalLLMEngineError: LocalizedError, Equatable {
         switch self {
         case .modelNotDownloaded:
             return "The AI model isn't downloaded yet. Download it in Settings › AI and models."
+        case .outOfMemory:
+            return "There isn't enough free memory to run the AI model right now. Close other apps or switch to the Fast (3B) model in Settings › AI and models."
         case .unavailable(let reason),
              .loadFailed(let reason),
              .generationFailed(let reason):
@@ -63,6 +67,13 @@ protocol LocalLLMEngine: AnyObject {
     /// Stream the growing *full text so far* (cumulative, not deltas) for
     /// `request`, so callers render one uniform shape regardless of backend.
     func stream(_ request: LocalLLMRequest) -> AsyncThrowingStream<String, Error>
+
+    /// Like `stream(_:)`, and also hands `onStats` the run's token counts and
+    /// prefill/decode durations when generation finishes.
+    func stream(
+        _ request: LocalLLMRequest,
+        onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error>
 }
 
 extension LocalLLMEngine {
@@ -80,6 +91,13 @@ extension LocalLLMEngine {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    func stream(
+        _ request: LocalLLMRequest,
+        onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        stream(request)
     }
 }
 

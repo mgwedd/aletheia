@@ -46,8 +46,14 @@ final class LlamaEngine: LocalLLMEngine {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _lastPromptTokens }
         set { stateLock.lock(); _lastPromptTokens = newValue; stateLock.unlock() }
     }
+    /// The last completed generation's run stats (for tests and diagnostics).
+    private(set) var lastStats: AIRunStats? {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return _lastStats }
+        set { stateLock.lock(); _lastStats = newValue; stateLock.unlock() }
+    }
     private var _contextTokens = 0
     private var _lastPromptTokens = 0
+    private var _lastStats: AIRunStats?
 
     /// How long the model may sit unused before it is unloaded (matches Ollama's
     /// `keep_alive`). Tests shorten it.
@@ -161,28 +167,48 @@ final class LlamaEngine: LocalLLMEngine {
     }
 
     func generate(_ request: LocalLLMRequest) async throws -> String {
+        let cancelled = LlamaEngineCancellationFlag()
         markActive()
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
-            queue.async { [weak self] in
-                guard let self else {
-                    continuation.resume(throwing: LocalLLMEngineError.generationFailed(
-                        "The built-in model engine was deallocated mid-generation."
-                    ))
-                    return
-                }
-                defer { self.scheduleIdleUnload() }
-                do {
-                    try self.ensureLoadedOnQueue()
-                    let text = try self.decodeOnQueue(request: request, isCancelled: { false }, onToken: nil)
-                    continuation.resume(returning: text)
-                } catch {
-                    continuation.resume(throwing: error)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+                queue.async { [weak self] in
+                    guard let self else {
+                        continuation.resume(throwing: LocalLLMEngineError.generationFailed(
+                            "The built-in model engine was deallocated mid-generation."
+                        ))
+                        return
+                    }
+                    defer { self.scheduleIdleUnload() }
+                    do {
+                        if cancelled.isCancelled { throw CancellationError() }
+                        try self.ensureLoadedOnQueue()
+                        if cancelled.isCancelled { throw CancellationError() }
+                        let text = try self.decodeOnQueue(
+                            request: request,
+                            isCancelled: { cancelled.isCancelled },
+                            onToken: nil,
+                            onStats: nil
+                        )
+                        if cancelled.isCancelled { throw CancellationError() }
+                        continuation.resume(returning: text)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
+        } onCancel: {
+            cancelled.cancel()
         }
     }
 
     func stream(_ request: LocalLLMRequest) -> AsyncThrowingStream<String, Error> {
+        stream(request, onStats: nil)
+    }
+
+    func stream(
+        _ request: LocalLLMRequest,
+        onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
         let cancelled = LlamaEngineCancellationFlag()
         markActive()
         return AsyncThrowingStream { continuation in
@@ -200,7 +226,8 @@ final class LlamaEngine: LocalLLMEngine {
                     _ = try self.decodeOnQueue(
                         request: request,
                         isCancelled: { cancelled.isCancelled },
-                        onToken: { soFar in continuation.yield(soFar) }
+                        onToken: { soFar in continuation.yield(soFar) },
+                        onStats: onStats
                     )
                     continuation.finish()
                 } catch {
@@ -290,7 +317,7 @@ final class LlamaEngine: LocalLLMEngine {
         fast.type_k = GGML_TYPE_Q8_0
         fast.type_v = GGML_TYPE_Q8_0
         guard let created = llama_init_from_model(model, fast) ?? llama_init_from_model(model, params) else {
-            throw LocalLLMEngineError.loadFailed("Couldn't create an inference context for the built-in model.")
+            throw LocalLLMEngineError.outOfMemory
         }
 
         if let adapter {
@@ -352,7 +379,8 @@ final class LlamaEngine: LocalLLMEngine {
     private func decodeOnQueue(
         request: LocalLLMRequest,
         isCancelled: () -> Bool,
-        onToken: ((String) -> Void)?
+        onToken: ((String) -> Void)?,
+        onStats: (@Sendable (AIRunStats) -> Void)?
     ) throws -> String {
         guard let model else {
             throw LocalLLMEngineError.generationFailed("The built-in model isn't loaded.")
@@ -391,6 +419,28 @@ final class LlamaEngine: LocalLLMEngine {
             llama_sampler_chain_add(chain, grammarSampler)
         }
 
+        // Apply top-k before repeat penalties when sampling so the penalty pass
+        // only scans the top candidates instead of a 128k–256k vocabulary (see
+        // llama.h's note on llama_sampler_init_penalties). Grammar still runs
+        // first above so top-k only keeps grammar-valid tokens.
+        if !request.sampling.isGreedy, let topK = llama_sampler_init_top_k(40) {
+            llama_sampler_chain_add(chain, topK)
+        }
+
+        // Apply repeat penalty when enabled (> 1.0) so 3B/8B models don't get
+        // stuck repeating bullet items on clinical notes and digests.
+        if request.sampling.repeatPenalty > 1.0 && request.sampling.repeatLastN > 0 {
+            if let penalties = llama_sampler_init_penalties(
+                llama_vocab_n_tokens(vocab),
+                Int32(request.sampling.repeatLastN),
+                Float(request.sampling.repeatPenalty),
+                0.0,
+                0.0
+            ) {
+                llama_sampler_chain_add(chain, penalties)
+            }
+        }
+
         if request.sampling.isGreedy {
             // Clinical notes default to greedy: reproducible output for the
             // same transcript (see LocalLLMSampling.deterministic).
@@ -420,6 +470,8 @@ final class LlamaEngine: LocalLLMEngine {
         tokens.withUnsafeBufferPointer { src in
             tokenStore.update(from: src.baseAddress!, count: promptCount)
         }
+        let readStart = DispatchTime.now().uptimeNanoseconds
+        var readEnd: UInt64?
         // llama_decode takes at most n_batch tokens: feed the prompt in chunks,
         // keeping the last one for the loop below, which samples from it.
         let chunk = Int(llama_n_batch(context))
@@ -439,6 +491,9 @@ final class LlamaEngine: LocalLLMEngine {
             guard llama_decode(context, batch) == 0 else {
                 throw LocalLLMEngineError.generationFailed("The model failed to decode a batch.")
             }
+            if readEnd == nil {
+                readEnd = DispatchTime.now().uptimeNanoseconds
+            }
             // llama_sampler_sample applies the whole chain (grammar included)
             // to the last token's logits, picks one, and feeds it back to
             // every sampler in the chain (including the grammar's own
@@ -446,13 +501,24 @@ final class LlamaEngine: LocalLLMEngine {
             let next = llama_sampler_sample(chain, context, -1)
             if llama_vocab_is_eog(vocab, next) { break }
             output += piece(for: next, vocab: vocab)
+            produced += 1
             onToken?(output)
             // Reuse the same stable storage for the single next token, so the
             // batch keeps pointing at live memory for the decode above on the
             // following iteration.
             tokenStore.pointee = next
             batch = llama_batch_get_one(tokenStore, 1)
-            produced += 1
+        }
+        if let readEnd, !isCancelled() {
+            let writeEnd = DispatchTime.now().uptimeNanoseconds
+            let stats = AIRunStats(
+                promptTokens: promptCount,
+                promptNanos: Int(readEnd &- readStart),
+                outputTokens: produced,
+                outputNanos: Int(writeEnd &- readEnd)
+            )
+            lastStats = stats
+            onStats?(stats)
         }
         return output
     }

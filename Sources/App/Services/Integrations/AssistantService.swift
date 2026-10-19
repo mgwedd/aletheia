@@ -22,14 +22,19 @@ struct AssistantService {
         }
     }
 
-    private func generate(task: AITask, system: String, prompt: String) async throws -> String {
+    private func generate(
+        task: AITask, system: String, prompt: String, grammar: LocalLLMGrammar? = nil
+    ) async throws -> String {
         try checkBudget(system: system, prompt: prompt)
-        return try await assistant.generate(model: model, system: system, prompt: prompt, task: task)
+        return try await assistant.generate(
+            model: model, system: system, prompt: prompt, task: task, grammar: grammar)
     }
 
     /// Streams `prompt` after the budget check; an over-budget prompt fails the
     /// stream with `ContextBudgetError` and nothing is sent.
-    private func run(task: AITask, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
+    private func run(
+        task: AITask, system: String, prompt: String, grammar: LocalLLMGrammar? = nil
+    ) -> AsyncThrowingStream<String, Error> {
         do {
             try checkBudget(system: system, prompt: prompt)
         } catch {
@@ -38,7 +43,7 @@ struct AssistantService {
         report?(.reading(estimatedTokens: ContextBudget.estimatedTokens(forCharacters: system.count + prompt.count)))
         let report = report
         return assistant.stream(
-            model: model, system: system, prompt: prompt, task: task,
+            model: model, system: system, prompt: prompt, task: task, grammar: grammar,
             onStats: report.map { report in { report(.finished($0)) } })
     }
 
@@ -50,8 +55,10 @@ struct AssistantService {
     /// Streams a digest prompt: the same budget check, progress report and
     /// truncation tripwire as a note or an answer. `task` picks the sampling
     /// settings (a long-session note's draft and check are `.note`).
-    func streamDigest(prompt: String, task: AITask = .digest) -> AsyncThrowingStream<String, Error> {
-        run(task: task, system: systemPrompt, prompt: prompt)
+    func streamDigest(
+        prompt: String, task: AITask = .digest, grammar: LocalLLMGrammar? = nil
+    ) -> AsyncThrowingStream<String, Error> {
+        run(task: task, system: systemPrompt, prompt: prompt, grammar: grammar)
     }
 
     func summarize(transcript: String) async throws -> String {
@@ -78,7 +85,8 @@ struct AssistantService {
                 comments: Self.formatComments(comments),
                 verbosity: verbosity,
                 instructions: instructions
-            )
+            ),
+            grammar: format.grammar
         )
     }
 
@@ -101,7 +109,8 @@ struct AssistantService {
                 comments: Self.formatComments(comments),
                 verbosity: verbosity,
                 instructions: instructions
-            )
+            ),
+            grammar: format.grammar
         )
     }
 

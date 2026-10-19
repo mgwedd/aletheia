@@ -37,5 +37,77 @@ final class LlamaUnloadTests: XCTestCase {
         wait(for: [waited], timeout: 2)
         XCTAssertEqual(e.idleUnloads, 0)
     }
+
+    func testLlamaAssistantRequestCarriesTaskSamplingAndGrammar() {
+        let assistant = LlamaAssistant(modelURL: URL(fileURLWithPath: "/nonexistent/m.gguf"))
+        let soapReq = assistant.request(
+            system: "sys",
+            prompt: "user",
+            task: .note,
+            grammar: ProgressNoteFormat.soap.grammar
+        )
+        XCTAssertEqual(soapReq.sampling, LocalLLMSampling.forTask(.note))
+        XCTAssertEqual(soapReq.grammar, ProgressNoteFormat.soap.grammar)
+
+        let digestReq = assistant.request(system: "sys", prompt: "user", task: .digest, grammar: nil)
+        XCTAssertEqual(digestReq.sampling.maxTokens, 768)
+        XCTAssertNil(digestReq.grammar)
+
+        let customCap = LlamaAssistant(modelURL: URL(fileURLWithPath: "/nonexistent/m.gguf"), maxTokens: 321)
+        XCTAssertEqual(customCap.request(system: "s", prompt: "p", task: .digest).sampling.maxTokens, 321)
+    }
+
+    func testLlamaAssistantThrowsModelNotDownloadedOnGenerateAndStreamWhenFileMissing() async {
+        let assistant = LlamaAssistant(modelURL: URL(fileURLWithPath: "/nonexistent/missing.gguf"))
+        do {
+            _ = try await assistant.generate(
+                model: "m", system: "s", prompt: "p", task: .note, grammar: ProgressNoteFormat.soap.grammar
+            )
+            XCTFail("expected modelNotDownloaded")
+        } catch {
+            XCTAssertEqual(error as? LocalLLMEngineError, .modelNotDownloaded)
+        }
+
+        do {
+            for try await _ in assistant.stream(
+                model: "m", system: "s", prompt: "p", task: .note, grammar: ProgressNoteFormat.soap.grammar, onStats: nil
+            ) {
+                XCTFail("expected no tokens")
+            }
+            XCTFail("expected stream to throw modelNotDownloaded")
+        } catch {
+            XCTAssertEqual(error as? LocalLLMEngineError, .modelNotDownloaded)
+        }
+    }
+
+    func testCancelledGenerateThrowsCancellationError() async {
+        let e = engine("cancel")
+        let task = Task {
+            try await e.generate(LocalLLMRequest(prompt: "hi"))
+        }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("expected cancelled generate() to throw")
+        } catch is CancellationError {
+            // Expected when cancelled before/during load.
+        } catch {
+            // If the queue ran before cancel() landed, loadFailed on /nonexistent is also acceptable;
+            // verify a pre-cancelled Task always throws CancellationError.
+        }
+
+        let preCancelled = Task { () throws -> String in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await e.generate(LocalLLMRequest(prompt: "hi"))
+        }
+        do {
+            _ = try await preCancelled.value
+            XCTFail("expected pre-cancelled generate() to throw CancellationError")
+        } catch is CancellationError {
+            // Expected
+        } catch {
+            XCTFail("expected CancellationError, got \(error)")
+        }
+    }
 }
 #endif

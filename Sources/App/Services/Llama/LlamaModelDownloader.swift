@@ -14,8 +14,12 @@ import Foundation
 final class LlamaModelDownloader: NSObject, ObservableObject {
     static let shared = LlamaModelDownloader()
 
+    /// Extra free disk space required beyond the model's own size (512 MB).
+    static let diskSpaceHeadroomMB = 512
+
     @Published var progress: Double = 0
     @Published var isDownloading = false
+    @Published var statusText = ""
     @Published var lastError: String?
 
     private var continuation: CheckedContinuation<Void, Error>?
@@ -29,6 +33,10 @@ final class LlamaModelDownloader: NSObject, ObservableObject {
     private lazy var session: URLSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
     /// The running `download`, so a second caller waits on it.
     @MainActor private var inFlight: (destination: URL, task: Task<Void, Error>)?
+
+    func setDestinationForTesting(_ url: URL) {
+        destinationURL = url
+    }
 
     /// Fetches a built-in `LlamaModel`, driving `@Published progress`. A call
     /// while the same file is downloading waits for that download; a different
@@ -61,20 +69,66 @@ final class LlamaModelDownloader: NSObject, ObservableObject {
         to destinationURL: URL,
         onProgress: @escaping (Double) -> Void
     ) async throws {
+        let directory = destinationURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Self.verifyAvailableDiskSpace(for: asset, at: directory)
+
         isDownloading = true
         progress = 0
+        statusText = "Downloading model…"
         lastError = nil
-        defer { isDownloading = false; progressHandler = nil }
+        defer {
+            isDownloading = false
+            statusText = ""
+            progressHandler = nil
+        }
 
-        try FileManager.default.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? FileManager.default.removeItem(at: Self.partialURL(for: destinationURL))
         self.destinationURL = destinationURL
         self.expectedSHA256 = asset.expectedSHA256
         self.progressHandler = onProgress
 
+        let resumeURL = Self.resumeDataURL(for: destinationURL)
+        let savedResumeData = (try? Data(contentsOf: resumeURL)).flatMap { $0.isEmpty ? nil : $0 }
+        if savedResumeData != nil {
+            try? FileManager.default.removeItem(at: resumeURL)
+        }
+
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             self.continuation = continuation
-            session.downloadTask(with: asset.remoteURL).resume()
+            if let savedResumeData {
+                session.downloadTask(withResumeData: savedResumeData).resume()
+            } else {
+                session.downloadTask(with: asset.remoteURL).resume()
+            }
+        }
+    }
+
+    /// Free bytes on the volume holding `url`, or `nil` if the filesystem doesn't report it.
+    static func availableDiskBytes(at url: URL) -> Int64? {
+        if let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+           let available = values.volumeAvailableCapacityForImportantUsage {
+            return available
+        }
+        if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: url.path),
+           let free = attrs[.systemFreeSize] as? NSNumber {
+            return free.int64Value
+        }
+        return nil
+    }
+
+    /// Checks that the volume holding `directory` has enough free space for
+    /// `asset.approximateSizeMB` plus `diskSpaceHeadroomMB`.
+    static func verifyAvailableDiskSpace(
+        for asset: ModelAsset,
+        at directory: URL,
+        availableBytesProvider: (URL) -> Int64? = LlamaModelDownloader.availableDiskBytes(at:)
+    ) throws {
+        guard asset.approximateSizeMB > 0, let available = availableBytesProvider(directory) else { return }
+        let neededMB = asset.approximateSizeMB + diskSpaceHeadroomMB
+        let neededBytes = Int64(neededMB) * 1_048_576
+        if available < neededBytes {
+            throw ModelDownloadError.insufficientDiskSpace(neededMB: neededMB)
         }
     }
 
@@ -95,6 +149,7 @@ final class LlamaModelDownloader: NSObject, ObservableObject {
             } else {
                 try fm.moveItem(at: partial, to: destination)
             }
+            try? fm.removeItem(at: resumeDataURL(for: destination))
         } catch {
             try? fm.removeItem(at: partial)
             throw error
@@ -103,6 +158,10 @@ final class LlamaModelDownloader: NSObject, ObservableObject {
 
     static func partialURL(for destination: URL) -> URL {
         destination.appendingPathExtension("partial")
+    }
+
+    static func resumeDataURL(for destination: URL) -> URL {
+        destination.appendingPathExtension("resume")
     }
 }
 
@@ -118,10 +177,19 @@ extension LlamaModelDownloader: URLSessionDownloadDelegate {
     ) {
         guard totalBytesExpectedToWrite > 0 else { return }
         let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        let status = Self.statusLabel(forProgress: fraction)
         DispatchQueue.main.async {
             self.progress = fraction
+            self.statusText = status
             self.progressHandler?(fraction)
         }
+    }
+
+    static func statusLabel(forProgress fraction: Double) -> String {
+        if fraction >= 1.0 {
+            return "Verifying downloaded model…"
+        }
+        return "Downloading model… (\(Int(min(max(fraction, 0), 1) * 100))%)"
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
@@ -134,6 +202,11 @@ extension LlamaModelDownloader: URLSessionDownloadDelegate {
             if let http = downloadTask.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 throw ModelDownloadError.downloadFailed("HTTP \(http.statusCode)")
             }
+            DispatchQueue.main.async {
+                self.progress = 1.0
+                self.statusText = Self.statusLabel(forProgress: 1.0)
+                self.progressHandler?(1.0)
+            }
             try Self.installVerified(from: location, to: destinationURL, expectedSHA256: expectedSHA256)
             continuation?.resume()
         } catch {
@@ -144,6 +217,11 @@ extension LlamaModelDownloader: URLSessionDownloadDelegate {
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let error else { return }
+        if let destinationURL,
+           let resumeData = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data,
+           !resumeData.isEmpty {
+            try? resumeData.write(to: Self.resumeDataURL(for: destinationURL), options: .atomic)
+        }
         DispatchQueue.main.async { self.lastError = error.localizedDescription }
         continuation?.resume(throwing: error)
         continuation = nil

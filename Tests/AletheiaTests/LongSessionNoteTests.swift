@@ -6,6 +6,7 @@ private let defaultPhrases = LongSessionNote.defaultRiskPhrases
 /// A stub model that answers by the kind of prompt it is given and records them all.
 private final class StubModel: Assistant, @unchecked Sendable {
     var prompts: [String] = []
+    var recordedCalls: [(task: AITask, grammar: LocalLLMGrammar?)] = []
     /// What the check call returns; `failCheck` makes it throw instead.
     var checkResponse = "CHECKED NOTE"
     var failCheck = false
@@ -30,6 +31,17 @@ private final class StubModel: Assistant, @unchecked Sendable {
             return checkResponse
         }
         return "DRAFT NOTE"
+    }
+    func stream(
+        model: String,
+        system: String,
+        prompt: String,
+        task: AITask,
+        grammar: LocalLLMGrammar?,
+        onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        recordedCalls.append((task, grammar))
+        return stream(model: model, system: system, prompt: prompt, task: task, onStats: onStats)
     }
     func pullModel(_ name: String, onProgress: @escaping (Double, String) -> Void) async throws {}
 }
@@ -714,5 +726,37 @@ final class LongSessionNoteTests: XCTestCase {
         XCTAssertTrue(Store.isNoteSidecarFileName("note.soap.coverage.txt"))
         try store.saveGeneratedNote("S: b", for: patient, session: session, format: .soap)
         XCTAssertNil(store.noteCoverage(for: patient, session: session, format: .soap))
+    }
+
+    func testOverflowFocusNotePassesGrammarOnlyToDraftAndCheckStages() async throws {
+        let text = syntheticTranscript(minutes: 120)
+        let stub = StubModel()
+        stub.checkResponse = """
+        ## Subjective
+        Client reported brief thoughts of hurting myself and stated "No, I would never do it."
+        ## Objective
+        Alert and engaged.
+        ## Assessment
+        Stable mood.
+        ## Plan
+        Follow up next week.
+        """
+        var service = AssistantService(assistant: stub, model: "m")
+        service.budget = ContextBudget(tokens: 8192)
+        let stream = LongSessionNote.stream(
+            format: .soap, transcript: text, effort: .focus, riskPhrases: defaultPhrases, service: service,
+            builder: DigestBuilder(queue: InferenceQueue()), sessionID: UUID(),
+            loadDigest: { nil }, saveDigest: { _ in },
+            live: { _, _ in }, coverage: { _ in })
+        for try await _ in stream {}
+
+        // All calls except the last two are digest stages (.digest, nil grammar);
+        // the last two are the draft and Focus check stages (.note, SOAP grammar).
+        XCTAssertGreaterThanOrEqual(stub.recordedCalls.count, 3)
+        let digestCalls = stub.recordedCalls.dropLast(2)
+        let noteCalls = Array(stub.recordedCalls.suffix(2))
+        XCTAssertTrue(digestCalls.allSatisfy { $0.task == .digest && $0.grammar == nil })
+        XCTAssertEqual(noteCalls.map(\.task), [.note, .note])
+        XCTAssertEqual(noteCalls.map(\.grammar), [ProgressNoteFormat.soap.grammar, ProgressNoteFormat.soap.grammar])
     }
 }

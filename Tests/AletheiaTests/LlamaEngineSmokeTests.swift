@@ -40,6 +40,33 @@ final class LlamaEngineSmokeTests: XCTestCase {
         XCTAssertTrue(out.hasPrefix("## Subjective\n"))
         engine.unload()
     }
+
+    func testStreamReportsAIRunStats() async throws {
+        let engine = try engine()
+        let box = UnsafeStatsBox()
+        var text = ""
+        for try await partial in engine.stream(
+            LocalLLMRequest(
+                prompt: "Say hello in three words.",
+                sampling: LocalLLMSampling.forTask(.chat, maxTokens: 16)
+            ),
+            onStats: { box.stats = $0 }
+        ) {
+            text = partial
+        }
+        XCTAssertFalse(text.isEmpty)
+        let stats = try XCTUnwrap(box.stats)
+        XCTAssertEqual(stats, engine.lastStats)
+        XCTAssertGreaterThan(stats.promptTokens ?? 0, 0)
+        XCTAssertGreaterThan(stats.promptNanos ?? 0, 0)
+        XCTAssertGreaterThan(stats.outputTokens ?? 0, 0)
+        XCTAssertGreaterThan(stats.outputNanos ?? 0, 0)
+        engine.unload()
+    }
+}
+
+private final class UnsafeStatsBox: @unchecked Sendable {
+    var stats: AIRunStats?
 }
 
 /// Long-session measurement. Skipped unless `ALETHEIA_TEST_GGUF` and

@@ -39,9 +39,28 @@ protocol Assistant {
     /// temperature on backends that support it). Default ignores the task.
     func generate(model: String, system: String, prompt: String, task: AITask) async throws -> String
 
+    /// Like `generate(model:system:prompt:task:)`, with an optional GBNF grammar
+    /// for backends that support grammar-constrained decoding (built-in llama.cpp).
+    /// Default ignores `grammar`.
+    func generate(
+        model: String, system: String, prompt: String, task: AITask, grammar: LocalLLMGrammar?
+    ) async throws -> String
+
     /// Like the `onStats` stream, tagged with the task. Default ignores it.
     func stream(
         model: String, system: String, prompt: String, task: AITask, onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error>
+
+    /// Like `stream(model:system:prompt:task:onStats:)`, with an optional GBNF
+    /// grammar for backends that support grammar-constrained decoding. Default
+    /// ignores `grammar`.
+    func stream(
+        model: String,
+        system: String,
+        prompt: String,
+        task: AITask,
+        grammar: LocalLLMGrammar?,
+        onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error>
 
     /// Load the model ahead of the first real request. Default does nothing.
@@ -56,10 +75,27 @@ extension Assistant {
         try await generate(model: model, system: system, prompt: prompt)
     }
 
+    func generate(
+        model: String, system: String, prompt: String, task: AITask, grammar: LocalLLMGrammar?
+    ) async throws -> String {
+        try await generate(model: model, system: system, prompt: prompt, task: task)
+    }
+
     func stream(
         model: String, system: String, prompt: String, task: AITask, onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {
         stream(model: model, system: system, prompt: prompt, onStats: onStats)
+    }
+
+    func stream(
+        model: String,
+        system: String,
+        prompt: String,
+        task: AITask,
+        grammar: LocalLLMGrammar?,
+        onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        stream(model: model, system: system, prompt: prompt, task: task, onStats: onStats)
     }
 
     func warmUp(model: String) {}

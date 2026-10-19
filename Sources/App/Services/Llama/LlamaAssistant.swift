@@ -9,7 +9,7 @@ import llama
 /// re-verify the C calls when re-pinning.
 final class LlamaAssistant: Assistant {
     private let modelURL: URL
-    private let maxTokens: Int
+    private let maxTokensOverride: Int?
 
     /// One engine per model file, shared by every assistant made for it: the
     /// app builds a new assistant per use, and the loaded weights and context
@@ -47,16 +47,20 @@ final class LlamaAssistant: Assistant {
         Self.enginesLock.lock()
         defer { Self.enginesLock.unlock() }
         if let existing = Self.engines[modelURL] { return existing }
-        let created = LlamaEngine(modelURL: modelURL, sampling: LocalLLMSampling(maxTokens: maxTokens))
+        let created = LlamaEngine(
+            modelURL: modelURL,
+            sampling: LocalLLMSampling(maxTokens: maxTokensOverride ?? ContextBudget.replyHeadroomTokens)
+        )
         Self.engines[modelURL] = created
         return created
     }
 
-    /// `maxTokens` defaults to the reply room every prompt budget keeps, so a
-    /// long note isn't cut short.
-    init(modelURL: URL, maxTokens: Int = ContextBudget.replyHeadroomTokens) {
+    /// `maxTokens` defaults to nil so each `AITask` picks its own reply cap
+    /// (`ContextBudget.replyHeadroomTokens` for notes and chat, smaller caps for
+    /// digests and compaction). Passing an explicit value overrides the task cap.
+    init(modelURL: URL, maxTokens: Int? = nil) {
         self.modelURL = modelURL
-        self.maxTokens = maxTokens
+        self.maxTokensOverride = maxTokens
     }
 
     func isReachable() async -> Bool { FileManager.default.fileExists(atPath: modelURL.path) }
@@ -68,8 +72,18 @@ final class LlamaAssistant: Assistant {
         onProgress(1.0, "ready")
     }
 
-    private func request(system: String, prompt: String) -> LocalLLMRequest {
-        LocalLLMRequest(system: system, prompt: prompt, sampling: LocalLLMSampling(maxTokens: maxTokens))
+    func request(
+        system: String,
+        prompt: String,
+        task: AITask = .note,
+        grammar: LocalLLMGrammar? = nil
+    ) -> LocalLLMRequest {
+        LocalLLMRequest(
+            system: system,
+            prompt: prompt,
+            sampling: LocalLLMSampling.forTask(task, maxTokens: maxTokensOverride),
+            grammar: grammar
+        )
     }
 
     /// The model isn't downloaded: a setup step, said plainly instead of a load error.
@@ -88,17 +102,61 @@ final class LlamaAssistant: Assistant {
         }
     }
 
-    func generate(model _: String, system: String, prompt: String) async throws -> String {
+    func generate(model: String, system: String, prompt: String) async throws -> String {
+        try await generate(model: model, system: system, prompt: prompt, task: .note, grammar: nil)
+    }
+
+    func generate(model: String, system: String, prompt: String, task: AITask) async throws -> String {
+        try await generate(model: model, system: system, prompt: prompt, task: task, grammar: nil)
+    }
+
+    func generate(
+        model _: String, system: String, prompt: String, task: AITask, grammar: LocalLLMGrammar?
+    ) async throws -> String {
         if let missingModel { throw missingModel }
-        return try await engine.generate(request(system: system, prompt: prompt))
+        return try await engine.generate(request(system: system, prompt: prompt, task: task, grammar: grammar))
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Token-by-token streaming of the growing full text; a Stop in the UI
     /// cancels the engine's decode loop.
-    func stream(model _: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
+    func stream(model: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
+        stream(model: model, system: system, prompt: prompt, task: .note, grammar: nil, onStats: nil)
+    }
+
+    func stream(
+        model: String, system: String, prompt: String, onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        stream(model: model, system: system, prompt: prompt, task: .note, grammar: nil, onStats: onStats)
+    }
+
+    func stream(
+        model: String, system: String, prompt: String, task: AITask, onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        stream(model: model, system: system, prompt: prompt, task: task, grammar: nil, onStats: onStats)
+    }
+
+    func stream(
+        model _: String,
+        system: String,
+        prompt: String,
+        task: AITask,
+        grammar: LocalLLMGrammar?,
+        onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
         if let missingModel { return AsyncThrowingStream { $0.finish(throwing: missingModel) } }
-        return engine.stream(request(system: system, prompt: prompt))
+        let expectedTokens = ContextBudget.estimatedTokens(forCharacters: system.count + prompt.count)
+        return engine.stream(
+            request(system: system, prompt: prompt, task: task, grammar: grammar),
+            onStats: onStats.map { callback in
+                { raw in
+                    var stats = raw
+                    stats.expectedPromptTokens = expectedTokens
+                    stats.task = task
+                    callback(stats)
+                }
+            }
+        )
     }
 }
 #endif

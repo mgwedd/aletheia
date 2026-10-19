@@ -528,6 +528,9 @@ struct SettingsView: View {
             }
             if llamaDownloader.isDownloading {
                 downloadProgress(llamaDownloader.progress)
+                if !llamaDownloader.statusText.isEmpty {
+                    SettingsCaption(llamaDownloader.statusText)
+                }
             } else if installed {
                 HStack {
                     SettingsCaption("Downloaded to this Mac.")
@@ -541,6 +544,24 @@ struct SettingsView: View {
                     Spacer()
                     Button("Download") { Task { await downloadLlamaModel() } }
                         .buttonStyle(.themePrimary)
+                }
+            }
+            if !llamaDownloader.isDownloading {
+                ForEach(LlamaRuntime.unusedDownloadedModels(besides: settings.llamaModel)) { unused in
+                    SettingsHairline()
+                    HStack {
+                        SettingsCaption("\(unused.shortName) is also on disk (~\(unused.approximateSizeMB) MB).")
+                        Spacer()
+                        Button("Remove \(unused.shortName)") {
+                            do {
+                                try LlamaRuntime.removeModel(unused)
+                                Task { await runHealthChecks() }
+                            } catch {
+                                errorMessage = error.localizedDescription
+                            }
+                        }
+                        .buttonStyle(.themed)
+                    }
                 }
             }
         }
