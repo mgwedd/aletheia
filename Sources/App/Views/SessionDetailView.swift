@@ -200,7 +200,7 @@ struct SessionDetailView: View {
                 .themeDivider(.bottom)
             // Above the tab content, so progress shows on every tab.
             if let job = transcription.job(for: session.id) {
-                TranscriptionProgressView(job: job) {
+                TranscriptionProgressView(job: job, sessionDate: session.date) {
                     transcription.cancel(sessionID: session.id)
                 }
             } else if isQueued {

@@ -259,4 +259,46 @@ final class StoreUnreadableRecordsTests: XCTestCase {
         XCTAssertTrue(listing.patients.isEmpty)
         XCTAssertTrue(listing.unreadable.isEmpty)
     }
+
+    // MARK: - Short descriptions and dismissed state
+
+    func testUnreadableEntryShortDescriptions() {
+        let dummyFolder = URL(fileURLWithPath: "/tmp/dummy")
+        let patientNotReadable = UnreadableEntry(kind: .patientRecord, reason: .notReadable, folder: dummyFolder)
+        XCTAssertEqual(patientNotReadable.shortDescription, "Patient record couldn't be opened")
+
+        let patientUndecodable = UnreadableEntry(kind: .patientRecord, reason: .undecodable, folder: dummyFolder)
+        XCTAssertEqual(patientUndecodable.shortDescription, "Patient record file is damaged")
+
+        let sessionNotReadable = UnreadableEntry(kind: .sessionRecord, reason: .notReadable, folder: dummyFolder)
+        XCTAssertEqual(sessionNotReadable.shortDescription, "Session record couldn't be opened")
+
+        let sessionUndecodable = UnreadableEntry(kind: .sessionRecord, reason: .undecodable, folder: dummyFolder)
+        XCTAssertEqual(sessionUndecodable.shortDescription, "Session record file is damaged")
+
+        let sessionNoID = UnreadableEntry(kind: .sessionRecord, reason: .couldNotSaveIdentity, folder: dummyFolder)
+        XCTAssertEqual(sessionNoID.shortDescription, "Session identity file couldn't be saved")
+    }
+
+    func testDismissedDamagedRecordSettings() {
+        let settings = AppSettings.shared
+        let original = settings.dismissedDamagedRecordIDs
+        defer { settings.dismissedDamagedRecordIDs = original }
+
+        let id1 = "patientRecord|/tmp/patient1"
+        let id2 = "sessionRecord|/tmp/session2"
+
+        settings.undismissDamagedRecord(id: id1)
+        settings.undismissDamagedRecord(id: id2)
+
+        XCTAssertFalse(settings.isDamagedRecordDismissed(id: id1))
+        XCTAssertFalse(settings.isDamagedRecordDismissed(id: id2))
+
+        settings.dismissDamagedRecord(id: id1)
+        XCTAssertTrue(settings.isDamagedRecordDismissed(id: id1))
+        XCTAssertFalse(settings.isDamagedRecordDismissed(id: id2))
+
+        settings.undismissDamagedRecord(id: id1)
+        XCTAssertFalse(settings.isDamagedRecordDismissed(id: id1))
+    }
 }

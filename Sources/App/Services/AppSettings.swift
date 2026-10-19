@@ -110,6 +110,7 @@ final class AppSettings: ObservableObject {
         static let appearance = "appearance"
         static let debugDiagnosticsEnabled = "debugDiagnosticsEnabled"
         static let keepDataOutOfSystemBackups = BackupExclusion.defaultsKey
+        static let dismissedDamagedRecordIDs = "dismissedDamagedRecordIDs"
     }
 
     /// Where the app looks for its update manifest. Defaults to the
@@ -309,6 +310,21 @@ final class AppSettings: ObservableObject {
             applyBackupExclusion()
         }
     }
+    /// IDs of damaged or unreadable records explicitly dismissed by the user from notices.
+    @Published var dismissedDamagedRecordIDs: Set<String> {
+        didSet {
+            defaults.set(Array(dismissedDamagedRecordIDs), forKey: Keys.dismissedDamagedRecordIDs)
+        }
+    }
+    func isDamagedRecordDismissed(id: String) -> Bool {
+        dismissedDamagedRecordIDs.contains(id)
+    }
+    func dismissDamagedRecord(id: String) {
+        dismissedDamagedRecordIDs.insert(id)
+    }
+    func undismissDamagedRecord(id: String) {
+        dismissedDamagedRecordIDs.remove(id)
+    }
     /// The version of the Terms/Privacy Policy the user accepted (see `Legal`).
     /// Empty until accepted. Persisted locally so the practice has a record that
     /// the terms were accepted, and which version, before the app could be used.
@@ -401,6 +417,11 @@ final class AppSettings: ObservableObject {
             updateFeedURL = AppSettings.defaultUpdateFeedURL
         }
         autoCheckForUpdates = defaults.object(forKey: Keys.autoCheckForUpdates) as? Bool ?? true
+        if let savedDismissed = defaults.stringArray(forKey: Keys.dismissedDamagedRecordIDs) {
+            dismissedDamagedRecordIDs = Set(savedDismissed)
+        } else {
+            dismissedDamagedRecordIDs = []
+        }
         dataRootURL = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark)
         // Re-assert the backup-exclusion policy on the resolved folder each launch
         // (best-effort: the folder may not be accessible yet this early).

@@ -2,12 +2,17 @@ import SwiftUI
 
 struct PatientsListView: View {
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var settings: AppSettings
     @Binding var selectedPatient: Patient?
     let onEditProfile: (Patient) -> Void
 
     @State private var searchText = ""
     @State private var showAddPatient = false
     @State private var newPatientName = ""
+
+    private var visibleUnreadablePatients: [UnreadableEntry] {
+        appModel.unreadablePatients.filter { !settings.isDamagedRecordDismissed(id: $0.id) }
+    }
 
     private var filteredPatients: [Patient] {
         guard !searchText.isEmpty else { return appModel.patients }
@@ -82,12 +87,15 @@ struct PatientsListView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !appModel.unreadablePatients.isEmpty {
+            if !visibleUnreadablePatients.isEmpty {
                 DamagedRecordsNotice(
-                    title: appModel.unreadablePatients.count == 1
+                    title: visibleUnreadablePatients.count == 1
                         ? "1 patient couldn't be read"
-                        : "\(appModel.unreadablePatients.count) patients couldn't be read",
-                    entries: appModel.unreadablePatients
+                        : "\(visibleUnreadablePatients.count) patients couldn't be read",
+                    entries: visibleUnreadablePatients,
+                    onDismiss: { entry in
+                        settings.dismissDamagedRecord(id: entry.id)
+                    }
                 )
             }
 

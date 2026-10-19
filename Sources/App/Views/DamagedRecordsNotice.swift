@@ -10,6 +10,9 @@ import AppKit
 struct DamagedRecordsNotice: View {
     let title: String
     let entries: [UnreadableEntry]
+    var onDismiss: ((UnreadableEntry) -> Void)? = nil
+
+    @State private var reviewingEntry: UnreadableEntry?
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
@@ -34,6 +37,18 @@ struct DamagedRecordsNotice: View {
         .clipShape(shape)
         .overlay(shape.strokeBorder(Theme.line.color, lineWidth: 1))
         .accessibilityElement(children: .contain)
+        .sheet(item: $reviewingEntry) { entry in
+            DamagedRecordReviewSheet(
+                entry: entry,
+                onDismissNotice: {
+                    onDismiss?(entry)
+                    reviewingEntry = nil
+                },
+                onClose: {
+                    reviewingEntry = nil
+                }
+            )
+        }
     }
 
     private var header: some View {
@@ -68,8 +83,8 @@ struct DamagedRecordsNotice: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Chip("Unreadable", tone: .warn)
-                Text(entry.message)
-                    .font(Theme.Typography.caption)
+                Text(entry.shortDescription)
+                    .font(Theme.Typography.caption.weight(.medium))
                     .foregroundStyle(Theme.text.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -77,17 +92,111 @@ struct DamagedRecordsNotice: View {
                 .font(Theme.Typography.caption.monospaced())
                 .foregroundStyle(Theme.muted.color)
                 .textSelection(.enabled)
-            #if canImport(AppKit)
-            Button("Show in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([entry.folder])
+            HStack(spacing: 12) {
+                Button("Review") {
+                    reviewingEntry = entry
+                }
+                .buttonStyle(.themed)
+                .controlSize(.small)
+
+                if onDismiss != nil {
+                    Button("Dismiss") {
+                        onDismiss?(entry)
+                    }
+                    .buttonStyle(.plain)
+                    .font(Theme.Typography.control)
+                    .foregroundStyle(Theme.muted.color)
+                    .help("Dismiss this warning. The original file remains untouched.")
+                }
+
+                #if canImport(AppKit)
+                Button("Show in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([entry.folder])
+                }
+                .buttonStyle(.plain)
+                .font(Theme.Typography.control)
+                .foregroundStyle(Theme.muted.color)
+                .help("Show this record's folder in Finder")
+                #endif
             }
-            .buttonStyle(.plain)
-            .font(Theme.Typography.control)
-            .foregroundStyle(Theme.muted.color)
-            .help("Show this record's folder in Finder")
-            #endif
+            .padding(.top, 2)
         }
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A modal sheet presenting full details for a damaged or unreadable record,
+/// explaining why it couldn't be loaded and reassuring the user that the file
+/// is untouched and can be restored from a backup.
+struct DamagedRecordReviewSheet: View {
+    let entry: UnreadableEntry
+    let onDismissNotice: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(Theme.warn.color)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.kind == .patientRecord ? "Damaged Patient Record" : "Damaged Session Record")
+                        .font(Theme.Typography.title)
+                        .foregroundStyle(Theme.text.color)
+                    Text(entry.shortDescription)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.muted.color)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Explanation")
+                    .eyebrowStyle()
+                Text(entry.message)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("File Location")
+                    .eyebrowStyle()
+                HStack(spacing: 8) {
+                    Text(entry.fileURL.path)
+                        .font(Theme.Typography.caption.monospaced())
+                        .foregroundStyle(Theme.text.color)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                        .themeField()
+                    #if canImport(AppKit)
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([entry.folder])
+                    }
+                    .buttonStyle(.themed)
+                    .controlSize(.small)
+                    #endif
+                }
+            }
+
+            HStack {
+                Button("Dismiss Notice", action: onDismissNotice)
+                    .buttonStyle(.themed)
+                    .help("Dismiss this notice from the list. The original file remains untouched.")
+
+                Spacer()
+
+                Button("Done", action: onClose)
+                    .buttonStyle(.themePrimary)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.top, 8)
+        }
+        .padding(24)
+        .frame(width: 480)
+        .background(Theme.panel.color)
     }
 }

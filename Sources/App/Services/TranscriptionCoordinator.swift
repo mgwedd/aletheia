@@ -87,7 +87,10 @@ final class TranscriptionCoordinator: ObservableObject {
             ))
             return
         }
-        jobs[sessionID] = TranscriptionJob(startedAt: Date())
+        jobs[sessionID] = TranscriptionJob(
+            startedAt: Date(),
+            modelName: "Whisper \(settings.whisperModel.rawValue)"
+        )
         let protector = appModel.currentProtector
         tasks[sessionID] = Task { [weak self] in
             guard let self else { return }

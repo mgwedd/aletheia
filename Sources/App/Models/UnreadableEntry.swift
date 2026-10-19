@@ -50,6 +50,22 @@ struct UnreadableEntry: Identifiable, Equatable {
     /// Where the file lives, for display and "Show in Finder".
     var fileURL: URL { folder.appendingPathComponent(fileName) }
 
+    /// A concise, one-line summary for list views and notices.
+    var shortDescription: String {
+        switch reason {
+        case .notReadable:
+            return kind == .patientRecord
+                ? "Patient record couldn't be opened"
+                : "Session record couldn't be opened"
+        case .undecodable:
+            return kind == .patientRecord
+                ? "Patient record file is damaged"
+                : "Session record file is damaged"
+        case .couldNotSaveIdentity:
+            return "Session identity file couldn't be saved"
+        }
+    }
+
     /// Plain-language, non-blocking explanation: what happened and what was (not)
     /// done to the file. The location is shown separately by the UI.
     var message: String {
