@@ -121,7 +121,7 @@ struct AletheiaApp: App {
                 .task { await updateService.checkForUpdates() }
                 .onChange(of: scenePhase) { _, phase in
                     // Switching apps doesn't re-lock: AppLock does that on
-                    // idle timeout, sleep and screen lock.
+                    // app hide (⌘H), idle timeout, sleep and screen lock.
                     if phase == .active {
                         Task { await updateService.checkForUpdates() }
                     }
@@ -245,22 +245,24 @@ private struct LockCover: ViewModifier {
             encryption: encryption.state
         )
         return content
-            // Tier-1 protection: cover everything until the user authenticates.
-            .overlay {
-                if covers.contains(.appLock) {
-                    LockView()
-                        .environmentObject(appLock)
-                        .transition(.opacity)
-                }
-            }
             // Tier-2: an encrypted folder needs its passphrase once per launch
-            // before its notes can be read or written.
+            // before its notes can be read or written. Added first so Tier-1
+            // (added last) draws above it when both covers apply.
             .overlay {
                 if covers.contains(.passphrase) {
                     EncryptionUnlockView()
                         .environmentObject(encryption)
                         .environmentObject(settings)
                         .environmentObject(appModel)
+                        .transition(.opacity)
+                }
+            }
+            // Tier-1 protection: applied last so LockView always sits on top of
+            // everything, including the passphrase sheet.
+            .overlay {
+                if covers.contains(.appLock) {
+                    LockView()
+                        .environmentObject(appLock)
                         .transition(.opacity)
                 }
             }

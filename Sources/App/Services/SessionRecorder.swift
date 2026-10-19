@@ -362,8 +362,9 @@ final class SessionRecorder: ObservableObject {
         resetLevels()
     }
 
-    /// Paused shows the meters at zero; otherwise smooths the latest raw levels.
-    private func updateLevels(dt: Float) {
+    /// Paused shows the meters at zero; otherwise smooths the latest raw levels
+    /// and feeds `CallAudioWatch` with the unpaused poll interval.
+    func updateLevels(dt: Float, rawMicLevel: Float? = nil, rawCallLevel: Float? = nil) {
         guard isRecording else {
             // Recording ended some other way (e.g. a capture error): stop polling.
             stopLevelPolling()
@@ -373,14 +374,29 @@ final class SessionRecorder: ObservableObject {
             resetLevels()
             return
         }
-        let callTarget = systemAudio.levelSource.latest()
+        let callTarget = rawCallLevel ?? systemAudio.levelSource.latest()
         callWatch.observe(level: callTarget, dt: TimeInterval(dt))
         if callAudioSilent != callWatch.isSilent { callAudioSilent = callWatch.isSilent }
-        let micValue = micSmoother.update(target: mic.levelSource.latest(), dt: dt)
+        let micValue = micSmoother.update(target: rawMicLevel ?? mic.levelSource.latest(), dt: dt)
         let callValue = callSmoother.update(target: callTarget, dt: dt)
         // Skip identical values (e.g. steady silence) so idle meters don't republish.
         if levels.mic != micValue { levels.mic = micValue }
         if levels.call != callValue { levels.call = callValue }
+    }
+
+    /// Test seam: enters the `.recording` state without opening hardware audio
+    /// devices so `updateLevels`, `pause`, `resume`, and `CallAudioWatch`
+    /// wiring can be exercised deterministically.
+    func beginSimulatedRecordingForTesting(
+        startedAt: Date = Date(),
+        grace: TimeInterval = CallAudioWatch.defaultGrace
+    ) {
+        isPaused = false
+        clock = RecordingClock(startedAt: startedAt)
+        state = .recording(startedAt: startedAt)
+        callWatch = CallAudioWatch(grace: grace)
+        callAudioSilent = false
+        resetLevels()
     }
 
     private func resetLevels() {

@@ -42,14 +42,23 @@ enum MainWindow {
     }
 
     /// Make the main window key. A window the user minimised is only restored when asked to.
+    /// If the main window is closed (e.g. only the patient chat window is open), falls back
+    /// to the first visible non-panel window so unlocking still hands focus back.
     @MainActor static func makeKey(restoring: Bool = false) {
-        guard let window else { return }
-        if window.isMiniaturized {
-            guard restoring else { return }
-            window.deminiaturize(nil)
+        if let window {
+            if window.isMiniaturized {
+                guard restoring else { return }
+                window.deminiaturize(nil)
+            }
+            if window.isVisible {
+                window.makeKeyAndOrderFront(nil)
+                return
+            }
         }
-        guard window.isVisible else { return }
-        window.makeKeyAndOrderFront(nil)
+        if NSApp.keyWindow == nil {
+            NSApp.windows.first { $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel) }?
+                .makeKeyAndOrderFront(nil)
+        }
     }
 }
 
