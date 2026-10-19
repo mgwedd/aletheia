@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.48.0] - 2026-10-19
+
+### Added
+- local tool loop, month-merged digests, effort UI, and built-in e2e tests (#286, #318) (#320)
+
 ## [2.47.0] - 2026-10-19
 
 ### Added
