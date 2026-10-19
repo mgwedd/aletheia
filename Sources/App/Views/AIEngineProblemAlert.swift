@@ -21,7 +21,9 @@ struct AIEngineActions {
                 try await integrations.makeAssistant().pullModel(name, onProgress: onProgress)
             },
             downloadBuiltInModel: { onProgress in
-                try await integrations.downloadBuiltInModel { onProgress($0, "") }
+                try await integrations.downloadBuiltInModel { progress in
+                    onProgress(progress, LlamaModelDownloader.shared.statusText)
+                }
             }
         )
     }

@@ -5,11 +5,13 @@ import Foundation
 /// error to "which button do we show" is unit-tested without a Mac.
 ///
 /// ```
-/// OllamaError.notReachable ─┬─ app not installed ─▶ notInstalled     [Get Ollama]
-///                           └─ app installed ─────▶ notRunning       [Start Ollama]
-/// OllamaError.modelNotFound ───────────────────────▶ modelMissing     [Download model]
-/// OllamaError.badResponse ─────────────────────────▶ erroring         [Try again]
+/// OllamaError.notReachable ─┬─ app not installed ─▶ notInstalled        [Get Ollama]
+///                           └─ app installed ─────▶ notRunning          [Start Ollama]
+/// OllamaError.modelNotFound ───────────────────────▶ modelMissing        [Download model]
+/// OllamaError.badResponse ─────────────────────────▶ erroring            [Try again]
 /// LocalLLMEngineError.modelNotDownloaded ──────────▶ builtInModelMissing [Download model]
+/// LocalLLMEngineError.loadFailed ──────────────────▶ builtInModelCorrupt [Re-download model]
+/// LocalLLMEngineError.outOfMemory / generationFailed ▶ erroring          [Try again]
 /// anything else ───────────────────────────────────▶ nil (normal error alert)
 /// ```
 enum AIEngineProblem: Equatable {
@@ -19,6 +21,8 @@ enum AIEngineProblem: Equatable {
     case erroring(String)
     /// The built-in engine's model isn't downloaded yet.
     case builtInModelMissing
+    /// The built-in engine's model file failed to load (corrupt or incomplete).
+    case builtInModelCorrupt
 
     enum Action: Equatable {
         case getOllama
@@ -41,7 +45,14 @@ enum AIEngineProblem: Equatable {
     }
 
     static func from(error: Error, ollamaInstalled: Bool) -> AIEngineProblem? {
-        if error as? LocalLLMEngineError == .modelNotDownloaded { return .builtInModelMissing }
+        if let local = error as? LocalLLMEngineError {
+            switch local {
+            case .modelNotDownloaded: return .builtInModelMissing
+            case .loadFailed: return .builtInModelCorrupt
+            case .outOfMemory, .generationFailed: return .erroring(local.localizedDescription)
+            case .unavailable: return nil
+            }
+        }
         guard let ollama = error as? OllamaError else { return nil }
         switch ollama {
         case .notReachable: return ollamaInstalled ? .notRunning : .notInstalled
@@ -55,6 +66,7 @@ enum AIEngineProblem: Equatable {
         case .notInstalled: return "The local AI engine isn't installed"
         case .notRunning: return "The local AI engine isn't running"
         case .modelMissing, .builtInModelMissing: return "The AI model isn't downloaded"
+        case .builtInModelCorrupt: return "The AI model couldn't be loaded"
         case .erroring: return "The local AI engine hit a problem"
         }
     }
@@ -71,6 +83,8 @@ enum AIEngineProblem: Equatable {
             return detail
         case .builtInModelMissing:
             return "Aletheia's AI model downloads once and then runs on this Mac. Download it and Aletheia will retry your request."
+        case .builtInModelCorrupt:
+            return "The downloaded AI model file appears to be damaged or incomplete. Re-download it and Aletheia will retry your request."
         }
     }
 
@@ -80,11 +94,12 @@ enum AIEngineProblem: Equatable {
         case .notRunning: return .startOllama
         case .modelMissing(let name): return .downloadModel(name)
         case .erroring: return .retry
-        case .builtInModelMissing: return .downloadBuiltInModel
+        case .builtInModelMissing, .builtInModelCorrupt: return .downloadBuiltInModel
         }
     }
 
     var actionTitle: String {
+        if case .builtInModelCorrupt = self { return "Re-download Model" }
         switch action {
         case .getOllama: return "Get Ollama"
         case .startOllama: return "Start Ollama"

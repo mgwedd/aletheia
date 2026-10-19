@@ -93,6 +93,11 @@ struct SetupChecklistView: View {
                 if item.action == .downloadBuiltInModel, llamaDownloader.isDownloading {
                     ProgressView(value: llamaDownloader.progress)
                         .tint(Theme.accent.color)
+                    if !llamaDownloader.statusText.isEmpty {
+                        Text(llamaDownloader.statusText)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.muted.color)
+                    }
                 }
                 if item.action == .downloadOllamaModel, busyAction == .downloadOllamaModel {
                     ProgressView(value: ollamaPullProgress)

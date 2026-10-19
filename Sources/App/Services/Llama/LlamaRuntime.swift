@@ -43,4 +43,25 @@ enum LlamaRuntime {
             .appendingPathComponent("Adapters", isDirectory: true)
             .appendingPathComponent(adapter.fileName)
     }
+
+    /// Other `LlamaModel` cases (besides `active`) whose GGUF files exist in `directory`.
+    static func unusedDownloadedModels(
+        besides active: LlamaModel,
+        in directory: URL = modelsDirectory
+    ) -> [LlamaModel] {
+        LlamaModel.allCases.filter { model in
+            model != active && FileManager.default.fileExists(atPath: directory.appendingPathComponent(model.fileName).path)
+        }
+    }
+
+    /// Removes the on-disk GGUF (and any partial/resume files) for `model` in `directory`.
+    static func removeModel(_ model: LlamaModel, in directory: URL = modelsDirectory) throws {
+        unloadAll()
+        let url = directory.appendingPathComponent(model.fileName)
+        try? FileManager.default.removeItem(at: LlamaModelDownloader.partialURL(for: url))
+        try? FileManager.default.removeItem(at: LlamaModelDownloader.resumeDataURL(for: url))
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
 }

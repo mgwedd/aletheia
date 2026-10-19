@@ -35,7 +35,14 @@ final class AIEngineProblemTests: XCTestCase {
     }
 
     func testEveryProblemHasTitleMessageAndAction() {
-        let all: [AIEngineProblem] = [.notInstalled, .notRunning, .modelMissing("m"), .erroring("x")]
+        let all: [AIEngineProblem] = [
+            .notInstalled,
+            .notRunning,
+            .modelMissing("m"),
+            .erroring("x"),
+            .builtInModelMissing,
+            .builtInModelCorrupt,
+        ]
         for problem in all {
             XCTAssertFalse(problem.title.isEmpty)
             XCTAssertFalse(problem.message.isEmpty)
@@ -117,10 +124,13 @@ final class AIEngineProblemTests: XCTestCase {
         )
     }
 
-    func testBuiltInModelMissingRoutesToTheBuiltInDownload() async throws {
+    @MainActor
+    func testBuiltInModelMissingAndCorruptRouteToTheBuiltInDownload() async throws {
         let log = ActionLog()
         try await AIEngineRecovery.perform(.builtInModelMissing, actions: log.actions)
-        XCTAssertEqual(log.calls, ["builtIn"])
+        try await AIEngineRecovery.perform(.builtInModelCorrupt, actions: log.actions)
+        XCTAssertEqual(log.calls, ["builtIn", "builtIn"])
+        XCTAssertEqual(AIEngineRecoveryController.startingStatus(for: .builtInModelCorrupt), "Downloading the AI model…")
     }
 
     func testEachProblemRoutesToItsOwnAction() async throws {
@@ -284,7 +294,28 @@ final class AIEngineProblemTests: XCTestCase {
         XCTAssertEqual(problem?.action, .downloadBuiltInModel)
         XCTAssertEqual(problem?.actionTitle, "Download Model")
         XCTAssertEqual(problem?.retriesAfterAction, true)
-        XCTAssertNil(AIEngineProblem.from(error: LocalLLMEngineError.loadFailed("x"), ollamaInstalled: false))
+    }
+
+    func testCorruptBuiltInModelOffersRedownloadAndRetries() {
+        let problem = AIEngineProblem.from(error: LocalLLMEngineError.loadFailed("bad gguf"), ollamaInstalled: false)
+        XCTAssertEqual(problem, .builtInModelCorrupt)
+        XCTAssertEqual(problem?.action, .downloadBuiltInModel)
+        XCTAssertEqual(problem?.actionTitle, "Re-download Model")
+        XCTAssertEqual(problem?.retriesAfterAction, true)
+    }
+
+    func testBuiltInOutOfMemoryAndGenerationFailuresOfferRetry() {
+        let oom = AIEngineProblem.from(error: LocalLLMEngineError.outOfMemory, ollamaInstalled: false)
+        XCTAssertEqual(oom, .erroring(LocalLLMEngineError.outOfMemory.localizedDescription))
+        XCTAssertEqual(oom?.action, .retry)
+        XCTAssertEqual(oom?.actionTitle, "Try Again")
+        XCTAssertEqual(oom?.retriesAfterAction, true)
+
+        let gen = AIEngineProblem.from(error: LocalLLMEngineError.generationFailed("decode failed"), ollamaInstalled: false)
+        XCTAssertEqual(gen, .erroring("decode failed"))
+        XCTAssertEqual(gen?.action, .retry)
+
+        XCTAssertNil(AIEngineProblem.from(error: LocalLLMEngineError.unavailable("not built"), ollamaInstalled: false))
     }
 
     func testProbeOnBuiltInEngineReportsOnlyAMissingModel() async {

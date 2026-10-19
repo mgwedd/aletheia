@@ -12,15 +12,38 @@ struct LocalLLMSampling: Equatable {
     var temperature: Double
     /// Optional fixed seed for reproducible sampling when `temperature > 0`.
     var seed: UInt32?
+    /// Penalty applied to recently generated tokens (> 1.0 discourages loops; 1.0 disables).
+    var repeatPenalty: Double
+    /// How many recent tokens the repeat penalty inspects.
+    var repeatLastN: Int
 
-    init(maxTokens: Int = 512, temperature: Double = 0, seed: UInt32? = nil) {
+    init(
+        maxTokens: Int = 512,
+        temperature: Double = 0,
+        seed: UInt32? = nil,
+        repeatPenalty: Double = 1.0,
+        repeatLastN: Int = 64
+    ) {
         self.maxTokens = maxTokens
         self.temperature = temperature
         self.seed = seed
+        self.repeatPenalty = repeatPenalty
+        self.repeatLastN = repeatLastN
     }
 
     /// Greedy decoding — reproducible output for clinical notes.
     static let deterministic = LocalLLMSampling(maxTokens: 512, temperature: 0)
+
+    /// Task-tuned sampling: uses the task's reply cap and temperature with a
+    /// mild repeat penalty so 3B/8B models don't loop on bullet lists.
+    static func forTask(_ task: AITask, maxTokens: Int? = nil) -> LocalLLMSampling {
+        LocalLLMSampling(
+            maxTokens: maxTokens ?? task.maxTokens,
+            temperature: task.temperature,
+            repeatPenalty: 1.1,
+            repeatLastN: 64
+        )
+    }
 
     /// Whether this resolves to greedy decoding (no sampling randomness).
     var isGreedy: Bool { temperature <= 0 }

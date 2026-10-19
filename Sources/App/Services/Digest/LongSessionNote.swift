@@ -136,6 +136,7 @@ enum LongSessionNote {
                     }
                     let draft = try await builder.runStage(
                         prompt(material), read: "Reading passages", write: "Writing the note", task: .note,
+                        grammar: format.grammar,
                         service: drafter, live: live, onSnapshot: { continuation.yield($0) })
                     try Task.checkCancellation()
 
@@ -169,7 +170,8 @@ enum LongSessionNote {
         guard service.fits(prompt: prompt) else { return .tooLong }
         do {
             let corrected = try await builder.runStage(
-                prompt, read: "Checking", write: "Writing corrections", task: .note, service: service, live: live)
+                prompt, read: "Checking", write: "Writing corrections", task: .note,
+                grammar: format.grammar, service: service, live: live)
             if let why = rejection(corrected, draft: draft, format: format, phrases: phrases) { return why }
             accept(corrected)
             return .ran
