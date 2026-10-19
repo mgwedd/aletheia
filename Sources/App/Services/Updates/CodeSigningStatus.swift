@@ -39,8 +39,12 @@ enum CodeSigningStatus: Equatable {
         guard SecCodeCopySelf([], &secCode) == errSecSuccess, let secCode else {
             return .unsigned
         }
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(secCode, [], &staticCode) == errSecSuccess, let staticCode else {
+            return .unsigned
+        }
         var infoCF: CFDictionary?
-        guard SecCodeCopySigningInformation(secCode, SecCSFlags(rawValue: kSecCSSigningInformation), &infoCF) == errSecSuccess,
+        guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &infoCF) == errSecSuccess,
               let info = infoCF as? [String: Any] else {
             return .unsigned
         }
