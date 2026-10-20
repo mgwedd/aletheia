@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.57.2] - 2026-10-20
+
+### Fixed
+- merge a speaker's segments by pause, not start-to-start (#332)
+
 ## [2.57.1] - 2026-10-20
 
 ### Fixed
