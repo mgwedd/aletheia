@@ -329,4 +329,15 @@ final class AppModel: ObservableObject {
         mutate(&current)
         savePatientNotes(current)
     }
+
+    /// Deletes a patient and all of their associated records from disk and the
+    /// database, writes an audit log entry (HIPAA §164.312(b)), refreshes the
+    /// patient list, and reindexes Spotlight.
+    func deletePatient(_ patient: Patient) throws {
+        guard let store else { throw StoreError.noDataRoot }
+        try store.deletePatient(patient)
+        recordAudit(.recordDeleted, subjectID: patient.id.uuidString, detail: "patient")
+        refreshPatients()
+        reindexSpotlight()
+    }
 }

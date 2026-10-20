@@ -369,6 +369,20 @@ final class SearchIndex {
         settle()
     }
 
+    /// Removes all indexed documents, passages, and session stamps for a patient.
+    func purgePatient(_ patient: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let db = open(), exec(db, "BEGIN") else { return }
+        each(db, "SELECT id FROM doc WHERE patient = ?1", binds: [.text(patient)]) { stmt in
+            self.pendingDelete.append(sqlite3_column_int64(stmt, 0))
+        }
+        removeDocs(db)
+        run(db, "DELETE FROM session WHERE patient = ?1", binds: [.text(patient)])
+        if !exec(db, "COMMIT") { exec(db, "ROLLBACK") }
+        settle()
+    }
+
     /// Counts, for tests and the benchmark.
     func counts() -> (docs: Int, passages: Int) {
         lock.lock()

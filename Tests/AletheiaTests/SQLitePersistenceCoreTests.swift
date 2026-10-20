@@ -90,6 +90,28 @@ final class SQLitePersistenceCoreTests: XCTestCase {
         XCTAssertTrue(core.remove(kind: "comment", id: "gone"), "removing an absent record is not an error")
     }
 
+    func testRemoveAllByOwnerID() {
+        let patientA = UUID(), patientB = UUID()
+        core.put(record("1", kind: "chatThread", owner: patientA, body: "Thread 1"))
+        core.put(record("2", kind: "chatThread", owner: patientA, body: "Thread 2"))
+        core.put(record("3", kind: "chatThread", owner: patientB, body: "Thread 3"))
+
+        XCTAssertTrue(core.removeAll(ownerID: patientA))
+        XCTAssertTrue(core.records(kind: "chatThread", ownerID: patientA).isEmpty)
+        XCTAssertEqual(core.records(kind: "chatThread", ownerID: patientB).count, 1)
+    }
+
+    func testRemoveAllByItemID() {
+        let sessionA = UUID(), sessionB = UUID()
+        core.put(record("1", kind: "comment", item: sessionA, body: "Comment 1"))
+        core.put(record("2", kind: "comment", item: sessionA, body: "Comment 2"))
+        core.put(record("3", kind: "comment", item: sessionB, body: "Comment 3"))
+
+        XCTAssertTrue(core.removeAll(itemID: sessionA))
+        XCTAssertTrue(core.records(kind: "comment", itemID: sessionA).isEmpty)
+        XCTAssertEqual(core.records(kind: "comment", itemID: sessionB).count, 1)
+    }
+
     func testSingletonKeyedByItemID() {
         let session = UUID()
         core.put(record(session.uuidString, kind: "note", item: session, body: "the note"))

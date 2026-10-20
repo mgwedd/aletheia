@@ -180,6 +180,22 @@ final class CommentStore {
         chats.saveSessionChat(messages, sessionID: sessionID, now: now)
     }
 
+    // MARK: - Patient purge
+
+    /// Purges every database row associated with a patient (all chat threads
+    /// owned by the patient, and all comments, notes, and session chats for the
+    /// patient's sessions).
+    @discardableResult
+    func purgePatientRecords(patientID: UUID, sessionIDs: [UUID]) -> Bool {
+        var ok = core.removeAll(ownerID: patientID)
+        for sessionID in sessionIDs {
+            if !core.removeAll(itemID: sessionID) {
+                ok = false
+            }
+        }
+        return ok
+    }
+
     // MARK: - Snapshot
 
     /// Writes a consistent, compact copy of the database to `destination` using
