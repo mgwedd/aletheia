@@ -42,6 +42,26 @@ enum DoctorCategory: Int, CaseIterable, Comparable {
     }
 }
 
+/// An optional fix action offered on a Doctor row so the therapist has a
+/// one-click path to resolve the issue.
+enum DoctorAction: String, Equatable {
+    case openSettings
+    case openSystemSettings
+    case reviewRecords
+    case setupAssistant
+    case checkForUpdates
+
+    var label: String {
+        switch self {
+        case .openSettings: return "Open Settings"
+        case .openSystemSettings: return "Open System Settings"
+        case .reviewRecords: return "Review records"
+        case .setupAssistant: return "Set up…"
+        case .checkForUpdates: return "Check for Updates…"
+        }
+    }
+}
+
 /// One line of the Doctor report: what was checked, how it came out, in plain
 /// language, and what to do next. **Every string here must be PHI-free** — check
 /// names, statuses, counts, versions and error kinds only; never a patient or
@@ -59,14 +79,25 @@ struct DoctorCheck: Identifiable, Equatable {
     let detail: String
     /// What to do about it — nil when the check passed and there's nothing to do.
     let nextStep: String?
+    /// An optional one-click fix action for the check.
+    let action: DoctorAction?
 
-    init(id: String, category: DoctorCategory, title: String, status: DoctorStatus, detail: String, nextStep: String? = nil) {
+    init(
+        id: String,
+        category: DoctorCategory,
+        title: String,
+        status: DoctorStatus,
+        detail: String,
+        nextStep: String? = nil,
+        action: DoctorAction? = nil
+    ) {
         self.id = id
         self.category = category
         self.title = title
         self.status = status
         self.detail = detail
         self.nextStep = nextStep
+        self.action = action
     }
 }
 

@@ -20,6 +20,10 @@ final class DoctorRunnerTests: XCTestCase {
         var whisperFile = WhisperModelFileProbe(modelName: "Small", exists: false, sizeBytes: nil, expectedMB: 488)
         var digest = WhisperDigestProbe.unavailable
         var tools: [ToolHealthCheck] = []
+        var timeMachineExcluded: Bool? = false
+        var sandboxed: Bool = true
+        var appLockState: (enabled: Bool, canAuthenticate: Bool) = (true, true)
+        var auditLogWritable: Bool = true
 
         func environment() -> DoctorEnvironment { env }
         func now() -> Date { date }
@@ -31,6 +35,10 @@ final class DoctorRunnerTests: XCTestCase {
         func whisperModelFile() -> WhisperModelFileProbe { whisperFile }
         func whisperModelDigest() -> WhisperDigestProbe { digest }
         func toolHealthChecks() async -> [ToolHealthCheck] { tools }
+        func timeMachineExclusion() -> Bool? { timeMachineExcluded }
+        func isSandboxed() -> Bool { sandboxed }
+        func appLock() -> (enabled: Bool, canAuthenticate: Bool) { appLockState }
+        func isAuditLogWritable() -> Bool { auditLogWritable }
     }
 
     private func run(_ probes: StubProbes) async -> DoctorReport {
@@ -47,7 +55,8 @@ final class DoctorRunnerTests: XCTestCase {
         let report = await run(StubProbes())
         XCTAssertEqual(report.overall, .ok)
         for id in ["dataFolder.present", "dataFolder.access", "dataFolder.space",
-                   "database.open", "database.schema", "database.integrity", "backups.snapshots"] {
+                   "database.open", "database.schema", "database.integrity", "backups.snapshots",
+                   "backups.timeMachine", "encryption.appLock", "records.auditLog", "tools.sandbox"] {
             XCTAssertEqual(check(id, in: report)?.status, .ok, id)
         }
         XCTAssertNil(check("encryption.keystore", in: report), "skipped when encryption isn't in use")
@@ -261,6 +270,108 @@ final class DoctorRunnerTests: XCTestCase {
         XCTAssertTrue(LiveDoctorProbes.isLoopback(URL(string: "http://[::1]:11434")!))
         XCTAssertFalse(LiveDoctorProbes.isLoopback(URL(string: "http://192.168.1.20:11434")!))
         XCTAssertFalse(LiveDoctorProbes.isLoopback(URL(string: "https://example.com")!))
+    }
+
+    // MARK: Time Machine Exclusion
+
+    func testTimeMachineExclusionChecks() async {
+        var probes = StubProbes()
+        probes.timeMachineExcluded = false
+        var report = await run(probes)
+        let included = check("backups.timeMachine", in: report)
+        XCTAssertEqual(included?.status, .ok)
+        XCTAssertNil(included?.action)
+
+        probes.timeMachineExcluded = true
+        report = await run(probes)
+        let excluded = check("backups.timeMachine", in: report)
+        XCTAssertEqual(excluded?.status, .warning)
+        XCTAssertEqual(excluded?.action, .openSettings)
+        XCTAssertNotNil(excluded?.nextStep)
+    }
+
+    // MARK: Audit Log
+
+    func testAuditLogChecks() async {
+        var probes = StubProbes()
+        probes.auditLogWritable = true
+        var report = await run(probes)
+        let writable = check("records.auditLog", in: report)
+        XCTAssertEqual(writable?.status, .ok)
+        XCTAssertNil(writable?.action)
+
+        probes.auditLogWritable = false
+        report = await run(probes)
+        let unwritable = check("records.auditLog", in: report)
+        XCTAssertEqual(unwritable?.status, .failed)
+        XCTAssertEqual(unwritable?.action, .openSettings)
+        XCTAssertNotNil(unwritable?.nextStep)
+    }
+
+    // MARK: App Lock
+
+    func testAppLockChecks() async {
+        var probes = StubProbes()
+        probes.appLockState = (enabled: true, canAuthenticate: true)
+        var report = await run(probes)
+        let active = check("encryption.appLock", in: report)
+        XCTAssertEqual(active?.status, .ok)
+        XCTAssertNil(active?.action)
+
+        probes.appLockState = (enabled: true, canAuthenticate: false)
+        report = await run(probes)
+        let cannotAuth = check("encryption.appLock", in: report)
+        XCTAssertEqual(cannotAuth?.status, .warning)
+        XCTAssertEqual(cannotAuth?.action, .openSystemSettings)
+
+        probes.appLockState = (enabled: false, canAuthenticate: true)
+        report = await run(probes)
+        let disabled = check("encryption.appLock", in: report)
+        XCTAssertEqual(disabled?.status, .warning)
+        XCTAssertEqual(disabled?.action, .openSettings)
+    }
+
+    // MARK: App Sandbox
+
+    func testSandboxChecks() async {
+        var probes = StubProbes()
+        probes.sandboxed = true
+        var report = await run(probes)
+        let confined = check("tools.sandbox", in: report)
+        XCTAssertEqual(confined?.status, .ok)
+
+        probes.sandboxed = false
+        report = await run(probes)
+        let unconfined = check("tools.sandbox", in: report)
+        XCTAssertEqual(unconfined?.status, .warning)
+    }
+
+    // MARK: Doctor Actions on Checks
+
+    func testDoctorActionsAttachedToTroubledChecks() async {
+        var probes = StubProbes()
+        probes.folder.path = nil
+        var report = await run(probes)
+        XCTAssertEqual(check("dataFolder.present", in: report)?.action, .openSettings)
+
+        probes = StubProbes()
+        probes.unreadable = .count(2)
+        report = await run(probes)
+        XCTAssertEqual(check("records.unreadable", in: report)?.action, .reviewRecords)
+
+        probes = StubProbes()
+        probes.db.inspection.schemaVersion = 99
+        report = await run(probes)
+        XCTAssertEqual(check("database.schema", in: report)?.action, .checkForUpdates)
+
+        probes = StubProbes()
+        probes.tools = [
+            ToolHealthCheck(kind: .microphone, title: "Microphone", status: .failed, detail: "denied"),
+            ToolHealthCheck(kind: .ollama, title: "Ollama", status: .warning, detail: "missing", ollamaState: .modelMissing)
+        ]
+        report = await run(probes)
+        XCTAssertEqual(check("tools.microphone", in: report)?.action, .openSystemSettings)
+        XCTAssertEqual(check("tools.ollama", in: report)?.action, .setupAssistant)
     }
 
     // MARK: Module
