@@ -1002,13 +1002,23 @@ final class Store {
             }
 
             for session in (try? listSessions(for: patient)) ?? [] {
-                func hit(_ kind: SearchKind, _ idSuffix: String, text: String, noteLabel: String? = nil, seconds: Double? = nil) -> SearchHit {
+                func hit(
+                    _ kind: SearchKind,
+                    _ idSuffix: String,
+                    text: String,
+                    noteLabel: String? = nil,
+                    noteFormat: ProgressNoteFormat? = nil,
+                    commentID: String? = nil,
+                    seconds: Double? = nil
+                ) -> SearchHit {
                     SearchHit(
                         id: "\(kind.rawValue)-\(session.id.uuidString)\(idSuffix)",
                         kind: kind,
                         patient: patient,
                         session: session,
                         noteLabel: noteLabel,
+                        noteFormat: noteFormat,
+                        commentID: commentID,
                         commentSeconds: seconds,
                         snippet: snippet(text)
                     )
@@ -1028,12 +1038,12 @@ final class Store {
                     guard let text = note(for: patient, session: session, format: format) else { continue }
                     hasFormatNote = true
                     if TextSearch.matches(text, query: query) {
-                        hits.append(hit(.note, "-\(format.rawValue)", text: text, noteLabel: format.shortName))
+                        hits.append(hit(.note, "-\(format.rawValue)", text: text, noteLabel: format.shortName, noteFormat: format))
                     }
                 }
                 if !hasFormatNote, let text = summary(for: patient, session: session),
                    TextSearch.matches(text, query: query) {
-                    hits.append(hit(.note, "-summary", text: text, noteLabel: ProgressNoteFormat.narrative.shortName))
+                    hits.append(hit(.note, "-summary", text: text, noteLabel: ProgressNoteFormat.narrative.shortName, noteFormat: .narrative))
                 }
 
                 if let commentStore {
@@ -1051,7 +1061,7 @@ final class Store {
                         } else {
                             continue
                         }
-                        hits.append(hit(.comment, "-\(comment.id)", text: text, seconds: comment.anchorSeconds))
+                        hits.append(hit(.comment, "-\(comment.id)", text: text, commentID: comment.id, seconds: comment.anchorSeconds))
                     }
                 }
             }

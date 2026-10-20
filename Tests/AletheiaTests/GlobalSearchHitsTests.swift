@@ -68,6 +68,7 @@ final class GlobalSearchHitsTests: XCTestCase {
         let hits = store.searchHits(query: "sertraline")
         XCTAssertEqual(hits.map(\.kind), [.comment])
         XCTAssertTrue(hits[0].snippet.contains("sertraline"))
+        XCTAssertNotNil(hits[0].commentID)
         // No anchor time, so the title has no " at m:ss".
         XCTAssertFalse(hits[0].title.contains(" at "))
     }
@@ -80,6 +81,7 @@ final class GlobalSearchHitsTests: XCTestCase {
 
         let hits = store.searchHits(query: "insomnia")
         XCTAssertEqual(hits.filter { $0.kind == .note }.compactMap(\.noteLabel).sorted(), ["DAP", "SOAP"])
+        XCTAssertEqual(Set(hits.filter { $0.kind == .note }.compactMap(\.noteFormat)), Set([ProgressNoteFormat.dap, ProgressNoteFormat.soap]))
         // The mirrored summary.txt must not add a third "note".
         XCTAssertEqual(hits.count, 2)
         XCTAssertEqual(Set(hits.map(\.id)).count, 2)
@@ -93,6 +95,7 @@ final class GlobalSearchHitsTests: XCTestCase {
         let hits = store.searchHits(query: "vacation")
         XCTAssertEqual(hits.map(\.kind), [.note])
         XCTAssertEqual(hits.first?.noteLabel, "Summary")
+        XCTAssertEqual(hits.first?.noteFormat, .narrative)
     }
 
     func testAllTermsMustMatchWithinOnePlace() throws {

@@ -47,9 +47,35 @@ struct SearchHit: Identifiable, Equatable {
     let session: SessionRecord?
     /// For a progress-note hit, the format's short name ("SOAP", "Summary").
     let noteLabel: String?
+    /// For a progress-note hit, the format to open.
+    let noteFormat: ProgressNoteFormat?
+    /// For a comment hit, the comment's identifier in the rail.
+    let commentID: String?
     /// For a comment hit, seconds into the session the comment is anchored at.
     let commentSeconds: Double?
     let snippet: String
+
+    init(
+        id: String,
+        kind: SearchKind,
+        patient: Patient,
+        session: SessionRecord?,
+        noteLabel: String? = nil,
+        noteFormat: ProgressNoteFormat? = nil,
+        commentID: String? = nil,
+        commentSeconds: Double? = nil,
+        snippet: String
+    ) {
+        self.id = id
+        self.kind = kind
+        self.patient = patient
+        self.session = session
+        self.noteLabel = noteLabel
+        self.noteFormat = noteFormat
+        self.commentID = commentID
+        self.commentSeconds = commentSeconds
+        self.snippet = snippet
+    }
 
     /// "<Patient>, <Mon d, yyyy>", plus " (<Format>)" for a progress note and
     /// " at m:ss" for a comment. A patient hit is just the name.

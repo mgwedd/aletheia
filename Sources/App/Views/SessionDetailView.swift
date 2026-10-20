@@ -70,6 +70,37 @@ struct SessionDetailView: View {
     /// Lets the session list ask this view about unsaved transcript edits before
     /// switching to another session.
     var editGuard: UnsavedTranscriptGuard? = nil
+    var initialTab: SessionTab = .transcript
+    var initialFocusedCommentID: String? = nil
+    var initialNoteFormat: ProgressNoteFormat? = nil
+    var initialShowingMyNotes: Bool = false
+    var navigationToken: Int = 0
+
+    init(
+        patient: Patient,
+        session: SessionRecord,
+        onSessionUpdated: @escaping () -> Void = {},
+        editGuard: UnsavedTranscriptGuard? = nil,
+        initialTab: SessionTab = .transcript,
+        initialFocusedCommentID: String? = nil,
+        initialNoteFormat: ProgressNoteFormat? = nil,
+        initialShowingMyNotes: Bool = false,
+        navigationToken: Int = 0
+    ) {
+        self.patient = patient
+        self.session = session
+        self.onSessionUpdated = onSessionUpdated
+        self.editGuard = editGuard
+        self.initialTab = initialTab
+        self.initialFocusedCommentID = initialFocusedCommentID
+        self.initialNoteFormat = initialNoteFormat
+        self.initialShowingMyNotes = initialShowingMyNotes
+        self.navigationToken = navigationToken
+        self._selectedTab = State(initialValue: initialTab)
+        self._showingMyNotes = State(initialValue: initialShowingMyNotes)
+        self._focusedCommentID = State(initialValue: initialFocusedCommentID)
+        self._focusToken = State(initialValue: initialFocusedCommentID != nil ? 1 : 0)
+    }
 
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
@@ -227,12 +258,27 @@ struct SessionDetailView: View {
         .navigationTitle(Self.dateFormatter.string(from: session.date))
         .background(Theme.window.color)
         .onAppear {
+            if initialShowingMyNotes {
+                showingMyNotes = true
+            } else if let initialNoteFormat {
+                showingMyNotes = false
+                settings.progressNoteFormat = initialNoteFormat
+            }
+            selectedTab = initialTab
+
             load()
+
+            if let initialFocusedCommentID {
+                focusComment(initialFocusedCommentID)
+            }
             ensureDigest()
             // Load the model now so the first note or question skips the load.
             integrations.makeAssistant().warmUp(model: integrations.activeModelName)
             // A transcription that finished while this screen was away.
             consumeTranscriptionOutcome()
+        }
+        .onChange(of: navigationToken) { _, _ in
+            applyNavigationTarget()
         }
         .onDisappear {
             // Navigation that couldn't ask first (another patient, a search hit):
@@ -830,6 +876,24 @@ struct SessionDetailView: View {
     /// scrolls it into view) — no tab change, since the rail is right there.
     private func openComment(_ id: String) {
         focusComment(id)
+    }
+
+    /// Applies navigation requested externally (such as a search hit or deep link).
+    private func applyNavigationTarget() {
+        if initialShowingMyNotes {
+            showingMyNotes = true
+        } else if let initialNoteFormat {
+            showingMyNotes = false
+            settings.progressNoteFormat = initialNoteFormat
+            summaryText = savedNote(for: initialNoteFormat)
+            noteFingerprint = savedFingerprint(for: initialNoteFormat)
+            noteCoverage = savedCoverage(for: initialNoteFormat)
+            refreshHasPreviousNote()
+        }
+        selectedTab = initialTab
+        if let initialFocusedCommentID {
+            focusComment(initialFocusedCommentID)
+        }
     }
 
     private func resolveComment(_ comment: SessionComment, _ resolved: Bool) {

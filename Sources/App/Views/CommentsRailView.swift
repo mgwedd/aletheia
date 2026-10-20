@@ -33,6 +33,7 @@ struct CommentsRailView: View {
     /// written until Save.
     @State private var editingID: String?
     @State private var editDraft = ""
+    @State private var resolvedExpanded = false
 
     /// Active comments, ordered by their position in the session (anchored
     /// first, in time order; un-anchored after, in creation order) so the rail
@@ -102,7 +103,19 @@ struct CommentsRailView: View {
                     }
                     .onChange(of: focusToken) { _, _ in
                         guard let id = focusedCommentID else { return }
+                        if resolved.contains(where: { $0.id == id }) {
+                            resolvedExpanded = true
+                        }
                         withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
+                    }
+                    .onAppear {
+                        guard let id = focusedCommentID else { return }
+                        if resolved.contains(where: { $0.id == id }) {
+                            resolvedExpanded = true
+                        }
+                        DispatchQueue.main.async {
+                            withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
+                        }
                     }
                 }
             }
@@ -198,7 +211,7 @@ struct CommentsRailView: View {
     }
 
     private var resolvedSection: some View {
-        DisclosureGroup {
+        DisclosureGroup(isExpanded: $resolvedExpanded) {
             ForEach(resolved) { comment in
                 card(for: comment)
                     .opacity(0.7)

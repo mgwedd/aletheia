@@ -72,10 +72,37 @@ struct RootView: View {
             .environmentObject(appModel)
         }
         .sheet(isPresented: $showSearch) {
-            GlobalSearchView(onOpen: { patient, session in
-                selectedPatient = patient
-                if let session {
-                    navigator.requestOpenSession(patientID: patient.id, sessionID: session.id)
+            GlobalSearchView(onOpen: { hit in
+                selectedPatient = hit.patient
+                if let session = hit.session {
+                    let initialTab: SessionTab
+                    var noteFormat: ProgressNoteFormat?
+                    var showingMyNotes = false
+                    var commentID: String?
+
+                    switch hit.kind {
+                    case .note:
+                        initialTab = .notes
+                        noteFormat = hit.noteFormat
+                        showingMyNotes = false
+                    case .session:
+                        initialTab = .notes
+                        showingMyNotes = true
+                    case .comment:
+                        initialTab = .transcript
+                        commentID = hit.commentID
+                    case .transcript, .patient:
+                        initialTab = .transcript
+                    }
+
+                    navigator.requestOpenSession(
+                        patientID: hit.patient.id,
+                        sessionID: session.id,
+                        initialTab: initialTab,
+                        initialNoteFormat: noteFormat,
+                        initialShowingMyNotes: showingMyNotes,
+                        initialFocusedCommentID: commentID
+                    )
                 }
             })
                 .environmentObject(appModel)
