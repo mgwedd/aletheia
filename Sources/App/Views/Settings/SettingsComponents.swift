@@ -41,6 +41,20 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 
 /// The left column: one button per pane, the selected one on the accent tint.
 /// Up / down arrows move the selection while a row has keyboard focus.
+/// Settings window geometry, in one place. `SettingsView` declares its own
+/// minimum size from these; presenters (the sheet, the Settings scene) must not
+/// wrap it in a smaller `.frame(minWidth:)`, which clips the content instead of
+/// growing the window.
+enum SettingsLayout {
+    static let sidebarWidth: CGFloat = 220
+    /// Narrowest a pane's controls (field + button, segmented control) fit.
+    static let paneMinWidth: CGFloat = 680
+    static let minWidth: CGFloat = sidebarWidth + paneMinWidth
+    static let idealWidth: CGFloat = 960
+    static let minHeight: CGFloat = 640
+    static let idealHeight: CGFloat = 680
+}
+
 struct SettingsSidebar: View {
     @Binding var selection: SettingsPane
 
@@ -55,7 +69,7 @@ struct SettingsSidebar: View {
         }
         .padding(.horizontal, 10)
         .padding(.top, 16)
-        .frame(width: 220)
+        .frame(width: SettingsLayout.sidebarWidth)
         .frame(maxHeight: .infinity)
         .background(Theme.sidebar.color)
         .overlay(alignment: .trailing) {
