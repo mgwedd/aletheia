@@ -137,14 +137,16 @@ enum SessionActionPolicy {
 /// transcriber, a store, or a clock.
 struct TranscriptionJob: Equatable {
     let startedAt: Date
+    let modelName: String?
     private(set) var progress = TranscriptionProgress(stage: .preparing, fraction: 0)
     /// Cancel was requested; the work is winding down.
     private(set) var isCancelling = false
     private var transcribingSince: Date?
     private var fractionAtTranscribingStart = 0.0
 
-    init(startedAt: Date) {
+    init(startedAt: Date = Date(), modelName: String? = nil) {
         self.startedAt = startedAt
+        self.modelName = modelName
     }
 
     /// Folds in a progress report. Completion never moves backwards, `.saving`

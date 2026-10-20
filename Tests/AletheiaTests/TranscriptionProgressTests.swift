@@ -116,4 +116,9 @@ final class TranscriptionProgressTests: XCTestCase {
         job.apply(.init(stage: .transcribingCall, fraction: 0.5), now: t0)
         XCTAssertEqual(job.statusLine, "Transcribing… 50%")
     }
+
+    func testJobCarriesModelName() {
+        let job = TranscriptionJob(startedAt: t0, modelName: "Whisper medium.en")
+        XCTAssertEqual(job.modelName, "Whisper medium.en")
+    }
 }

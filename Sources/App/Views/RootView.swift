@@ -144,7 +144,9 @@ struct RootView: View {
                     failure: failure,
                     dataFolder: settings.dataRootURL,
                     showDoctorButton: doctorAvailable,
-                    onOpenDoctor: { openWindow(id: DoctorFeatureModule.windowID) }
+                    onOpenDoctor: { openWindow(id: DoctorFeatureModule.windowID) },
+                    onTryAgain: { appModel.reopenDatabase() },
+                    onChooseFolder: { appModel.chooseDataFolder() }
                 )
             } else if let subject = appModel.saveFailureSubject {
                 // Only when the database itself is open: an unopenable database is

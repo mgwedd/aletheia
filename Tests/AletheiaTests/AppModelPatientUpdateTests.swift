@@ -83,4 +83,16 @@ final class AppModelPatientUpdateTests: XCTestCase {
 
         XCTAssertEqual(try storedPatient(created.id).notes, "")
     }
+
+    func testReopenDatabaseRebuildsStore() throws {
+        XCTAssertNotNil(appModel.store)
+        appModel.reopenDatabase()
+        XCTAssertNotNil(appModel.store)
+    }
+
+    func testReopenStoreRebuildsStore() throws {
+        XCTAssertNotNil(appModel.store)
+        appModel.reopenStore()
+        XCTAssertNotNil(appModel.store)
+    }
 }

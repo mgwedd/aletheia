@@ -65,6 +65,8 @@ struct DatabaseUnavailableBanner: View {
     let dataFolder: URL?
     let showDoctorButton: Bool
     let onOpenDoctor: () -> Void
+    var onTryAgain: (() -> Void)? = nil
+    var onChooseFolder: (() -> Void)? = nil
 
     @State private var showSteps = true
 
@@ -94,6 +96,14 @@ struct DatabaseUnavailableBanner: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
                 HStack(spacing: 8) {
+                    if let onTryAgain {
+                        Button("Try again", action: onTryAgain)
+                            .buttonStyle(.themed)
+                    }
+                    if let onChooseFolder {
+                        Button("Choose another folder…", action: onChooseFolder)
+                            .buttonStyle(.themed)
+                    }
                     Button(showSteps ? "Hide Steps" : "Show Steps") {
                         withAnimation(.easeOut(duration: 0.15)) { showSteps.toggle() }
                     }

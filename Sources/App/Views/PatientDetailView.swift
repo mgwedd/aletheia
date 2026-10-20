@@ -7,6 +7,7 @@ struct PatientDetailView: View {
     let onEditProfile: (ProfileField) -> Void
 
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var integrations: Integrations
     @EnvironmentObject private var transcription: TranscriptionCoordinator
     /// Shared with the session view and the menu bar, to mark the row that is
@@ -17,6 +18,9 @@ struct PatientDetailView: View {
     @State private var sessions: [SessionRecord] = []
     /// Session folders whose `session.json` couldn't be read (left untouched).
     @State private var damagedSessions: [UnreadableEntry] = []
+    private var visibleDamagedSessions: [UnreadableEntry] {
+        damagedSessions.filter { !settings.isDamagedRecordDismissed(id: $0.id) }
+    }
     /// Selection is tracked by id, not by `SessionRecord`: the record is
     /// Hashable over every field (hasTranscript, hasSummary, ...), so after a
     /// refresh() a stored copy would no longer equal the row's tag and the
@@ -87,12 +91,15 @@ struct PatientDetailView: View {
                             .buttonStyle(.themed)
                         }
 
-                        if !damagedSessions.isEmpty {
+                        if !visibleDamagedSessions.isEmpty {
                             DamagedRecordsNotice(
-                                title: damagedSessions.count == 1
+                                title: visibleDamagedSessions.count == 1
                                     ? "1 session couldn't be read"
-                                    : "\(damagedSessions.count) sessions couldn't be read",
-                                entries: damagedSessions
+                                    : "\(visibleDamagedSessions.count) sessions couldn't be read",
+                                entries: visibleDamagedSessions,
+                                onDismiss: { entry in
+                                    settings.dismissDamagedRecord(id: entry.id)
+                                }
                             )
                         }
 

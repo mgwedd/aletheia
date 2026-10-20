@@ -48,8 +48,11 @@ struct TranscriptionProgressView: View {
     private var percent: Int { Int(job.progress.fraction * 100) }
 
     private var title: String {
-        guard let sessionDate else { return "Transcribing this session" }
-        return "Transcribing \(sessionDate.formatted(date: .abbreviated, time: .shortened))"
+        let base = sessionDate.map { "Transcribing \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "Transcribing this session"
+        if let model = job.modelName, !model.isEmpty {
+            return "\(base) · \(model)"
+        }
+        return base
     }
 
     /// "42% · about 2 min left"; the estimate only appears once the model has one.

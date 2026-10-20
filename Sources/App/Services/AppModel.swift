@@ -186,6 +186,34 @@ final class AppModel: ObservableObject {
         saveFailureSubject = nil
     }
 
+    /// Re-attempts opening the database and store with the current configuration.
+    func reopenDatabase() {
+        rebuildStore()
+    }
+
+    /// Re-attempts opening the database and store with the current configuration.
+    func reopenStore() {
+        rebuildStore()
+    }
+
+    /// Prompts the user with a folder chooser panel to pick another data folder,
+    /// sets it as the active data root, and rebuilds the store.
+    @discardableResult
+    func chooseDataFolder() -> Bool {
+        guard let url = FolderPicker.choose() else { return false }
+        do {
+            try settings.setDataRoot(url)
+            rebuildStore()
+            return true
+        } catch {
+            databaseState = .unavailable(DatabaseOpenFailure(
+                kind: .cannotOpen,
+                reason: error.localizedDescription
+            ))
+            return false
+        }
+    }
+
     /// Record an ePHI-affecting action, if a data folder (and thus a log) exists.
     /// The thin seam call sites use so they don't reach into `audit` directly.
     func recordAudit(_ action: AuditAction, subjectID: String? = nil, detail: String? = nil) {
