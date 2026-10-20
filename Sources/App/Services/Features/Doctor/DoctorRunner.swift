@@ -42,9 +42,13 @@ struct DoctorRunner {
             )
             checks += Self.keystoreChecks(probes.keystore())
             checks += Self.snapshotChecks(probes.snapshots(), now: now)
+            checks += Self.timeMachineChecks(probes.timeMachineExclusion())
             checks += Self.recordChecks(probes.unreadableEntries())
+            checks += Self.auditLogChecks(probes.isAuditLogWritable())
         }
 
+        checks += Self.appLockChecks(probes.appLock())
+        checks += Self.sandboxChecks(probes.isSandboxed())
         checks += Self.whisperChecks(file: probes.whisperModelFile(), digest: probes.whisperModelDigest())
         let toolHealth = await probes.toolHealthChecks()
         checks += Self.toolChecks(toolHealth)
@@ -61,7 +65,8 @@ struct DoctorRunner {
                 id: "dataFolder.present", category: .dataFolder, title: "Data folder chosen",
                 status: .failed,
                 detail: "No data folder has been chosen, so nothing can be saved.",
-                nextStep: "Open Settings and choose a data folder."
+                nextStep: "Open Settings and choose a data folder.",
+                action: .openSettings
             )]
         }
         guard probe.exists, probe.isDirectory else {
@@ -70,7 +75,8 @@ struct DoctorRunner {
                 id: "dataFolder.present", category: .dataFolder, title: "Data folder present",
                 status: .failed,
                 detail: "The data folder \(what): \(path)",
-                nextStep: "If it's on an external or network drive, reconnect it. If you moved or renamed it, choose it again under Settings > Data Folder. Don't create a new empty folder in its place."
+                nextStep: "If it's on an external or network drive, reconnect it. If you moved or renamed it, choose it again under Settings > Data Folder. Don't create a new empty folder in its place.",
+                action: .openSettings
             )]
         }
 
@@ -120,7 +126,8 @@ struct DoctorRunner {
                 id: "dataFolder.space", category: .dataFolder, title: "Free disk space",
                 status: .failed,
                 detail: "Only \(amount) free — saving is likely to fail.",
-                nextStep: "Free up space: open System Settings > General > Storage and empty the Trash."
+                nextStep: "Free up space: open System Settings > General > Storage and empty the Trash.",
+                action: .openSystemSettings
             )
         }
         if free < lowDiskWarningBytes {
@@ -128,7 +135,8 @@ struct DoctorRunner {
                 id: "dataFolder.space", category: .dataFolder, title: "Free disk space",
                 status: .warning,
                 detail: "\(amount) free — getting low.",
-                nextStep: "Free up some space soon: open System Settings > General > Storage."
+                nextStep: "Free up some space soon: open System Settings > General > Storage.",
+                action: .openSystemSettings
             )
         }
         return DoctorCheck(
@@ -173,7 +181,8 @@ struct DoctorRunner {
                     id: "database.schema", category: .database, title: "Database format",
                     status: .failed,
                     detail: "Database format v\(version) is newer than this version of Aletheia understands (v\(supportedSchemaVersion)).",
-                    nextStep: "Update Aletheia (Aletheia > Check for Updates…). Nothing has been lost."
+                    nextStep: "Update Aletheia (Aletheia > Check for Updates…). Nothing has been lost.",
+                    action: .checkForUpdates
                 ))
             } else if version < supportedSchemaVersion {
                 checks.append(DoctorCheck(
@@ -284,6 +293,24 @@ struct DoctorRunner {
         }
     }
 
+    static func timeMachineChecks(_ isExcluded: Bool?) -> [DoctorCheck] {
+        guard let isExcluded else { return [] }
+        if isExcluded {
+            return [DoctorCheck(
+                id: "backups.timeMachine", category: .backups, title: "Time Machine backup",
+                status: .warning,
+                detail: "The data folder is excluded from Time Machine backups.",
+                nextStep: "If you want Time Machine to back up your data folder, turn off “Keep data out of Time Machine” in Settings > Snapshots & Backups.",
+                action: .openSettings
+            )]
+        } else {
+            return [DoctorCheck(
+                id: "backups.timeMachine", category: .backups, title: "Time Machine backup",
+                status: .ok, detail: "The data folder is included in Time Machine backups."
+            )]
+        }
+    }
+
     // MARK: - Records
 
     static func recordChecks(_ probe: UnreadableEntriesProbe) -> [DoctorCheck] {
@@ -300,7 +327,68 @@ struct DoctorRunner {
                 id: "records.unreadable", category: .records, title: "Patient and session records",
                 status: .failed,
                 detail: "\(count) patient or session record\(count == 1 ? "" : "s") on disk couldn't be read, so \(count == 1 ? "it" : "they") may be missing from your lists.",
-                nextStep: "Don't delete or edit anything. Copy the whole data folder aside first; the unreadable records are still on disk and can often be repaired."
+                nextStep: "Don't delete or edit anything. Copy the whole data folder aside first; the unreadable records are still on disk and can often be repaired.",
+                action: .reviewRecords
+            )]
+        }
+    }
+
+    static func auditLogChecks(_ isWritable: Bool) -> [DoctorCheck] {
+        if isWritable {
+            return [DoctorCheck(
+                id: "records.auditLog", category: .records, title: "Audit log",
+                status: .ok, detail: "The local HIPAA audit log (audit.log) is writable."
+            )]
+        } else {
+            return [DoctorCheck(
+                id: "records.auditLog", category: .records, title: "Audit log",
+                status: .failed,
+                detail: "The local audit log cannot be written in the data folder. Actions touching patient records cannot be audited.",
+                nextStep: "In Finder, check file and folder permissions on the data folder.",
+                action: .openSettings
+            )]
+        }
+    }
+
+    // MARK: - App Lock
+
+    static func appLockChecks(_ lock: (enabled: Bool, canAuthenticate: Bool)) -> [DoctorCheck] {
+        if lock.enabled && lock.canAuthenticate {
+            return [DoctorCheck(
+                id: "encryption.appLock", category: .encryption, title: "App lock",
+                status: .ok, detail: "App lock is on with Touch ID or system password protection."
+            )]
+        } else if lock.enabled && !lock.canAuthenticate {
+            return [DoctorCheck(
+                id: "encryption.appLock", category: .encryption, title: "App lock",
+                status: .warning,
+                detail: "App lock is on, but this Mac cannot currently authenticate with Touch ID or password.",
+                nextStep: "Configure Touch ID or a password in System Settings > Touch ID & Password.",
+                action: .openSystemSettings
+            )]
+        } else {
+            return [DoctorCheck(
+                id: "encryption.appLock", category: .encryption, title: "App lock",
+                status: .warning,
+                detail: "App lock is off. Anyone with access to this Mac can open Aletheia.",
+                nextStep: "Turn on App Lock in Settings > Security to protect your notes when away from your Mac.",
+                action: .openSettings
+            )]
+        }
+    }
+
+    // MARK: - App Sandbox
+
+    static func sandboxChecks(_ isSandboxed: Bool) -> [DoctorCheck] {
+        if isSandboxed {
+            return [DoctorCheck(
+                id: "tools.sandbox", category: .tools, title: "App Sandbox",
+                status: .ok, detail: "Aletheia is running within the macOS App Sandbox."
+            )]
+        } else {
+            return [DoctorCheck(
+                id: "tools.sandbox", category: .tools, title: "App Sandbox",
+                status: .warning, detail: "Aletheia is running outside the App Sandbox (development or unconfined build)."
             )]
         }
     }
@@ -321,21 +409,24 @@ struct DoctorRunner {
                 checks.append(DoctorCheck(
                     id: "tools.whisperFile", category: .tools, title: "Transcription model file",
                     status: .failed, detail: "The model file is empty — the download was probably interrupted.",
-                    nextStep: redownload
+                    nextStep: redownload,
+                    action: .openSettings
                 ))
             } else if size < expected / 2 {
                 checks.append(DoctorCheck(
                     id: "tools.whisperFile", category: .tools, title: "Transcription model file",
                     status: .failed,
                     detail: "The model file is \(amount), much smaller than the expected \(file.expectedMB) MB — the download was probably interrupted.",
-                    nextStep: redownload
+                    nextStep: redownload,
+                    action: .openSettings
                 ))
             } else if size > expected * 2 {
                 checks.append(DoctorCheck(
                     id: "tools.whisperFile", category: .tools, title: "Transcription model file",
                     status: .warning,
                     detail: "The model file is \(amount), much larger than the expected \(file.expectedMB) MB.",
-                    nextStep: redownload
+                    nextStep: redownload,
+                    action: .openSettings
                 ))
             } else {
                 checks.append(DoctorCheck(
@@ -360,7 +451,8 @@ struct DoctorRunner {
                 id: "tools.whisperDigest", category: .tools, title: "Transcription model integrity",
                 status: .failed,
                 detail: "The model file's SHA-256 doesn't match the pinned value — it may be corrupted or altered.",
-                nextStep: redownload
+                nextStep: redownload,
+                action: .openSettings
             ))
         }
         return checks
@@ -401,9 +493,20 @@ struct DoctorRunner {
         if status != .ok, let action = Setup.action(for: tool) {
             next = "In Settings > Setup Assistant, use “\(action.label)”."
         }
+        var action: DoctorAction?
+        if status != .ok {
+            switch tool.kind {
+            case .microphone, .screenRecording, .appleIntelligence, .calendar, .reminders:
+                action = .openSystemSettings
+            case .whisperModel, .dataFolder:
+                action = .openSettings
+            case .ollama, .builtInModel:
+                action = .setupAssistant
+            }
+        }
         return DoctorCheck(
             id: "tools.\(tool.kind)", category: .tools, title: tool.title,
-            status: status, detail: tool.detail, nextStep: next
+            status: status, detail: tool.detail, nextStep: next, action: action
         )
     }
 }

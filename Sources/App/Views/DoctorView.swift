@@ -14,6 +14,7 @@ struct DoctorView: View {
     @State private var isRunning = false
     @State private var justCopied = false
     @State private var showOnlyIssues = false
+    @State private var showReviewRecords = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,6 +47,39 @@ struct DoctorView: View {
         .frame(minWidth: 560, minHeight: 480)
         .background(Theme.window.color)
         .task { await run() }
+        .sheet(isPresented: $showReviewRecords) {
+            let entries = appModel.store?.scanForUnreadableEntries() ?? []
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("Damaged Records")
+                        .font(Theme.Typography.headline)
+                        .foregroundStyle(Theme.text.color)
+                    Spacer()
+                    Button("Done") { showReviewRecords = false }
+                        .buttonStyle(.themed)
+                }
+                .padding([.top, .horizontal], 20)
+
+                if entries.isEmpty {
+                    Text("No damaged or unreadable records were found on disk.")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.muted.color)
+                        .padding(20)
+                } else {
+                    DamagedRecordsNotice(
+                        title: "Unreadable records found on disk",
+                        entries: entries,
+                        onDismiss: { entry in
+                            settings.dismissDamagedRecord(id: entry.id)
+                        }
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
+                }
+            }
+            .frame(minWidth: 540, minHeight: 300)
+            .background(Theme.window.color)
+        }
     }
 
     // MARK: - Header
@@ -192,9 +226,35 @@ struct DoctorView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let action = check.action {
+                Button(action.label) {
+                    perform(action)
+                }
+                .buttonStyle(.themed)
+                .controlSize(.small)
+                .padding(.top, 1)
+            }
         }
         .padding(.vertical, 13)
         .accessibilityElement(children: .combine)
+    }
+
+    private func perform(_ action: DoctorAction) {
+        switch action {
+        case .openSettings:
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        case .openSystemSettings:
+            if let url = URL(string: "x-apple.systempreferences:") {
+                NSWorkspace.shared.open(url)
+            }
+        case .reviewRecords:
+            showReviewRecords = true
+        case .setupAssistant:
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        case .checkForUpdates:
+            NSApp.sendAction(Selector(("checkForUpdates:")), to: nil, from: nil)
+        }
     }
 
     // MARK: - Actions

@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 
 // MARK: - Probe results (plain values, so the runner is pure and testable)
 
@@ -93,10 +94,18 @@ protocol DoctorProbing {
     func toolHealthChecks() async -> [ToolHealthCheck]
     /// The recorder's call-audio state, or nil when there's no recorder to ask.
     func callAudio() -> CallAudioDiagnostics?
+    func timeMachineExclusion() -> Bool?
+    func isSandboxed() -> Bool
+    func appLock() -> (enabled: Bool, canAuthenticate: Bool)
+    func isAuditLogWritable() -> Bool
 }
 
 extension DoctorProbing {
     func callAudio() -> CallAudioDiagnostics? { nil }
+    func timeMachineExclusion() -> Bool? { nil }
+    func isSandboxed() -> Bool { true }
+    func appLock() -> (enabled: Bool, canAuthenticate: Bool) { (true, true) }
+    func isAuditLogWritable() -> Bool { true }
 }
 
 // MARK: - Live implementation
@@ -120,8 +129,16 @@ struct LiveDoctorProbes: DoctorProbing {
     var toolHealthProvider: @MainActor () async -> [ToolHealthCheck]
     /// `SessionRecorder.callAudioDiagnostics()` at the time Doctor runs.
     var callAudioDiagnostics: CallAudioDiagnostics?
+    var timeMachineExclusionProvider: () -> Bool? = { nil }
+    var isSandboxedProvider: () -> Bool = { true }
+    var appLockProvider: () -> (enabled: Bool, canAuthenticate: Bool) = { (true, true) }
+    var auditLogWritableProvider: () -> Bool = { true }
 
     func callAudio() -> CallAudioDiagnostics? { callAudioDiagnostics }
+    func timeMachineExclusion() -> Bool? { timeMachineExclusionProvider() }
+    func isSandboxed() -> Bool { isSandboxedProvider() }
+    func appLock() -> (enabled: Bool, canAuthenticate: Bool) { appLockProvider() }
+    func isAuditLogWritable() -> Bool { auditLogWritableProvider() }
     func environment() -> DoctorEnvironment { .current(dataRoot: dataRoot) }
     func now() -> Date { Date() }
 
@@ -278,8 +295,10 @@ struct LiveDoctorProbes: DoctorProbing {
             guard let store, !folderLocked else { return .notAvailable }
             return .count(store.scanForUnreadableEntries().count)
         }
+        let dataRoot = settings.dataRootURL
+        let appLockEnabled = settings.appLockEnabled
         return LiveDoctorProbes(
-            dataRoot: settings.dataRootURL,
+            dataRoot: dataRoot,
             appDatabaseFailure: appModel.databaseState.failure,
             encryptionInUse: appModel.isEncryptionEnabled,
             encryptionUnlocked: appModel.isEncryptionUnlocked,
@@ -292,7 +311,28 @@ struct LiveDoctorProbes: DoctorProbing {
                 await LiveDoctorProbes.reusedToolHealthChecks(
                     settings: settings, integrations: integrations, includeScheduling: includeScheduling)
             },
-            callAudioDiagnostics: recorder.callAudioDiagnostics()
+            callAudioDiagnostics: recorder.callAudioDiagnostics(),
+            timeMachineExclusionProvider: {
+                dataRoot.map { BackupExclusion.isExcluded(at: $0) }
+            },
+            isSandboxedProvider: {
+                ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil || NSHomeDirectory().contains("/Containers/")
+            },
+            appLockProvider: {
+                let context = LAContext()
+                var error: NSError?
+                let canAuth = context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
+                return (enabled: appLockEnabled, canAuthenticate: canAuth)
+            },
+            auditLogWritableProvider: {
+                guard let root = dataRoot else { return false }
+                let auditURL = root.appendingPathComponent("audit.log")
+                if FileManager.default.fileExists(atPath: auditURL.path) {
+                    return FileManager.default.isWritableFile(atPath: auditURL.path)
+                } else {
+                    return FileManager.default.isWritableFile(atPath: root.path)
+                }
+            }
         )
     }
 }
