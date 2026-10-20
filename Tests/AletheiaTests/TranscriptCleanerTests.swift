@@ -51,7 +51,7 @@ final class TranscriptCleanerTests: XCTestCase {
         XCTAssertEqual(cleaned.map(\.text), ["I think (maybe", "we should go."])
     }
 
-    func testLinesWithinTwoSecondsAreCoalesced() {
+    func testLinesWithinThePauseWindowAreCoalesced() {
         let cleaned = TranscriptCleaner.clean([
             line("I was thinking", at: 10),
             line("about last week.", at: 11.5),
@@ -61,12 +61,72 @@ final class TranscriptCleanerTests: XCTestCase {
         XCTAssertEqual(cleaned.first?.startTime, 10)
     }
 
-    func testLinesBeyondTwoSecondsAreNotCoalesced() {
+    func testLinesAfterALongPauseAreNotCoalesced() {
         let cleaned = TranscriptCleaner.clean([
-            line("First thought.", at: 10),
-            line("Second thought.", at: 12.5),
+            line("First thought.", at: 10, end: 11),
+            line("Second thought.", at: 15, end: 16),
         ])
         XCTAssertEqual(cleaned.map(\.text), ["First thought.", "Second thought."])
+    }
+
+    func testPauseIsMeasuredFromSegmentEndNotStart() {
+        // A 4 s segment followed by a 0.5 s pause starts 4.5 s after the
+        // previous start: far over the window, but barely a pause.
+        let cleaned = TranscriptCleaner.clean([
+            line("I guess one interesting thing", at: 25, end: 29),
+            line("before switching was like,", at: 29.5, end: 33),
+        ])
+        XCTAssertEqual(cleaned.map(\.text), ["I guess one interesting thing before switching was like,"])
+        XCTAssertEqual(cleaned.first?.startTime, 25)
+        XCTAssertEqual(cleaned.first?.endTime, 33)
+    }
+
+    func testRealisticRunOfSegmentsFormsOneTurn() {
+        // Several-second segments, short gaps, nobody else speaking: one turn.
+        var segments: [TranscribedLine] = []
+        var start: TimeInterval = 0
+        for index in 0..<6 {
+            segments.append(line("part \(index)", at: start, end: start + 4))
+            start += 4.5
+        }
+        let cleaned = TranscriptCleaner.clean(segments)
+        XCTAssertEqual(cleaned.count, 1)
+        XCTAssertEqual(cleaned.first?.text, "part 0 part 1 part 2 part 3 part 4 part 5")
+        XCTAssertEqual(cleaned.first?.endTime, 26.5)
+    }
+
+    func testPauseAtTheWindowStillMerges() {
+        let cleaned = TranscriptCleaner.clean([
+            line("Before the pause", at: 10, end: 14),
+            line("after the pause", at: 14 + TranscriptCleaner.coalesceWindow, end: 20),
+        ])
+        XCTAssertEqual(cleaned.count, 1)
+    }
+
+    func testPauseJustPastTheWindowSplits() {
+        let cleaned = TranscriptCleaner.clean([
+            line("Before the pause", at: 10, end: 14),
+            line("after the pause", at: 14 + TranscriptCleaner.coalesceWindow + 0.1, end: 20),
+        ])
+        XCTAssertEqual(cleaned.count, 2)
+    }
+
+    func testLongMonologueIsSplitAtTheSpanCap() {
+        // 20 contiguous 5 s segments: 100 s of unbroken speech.
+        let segments = (0..<20).map { line("s\($0)", at: TimeInterval($0) * 5, end: TimeInterval($0 + 1) * 5) }
+        let cleaned = TranscriptCleaner.clean(segments)
+        XCTAssertGreaterThan(cleaned.count, 1)
+        for merged in cleaned {
+            XCTAssertLessThanOrEqual(merged.endTime - merged.startTime, TranscriptCleaner.maxMergedSpan)
+        }
+        // Nothing lost or reordered.
+        XCTAssertEqual(cleaned.map(\.text).joined(separator: " "), segments.map(\.text).joined(separator: " "))
+        XCTAssertEqual(cleaned.map(\.startTime), cleaned.map(\.startTime).sorted())
+    }
+
+    func testSingleSegmentLongerThanTheCapIsKept() {
+        let cleaned = TranscriptCleaner.clean([line("Long.", at: 0, end: TranscriptCleaner.maxMergedSpan + 10)])
+        XCTAssertEqual(cleaned.map(\.text), ["Long."])
     }
 
     func testDifferentSourcesAreNotCoalesced() {
