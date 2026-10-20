@@ -60,7 +60,12 @@ struct SettingsView: View {
             }
             .id(pane)
         }
-        .frame(minWidth: 900, idealWidth: 960, minHeight: 640, idealHeight: 680)
+        .frame(
+            minWidth: SettingsLayout.minWidth,
+            idealWidth: SettingsLayout.idealWidth,
+            minHeight: SettingsLayout.minHeight,
+            idealHeight: SettingsLayout.idealHeight
+        )
         .background(Theme.window.color)
         .tint(Theme.accent.color)
         .navigationTitle("Settings")

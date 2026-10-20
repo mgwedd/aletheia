@@ -199,7 +199,6 @@ struct AletheiaApp: App {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(encryption)
-                .frame(minWidth: 520, minHeight: 480)
         }
 
         MenuBarExtra("Aletheia Recording", systemImage: menuBarSymbol) {

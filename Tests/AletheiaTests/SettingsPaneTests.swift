@@ -59,3 +59,33 @@ final class SettingsPaneTests: XCTestCase {
         XCTAssertEqual(UserDefaults.standard.bool(forKey: "includePatientBackground"), true)
     }
 }
+
+/// The Settings window must be at least as wide as its sidebar plus the
+/// narrowest pane, and nothing that presents it may squeeze it below that:
+/// a smaller outer `.frame(minWidth:)` clipped the sidebar and every row.
+final class SettingsLayoutTests: XCTestCase {
+    func testMinimumWidthFitsSidebarAndPane() {
+        XCTAssertEqual(SettingsLayout.minWidth, SettingsLayout.sidebarWidth + SettingsLayout.paneMinWidth)
+        XCTAssertGreaterThanOrEqual(SettingsLayout.idealWidth, SettingsLayout.minWidth)
+        XCTAssertGreaterThanOrEqual(SettingsLayout.idealHeight, SettingsLayout.minHeight)
+    }
+
+    func testNoPresenterWrapsSettingsInASmallerMinimumFrame() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App")
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+        var offenders: [String] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
+            for (index, line) in lines.enumerated() where line.contains("SettingsView()") {
+                // The modifiers chained straight after the view, up to the closing brace.
+                for next in lines[(index + 1)...].prefix(10) {
+                    if next.trimmingCharacters(in: .whitespaces).hasPrefix("}") { break }
+                    if next.contains(".frame(") { offenders.append("\(url.lastPathComponent):\(index + 1)") }
+                }
+            }
+        }
+        XCTAssertEqual(offenders, [], "SettingsView sizes itself; presenters must not add a frame")
+    }
+}

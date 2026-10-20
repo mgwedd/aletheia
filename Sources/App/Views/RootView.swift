@@ -61,7 +61,6 @@ struct RootView: View {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(encryption)
-                .frame(minWidth: 560, minHeight: 520)
         }
         .sheet(item: $editingProfile) { patient in
             PatientProfileEditor(
