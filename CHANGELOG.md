@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.57.0] - 2026-10-20
+
+### Added
+- consent guide, terms checklist, open ollama, mermaid errors and styles, and patient meta (#234) (#330)
+
 ## [2.56.0] - 2026-10-20
 
 ### Added
