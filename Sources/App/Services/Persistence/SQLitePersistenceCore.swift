@@ -300,6 +300,26 @@ final class SQLitePersistenceCore: PersistenceCore {
         return sqlite3_step(stmt) == SQLITE_DONE
     }
 
+    @discardableResult
+    func removeAll(ownerID: UUID) -> Bool {
+        let sql = "DELETE FROM records WHERE owner_id = ?;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, ownerID.uuidString)
+        return sqlite3_step(stmt) == SQLITE_DONE
+    }
+
+    @discardableResult
+    func removeAll(itemID: UUID) -> Bool {
+        let sql = "DELETE FROM records WHERE item_id = ?;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, itemID.uuidString)
+        return sqlite3_step(stmt) == SQLITE_DONE
+    }
+
     // MARK: - Snapshot
 
     /// Writes a consistent, compact copy of the store to `destination` using

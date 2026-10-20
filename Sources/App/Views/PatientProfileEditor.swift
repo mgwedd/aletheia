@@ -39,6 +39,8 @@ struct PatientProfileEditor: View {
     @State private var notes: String
     @State private var medications: [Medication]
     @State private var confirmDiscard = false
+    @State private var showDeleteConfirmation = false
+    @State private var deleteErrorMessage: String?
 
     init(patient: Patient, showsMedications: Bool, initialFocus: ProfileField = .name) {
         self.initialFocus = initialFocus
@@ -101,6 +103,8 @@ struct PatientProfileEditor: View {
                     }
 
                     if showsMedications { medicationsField }
+
+                    removePatientSection
                 }
                 .padding(.horizontal, 28)
                 .padding(.top, 4)
@@ -116,6 +120,28 @@ struct PatientProfileEditor: View {
         .confirmationDialog("Discard your changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Discard Changes", role: .destructive) { dismiss() }
             Button("Keep Editing", role: .cancel) {}
+        }
+        .sheet(isPresented: $showDeleteConfirmation) {
+            DeletePatientConfirmationView(patient: original) {
+                showDeleteConfirmation = false
+                do {
+                    try appModel.deletePatient(original)
+                    dismiss()
+                } catch {
+                    deleteErrorMessage = error.localizedDescription
+                }
+            }
+        }
+        .alert(
+            "Unable to delete patient",
+            isPresented: Binding(
+                get: { deleteErrorMessage != nil },
+                set: { if !$0 { deleteErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteErrorMessage ?? "")
         }
     }
 
@@ -248,6 +274,114 @@ struct PatientProfileEditor: View {
                     .frame(height: 38)
                 }
             }
+        }
+    }
+
+    private var removePatientSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Remove patient").eyebrowStyle()
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Delete this patient and all data")
+                            .font(Theme.Typography.body.weight(.semibold))
+                            .foregroundStyle(Theme.text.color)
+                        Text("Permanently removes this patient, along with all of their sessions, transcripts, audio recordings, and notes. This cannot be undone.")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.muted.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 12)
+
+                    Button("Delete patient…") {
+                        showDeleteConfirmation = true
+                    }
+                    .buttonStyle(.themeRecording)
+                    .controlSize(.small)
+                }
+            }
+            .padding(14)
+            .background(Theme.recordingTint.color.opacity(0.35))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Theme.recording.color.opacity(0.4), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .padding(.top, 8)
+    }
+}
+
+/// Destructive confirmation sheet for permanently deleting a patient.
+/// Requires typing the patient's name to confirm.
+struct DeletePatientConfirmationView: View {
+    let patient: Patient
+    let onDelete: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var typedName = ""
+    @FocusState private var isFieldFocused: Bool
+
+    private var matches: Bool {
+        typedName.trimmingCharacters(in: .whitespaces)
+            .localizedCaseInsensitiveCompare(patient.name) == .orderedSame
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Delete \(patient.name)?")
+                        .font(Theme.Typography.title)
+                        .foregroundStyle(Theme.text.color)
+                    Text("This will permanently delete this patient and all of their recorded sessions, clinical notes, transcripts, audio, and AI conversations from disk.")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.muted.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(Theme.recording.color)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("To confirm, type the patient's name below:")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+
+                TextField(patient.name, text: $typedName)
+                    .textFieldStyle(.plain)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .focused($isFieldFocused)
+                    .padding(.horizontal, 12)
+                    .frame(height: 36)
+                    .themeField(isFocused: isFieldFocused)
+                    .accessibilityLabel("Type patient name to confirm deletion")
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    dismiss()
+                }
+                .buttonStyle(.themed)
+                .keyboardShortcut(.cancelAction)
+
+                Button("Delete Patient") {
+                    onDelete()
+                }
+                .buttonStyle(.themeRecording)
+                .disabled(!matches)
+            }
+            .padding(.top, 8)
+        }
+        .padding(24)
+        .frame(width: 460)
+        .background(Theme.panel.color)
+        .onAppear {
+            isFieldFocused = true
         }
     }
 }

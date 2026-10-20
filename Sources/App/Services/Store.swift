@@ -280,6 +280,52 @@ final class Store {
         return collapsed.isEmpty ? "Patient" : collapsed
     }
 
+    /// Deletes a patient and all associated clinical data:
+    /// 1. Takes a safety snapshot of the SQLite database (`pre-delete-patient`) in `.backups/snapshots/`
+    /// 2. Purges all associated SQLite database rows (chat threads, comments, notes, session chats)
+    /// 3. Purges all search index entries for this patient
+    /// 4. Removes the patient directory and all of its session folders/files from disk
+    /// 5. Cleans up any recorded unreadable entries for this patient
+    func deletePatient(_ patient: Patient) throws {
+        var dir = patientDir(for: patient)
+        if !fileManager.fileExists(atPath: dir.path) {
+            if let entries = try? fileManager.contentsOfDirectory(at: patientsDir, includingPropertiesForKeys: nil) {
+                for candidate in entries {
+                    let file = candidate.appendingPathComponent("patient.json")
+                    if let data = try? protector.dataIfPresent(at: file),
+                       let decoded = try? JSONDecoder.aletheia.decode(Patient.self, from: data),
+                       decoded.id == patient.id {
+                        dir = candidate
+                        break
+                    }
+                }
+            }
+        }
+        guard fileManager.fileExists(atPath: dir.path) else {
+            throw StoreError.patientNotFound
+        }
+
+        let sessions = (try? listSessions(for: patient)) ?? []
+        let sessionIDs = sessions.map(\.id)
+
+        // Pre-delete safety snapshot of database
+        if let commentStore {
+            DatabaseSnapshotManager(root: root).makeSnapshot(of: commentStore, reason: "pre-delete-patient")
+        }
+
+        // Purge database records
+        commentStore?.purgePatientRecords(patientID: patient.id, sessionIDs: sessionIDs)
+
+        // Purge search index documents and session entries
+        searchIndex?.purgePatient(patient.id.uuidString)
+
+        // Remove patient directory and all session files from disk
+        try fileManager.removeItem(at: dir)
+
+        // Remove unreadable records cache entries matching this patient or its folder
+        recordUnreadable([], replacing: { $0.patientId == patient.id || $0.folder.path.hasPrefix(dir.path) })
+    }
+
     // MARK: - Sessions
 
     /// Healthy sessions only, newest first. A session whose `session.json` is

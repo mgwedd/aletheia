@@ -150,10 +150,17 @@ struct RootView: View {
         // The detail view's identity is keyed on the id alone, so this refresh
         // doesn't recreate it or drop in-progress edits.
         .onChange(of: appModel.patients) { _, patients in
-            guard let current = selectedPatient,
-                  let fresh = patients.first(where: { $0.id == current.id }),
-                  fresh != current else { return }
-            selectedPatient = fresh
+            guard let current = selectedPatient else {
+                selectedPatient = patients.first
+                return
+            }
+            if let fresh = patients.first(where: { $0.id == current.id }) {
+                if fresh != current {
+                    selectedPatient = fresh
+                }
+            } else {
+                selectedPatient = patients.first
+            }
         }
         .onChange(of: navigator.pendingPatientID) { _, _ in navigateToPendingPatient() }
         .onAppear { navigateToPendingPatient() }

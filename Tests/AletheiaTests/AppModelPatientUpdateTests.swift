@@ -95,4 +95,19 @@ final class AppModelPatientUpdateTests: XCTestCase {
         appModel.reopenStore()
         XCTAssertNotNil(appModel.store)
     }
+
+    func testDeletePatientRemovesFromPatientsAndWritesAuditLog() throws {
+        let created = try XCTUnwrap(appModel.addPatient(name: "Jane Doe"))
+        XCTAssertTrue(appModel.patients.contains(where: { $0.id == created.id }))
+
+        try appModel.deletePatient(created)
+
+        XCTAssertFalse(appModel.patients.contains(where: { $0.id == created.id }))
+
+        let auditEntries = appModel.audit?.entries() ?? []
+        let deleteEvent = auditEntries.first { $0.action == .recordDeleted }
+        XCTAssertNotNil(deleteEvent)
+        XCTAssertEqual(deleteEvent?.subjectID, created.id.uuidString)
+        XCTAssertEqual(deleteEvent?.detail, "patient")
+    }
 }

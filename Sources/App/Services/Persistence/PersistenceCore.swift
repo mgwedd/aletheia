@@ -84,4 +84,14 @@ protocol PersistenceCore: AnyObject {
     /// storage error.
     @discardableResult
     func remove(kind: String, id: String) -> Bool
+
+    /// Removes every record owned by `ownerID`. Returns true when the store ends up
+    /// without them, and false only on a storage error.
+    @discardableResult
+    func removeAll(ownerID: UUID) -> Bool
+
+    /// Removes every record hanging off `itemID`. Returns true when the store ends up
+    /// without them, and false only on a storage error.
+    @discardableResult
+    func removeAll(itemID: UUID) -> Bool
 }

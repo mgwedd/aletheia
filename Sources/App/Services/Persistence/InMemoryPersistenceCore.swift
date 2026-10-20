@@ -49,4 +49,16 @@ final class InMemoryPersistenceCore: PersistenceCore {
         storage[key(kind, id)] = nil
         return true
     }
+
+    @discardableResult
+    func removeAll(ownerID: UUID) -> Bool {
+        storage = storage.filter { $0.value.ownerID != ownerID }
+        return true
+    }
+
+    @discardableResult
+    func removeAll(itemID: UUID) -> Bool {
+        storage = storage.filter { $0.value.itemID != itemID }
+        return true
+    }
 }

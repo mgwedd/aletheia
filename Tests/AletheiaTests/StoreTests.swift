@@ -239,4 +239,45 @@ final class StoreTests: XCTestCase {
         let second = try XCTUnwrap(try store.listSessions(for: patient).first)
         XCTAssertEqual(first.id, second.id, "the minted id is stable on subsequent listings")
     }
+
+    func testDeletePatientRemovesFolderAndRecordsAndCreatesSnapshot() throws {
+        let patient = try store.createPatient(name: "Deletable Patient")
+        let session = try store.createSession(for: patient)
+
+        // Add comments, notes, session chats, and chat threads
+        let commentStore = try XCTUnwrap(CommentStore(root: tempRoot))
+        commentStore.saveNote(sessionID: session.id, text: "Some notes")
+        _ = commentStore.addComment(sessionID: session.id, quotedText: "quote", body: "A comment")
+        commentStore.saveChatThread(ChatThread(title: "Thread 1", messages: [ChatMessage(role: .user, text: "Hello")]), patientID: patient.id)
+        commentStore.saveSessionChat([ChatMessage(role: .assistant, text: "Session chat")], sessionID: session.id)
+
+        let patientDir = store.patientDir(for: patient)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: patientDir.path))
+
+        // Perform deletion
+        try store.deletePatient(patient)
+
+        // 1. Patient folder is deleted
+        XCTAssertFalse(FileManager.default.fileExists(atPath: patientDir.path))
+        XCTAssertFalse(try store.listPatients().contains(where: { $0.id == patient.id }))
+
+        // 2. Database records are purged
+        XCTAssertEqual(commentStore.note(sessionID: session.id), "")
+        XCTAssertTrue(commentStore.comments(sessionID: session.id).isEmpty)
+        XCTAssertTrue(commentStore.chatThreads(patientID: patient.id).isEmpty)
+        XCTAssertTrue(commentStore.sessionChat(sessionID: session.id).isEmpty)
+
+        // 3. Pre-delete snapshot was taken in .backups/snapshots
+        let snapshotDir = BackupLayout.directory(.snapshots, dataRoot: tempRoot)
+        let snapshots = (try? FileManager.default.contentsOfDirectory(at: snapshotDir, includingPropertiesForKeys: nil)) ?? []
+        XCTAssertTrue(snapshots.contains(where: { $0.lastPathComponent.contains("pre-delete-patient") }))
+
+        // 4. Repeated deletion throws patientNotFound
+        XCTAssertThrowsError(try store.deletePatient(patient)) { error in
+            guard case StoreError.patientNotFound = error else {
+                XCTFail("Expected patientNotFound, got \(error)")
+                return
+            }
+        }
+    }
 }
