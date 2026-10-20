@@ -48,8 +48,30 @@ struct ScheduleNextSessionSheet: View {
     let lastSessionDate: Date
     @Binding var start: Date
     @Binding var durationMinutes: Int
+    @Binding var recurrence: EventRecurrence
+    @Binding var exportICS: Bool
     var onCancel: () -> Void
     var onSchedule: () -> Void
+
+    init(
+        patientName: String,
+        lastSessionDate: Date,
+        start: Binding<Date>,
+        durationMinutes: Binding<Int>,
+        recurrence: Binding<EventRecurrence> = .constant(.never),
+        exportICS: Binding<Bool> = .constant(false),
+        onCancel: @escaping () -> Void,
+        onSchedule: @escaping () -> Void
+    ) {
+        self.patientName = patientName
+        self.lastSessionDate = lastSessionDate
+        self._start = start
+        self._durationMinutes = durationMinutes
+        self._recurrence = recurrence
+        self._exportICS = exportICS
+        self.onCancel = onCancel
+        self.onSchedule = onSchedule
+    }
 
     private static let lengthOptions = [30, 45, 50, 60, 90]
 
@@ -95,8 +117,23 @@ struct ScheduleNextSessionSheet: View {
                         .labelsHidden()
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
+                    labelled("Repeat") {
+                        Picker("Repeat", selection: $recurrence) {
+                            ForEach(EventRecurrence.allCases) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
+
+                Toggle("Save an .ics file", isOn: $exportICS)
+                    .toggleStyle(.checkbox)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .padding(.top, 2)
             }
             .padding(.horizontal, 28)
             .padding(.top, 12)
@@ -145,9 +182,15 @@ struct ScheduleNextSessionSheet: View {
         }
     }
 
+    private var footerText: String {
+        exportICS
+            ? "Adds an event to your calendar and saves an .ics file."
+            : "Adds an event to your calendar."
+    }
+
     private var footer: some View {
         HStack(spacing: 8) {
-            Text("Adds an event to your calendar.")
+            Text(footerText)
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)
