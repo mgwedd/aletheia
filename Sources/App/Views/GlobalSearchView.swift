@@ -13,8 +13,8 @@ import SwiftUI
 ///   └──────────────────────────────────────────────────────────┘
 struct GlobalSearchView: View {
     @EnvironmentObject private var appModel: AppModel
-    /// Called with the patient, and the session when the result is inside one.
-    let onOpen: (Patient, SessionRecord?) -> Void
+    /// Called when a search hit is chosen to open.
+    let onOpen: (SearchHit) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -238,7 +238,7 @@ struct GlobalSearchView: View {
     }
 
     private func open(_ hit: SearchHit) {
-        onOpen(hit.patient, hit.session)
+        onOpen(hit)
         dismiss()
     }
 }

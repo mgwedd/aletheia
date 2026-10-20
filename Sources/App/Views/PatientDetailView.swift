@@ -33,6 +33,11 @@ struct PatientDetailView: View {
     /// Save / Discard / Cancel prompt is up.
     @State private var pendingSelection: SessionSelection?
     @State private var showUnsavedPrompt = false
+    @State private var sessionInitialTab: SessionTab = .transcript
+    @State private var sessionInitialNoteFormat: ProgressNoteFormat?
+    @State private var sessionInitialShowingMyNotes = false
+    @State private var sessionInitialFocusedCommentID: String?
+    @State private var sessionNavigationToken = 0
     @Environment(\.openWindow) private var openWindow
     @State private var errorMessage: String?
     /// The selected session, resolved against the current listing so a session
@@ -121,8 +126,18 @@ struct PatientDetailView: View {
             // must not change the pane's size, or the split view re-lays out.
             Group {
                 if let selectedSession {
-                    SessionDetailView(patient: patient, session: selectedSession, onSessionUpdated: refresh, editGuard: editGuard)
-                        .id(selectedSession.id)
+                    SessionDetailView(
+                        patient: patient,
+                        session: selectedSession,
+                        onSessionUpdated: refresh,
+                        editGuard: editGuard,
+                        initialTab: sessionInitialTab,
+                        initialFocusedCommentID: sessionInitialFocusedCommentID,
+                        initialNoteFormat: sessionInitialNoteFormat,
+                        initialShowingMyNotes: sessionInitialShowingMyNotes,
+                        navigationToken: sessionNavigationToken
+                    )
+                    .id(selectedSession.id)
                 } else {
                     ContentUnavailableView(
                         "Select a Session",
@@ -308,14 +323,25 @@ struct PatientDetailView: View {
         }
     }
 
-    /// Selects the session global search asked for, if it belongs to this
-    /// patient. Goes through `requestSelection`, so unsaved transcript edits
+    /// Selects the session global search or Spotlight asked for, if it belongs
+    /// to this patient. Goes through `requestSelection`, so unsaved transcript edits
     /// are still guarded.
     private func openPendingSession() {
         guard let pending = navigator.pendingSession, pending.patientID == patient.id else { return }
         navigator.pendingSession = nil
-        if sessions.contains(where: { $0.id == pending.sessionID }) {
-            requestSelection(pending.sessionID)
+        let target = sessions.first { session in
+            if let id = pending.sessionID, session.id == id { return true }
+            if let folder = pending.sessionFolderName, session.folderName == folder { return true }
+            return false
+        }
+        guard let target else { return }
+        sessionInitialTab = pending.initialTab ?? .transcript
+        sessionInitialNoteFormat = pending.initialNoteFormat
+        sessionInitialShowingMyNotes = pending.initialShowingMyNotes
+        sessionInitialFocusedCommentID = pending.initialFocusedCommentID
+        sessionNavigationToken += 1
+        if selectedSessionID != target.id {
+            requestSelection(target.id)
         }
     }
 
