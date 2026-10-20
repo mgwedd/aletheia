@@ -7,7 +7,7 @@ final class SetupTests: XCTestCase {
     }
 
     func testOkChecksHaveNoAction() {
-        for kind in [ToolHealthCheck.Kind.dataFolder, .microphone, .screenRecording, .whisperModel, .ollama, .builtInModel, .appleIntelligence, .calendar, .reminders] {
+        for kind in [ToolHealthCheck.Kind.dataFolder, .microphone, .screenRecording, .whisperModel, .ollama, .builtInModel, .appleIntelligence, .calendar, .reminders, .termsAndPrivacy] {
             XCTAssertNil(Setup.action(for: check(kind, .ok)))
         }
     }
@@ -28,6 +28,7 @@ final class SetupTests: XCTestCase {
         XCTAssertNil(Setup.action(for: check(.appleIntelligence, .warning)))
         XCTAssertEqual(Setup.action(for: check(.calendar, .warning)), .requestCalendarAccess)
         XCTAssertEqual(Setup.action(for: check(.reminders, .warning)), .requestRemindersAccess)
+        XCTAssertEqual(Setup.action(for: check(.termsAndPrivacy, .warning)), .reviewTerms)
     }
 
     /// A missing built-in model blocks setup and offers the in-app download.

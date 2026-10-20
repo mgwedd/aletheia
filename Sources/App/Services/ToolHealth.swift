@@ -20,6 +20,7 @@ struct ToolHealthCheck: Identifiable, Equatable {
         case appleIntelligence
         case calendar
         case reminders
+        case termsAndPrivacy
     }
 
     /// Stable per check kind. A fresh UUID per run made every periodic refresh
@@ -65,11 +66,12 @@ enum ToolHealth {
         // The AI check hits the network; run it concurrently with the (also
         // async) screen-recording probe. The rest are cheap local reads.
         async let ai = assistantCheck(settings: settings, backend: backend, assistant: assistant)
+        let terms = termsAndPrivacyCheck(settings: settings)
         let mic = microphoneCheck()
         let whisperModel = whisperModelCheck(settings: settings)
         let dataFolder = dataFolderCheck(settings: settings)
         let screen = await screenRecordingCheck(authoritative: authoritative)
-        var checks = await [dataFolder, mic, screen, whisperModel, ai]
+        var checks = await [terms, dataFolder, mic, screen, whisperModel, ai]
         // Calendar/Reminders belong to the `.dev`-tier EventKit scheduling
         // module. When that module isn't in the build, don't surface (or ask
         // for) their permissions at all. See `EventKitSchedulingFeatureModule`.
@@ -78,6 +80,27 @@ enum ToolHealth {
             checks.append(remindersCheck())
         }
         return checks
+    }
+
+    static func classifyTermsAndPrivacy(isAccepted: Bool) -> ToolHealthCheck {
+        if isAccepted {
+            return ToolHealthCheck(
+                kind: .termsAndPrivacy,
+                title: "Terms & Privacy",
+                status: .ok,
+                detail: "Terms of Service and Privacy Policy accepted."
+            )
+        }
+        return ToolHealthCheck(
+            kind: .termsAndPrivacy,
+            title: "Terms & Privacy",
+            status: .warning,
+            detail: "Review and accept the Terms of Service and Privacy Policy."
+        )
+    }
+
+    static func termsAndPrivacyCheck(settings: AppSettings) -> ToolHealthCheck {
+        classifyTermsAndPrivacy(isAccepted: Legal.isAccepted(settings.acceptedLegalVersion))
     }
 
     static func dataFolderCheck(settings: AppSettings) -> ToolHealthCheck {

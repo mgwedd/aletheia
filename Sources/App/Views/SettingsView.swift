@@ -33,6 +33,7 @@ struct SettingsView: View {
     @State private var confirmResetRiskPhrases = false
     @State private var errorMessage: String?
     @State private var showEncryptionSetup = false
+    @State private var showConsentGuide = false
     @State private var confirmDisableEncryption = false
     @State private var isDisablingEncryption = false
     @State private var rememberOnDevice = false
@@ -92,6 +93,9 @@ struct SettingsView: View {
         .sheet(isPresented: $showEncryptionSetup) {
             EncryptionSetupSheet()
                 .environmentObject(encryption)
+        }
+        .sheet(isPresented: $showConsentGuide) {
+            ConsentGuideView()
         }
         .confirmationDialog(
             "Turn off encryption?",
@@ -261,6 +265,9 @@ struct SettingsView: View {
                 HStack(spacing: 16) {
                     Link("Terms of Service", destination: Legal.termsURL)
                     Link("Privacy Policy", destination: Legal.privacyURL)
+                    Button("Consent Guide…") { showConsentGuide = true }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.accent.color)
                     Spacer()
                 }
                 .font(Theme.Typography.body)
@@ -529,6 +536,12 @@ struct SettingsView: View {
                     Button(isStartingOllama ? "Starting…" : "Start Ollama") { Task { await startOllama() } }
                         .buttonStyle(.themePrimary)
                         .disabled(isStartingOllama)
+                }
+                if ollamaEngineState == .running || ollamaEngineState == .ready || ollamaEngineState == .modelMissing {
+                    Button("Open Ollama") {
+                        OllamaLauncher.openOllamaApp()
+                    }
+                    .buttonStyle(.themed)
                 }
                 Spacer()
             }

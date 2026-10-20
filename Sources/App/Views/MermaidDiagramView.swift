@@ -10,6 +10,8 @@ import AppKit
 struct MermaidPalette {
     var nodeFill: Color
     var nodeStroke: Color
+    var emphasizedFill: Color
+    var emphasizedStroke: Color
     var text: Color
     var edge: Color
     var labelFill: Color
@@ -19,6 +21,8 @@ struct MermaidPalette {
     static let adaptive = MermaidPalette(
         nodeFill: Theme.raised.color,
         nodeStroke: Theme.line.color,
+        emphasizedFill: Theme.accentTint.color,
+        emphasizedStroke: Theme.accent.color,
         text: Theme.text.color,
         edge: Theme.muted.color,
         // Edge labels sit on the diagram card, which is a `Theme.field` surface.
@@ -140,6 +144,7 @@ struct MermaidCard: View {
     @State private var mode: Mode = .diagram
     @State private var copied = false
     @State private var isExpanded = false
+    @State private var diagnostic: MermaidDiagram.Diagnostic?
 
     var body: some View {
         // Cached by source, so a streaming re-render doesn't redo the layout.
@@ -161,6 +166,17 @@ struct MermaidCard: View {
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+        .task(id: source) {
+            if diagram != nil {
+                diagnostic = nil
+            } else {
+                // Delay before computing diagnostic to prevent flickering while an answer is streaming
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                if !Task.isCancelled {
+                    diagnostic = MermaidDiagram.diagnose(source)
+                }
+            }
         }
         .sheet(isPresented: $isExpanded) {
             if let layout, let diagram {
@@ -205,7 +221,23 @@ struct MermaidCard: View {
             MermaidDiagramView(layout: layout, summary: diagram.accessibilityDescription)
                 .padding(14)
         } else {
-            MermaidSourceText(source: source)
+            VStack(alignment: .leading, spacing: 0) {
+                if let diagnostic {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Theme.callAudio.color)
+                        Text("Line \(diagnostic.line): \(diagnostic.message)")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.text.color)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Theme.callAudio.color.opacity(0.12))
+                    .themeDivider(.bottom)
+                }
+                MermaidSourceText(source: source)
+            }
         }
     }
 }
@@ -366,8 +398,11 @@ enum MermaidPainter {
         }
         for node in layout.nodes {
             let path = shapePath(node.shape, in: node.frame)
-            context.fill(path, with: .color(palette.nodeFill))
-            context.stroke(path, with: .color(palette.nodeStroke), lineWidth: 1.5)
+            let fill = node.isEmphasized ? palette.emphasizedFill : palette.nodeFill
+            let stroke = node.isEmphasized ? palette.emphasizedStroke : palette.nodeStroke
+            let strokeWidth: CGFloat = node.isEmphasized ? 2.0 : 1.5
+            context.fill(path, with: .color(fill))
+            context.stroke(path, with: .color(stroke), lineWidth: strokeWidth)
             drawLines(node.lines, center: CGPoint(x: node.frame.midX, y: node.frame.midY),
                       lineHeight: Metrics.lineHeight, fontSize: Metrics.fontSize,
                       color: palette.text, in: &context)

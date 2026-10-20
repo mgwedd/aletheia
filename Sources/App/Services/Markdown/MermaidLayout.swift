@@ -25,6 +25,7 @@ struct MermaidLayout: Equatable {
         var lines: [String]
         var shape: MermaidDiagram.Flowchart.Shape
         var frame: CGRect
+        var isEmphasized: Bool = false
     }
 
     struct Edge: Equatable {
@@ -300,7 +301,7 @@ enum MermaidLayoutEngine {
 
         var nodes: [MermaidLayout.Node] = []
         for (i, node) in chart.nodes.enumerated() {
-            nodes.append(.init(id: node.id, lines: sizing[i].lines, shape: node.shape, frame: frames[i]))
+            nodes.append(.init(id: node.id, lines: sizing[i].lines, shape: node.shape, frame: frames[i], isEmphasized: node.isEmphasized))
         }
         return normalized(nodes: nodes, edges: edges, lifelines: [])
     }

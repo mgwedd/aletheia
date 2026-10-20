@@ -9,6 +9,7 @@ struct FirstRunView: View {
     /// press "Finish setup" — that's the moment acceptance is recorded on disk.
     @State private var agreedToLegal = false
     @State private var showEncryptionSetup = false
+    @State private var showConsentGuide = false
 
     //   Set up Aletheia
     //   Recording, transcription and the AI all run on this Mac…
@@ -41,7 +42,20 @@ struct FirstRunView: View {
                         Label("Recordings, transcripts, and summaries are saved as plain files you can open in Finder.", systemImage: "folder")
                         Label("It captures your microphone and the call's audio straight from your Mac — Zoom, a browser (Tebra), FaceTime, any call — no extra audio setup.", systemImage: "waveform")
                         Label("Speech-to-text runs on-device. AI summaries use a model built into Aletheia, also on this Mac.", systemImage: "lock.shield")
-                        Label("Recording a session requires the client's consent and compliance with your licensing board's rules — that's on you to confirm before you hit record.", systemImage: "exclamationmark.triangle")
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(Theme.accent.color)
+                                .frame(width: 18)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Recording a session requires the client's consent and compliance with your licensing board's rules — that's on you to confirm before you hit record.")
+                                Button("Read the consent guide before recording anyone…") {
+                                    showConsentGuide = true
+                                }
+                                .buttonStyle(.plain)
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(Theme.accent.color)
+                            }
+                        }
                     }
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.text.color)
@@ -81,6 +95,14 @@ struct FirstRunView: View {
         }
         .frame(width: 720, height: 720)
         .background(Theme.panel.color)
+        .sheet(isPresented: $showConsentGuide) {
+            ConsentGuideView()
+        }
+        .onAppear {
+            if Legal.isAccepted(settings.acceptedLegalVersion) {
+                agreedToLegal = true
+            }
+        }
     }
 
     /// Primary once the required steps are done; the standard (disabled) style
@@ -179,6 +201,11 @@ struct FirstRunView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .toggleStyle(.checkbox)
+            .onChange(of: agreedToLegal) { _, agreed in
+                if agreed {
+                    settings.recordLegalAcceptance()
+                }
+            }
         }
     }
 

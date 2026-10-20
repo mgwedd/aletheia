@@ -29,11 +29,15 @@ struct PatientsListView: View {
                 .padding(.bottom, 8)
 
             List(filteredPatients, selection: $selectedPatient) { patient in
-                PatientRow(patient: patient, isSelected: selectedPatient?.id == patient.id)
-                    .tag(patient)
-                    .contextMenu {
-                        Button("Edit Profile…") { onEditProfile(patient) }
-                    }
+                PatientRow(
+                    patient: patient,
+                    meta: appModel.store?.fastSessionMeta(for: patient),
+                    isSelected: selectedPatient?.id == patient.id
+                )
+                .tag(patient)
+                .contextMenu {
+                    Button("Edit Profile…") { onEditProfile(patient) }
+                }
             }
             .listStyle(.plain)
             .overlay {
@@ -118,18 +122,36 @@ struct PatientsListView: View {
     }
 }
 
-/// One patient in the sidebar: a monogram avatar, the name, and when they were
-/// added. Everything comes from the `Patient` already in memory; nothing here
-/// reads from disk.
+/// One patient in the sidebar: a monogram avatar, the name, and session count /
+/// recent session date (or when they were added if no sessions exist).
 private struct PatientRow: View {
     let patient: Patient
+    let meta: Store.PatientSessionMeta?
     let isSelected: Bool
+
+    private static let sessionDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMM d")
+        return formatter
+    }()
 
     private static let addedFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.setLocalizedDateFormatFromTemplate("MMM yyyy")
         return formatter
     }()
+
+    private var subtitleText: String {
+        let count = meta?.count ?? 0
+        if count > 0 {
+            let sessionWord = count == 1 ? "1 session" : "\(count) sessions"
+            if let newest = meta?.newestDate {
+                return "\(sessionWord) · \(Self.sessionDateFormatter.string(from: newest))"
+            }
+            return sessionWord
+        }
+        return "Added \(Self.addedFormatter.string(from: patient.createdAt))"
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -144,7 +166,7 @@ private struct PatientRow: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.text.color)
                     .lineLimit(1)
-                Text("Added \(Self.addedFormatter.string(from: patient.createdAt))")
+                Text(subtitleText)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
                     .lineLimit(1)
