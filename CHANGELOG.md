@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.52.0] - 2026-10-20
+
+### Added
+- add review/dismiss for damaged records, retry/folder picker for database, and model name for transcription (#231) (#325)
+
 ## [2.51.0] - 2026-10-19
 
 ### Added
