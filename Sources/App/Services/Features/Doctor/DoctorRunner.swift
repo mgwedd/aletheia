@@ -498,7 +498,7 @@ struct DoctorRunner {
             switch tool.kind {
             case .microphone, .screenRecording, .appleIntelligence, .calendar, .reminders:
                 action = .openSystemSettings
-            case .whisperModel, .dataFolder:
+            case .whisperModel, .dataFolder, .termsAndPrivacy:
                 action = .openSettings
             case .ollama, .builtInModel:
                 action = .setupAssistant

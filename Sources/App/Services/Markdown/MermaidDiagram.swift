@@ -59,6 +59,7 @@ enum MermaidDiagram: Equatable {
             var id: String
             var label: String
             var shape: Shape
+            var isEmphasized: Bool = false
         }
 
         struct Edge: Equatable {
@@ -92,14 +93,22 @@ enum MermaidDiagram: Equatable {
         var messages: [Message]
     }
 
-    /// Parses Mermaid source; nil when it isn't a supported, complete diagram.
-    static func parse(_ source: String) -> MermaidDiagram? {
-        guard source.utf8.count <= maxSourceLength else { return nil }
+    struct Diagnostic: Equatable, Error {
+        var line: Int
+        var message: String
+    }
 
-        // Drop blank lines, `%%` comments/directives, and YAML front matter.
-        var lines: [String] = []
+    struct SourceStatement: Equatable {
+        var line: Int
+        var text: String
+    }
+
+    /// Extracts the non-empty, non-comment lines along with their original 1-based line numbers.
+    private static func extractStatements(_ source: String) -> (header: SourceStatement, statements: [SourceStatement])? {
+        var lines: [SourceStatement] = []
         var inFrontMatter = false
-        for raw in source.components(separatedBy: .newlines) {
+        for (i, raw) in source.components(separatedBy: .newlines).enumerated() {
+            let lineNum = i + 1
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.isEmpty { continue }
             if lines.isEmpty && !inFrontMatter && line == "---" {
@@ -111,17 +120,69 @@ enum MermaidDiagram: Equatable {
                 continue
             }
             if line.hasPrefix("%%") { continue }
-            lines.append(line)
+            lines.append(SourceStatement(line: lineNum, text: line))
         }
         guard let header = lines.first else { return nil }
 
-        // The header may carry statements after a `;` ("graph LR; A-->B").
-        let headerParts = header.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)
-        let words = headerParts[0].split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
-        guard let keyword = words.first?.lowercased() else { return nil }
-        var statements: [String] = []
-        if headerParts.count > 1 { statements.append(String(headerParts[1])) }
+        let headerParts = header.text.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)
+        var statements: [SourceStatement] = []
+        if headerParts.count > 1 {
+            let trailing = String(headerParts[1]).trimmingCharacters(in: .whitespaces)
+            if !trailing.isEmpty {
+                statements.append(SourceStatement(line: header.line, text: trailing))
+            }
+        }
         statements.append(contentsOf: lines.dropFirst())
+        let headerStmt = SourceStatement(line: header.line, text: String(headerParts[0]))
+        return (headerStmt, statements)
+    }
+
+    /// Diagnoses a syntax error in Mermaid source, pinpointing the 1-based line number.
+    /// Returns nil when the source is valid or completely empty (e.g. streaming just began).
+    static func diagnose(_ source: String) -> Diagnostic? {
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        guard source.utf8.count <= maxSourceLength else {
+            return Diagnostic(line: 1, message: "Diagram exceeds maximum size of \(maxSourceLength) bytes")
+        }
+        guard let extracted = extractStatements(source) else {
+            return nil
+        }
+        let words = extracted.header.text.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+        guard let keyword = words.first?.lowercased() else { return nil }
+
+        switch keyword {
+        case "graph", "flowchart":
+            var direction = Flowchart.Direction.topToBottom
+            if words.count > 1 {
+                guard words.count == 2, let parsed = parseDirection(words[1]) else {
+                    return Diagnostic(line: extracted.header.line, message: "Invalid direction '\(words.dropFirst().joined(separator: " "))' (expected LR, RL, TD, TB, or BT)")
+                }
+                direction = parsed
+            }
+            switch FlowchartParser.parseDetailed(statements: extracted.statements, direction: direction) {
+            case .success: return nil
+            case let .failure(diag): return diag
+            }
+        case "sequencediagram":
+            guard words.count == 1 else {
+                return Diagnostic(line: extracted.header.line, message: "Unexpected token after sequenceDiagram")
+            }
+            switch SequenceParser.parseDetailed(statements: extracted.statements) {
+            case .success: return nil
+            case let .failure(diag): return diag
+            }
+        default:
+            return Diagnostic(line: extracted.header.line, message: "Unsupported diagram type '\(keyword)'")
+        }
+    }
+
+    /// Parses Mermaid source; nil when it isn't a supported, complete diagram.
+    static func parse(_ source: String) -> MermaidDiagram? {
+        guard source.utf8.count <= maxSourceLength else { return nil }
+        guard let extracted = extractStatements(source) else { return nil }
+        let words = extracted.header.text.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+        guard let keyword = words.first?.lowercased() else { return nil }
 
         switch keyword {
         case "graph", "flowchart":
@@ -130,10 +191,11 @@ enum MermaidDiagram: Equatable {
                 guard words.count == 2, let parsed = parseDirection(words[1]) else { return nil }
                 direction = parsed
             }
-            guard let chart = FlowchartParser.parse(statements: statements, direction: direction) else { return nil }
+            guard case let .success(chart) = FlowchartParser.parseDetailed(statements: extracted.statements, direction: direction) else { return nil }
             return .flowchart(chart)
         case "sequencediagram":
-            guard words.count == 1, let chart = SequenceParser.parse(statements: statements) else { return nil }
+            guard words.count == 1 else { return nil }
+            guard case let .success(chart) = SequenceParser.parseDetailed(statements: extracted.statements) else { return nil }
             return .sequence(chart)
         default:
             return nil
@@ -267,7 +329,7 @@ private enum FlowchartParser {
     /// First words of lines that style or group a flowchart but add no nodes of
     /// their own. They are skipped, never an error.
     static let ignoredKeywords: Set<String> = [
-        "subgraph", "end", "classdef", "class", "style", "linkstyle",
+        "subgraph", "end", "classdef", "linkstyle",
         "click", "direction", "acctitle", "accdescr"
     ]
 
@@ -276,6 +338,7 @@ private enum FlowchartParser {
         var label: String?
         var shape: MermaidDiagram.Flowchart.Shape?
         var end: Int
+        var isEmphasized: Bool = false
     }
 
     struct EdgeToken {
@@ -298,11 +361,19 @@ private enum FlowchartParser {
                     nodes[i].label = label
                     nodes[i].shape = token.shape ?? .rectangle
                 }
+                if token.isEmphasized {
+                    nodes[i].isEmphasized = true
+                }
                 return true
             }
             guard nodes.count < MermaidDiagram.maxNodes else { return false }
             indexByID[token.id] = nodes.count
-            nodes.append(.init(id: token.id, label: token.label ?? token.id, shape: token.shape ?? .rectangle))
+            nodes.append(.init(
+                id: token.id,
+                label: token.label ?? token.id,
+                shape: token.shape ?? .rectangle,
+                isEmphasized: token.isEmphasized
+            ))
             return true
         }
 
@@ -313,21 +384,68 @@ private enum FlowchartParser {
         }
     }
 
-    static func parse(statements: [String], direction: MermaidDiagram.Flowchart.Direction) -> MermaidDiagram.Flowchart? {
+    static func parseDetailed(
+        statements: [MermaidDiagram.SourceStatement],
+        direction: MermaidDiagram.Flowchart.Direction
+    ) -> Result<MermaidDiagram.Flowchart, MermaidDiagram.Diagnostic> {
         var builder = Builder()
-        for line in statements {
-            for part in splitStatements(line) {
+        var emphasizedIDs = Set<String>()
+
+        for item in statements {
+            for part in splitStatements(item.text) {
                 let statement = part.trimmingCharacters(in: .whitespaces)
                 if statement.isEmpty { continue }
-                let firstWord = statement
+                let words = statement
                     .split(whereSeparator: { $0 == " " || $0 == "\t" })
-                    .first.map { $0.lowercased() } ?? ""
+                    .map(String.init)
+                let firstWord = words.first?.lowercased() ?? ""
                 if ignoredKeywords.contains(firstWord) { continue }
-                if !parseStatement(statement, into: &builder) { return nil }
+
+                if firstWord == "style" {
+                    if words.count >= 2 {
+                        emphasizedIDs.insert(words[1])
+                    }
+                    continue
+                }
+                if firstWord == "class" {
+                    if words.count >= 2 {
+                        let ids = words[1].split(separator: ",").map(String.init)
+                        for id in ids { emphasizedIDs.insert(id) }
+                    }
+                    continue
+                }
+
+                if !parseStatement(statement, into: &builder, emphasizedIDs: &emphasizedIDs) {
+                    return .failure(MermaidDiagram.Diagnostic(line: item.line, message: "Syntax error in statement '\(statement)'"))
+                }
             }
         }
-        guard !builder.nodes.isEmpty else { return nil }
-        return MermaidDiagram.Flowchart(direction: direction, nodes: builder.nodes, edges: builder.edges)
+
+        guard !builder.nodes.isEmpty else {
+            return .failure(MermaidDiagram.Diagnostic(line: statements.first?.line ?? 1, message: "Flowchart contains no nodes"))
+        }
+
+        for id in emphasizedIDs {
+            if let idx = builder.indexByID[id] {
+                builder.nodes[idx].isEmphasized = true
+            }
+        }
+
+        if !builder.nodes.contains(where: { $0.isEmphasized }) && builder.nodes.count >= 2 {
+            let sources = Set(builder.edges.map(\.from))
+            let sinks = builder.nodes.filter { !sources.contains($0.id) }
+            if let sink = sinks.last ?? builder.nodes.last, let idx = builder.indexByID[sink.id] {
+                builder.nodes[idx].isEmphasized = true
+            }
+        }
+
+        return .success(MermaidDiagram.Flowchart(direction: direction, nodes: builder.nodes, edges: builder.edges))
+    }
+
+    static func parse(statements: [String], direction: MermaidDiagram.Flowchart.Direction) -> MermaidDiagram.Flowchart? {
+        let items = statements.enumerated().map { MermaidDiagram.SourceStatement(line: $0.offset + 1, text: $0.element) }
+        guard case let .success(chart) = parseDetailed(statements: items, direction: direction) else { return nil }
+        return chart
     }
 
     /// Splits a line on `;`, but not inside quotes or brackets.
@@ -357,10 +475,12 @@ private enum FlowchartParser {
     }
 
     /// `node (edge node)*`, e.g. `A[Start] -->|yes| B --> C`.
-    static func parseStatement(_ text: String, into builder: inout Builder) -> Bool {
+    static func parseStatement(_ text: String, into builder: inout Builder, emphasizedIDs: inout Set<String>) -> Bool {
         let c = Array(text)
         var pos = skipSpaces(c, 0)
-        guard pos < c.count, let first = parseNode(c, pos), builder.add(first) else { return false }
+        guard pos < c.count, var first = parseNode(c, pos) else { return false }
+        if emphasizedIDs.contains(first.id) { first.isEmphasized = true }
+        guard builder.add(first) else { return false }
         var previous = first.id
         pos = skipSpaces(c, first.end)
 
@@ -379,7 +499,9 @@ private enum FlowchartParser {
                 if pos < c.count && c[pos] == ">" { pos += 1 }
                 pos = skipSpaces(c, pos)
             }
-            guard pos < c.count, let next = parseNode(c, pos), builder.add(next) else { return false }
+            guard pos < c.count, var next = parseNode(c, pos) else { return false }
+            if emphasizedIDs.contains(next.id) { next.isEmphasized = true }
+            guard builder.add(next) else { return false }
             guard builder.addEdge(from: previous, to: next.id, op: op, label: label) else { return false }
             previous = next.id
             pos = skipSpaces(c, next.end)
@@ -420,7 +542,8 @@ private enum FlowchartParser {
             let (shape, rawLabel) = shapeAndLabel(open: c[j], inner: inner)
             let label = MermaidText.clean(rawLabel)
             let end = skipClassSuffix(c, closeIndex + 1)
-            return NodeToken(id: id, label: label.isEmpty ? id : label, shape: shape, end: end)
+            let isEmphasized = end > closeIndex + 1
+            return NodeToken(id: id, label: label.isEmpty ? id : label, shape: shape, end: end, isEmphasized: isEmphasized)
         }
         return parseBareNode(c, start)
     }
@@ -440,15 +563,17 @@ private enum FlowchartParser {
             j += 1
         }
         var text = String(c[start..<j]).trimmingCharacters(in: .whitespaces)
+        var hasClassMarker = false
         if let marker = text.range(of: ":::") {
             text = String(text[..<marker.lowerBound]).trimmingCharacters(in: .whitespaces)
+            hasClassMarker = true
         }
         // Brackets, quotes, `&` groups and the like in a bare name mean we
         // don't understand the statement; better to show the source.
         let forbidden = CharacterSet(charactersIn: "[](){}|\"<>&")
         guard !text.isEmpty, text.rangeOfCharacter(from: forbidden) == nil else { return nil }
         let name = text.split(whereSeparator: { $0 == " " || $0 == "\t" }).joined(separator: " ")
-        return NodeToken(id: name, label: nil, shape: nil, end: j)
+        return NodeToken(id: name, label: nil, shape: nil, end: j, isEmphasized: hasClassMarker)
     }
 
     /// Skips a `:::className` suffix after a node.
@@ -625,7 +750,9 @@ private enum SequenceParser {
         "create", "destroy", "acctitle", "accdescr"
     ]
 
-    static func parse(statements: [String]) -> MermaidDiagram.SequenceChart? {
+    static func parseDetailed(
+        statements: [MermaidDiagram.SourceStatement]
+    ) -> Result<MermaidDiagram.SequenceChart, MermaidDiagram.Diagnostic> {
         var participants: [MermaidDiagram.SequenceChart.Participant] = []
         var messages: [MermaidDiagram.SequenceChart.Message] = []
 
@@ -640,8 +767,8 @@ private enum SequenceParser {
             return true
         }
 
-        for line in statements {
-            for part in line.split(separator: ";", omittingEmptySubsequences: true) {
+        for item in statements {
+            for part in item.text.split(separator: ";", omittingEmptySubsequences: true) {
                 let statement = part.trimmingCharacters(in: .whitespaces)
                 if statement.isEmpty { continue }
 
@@ -656,22 +783,36 @@ private enum SequenceParser {
                         let alias = MermaidText.clean(String(rest[r.upperBound...]))
                         if !alias.isEmpty { label = alias }
                     }
-                    guard !id.isEmpty, declare(id, label: label) else { return nil }
+                    guard !id.isEmpty, declare(id, label: label) else {
+                        return .failure(MermaidDiagram.Diagnostic(line: item.line, message: "Invalid participant declaration '\(statement)'"))
+                    }
                     continue
                 }
 
                 let firstWord = lower.split(whereSeparator: { $0 == " " || $0 == "\t" }).first.map(String.init) ?? ""
                 if ignoredKeywords.contains(firstWord) { continue }
 
-                guard let message = parseMessage(statement),
-                      messages.count < MermaidDiagram.maxEdges,
+                guard let message = parseMessage(statement) else {
+                    return .failure(MermaidDiagram.Diagnostic(line: item.line, message: "Syntax error in sequence message '\(statement)'"))
+                }
+                guard messages.count < MermaidDiagram.maxEdges,
                       declare(message.from, label: nil),
-                      declare(message.to, label: nil) else { return nil }
+                      declare(message.to, label: nil) else {
+                    return .failure(MermaidDiagram.Diagnostic(line: item.line, message: "Diagram exceeds participant or message limit"))
+                }
                 messages.append(message)
             }
         }
-        guard !participants.isEmpty else { return nil }
-        return MermaidDiagram.SequenceChart(participants: participants, messages: messages)
+        guard !participants.isEmpty else {
+            return .failure(MermaidDiagram.Diagnostic(line: statements.first?.line ?? 1, message: "Sequence diagram contains no participants"))
+        }
+        return .success(MermaidDiagram.SequenceChart(participants: participants, messages: messages))
+    }
+
+    static func parse(statements: [String]) -> MermaidDiagram.SequenceChart? {
+        let items = statements.enumerated().map { MermaidDiagram.SourceStatement(line: $0.offset + 1, text: $0.element) }
+        guard case let .success(chart) = parseDetailed(statements: items) else { return nil }
+        return chart
     }
 
     /// `A->>B: text`, with optional `+`/`-` activation marks next to the target.

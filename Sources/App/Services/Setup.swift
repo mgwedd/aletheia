@@ -15,6 +15,7 @@ enum SetupAction: Equatable {
     case enableAppleIntelligence
     case requestCalendarAccess
     case requestRemindersAccess
+    case reviewTerms
 
     var label: String {
         switch self {
@@ -31,6 +32,7 @@ enum SetupAction: Equatable {
         case .enableAppleIntelligence: return "Open Settings"
         case .requestCalendarAccess: return "Allow"
         case .requestRemindersAccess: return "Allow"
+        case .reviewTerms: return "Review"
         }
     }
 }
@@ -85,6 +87,8 @@ enum Setup {
             return .requestCalendarAccess    // optional; asks once, falls back to Settings if denied
         case (.reminders, _):
             return .requestRemindersAccess
+        case (.termsAndPrivacy, _):
+            return .reviewTerms
         }
     }
 

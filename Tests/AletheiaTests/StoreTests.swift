@@ -280,4 +280,23 @@ final class StoreTests: XCTestCase {
             }
         }
     }
+
+    func testFastSessionMeta() throws {
+        let patient = try store.createPatient(name: "Fast Meta")
+        // Initially 0 sessions
+        let meta0 = store.fastSessionMeta(for: patient)
+        XCTAssertEqual(meta0.count, 0)
+        XCTAssertNil(meta0.newestDate)
+
+        // Create two sessions
+        let calendar = Calendar(identifier: .gregorian)
+        let date1 = calendar.date(from: DateComponents(year: 2026, month: 9, day: 16))!
+        let date2 = calendar.date(from: DateComponents(year: 2026, month: 10, day: 1))!
+        _ = try store.createSession(for: patient, on: date1)
+        _ = try store.createSession(for: patient, on: date2)
+
+        let meta2 = store.fastSessionMeta(for: patient)
+        XCTAssertEqual(meta2.count, 2)
+        XCTAssertEqual(meta2.newestDate, date2)
+    }
 }

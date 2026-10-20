@@ -355,4 +355,75 @@ final class MermaidDiagramTests: XCTestCase {
         XCTAssertLessThanOrEqual(lines.count, 4)
         XCTAssertEqual(MermaidText.wrap("", maxWidth: 100), [""])
     }
+
+    // MARK: Diagnostic & Node Emphasis
+
+    func testDiagnoseReportsLineNumbers() {
+        let invalidDir = "flowchart INVALID\n  A --> B"
+        let diag1 = MermaidDiagram.diagnose(invalidDir)
+        XCTAssertNotNil(diag1)
+        XCTAssertEqual(diag1?.line, 1)
+
+        let badStatement = """
+        graph LR
+          A --> B
+          C ===>>> D
+        """
+        let diag2 = MermaidDiagram.diagnose(badStatement)
+        XCTAssertNotNil(diag2)
+        XCTAssertEqual(diag2?.line, 3)
+
+        let badSequence = """
+        sequenceDiagram
+          Alice->>Bob: Hello
+          This is broken
+        """
+        let diag3 = MermaidDiagram.diagnose(badSequence)
+        XCTAssertNotNil(diag3)
+        XCTAssertEqual(diag3?.line, 3)
+
+        // Valid diagrams return nil
+        XCTAssertNil(MermaidDiagram.diagnose("graph LR; A-->B"))
+        XCTAssertNil(MermaidDiagram.diagnose(""))
+    }
+
+    func testNodeEmphasisFromStyleAndClass() {
+        let source = """
+        flowchart TD
+          A[Start] --> B[Middle]
+          B --> C[End]
+          style B fill:#f9f
+        """
+        guard let chart = flowchart(source) else { return }
+        XCTAssertFalse(chart.nodes[0].isEmphasized)
+        XCTAssertTrue(chart.nodes[1].isEmphasized)
+        XCTAssertFalse(chart.nodes[2].isEmphasized)
+
+        let layout = layoutOf(source)
+        XCTAssertEqual(layout?.nodes.first(where: { $0.id == "B" })?.isEmphasized, true)
+        XCTAssertEqual(layout?.nodes.first(where: { $0.id == "A" })?.isEmphasized, false)
+    }
+
+    func testNodeEmphasisFromClassDirective() {
+        let source = """
+        flowchart TD
+          A[Start] --> B[End]
+          class A highlight
+        """
+        guard let chart = flowchart(source) else { return }
+        XCTAssertTrue(chart.nodes[0].isEmphasized)
+        XCTAssertFalse(chart.nodes[1].isEmphasized)
+    }
+
+    func testAutomaticSinkNodeEmphasis() {
+        let source = """
+        flowchart TD
+          A[Step 1] --> B[Step 2]
+          B --> C[Conclusion]
+        """
+        guard let chart = flowchart(source) else { return }
+        XCTAssertFalse(chart.nodes[0].isEmphasized)
+        XCTAssertFalse(chart.nodes[1].isEmphasized)
+        XCTAssertTrue(chart.nodes[2].isEmphasized) // sink node highlighted by default
+    }
 }

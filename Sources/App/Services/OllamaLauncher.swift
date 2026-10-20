@@ -92,4 +92,15 @@ enum OllamaLauncher {
         }
         throw LaunchError.timedOut
     }
+
+    /// Opens the installed Ollama.app directly.
+    @MainActor
+    @discardableResult
+    static func openOllamaApp() -> Bool {
+        guard let appURL = OllamaAppLocator.locate() else { return false }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: appURL, configuration: configuration, completionHandler: nil)
+        return true
+    }
 }

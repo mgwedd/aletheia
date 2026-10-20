@@ -68,6 +68,12 @@ struct SetupChecklistView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .liveStatusRefresh { authoritative in await refresh(authoritative: authoritative) }
+        .onChange(of: settings.acceptedLegalVersion) { _, _ in
+            Task { await refresh() }
+        }
+        .onChange(of: settings.dataRootURL) { _, _ in
+            Task { await refresh() }
+        }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -277,6 +283,8 @@ struct SetupChecklistView: View {
             }
         case .installOrOpenOllama:
             SystemSettingsLinks.openOllamaDownload()
+        case .reviewTerms:
+            NSWorkspace.shared.open(Legal.termsURL)
         case .launchOllama:
             busyAction = .launchOllama
             defer { busyAction = nil }

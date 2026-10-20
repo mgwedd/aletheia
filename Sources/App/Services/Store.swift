@@ -328,6 +328,34 @@ final class Store {
 
     // MARK: - Sessions
 
+    struct PatientSessionMeta: Equatable {
+        var count: Int
+        var newestDate: Date?
+    }
+
+    /// Fast scan of the patient's directory for session folders without opening
+    /// or decoding files. Used by the patient list sidebar row to display session
+    /// count and most recent session date without per-row disk reads.
+    func fastSessionMeta(for patient: Patient) -> PatientSessionMeta {
+        let dir = patientDir(for: patient)
+        guard let entries = try? fileManager.contentsOfDirectory(atPath: dir.path) else {
+            return PatientSessionMeta(count: 0, newestDate: nil)
+        }
+        var count = 0
+        var newestDate: Date?
+        for name in entries {
+            guard name.hasSuffix("_Session") || name.contains("_Session-") else { continue }
+            count += 1
+            let prefix = String(name.prefix(10))
+            if let date = dateFolderFormatter.date(from: prefix) {
+                if newestDate == nil || date > newestDate! {
+                    newestDate = date
+                }
+            }
+        }
+        return PatientSessionMeta(count: count, newestDate: newestDate)
+    }
+
     /// Healthy sessions only, newest first. A session whose `session.json` is
     /// present but unreadable is left out of this list but recorded in
     /// `unreadableEntries` (use `sessionListing(for:)` to get both together).
