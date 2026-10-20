@@ -166,6 +166,8 @@ struct SessionDetailView: View {
     @State private var showScheduleSheet = false
     @State private var scheduleStart = Date()
     @State private var scheduleDurationMinutes = SessionEventBuilder.defaultDurationMinutes
+    @State private var scheduleRecurrence: EventRecurrence = .never
+    @State private var scheduleExportICS = false
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -407,6 +409,8 @@ struct SessionDetailView: View {
                 Button {
                     scheduleStart = SessionEventBuilder.suggestedStart()
                     scheduleDurationMinutes = SessionEventBuilder.defaultDurationMinutes
+                    scheduleRecurrence = .never
+                    scheduleExportICS = false
                     showScheduleSheet = true
                 } label: {
                     Label("Schedule Next…", systemImage: "calendar.badge.plus")
@@ -518,15 +522,31 @@ struct SessionDetailView: View {
         let draft = SessionEventBuilder.draft(
             patientName: patient.name,
             start: scheduleStart,
-            durationMinutes: scheduleDurationMinutes
+            durationMinutes: scheduleDurationMinutes,
+            recurrence: scheduleRecurrence
         )
+        var icsSaved = false
+        if scheduleExportICS {
+            let icsText = ICSExporter.generate(for: draft)
+            let dateStr = draft.startDate.formatted(date: .abbreviated, time: .omitted)
+            let suggestedName = FileSaver.fileName(patient.name, "Session", dateStr) + ".ics"
+            icsSaved = FileSaver.saveICS(icsText, suggestedName: suggestedName)
+        }
         do {
             try await integrations.makeCalendarScheduler().schedule(draft)
             showScheduleSheet = false
-            confirmationMessage = "Added “\(draft.title)” to your Calendar."
+            if scheduleExportICS && icsSaved {
+                confirmationMessage = "Added “\(draft.title)” to your Calendar and saved .ics file."
+            } else {
+                confirmationMessage = "Added “\(draft.title)” to your Calendar."
+            }
         } catch {
             showScheduleSheet = false
-            errorMessage = error.localizedDescription
+            if scheduleExportICS && icsSaved {
+                confirmationMessage = "Saved .ics file. Could not add to Calendar: \(error.localizedDescription)"
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -536,6 +556,8 @@ struct SessionDetailView: View {
             lastSessionDate: session.date,
             start: $scheduleStart,
             durationMinutes: $scheduleDurationMinutes,
+            recurrence: $scheduleRecurrence,
+            exportICS: $scheduleExportICS,
             onCancel: { showScheduleSheet = false },
             onSchedule: { Task { await scheduleEvent() } }
         )

@@ -23,6 +23,24 @@ enum FileSaver {
         }
     }
 
+    /// Saves an iCalendar (.ics) file to a user-chosen location via NSSavePanel.
+    @discardableResult
+    static func saveICS(_ text: String, suggestedName: String) -> Bool {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedName
+        panel.canCreateDirectories = true
+        if let ics = UTType(filenameExtension: "ics") {
+            panel.allowedContentTypes = [ics, .plainText]
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Turns a patient name + date into a filesystem-friendly base filename.
     static func fileName(_ parts: String...) -> String {
         let joined = parts.joined(separator: " - ")

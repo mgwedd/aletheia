@@ -23,6 +23,23 @@ enum CalendarSchedulerError: LocalizedError {
 #if canImport(EventKit)
 import EventKit
 
+extension EventRecurrence {
+    var ekRecurrenceRule: EKRecurrenceRule? {
+        switch self {
+        case .never:
+            return nil
+        case .weekly:
+            return EKRecurrenceRule(recurrenceWith: .weekly, interval: 1, end: nil)
+        case .everyTwoWeeks:
+            return EKRecurrenceRule(recurrenceWith: .weekly, interval: 2, end: nil)
+        case .everyFourWeeks:
+            return EKRecurrenceRule(recurrenceWith: .weekly, interval: 4, end: nil)
+        case .monthly:
+            return EKRecurrenceRule(recurrenceWith: .monthly, interval: 1, end: nil)
+        }
+    }
+}
+
 final class EventKitCalendarScheduler: CalendarScheduling {
     private let store = EKEventStore()
 
@@ -39,6 +56,9 @@ final class EventKitCalendarScheduler: CalendarScheduling {
         event.notes = draft.notes
         event.startDate = draft.startDate
         event.endDate = draft.endDate
+        if let recurrenceRule = draft.recurrence.ekRecurrenceRule {
+            event.recurrenceRules = [recurrenceRule]
+        }
 
         try store.save(event, span: .thisEvent, commit: true)
     }
