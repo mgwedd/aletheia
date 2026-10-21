@@ -129,40 +129,53 @@ enum NotePDF {
     // MARK: - PDF
 
     /// The PDF bytes, paginated on US Letter, or nil if it could not be made.
+    /// The text is laid out across one text container per page and each page is
+    /// drawn into a PDF context in memory: no print panel, no temporary file.
     @MainActor
     static func render(markdown: String, title: String, subtitle: String) -> Data? {
         let content = attributedText(markdown: markdown, title: title, subtitle: subtitle)
+        let storage = NSTextStorage(attributedString: content)
+        let layout = NSLayoutManager()
+        storage.addLayoutManager(layout)
 
-        let info = NSPrintInfo()
-        info.paperSize = paper
-        info.topMargin = margin
-        info.bottomMargin = margin
-        info.leftMargin = margin
-        info.rightMargin = margin
-        info.isHorizontallyCentered = false
-        info.isVerticallyCentered = false
-        info.horizontalPagination = .fit
-        info.verticalPagination = .automatic
-
-        let view = NSTextView(frame: NSRect(x: 0, y: 0, width: textWidth, height: 100))
-        view.isEditable = false
-        view.drawsBackground = true
-        view.backgroundColor = .white
-        view.textContainerInset = .zero
-        view.isVerticallyResizable = true
-        view.isHorizontallyResizable = false
-        view.textContainer?.widthTracksTextView = true
-        view.textContainer?.containerSize = NSSize(width: textWidth, height: .greatestFiniteMagnitude)
-        view.textStorage?.setAttributedString(content)
-        guard let container = view.textContainer, let layout = view.layoutManager else { return nil }
-        layout.ensureLayout(for: container)
-        view.setFrameSize(NSSize(width: textWidth, height: ceil(layout.usedRect(for: container).height)))
+        let pageText = NSSize(width: textWidth, height: paper.height - 2 * margin)
+        var pages: [NSTextContainer] = []
+        repeat {
+            let container = NSTextContainer(size: pageText)
+            container.lineFragmentPadding = 0
+            layout.addTextContainer(container)
+            layout.ensureLayout(for: container)
+            pages.append(container)
+            // A page that took no text would never finish; give up rather than loop.
+            guard layout.glyphRange(for: container).length > 0 else { break }
+        } while NSMaxRange(layout.glyphRange(for: pages[pages.count - 1])) < layout.numberOfGlyphs
+            && pages.count < maxPages
 
         let data = NSMutableData()
-        let operation = NSPrintOperation.pdfOperation(with: view, inside: view.bounds, to: data, printInfo: info)
-        operation.showsPrintPanel = false
-        operation.showsProgressPanel = false
-        guard operation.run(), data.length > 0 else { return nil }
-        return data as Data
+        guard let consumer = CGDataConsumer(data: data as CFMutableData) else { return nil }
+        var mediaBox = CGRect(origin: .zero, size: paper)
+        guard let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else { return nil }
+        for container in pages {
+            context.beginPDFPage(nil)
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            context.fill(mediaBox)
+            context.saveGState()
+            // Text is laid out from the top left of the page's text area.
+            context.translateBy(x: margin, y: paper.height - margin)
+            context.scaleBy(x: 1, y: -1)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+            let glyphs = layout.glyphRange(for: container)
+            layout.drawBackground(forGlyphRange: glyphs, at: .zero)
+            layout.drawGlyphs(forGlyphRange: glyphs, at: .zero)
+            NSGraphicsContext.restoreGraphicsState()
+            context.restoreGState()
+            context.endPDFPage()
+        }
+        context.closePDF()
+        return data.length > 0 ? data as Data : nil
     }
+
+    /// A ceiling on the page count, so a pathological document can't run away.
+    static let maxPages = 2_000
 }
