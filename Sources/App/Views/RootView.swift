@@ -7,6 +7,7 @@ struct RootView: View {
     @EnvironmentObject private var updateService: UpdateService
     @EnvironmentObject private var encryption: EncryptionManager
     @EnvironmentObject private var recorder: SessionRecorder
+    @EnvironmentObject private var transcription: TranscriptionCoordinator
     @EnvironmentObject private var exports: ExportJobCenter
     @ObservedObject private var navigator = AppNavigator.shared
     @Environment(\.openWindow) private var openWindow
@@ -90,13 +91,13 @@ struct RootView: View {
                         initialTab = .notes
                         noteFormat = hit.noteFormat
                         showingMyNotes = false
-                    case .session:
+                    case .sessionNotes:
                         initialTab = .notes
                         showingMyNotes = true
                     case .comment:
                         initialTab = .transcript
                         commentID = hit.commentID
-                    case .transcript, .patient:
+                    case .transcript, .session, .patient:
                         initialTab = .transcript
                     }
 
@@ -170,6 +171,8 @@ struct RootView: View {
         }
         .onChange(of: navigator.pendingPatientID) { _, _ in navigateToPendingPatient() }
         .onAppear { navigateToPendingPatient() }
+        .modifier(SearchActivityReporting(
+            appModel: appModel, recorder: recorder, transcription: transcription, inferenceQueue: integrations.inferenceQueue))
     }
 
     private var doctorAvailable: Bool {
@@ -237,5 +240,27 @@ struct RootView: View {
             get: { updateService.manualNotice != nil },
             set: { if !$0 { updateService.clearManualNotice() } }
         )
+    }
+}
+
+/// Tells the background search-index sweep when to wait: while recording,
+/// transcribing, or while the AI model is generating.
+private struct SearchActivityReporting: ViewModifier {
+    let appModel: AppModel
+    @ObservedObject var recorder: SessionRecorder
+    @ObservedObject var transcription: TranscriptionCoordinator
+    @ObservedObject var inferenceQueue: InferenceQueue
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: recorder.isRecording, initial: true) { _, on in
+                appModel.searchActivity.set(.recording, active: on)
+            }
+            .onChange(of: transcription.isBusy, initial: true) { _, on in
+                appModel.searchActivity.set(.transcription, active: on)
+            }
+            .onChange(of: inferenceQueue.running != nil, initial: true) { _, on in
+                appModel.searchActivity.set(.model, active: on)
+            }
     }
 }

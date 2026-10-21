@@ -102,6 +102,25 @@ struct AletheiaApp: App {
             appModel?.recordAudit(.appUnlockFailed, detail: reason)
         }
         _appLock = StateObject(wrappedValue: appLock)
+
+        // Background summaries: only when nothing else is using the model, no
+        // recording or transcription is running and the app is unlocked.
+        integrations.digestScheduler.attach(
+            context: { [weak appModel, weak integrations] in
+                guard let appModel, let integrations, let store = appModel.store else { return nil }
+                return DigestScheduler.Context(
+                    store: store, patients: appModel.patients, service: integrations.makeAssistantService())
+            },
+            activity: { [weak recorder, weak transcription, weak appLock] in
+                DigestActivity(
+                    locked: appLock?.isLocked ?? true,
+                    recording: recorder?.isBusy ?? false,
+                    transcribing: transcription?.isBusy ?? false,
+                    lowPowerMode: PowerSource.isLowPowerMode,
+                    onBattery: PowerSource.isOnBattery
+                )
+            }
+        )
     }
 
     var body: some Scene {

@@ -67,7 +67,9 @@ final class DigestFollowUpTests: XCTestCase {
 
         builder.ensureDigest(for: patient, session: session, transcript: first, store: store, service: service)
         try await wait { fake.prompts.contains { $0.contains("STALL") } }
-        fake.delay = 40_000_000
+        // The new build reuses the sections the first one finished (only the merge
+        // is left), so that call is slowed enough to still be running below.
+        fake.delay = 200_000_000
         try store.saveTranscript(second, for: patient, session: session)
         builder.ensureDigest(for: patient, session: session, transcript: second, store: store, service: service)
 

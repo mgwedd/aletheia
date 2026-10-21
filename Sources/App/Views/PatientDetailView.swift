@@ -81,6 +81,7 @@ struct PatientDetailView: View {
                             exportButton
                         }
                     }
+                    SummaryStatusRow(scheduler: integrations.digestScheduler, patientID: patient.id)
 
                     Rectangle()
                         .fill(Theme.line.color)
@@ -154,6 +155,7 @@ struct PatientDetailView: View {
         .onAppear {
             refresh()
             openPendingSession()
+            integrations.digestScheduler.patientOpened(patient)
         }
         .onChange(of: navigator.pendingSession) { _, _ in openPendingSession() }
         // A transcription finishing changes which sessions have a transcript or

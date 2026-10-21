@@ -67,6 +67,25 @@ struct TranscriptCoverage: Equatable {
     var monthMergedSessions: Int = 0
     /// The effort level chosen for this answer, when reported by the caller.
     var effort: AnswerEffort? = nil
+    /// The sessions (by citation tag) behind `sessionsWithPassages`: those whose
+    /// transcript text is in the context.
+    var passageTags: Set<String> = []
+    /// The sessions (by citation tag) whose digest is in the context.
+    var digestTags: Set<String> = []
+    /// Sessions whose transcript only a follow-up lookup read: not already in
+    /// `passageTags`. Kept apart from `sessionsWithPassages` because a lookup
+    /// may reach a session outside the question's date range, so it is not one
+    /// of the `transcriptSessions` that count is out of.
+    var lookupTags: Set<String> = []
+
+    /// Adds what follow-up lookups read. A session counts once however it was
+    /// reached: a lookup of a session already in the context adds nothing.
+    mutating func addLookups(transcriptTags: Set<String>, digestTags readDigests: Set<String>) {
+        lookupTags.formUnion(transcriptTags.subtracting(passageTags))
+        let newDigests = readDigests.subtracting(digestTags)
+        digestTags.formUnion(newDigests)
+        digestSessions += newDigests.count
+    }
 
     /// A plain-language line for the chat sheet, or nil when nothing was read.
     var label: String? {
@@ -101,6 +120,9 @@ struct TranscriptCoverage: Equatable {
                 parts.append("transcript passages from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
             }
         }
+        if !lookupTags.isEmpty {
+            parts.append("follow-up lookups in the transcripts of \(lookupTags.count) more session\(lookupTags.count == 1 ? "" : "s")")
+        }
         if unreadableSessions > 0 { parts.append("\(sessions(unreadableSessions)) could not be read, so answers may be incomplete") }
         guard !parts.isEmpty else { return nil }
         let suffix = effort.map { " · \($0.displayName)" } ?? ""
@@ -131,6 +153,18 @@ enum Citations {
     /// session are ignored.
     static func citedSources(in answer: String, from sources: [CitationSource]) -> [CitationSource] {
         sources.filter { answer.contains("[\($0.tag)]") }
+    }
+
+    /// `base` plus the sessions in `added` it doesn't already have (by tag),
+    /// newest first: what an answer can cite once its follow-up lookups have
+    /// read sessions the context didn't hold.
+    static func merged(_ base: [CitationSource], adding added: [CitationSource]) -> [CitationSource] {
+        var seen = Set<String>()
+        var all: [CitationSource] = []
+        for source in base + added where seen.insert(source.tag).inserted {
+            all.append(source)
+        }
+        return all.sorted { $0.date > $1.date }
     }
 
     /// The answer rewritten for display: each known `[S#]` tag replaced by its

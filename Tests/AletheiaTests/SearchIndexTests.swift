@@ -55,6 +55,24 @@ final class SearchIndexTests: XCTestCase {
         XCTAssertEqual(index.counts().passages, 2)
     }
 
+    func testDeletingAPatientDropsItsTextStoredWithoutThePatientID() throws {
+        let (store, patient, session) = try makeStore()
+        try store.saveTranscript("[00:01] A: We talked about the garden.", for: patient, session: session)
+        index.flush()
+        // The tool loop's search names the session but not the patient; a long
+        // note's passages name neither.
+        let byTool = SessionSearch.Document(
+            date: session.date, tag: "S1", kind: .sessionNotes, text: "Garden plan for spring.", session: session.id)
+        let adHoc = SessionSearch.Document(date: session.date, tag: "S1", kind: .transcript, text: "[00:01] A: The garden again.")
+        _ = search([byTool], "garden")
+        _ = search([adHoc], "garden")
+        XCTAssertEqual(index.counts().docs, 3)
+
+        try store.deletePatient(patient)
+        XCTAssertEqual(index.counts().docs, 0, "no text of a deleted patient stays in the index")
+        XCTAssertNil(index.stamp(session: session.id.uuidString))
+    }
+
     func testSweepIndexesChangedSessionsOnceAndDropsOrphans() throws {
         let (store, patient, session) = try makeStore()
         let other = try store.createSession(for: patient, on: Date(timeIntervalSince1970: 86_400 * 400))
