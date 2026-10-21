@@ -183,6 +183,8 @@ struct AletheiaApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
+            // View > Show/Hide Sidebar (⌃⌘S).
+            SidebarCommands()
             // Stock File > Close Window (⌘W). Stated explicitly so it's always
             // present and works for the main, Doctor and Settings windows alike.
             CommandGroup(replacing: .saveItem) {

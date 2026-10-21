@@ -220,8 +220,12 @@ final class GlobalSearchModelTests: XCTestCase {
         let entries = ShortcutCatalog.sections.flatMap(\.entries)
         XCTAssertEqual(entries.first { $0.title == "Search everything" }.map { ShortcutGlyphs.symbols(for: $0.shortcut) }, "⌘F")
         let field = try source("Sources/App/Views/GlobalSearchField.swift")
-        XCTAssertTrue(field.contains(".shortcut(AppHotkey.search, help: \"Search everything\")"))
+        XCTAssertEqual(ShortcutGlyphs.symbols(for: AppHotkey.findInText), "⌥⌘F")
         XCTAssertTrue(field.contains("ShortcutHint(AppHotkey.search)"))
+        XCTAssertTrue(field.contains("GlobalSearchShortcut.isGlobalSearch(event)"))
+        let list = try source("Sources/App/Views/PatientsListView.swift")
+        XCTAssertTrue(list.contains("GlobalSearchField("), "the field is in the sidebar")
+        XCTAssertFalse(try source("Sources/App/Views/RootView.swift").contains("GlobalSearchField("), "and not in the toolbar")
         XCTAssertTrue(try source("Sources/App/Views/RootView.swift").contains("GlobalSearchHotkey(isFocused: isFocused)"))
     }
 
@@ -259,7 +263,8 @@ final class GlobalSearchModelTests: XCTestCase {
         XCTAssertTrue(list.contains("List(appModel.patients, selection:"), "and is not filtered while searching")
         let rootView = try source("Sources/App/Views/RootView.swift")
         XCTAssertFalse(rootView.contains("GlobalSearchView("), "no separate search sheet")
-        XCTAssertTrue(rootView.contains("ToolbarItem(placement: .primaryAction) {\n                        GlobalSearchField("))
+        XCTAssertFalse(rootView.contains("GlobalSearchField("), "the field is in the sidebar, not the detail toolbar")
+        XCTAssertTrue(list.contains("GlobalSearchField(model: search"))
         XCTAssertFalse(FileManager.default.fileExists(
             atPath: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
                 .appendingPathComponent("Sources/App/Views/GlobalSearchView.swift").path))

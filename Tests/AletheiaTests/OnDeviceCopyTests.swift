@@ -43,7 +43,7 @@ final class OnDeviceCopyTests: XCTestCase {
     func testSearchFooterIsEmptyBeforeATypedQuery() throws {
         // Read as source: results (and their footer) show only once something is
         // typed, and the footer's count only once something matched.
-        XCTAssertTrue(try source("Views/RootView.swift").contains("if search.hasQuery {"))
+        XCTAssertTrue(try source("Views/RootView.swift").contains("if search.hasQuery && hasOpenPatient {"))
         XCTAssertTrue(try source("Views/GlobalSearchResultsView.swift").contains("guard total > 0 else { return \"\" }"))
     }
 }
