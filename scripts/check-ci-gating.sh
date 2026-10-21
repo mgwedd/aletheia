@@ -14,6 +14,8 @@
 #     required check would stay pending forever); cd.yml's long-standing
 #     `paths-ignore` is the only filter allowed.
 #   - no third-party marketplace actions (only `actions/*`).
+#   - auto-release.yml always dispatches release.yml against the new tag (its
+#     tag points at a [skip ci] commit, so the tag push starts nothing).
 # and that scripts/ci-changes.sh maps changed files to the right answer.
 #
 # Usage: scripts/check-ci-gating.sh [--self-test]
@@ -300,6 +302,22 @@ def check_gated(path, jobid, jobname, area):
 
 check_gated(".github/workflows/cd.yml", "package", "Build & package (macOS)", "package")
 check_gated(".github/workflows/bench.yml", "bench", "Benchmarks (informational)", "benchmarks")
+
+# auto-release.yml: its release commit carries [skip ci], and the tag points at
+# that commit, so the tag push never starts release.yml. The release build has
+# to be dispatched, every time, with no early exit before the dispatch.
+def check_release_dispatch(path):
+    steps = load(path)["jobs"]["release"]["steps"]
+    trig = [s for s in steps if s.get("name") == "Trigger build and publish"]
+    if not trig:
+        bad(f"{path}: missing the `Trigger build and publish` step"); return
+    run = trig[0].get("run", "")
+    if 'gh workflow run release.yml --ref "v${NEXT}"' not in run:
+        bad(f"{path}: `Trigger build and publish` must dispatch release.yml against v${{NEXT}}")
+    if re.search(r"^\s*exit 0\b", run, re.M) or "HAS_DEPLOY_KEY" in run:
+        bad(f"{path}: `Trigger build and publish` must always dispatch (a [skip ci] tag push starts nothing)")
+
+check_release_dispatch(".github/workflows/auto-release.yml")
 
 for p in problems:
     print(f"check-ci-gating: {p}", file=sys.stderr)
