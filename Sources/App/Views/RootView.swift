@@ -141,7 +141,8 @@ struct RootView: View {
             Button("Stop Now", role: .destructive) { Task { await recorder.stop() } }
         } message: {
             Text(SessionNotifications.longRecordingReminder(
-                patientName: recorder.active?.patientName ?? "This patient"
+                patientName: recorder.active?.patientName ?? "This patient",
+                showsName: true   // in-app alert behind the app lock, not a lock-screen banner
             ).body)
         }
         // `selectedPatient` is a snapshot; keep it in step with saves (matched by

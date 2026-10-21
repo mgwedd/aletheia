@@ -1617,7 +1617,10 @@ struct SessionDetailView: View {
                 onSessionUpdated()
                 Task {
                     await integrations.makeNotifier().post(
-                        SessionNotifications.summaryReady(patientName: patient.name, date: session.date)
+                        SessionNotifications.summaryReady(
+                            patientName: patient.name, date: session.date,
+                            showsName: settings.notificationsShowPatientNames
+                        )
                     )
                 }
             }
