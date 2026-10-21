@@ -76,7 +76,7 @@ final class AppLockPolicyTests: XCTestCase {
     }
 
     @MainActor
-    func testAppLockRelocksOnHideAndNotOnResignActive() async {
+    func testUnlockLastsThroughHidingAndSwitchingApps() async {
         let settings = AppSettings.shared
         let priorEnabled = settings.appLockEnabled
         defer { settings.appLockEnabled = priorEnabled }
@@ -88,24 +88,67 @@ final class AppLockPolicyTests: XCTestCase {
         appLock.simulateUnlockedForTesting()
         XCTAssertFalse(appLock.isLocked)
 
-        // Switching to another app (or closing the main window while the chat
-        // window stays open) resigns active status without hiding — must not re-lock.
+        // One unlock per session on this Mac: switching to another app, hiding
+        // Aletheia (⌘H) or the display sleeping on its own must not re-lock.
         NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: nil)
+        NotificationCenter.default.post(name: NSApplication.didHideNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.screensDidSleepNotification, object: nil)
+        await Task.yield()
         await Task.yield()
         XCTAssertFalse(appLock.isLocked)
+    }
 
-        // Explicitly hiding Aletheia (⌘H) posts didHideNotification at the app
-        // level regardless of which window is open, and must re-lock.
-        NotificationCenter.default.post(name: NSApplication.didHideNotification, object: nil)
+    @MainActor
+    func testUnlockEndsWhenTheMacSleepsOrTheUserSwitches() async {
+        let settings = AppSettings.shared
+        let priorEnabled = settings.appLockEnabled
+        defer { settings.appLockEnabled = priorEnabled }
+        settings.appLockEnabled = true
+
+        let appLock = AppLock(settings: settings, canAuthenticate: { true })
+
+        appLock.simulateUnlockedForTesting()
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.willSleepNotification, object: nil)
+        await Task.yield()
         await Task.yield()
         XCTAssertTrue(appLock.isLocked)
+        XCTAssertEqual(appLock.lockReason, .systemSleep)
+
+        appLock.simulateUnlockedForTesting()
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
+        await Task.yield()
+        await Task.yield()
+        XCTAssertTrue(appLock.isLocked)
+        XCTAssertEqual(appLock.lockReason, .userSwitch)
+    }
+
+    func testRelockTriggersAreLeavingTheMacOnly() {
+        XCTAssertEqual(RelockTrigger.allCases, [.systemSleep, .screenLock, .userSwitch])
+        let names = RelockTrigger.allCases.map(\.notificationName)
+        XCTAssertEqual(names, [
+            NSWorkspace.willSleepNotification,
+            Notification.Name("com.apple.screenIsLocked"),
+            NSWorkspace.sessionDidResignActiveNotification,
+        ])
+        XCTAssertFalse(names.contains(NSApplication.didHideNotification))
+        XCTAssertFalse(names.contains(NSWorkspace.screensDidSleepNotification))
+        XCTAssertEqual(RelockTrigger.allCases.filter(\.isDistributed), [.screenLock])
+        XCTAssertEqual(RelockTrigger.allCases.map(\.reason), [.systemSleep, .screenLock, .userSwitch])
+    }
+
+    func testAppLockSourceHasNoHideOrDisplaySleepTrigger() throws {
+        let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/Services/AppLock.swift"), encoding: .utf8)
+        XCTAssertFalse(source.contains("didHideNotification"))
+        XCTAssertFalse(source.contains("screensDidSleepNotification"))
     }
 
     func testLockReasonExplanations() {
         XCTAssertEqual(LockReason.launch.explanation, "Locked on launch to protect client notes.")
         XCTAssertEqual(LockReason.idle(minutes: 1).explanation, "Locked after 1 minute of inactivity.")
         XCTAssertEqual(LockReason.idle(minutes: 5).explanation, "Locked after 5 minutes of inactivity.")
-        XCTAssertEqual(LockReason.appHidden.explanation, "Locked because Aletheia was hidden.")
+        XCTAssertEqual(LockReason.userSwitch.explanation, "Locked because you switched to another user on this Mac.")
         XCTAssertEqual(LockReason.systemSleep.explanation, "Locked because your Mac went to sleep.")
         XCTAssertEqual(LockReason.screenLock.explanation, "Locked because your screen was locked.")
         XCTAssertEqual(LockReason.manual.explanation, "Locked to protect client notes.")
@@ -129,10 +172,9 @@ final class AppLockPolicyTests: XCTestCase {
         XCTAssertEqual(appLock.lockReason, .idle(minutes: 15))
 
         appLock.simulateUnlockedForTesting()
-        NotificationCenter.default.post(name: NSApplication.didHideNotification, object: nil)
-        await Task.yield()
+        appLock.lockIfEnabled(reason: .screenLock)
         XCTAssertTrue(appLock.isLocked)
-        XCTAssertEqual(appLock.lockReason, .appHidden)
+        XCTAssertEqual(appLock.lockReason, .screenLock)
     }
 
     @MainActor

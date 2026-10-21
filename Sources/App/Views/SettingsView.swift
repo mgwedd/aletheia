@@ -928,7 +928,7 @@ struct SettingsView: View {
     private var securityPane: some View {
         SettingsSwitchRow(
             title: "App lock",
-            detail: "Require Touch ID or your Mac password to open. Locks the app when it opens and whenever it's hidden, so your patients' notes stay behind it.",
+            detail: "Require Touch ID or your Mac password to open. You unlock once when it opens. It locks again when your Mac sleeps, its screen locks or you switch user, so your patients' notes stay behind it.",
             isOn: $settings.appLockEnabled
         )
         SettingsRow(
