@@ -60,6 +60,9 @@ struct SearchHit: Identifiable, Equatable {
     let commentID: String?
     /// For a comment hit, seconds into the session the comment is anchored at.
     let commentSeconds: Double?
+    /// For a transcript or note hit, the passage the snippet comes from: a
+    /// transcript line, or a paragraph of the note (`GlobalSearchText.paragraphs`).
+    let passage: Int?
     let snippet: String
 
     init(
@@ -71,6 +74,7 @@ struct SearchHit: Identifiable, Equatable {
         noteFormat: ProgressNoteFormat? = nil,
         commentID: String? = nil,
         commentSeconds: Double? = nil,
+        passage: Int? = nil,
         snippet: String
     ) {
         self.id = id
@@ -81,6 +85,7 @@ struct SearchHit: Identifiable, Equatable {
         self.noteFormat = noteFormat
         self.commentID = commentID
         self.commentSeconds = commentSeconds
+        self.passage = passage
         self.snippet = snippet
     }
 

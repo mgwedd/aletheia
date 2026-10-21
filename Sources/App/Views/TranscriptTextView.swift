@@ -40,14 +40,15 @@ struct TranscriptTextView: NSViewRepresentable {
     @Binding var selection: String
     @Binding var selectionRange: NSRange?
     var onOpenComment: (String) -> Void = { _ in }
-    /// When set, the passage this comment anchors to is scrolled into view and
-    /// briefly flashed — the "click a card in the rail → jump to the text"
-    /// direction of the Google-Docs two-way focus. Cleared by the owner.
-    var focusedCommentID: String? = nil
-    /// Bumped by the owner on every focus request (a card or highlight click).
-    /// The scroll-and-flash fires whenever this changes, even if
-    /// `focusedCommentID` is the same one as last time, so clicking the same
-    /// card again after scrolling away jumps back to its passage.
+    /// When set, this is scrolled into view and briefly flashed: the passage a
+    /// comment anchors to (the "click a card in the rail → jump to the text"
+    /// direction of the Google-Docs two-way focus), or a search match. Cleared
+    /// by the owner.
+    var focus: TranscriptFocus? = nil
+    /// Bumped by the owner on every focus request (a card or highlight click,
+    /// a search hit opened). The scroll-and-flash fires whenever this changes,
+    /// even if `focus` is the same as last time, so clicking the same card
+    /// again after scrolling away jumps back to its passage.
     var focusToken: Int = 0
     /// The passage a comment is being written for (UTF-16, in this view's text).
     /// While set, the passage is shown highlighted and scrolled into view, the
@@ -142,7 +143,7 @@ struct TranscriptTextView: NSViewRepresentable {
         // actually changed; rebuilding on every SwiftUI pass would clobber the
         // user's caret and selection.
         context.coordinator.sync(into: textView)
-        context.coordinator.flashIfNeeded(in: textView, focusedCommentID: focusedCommentID, focusToken: focusToken)
+        context.coordinator.flashIfNeeded(in: textView, focus: focus, focusToken: focusToken)
         context.coordinator.syncComposing(in: textView)
     }
 
@@ -355,25 +356,26 @@ struct TranscriptTextView: NSViewRepresentable {
         /// manager's temporary attributes so the text storage is never mutated.
         /// A comment whose passage couldn't be placed has no span, so focusing
         /// it leaves the scroll position alone.
-        func flashIfNeeded(in textView: NSTextView, focusedCommentID: String?, focusToken: Int) {
+        func flashIfNeeded(in textView: NSTextView, focus: TranscriptFocus?, focusToken: Int) {
             guard TranscriptHighlighter.isNewFocusRequest(
-                commentID: focusedCommentID, token: focusToken, lastHandledToken: lastFlashedToken
-            ), let id = focusedCommentID else {
-                if focusedCommentID == nil { lastFlashedToken = nil }
+                focus, token: focusToken, lastHandledToken: lastFlashedToken
+            ), let focus else {
+                if focus == nil { lastFlashedToken = nil }
                 return
             }
             lastFlashedToken = focusToken
             guard
-                let span = spans.first(where: { $0.commentID == id }),
-                NSMaxRange(span.range) <= (textView.string as NSString).length,
+                let range = TranscriptHighlighter.range(
+                    for: focus, spans: spans, length: (textView.string as NSString).length
+                ),
                 let layoutManager = textView.layoutManager
             else { return }
 
-            textView.scrollRangeToVisible(span.range)
+            textView.scrollRangeToVisible(range)
             let flash = Theme.accentTint.nsColor
-            layoutManager.addTemporaryAttributes([.backgroundColor: flash], forCharacterRange: span.range)
+            layoutManager.addTemporaryAttributes([.backgroundColor: flash], forCharacterRange: range)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak layoutManager] in
-                layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: span.range)
+                layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: range)
             }
         }
 

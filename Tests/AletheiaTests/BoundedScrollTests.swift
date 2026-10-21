@@ -38,7 +38,7 @@ final class BoundedScrollTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/App/Views/SessionDetailView.swift")
         let source = try String(contentsOf: file, encoding: .utf8)
-        let marker = try XCTUnwrap(source.range(of: "MarkdownMessageView(text: summaryText, style: .note)"))
+        let marker = try XCTUnwrap(source.range(of: "MarkdownMessageView(text: summaryText, style: .note"))
         let before = source[..<marker.lowerBound].suffix(200)
         XCTAssertTrue(before.contains("BoundedScroll {"), "the note body should sit in a BoundedScroll")
     }

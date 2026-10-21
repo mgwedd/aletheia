@@ -100,6 +100,8 @@ struct SessionDetailView: View {
     var editGuard: UnsavedTranscriptGuard? = nil
     var initialTab: SessionTab = .transcript
     var initialFocusedCommentID: String? = nil
+    /// A search match to scroll to and flash on `initialTab` (transcript or note).
+    var initialSearchFocus: SearchMatchFocus? = nil
     var initialNoteFormat: ProgressNoteFormat? = nil
     var initialShowingMyNotes: Bool = false
     var navigationToken: Int = 0
@@ -111,6 +113,7 @@ struct SessionDetailView: View {
         editGuard: UnsavedTranscriptGuard? = nil,
         initialTab: SessionTab = .transcript,
         initialFocusedCommentID: String? = nil,
+        initialSearchFocus: SearchMatchFocus? = nil,
         initialNoteFormat: ProgressNoteFormat? = nil,
         initialShowingMyNotes: Bool = false,
         navigationToken: Int = 0
@@ -121,6 +124,7 @@ struct SessionDetailView: View {
         self.editGuard = editGuard
         self.initialTab = initialTab
         self.initialFocusedCommentID = initialFocusedCommentID
+        self.initialSearchFocus = initialSearchFocus
         self.initialNoteFormat = initialNoteFormat
         self.initialShowingMyNotes = initialShowingMyNotes
         self.navigationToken = navigationToken
@@ -219,6 +223,19 @@ struct SessionDetailView: View {
     /// Bumped on every focus request so the scroll-and-flash is an event, not a
     /// state: re-clicking the already-focused card still jumps to its passage.
     @State private var focusToken = 0
+    /// Bumped with `focusToken` for comment focus only, so opening the
+    /// transcript at a search match doesn't also reveal the comments rail.
+    @State private var commentRevealToken = 0
+    /// The search match the transcript scrolls to and flashes, when no comment
+    /// is focused (see `transcriptFocus`).
+    @State private var searchMatchRange: NSRange?
+    /// The search match to scroll to and flash in the drafted note, and its
+    /// request token (bumped per opened hit); the last token shown, so it shows
+    /// once per request; and the rendered block currently flashed.
+    @State private var noteSearchFocus: SearchMatchFocus?
+    @State private var noteFocusToken = 0
+    @State private var lastNoteFocusToken: Int?
+    @State private var flashedNoteBlock: Int?
     /// Set when the last transcription came back blank and the recording was
     /// kept (see `AudioRetentionPolicy.decision`); shown inline, not as an alert.
     @State private var noSpeechNotice: String?
@@ -309,6 +326,7 @@ struct SessionDetailView: View {
             if let initialFocusedCommentID {
                 focusComment(initialFocusedCommentID)
             }
+            applySearchFocus()
             ensureDigest()
             // Load the model now so the first note or question skips the load.
             integrations.makeAssistant().warmUp(model: integrations.activeModelName)
@@ -749,7 +767,7 @@ struct SessionDetailView: View {
                     commentCount: comments.filter { !$0.resolved }.count,
                     ratio: $settings.transcriptSplitRatio,
                     collapsed: $splitCollapsed,
-                    revealToken: focusToken
+                    revealToken: commentRevealToken
                 ) {
                     TranscriptTextView(
                         text: $transcriptDraft,
@@ -758,7 +776,7 @@ struct SessionDetailView: View {
                         selection: $transcriptSelection,
                         selectionRange: $transcriptSelectionRange,
                         onOpenComment: openComment,
-                        focusedCommentID: focusedCommentID,
+                        focus: transcriptFocus,
                         focusToken: focusToken,
                         composingRange: composingRange,
                         onComposingRectChange: { composerAnchor = $0 },
@@ -948,7 +966,54 @@ struct SessionDetailView: View {
     /// already-focused comment again (after scrolling away) works too.
     private func focusComment(_ id: String) {
         focusedCommentID = id
+        searchMatchRange = nil
         focusToken += 1
+        commentRevealToken += 1
+    }
+
+    /// What the transcript scrolls to and flashes: the focused comment's
+    /// passage, else the search match it was opened at.
+    private var transcriptFocus: TranscriptFocus? {
+        if let focusedCommentID { return .comment(focusedCommentID) }
+        return searchMatchRange.map { .range($0) }
+    }
+
+    /// Opens at the search match this session was opened for: flashes it in
+    /// the transcript, or asks the drafted note to scroll to it.
+    private func applySearchFocus() {
+        guard let initialSearchFocus else { return }
+        switch initialTab {
+        case .transcript:
+            guard let range = initialSearchFocus.transcriptRange(in: transcriptDraft) else { return }
+            focusedCommentID = nil
+            searchMatchRange = range
+            focusToken += 1
+        case .notes:
+            noteSearchFocus = initialSearchFocus
+            noteFocusToken += 1
+        case .ask:
+            break
+        }
+    }
+
+    /// Scrolls the drafted note to the block holding the search match and
+    /// flashes it, once per request. Runs when the note appears and when a new
+    /// request comes in while it is shown.
+    private func showNoteSearchFocus(_ proxy: ScrollViewProxy) async {
+        guard let noteSearchFocus,
+              SearchMatchFocus.isNewRequest(token: noteFocusToken, lastHandledToken: lastNoteFocusToken) else { return }
+        lastNoteFocusToken = noteFocusToken
+        let blocks = MarkdownParser.parse(MarkdownTextStyle.note.prepared(summaryText))
+        guard let block = noteSearchFocus.noteBlock(in: blocks, note: summaryText) else { return }
+        // Let the note lay out before scrolling to one of its blocks.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        guard !Task.isCancelled else { return }
+        withAnimation(.snappy) { proxy.scrollTo(block, anchor: .center) }
+        flashedNoteBlock = block
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        withAnimation(.easeOut(duration: 0.3)) {
+            if flashedNoteBlock == block { flashedNoteBlock = nil }
+        }
     }
 
     /// Clicking a highlighted passage focuses its card in the margin rail (and
@@ -973,6 +1038,7 @@ struct SessionDetailView: View {
         if let initialFocusedCommentID {
             focusComment(initialFocusedCommentID)
         }
+        applySearchFocus()
     }
 
     private func resolveComment(_ comment: SessionComment, _ resolved: Bool) {
@@ -1185,12 +1251,15 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.muted.color)
                         .padding(.horizontal, 20)
                 }
-                BoundedScroll {
-                    MarkdownMessageView(text: summaryText, style: .note)
-                        .frame(maxWidth: 680, alignment: .leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
+                ScrollViewReader { proxy in
+                    BoundedScroll {
+                        MarkdownMessageView(text: summaryText, style: .note, flashedBlock: flashedNoteBlock)
+                            .frame(maxWidth: 680, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 20)
+                    }
+                    .task(id: noteFocusToken) { await showNoteSearchFocus(proxy) }
                 }
             }
         }

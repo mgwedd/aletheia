@@ -84,7 +84,7 @@ enum GlobalSearchAnnouncement {
 
 /// Where opening a result goes: the patient, and for anything inside a
 /// session that session, on the tab (and note format, My Notes, or comment)
-/// the match is in.
+/// the match is in, and for a transcript or note the passage to scroll to.
 struct SearchHitDestination: Equatable {
     let patientID: UUID
     let sessionID: UUID?
@@ -92,6 +92,8 @@ struct SearchHitDestination: Equatable {
     let noteFormat: ProgressNoteFormat?
     let showingMyNotes: Bool
     let commentID: String?
+    /// The transcript line or note paragraph that matched (see `SearchMatchFocus`).
+    let matchPassage: Int?
 
     init(_ hit: SearchHit) {
         patientID = hit.patient.id
@@ -101,6 +103,7 @@ struct SearchHitDestination: Equatable {
             noteFormat = nil
             showingMyNotes = false
             commentID = nil
+            matchPassage = nil
             return
         }
         switch hit.kind {
@@ -109,22 +112,37 @@ struct SearchHitDestination: Equatable {
             noteFormat = hit.noteFormat
             showingMyNotes = false
             commentID = nil
+            matchPassage = hit.passage
         case .sessionNotes:
             tab = .notes
             noteFormat = nil
             showingMyNotes = true
             commentID = nil
+            matchPassage = nil
         case .comment:
             tab = .transcript
             noteFormat = nil
             showingMyNotes = false
             commentID = hit.commentID
-        case .transcript, .session, .patient:
+            matchPassage = nil
+        case .transcript:
             tab = .transcript
             noteFormat = nil
             showingMyNotes = false
             commentID = nil
+            matchPassage = hit.passage
+        case .session, .patient:
+            tab = .transcript
+            noteFormat = nil
+            showingMyNotes = false
+            commentID = nil
+            matchPassage = nil
         }
+    }
+
+    /// What to scroll to and flash once the session is open, for `query`.
+    func searchFocus(query: String) -> SearchMatchFocus? {
+        matchPassage.map { SearchMatchFocus(query: query, passage: $0) }
     }
 }
 
