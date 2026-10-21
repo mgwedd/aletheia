@@ -168,6 +168,8 @@ final class DigestScheduler: ObservableObject {
     func evaluate() {
         var now = activity()
         now.userPaused = settings.summariesPaused
+        // The setting lifts only the battery pause; Low Power Mode still pauses.
+        if settings.prepareSummariesOnBattery { now.onBattery = false }
         now.preparingNow = preparingNow
         now.recentFailure = lastFailure.map { Date().timeIntervalSince($0) < DigestSchedulePolicy.failureBackoff } ?? false
         let running = queue.running.map { $0.kind != .digest } ?? false

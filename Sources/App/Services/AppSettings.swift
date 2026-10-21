@@ -106,6 +106,7 @@ final class AppSettings: ObservableObject {
         static let sessionChatEffort = "sessionChatEffort"
         static let patientChatEffort = "patientChatEffort"
         static let summariesPaused = "summariesPaused"
+        static let prepareSummariesOnBattery = "prepareSummariesOnBattery"
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
@@ -242,6 +243,12 @@ final class AppSettings: ObservableObject {
     /// paused across launches until resumed.
     @Published var summariesPaused: Bool {
         didSet { defaults.set(summariesPaused, forKey: Keys.summariesPaused) }
+    }
+    /// Whether background summaries may be prepared while the Mac runs on
+    /// battery. Off by default: they use the local model and drain it. Low
+    /// Power Mode still pauses them either way.
+    @Published var prepareSummariesOnBattery: Bool {
+        didSet { defaults.set(prepareSummariesOnBattery, forKey: Keys.prepareSummariesOnBattery) }
     }
     /// Phrases whose lines a long session's note always includes first (and warns
     /// about if they don't fit). Plain text, not PHI. Never set means the built-in
@@ -431,6 +438,7 @@ final class AppSettings: ObservableObject {
         sessionChatEffort = defaults.string(forKey: Keys.sessionChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         patientChatEffort = defaults.string(forKey: Keys.patientChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         summariesPaused = defaults.bool(forKey: Keys.summariesPaused)
+        prepareSummariesOnBattery = defaults.bool(forKey: Keys.prepareSummariesOnBattery)
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil

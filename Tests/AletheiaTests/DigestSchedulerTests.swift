@@ -65,6 +65,13 @@ final class DigestSchedulePolicyTests: XCTestCase {
         XCTAssertNil(DigestSchedulePolicy.pauseReason(all))
     }
 
+    func testLowPowerModePausesWithoutBatteryAndStatusStaysAccurate() {
+        XCTAssertEqual(DigestSchedulePolicy.pauseReason(DigestActivity(lowPowerMode: true, onBattery: false)), .lowPowerMode)
+        XCTAssertNil(DigestSchedulePolicy.pauseReason(DigestActivity(onBattery: false)))
+        XCTAssertEqual(DigestPauseReason.battery.text, "paused on battery")
+        XCTAssertEqual(DigestPauseReason.lowPowerMode.text, "paused in Low Power Mode")
+    }
+
     // MARK: Which sessions need a summary
 
     func testOnlySessionsThatCannotBeReadWholeNeedASummary() {
@@ -249,5 +256,47 @@ final class DigestResumeTests: XCTestCase {
         scheduler.perform(.prepareNow, patientID: UUID())
         XCTAssertNil(scheduler.pauseReason, "Prepare now runs despite the user's pause")
         XCTAssertTrue(scheduler.preparingNow)
+    }
+
+    func testPrepareSummariesOnBatterySettingLiftsOnlyTheBatteryPause() {
+        let settings = AppSettings.shared
+        let wasPaused = settings.summariesPaused
+        let wasOnBattery = settings.prepareSummariesOnBattery
+        defer {
+            settings.summariesPaused = wasPaused
+            settings.prepareSummariesOnBattery = wasOnBattery
+        }
+        settings.summariesPaused = false
+        settings.prepareSummariesOnBattery = false
+
+        let queue = InferenceQueue()
+        let scheduler = DigestScheduler(builder: DigestBuilder(queue: queue), queue: queue, settings: settings)
+        var lowPower = false
+        scheduler.attach(context: { nil }, activity: { DigestActivity(lowPowerMode: lowPower, onBattery: true) })
+        defer { scheduler.stop() }
+
+        scheduler.evaluate()
+        XCTAssertEqual(scheduler.pauseReason, .battery, "off: battery pauses")
+        settings.prepareSummariesOnBattery = true
+        scheduler.evaluate()
+        XCTAssertNil(scheduler.pauseReason, "on: battery no longer pauses")
+        lowPower = true
+        scheduler.evaluate()
+        XCTAssertEqual(scheduler.pauseReason, .lowPowerMode, "on: Low Power Mode still pauses")
+        lowPower = false
+        settings.prepareSummariesOnBattery = false
+        scheduler.evaluate()
+        XCTAssertEqual(scheduler.pauseReason, .battery, "turned off again: battery pauses")
+    }
+
+    func testPrepareSummariesOnBatterySettingPersists() {
+        let settings = AppSettings.shared
+        let original = settings.prepareSummariesOnBattery
+        defer { settings.prepareSummariesOnBattery = original }
+
+        settings.prepareSummariesOnBattery = true
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: "prepareSummariesOnBattery"))
+        settings.prepareSummariesOnBattery = false
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: "prepareSummariesOnBattery"))
     }
 }
