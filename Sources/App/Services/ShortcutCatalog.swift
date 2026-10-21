@@ -12,8 +12,8 @@ enum AppHotkey {
     static let closeWindow = KeyboardShortcut("w", modifiers: .command)
     static let showShortcuts = KeyboardShortcut("/", modifiers: .command)
     static let saveComment = KeyboardShortcut(.return, modifiers: .command)
-    /// Bound as literals in `SessionDetailView` and `PatientProfileEditor`;
-    /// `ShortcutCatalogTests` fails if those bindings and these drift apart.
+    /// Bound in `SessionDetailView` and `PatientProfileEditor` through these
+    /// values; `ShortcutCatalogTests` fails if a literal ⌘S/⌘G binding returns.
     static let saveEdits = KeyboardShortcut("s", modifiers: .command)
     static let generateNote = KeyboardShortcut("g", modifiers: .command)
 

@@ -182,7 +182,7 @@ struct PatientProfileEditor: View {
         // Keeps Command-S working now that Return is the default action.
         .background {
             Button("Save", action: save)
-                .keyboardShortcut("s", modifiers: .command)
+                .keyboardShortcut(AppHotkey.saveEdits)
                 .disabled(!canSave)
                 .opacity(0)
                 .allowsHitTesting(false)

@@ -245,21 +245,31 @@ extension ButtonStyle where Self == ThemeFilterChipStyle {
 /// surrounding hint its own accessibility label.
 struct KeyCap: View {
     let key: String
+    /// True inside an accent-filled button, where the neutral cap would vanish:
+    /// `accentInk` on `accentKeyCap` (a checked contrast pairing).
+    let onAccent: Bool
 
-    init(_ key: String) { self.key = key }
+    init(_ key: String, onAccent: Bool = false) {
+        self.key = key
+        self.onAccent = onAccent
+    }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
         Text(key)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(Theme.muted.color)
+            .foregroundStyle((onAccent ? Theme.accentInk : Theme.muted).color)
             .padding(.horizontal, 6)
             .frame(minWidth: 22, minHeight: 22)
-            .background(Theme.field.color, in: shape)
-            .overlay(shape.strokeBorder(Theme.line.color, lineWidth: 1))
+            .background((onAccent ? Theme.accentKeyCap : Theme.field).color, in: shape)
+            .overlay {
+                if !onAccent { shape.strokeBorder(Theme.line.color, lineWidth: 1) }
+            }
             // The design's key cap has a heavier bottom edge.
             .overlay(alignment: .bottom) {
-                Rectangle().fill(Theme.line.color).frame(height: 1).padding(.horizontal, 3)
+                if !onAccent {
+                    Rectangle().fill(Theme.line.color).frame(height: 1).padding(.horizontal, 3)
+                }
             }
             .fixedSize()
     }
@@ -270,13 +280,18 @@ struct KeyCap: View {
 /// as one phrase ("Shortcut: Option Command M").
 struct ShortcutHint: View {
     let shortcut: KeyboardShortcut
+    /// Set when the hint is drawn inside an accent-filled button.
+    let onAccent: Bool
 
-    init(_ shortcut: KeyboardShortcut) { self.shortcut = shortcut }
+    init(_ shortcut: KeyboardShortcut, onAccent: Bool = false) {
+        self.shortcut = shortcut
+        self.onAccent = onAccent
+    }
 
     var body: some View {
         HStack(spacing: 4) {
             ForEach(Array(ShortcutGlyphs.keys(for: shortcut).enumerated()), id: \.offset) { _, key in
-                KeyCap(key)
+                KeyCap(key, onAccent: onAccent)
             }
         }
         .accessibilityElement(children: .ignore)
