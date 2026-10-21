@@ -18,7 +18,9 @@ struct GlobalSearchView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
-    @State private var hits: [SearchHit] = []
+    @State private var results = GlobalSearchResults.empty
+    /// `SearchIndexMonitor.revision`: the search runs again when the index changes.
+    @State private var indexRevision = 0
     /// nil is "All".
     @State private var filter: SearchKind?
     @State private var selectedID: String?
@@ -29,6 +31,15 @@ struct GlobalSearchView: View {
     private static let debounceNanoseconds: UInt64 = 150_000_000
     private static let listMaxHeight: CGFloat = 400
     private static let listMinHeight: CGFloat = 140
+    /// Results per kind in this list (see `GlobalSearchLimits`).
+    private static let limits = GlobalSearchLimits(defaultLimit: 50)
+
+    private struct SearchRun: Equatable {
+        let query: String
+        let revision: Int
+    }
+
+    private var hits: [SearchHit] { results.hits }
 
     private var hasQuery: Bool { !TextSearch.queryTerms(query).isEmpty }
 
@@ -56,7 +67,8 @@ struct GlobalSearchView: View {
         .background(Theme.panel.color)
         .defaultFocus($fieldFocused, true)
         .onAppear { fieldFocused = true }
-        .task(id: query) { await runSearch() }
+        .task(id: SearchRun(query: query, revision: indexRevision)) { await runSearch() }
+        .onReceive(appModel.searchIndexMonitor.$revision) { indexRevision = $0 }
         .onChange(of: filter) { _, _ in selectedID = visibleHits.first?.id }
     }
 
@@ -95,11 +107,10 @@ struct GlobalSearchView: View {
     // MARK: Filter chips
 
     private var filterRow: some View {
-        let counts = SearchHit.counts(hits)
-        return HStack(spacing: 8) {
-            filterChip(label: "All", count: hits.count, isOn: filter == nil) { filter = nil }
+        HStack(spacing: 8) {
+            filterChip(label: "All", count: results.total, isOn: filter == nil) { filter = nil }
             ForEach(SearchKind.allCases) { kind in
-                filterChip(label: kind.filterLabel, count: counts[kind, default: 0], isOn: filter == kind) { filter = kind }
+                filterChip(label: kind.filterLabel, count: results.section(kind)?.total ?? 0, isOn: filter == kind) { filter = kind }
             }
             Spacer(minLength: 0)
         }
@@ -197,11 +208,14 @@ struct GlobalSearchView: View {
 
     private var footerSummary: String {
         guard hasQuery else { return "" }
+        if let status = results.coverage.statusText { return status }
         let shown = visibleHits
+        let total = filter.flatMap { results.section($0)?.total } ?? results.total
         let patients = SearchHit.patientCount(shown)
-        let results = shown.count == 1 ? "1 result" : "\(shown.count) results"
+        let count = total == 1 ? "1 result" : "\(total) results"
         let people = patients == 1 ? "1 patient" : "\(patients) patients"
-        return "\(results) across \(people)."
+        if shown.count < total { return "\(count); showing the first \(shown.count), from \(people)." }
+        return "\(count) across \(people)."
     }
 
     // MARK: Behaviour
@@ -211,22 +225,25 @@ struct GlobalSearchView: View {
     @MainActor
     private func runSearch() async {
         guard hasQuery, let store = appModel.store else {
-            hits = []
+            results = .empty
             selectedID = nil
             return
         }
         try? await Task.sleep(nanoseconds: Self.debounceNanoseconds)
         guard !Task.isCancelled else { return }
-        // Reads every transcript and note: off the main thread, and stopped when
-        // the next keystroke cancels this run.
+        // Off the main thread (it reads the index and the text it shows), and
+        // stopped when the next keystroke cancels this run.
         let typed = query
+        let limits = Self.limits
         let search = Task.detached(priority: .userInitiated) {
-            store.searchHits(query: typed, shouldContinue: { !Task.isCancelled })
+            store.globalSearch(query: typed, limits: limits, shouldContinue: { !Task.isCancelled })
         }
         let found = await withTaskCancellationHandler { await search.value } onCancel: { search.cancel() }
         guard !Task.isCancelled else { return }
-        hits = found
-        selectedID = visibleHits.first?.id
+        let previous = selectedID
+        results = found
+        // Keep the selection when a re-run (the index caught up) still has it.
+        selectedID = visibleHits.contains { $0.id == previous } ? previous : visibleHits.first?.id
     }
 
     /// Clamps at the first and last result.

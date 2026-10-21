@@ -1,14 +1,19 @@
 import Foundation
 
-// The flat global-search list: one row per place a query matched.
+// Global search results: one row per place a query matched.
 
-/// What a global-search hit is. The order is the order of the filter chips.
+/// What a global-search hit is. The order is the order results are grouped in:
+/// who and when first, then the therapist's own words, then the long text.
 enum SearchKind: String, CaseIterable, Identifiable {
     case patient
+    /// A session found by its date (and the patient's name).
     case session
-    case transcript
+    /// The therapist's own notes on a session ("My Notes").
+    case sessionNotes
+    /// A generated progress note, one per format.
     case note
     case comment
+    case transcript
 
     var id: String { rawValue }
 
@@ -17,26 +22,28 @@ enum SearchKind: String, CaseIterable, Identifiable {
         switch self {
         case .patient: return "Patient"
         case .session: return "Session"
-        case .transcript: return "Transcript"
+        case .sessionNotes: return "My notes"
         case .note: return "Note"
         case .comment: return "Comment"
+        case .transcript: return "Transcript"
         }
     }
 
-    /// The filter chip's label.
+    /// The label of this kind's group of results.
     var filterLabel: String {
         switch self {
         case .patient: return "Patients"
         case .session: return "Sessions"
-        case .transcript: return "Transcripts"
-        case .note: return "Notes"
+        case .sessionNotes: return "My notes"
+        case .note: return "Progress notes"
         case .comment: return "Comments"
+        case .transcript: return "Transcripts"
         }
     }
 }
 
-/// One row of the flat global-search list: a single match in one place.
-/// Patients match by name; sessions by the therapist's session notes;
+/// One global-search result: a single match in one place. Patients match by
+/// name; sessions by date; "my notes" by the therapist's session notes;
 /// transcripts by transcript text; notes by a generated progress note;
 /// comments by a transcript comment (its text or the passage it's on).
 struct SearchHit: Identifiable, Equatable {
