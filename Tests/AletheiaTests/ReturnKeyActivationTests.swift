@@ -45,6 +45,14 @@ final class ReturnKeyActivationTests: XCTestCase {
         return nil
     }
 
+    /// A button only takes keyboard focus when "Keyboard navigation" is on in
+    /// System Settings; CI runners have it off, so there is nothing to press.
+    private func requireFocusedButton() throws {
+        try XCTSkipUnless(
+            ReturnKeyActivation.shouldActivate(keyCode: 36, modifiers: [], isRepeat: false, responder: window.firstResponder),
+            "keyboard navigation is off on this Mac, so no button can take focus")
+    }
+
     override func tearDown() async throws {
         window?.orderOut(nil)
         window = nil
@@ -62,21 +70,24 @@ final class ReturnKeyActivationTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
     }
 
-    func testReturnDoesNothingToAFocusedButtonWithoutTheTranslation() {
+    func testReturnDoesNothingToAFocusedButtonWithoutTheTranslation() throws {
         makeWindow(focusField: false)
+        try requireFocusedButton()
         window.sendEvent(key(36, "\r"))
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         XCTAssertEqual(model.presses, 0, "documents the platform behaviour this fix works around")
     }
 
-    func testReturnPressesTheFocusedButton() {
+    func testReturnPressesTheFocusedButton() throws {
         makeWindow(focusField: false)
+        try requireFocusedButton()
         send(key(36, "\r"))
         XCTAssertEqual(model.presses, 1)
     }
 
-    func testKeypadEnterPressesTheFocusedButton() {
+    func testKeypadEnterPressesTheFocusedButton() throws {
         makeWindow(focusField: false)
+        try requireFocusedButton()
         send(key(76, "\u{3}"))
         XCTAssertEqual(model.presses, 1)
     }
@@ -98,8 +109,9 @@ final class ReturnKeyActivationTests: XCTestCase {
         XCTAssertFalse(ReturnKeyActivation.shouldActivate(keyCode: 0, modifiers: [], isRepeat: false, responder: proxy))
     }
 
-    func testModifiedAndRepeatedReturnsAreLeftAlone() {
+    func testModifiedAndRepeatedReturnsAreLeftAlone() throws {
         makeWindow(focusField: false)
+        try requireFocusedButton()
         let responder = window.firstResponder
         XCTAssertTrue(ReturnKeyActivation.shouldActivate(keyCode: 36, modifiers: [], isRepeat: false, responder: responder))
         XCTAssertTrue(ReturnKeyActivation.shouldActivate(keyCode: 76, modifiers: .numericPad, isRepeat: false, responder: responder))
