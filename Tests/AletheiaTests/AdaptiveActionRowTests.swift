@@ -70,11 +70,13 @@ final class AdaptiveActionRowTests: XCTestCase {
         XCTAssertLessThan(compact.fittingSize.width, full.fittingSize.width / 2)
     }
 
-    /// The Notes tab uses it, so the blurb and buttons adapt there.
+    /// The Notes tab uses it, so its buttons adapt there. The format blurb is
+    /// a hover tip on the format picker now, not the row's caption.
     func testTheNotesTabActionRowIsAdaptive() throws {
         let source = try String(contentsOf: Self.source("SessionDetailView.swift"), encoding: .utf8)
-        let marker = try XCTUnwrap(source.range(of: "Text(settings.progressNoteFormat.blurb)"))
-        XCTAssertTrue(source[..<marker.lowerBound].suffix(120).contains("AdaptiveActionRow {"))
+        XCTAssertTrue(source.contains("AdaptiveActionRow {\n                    EmptyView()\n                } actions: {"))
+        XCTAssertFalse(source.contains("Text(settings.progressNoteFormat.blurb)"))
+        XCTAssertTrue(source.contains(".hoverTip(showingMyNotes ? HelpTips.myNotes : HelpTips.noteFormat(settings.progressNoteFormat))"))
         XCTAssertTrue(source.contains("AdaptiveLabel(\n                title: \"Length:"),
                       "the Length menu label should compact with the row")
     }
