@@ -1599,6 +1599,7 @@ struct SessionDetailView: View {
                         await Task.detached { store.digest(for: patient, session: session, model: model) }.value
                     },
                     saveDigest: { [patient, session] in try store.saveDigest($0, for: patient, session: session) },
+                    sectionCache: .store(store, patient: patient, session: session),
                     live: { started, change in noteRunner.update(started: started, change) },
                     coverage: {
                         produced.text = $0
@@ -1721,6 +1722,7 @@ struct SessionDetailView: View {
                         await Task.detached { store.digest(for: patient, session: session, model: model) }.value
                     },
                     saveDigest: { try store.saveDigest($0, for: patient, session: session) },
+                    sectionCache: .store(store, patient: patient, session: session),
                     live: { started, change in chatRunner.update(started: started, change) },
                     coverage: { sessionChatCoverage = $0 }
                 )

@@ -63,20 +63,19 @@ final class DigestBuilder: ObservableObject {
         if builds[session.id]?.key == key || inlineBuilds.contains(session.id) { return nil }
         cancel(session.id)
         let id = UUID()
+        let stored = SectionCacheAccess.store(store, patient: patient, session: session)
         let task = Task { [weak self] in
             let model = service.model
+            let load = stored.load
             let loaded = await Task.detached { () -> (current: Bool, sections: [String: String]) in
-                (store.digest(for: patient, session: session, model: model) != nil,
-                 store.sectionDigestCache(for: patient, session: session))
+                (store.digest(for: patient, session: session, model: model) != nil, load())
             }.value
             guard let self, self.builds[session.id]?.id == id else { return }
             if loaded.current {
                 self.builds[session.id] = nil
                 return
             }
-            let cache = SectionDigestCache(entries: loaded.sections) { entries in
-                try? store.saveSectionDigestCache(entries, for: patient, session: session)
-            }
+            let cache = SectionDigestCache(entries: loaded.sections, persist: stored.save)
             self.progress[session.id] = AIRunProgress(readTitle: "Reading", startedAt: Date())
             do {
                 let digest = try await self.build(transcript: transcript, service: service, live: { started, change in
@@ -102,16 +101,24 @@ final class DigestBuilder: ObservableObject {
         return task
     }
 
-    /// Builds a digest in the caller's own queue job (a note), cancelling any
-    /// background build of the same session and keeping a new one from starting
-    /// until this is done.
+    /// Builds a digest in the caller's own queue job (a note or a chat answer),
+    /// cancelling any background build of the same session and keeping a new one
+    /// from starting until this is done. With `sections` it reads and writes the
+    /// same section summaries as a background build (`SectionDigestCache`), so
+    /// either one carries on from the sections the other finished, and prunes
+    /// them once the digest is built.
     func buildInline(
-        sessionID: UUID, transcript: String, service: AssistantService, live: @escaping Live
+        sessionID: UUID, transcript: String, service: AssistantService,
+        sections: SectionCacheAccess? = nil, live: @escaping Live
     ) async throws -> SessionDigest {
         cancel(sessionID)
         inlineBuilds.insert(sessionID)
         defer { inlineBuilds.remove(sessionID) }
-        return try await build(transcript: transcript, service: service, live: live, inline: true)
+        var cache: SectionDigestCache?
+        if let sections { cache = await SectionDigestCache.open(sections) }
+        let digest = try await build(transcript: transcript, service: service, live: live, inline: true, cache: cache)
+        cache?.prune()
+        return digest
     }
 
     func cancel(_ sessionID: UUID) {
@@ -318,6 +325,13 @@ final class SectionDigestCache {
         self.persist = persist
     }
 
+    /// The summaries `access` keeps, read (and decrypted) off the main thread.
+    static func open(_ access: SectionCacheAccess) async -> SectionDigestCache {
+        let load = access.load
+        let entries = await Task.detached { load() }.value
+        return SectionDigestCache(entries: entries, persist: access.save)
+    }
+
     func lookup(_ key: String) -> String? {
         guard let text = entries[key] else { return nil }
         used.insert(key)
@@ -337,6 +351,21 @@ final class SectionDigestCache {
         guard kept.count != entries.count else { return }
         entries = kept
         persist(kept)
+    }
+}
+
+/// Where one session's section summaries are read from and written to: the
+/// session's encrypted `Store.digestSectionsFileName` (`.store`), shared by the
+/// background build and a note or chat building inline. A pair of closures, so a
+/// caller needs no `Store` of its own and a test can keep them in memory.
+struct SectionCacheAccess {
+    let load: () -> [String: String]
+    let save: ([String: String]) -> Void
+
+    static func store(_ store: Store, patient: Patient, session: SessionRecord) -> SectionCacheAccess {
+        SectionCacheAccess(
+            load: { store.sectionDigestCache(for: patient, session: session) },
+            save: { try? store.saveSectionDigestCache($0, for: patient, session: session) })
     }
 }
 

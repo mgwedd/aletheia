@@ -175,6 +175,118 @@ final class DigestResumeTests: XCTestCase {
         XCTAssertEqual(stub.sectionCalls, 3)
     }
 
+    // MARK: Inline builds (a note or a chat answer building its own digest)
+
+    private func makeSession(_ store: Store, transcript text: String) throws -> (Patient, SessionRecord) {
+        let patient = try store.createPatient(name: "Dana Cole")
+        let session = try store.createSession(for: patient)
+        try store.saveTranscript(text, for: patient, session: session)
+        return (patient, session)
+    }
+
+    private func wait(_ condition: () -> Bool) async throws {
+        for _ in 0..<500 where !condition() { try await Task.sleep(nanoseconds: 5_000_000) }
+    }
+
+    private func inline(
+        _ builder: DigestBuilder, _ session: SessionRecord, _ text: String, _ service: AssistantService,
+        _ sections: SectionCacheAccess
+    ) async throws -> SessionDigest {
+        try await builder.buildInline(sessionID: session.id, transcript: text, service: service, sections: sections, live: { _, _ in })
+    }
+
+    /// An inline build that fails on section 3 keeps 1 and 2 (encrypted, in the
+    /// session's store); the next inline build asks the model only for 3.
+    func testAFailedInlineBuildResumesFromTheSectionsItFinished() async throws {
+        let store = Store(root: root, protector: FileProtector(key: SymmetricKey(size: .bits256)))
+        let text = transcript(minutes: 30)   // 3 sections
+        let (patient, session) = try makeSession(store, transcript: text)
+        let sections = SectionCacheAccess.store(store, patient: patient, session: session)
+        let stub = SectionCountingAssistant()
+        stub.failOnSection = 3
+        let service = AssistantService(assistant: stub, model: "m")
+        let builder = DigestBuilder(queue: InferenceQueue())
+
+        do {
+            _ = try await inline(builder, session, text, service, sections)
+            XCTFail("the third section fails")
+        } catch {}
+        XCTAssertEqual(store.sectionDigestCache(for: patient, session: session).count, 2)
+        let url = store.sessionDir(for: patient, session: session).appendingPathComponent(Store.digestSectionsFileName)
+        XCTAssertTrue(DataCipher.isEnvelope(try Data(contentsOf: url)), "sealed like the background build's")
+
+        stub.sectionCalls = 0
+        stub.failOnSection = nil
+        let digest = try await inline(builder, session, text, service, sections)
+        XCTAssertEqual(stub.sectionCalls, 1, "only the section that failed is asked for again")
+        XCTAssertEqual(digest.sections.map(\.digest), ["section summary 1", "section summary 2", "section summary 1"])
+        XCTAssertEqual(store.sectionDigestCache(for: patient, session: session).count, 3)
+
+        // A different model reuses nothing.
+        stub.sectionCalls = 0
+        _ = try await inline(builder, session, text, AssistantService(assistant: stub, model: "other"), sections)
+        XCTAssertEqual(stub.sectionCalls, 3)
+    }
+
+    /// Sections a failed background build wrote are reused by an inline build.
+    func testAnInlineBuildReusesSectionsABackgroundBuildFinished() async throws {
+        let store = Store(root: root)
+        let text = transcript(minutes: 30)
+        let (patient, session) = try makeSession(store, transcript: text)
+        let stub = SectionCountingAssistant()
+        stub.failOnSection = 3
+        let service = AssistantService(assistant: stub, model: "m")
+        let builder = DigestBuilder(queue: InferenceQueue())
+
+        builder.ensureDigest(for: patient, session: session, transcript: text, store: store, service: service)
+        try await wait { builder.failures[session.id] != nil }
+        XCTAssertNotNil(builder.failures[session.id], "the background build failed on section 3")
+        XCTAssertEqual(store.sectionDigestCache(for: patient, session: session).count, 2)
+
+        stub.sectionCalls = 0
+        stub.failOnSection = nil
+        let digest = try await inline(builder, session, text, service, .store(store, patient: patient, session: session))
+        XCTAssertEqual(stub.sectionCalls, 1, "only the section the background build didn't finish")
+        XCTAssertEqual(digest.sections.count, 3)
+    }
+
+    /// Sections a failed inline build wrote are reused by the background build.
+    func testABackgroundBuildReusesSectionsAnInlineBuildFinished() async throws {
+        let store = Store(root: root)
+        let text = transcript(minutes: 30)
+        let (patient, session) = try makeSession(store, transcript: text)
+        let stub = SectionCountingAssistant()
+        stub.failOnSection = 2
+        let service = AssistantService(assistant: stub, model: "m")
+        let builder = DigestBuilder(queue: InferenceQueue())
+
+        do {
+            _ = try await inline(builder, session, text, service, .store(store, patient: patient, session: session))
+            XCTFail("the second section fails")
+        } catch {}
+        XCTAssertEqual(store.sectionDigestCache(for: patient, session: session).count, 1)
+
+        stub.sectionCalls = 0
+        stub.failOnSection = nil
+        builder.ensureDigest(for: patient, session: session, transcript: text, store: store, service: service)
+        try await wait { store.digest(for: patient, session: session, model: "m") != nil }
+        XCTAssertNotNil(store.digest(for: patient, session: session, model: "m"))
+        XCTAssertEqual(stub.sectionCalls, 2, "only sections 2 and 3 are asked for")
+    }
+
+    /// Once an inline build finishes, sections of an older transcript are dropped, as after a background build.
+    func testAFinishedInlineBuildPrunesStaleSections() async throws {
+        var saved: [String: String] = ["stale": "an older transcript's section"]
+        let access = SectionCacheAccess(load: { saved }, save: { saved = $0 })
+        let stub = SectionCountingAssistant()
+        let builder = DigestBuilder(queue: InferenceQueue())
+        _ = try await builder.buildInline(
+            sessionID: UUID(), transcript: transcript(minutes: 30), service: AssistantService(assistant: stub, model: "m"),
+            sections: access, live: { _, _ in })
+        XCTAssertNil(saved["stale"])
+        XCTAssertEqual(saved.count, 3)
+    }
+
     func testPruneKeepsOnlyTheSectionsOfTheTranscriptBuilt() {
         var saved: [String: String] = [:]
         let cache = SectionDigestCache(entries: ["old": "x", "kept": "y"]) { saved = $0 }

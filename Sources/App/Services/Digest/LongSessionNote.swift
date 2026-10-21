@@ -63,6 +63,7 @@ enum LongSessionNote {
         sessionID: UUID,
         loadDigest: @escaping () async -> SessionDigest?,
         saveDigest: @escaping (SessionDigest) throws -> Void,
+        sectionCache: SectionCacheAccess? = nil,
         live: @escaping DigestBuilder.Live,
         coverage: @escaping (String) -> Void
     ) -> AsyncThrowingStream<String, Error> {
@@ -85,7 +86,7 @@ enum LongSessionNote {
                 do {
                     let digest = try await currentDigest(
                         transcript: transcript, service: service, builder: builder, sessionID: sessionID,
-                        load: loadDigest, save: saveDigest, live: live)
+                        load: loadDigest, save: saveDigest, sections: sectionCache, live: live)
 
                     // Room for material, after the instructions, the note's own wrapper and headings.
                     let total = service.budget.availableCharacters(
@@ -259,11 +260,12 @@ enum LongSessionNote {
     /// the same session is cancelled first so the two don't both run.
     private static func currentDigest(
         transcript: String, service: AssistantService, builder: DigestBuilder, sessionID: UUID,
-        load: () async -> SessionDigest?, save: (SessionDigest) throws -> Void, live: @escaping DigestBuilder.Live
+        load: () async -> SessionDigest?, save: (SessionDigest) throws -> Void,
+        sections: SectionCacheAccess?, live: @escaping DigestBuilder.Live
     ) async throws -> SessionDigest {
         if let stored = await load() { return stored }
         let built = try await builder.buildInline(
-            sessionID: sessionID, transcript: transcript, service: service,
+            sessionID: sessionID, transcript: transcript, service: service, sections: sections,
             live: { started, change in
                 live(started) {
                     change(&$0)
