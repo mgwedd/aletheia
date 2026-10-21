@@ -385,4 +385,30 @@ final class AIEngineProblemTests: XCTestCase {
         messages.removeTurn(startingAt: UUID())
         XCTAssertEqual(messages, [only])
     }
+
+    // MARK: - Where Copy Details is offered
+
+    private func alertSource() throws -> String {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/Views/AIEngineProblemAlert.swift")
+        return try String(contentsOf: file, encoding: .utf8)
+    }
+
+    /// The banner comes from a passive health check, so its only "technical"
+    /// detail would be the problem's own name: nothing for support to learn.
+    func testBannerDoesNotOfferCopyDetails() throws {
+        let source = try alertSource()
+        let start = try XCTUnwrap(source.range(of: "struct AIEngineBanner: View"))
+        let end = try XCTUnwrap(source.range(of: "enum AIEngineHealth"))
+        XCTAssertFalse(source[start.lowerBound..<end.lowerBound].contains("Button(\"Copy Details\")"))
+    }
+
+    /// The alert for a real failed request carries the underlying error, so it keeps the button.
+    func testRequestAlertKeepsCopyDetails() throws {
+        let source = try alertSource()
+        let start = try XCTUnwrap(source.range(of: "private struct AIEngineAlert"))
+        let end = try XCTUnwrap(source.range(of: "struct AIEngineBanner: View"))
+        XCTAssertTrue(source[start.lowerBound..<end.lowerBound].contains("Button(\"Copy Details\")"))
+    }
 }

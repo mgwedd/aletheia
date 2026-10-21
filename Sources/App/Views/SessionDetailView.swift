@@ -39,9 +39,13 @@ private struct DigestStatusLine: View {
     var body: some View {
         if let progress = builder.progress[sessionID] {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Building digest")
+                Text(DigestBuilder.activityTitle)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
+                if let steps = progress.steps {
+                    ThemeProgressBar(value: steps.fraction)
+                        .frame(maxWidth: 240)
+                }
                 AIProgressView(progress: progress)
             }
             .padding([.horizontal, .top], 20)
@@ -155,10 +159,15 @@ struct SessionDetailView: View {
     @State private var persistedSessionNote: String = ""
     @State private var comments: [SessionComment] = []
     /// The passage currently selected in the transcript view (empty = just a
-    /// caret), driving the "Comment on selection" affordance.
+    /// caret), driving the floating comment button.
     @State private var transcriptSelection = ""
     /// Where that selection sits in the transcript (UTF-16), nil for a caret.
     @State private var transcriptSelectionRange: NSRange?
+    /// The first line of that selection in the transcript pane, where the
+    /// floating comment button goes (nil for a caret).
+    @State private var transcriptSelectionRect: CGRect?
+    /// Which side of the transcript / comments split the reader folded away.
+    @State private var splitCollapsed: TranscriptSplit.Side?
     /// The passage and its start offset, frozen when the comment is begun so
     /// the composer sheet opening (or the selection changing) can't move what
     /// the comment gets anchored to.
@@ -257,6 +266,7 @@ struct SessionDetailView: View {
         }
         .navigationTitle(Self.dateFormatter.string(from: session.date))
         .background(Theme.window.color)
+        .textSelection(.enabled)
         .onAppear {
             if initialShowingMyNotes {
                 showingMyNotes = true
@@ -428,7 +438,7 @@ struct SessionDetailView: View {
                 }
                 .help(transcribeBlocker ?? (transcription.isBusy
                       ? "Another session is being transcribed. This one will start when it finishes"
-                      : "Transcribe the recorded audio"))
+                      : "Transcribe the recording"))
                 .disabled(transcribeBlocker != nil)
                 if isTranscribing {
                     ProgressView().controlSize(.small)
@@ -514,7 +524,7 @@ struct SessionDetailView: View {
             }
             Text(recorder.isPaused
                  ? "Paused. Nothing is being recorded until you resume."
-                 : "Recording on this Mac. Stop when the session ends, then transcribe.")
+                 : "Stop when the session ends, then transcribe.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.muted.color)
                 .multilineTextAlignment(.center)
@@ -668,26 +678,14 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.text.color)
                         .padding([.horizontal, .top], 20)
                 }
-                HStack(spacing: 10) {
-                    Button {
-                        beginInlineComment()
-                    } label: {
-                        Label("Comment on selection", systemImage: "text.bubble")
-                    }
-                    .disabled(transcriptSelection.isEmpty || transcriptIsDirty)
-                    .help(transcriptIsDirty
-                          ? "Save or discard your transcript edits before adding a comment"
-                          : transcriptSelection.isEmpty
-                          ? "Select a passage in the transcript to comment on it"
-                          : "Add a comment on the selected passage")
-                    Spacer(minLength: 12)
-                    if TranscriptEditBar.showsEditControls(isDirty: transcriptIsDirty) {
+                if TranscriptEditBar.showsEditControls(isDirty: transcriptIsDirty) {
+                    HStack(spacing: 10) {
+                        Spacer(minLength: 12)
                         if let note = TranscriptEditBar.statusNote(isDirty: transcriptIsDirty) {
                             Text(note)
                                 .font(Theme.Typography.caption)
                                 .foregroundStyle(Theme.muted.color)
                                 .lineLimit(1)
-                                .transition(.opacity)
                         }
                         Button("Discard") { showDiscardConfirm = true }
                             .help("Throw away your unsaved edits")
@@ -696,17 +694,23 @@ struct SessionDetailView: View {
                             .disabled(transcriptReadError != nil)
                             .help("Save your edits to the transcript")
                     }
+                    .buttonStyle(.themed)
+                    .padding(.horizontal, 20)
+                    .frame(height: 52)
+                    .themeDivider(.bottom)
                 }
-                .buttonStyle(.themed)
-                .padding(.horizontal, 20)
-                .frame(height: 52)
-                .themeDivider(.bottom)
-                .animation(.easeOut(duration: 0.15), value: transcriptIsDirty)
                 // Google-Docs layout: the transcript on the left, its comments in
-                // a margin rail on the right. Only *unresolved* comments carry a
-                // highlight in the text; the rail keeps resolved ones tucked away.
-                // The view edits the draft, and highlights follow it.
-                HStack(spacing: 0) {
+                // a margin rail on the right, shown once there are comments and
+                // sized by a draggable divider. Only *unresolved* comments carry
+                // a highlight in the text; the rail keeps resolved ones tucked
+                // away. The view edits the draft, and highlights follow it.
+                TranscriptSplitView(
+                    hasComments: !comments.isEmpty,
+                    commentCount: comments.filter { !$0.resolved }.count,
+                    ratio: $settings.transcriptSplitRatio,
+                    collapsed: $splitCollapsed,
+                    revealToken: focusToken
+                ) {
                     TranscriptTextView(
                         text: $transcriptDraft,
                         isEditable: transcriptReadError == nil,
@@ -717,13 +721,15 @@ struct SessionDetailView: View {
                         focusedCommentID: focusedCommentID,
                         focusToken: focusToken,
                         composingRange: composingRange,
-                        onComposingRectChange: { composerAnchor = $0 }
+                        onComposingRectChange: { composerAnchor = $0 },
+                        onSelectionRectChange: { transcriptSelectionRect = $0 }
                     )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     // The comment composer sits on the transcript, just under the
-                    // passage being commented on.
+                    // passage being commented on; the comment button floats at
+                    // the selection.
                     .overlay { composerOverlay }
-                    Rectangle().fill(Theme.line.color).frame(width: 1)
+                    .overlay { commentButtonOverlay }
+                } comments: {
                     CommentsRailView(
                         comments: comments,
                         focusedCommentID: $focusedCommentID,
@@ -734,6 +740,9 @@ struct SessionDetailView: View {
                         onDelete: deleteComment,
                         onEdit: editComment
                     )
+                    // The cards focus their comment on click; selectable text
+                    // would take those clicks.
+                    .textSelection(.disabled)
                 }
             }
         }
@@ -790,6 +799,35 @@ struct SessionDetailView: View {
                 .offset(x: Self.composerLeading, y: composerY(in: proxy.size.height))
             }
             .onPreferenceChange(ComposerHeightKey.self) { composerHeight = $0 }
+        }
+    }
+
+    /// The comment button, floating just above the first line of the selected
+    /// passage (below it when there is no room above). Shown only for a saved
+    /// transcript, since a comment is pinned to saved text.
+    @ViewBuilder
+    private var commentButtonOverlay: some View {
+        let hasSelection = !transcriptSelection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if CommentButtonPlacement.isVisible(
+            hasSelection: hasSelection,
+            isDirty: transcriptIsDirty,
+            isComposing: showInlineComposer,
+            isReadable: transcriptReadError == nil
+        ), let anchor = transcriptSelectionRect {
+            GeometryReader { proxy in
+                if let origin = CommentButtonPlacement.origin(anchor: anchor, in: proxy.size) {
+                    Button {
+                        beginInlineComment()
+                    } label: {
+                        Label("Comment", systemImage: "text.bubble")
+                    }
+                    .buttonStyle(.themed)
+                    .keyboardShortcut("m", modifiers: [.command, .option])
+                    .help("Comment on the selected passage (\u{2325}\u{2318}M)")
+                    .frame(width: CommentButtonPlacement.size.width, height: CommentButtonPlacement.size.height)
+                    .offset(x: origin.x, y: origin.y)
+                }
+            }
         }
     }
 
@@ -1070,21 +1108,6 @@ struct SessionDetailView: View {
                 OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: generateNote)
             }
 
-            if !summaryText.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Chip("AI draft", tone: .accent)
-                    Text("Drafted from the transcript and your notes. Review and edit before it goes in the record.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.text.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.callout.color, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.line.color))
-                .padding(.horizontal, 20)
-            }
-
             if summaryText.isEmpty && !noteRunner.isStreaming {
                 emptyNoteCard
             } else if summaryText.isEmpty {
@@ -1120,9 +1143,8 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.muted.color)
                         .padding(.horizontal, 20)
                 }
-                ScrollView {
+                BoundedScroll {
                     MarkdownMessageView(text: summaryText, style: .note)
-                        .textSelection(.enabled)
                         .frame(maxWidth: 680, alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
@@ -1163,9 +1185,9 @@ struct SessionDetailView: View {
             }
             .pickerStyle(.inline)
             Divider()
-            Picker("Effort", selection: $settings.noteEffort) {
+            Picker(AnswerEffort.label, selection: $settings.noteEffort) {
                 ForEach(AnswerEffort.allCases) { level in
-                    Text("\(level.displayName) — \(level.blurb)").tag(level)
+                    Text(level.displayName).tag(level)
                 }
             }
             .pickerStyle(.inline)
@@ -1794,16 +1816,14 @@ private struct InlineCommentComposerCard: View {
             HStack(alignment: .center, spacing: 12) {
                 Spacer(minLength: 0)
                 HStack(spacing: 8) {
-                    KeyCap("⌘ return")
-                        .accessibilityHidden(true)
+                    ShortcutHint(AppHotkey.saveComment)
                     Button("Cancel", action: onCancel)
                         .buttonStyle(.themed)
                         .keyboardShortcut(.cancelAction)
                     Button("Save comment", action: onSave)
                         .buttonStyle(.themePrimary)
-                        .keyboardShortcut(.return, modifiers: .command)
                         .disabled(!canSave)
-                        .help("Save this comment (Command-Return)")
+                        .shortcut(AppHotkey.saveComment, help: "Save this comment")
                 }
                 .fixedSize()
             }

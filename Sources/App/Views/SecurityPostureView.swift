@@ -17,6 +17,10 @@ struct SecurityPostureView: View {
             idleAutoLockMinutes: settings.idleAutoLockMinutes,
             encryptionEnabled: encryption.isEnabled,
             encryptionUnlocked: encryption.isUnlocked,
+            encryptionOffered: SettingsAvailability.encryptionOffered(
+                isEnabled: encryption.isEnabled,
+                moduleInBuild: appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
+            ),
             auditLogActive: appModel.audit != nil,
             localEncryptedBackup: settings.localEncryptedBackupEnabled,
             localBackupActive: LocalEncryptedBackupService.isWired,

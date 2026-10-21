@@ -17,6 +17,52 @@ final class SettingsPaneTests: XCTestCase {
         XCTAssertEqual(SettingsPane.security.moved(by: 1), .security)
     }
 
+    // MARK: - Panes a build does not offer
+
+    func testEncryptionPaneIsOmittedWhenNotOffered() {
+        let panes = SettingsPane.available(encryptionOffered: false)
+        XCTAssertFalse(panes.contains(.encryption))
+        XCTAssertEqual(panes.map(\.title), ["General", "AI and models", "Note format", "Backups", "Security"])
+        XCTAssertEqual(SettingsPane.available(encryptionOffered: true), SettingsPane.allCases)
+    }
+
+    func testSteppingSkipsAnOmittedPane() {
+        let panes = SettingsPane.available(encryptionOffered: false)
+        XCTAssertEqual(SettingsPane.format.moved(by: 1, in: panes), .backups)
+        XCTAssertEqual(SettingsPane.backups.moved(by: -1, in: panes), .format)
+        XCTAssertEqual(SettingsPane.encryption.moved(by: 1, in: panes), .general, "a pane not shown falls to the first")
+    }
+
+    func testRememberedEncryptionPaneFallsBackWhenOmitted() {
+        let hidden = SettingsPane.available(encryptionOffered: false)
+        XCTAssertEqual(SettingsPane.restored(rawValue: "encryption", in: hidden), .default)
+        XCTAssertEqual(SettingsPane.restored(rawValue: "encryption", in: SettingsPane.allCases), .encryption)
+        XCTAssertEqual(SettingsPane.restored(rawValue: "nonsense", in: SettingsPane.allCases), .default)
+    }
+
+    func testEncryptionIsOfferedWhenInTheBuildOrAlreadyOn() {
+        XCTAssertFalse(SettingsAvailability.encryptionOffered(isEnabled: false, moduleInBuild: false))
+        XCTAssertTrue(SettingsAvailability.encryptionOffered(isEnabled: false, moduleInBuild: true))
+        // An already-encrypted folder can always be unlocked and managed.
+        XCTAssertTrue(SettingsAvailability.encryptionOffered(isEnabled: true, moduleInBuild: false))
+    }
+
+    func testKeepAudioIsHiddenWithoutEncryption() {
+        XCTAssertFalse(SettingsAvailability.showsKeepAudio(encryptionOffered: false))
+        XCTAssertTrue(SettingsAvailability.showsKeepAudio(encryptionOffered: true))
+    }
+
+    func testNoUnavailableNoticeIsLeftInSettings() throws {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/Views/SettingsView.swift")
+        let source = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertFalse(source.contains("isn't offered in this build"))
+        // Nor a switch for something that does not exist yet: it can only ever sit off.
+        XCTAssertFalse(source.contains("Coming soon"))
+        XCTAssertFalse(source.contains("isOn: .constant("))
+    }
+
     func testRawValueRoundTripsForPersistence() {
         for pane in SettingsPane.allCases {
             XCTAssertEqual(SettingsPane(rawValue: pane.rawValue), pane)

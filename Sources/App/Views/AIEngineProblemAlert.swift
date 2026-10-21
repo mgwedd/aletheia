@@ -197,6 +197,10 @@ extension View {
 /// A passive banner shown where an AI feature lives when the engine isn't ready,
 /// so the first sign isn't a failed request. Checks when it appears and each
 /// time the app becomes active; shows nothing while the engine is fine.
+///
+/// No "Copy Details": nothing has failed yet, so there is no underlying error
+/// to copy, only the problem's own name. The alert for a real failed request
+/// keeps it.
 struct AIEngineBanner: View {
     @EnvironmentObject private var integrations: Integrations
     @StateObject private var controller = AIEngineRecoveryController()
@@ -223,11 +227,6 @@ struct AIEngineBanner: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 8)
-                        Button("Copy Details") {
-                            copyDetails(AIEngineIncident(problem: problem, technical: "health check: \(problem)"), integrations: integrations)
-                        }
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
                         Button(problem.actionTitle) { fix(problem) }
                             .buttonStyle(.themePrimary)
                             .controlSize(.small)

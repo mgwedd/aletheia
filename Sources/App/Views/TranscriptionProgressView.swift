@@ -64,10 +64,10 @@ struct TranscriptionProgressView: View {
         return parts.joined(separator: " · ")
     }
 
-    /// The current stage plus the standing reassurance, or the cancelling note.
+    /// The current stage and a note that it keeps going, or the cancelling note.
     private var detail: String {
         if job.isCancelling { return "Cancelling… finishing the current step" }
-        return "\(job.progress.stage.title). Runs entirely on this Mac. You can leave this screen — transcription keeps going."
+        return "\(job.progress.stage.title). You can leave this screen — transcription keeps going."
     }
 
     var body: some View {

@@ -82,12 +82,11 @@ struct GlobalSearchView: View {
 
             // The esc key cap doubles as the mouse way out.
             Button { dismiss() } label: {
-                KeyCap("esc")
+                ShortcutHint(.cancelAction)
             }
             .buttonStyle(.plain)
-            .keyboardShortcut(.cancelAction)
             .accessibilityLabel("Close search")
-            .help("Close (esc)")
+            .shortcut(.cancelAction, help: "Close")
         }
         .padding(.horizontal, 18)
     }
@@ -178,10 +177,10 @@ struct GlobalSearchView: View {
             Spacer(minLength: 12)
             if !visibleHits.isEmpty {
                 HStack(spacing: 6) {
-                    KeyCap("\u{2191}")
-                    KeyCap("\u{2193}")
+                    ShortcutHint(KeyboardShortcut(.upArrow, modifiers: []))
+                    ShortcutHint(KeyboardShortcut(.downArrow, modifiers: []))
                     Text("move")
-                    KeyCap("return").padding(.leading, 8)
+                    ShortcutHint(.defaultAction).padding(.leading, 8)
                     Text("open")
                 }
                 .accessibilityElement(children: .ignore)
@@ -196,12 +195,12 @@ struct GlobalSearchView: View {
     }
 
     private var footerSummary: String {
-        guard hasQuery else { return "Searched on this Mac." }
+        guard hasQuery else { return "" }
         let shown = visibleHits
         let patients = SearchHit.patientCount(shown)
         let results = shown.count == 1 ? "1 result" : "\(shown.count) results"
         let people = patients == 1 ? "1 patient" : "\(patients) patients"
-        return "\(results) across \(people). Searched on this Mac."
+        return "\(results) across \(people)."
     }
 
     // MARK: Behaviour

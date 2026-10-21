@@ -14,7 +14,7 @@ import AppKit
 ///    change to it (Discard, a new transcription) replaces the view's content.
 ///    Nothing here saves anything: the owner decides when a draft is committed.
 ///  - `selection` reports the currently selected substring (empty when the
-///    selection is just a caret), so a "Comment on selection" button can enable
+///    selection is just a caret), so the floating comment button can show
 ///    and prefill itself. `selectionRange` reports where it sits (UTF-16, nil
 ///    for a caret) so a comment can be pinned to *that* occurrence rather than
 ///    the first place the same words appear.
@@ -59,6 +59,11 @@ struct TranscriptTextView: NSViewRepresentable {
     /// view). Reported again as the text scrolls or re-wraps; nil when there is
     /// no passage or it can't be placed.
     var onComposingRectChange: (CGRect?) -> Void = { _ in }
+    /// The first line of the current selection in this view's own visible area
+    /// (top-left origin, like `onComposingRectChange`). Reported as the
+    /// selection changes and as the text scrolls or re-wraps; nil for a caret.
+    /// It anchors the floating comment button.
+    var onSelectionRectChange: (CGRect?) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -411,11 +416,33 @@ struct TranscriptTextView: NSViewRepresentable {
                 }
             }
             reportComposingRect(for: textView)
+            reportSelectionRect(for: textView)
         }
 
         @objc func viewportChanged(_ notification: Notification) {
             guard let textView else { return }
             reportComposingRect(for: textView)
+            reportSelectionRect(for: textView)
+        }
+
+        private var lastReportedSelectionRect: CGRect?
+
+        /// The selection's first line in the scroll view's visible area,
+        /// top-left origin (nil for a caret).
+        private func reportSelectionRect(for textView: NSTextView) {
+            var rect: CGRect?
+            let range = textView.selectedRange()
+            if range.length > 0,
+               let clip = textView.enclosingScrollView?.contentView,
+               let line = TranscriptSelectionGeometry.firstLineRect(of: range, in: textView) {
+                let inClip = textView.convert(line, to: clip)
+                rect = inClip.offsetBy(dx: -clip.bounds.origin.x, dy: -clip.bounds.origin.y).integral
+            }
+            guard rect != lastReportedSelectionRect else { return }
+            lastReportedSelectionRect = rect
+            // Deferred for the same reason as the composing rect: this can run
+            // inside a SwiftUI update pass.
+            DispatchQueue.main.async { [weak self] in self?.parent.onSelectionRectChange(rect) }
         }
 
         /// The last line of the composing passage in the scroll view's visible
@@ -480,6 +507,7 @@ struct TranscriptTextView: NSViewRepresentable {
             } else {
                 publish()
             }
+            reportSelectionRect(for: textView)
         }
 
         /// A plain click at `index`: if it landed inside a highlighted passage,
@@ -489,6 +517,33 @@ struct TranscriptTextView: NSViewRepresentable {
             guard let id = TranscriptHighlighter.commentID(at: index, in: spans), !id.isEmpty else { return }
             parent.onOpenComment(id)
         }
+    }
+}
+#endif
+
+#if canImport(AppKit)
+/// Where a selection sits in a text view, kept apart from the coordinator so it
+/// can be checked against a real `NSTextView` without a window.
+enum TranscriptSelectionGeometry {
+    /// The part of `range` on its first line, in `textView`'s own coordinates
+    /// (text container origin included). Nil for an empty or out-of-range
+    /// selection.
+    static func firstLineRect(of range: NSRange, in textView: NSTextView) -> CGRect? {
+        guard let layoutManager = textView.layoutManager, let container = textView.textContainer else { return nil }
+        let length = (textView.string as NSString).length
+        guard range.length > 0, NSMaxRange(range) <= length else { return nil }
+        layoutManager.ensureLayout(forCharacterRange: range)
+        let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        guard glyphs.length > 0 else { return nil }
+        var lineGlyphs = NSRange()
+        _ = layoutManager.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: &lineGlyphs)
+        let first = NSIntersectionRange(glyphs, lineGlyphs)
+        guard first.length > 0 else { return nil }
+        var rect = layoutManager.boundingRect(forGlyphRange: first, in: container)
+        let origin = textView.textContainerOrigin
+        rect.origin.x += origin.x
+        rect.origin.y += origin.y
+        return rect
     }
 }
 #endif
