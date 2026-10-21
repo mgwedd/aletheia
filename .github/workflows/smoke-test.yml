@@ -43,6 +43,12 @@ jobs:
         run: ./scripts/check-audit-wiring.sh --self-test
       - name: Check audit actions are recorded
         run: ./scripts/check-audit-wiring.sh
+      # The workflows' macOS gating: tier test subsets, path-gated benchmark and
+      # packaging jobs (job-level `if:`, never `on.paths`), unchanged job names.
+      - name: Self-test the CI gating guard
+        run: ./scripts/check-ci-gating.sh --self-test
+      - name: Check CI gating
+        run: ./scripts/check-ci-gating.sh
 
   build-and-test:
     name: Build & test (${{ matrix.tier }}, ${{ matrix.runner }})
@@ -130,9 +136,35 @@ jobs:
             SWIFT_ACTIVE_COMPILATION_CONDITIONS="$TIER_CONDITIONS" \
             | xcbeautify --renderer github-actions
 
+      # The tiers nest (production < preview < dev) and the dev tier compiles
+      # the whole surface, so dev runs the full suite. Production and preview are
+      # built above (catching a tier that fails to compile) and then run only the
+      # tier-sensitive tests: the ones that branch on the tier's compilation
+      # conditions or compose the real feature catalog. This keeps the macOS
+      # time per PR down. scripts/check-ci-gating.sh checks every class named
+      # here exists. Add a class here when a new test depends on the tier.
       - name: Run unit tests (${{ matrix.tier }} tier)
         run: |
           set -o pipefail
+          ONLY=()
+          COVERAGE=YES
+          if [ "${{ matrix.tier }}" != "dev" ]; then
+            COVERAGE=NO
+            for t in \
+              BuildTierTests \
+              FeatureRegistryTests \
+              ProductionTierCompositionTests \
+              AtRestEncryptionFeatureModuleTests \
+              EmbeddedLlamaFeatureModuleTests \
+              EventKitSchedulingFeatureModuleTests \
+              PatientMedicationsFeatureModuleTests \
+              SourceCitationsFeatureModuleTests \
+              SpotlightFeatureModuleTests \
+              SuggestedQuestionsFeatureModuleTests \
+              UpdateServiceTests; do
+              ONLY+=("-only-testing:AletheiaTests/$t")
+            done
+          fi
           xcodebuild test \
             -project Aletheia.xcodeproj \
             -scheme Aletheia \
@@ -140,13 +172,14 @@ jobs:
             -destination 'platform=macOS' \
             -derivedDataPath build \
             -skipPackagePluginValidation \
-            -enableCodeCoverage YES \
+            -enableCodeCoverage "$COVERAGE" \
             -resultBundlePath build/TestResults.xcresult \
+            ${ONLY[@]+"${ONLY[@]}"} \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS="$TIER_CONDITIONS" \
             | xcbeautify --renderer github-actions
 
       - name: Code coverage summary
-        if: always()
+        if: always() && matrix.tier == 'dev'
         run: |
           if [ -d build/TestResults.xcresult ]; then
             echo "### Code coverage (${{ matrix.tier }} tier, ${{ matrix.runner }})" >> "$GITHUB_STEP_SUMMARY"
