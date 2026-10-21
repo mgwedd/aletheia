@@ -766,6 +766,9 @@ enum LocalToolLoop {
         - get_digest: {"tool":"get_digest","session":"S1"}
         - list_sessions: {"tool":"list_sessions","from":"YYYY-MM-DD (optional)","to":"YYYY-MM-DD (optional)"}
 
+        If the material lists "Where search points", those parts are the best \
+        places to read in full: use read_section with the session and times given there.
+
         Respond ONLY with a JSON object of the form {"calls":[...]}. Do not write the final answer yet.
 
         Initial material:
@@ -802,7 +805,8 @@ enum LocalToolLoop {
         history: [ChatMessage] = [],
         service: AssistantService,
         builder: DigestBuilder,
-        live: @escaping DigestBuilder.Live
+        live: @escaping DigestBuilder.Live,
+        onRound: @escaping (Int) -> Void = { _ in }
     ) async throws -> RefinementResult {
         let maxCalls = effort.maxToolCalls
         let maxRounds = effort.maxRefinementRounds
@@ -824,6 +828,7 @@ enum LocalToolLoop {
         for round in 0..<maxRounds {
             try Task.checkCancellation()
             guard remainingCalls > 0, remainingBudget > 200 else { break }
+            onRound(round)
 
             let planPrompt = planningPrompt(
                 question: question,
@@ -838,8 +843,8 @@ enum LocalToolLoop {
             do {
                 rawPlan = try await builder.runStage(
                     planPrompt,
-                    read: round == 0 ? "Checking what to look up" : "Checking follow-up lookups",
-                    write: "Selecting passages",
+                    read: round == 0 ? "Choosing what to read closely" : "Choosing what else to read",
+                    write: "Choosing what to read",
                     task: .digest,
                     grammar: grammar,
                     service: service,
@@ -1114,11 +1119,12 @@ enum LongSessionChat {
 
 // MARK: - Patient-Wide Chat Runner (#286 Steps 3b, 5, 5b)
 
-/// Runs a patient-wide chat turn across all sessions. When every session's
-/// transcript fit in full (`context.coverage.wholeTranscripts`), streams the
-/// answer directly. Otherwise records the initial search stage, optionally runs
-/// `LocalToolLoop.refine` (up to 4 tool calls at `Normal`, 10 at `Focus`, 0 at
-/// `Fast`), updates `TranscriptCoverage`, and streams the final answer.
+/// Runs a patient chat turn. When every session's transcript fit in full
+/// (`context.coverage.wholeTranscripts`), streams the answer directly.
+/// Otherwise the context was gathered by zoom level (`PatientZoom`): it lists
+/// what was gathered, then at Normal and Focus lets the model open the parts
+/// search points at (`LocalToolLoop.refine`, the 10 ft level), then writes the
+/// answer. The progress bar follows `PatientAskSteps`.
 @MainActor
 enum PatientChatAnswer {
     static let fastContextCap = 12_000
@@ -1168,8 +1174,14 @@ enum PatientChatAnswer {
                     var currentCoverage = baseCoverage
                     onCoverage(currentCoverage)
 
-                    let searchStage = "Searched \(currentCoverage.transcriptSessions) session\(currentCoverage.transcriptSessions == 1 ? "" : "s") · \(currentCoverage.sessionsWithPassages) session\(currentCoverage.sessionsWithPassages == 1 ? "" : "s") with passages"
-                    live(nil) { $0.recordCompletedStage(searchStage) }
+                    // Gathering (search, summaries, notes) was done before the
+                    // model started; the bar moves on through the lookups.
+                    let steps = PatientAskSteps(effort: effort, layered: true)
+                    let finished = PatientAskSteps.finishedLines(currentCoverage)
+                    live(nil) { progress in
+                        for line in finished { progress.recordCompletedStage(line) }
+                        progress.steps = steps.choosing(round: 0)
+                    }
 
                     var finalContext = context.text
                     if effort.maxToolCalls > 0 {
@@ -1185,7 +1197,8 @@ enum PatientChatAnswer {
                             history: history,
                             service: service,
                             builder: builder,
-                            live: live
+                            live: live,
+                            onRound: { round in live(nil) { $0.steps = steps.choosing(round: round) } }
                         )
                         try Task.checkCancellation()
                         if !refinement.additionalContext.isEmpty {
@@ -1204,9 +1217,10 @@ enum PatientChatAnswer {
                     let prompt = Prompts.patientChat(context: finalContext, history: history, question: question)
                     var chatService = service
                     chatService.systemPrompt = system
+                    live(nil) { $0.steps = steps.writing }
                     _ = try await builder.runStage(
                         prompt,
-                        read: "Reading the sessions",
+                        read: "Reading what was gathered",
                         write: "Writing the answer",
                         task: .chat,
                         service: chatService,

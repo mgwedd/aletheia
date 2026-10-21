@@ -156,7 +156,7 @@ final class TranscriptCoverageEdgeTests: XCTestCase {
         XCTAssertEqual(c.digestSessions, 2)
         XCTAssertEqual(
             c.label,
-            "Read: digests of 2 sessions · transcript passages from 3 of 3 sessions (0 matches for your words) · follow-up lookups in the transcripts of 1 more session"
+            "Read: summaries of 2 sessions · transcript passages from 3 of 3 sessions (0 matches for your words) · follow-up lookups in the transcripts of 1 more session"
         )
     }
 
@@ -232,9 +232,9 @@ extension TranscriptCoverageEdgeTests {
     }
 
     func testSearchingNoticeCountAndPlural() {
-        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 0), "Searching…")
-        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 1), "Searching 1 session…")
-        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 7), "Searching 7 sessions…")
+        XCTAssertEqual(PatientAskSteps.gatheringText(sessions: 0), "Searching and gathering summaries and notes…")
+        XCTAssertEqual(PatientAskSteps.gatheringText(sessions: 1), "Searching 1 session and gathering summaries and notes…")
+        XCTAssertEqual(PatientAskSteps.gatheringText(sessions: 7), "Searching 7 sessions and gathering summaries and notes…")
     }
 }
 

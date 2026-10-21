@@ -24,7 +24,7 @@ struct PatientChatWindow: View {
         Group {
             if let patient {
                 PatientChatView(patient: patient) { NSApp.keyWindow?.performClose(nil) }
-                    .navigationTitle("Ask about all of \(patient.name)'s sessions")
+                    .navigationTitle("Ask about \(patient.name)")
             } else {
                 VStack(spacing: 10) {
                     Text("This patient is no longer available.")

@@ -1439,15 +1439,18 @@ final class Store {
     /// and returns the tag→session mapping. This is what lets the chat show
     /// which sessions an answer drew from (see `Citations`).
     ///
-    /// Under each header go the retriever's transcript excerpt (if the ranker
-    /// kept one), then that session's generated notes, the therapist's own
-    /// notes and her transcript comments. `sources` lists only the sessions
-    /// that appear in the text.
+    /// When every transcript fits, each goes in whole under its header with
+    /// that session's generated notes, the therapist's own notes and her
+    /// transcript comments. When they don't, the history is read by zoom level
+    /// (`PatientZoom`, `zoomedPatientContext`): notes and comments, session
+    /// summaries, the parts search points at and their summaries, and the
+    /// lines around the best hits; no transcript goes in whole. `sources`
+    /// lists only the sessions that appear in the text.
     ///
     /// `characterBudget` is the most the whole text may run to (see
     /// `AssistantService.patientContextCharacters`): background, search block,
     /// notes and comments (newest sessions first, up to a third of what is
-    /// left) and transcripts all come out of it.
+    /// left) and the rest all come out of it.
     func gatherCitedPatientContext(
         for patient: Patient,
         relevantTo question: String,
@@ -1472,6 +1475,7 @@ final class Store {
         var documents: [TranscriptDocument] = []
         var searchDocuments: [SessionSearch.Document] = []
         var datedDigests: [PatientDigestMerger.DatedDigest] = []
+        var sessionDigests: [ZoomSessionMaterial] = []
         var notesDates = Set<Date>()
         var unreadable = 0
         var index = 1
@@ -1507,7 +1511,8 @@ final class Store {
                 documents.append(TranscriptDocument(date: session.date, text: transcriptText))
                 searchDocuments.append(.init(
                     date: session.date, tag: tag, kind: .transcript, text: transcriptText, session: session.id, patient: patient.id))
-                if let storedDigest = anyCurrentDigest(for: patient, session: session, transcript: transcriptText) {
+                let storedDigest = anyCurrentDigest(for: patient, session: session, transcript: transcriptText)
+                if let storedDigest {
                     datedDigests.append(.init(
                         tag: tag,
                         date: session.date,
@@ -1515,6 +1520,8 @@ final class Store {
                         digest: storedDigest.sessionDigest
                     ))
                 }
+                sessionDigests.append(ZoomSessionMaterial(
+                    id: session.id, tag: tag, date: session.date, transcript: transcriptText, digest: storedDigest))
             }
             for part in parts {
                 searchDocuments.append(.init(
@@ -1532,44 +1539,177 @@ final class Store {
         let searchBlockReserve = 400 + 120 * search.terms.count
         let remainingAfterExtras = max(0, room - extrasUsed - searchBlockReserve)
         let filteredDigests = datedDigests.filter { search.dateRange?.contains($0.date) ?? true }
-        // Only reserve room for digests when stored digests exist and the transcripts won't fit whole.
-        let probeSelection = PatientContextRetriever.select(
+        let selection = PatientContextRetriever.select(
             transcripts: documents, search: search,
             characterBudget: remainingAfterExtras, labels: labels
         )
-        let digestReserve = (!probeSelection.whole && !filteredDigests.isEmpty)
-            ? min(remainingAfterExtras / 3, filteredDigests.count * 600)
-            : 0
-        let selection = digestReserve > 0
-            ? PatientContextRetriever.select(
-                transcripts: documents, search: search,
-                characterBudget: max(0, remainingAfterExtras - digestReserve), labels: labels
+        // Counted from what is in `text`: a session whose transcript is
+        // unreadable is not counted as read.
+        let transcriptDates = Set(documents.map { $0.date }.filter { search.dateRange?.contains($0) ?? true })
+        let notesCoverage = (sessions: notesDates.count, cut: notesCut)
+        guard selection.whole else {
+            // Too long to send whole: read it by zoom level instead.
+            return zoomedPatientContext(
+                ZoomInput(
+                    background: background, room: remainingAfterExtras, search: search, documents: documents,
+                    labels: labels, dates: dates, firstFolder: firstFolder, extras: extras,
+                    digests: filteredDigests, sessionDigests: sessionDigests, transcriptDates: transcriptDates,
+                    notes: notesCoverage, unreadable: unreadable
+                )
             )
-            : probeSelection
-        let excerpts = selection.excerpts
-        let excerptsByDate = Dictionary(grouping: excerpts, by: { $0.date })
-        let excerptsChars = excerpts.reduce(0) { $0 + $1.text.count + 90 }
-        let digestPlan = (!selection.whole && !filteredDigests.isEmpty)
-            ? PatientDigestMerger.plan(
-                digests: filteredDigests,
-                characterBudget: max(digestReserve, remainingAfterExtras - excerptsChars)
-            )
-            : PatientDigestMerger.Plan(individualByDate: [:], monthBlocks: [], digestSessionCount: 0, monthMergedSessionCount: 0)
+        }
 
+        // Everything fits: every transcript whole, with the notes and comments.
+        let excerptsByDate = Dictionary(grouping: selection.excerpts, by: { $0.date })
         var blocks: [String] = []
         var sources: [CitationSource] = []
-        var seenTags = Set<String>()
         for date in dates {
             var parts: [String] = []
-            if let digestBlock = digestPlan.individualByDate[date] {
-                parts.append(digestBlock)
-            }
             parts.append(contentsOf: (excerptsByDate[date] ?? []).map { $0.text })
             parts.append(contentsOf: extras[date] ?? [])
             // Nothing from this session made it into the context: don't cite it.
             guard !parts.isEmpty, let tag = labels[date], let folderName = firstFolder[date] else { continue }
             let header = PatientContextRetriever.header(date, labels: labels)
             blocks.append("\(header)\n\(parts.joined(separator: "\n\n"))")
+            sources.append(CitationSource(tag: tag, date: date, folderName: folderName))
+        }
+        let sessionsText = blocks.joined(separator: "\n\n")
+        let passageDates = transcriptDates.intersection(excerptsByDate.keys)
+        // The same sessions by tag, so follow-up lookups of a session already
+        // read are not counted again (`TranscriptCoverage.addLookups`).
+        let passageTags = Set(passageDates.compactMap { labels[$0] })
+        let searchBlock = Prompts.searchBlock(
+            search, shown: selection.hitsShown, whole: true, unreadableSessions: unreadable
+        )
+        let text = [background, searchBlock, sessionsText]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n\n")
+        let coverage = TranscriptCoverage(
+            transcriptSessions: selection.totalCount,
+            sessionsWithPassages: selection.wholeCount,
+            notesSessions: notesDates.count,
+            unreadableSessions: unreadable,
+            mentions: search.totalMentions - search.similarMentions,
+            similarMentions: search.similarMentions,
+            searched: !search.terms.isEmpty,
+            wholeTranscripts: true,
+            fullTexts: true,
+            notesCutSessions: notesCut,
+            passageTags: passageTags
+        )
+        return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)
+    }
+
+    /// What `zoomedPatientContext` works from, gathered by `gatherCitedPatientContext`.
+    private struct ZoomInput {
+        let background: String
+        /// Characters left for session material after the background, the notes and the search block.
+        let room: Int
+        let search: SessionSearch.Result
+        let documents: [TranscriptDocument]
+        let labels: [Date: String]
+        /// Session dates with material, newest first.
+        let dates: [Date]
+        let firstFolder: [Date: String]
+        /// Each date's notes and comments, already capped.
+        let extras: [Date: [String]]
+        /// Current digests of sessions in the question's date range.
+        let digests: [PatientDigestMerger.DatedDigest]
+        /// Every session with a readable transcript: its tag, date, transcript and current digest.
+        let sessionDigests: [ZoomSessionMaterial]
+        /// Dates in range with a readable transcript.
+        let transcriptDates: Set<Date>
+        let notes: (sessions: Int, cut: Int)
+        let unreadable: Int
+    }
+
+    struct ZoomSessionMaterial {
+        let id: UUID
+        let tag: String
+        let date: Date
+        let transcript: String
+        let digest: SessionDigest?
+    }
+
+    /// The patient's history read by zoom level (`PatientZoom`) when it is too
+    /// long to send whole: notes and comments (already in `extras`), session
+    /// summaries up to their share, the parts search points at with their
+    /// summaries, and the transcript lines around the best hits. No transcript
+    /// goes in whole; a part is read in full only when the model asks for it.
+    private func zoomedPatientContext(_ input: ZoomInput) -> PatientContext {
+        let search = input.search
+        let shares = PatientZoom.Shares(room: input.room)
+
+        // 1,000 ft: summaries, newest first, older ones merged by month.
+        // Each summary kept under its own session header needs room for that header.
+        let individualLimit = PatientZoom.individualSummaryLimit(summaryRoom: shares.summaries)
+        let digestPlan = PatientDigestMerger.plan(
+            digests: input.digests,
+            recentIndividualLimit: individualLimit,
+            characterBudget: max(0, shares.summaries - individualLimit * PatientZoom.headerAllowance)
+        )
+        var summariesUsed = digestPlan.individualByDate.count * PatientZoom.headerAllowance
+        for block in digestPlan.individualByDate.values { summariesUsed += block.count + 2 }
+        for month in digestPlan.monthBlocks { summariesUsed += month.text.count + 2 }
+
+        // 500 ft: the parts of sessions the hits fall in, and the summaries that name the question's words.
+        var hitSessions = Set<UUID>()
+        for hit in search.hits where hit.kind == .transcript {
+            if let id = hit.sessionID { hitSessions.insert(id) }
+        }
+        var inputs: [PatientZoom.SessionInput] = []
+        for material in input.sessionDigests where input.transcriptDates.contains(material.date) {
+            let hit = hitSessions.contains(material.id)
+            guard material.digest != nil || hit else { continue }
+            let parts = material.digest == nil ? TranscriptSections.split(material.transcript) : []
+            let lineCount = hit ? LineTable(material.transcript).count : 0
+            inputs.append(PatientZoom.SessionInput(
+                tag: material.tag, date: material.date, sessionID: material.id,
+                digest: material.digest, parts: parts, lineCount: lineCount
+            ))
+        }
+        let ranked = PatientZoom.areas(sessions: inputs, hits: search.hits, stems: PatientZoom.stems(of: search.terms))
+        let areasBlock = PatientZoom.areasBlock(ranked, budget: shares.areas)
+        let listed = areasBlock?.shown ?? []
+        let areasUsed = areasBlock.map { $0.text.count + 2 } ?? 0
+
+        // 100 ft: the summaries of those parts, then the lines around the best hits.
+        let sectionAreas = PatientZoom.sectionSummaries(listed, budget: shares.sections)
+        var sectionsUsed = 0
+        var sectionsByDate: [Date: [String]] = [:]
+        for area in sectionAreas {
+            let block = PatientZoom.sectionSummaryBlock(area)
+            sectionsUsed += block.count + 2 + PatientZoom.headerAllowance
+            sectionsByDate[area.date, default: []].append(block)
+        }
+        let passageRoom = max(0, input.room - summariesUsed - areasUsed - sectionsUsed)
+        let hasTranscriptHits = search.hits.contains { $0.kind == .transcript }
+        var excerpts: [PatientContextRetriever.Excerpt] = []
+        var hitsShown = 0
+        if !search.terms.isEmpty, hasTranscriptHits, passageRoom > 200 {
+            // The transcripts don't fit `room`, so they don't fit this either:
+            // `select` keeps the best hits' lines, never whole transcripts.
+            let passages = PatientContextRetriever.select(
+                transcripts: input.documents, search: search, characterBudget: passageRoom, labels: input.labels
+            )
+            if !passages.fullTexts {
+                excerpts = passages.excerpts
+                hitsShown = passages.hitsShown
+            }
+        }
+        let excerptsByDate = Dictionary(grouping: excerpts, by: { $0.date })
+
+        var blocks: [String] = []
+        var sources: [CitationSource] = []
+        var seenTags = Set<String>()
+        for date in input.dates {
+            var parts: [String] = []
+            if let digestBlock = digestPlan.individualByDate[date] { parts.append(digestBlock) }
+            parts.append(contentsOf: sectionsByDate[date] ?? [])
+            parts.append(contentsOf: (excerptsByDate[date] ?? []).map { $0.text })
+            parts.append(contentsOf: input.extras[date] ?? [])
+            guard !parts.isEmpty, let tag = input.labels[date], let folderName = input.firstFolder[date] else { continue }
+            blocks.append("\(PatientContextRetriever.header(date, labels: input.labels))\n\(parts.joined(separator: "\n\n"))")
             if seenTags.insert(tag).inserted {
                 sources.append(CitationSource(tag: tag, date: date, folderName: folderName))
             }
@@ -1580,50 +1720,53 @@ final class Store {
                 sources.append(source)
             }
         }
-        let sessionsText = blocks.joined(separator: "\n\n")
-        // Counted from what is in `text`: a session whose transcript is
-        // unreadable is not counted as read.
-        let transcriptDates = Set(documents.map { $0.date }.filter { search.dateRange?.contains($0) ?? true })
-        // Whole-transcript selections are counted per session, not per date, so
-        // two sessions on one day are not both counted when only one was sent.
-        let passageDates = transcriptDates.intersection(excerptsByDate.keys)
-        let sessionsRead = selection.fullTexts
-            ? selection.wholeCount + (selection.cutShort ? 1 : 0)
-            : passageDates.count
-        // The same sessions by tag, so follow-up lookups of a session already
-        // read are not counted again (`TranscriptCoverage.addLookups`).
-        let passageTags = Set(passageDates.compactMap { labels[$0] })
-        var digestTags = Set(digestPlan.individualByDate.keys.compactMap { labels[$0] })
-        for month in digestPlan.monthBlocks {
-            digestTags.formUnion(month.tags)
+        // A listed part says what search found in that session, so it can be cited.
+        for area in listed where !seenTags.contains(area.tag) {
+            guard let folderName = input.firstFolder[area.date] else { continue }
+            seenTags.insert(area.tag)
+            sources.append(CitationSource(tag: area.tag, date: area.date, folderName: folderName))
         }
-        let transcriptTotal = selection.fullTexts ? selection.totalCount : transcriptDates.count
+        sources.sort { $0.date > $1.date }
+
+        let passageDates = input.transcriptDates.intersection(excerptsByDate.keys)
+        let passageTags = Set(passageDates.compactMap { input.labels[$0] })
+        var digestTags = Set(digestPlan.individualByDate.keys.compactMap { input.labels[$0] })
+        for month in digestPlan.monthBlocks { digestTags.formUnion(month.tags) }
+        let digestDates = Set(input.digests.map(\.date))
+        var searchOnly = 0
+        var noSummary = 0
+        for date in input.transcriptDates {
+            guard let tag = input.labels[date], !digestTags.contains(tag) else { continue }
+            searchOnly += 1
+            if !digestDates.contains(date) { noSummary += 1 }
+        }
+
         let searchBlock = Prompts.searchBlock(
-            search, shown: selection.hitsShown, whole: selection.whole,
-            newest: selection.fullTexts ? (sessionsRead, transcriptTotal, selection.cutShort) : nil,
-            unreadableSessions: unreadable
+            search, shown: hitsShown, whole: false, layered: true, unreadableSessions: input.unreadable
         )
-        let text = [background, searchBlock, sessionsText]
+        let text = [input.background, searchBlock, areasBlock?.text ?? "", blocks.joined(separator: "\n\n")]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n\n")
-        let coverage = TranscriptCoverage(
-            transcriptSessions: transcriptTotal,
-            sessionsWithPassages: sessionsRead,
-            notesSessions: notesDates.count,
-            unreadableSessions: unreadable,
+        var coverage = TranscriptCoverage(
+            transcriptSessions: input.transcriptDates.count,
+            sessionsWithPassages: passageDates.count,
+            notesSessions: input.notes.sessions,
+            unreadableSessions: input.unreadable,
             mentions: search.totalMentions - search.similarMentions,
             similarMentions: search.similarMentions,
             searched: !search.terms.isEmpty,
-            wholeTranscripts: selection.whole,
-            fullTexts: selection.fullTexts,
-            newestCutShort: selection.cutShort,
-            notesCutSessions: notesCut,
+            notesCutSessions: input.notes.cut,
             digestSessions: digestPlan.digestSessionCount,
             monthMergedSessions: digestPlan.monthMergedSessionCount,
             passageTags: passageTags,
             digestTags: digestTags
         )
-        return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)
+        coverage.layered = true
+        coverage.areas = listed.count
+        coverage.summarySections = sectionAreas.count
+        coverage.searchOnlySessions = searchOnly
+        coverage.noSummarySessions = noSummary
+        return PatientContext(text: text, sources: sources, unreadableSessions: input.unreadable, coverage: coverage)
     }
 
     /// Builds a read-only `LocalToolScope` over all readable sessions of `patient`,

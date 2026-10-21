@@ -197,7 +197,7 @@ struct AletheiaApp: App {
         // The patient-wide chat. A window, not a sheet, so it resizes, goes full
         // screen and closes with ⌘W. It carries the same lock covers as the main
         // window, since it shows patient data.
-        WindowGroup("Ask About All Sessions", id: PatientChatWindow.windowID, for: UUID.self) { $patientID in
+        WindowGroup("Ask About This Patient", id: PatientChatWindow.windowID, for: UUID.self) { $patientID in
             PatientChatWindow(patientID: patientID)
                 .environmentObject(settings)
                 .environmentObject(appModel)

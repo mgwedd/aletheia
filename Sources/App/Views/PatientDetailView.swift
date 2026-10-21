@@ -226,7 +226,7 @@ struct PatientDetailView: View {
         Button {
             openWindow(id: PatientChatWindow.windowID, value: patient.id)
         } label: {
-            Label("Ask about all sessions", systemImage: "bubble.left.and.bubble.right")
+            Label("Ask about this patient", systemImage: "bubble.left.and.bubble.right")
         }
         .buttonStyle(.themed)
         .disabled(sessions.isEmpty)
