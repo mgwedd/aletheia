@@ -619,6 +619,24 @@ struct SessionDetailView: View {
         }
     }
 
+    /// Saves the note on screen as a PDF, after the usual save panel.
+    private func exportNotePDF() {
+        let format = settings.progressNoteFormat.shortName
+        let dateStr = String(session.folderName.prefix(10))
+        guard let data = NotePDF.render(
+            markdown: summaryText,
+            title: patient.name,
+            subtitle: "\(format) · \(Self.dateFormatter.string(from: session.date))"
+        ) else {
+            appModel.errorMessage = "The PDF couldn't be made."
+            return
+        }
+        let name = FileSaver.fileName(patient.name, dateStr, format) + ".pdf"
+        if FileSaver.savePDF(data, suggestedName: name) {
+            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(format), PDF")
+        }
+    }
+
     private var hasAnyRecording: Bool {
         guard let store = appModel.store else { return false }
         let mic = store.micRecordingURL(for: patient, session: session)
@@ -1054,6 +1072,12 @@ struct SessionDetailView: View {
                             Label(noteCopied ? "Copied" : "Copy", systemImage: noteCopied ? "checkmark" : "doc.on.doc")
                         }
                         .help("Copy the note to paste into your EHR")
+                        Button {
+                            exportNotePDF()
+                        } label: {
+                            Label("PDF", systemImage: "arrow.down.doc")
+                        }
+                        .help("Save this note as a PDF")
                     }
                 }
                 if let status = noteRunner.queuedStatus {

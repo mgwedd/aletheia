@@ -23,6 +23,22 @@ enum FileSaver {
         }
     }
 
+    /// Saves PDF bytes to a user-chosen location via NSSavePanel.
+    @discardableResult
+    static func savePDF(_ data: Data, suggestedName: String) -> Bool {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedName
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [.pdf]
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        do {
+            try data.write(to: url, options: .atomic)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Saves an iCalendar (.ics) file to a user-chosen location via NSSavePanel.
     @discardableResult
     static func saveICS(_ text: String, suggestedName: String) -> Bool {
