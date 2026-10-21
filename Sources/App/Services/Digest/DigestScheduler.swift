@@ -347,3 +347,21 @@ final class DigestScheduler: ObservableObject {
         return result
     }
 }
+
+extension DigestScheduler: ShutdownJob {
+    /// The summary being built, so it goes first next launch. (Every other
+    /// session that still needs one is found again by the launch scan.)
+    func interruptedWork() -> [InterruptedWork] {
+        guard let id = buildingSessionID, let session = sessionsByID[id] else { return [] }
+        return [InterruptedWork(kind: .digest, patientID: session.patientId, sessionFolder: session.folderName)]
+    }
+
+    /// Cancels the build loop and the build in progress, and waits for the
+    /// loop to return (it waits on the build, whose model calls are queue jobs
+    /// the queue's own shutdown cancels).
+    func shutDown() async {
+        let running = loop
+        stop()
+        await running?.value
+    }
+}

@@ -168,6 +168,15 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Quitting: stops the background index sweep and closes the index, off the
+    /// main thread (closing waits for an index write in progress).
+    func stopSearchSync() async {
+        searchSync?.cancel()
+        searchSync = nil
+        guard let index = searchIndex else { return }
+        await Task.detached(priority: .userInitiated) { index.close() }.value
+    }
+
     /// Runs a save that goes to the database and, if it throws, raises the
     /// "couldn't save" notice instead of discarding the failure (views used to
     /// call these with `try?`). A later success for the same `subject` clears it.

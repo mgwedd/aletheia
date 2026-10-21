@@ -170,7 +170,16 @@ final class SessionRecorder: ObservableObject {
     private var protector: FileProtector = .passthrough
     private var micURL: URL?
     private var callURL: URL?
-    private var isStopping = false
+    /// The Stop under way, so a second Stop (or the quit) waits for its seal
+    /// instead of sealing the same files again.
+    private var stopping: Task<Void, Never>?
+    /// Set once the app has started quitting: the recording is still finalized,
+    /// but `onStopped` doesn't fire, so no transcription starts on the way out.
+    private var isQuitting = false
+
+    /// Files are open (recording, paused, stopped by a capture error, or
+    /// still being finalized by a Stop).
+    var hasOpenRecording: Bool { micURL != nil }
 
     /// Starts recording. Returns nil once recording, or why it isn't: another
     /// recording is in the way (which is left untouched), or this one failed to
@@ -284,11 +293,29 @@ final class SessionRecorder: ObservableObject {
     }
 
     func stop() async {
-        // A second Stop while the first is still sealing must not seal the
-        // same files again or report the recording finished twice.
-        guard !isStopping else { return }
-        isStopping = true
-        defer { isStopping = false }
+        // A second Stop while the first is still sealing waits for it rather
+        // than sealing the same files again or reporting the recording twice.
+        if let stopping {
+            await stopping.value
+            return
+        }
+        let task = Task { await self.finishRecording() }
+        stopping = task
+        await task.value
+        stopping = nil
+    }
+
+    /// Quitting: waits out a start already under way, then stops and finalizes
+    /// whatever is still open (a recording, one a capture error ended, or one a
+    /// Stop is already sealing). Returns at once when nothing was recording.
+    func shutDown() async {
+        isQuitting = true
+        while isStarting { try? await Task.sleep(nanoseconds: 20_000_000) }
+        guard hasOpenRecording else { return }
+        await stop()
+    }
+
+    private func finishRecording() async {
         reminderTask?.cancel()
         reminderTask = nil
         stopLevelPolling()
@@ -306,7 +333,7 @@ final class SessionRecorder: ObservableObject {
         micURL = nil
         callURL = nil
         state = sealError.map { .error($0) } ?? .idle
-        if let finished, sealError == nil { onStopped?(finished) }
+        if let finished, sealError == nil, !isQuitting { onStopped?(finished) }
     }
 
     /// Seals both recordings in place when encryption is on. Runs off the main
