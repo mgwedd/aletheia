@@ -527,6 +527,89 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertFalse(withoutBg.text.contains("Anxiety disorder"))
         XCTAssertFalse(withoutBg.text.contains("Client prefers afternoon"))
     }
+
+    // MARK: - Tool scope tags
+
+    /// Every tag the context cites names the same session in the tool scope, so a
+    /// tool result tagged [S2] and the context's [S2] are one session.
+    private func assertToolTagsMatch(
+        _ context: PatientContext, _ patient: Patient, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let scope = store.localToolScope(for: patient)
+        XCTAssertFalse(context.sources.isEmpty, file: file, line: line)
+        for source in context.sources {
+            XCTAssertEqual(
+                scope.sessions.first { $0.tag == source.tag }?.folderName, source.folderName,
+                "tag \(source.tag)", file: file, line: line)
+        }
+    }
+
+    func testToolTagsMatchContextTagsWhenANewerTranscriptIsUnreadable() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let good = try store.createSession(for: patient, on: date(2026, 1, 5))
+        try store.saveTranscript("Readable transcript about the garden.", for: patient, session: good)
+        let locked = try store.createSession(for: patient, on: date(2026, 3, 5))
+        let url = store.sessionDir(for: patient, session: locked).appendingPathComponent("transcript.txt")
+        try FileProtector(key: SymmetricKey(size: .bits256)).write("secret", to: url)
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "garden")
+        XCTAssertEqual(context.sources.map(\.folderName), [locked.folderName, good.folderName])
+        assertToolTagsMatch(context, patient)
+    }
+
+    func testToolTagsMatchContextTagsWhenTheBudgetDropsANotesOnlySession() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let newest = try store.createSession(for: patient, on: date(2026, 3, 20))
+        try store.saveNote(String(repeating: "Long generated note. ", count: 200), for: patient, session: newest, format: .soap)
+        let notesOnly = try store.createSession(for: patient, on: date(2026, 3, 10))
+        try store.saveNote("Short phone check-in.", for: patient, session: notesOnly, format: .soap)
+        let recorded = try store.createSession(for: patient, on: date(2026, 3, 1))
+        try store.saveTranscript("[00:01] Patient: The garden is coming along.", for: patient, session: recorded)
+
+        // The newest session's note uses up the room for notes, so the next one's is left out entirely.
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "garden", characterBudget: 2_000)
+        XCTAssertFalse(context.sources.contains { $0.folderName == notesOnly.folderName })
+        XCTAssertTrue(context.sources.contains { $0.folderName == recorded.folderName })
+        assertToolTagsMatch(context, patient)
+    }
+
+    // MARK: - Scale
+
+    /// 100 sessions of about an hour each (~60,000 characters, ~6M in all): the
+    /// prompt a question builds still fits a 32K window, for a question that
+    /// matches one line and for one with no search words at all.
+    func testHundredHourLongSessionsBuildAPromptThatFitsTheWindow() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let calendar = Calendar(identifier: .gregorian)
+        for s in 0..<100 {
+            let day = calendar.date(byAdding: .day, value: 7 * s, to: date(2024, 1, 1))!
+            let session = try store.createSession(for: patient, on: day)
+            var lines = (0..<900).map { i in
+                "[\(i * 4 / 60):\(String(format: "%02d", i * 4 % 60))] \(i % 2 == 0 ? "You" : "Call audio"): "
+                    + "Session \(s) line \(i) about work, sleep and how the week went."
+            }
+            if s == 17 { lines[450] = "[30:00] Call audio: A weekend of kayaking helped more than anything." }
+            try store.saveTranscript(lines.joined(separator: "\n"), for: patient, session: session)
+        }
+
+        var service = AssistantService(assistant: NoopAssistant(), model: "m")
+        service.budget = ContextBudget(tokens: 32_768)
+        for question in ["When did kayaking come up?", "How has she been doing?"] {
+            let budget = service.patientContextCharacters(history: [], question: question)
+            let context = store.gatherCitedPatientContext(for: patient, relevantTo: question, characterBudget: budget)
+            let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question)
+            let prompt = Prompts.patientChat(context: context.text, history: [], question: question)
+            XCTAssertLessThanOrEqual(context.text.count, budget, question)
+            XCTAssertTrue(service.budget.fits(promptCharacters: system.count + prompt.count), question)
+            XCTAssertFalse(context.coverage.wholeTranscripts, question)
+            XCTAssertEqual(context.coverage.transcriptSessions, 100, question)
+        }
+        let kayaking = store.gatherCitedPatientContext(
+            for: patient, relevantTo: "When did kayaking come up?",
+            characterBudget: service.patientContextCharacters(history: [], question: "When did kayaking come up?"))
+        XCTAssertTrue(kayaking.text.contains("kayaking"))
+        assertToolTagsMatch(kayaking, patient)
+    }
 }
 
 private final class NoopAssistant: Assistant, @unchecked Sendable {

@@ -178,4 +178,31 @@ final class GlobalSearchHitsTests: XCTestCase {
         XCTAssertEqual(segments.first, SearchHighlighter.Segment(text: "Raise ", isMatch: false))
         XCTAssertEqual(SearchHighlighter.segments(in: "plain", query: "zebra"), [SearchHighlighter.Segment(text: "plain", isMatch: false)])
     }
+
+    // MARK: Long histories
+
+    func testSearchStopsWhenTheCallerNoLongerWantsIt() throws {
+        let patient = try store.createPatient(name: "Sam Doe")
+        for day in 1...5 {
+            let session = try store.createSession(for: patient, on: date(2026, 10, day))
+            try store.saveTranscript("[00:01] The garden came up again on day \(day).", for: patient, session: session)
+        }
+        XCTAssertEqual(store.searchHits(query: "garden").count, 5)
+
+        var checks = 0
+        let partial = store.searchHits(query: "garden", shouldContinue: { checks += 1; return checks <= 3 })
+        XCTAssertEqual(partial.count, 2, "one check for the patient, then one before each session")
+        XCTAssertTrue(store.searchHits(query: "garden", shouldContinue: { false }).isEmpty)
+    }
+
+    /// Global search reads and decrypts every transcript; on a long history that
+    /// must not run on the main actor (it used to, on every paused keystroke).
+    func testGlobalSearchScansOffTheMainActor() throws {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/Views/GlobalSearchView.swift")
+        let source = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertFalse(source.contains("hits = store.searchHits("))
+        XCTAssertTrue(source.contains("Task.detached(priority: .userInitiated) {\n            store.searchHits(query: typed, shouldContinue: { !Task.isCancelled })"))
+    }
 }
