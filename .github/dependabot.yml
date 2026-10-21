@@ -1,0 +1,15 @@
+# Keeps the SHA-pinned GitHub Actions current. Only first-party `actions/*`
+# are used (scripts/check-ci-gating.sh enforces that and the pinning);
+# Dependabot bumps the pinned commit and its `# vN` comment together, weekly,
+# in one grouped PR.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]

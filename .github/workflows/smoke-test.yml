@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Check per-tier entitlements
         run: ./scripts/check-entitlements.sh
       # Screens take every color from Theme (CLAUDE.md, Conventions).
@@ -89,7 +89,7 @@ jobs:
             || (matrix.tier == 'preview' && 'DEBUG ALETHEIA_PREVIEW')
             || 'DEBUG' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Show selected Xcode
         run: xcodebuild -version
@@ -104,7 +104,7 @@ jobs:
       # so we don't re-download them every run. Keyed on where dependency versions
       # live and the runner image, so each Xcode toolchain keeps its own cache.
       - name: Cache Swift packages
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: build/SourcePackages
           key: spm-${{ matrix.runner }}-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
@@ -192,7 +192,7 @@ jobs:
       # and see exactly which test/assertion failed without re-running CI.
       - name: Upload test results on failure
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: TestResults-${{ matrix.tier }}-${{ matrix.runner }}
           path: build/TestResults.xcresult

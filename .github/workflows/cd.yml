@@ -47,7 +47,7 @@ jobs:
     outputs:
       package: ${{ steps.diff.outputs.package }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
       - name: Did packaging inputs change?
@@ -64,7 +64,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Show selected Xcode
         run: xcodebuild -version
@@ -72,7 +72,7 @@ jobs:
       # Same SPM cache key as smoke-test so the two workflows share the
       # resolved whisper.cpp and llama.cpp XCFrameworks.
       - name: Cache Swift packages
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: build/SourcePackages
           key: spm-macos-15-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
@@ -114,8 +114,13 @@ jobs:
           echo "basename=$BASENAME" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      # Start the Release build (sandboxed, Hardened Runtime) the way a tester
+      # would, from the DMG. The unit tests never run this configuration.
+      - name: Launch the packaged app
+        run: ./scripts/launch-smoke.sh "${{ steps.dmg.outputs.dmg }}"
+
       - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ${{ steps.dmg.outputs.basename }}
           path: dist/${{ steps.dmg.outputs.basename }}.dmg
