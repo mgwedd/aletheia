@@ -605,6 +605,38 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertTrue(source.contains("let outcome = await Task.detached(priority: .userInitiated) {\n                    scope.execute(call, maxCharacters: perCallBudget)"))
     }
 
+    /// Focus asks for up to ten lookups and keeps room for all of them: each
+    /// gets an even share of the reserve. (Each used to take up to 2,400, so the
+    /// last ones found the room gone and were dropped.)
+    func testFocusFitsEveryLookupItsReserveWasKeptFor() async throws {
+        let lines = (0..<3_600).map { i in
+            "[\(TranscriptTimeline.format(i * 2))] Client: Line \(i) of a long session about work, sleep and family."
+        }
+        let scope = LocalToolScope(sessions: [LocalToolSession(
+            id: UUID(), tag: "S1", date: date(2026, 3, 15), folderName: "f",
+            transcript: lines.joined(separator: "\n"), digest: nil, notes: "", comments: []
+        )])
+        let calls = (0..<10).map { k in
+            #"{"tool":"read_section","session":"S1","start":"\#(k * 10):00","end":"\#(k * 10 + 9):59"}"#
+        }
+        let stub = ToolLoopStubAssistant()
+        stub.planReplies = ["{\"calls\":[" + calls.joined(separator: ",") + "]}"]
+        let reserve = AnswerEffort.focus.lookupReserve(total: 80_000)
+
+        let result = try await LocalToolLoop.refine(
+            question: "How was sleep?",
+            initialContext: "Initial",
+            scope: scope,
+            effort: .focus,
+            characterBudget: reserve,
+            service: AssistantService(assistant: stub, model: "m"),
+            builder: DigestBuilder(queue: InferenceQueue()),
+            live: { _, _ in }
+        )
+        XCTAssertEqual(result.outcomes.count, 10)
+        XCTAssertEqual(result.additionalContext.components(separatedBy: "Transcript S1 (").count - 1, 10, "every lookup reached the answer")
+    }
+
     // MARK: - Citations from lookups
 
     func testRefineReturnsTheSessionsItReadAsCitationSources() async throws {

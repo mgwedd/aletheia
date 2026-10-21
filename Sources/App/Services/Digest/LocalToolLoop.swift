@@ -867,7 +867,8 @@ enum LocalToolLoop {
                 if seenCalls.contains(call) { continue }
                 seenCalls.append(call)
 
-                let perCallBudget = max(240, min(2_400, remainingBudget))
+                // An even share of the reserve, so the last lookup has the room the first had.
+                let perCallBudget = max(240, min(effort.lookupCharacters(reserve: characterBudget), remainingBudget))
                 // A search reads every session of a long history: off the main thread.
                 let outcome = await Task.detached(priority: .userInitiated) {
                     scope.execute(call, maxCharacters: perCallBudget)
@@ -921,7 +922,6 @@ enum LocalToolLoop {
 enum LongSessionChat {
     static let headerReserve = 1_200
     static let digestShare = 2_500
-    static let fastMaterialLimit = 7_500
 
     static func stream(
         transcript: String,
@@ -996,13 +996,11 @@ enum LongSessionChat {
                         throw ContextBudgetError(minutes: service.budget.approximateMinutes)
                     }
 
-                    let toolReserve = effort.maxToolCalls > 0 ? min(3_600, total / 3) : 0
                     let initialRoom: Int
-                    switch effort {
-                    case .fast:
-                        initialRoom = min(total, fastMaterialLimit)
-                    case .normal, .focus:
-                        initialRoom = max(600, total - toolReserve)
+                    if let cap = effort.materialCap(for: .sessionChat) {
+                        initialRoom = min(total, cap)
+                    } else {
+                        initialRoom = max(600, total - effort.lookupReserve(total: total))
                     }
 
                     let (digestText, _) = LongSessionNote.fit(
@@ -1127,20 +1125,13 @@ enum LongSessionChat {
 /// answer. The progress bar follows `PatientAskSteps`.
 @MainActor
 enum PatientChatAnswer {
-    static let fastContextCap = 12_000
-
-    static func toolReserve(for effort: AnswerEffort, budget: Int) -> Int {
-        guard effort.maxToolCalls > 0 else { return 0 }
-        return min(4_800, max(0, budget / 4))
-    }
-
+    /// The room for the gathered material: Fast's cap, or the whole budget less
+    /// the room kept for every lookup (`AnswerEffort.lookupReserve`).
     static func initialContextBudget(for effort: AnswerEffort, totalBudget: Int) -> Int {
-        switch effort {
-        case .fast:
-            return min(totalBudget, fastContextCap)
-        case .normal, .focus:
-            return max(2_000, totalBudget - toolReserve(for: effort, budget: totalBudget))
+        if let cap = effort.materialCap(for: .patientChat) {
+            return min(totalBudget, cap)
         }
+        return max(2_000, totalBudget - effort.lookupReserve(total: totalBudget))
     }
 
     static func stream(

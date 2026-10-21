@@ -21,7 +21,7 @@ final class SelectableTextTests: XCTestCase {
     }
 
     func testClickableListsNeverEnableSelection() throws {
-        for name in ["PatientsListView.swift", "PatientDetailView.swift", "GlobalSearchView.swift", "RecordingMenuBar.swift"] {
+        for name in ["PatientsListView.swift", "PatientDetailView.swift", "GlobalSearchResultsView.swift", "RecordingMenuBar.swift"] {
             XCTAssertFalse(try source(name).contains(".textSelection(.enabled)"), "\(name) has click-to-act rows")
         }
     }

@@ -17,7 +17,7 @@ final class OnDeviceCopyTests: XCTestCase {
             ("Views/SessionDetailView.swift", ["on-device\"", "Recording on this Mac"]),
             ("Views/SettingsView.swift", ["recorded only on this Mac", "every AI path is on-device", "Talks to Ollama on this Mac only"]),
             ("Views/DoctorView.swift", ["Everything is checked on this Mac"]),
-            ("Views/GlobalSearchView.swift", ["Searched on this Mac"]),
+            ("Views/GlobalSearchResultsView.swift", ["Searched on this Mac"]),
             ("Views/EncryptionSettingsView.swift", ["recordings on this Mac"]),
             ("Views/TranscriptionProgressView.swift", ["Runs entirely on this Mac"]),
             ("Views/MermaidDiagramView.swift", ["on-device model"]),
@@ -41,8 +41,9 @@ final class OnDeviceCopyTests: XCTestCase {
     }
 
     func testSearchFooterIsEmptyBeforeATypedQuery() throws {
-        // Read as source: the footer text comes from a private view property.
-        let text = try source("Views/GlobalSearchView.swift")
-        XCTAssertTrue(text.contains("guard hasQuery else { return \"\" }"))
+        // Read as source: results (and their footer) show only once something is
+        // typed, and the footer's count only once something matched.
+        XCTAssertTrue(try source("Views/RootView.swift").contains("if search.hasQuery {"))
+        XCTAssertTrue(try source("Views/GlobalSearchResultsView.swift").contains("guard total > 0 else { return \"\" }"))
     }
 }

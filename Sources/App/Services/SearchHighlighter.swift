@@ -43,9 +43,14 @@ enum SearchHighlighter {
     /// `text` cut into alternating plain and matching runs; joining the
     /// segments gives back `text` exactly.
     static func segments(in text: String, query: String) -> [Segment] {
+        segments(in: text, ranges: ranges(of: query, in: text))
+    }
+
+    /// `text` cut at `ranges` (in order, not overlapping) into plain and matching runs.
+    static func segments(in text: String, ranges: [Range<String.Index>]) -> [Segment] {
         var segments: [Segment] = []
         var cursor = text.startIndex
-        for range in ranges(of: query, in: text) {
+        for range in ranges {
             if range.lowerBound > cursor {
                 segments.append(Segment(text: String(text[cursor..<range.lowerBound]), isMatch: false))
             }
@@ -56,5 +61,18 @@ enum SearchHighlighter {
             segments.append(Segment(text: String(text[cursor...]), isMatch: false))
         }
         return segments
+    }
+}
+
+/// What a global-search result row marks: the words the search matched, the
+/// way the index matches them (stems and the start of words, so "worries"
+/// marks "worried" and "thera" marks "Therapy"). Where no word matches (a
+/// patient name typed in the middle, "ann" in "Joanne"), where the typed text appears.
+enum GlobalSearchHighlight {
+    static func segments(in text: String, query: String) -> [SearchHighlighter.Segment] {
+        let parsed = GlobalSearchQuery(query)
+        var ranges = GlobalSearchText.wordRanges(in: text, terms: parsed.textTerms)
+        if ranges.isEmpty { ranges = SearchHighlighter.ranges(of: query, in: text) }
+        return SearchHighlighter.segments(in: text, ranges: ranges)
     }
 }

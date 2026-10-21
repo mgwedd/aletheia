@@ -203,7 +203,7 @@ final class GlobalSearchHitsTests: XCTestCase {
     func testGlobalSearchScansOffTheMainActor() throws {
         let file = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/App/Views/GlobalSearchView.swift")
+            .appendingPathComponent("Sources/App/Services/Search/GlobalSearchModel.swift")
         let source = try String(contentsOf: file, encoding: .utf8)
         XCTAssertFalse(source.contains("= store.globalSearch("))
         XCTAssertFalse(source.contains("store.searchHits("), "the file-by-file scan is only the fallback")
