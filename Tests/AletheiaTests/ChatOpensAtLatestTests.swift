@@ -9,6 +9,7 @@ import AppKit
 final class ChatOpensAtLatestTests: XCTestCase {
     final class Model: ObservableObject {
         @Published var messages: [ChatMessage]
+        @Published var isSending = false
         init(_ messages: [ChatMessage]) { self.messages = messages }
     }
 
@@ -18,7 +19,7 @@ final class ChatOpensAtLatestTests: XCTestCase {
             ChatPaneView(
                 title: "this session",
                 messages: $model.messages,
-                isSending: false,
+                isSending: model.isSending,
                 onSend: { _ in },
                 voiceInput: FakeVoiceInput()
             )
@@ -96,5 +97,83 @@ final class ChatOpensAtLatestTests: XCTestCase {
         window = nil
         open(model)
         assertAtBottom("coming back to the tab opens at the latest message")
+    }
+
+    /// Streams an answer the way the runners do: a new assistant message whose
+    /// text grows chunk by chunk, then sending ends.
+    private func stream(into model: Model, chunks: Int, settleEach: Bool = true, check: ((Int) -> Void)? = nil) {
+        model.messages.append(ChatMessage(role: .user, text: "Describe the client"))
+        model.isSending = true
+        settle()
+        let id = UUID()
+        var text = ""
+        model.messages.append(ChatMessage(id: id, role: .assistant, text: text))
+        for chunk in 0..<chunks {
+            text += "Chunk \(chunk) of the answer, several words long enough to wrap. " + (chunk % 4 == 3 ? "\n\n" : "")
+            model.messages[model.messages.count - 1] = ChatMessage(id: id, role: .assistant, text: text)
+            if settleEach { settle() }
+            check?(chunk)
+        }
+        model.isSending = false
+        settle()
+    }
+
+    func testAStreamingAnswerStaysOnTheLatestText() {
+        let model = Model(thread(10, tag: "A"))
+        open(model)
+        stream(into: model, chunks: 40) { chunk in
+            if chunk > 10 { self.assertAtBottom("follows the answer as it grows (chunk \(chunk))") }
+        }
+        assertAtBottom("stays on the latest text when the answer ends")
+        settle()
+        assertAtBottom("and is still there a moment later")
+    }
+
+    func testScrollingUpDuringAnAnswerIsLeftAlone() throws {
+        let model = Model(thread(20, tag: "A"))
+        open(model)
+        let scroll = try XCTUnwrap(chatScrollView())
+        model.messages.append(ChatMessage(role: .user, text: "Describe the client"))
+        model.isSending = true
+        let id = UUID()
+        var text = "Start. "
+        model.messages.append(ChatMessage(id: id, role: .assistant, text: text))
+        settle()
+        // The therapist scrolls back into the history.
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 200))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        settle()
+        for chunk in 0..<20 {
+            text += "More of the answer, chunk \(chunk), long enough to wrap the line. "
+            model.messages[model.messages.count - 1] = ChatMessage(id: id, role: .assistant, text: text)
+            settle()
+        }
+        model.isSending = false
+        settle()
+        XCTAssertEqual(scroll.contentView.documentVisibleRect.minY, 200, accuracy: 30, "the reader's place is kept")
+    }
+
+    /// A small nudge up, still near the bottom, is the reader taking over too.
+    func testANudgeUpDuringAnAnswerStopsFollowing() throws {
+        let model = Model(thread(20, tag: "A"))
+        open(model)
+        let scroll = try XCTUnwrap(chatScrollView())
+        let id = UUID()
+        var text = "Start. "
+        model.messages.append(ChatMessage(role: .user, text: "Describe the client"))
+        model.isSending = true
+        model.messages.append(ChatMessage(id: id, role: .assistant, text: text))
+        settle()
+        assertAtBottom("following before the nudge")
+        let nudged = scroll.contentView.bounds.origin.y - 15
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: nudged))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        settle()
+        for chunk in 0..<10 {
+            text += "More of the answer, chunk \(chunk), long enough to wrap the line. "
+            model.messages[model.messages.count - 1] = ChatMessage(id: id, role: .assistant, text: text)
+            settle()
+        }
+        XCTAssertEqual(scroll.contentView.bounds.origin.y, nudged, accuracy: 30, "the reader's place is kept")
     }
 }

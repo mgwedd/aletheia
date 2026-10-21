@@ -73,7 +73,7 @@ private struct NoteProgressRow: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             VStack(alignment: .leading, spacing: 6) {
-                AIStatusLineView(text: NoteProgress.statusLine(title: title, progress, now: context.date, speed: speed))
+                AIStatusLineView(text: NoteProgress.statusLine(title: title, progress, now: context.date))
                 ThemeProgressBar(value: highWater.clamp(NoteProgress.fraction(progress, now: context.date, speed: speed)))
                     .frame(maxWidth: 240)
             }
@@ -1430,7 +1430,6 @@ struct SessionDetailView: View {
             notices: sessionChatNotices,
             onCompact: { compactChat($0) },
             progress: chatRunner.progress,
-            speed: integrations.modelSpeed,
             effort: $settings.sessionChatEffort,
             isSessionRecording: recorder.isRecording
         )

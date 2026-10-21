@@ -123,26 +123,13 @@ final class AIProgressTests: XCTestCase {
         XCTAssertNotNil(AIRunStats(promptTokens: 300, promptNanos: 3_000_000_000, expectedPromptTokens: 0).readTokensPerSecond)
     }
 
-    func testWritingLineShowsTimeLeftOnceSpeedKnown() {
+    /// Stage and elapsed time only: no token counts or time-left guesses.
+    func testWritingLineIsTheStageAndElapsedTime() {
         var progress = AIRunProgress(startedAt: Date(timeIntervalSince1970: 0))
         progress.firstTokenAt = Date(timeIntervalSince1970: 10)
         progress.tokensWritten = 50
-        let now = Date(timeIntervalSince1970: 20)
-        let line = AIProgressFormat.statusLine(
-            progress, now: now, readTokensPerSecond: nil, writeTokensPerSecond: 10, expectedOutputTokens: 650)
-        XCTAssertEqual(line, "Writing… · 50 tokens · about 1 min left · 0:20")  // 600 left at 10/s
-        let unknown = AIProgressFormat.statusLine(progress, now: now, readTokensPerSecond: nil)
-        XCTAssertEqual(unknown, "Writing… · 50 tokens · 0:20")
-    }
-
-    func testWritingLineHidesTimeLeftPastExpectedLength() {
-        var progress = AIRunProgress(startedAt: Date(timeIntervalSince1970: 0))
-        progress.firstTokenAt = Date(timeIntervalSince1970: 10)
-        progress.tokensWritten = 500
-        let line = AIProgressFormat.statusLine(
-            progress, now: Date(timeIntervalSince1970: 20), readTokensPerSecond: nil,
-            writeTokensPerSecond: 10, expectedOutputTokens: 400)
-        XCTAssertEqual(line, "Writing… · 500 tokens · 0:20")
+        progress.estimatedPromptTokens = 24_000
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: Date(timeIntervalSince1970: 20)), "Writing… · 0:20")
     }
 
     func testOutputLengthIsAveragedPerTask() throws {
@@ -323,18 +310,9 @@ final class AIProgressTests: XCTestCase {
         XCTAssertEqual(AIProgressFormat.elapsed(-3), "0:00")
         XCTAssertEqual(AIProgressFormat.estimatedTokens(800), "~800 tokens")
         XCTAssertEqual(AIProgressFormat.estimatedTokens(31_200), "~31K tokens")
-        XCTAssertEqual(AIProgressFormat.tokens(412), "412 tokens")
-        XCTAssertEqual(AIProgressFormat.tokens(1), "1 token")
     }
 
     func testEstimateWording() {
-        XCTAssertNil(AIProgressFormat.readingRemaining(estimatedTokens: 31_000, tokensPerSecond: nil, elapsed: 5))
-        XCTAssertEqual(AIProgressFormat.readingRemaining(estimatedTokens: 6_000, tokensPerSecond: 100, elapsed: 20), 40)
-        XCTAssertEqual(AIProgressFormat.readingRemaining(estimatedTokens: 6_000, tokensPerSecond: 100, elapsed: 90), 0)
-        XCTAssertEqual(AIProgressFormat.remaining(60), "about 1 min left")
-        XCTAssertEqual(AIProgressFormat.remaining(200), "about 3 min left")
-        XCTAssertEqual(AIProgressFormat.remaining(20), "less than a minute left")
-        XCTAssertEqual(AIProgressFormat.remaining(0), "taking longer than estimated")
         XCTAssertEqual(try XCTUnwrap(AIProgressFormat.readingFraction(estimatedTokens: 6_000, tokensPerSecond: 100, elapsed: 30)), 0.5, accuracy: 0.001)
         XCTAssertEqual(AIProgressFormat.readingFraction(estimatedTokens: 6_000, tokensPerSecond: 100, elapsed: 500), 0.95)
         XCTAssertNil(AIProgressFormat.readingFraction(estimatedTokens: nil, tokensPerSecond: 100, elapsed: 1))
@@ -345,17 +323,17 @@ final class AIProgressTests: XCTestCase {
         var progress = AIRunProgress(readTitle: "Reading the session", writeTitle: "Writing the note", startedAt: start)
         progress.estimatedPromptTokens = 31_000
 
-        let reading = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(42), readTokensPerSecond: 31_000.0 / 100)
-        XCTAssertEqual(reading, "Reading the session… · ~31K tokens · about 1 min left · 0:42")
+        let reading = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(42))
+        XCTAssertEqual(reading, "Reading the session… · 0:42")
 
-        let unknownSpeed = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(3), readTokensPerSecond: nil)
-        XCTAssertEqual(unknownSpeed, "Reading the session… · ~31K tokens · 0:03")
+        let unknownSpeed = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(3))
+        XCTAssertEqual(unknownSpeed, "Reading the session… · 0:03")
 
         // The line replaces itself: once text arrives it says only what is being written.
         progress.firstTokenAt = start.addingTimeInterval(65)
         progress.tokensWritten = 412
-        let writing = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(77), readTokensPerSecond: nil)
-        XCTAssertEqual(writing, "Writing the note… · 412 tokens · 1:17")
+        let writing = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(77))
+        XCTAssertEqual(writing, "Writing the note… · 1:17")
     }
 
     func testStatusLinePutsWhatSearchFoundBeforeTheReading() {
@@ -364,13 +342,13 @@ final class AIProgressTests: XCTestCase {
         progress.lead = "1 mention, in the Oct 13 session"
         progress.estimatedPromptTokens = 3_000
         XCTAssertEqual(
-            AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(4), readTokensPerSecond: nil),
-            "1 mention, in the Oct 13 session. Reading what was gathered… · ~3K tokens · 0:04")
+            AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(4)),
+            "1 mention, in the Oct 13 session. Reading what was gathered… · 0:04")
         progress.firstTokenAt = start.addingTimeInterval(9)
         progress.tokensWritten = 20
         XCTAssertEqual(
-            AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(12), readTokensPerSecond: nil),
-            "Writing the answer… · 20 tokens · 0:12")
+            AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(12)),
+            "Writing the answer… · 0:12")
     }
 
     // MARK: Effort & Multi-Stage Progress
@@ -405,8 +383,8 @@ final class AIProgressTests: XCTestCase {
             "Checking what to look up · 0:07",
         ])
         XCTAssertEqual(
-            AIProgressFormat.statusLine(progress, now: t0.addingTimeInterval(15), readTokensPerSecond: nil),
-            "4 mentions, across 2 sessions. Reading the sessions… · ~4K tokens · 0:15")
+            AIProgressFormat.statusLine(progress, now: t0.addingTimeInterval(15)),
+            "4 mentions, across 2 sessions. Reading the sessions… · 0:15")
     }
 
     // MARK: Status line per surface
@@ -415,18 +393,18 @@ final class AIProgressTests: XCTestCase {
         let t0 = Date(timeIntervalSince1970: 1_000)
         // Ask, single session (SessionDetailView.sendChat's titles).
         let sessionAsk = AIRunProgress(readTitle: "Reading the session", writeTitle: "Writing the answer", startedAt: t0)
-        XCTAssertEqual(AIProgressFormat.statusLine(sessionAsk, now: t0.addingTimeInterval(2), readTokensPerSecond: nil),
+        XCTAssertEqual(AIProgressFormat.statusLine(sessionAsk, now: t0.addingTimeInterval(2)),
                        "Reading the session… · 0:02")
         // Background digest: DigestBuilder's stage titles.
         var digest = AIRunProgress(readTitle: "Reading", startedAt: t0)
         digest.beginStage(readTitle: "Reading part 2 of 5", writeTitle: DigestBuilder.writeTitle, startedAt: t0.addingTimeInterval(30))
         digest.firstTokenAt = t0.addingTimeInterval(40)
         digest.tokensWritten = 90
-        XCTAssertEqual(AIProgressFormat.statusLine(digest, now: t0.addingTimeInterval(61), readTokensPerSecond: nil),
-                       "\(DigestBuilder.writeTitle)… · 90 tokens · 1:01")
+        XCTAssertEqual(AIProgressFormat.statusLine(digest, now: t0.addingTimeInterval(61)),
+                       "\(DigestBuilder.writeTitle)… · 1:01")
         // Compaction.
         let compact = AIRunProgress(readTitle: "Reading the conversation", writeTitle: "Summarizing the conversation", startedAt: t0)
-        XCTAssertEqual(AIProgressFormat.statusLine(compact, now: t0, readTokensPerSecond: nil),
+        XCTAssertEqual(AIProgressFormat.statusLine(compact, now: t0),
                        "Reading the conversation… · 0:00")
     }
 }

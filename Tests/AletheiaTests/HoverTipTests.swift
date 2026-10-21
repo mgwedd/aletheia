@@ -57,7 +57,7 @@ final class HoverIntentTests: XCTestCase {
 
 final class HelpTipsTests: XCTestCase {
     private var allTips: [HelpTip] {
-        [HelpTips.myNotes, HelpTips.patientChatScope]
+        [HelpTips.myNotes, HelpTips.compact]
             + settingsTips
     }
 
@@ -69,7 +69,7 @@ final class HelpTipsTests: XCTestCase {
     func testIdsAreFixed() {
         // Read state is stored under these ids; changing one re-shows the tip.
         XCTAssertEqual(HelpTips.myNotes.id, "notes.mine")
-        XCTAssertEqual(HelpTips.patientChatScope.id, "chat.patient.scope")
+        XCTAssertEqual(HelpTips.compact.id, "chat.compact")
         XCTAssertEqual(settingsTips.map(\.id), [
             "settings.autoTranscribe", "settings.aiInstructions", "settings.defaultNoteFormat",
             "settings.includeComments", "settings.summariesOnBattery",
@@ -77,7 +77,7 @@ final class HelpTipsTests: XCTestCase {
     }
 
     func testDistinctTipsHaveDistinctIds() {
-        let ids = ([HelpTips.myNotes, HelpTips.patientChatScope] + settingsTips).map(\.id)
+        let ids = ([HelpTips.myNotes, HelpTips.compact] + settingsTips).map(\.id)
         XCTAssertEqual(Set(ids).count, ids.count)
     }
 
@@ -101,6 +101,9 @@ final class HelpTipsTests: XCTestCase {
             "most widely accepted progress-note format",
             "# Aletheia —",
             "var blurb: String",
+            // The Ask-all field's scope tip and its "Read: …" coverage line were noise.
+            "What answers come from",
+            "coverageNotice",
         ]
         let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
         var offenders: [String] = []
@@ -123,8 +126,15 @@ final class HelpTipsTests: XCTestCase {
         XCTAssertTrue(source.contains(".focusEffectDisabled()"))
     }
 
-    func testPatientChatTipKeepsTheScopeTheContextBuilderUses() {
-        XCTAssertEqual(HelpTips.patientChatScope.text, PatientChatView.scopeNote)
+    /// Compaction isn't a word therapists use; the tip says what it does and why.
+    func testCompactTipExplainsWhatAndWhy() throws {
+        XCTAssertTrue(HelpTips.compact.text.contains("summary"))
+        XCTAssertTrue(HelpTips.compact.text.contains("/compact"))
+        let pane = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/App/Views/ChatPaneView.swift"), encoding: .utf8)
+        XCTAssertTrue(pane.contains(".hoverTip(HelpTips.compact"))
     }
 
     func testTipsHaveNoRulesOrActions() {
