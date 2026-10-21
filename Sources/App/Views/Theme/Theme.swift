@@ -76,6 +76,9 @@ enum Theme {
     /// Text and icons on an accent fill.
     static let accentInk = ColorToken("Theme/AccentInk")
     static let accentHover = ColorToken("Theme/AccentHover")
+    /// A key cap drawn inside an accent-filled button (`KeyCap(_:onAccent:)`),
+    /// with `accentInk` on it.
+    static let accentKeyCap = ColorToken("Theme/AccentKeyCap")
     /// The selected row, and the "AI draft" tag.
     static let accentTint = ColorToken("Theme/AccentTint")
     /// Small tags and counts.
@@ -117,7 +120,7 @@ enum Theme {
     static let all: [ColorToken] = [
         window, sidebar, panel, raised, hover, line, field,
         text, muted,
-        accent, accentInk, accentHover, accentTint, chip, chipInk,
+        accent, accentInk, accentHover, accentKeyCap, accentTint, chip, chipInk,
         highlight, highlightInk, recording, recordingFill, recordingInk, recordingTint,
         bubble, callout, callAudio,
         ok, okTint, warn, warnTint, info, infoTint,
@@ -155,6 +158,8 @@ enum Theme {
         pairs += [
             Pairing(foreground: accentInk, background: accent, minimum: 4.5),
             Pairing(foreground: accentInk, background: accentHover, minimum: 4.5),
+            // Key-cap hints inside filled (accent) buttons.
+            Pairing(foreground: accentInk, background: accentKeyCap, minimum: 4.5),
             Pairing(foreground: chipInk, background: chip, minimum: 4.5),
             Pairing(foreground: highlightInk, background: highlight, minimum: 4.5),
             Pairing(foreground: recording, background: recordingTint, minimum: 4.5),

@@ -703,9 +703,8 @@ struct SessionDetailView: View {
                         Button("Discard") { showDiscardConfirm = true }
                             .help("Throw away your unsaved edits")
                         Button("Save") { saveTranscriptDraft() }
-                            .keyboardShortcut("s", modifiers: .command)
                             .disabled(transcriptReadError != nil)
-                            .help("Save your edits to the transcript")
+                            .shortcut(AppHotkey.saveEdits, help: "Save your edits to the transcript")
                     }
                     .buttonStyle(.themed)
                     .padding(.horizontal, 20)
@@ -1072,8 +1071,8 @@ struct SessionDetailView: View {
                         } label: {
                             Label("Regenerate", systemImage: "sparkles")
                         }
-                        .keyboardShortcut("g", modifiers: .command)
                         .disabled(transcriptText.isEmpty || isEditingNote)
+                        .shortcut(AppHotkey.generateNote, help: "Regenerate the note")
                     }
                     if !noteRunner.isStreaming && !noteRunner.isQueued && !isEditingNote {
                         noteLengthMenu
@@ -1252,12 +1251,17 @@ struct SessionDetailView: View {
             Button {
                 requestGenerateNote()
             } label: {
-                Label("Generate \(format) note", systemImage: "sparkles")
+                HStack(spacing: 8) {
+                    Label("Generate \(format) note", systemImage: "sparkles")
+                    ShortcutHint(AppHotkey.generateNote, onAccent: true)
+                }
             }
             .buttonStyle(.themePrimary)
-            .keyboardShortcut("g", modifiers: .command)
             .disabled(transcriptText.isEmpty || noteRunner.isQueued)
-            .help(transcriptText.isEmpty ? "Transcribe the session first" : "Draft a \(format) note from the transcript")
+            .shortcut(
+                AppHotkey.generateNote,
+                help: transcriptText.isEmpty ? "Transcribe the session first" : "Draft a \(format) note from the transcript"
+            )
         }
         .padding(28)
         .frame(maxWidth: 520)

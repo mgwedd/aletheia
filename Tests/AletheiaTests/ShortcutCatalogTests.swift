@@ -30,7 +30,7 @@ final class ShortcutCatalogTests: XCTestCase {
     func testEveryAppHotkeyIsListed() {
         let listed = Set(allEntries.map { ShortcutGlyphs.symbols(for: $0.shortcut) })
         let defined: [KeyboardShortcut] = [
-            AppHotkey.newPatient, AppHotkey.closeWindow, AppHotkey.showShortcuts, AppHotkey.saveComment,
+            AppHotkey.search, AppHotkey.newPatient, AppHotkey.closeWindow, AppHotkey.showShortcuts, AppHotkey.saveComment,
             AppHotkey.saveEdits, AppHotkey.generateNote, AppHotkey.bold, AppHotkey.italic,
             AppHotkey.bulletedList, AppHotkey.numberedList, AppHotkey.bodyText, AppHotkey.heading,
             AppHotkey.subheading,
@@ -52,15 +52,39 @@ final class ShortcutCatalogTests: XCTestCase {
 
     // MARK: The listed keys are the bound keys
 
-    func testLiteralBindingsMatchTheirDefinitions() throws {
-        // Bound as literals in files other work is editing; the definitions must agree.
+    func testTheRegistryListsSaveAndGenerate() throws {
+        let byTitle = Dictionary(uniqueKeysWithValues: allEntries.map { ($0.title, $0.shortcut) })
+        XCTAssertEqual(try XCTUnwrap(byTitle["Save your edits"]).key, AppHotkey.saveEdits.key)
+        XCTAssertEqual(try XCTUnwrap(byTitle["Generate or regenerate the note"]).key, AppHotkey.generateNote.key)
         XCTAssertEqual(ShortcutGlyphs.keys(for: AppHotkey.saveEdits), ["⌘", "S"])
         XCTAssertEqual(ShortcutGlyphs.keys(for: AppHotkey.generateNote), ["⌘", "G"])
+    }
+
+    func testSaveAndGenerateBindThroughTheRegistryNotLiterals() throws {
         let session = try source("Sources/App/Views/SessionDetailView.swift")
-        XCTAssertTrue(session.contains(".keyboardShortcut(\"s\", modifiers: .command)"))
-        XCTAssertTrue(session.contains(".keyboardShortcut(\"g\", modifiers: .command)"))
         let profile = try source("Sources/App/Views/PatientProfileEditor.swift")
-        XCTAssertTrue(profile.contains(".keyboardShortcut(\"s\", modifiers: .command)"))
+        for (name, text) in [("SessionDetailView", session), ("PatientProfileEditor", profile)] {
+            XCTAssertFalse(text.contains(".keyboardShortcut(\"s\""), "\(name) binds a literal Command-S")
+            XCTAssertFalse(text.contains(".keyboardShortcut(\"g\""), "\(name) binds a literal Command-G")
+        }
+        XCTAssertTrue(session.contains(".shortcut(AppHotkey.saveEdits"))
+        XCTAssertTrue(session.contains(".shortcut(AppHotkey.generateNote"))
+        XCTAssertTrue(profile.contains(".keyboardShortcut(AppHotkey.saveEdits)"))
+    }
+
+    func testHintsInsideFilledButtonsUseTheOnAccentCap() throws {
+        let session = try source("Sources/App/Views/SessionDetailView.swift")
+        XCTAssertTrue(session.contains("ShortcutHint(AppHotkey.generateNote, onAccent: true)"))
+        let components = try source("Sources/App/Views/Theme/ThemeComponents.swift")
+        XCTAssertTrue(components.contains("Theme.accentKeyCap"))
+        XCTAssertTrue(components.contains("Theme.accentInk"))
+    }
+
+    func testTheOnAccentCapIsAContrastPairing() {
+        XCTAssertTrue(Theme.all.contains(Theme.accentKeyCap))
+        XCTAssertTrue(Theme.pairings.contains {
+            $0.foreground == Theme.accentInk && $0.background == Theme.accentKeyCap && $0.minimum >= 4.5
+        })
     }
 
     func testTheAppMenusBindThroughTheDefinitions() throws {
