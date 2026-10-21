@@ -132,7 +132,8 @@ final class DigestBuilder: ObservableObject {
         inline: Bool = false
     ) async throws -> SessionDigest {
         let sections = TranscriptSections.split(transcript)
-        // One call per section, plus the final merge.
+        // One call per section, plus the final merge. Merging a long session
+        // takes more rounds than that; `merge` raises the total as it finds them.
         let totalSteps = sections.count + 1
         var parts: [SessionDigest.Section] = []
         var anchored: [(anchor: String, digest: String)] = []
@@ -148,8 +149,8 @@ final class DigestBuilder: ObservableObject {
             anchored.append((anchor, text))
         }
         try Task.checkCancellation()
-        live(nil) { $0.steps = AIRunSteps(done: sections.count, total: totalSteps) }
-        let merged = try await merge(anchored, service: service, live: live, inline: inline)
+        let merged = try await merge(
+            anchored, callsDone: sections.count, service: service, live: live, inline: inline)
         return SessionDigest(
             model: service.model,
             promptVersion: Prompts.digestVersion,
@@ -164,10 +165,17 @@ final class DigestBuilder: ObservableObject {
     /// prompt, merges them in groups of as many as fit and repeats on the
     /// results, so the final merge is always within budget (or fails with
     /// `ContextBudgetError` when even two can't be merged).
+    ///
+    /// `callsDone` is how many model calls the build has finished (the
+    /// sections). Each call reports `steps` before it runs: every group merge
+    /// counts, and the total always leaves room for the final merge, so the bar
+    /// grows with the work found rather than reading full while rounds remain.
     private func merge(
-        _ items: [(anchor: String, digest: String)], service: AssistantService, live: @escaping Live, inline: Bool
+        _ items: [(anchor: String, digest: String)], callsDone: Int,
+        service: AssistantService, live: @escaping Live, inline: Bool
     ) async throws -> String {
         var items = items
+        var done = callsDone
         while items.count > 1 && !service.fits(prompt: Prompts.sessionDigest(sections: items)) {
             try Task.checkCancellation()
             var next: [(anchor: String, digest: String)] = []
@@ -177,6 +185,10 @@ final class DigestBuilder: ObservableObject {
                 if group.count == 1 {
                     next.append(first)
                 } else {
+                    // This call and the final merge are still to come.
+                    let before = done
+                    done += 1
+                    live(nil) { $0.steps = AIRunSteps(done: before, total: before + 2) }
                     let text = try await generate(
                         Prompts.sessionDigest(sections: group), stage: Self.mergeTitle, service: service, live: live, inline: inline)
                     next.append(("\(first.anchor) … \(last.anchor)", text))
@@ -192,6 +204,8 @@ final class DigestBuilder: ObservableObject {
             try await flush()
             items = next
         }
+        let finished = done
+        live(nil) { $0.steps = AIRunSteps(done: finished, total: finished + 1) }
         return try await generate(
             Prompts.sessionDigest(sections: items), stage: Self.mergeTitle, service: service, live: live, inline: inline)
     }
