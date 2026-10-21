@@ -96,6 +96,7 @@ final class AppSettings: ObservableObject {
         static let progressNoteFormat = "progressNoteFormat"
         static let summaryVerbosity = "summaryVerbosity"
         static let includeCommentsInDrafts = "includeCommentsInDrafts"
+        static let transcriptSplitRatio = "transcriptSplitRatio"
         static let includePatientBackground = "includePatientBackground"
         static let noteInstructions = "noteInstructions"
         static let modelSpeeds = "modelSpeeds"
@@ -190,6 +191,11 @@ final class AppSettings: ObservableObject {
     /// On by default.
     @Published var includeCommentsInDrafts: Bool {
         didSet { defaults.set(includeCommentsInDrafts, forKey: Keys.includeCommentsInDrafts) }
+    }
+    /// The share of the session pane the transcript takes beside its comments
+    /// (the rest is the comments). Where the divider was last dragged.
+    @Published var transcriptSplitRatio: Double {
+        didSet { defaults.set(transcriptSplitRatio, forKey: Keys.transcriptSplitRatio) }
     }
     /// Whether the patient's clinical history, profile notes, and medications are included in AI context.
     /// On by default.
@@ -401,6 +407,9 @@ final class AppSettings: ObservableObject {
         summaryVerbosity = defaults.string(forKey: Keys.summaryVerbosity)
             .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
         includeCommentsInDrafts = defaults.object(forKey: Keys.includeCommentsInDrafts) as? Bool ?? true
+        transcriptSplitRatio = TranscriptSplit.sanitized(
+            ratio: defaults.object(forKey: Keys.transcriptSplitRatio) as? Double ?? TranscriptSplit.defaultRatio
+        )
         includePatientBackground = defaults.object(forKey: Keys.includePatientBackground) as? Bool ?? true
         noteInstructions = defaults.dictionary(forKey: Keys.noteInstructions) as? [String: String] ?? [:]
         modelSpeeds = defaults.dictionary(forKey: Keys.modelSpeeds) as? [String: [String: Double]] ?? [:]
