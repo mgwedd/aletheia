@@ -1013,9 +1013,9 @@ struct SessionDetailView: View {
         return VStack(alignment: .leading, spacing: 14) {
             ThemeSegmentedControl(
                 options: NotesPane.all.map { ThemeTab(value: $0, title: $0.label) },
-                selection: notesPaneBinding
+                selection: notesPaneBinding,
+                sizing: .fitted
             )
-            .frame(maxWidth: 560)
             .disabled(locked)
             .opacity(locked ? 0.55 : 1)
             .accessibilityLabel("Note")
