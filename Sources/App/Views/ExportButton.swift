@@ -41,6 +41,7 @@ struct ExportButton: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                         .foregroundStyle(Theme.text.color)
                         .padding(.vertical, 5)
                         .accessibilityAddTraits(format == option ? .isSelected : [])

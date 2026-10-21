@@ -55,17 +55,6 @@ enum ProgressNoteFormat: String, CaseIterable, Identifiable, Codable, Hashable {
         }
     }
 
-    /// A one-line description of when a clinician reaches for this format.
-    var blurb: String {
-        switch self {
-        case .soap: return "Subjective · Objective · Assessment · Plan — the most widely accepted progress-note format."
-        case .dap: return "Data · Assessment · Plan — a leaner structure common in behavioral health."
-        case .birp: return "Behavior · Intervention · Response · Plan — centers what happened in the room."
-        case .girp: return "Goal · Intervention · Response · Plan — ties each session back to the treatment plan's goals."
-        case .narrative: return "Plain-prose summary of the session, no fixed headings — Aletheia's default."
-        }
-    }
-
     /// The ordered sections that make up the note. Empty for `.narrative`,
     /// which is intentionally free-form.
     var sections: [Section] {

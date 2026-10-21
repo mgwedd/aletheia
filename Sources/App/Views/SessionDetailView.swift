@@ -1103,7 +1103,7 @@ struct SessionDetailView: View {
             .disabled(locked)
             .opacity(locked ? 0.55 : 1)
             .accessibilityLabel("Note")
-            .hoverTip(showingMyNotes ? HelpTips.myNotes : HelpTips.noteFormat(settings.progressNoteFormat))
+            .hoverTip(showingMyNotes ? HelpTips.myNotes : nil)
             .padding([.horizontal, .top], 20)
 
             if showingMyNotes {
