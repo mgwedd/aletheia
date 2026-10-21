@@ -68,6 +68,7 @@ struct SettingsView: View {
         )
         .background(Theme.window.color)
         .tint(Theme.accent.color)
+        .textSelection(.enabled)
         .navigationTitle("Settings")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
