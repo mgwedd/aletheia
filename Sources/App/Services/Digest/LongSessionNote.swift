@@ -46,6 +46,9 @@ enum LongSessionNote {
     /// Added to the coverage line when the user stopped while the note was being written.
     static let stoppedEarlyText = "Stopped early: this note is only what was written before you stopped."
 
+    /// The check stage's reading title; `NoteProgress` places the bar by it.
+    static let checkTitle = "Checking"
+
     // MARK: - Run
 
     static func stream(
@@ -181,7 +184,7 @@ enum LongSessionNote {
         guard service.fits(prompt: prompt) else { return .tooLong }
         do {
             let corrected = try await builder.runStage(
-                prompt, read: "Checking", write: "Writing corrections", task: .note,
+                prompt, read: checkTitle, write: "Writing corrections", task: .note,
                 grammar: format.grammar, service: service, live: live)
             if let why = rejection(corrected, draft: draft, format: format, phrases: phrases) { return why }
             accept(corrected)
