@@ -147,7 +147,7 @@ struct AletheiaApp: App {
                 Button("Close Window") {
                     NSApp.keyWindow?.performClose(nil)
                 }
-                .keyboardShortcut("w", modifiers: .command)
+                .keyboardShortcut(AppHotkey.closeWindow)
             }
             // Put a real "Check for Updates…" in the app menu, next to About,
             // so updates aren't only a silent on-launch check.
@@ -160,6 +160,10 @@ struct AletheiaApp: App {
             // (see DoctorFeatureModule). Also reachable from Settings and from the
             // database-unavailable banner.
             CommandGroup(after: .help) {
+                Button("Keyboard Shortcuts") {
+                    openWindow(id: ShortcutsWindow.id)
+                }
+                .keyboardShortcut(AppHotkey.showShortcuts)
                 if appModel.featureRegistry.contains(id: DoctorFeatureModule.id) {
                     Button("Aletheia Doctor…") {
                         openWindow(id: DoctorFeatureModule.windowID)
@@ -192,6 +196,13 @@ struct AletheiaApp: App {
                 .environmentObject(encryption)
         }
         .defaultSize(width: 620, height: 640)
+
+        // The Keyboard Shortcuts window, opened from the Help menu. It lists keys
+        // only, never patient data, so it carries no lock cover.
+        Window("Keyboard Shortcuts", id: ShortcutsWindow.id) {
+            ShortcutsView()
+        }
+        .defaultSize(width: 460, height: 560)
 
         // Gives the standard "Settings…" (⌘,) item in the app menu — the macOS
         // home every Mac user reaches for — backed by the same AppSettings the

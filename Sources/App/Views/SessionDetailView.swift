@@ -401,48 +401,55 @@ struct SessionDetailView: View {
                     .help("Pause recording")
                 }
                 recordingTimer
-            } else if recorder.isRecording {
-                // A different session is recording (via the menu bar); don't let
-                // this view start a second one or stop the other by surprise.
-                Label("Recording another session", systemImage: "record.circle")
-                    .font(Theme.Typography.control)
-                    .foregroundStyle(Theme.muted.color)
-                    .help("Stop the current recording from the menu bar first")
-            } else {
-                Button {
-                    Task { await startRecording() }
-                } label: {
-                    Label("Record Session", systemImage: "record.circle")
+            } else if offersRecord {
+                if recorder.isRecording {
+                    // A different session is recording (via the menu bar); don't let
+                    // this view start a second one or stop the other by surprise.
+                    Label("Recording another session", systemImage: "record.circle")
+                        .font(Theme.Typography.control)
+                        .foregroundStyle(Theme.muted.color)
+                        .help("Stop the current recording from the menu bar first")
+                } else {
+                    Button {
+                        Task { await startRecording() }
+                    } label: {
+                        Label("Record Session", systemImage: "record.circle")
+                    }
+                    .help(recordBlocker ?? "Record this session's audio")
+                    .disabled(recordBlocker != nil)
                 }
-                .help(recordBlocker ?? "Record this session's audio")
-                .disabled(recordBlocker != nil)
             }
 
-            Rectangle()
-                .fill(Theme.line.color)
-                .frame(width: 1, height: 20)
-                .padding(.horizontal, 4)
+            if offersRecord || isRecordingThisSession, offersTranscribe {
+                Rectangle()
+                    .fill(Theme.line.color)
+                    .frame(width: 1, height: 20)
+                    .padding(.horizontal, 4)
+            }
 
             // The label stays put; a spinner beside it shows work is under way
             // (the progress itself is the band under the tab bar).
-            Button {
-                noSpeechNotice = nil
-                transcription.start(patient: patient, session: session)
-            } label: {
-                Label("Transcribe", systemImage: "waveform")
-            }
-            .help(transcribeBlocker ?? (transcription.isBusy
-                  ? "Another session is being transcribed. This one will start when it finishes"
-                  : "Transcribe the recording"))
-            .disabled(transcribeBlocker != nil)
-            if isTranscribing {
-                ProgressView().controlSize(.small)
+            if offersTranscribe {
+                Button {
+                    noSpeechNotice = nil
+                    transcription.start(patient: patient, session: session)
+                } label: {
+                    Label("Transcribe", systemImage: "waveform")
+                }
+                .help(transcribeBlocker ?? (transcription.isBusy
+                      ? "Another session is being transcribed. This one will start when it finishes"
+                      : "Transcribe the recording"))
+                .disabled(transcribeBlocker != nil)
+                if isTranscribing {
+                    ProgressView().controlSize(.small)
+                }
             }
 
-            ExportButton(help: "Save this session's note and transcript as a PDF, Word or Markdown file") {
-                exportSession(as: $0)
+            if SessionActionPolicy.offersExport(hasTranscript: !transcriptText.isEmpty, hasSummary: !summaryText.isEmpty) {
+                ExportButton(help: "Save this session's note and transcript as a PDF, Word or Markdown file") {
+                    exportSession(as: $0)
+                }
             }
-            .disabled(transcriptText.isEmpty && summaryText.isEmpty)
 
             // "Remind Me" / "Schedule Next…" belong to the `.dev`-tier EventKit
             // scheduling module; absent from production/preview builds. See
@@ -1438,6 +1445,19 @@ struct SessionDetailView: View {
         transcription.isWaiting(session.id)
     }
 
+    private var offersRecord: Bool {
+        SessionActionPolicy.offersRecord(
+            hasTranscript: !transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            hasRecording: hasAnyRecording, isTranscribing: isTranscribing, isQueued: isQueued
+        )
+    }
+
+    private var offersTranscribe: Bool {
+        SessionActionPolicy.offersTranscribe(
+            hasRecording: hasAnyRecording, isTranscribing: isTranscribing, isQueued: isQueued
+        )
+    }
+
     private var recordBlocker: String? {
         SessionActionPolicy.recordBlocker(
             isTranscribing: isTranscribing, isQueued: isQueued, isStarting: recorder.isStarting
@@ -1808,16 +1828,14 @@ private struct InlineCommentComposerCard: View {
             HStack(alignment: .center, spacing: 12) {
                 Spacer(minLength: 0)
                 HStack(spacing: 8) {
-                    KeyCap("⌘ return")
-                        .accessibilityHidden(true)
+                    ShortcutHint(AppHotkey.saveComment)
                     Button("Cancel", action: onCancel)
                         .buttonStyle(.themed)
                         .keyboardShortcut(.cancelAction)
                     Button("Save comment", action: onSave)
                         .buttonStyle(.themePrimary)
-                        .keyboardShortcut(.return, modifiers: .command)
                         .disabled(!canSave)
-                        .help("Save this comment (Command-Return)")
+                        .shortcut(AppHotkey.saveComment, help: "Save this comment")
                 }
                 .fixedSize()
             }

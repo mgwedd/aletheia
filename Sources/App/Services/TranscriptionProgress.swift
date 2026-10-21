@@ -105,10 +105,32 @@ struct TranscriptionQueue: Equatable {
     }
 }
 
-/// Why the session screen's Record or Transcribe button is unavailable, in
-/// words for its tooltip; nil when the action can go ahead. Pure so every
-/// blocked case is explained (and tested) rather than a silently dead button.
+/// Which of the session screen's actions are offered at all, and why one that
+/// is offered is unavailable (in words for its tooltip; nil when it can go
+/// ahead). Pure so every case is decided (and tested) rather than left to a
+/// silently dead or pointless button.
 enum SessionActionPolicy {
+    /// Record is for a session with nothing captured yet. Once there is audio
+    /// (waiting to be transcribed) or a transcript, recording again would
+    /// replace what is there; a fresh session is the way to record more.
+    static func offersRecord(
+        hasTranscript: Bool, hasRecording: Bool, isTranscribing: Bool, isQueued: Bool
+    ) -> Bool {
+        !hasTranscript && !hasRecording && !isTranscribing && !isQueued
+    }
+
+    /// Transcribe is for a session with audio to transcribe, or one being
+    /// transcribed. A transcribed session whose audio was not kept has nothing
+    /// left for it to act on.
+    static func offersTranscribe(hasRecording: Bool, isTranscribing: Bool, isQueued: Bool) -> Bool {
+        hasRecording || isTranscribing || isQueued
+    }
+
+    /// Export needs something to export.
+    static func offersExport(hasTranscript: Bool, hasSummary: Bool) -> Bool {
+        hasTranscript || hasSummary
+    }
+
     static func recordBlocker(isTranscribing: Bool, isQueued: Bool, isStarting: Bool) -> String? {
         if isStarting { return "A recording is starting" }
         if isTranscribing { return "Finish transcribing first" }
