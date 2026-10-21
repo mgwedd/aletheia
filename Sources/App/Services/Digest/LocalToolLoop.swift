@@ -954,7 +954,7 @@ enum LongSessionChat {
                 question: question
             )
         }
-        if service.budget.fits(promptCharacters: system.count + makePrompt(transcript).count) {
+        if service.budget.fits(system: system, prompt: makePrompt(transcript)) {
             coverage(nil)
             return service.streamAnswerAboutSession(
                 transcript: transcript,
@@ -991,8 +991,13 @@ enum LongSessionChat {
                         digest = built
                     }
 
-                    let total = service.budget.availableCharacters(
-                        reserving: system.count + makePrompt("").count + headerReserve
+                    // Room for material, in characters of this transcript's script.
+                    let total = ContextBudget.characters(
+                        fitting: service.budget.availableCharacters(
+                            reserving: ContextBudget.weightedLength(of: system)
+                                + ContextBudget.weightedLength(of: makePrompt("")) + headerReserve
+                        ),
+                        like: transcript
                     )
                     guard total >= 600 else {
                         throw ContextBudgetError(minutes: service.budget.approximateMinutes)

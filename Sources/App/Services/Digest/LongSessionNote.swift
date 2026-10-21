@@ -88,9 +88,13 @@ enum LongSessionNote {
                         transcript: transcript, service: service, builder: builder, sessionID: sessionID,
                         load: loadDigest, save: saveDigest, sections: sectionCache, live: live)
 
-                    // Room for material, after the instructions, the note's own wrapper and headings.
-                    let total = service.budget.availableCharacters(
-                        reserving: service.systemPrompt.count + prompt("").count + headerReserve)
+                    // Room for material, after the instructions, the note's own wrapper and headings,
+                    // in characters of this transcript's script.
+                    let total = ContextBudget.characters(
+                        fitting: service.budget.availableCharacters(
+                            reserving: ContextBudget.weightedLength(of: service.systemPrompt)
+                                + ContextBudget.weightedLength(of: prompt("")) + headerReserve),
+                        like: transcript)
                     let transcriptCopy = transcript
                     let flaggedCost = await offMain { strongCost(in: transcriptCopy, phrases: riskPhrases) }
                     try Task.checkCancellation()

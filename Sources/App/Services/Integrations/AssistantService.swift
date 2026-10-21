@@ -17,7 +17,7 @@ struct AssistantService {
     var report: (@Sendable (AIRunEvent) -> Void)?
 
     private func checkBudget(system: String, prompt: String) throws {
-        guard budget.fits(promptCharacters: system.count + prompt.count) else {
+        guard budget.fits(system: system, prompt: prompt) else {
             throw ContextBudgetError(minutes: budget.approximateMinutes)
         }
     }
@@ -40,7 +40,7 @@ struct AssistantService {
         } catch {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
-        report?(.reading(estimatedTokens: ContextBudget.estimatedTokens(forCharacters: system.count + prompt.count)))
+        report?(.reading(estimatedTokens: ContextBudget.estimatedTokens(system: system, prompt: prompt)))
         let report = report
         return assistant.stream(
             model: model, system: system, prompt: prompt, task: task, grammar: grammar,
@@ -49,7 +49,7 @@ struct AssistantService {
 
     /// Whether `prompt` (with the standing instructions) is within the budget.
     func fits(prompt: String) -> Bool {
-        budget.fits(promptCharacters: systemPrompt.count + prompt.count)
+        budget.fits(system: systemPrompt, prompt: prompt)
     }
 
     /// Streams a digest prompt: the same budget check, progress report and
@@ -174,11 +174,13 @@ struct AssistantService {
 
     /// Streams the answer to a whole-patient question as the growing full text.
     /// How many characters of session material a patient-wide question can
-    /// carry on this Mac, after the instructions, conversation and question.
+    /// carry on this Mac, after the instructions, conversation and question
+    /// (measured by script, so a conversation in Japanese takes its real share).
     func patientContextCharacters(history: [ChatMessage], question: String) -> Int {
         let system = Prompts.chatSystemPrompt(systemPrompt, question: question)
         let wrapper = Prompts.patientChat(context: "", history: history, question: question)
-        return budget.availableCharacters(reserving: system.count + wrapper.count)
+        return budget.availableCharacters(
+            reserving: ContextBudget.weightedLength(of: system) + ContextBudget.weightedLength(of: wrapper))
     }
 
     func streamAnswerAboutPatient(
