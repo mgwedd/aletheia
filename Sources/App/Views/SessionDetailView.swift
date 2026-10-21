@@ -1162,9 +1162,9 @@ struct SessionDetailView: View {
             }
             .pickerStyle(.inline)
             Divider()
-            Picker("Effort", selection: $settings.noteEffort) {
+            Picker(AnswerEffort.label, selection: $settings.noteEffort) {
                 ForEach(AnswerEffort.allCases) { level in
-                    Text("\(level.displayName) — \(level.blurb)").tag(level)
+                    Text(level.displayName).tag(level)
                 }
             }
             .pickerStyle(.inline)
