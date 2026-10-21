@@ -7,6 +7,7 @@ struct RootView: View {
     @EnvironmentObject private var updateService: UpdateService
     @EnvironmentObject private var encryption: EncryptionManager
     @EnvironmentObject private var recorder: SessionRecorder
+    @EnvironmentObject private var exports: ExportJobCenter
     @ObservedObject private var navigator = AppNavigator.shared
     @Environment(\.openWindow) private var openWindow
     @State private var selectedPatient: Patient?
@@ -49,6 +50,11 @@ struct RootView: View {
                 )
                 .background(Theme.window.color)
             }
+        }
+        // A records export keeps running while the therapist works; its progress and
+        // the finished file are shown here whichever patient is open.
+        .overlay(alignment: .bottomTrailing) {
+            ExportStatusToast(center: exports).padding(16)
         }
         // Data-safety notices: an unopenable database (nothing can be saved) or a
         // single failed save. Non-blocking, but pinned above everything so it's

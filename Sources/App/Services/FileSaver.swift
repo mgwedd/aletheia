@@ -40,6 +40,17 @@ enum FileSaver {
         }
     }
 
+    /// Asks where to save a file of `type` without writing anything, for work that
+    /// runs afterwards (a long export). Under App Sandbox the chosen URL stays
+    /// writable for the rest of the session.
+    static func chooseDestination(suggestedName: String, type: UTType) -> URL? {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedName
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [type]
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
     /// Saves an iCalendar (.ics) file to a user-chosen location via NSSavePanel.
     @discardableResult
     static func saveICS(_ text: String, suggestedName: String) -> Bool {

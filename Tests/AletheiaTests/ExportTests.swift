@@ -134,15 +134,25 @@ final class ExportWiringTests: XCTestCase {
         return try String(contentsOf: root.appendingPathComponent("Sources/App/\(path)"), encoding: .utf8)
     }
 
-    func testNoteSessionAndHistoryExportUseTheFormatMenu() throws {
+    func testNoteAndSessionExportUseTheFormatMenu() throws {
         let session = try source("Views/SessionDetailView.swift")
         XCTAssertTrue(session.contains("exportNote(as: $0)"))
         XCTAssertTrue(session.contains("exportSession(as: $0)"))
         XCTAssertFalse(session.contains("Label(\"PDF\""))
         XCTAssertFalse(session.contains("Export this session to Markdown"))
+    }
+
+    func testAWholePatientExportIsABackgroundZipNotAPDF() throws {
         let patient = try source("Views/PatientDetailView.swift")
-        XCTAssertTrue(patient.contains("exportHistory(as: $0)"))
+        XCTAssertTrue(patient.contains("exportRecords()"))
+        XCTAssertTrue(patient.contains("exports.start("))
+        XCTAssertTrue(patient.contains("type: .zip"))
+        XCTAssertFalse(patient.contains("ExportButton("), "a whole history is too long for one PDF or Word file")
+        XCTAssertFalse(patient.contains("ExportRenderer"))
         XCTAssertFalse(patient.contains("FileSaver.saveText"))
+        let app = try source("AletheiaApp.swift")
+        XCTAssertTrue(app.contains(".environmentObject(exports)"))
+        XCTAssertTrue(try source("Views/RootView.swift").contains("ExportStatusToast(center: exports)"))
     }
 
     func testNoteCopyIsRichAndConfirmsInAPopup() throws {
