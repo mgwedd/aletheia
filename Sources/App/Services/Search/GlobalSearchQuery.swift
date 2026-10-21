@@ -126,12 +126,22 @@ struct GlobalSearchQuery: Equatable {
         !required.isEmpty && required.allSatisfy { GlobalSearchQuery.name(nameForm, contains: $0) }
     }
 
+    /// Whether `word` names `date`. A month name that is also an everyday word
+    /// ("may", "march") counts only next to a day or year of that date ("may 5",
+    /// "march 2026"), the rule the chat's date filter follows too (#354), so
+    /// "she may" or "march on" isn't read as a date.
+    func dateMatches(_ word: String, _ date: GlobalSearchDate) -> Bool {
+        guard date.matches(word) else { return false }
+        guard GlobalSearchDate.everydayMonthWords.contains(word) else { return true }
+        return required.contains { GlobalSearchQuery.isNumber($0) && date.matches($0) }
+    }
+
     /// Whether a session matches: every required word is in its date or its
     /// patient's name, and at least one is in the date.
     func matchesSession(date: GlobalSearchDate, nameForm: String) -> Bool {
         var inDate = false
         for word in required {
-            if date.matches(word) {
+            if dateMatches(word, date) {
                 inDate = true
             } else if !GlobalSearchQuery.name(nameForm, contains: word) {
                 return false
@@ -144,7 +154,7 @@ struct GlobalSearchQuery: Equatable {
     func termsAnsweredBy(date: GlobalSearchDate, nameForm: String) -> UInt32 {
         var mask: UInt32 = 0
         for (i, term) in textTerms.enumerated() {
-            if date.matches(term.word) || GlobalSearchQuery.name(nameForm, contains: term.word) {
+            if dateMatches(term.word, date) || GlobalSearchQuery.name(nameForm, contains: term.word) {
                 mask |= UInt32(1) << UInt32(i)
             }
         }
@@ -156,6 +166,9 @@ struct GlobalSearchQuery: Equatable {
 /// name, in the user's language and in English) and the year, so "oct 8",
 /// "october 2026", "10/8/26" and "2026-10-08" all find it. Pure.
 struct GlobalSearchDate: Equatable {
+    /// Month names (and their start) that are also everyday words; see `GlobalSearchQuery.dateMatches`.
+    static let everydayMonthWords: Set<String> = ["may", "mar", "march"]
+
     let numbers: Set<Int>
     /// Folded month names, full and short.
     let monthNames: [String]

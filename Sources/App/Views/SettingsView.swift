@@ -928,7 +928,7 @@ struct SettingsView: View {
     private var securityPane: some View {
         SettingsSwitchRow(
             title: "App lock",
-            detail: "Require Touch ID or your Mac password to open. Locks the app when it opens and whenever it's hidden, so your patients' notes stay behind it.",
+            detail: "Require Touch ID or your Mac password to open. You unlock once when it opens. It locks again when your Mac sleeps, its screen locks or you switch user, so your patients' notes stay behind it.",
             isOn: $settings.appLockEnabled
         )
         SettingsRow(
@@ -945,6 +945,11 @@ struct SettingsView: View {
             .frame(width: 180)
             .disabled(!settings.appLockEnabled)
         }
+        SettingsSwitchRow(
+            title: "Show patient names in notifications",
+            detail: "Off by default. Notifications appear on the lock screen and stay in Notification Center, so they just say that a session is ready. Turn this on to include the patient's name and the session date.",
+            isOn: $settings.notificationsShowPatientNames
+        )
         SettingsRow(
             title: "Encrypt this Mac's disk with FileVault",
             detail: "Recommended. FileVault encrypts everything on this Mac at rest so patient data can't be read if the computer is lost or stolen. macOS manages it; it doesn't affect your backups."

@@ -33,6 +33,36 @@ extension AppLockPolicy {
     }
 }
 
+/// What re-locks the app once it has been unlocked: the Mac itself being left.
+/// One unlock lasts the user's session on this Mac. Hiding Aletheia (⌘H),
+/// switching apps and the display dimming or sleeping on its own do not
+/// re-lock; the idle timer is a separate, opt-in setting.
+enum RelockTrigger: CaseIterable, Equatable {
+    case systemSleep
+    case screenLock
+    case userSwitch
+
+    var reason: LockReason {
+        switch self {
+        case .systemSleep: return .systemSleep
+        case .screenLock: return .screenLock
+        case .userSwitch: return .userSwitch
+        }
+    }
+
+    var notificationName: Notification.Name {
+        switch self {
+        case .systemSleep: return NSWorkspace.willSleepNotification
+        case .screenLock: return Notification.Name("com.apple.screenIsLocked")
+        case .userSwitch: return NSWorkspace.sessionDidResignActiveNotification
+        }
+    }
+
+    /// The screen lock is only announced on the distributed center; the
+    /// others come from `NSWorkspace.shared.notificationCenter`.
+    var isDistributed: Bool { self == .screenLock }
+}
+
 /// After the user cancels the system sheet, don't auto-prompt again until the app
 /// has really been left and come back: the sheet's own activation changes would
 /// otherwise re-prompt in a loop. The Unlock button is never gated.
@@ -70,7 +100,7 @@ struct SingleFlight: Equatable {
 enum LockReason: Equatable {
     case launch
     case idle(minutes: Int)
-    case appHidden
+    case userSwitch
     case systemSleep
     case screenLock
     case manual
@@ -85,8 +115,8 @@ enum LockReason: Equatable {
             } else {
                 return "Locked after \(minutes) minutes of inactivity."
             }
-        case .appHidden:
-            return "Locked because Aletheia was hidden."
+        case .userSwitch:
+            return "Locked because you switched to another user on this Mac."
         case .systemSleep:
             return "Locked because your Mac went to sleep."
         case .screenLock:
@@ -133,10 +163,8 @@ final class AppLock: ObservableObject {
     /// (app lock off, or timeout is "Never") so there's nothing to invalidate.
     private var idleTimer: Timer?
     private var activityMonitor: Any?
-    private var willSleepObserver: NSObjectProtocol?
-    private var screensDidSleepObserver: NSObjectProtocol?
-    private var screenLockObserver: NSObjectProtocol?
-    private var didHideObserver: NSObjectProtocol?
+    private var workspaceObservers: [NSObjectProtocol] = []
+    private var distributedObservers: [NSObjectProtocol] = []
     private var didBecomeActiveObserver: NSObjectProtocol?
     private var didResignActiveObserver: NSObjectProtocol?
     private var promptGate = AutoPromptGate()
@@ -168,16 +196,8 @@ final class AppLock: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in self?.promptGate.appResigned() }
         }
-        // Hiding the app (⌘H) re-locks across every window (including when the
-        // main window was closed with ⌘W and only the patient chat window is
-        // open), whereas merely switching to another app does not.
-        didHideObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didHideNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.lockIfEnabled(reason: .appHidden) }
-        }
         observeActivity()
-        observeSystemSleep()
+        observeRelockTriggers()
         // Re-evaluate whenever a relevant setting changes (app lock toggled,
         // or the idle timeout picked). `objectWillChange` fires before the
         // new value is actually stored, so hop to the next runloop turn to
@@ -192,13 +212,10 @@ final class AppLock: ObservableObject {
         idleTimer?.invalidate()
         if let didBecomeActiveObserver { NotificationCenter.default.removeObserver(didBecomeActiveObserver) }
         if let didResignActiveObserver { NotificationCenter.default.removeObserver(didResignActiveObserver) }
-        if let didHideObserver { NotificationCenter.default.removeObserver(didHideObserver) }
         settingsCancellable?.cancel()
         if let activityMonitor { NSEvent.removeMonitor(activityMonitor) }
-        let workspaceCenter = NSWorkspace.shared.notificationCenter
-        if let willSleepObserver { workspaceCenter.removeObserver(willSleepObserver) }
-        if let screensDidSleepObserver { workspaceCenter.removeObserver(screensDidSleepObserver) }
-        if let screenLockObserver { DistributedNotificationCenter.default().removeObserver(screenLockObserver) }
+        for observer in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+        for observer in distributedObservers { DistributedNotificationCenter.default().removeObserver(observer) }
     }
 
     /// Whether this Mac can evaluate Touch ID or the login password at all.
@@ -208,7 +225,7 @@ final class AppLock: ObservableObject {
         return ok
     }
 
-    /// Re-lock now (e.g. when the app is hidden or the Mac sleeps/locks), so
+    /// Re-lock now (e.g. when the Mac sleeps or locks), so
     /// stepping away re-requires authentication. No-op when the lock is off.
     func lockIfEnabled(reason: LockReason = .manual) {
         if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: canAuthenticateProvider()) {
@@ -299,27 +316,22 @@ final class AppLock: ObservableObject {
         lastActivity = Date()
     }
 
-    /// Sleep and screen-lock re-lock immediately rather than waiting for the
-    /// idle timeout — a Mac going to sleep or a screen saver engaging is a
-    /// much stronger "stepped away" signal than a timer.
-    private func observeSystemSleep() {
-        let workspaceCenter = NSWorkspace.shared.notificationCenter
-        willSleepObserver = workspaceCenter.addObserver(
-            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.lockIfEnabled(reason: .systemSleep) }
-        }
-        screensDidSleepObserver = workspaceCenter.addObserver(
-            forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.lockIfEnabled(reason: .systemSleep) }
-        }
-        // Belt-and-suspenders: the screen saver / lock screen engaging
-        // doesn't always coincide with the display or machine sleeping.
-        screenLockObserver = DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.lockIfEnabled(reason: .screenLock) }
+    /// The Mac sleeping, its screen locking, or a switch to another user
+    /// re-lock immediately: those mean the user has left the Mac. See
+    /// `RelockTrigger` for what deliberately does not.
+    private func observeRelockTriggers() {
+        for trigger in RelockTrigger.allCases {
+            let center: NotificationCenter = trigger.isDistributed
+                ? DistributedNotificationCenter.default()
+                : NSWorkspace.shared.notificationCenter
+            let observer = center.addObserver(forName: trigger.notificationName, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.lockIfEnabled(reason: trigger.reason) }
+            }
+            if trigger.isDistributed {
+                distributedObservers.append(observer)
+            } else {
+                workspaceObservers.append(observer)
+            }
         }
     }
 

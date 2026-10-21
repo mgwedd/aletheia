@@ -687,8 +687,13 @@ enum LocalToolLoop {
         question: String,
         initialContext: String,
         priorToolOutputs: [String],
-        remainingCalls: Int
+        remainingCalls: Int,
+        history: [ChatMessage] = []
     ) -> String {
+        // The earlier turns, so a follow-up like "and the week before?" is
+        // planned against what it follows from, as the final answer is.
+        let conversation = Prompts.formatHistory(history, question: question)
+        let historyBlock = conversation.isEmpty ? "" : "\n\n" + conversation
         let priorBlock = priorToolOutputs.isEmpty
             ? ""
             : "\n\nResults from earlier tool lookups:\n" + priorToolOutputs.joined(separator: "\n\n")
@@ -708,7 +713,7 @@ enum LocalToolLoop {
         Respond ONLY with a JSON object of the form {"calls":[...]}. Do not write the final answer yet.
 
         Initial material:
-        \(initialContext)\(priorBlock)
+        \(initialContext)\(priorBlock)\(historyBlock)
 
         Therapist's question: \(question)
         """
@@ -734,6 +739,7 @@ enum LocalToolLoop {
         scope: LocalToolScope,
         effort: AnswerEffort,
         characterBudget: Int,
+        history: [ChatMessage] = [],
         service: AssistantService,
         builder: DigestBuilder,
         live: @escaping DigestBuilder.Live
@@ -762,7 +768,8 @@ enum LocalToolLoop {
                 question: question,
                 initialContext: initialContext,
                 priorToolOutputs: outputs,
-                remainingCalls: remainingCalls
+                remainingCalls: remainingCalls,
+                history: history
             )
             guard service.fits(prompt: planPrompt) else { break }
 
@@ -1007,6 +1014,7 @@ enum LongSessionChat {
                             scope: scope,
                             effort: effort,
                             characterBudget: remainingForTools,
+                            history: history,
                             service: service,
                             builder: builder,
                             live: live
@@ -1110,6 +1118,7 @@ enum PatientChatAnswer {
                             scope: toolScope,
                             effort: effort,
                             characterBudget: remaining,
+                            history: history,
                             service: service,
                             builder: builder,
                             live: live

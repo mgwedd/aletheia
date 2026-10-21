@@ -106,9 +106,23 @@ final class GlobalSearchQueryTests: XCTestCase {
     func testNameAndDateAnswerTextTerms() {
         let day = GlobalSearchDate(date(2026, 3, 3), calendar: calendar)
         let bob = GlobalSearchQuery.nameForm("Bob Lee")
-        XCTAssertEqual(GlobalSearchQuery("insomnia march").termsAnsweredBy(date: day, nameForm: bob), 0b10)
+        XCTAssertEqual(GlobalSearchQuery("insomnia march 2026").termsAnsweredBy(date: day, nameForm: bob), 0b110)
         XCTAssertEqual(GlobalSearchQuery("bob insomnia").termsAnsweredBy(date: day, nameForm: bob), 0b01)
         XCTAssertEqual(GlobalSearchQuery("insomnia").termsAnsweredBy(date: day, nameForm: bob), 0)
+    }
+
+    func testEverydayMonthWordsAreDatesOnlyNextToADayOrYear() {
+        let may = GlobalSearchDate(date(2026, 5, 5), calendar: calendar)
+        let march = GlobalSearchDate(date(2026, 3, 3), calendar: calendar)
+        let jane = GlobalSearchQuery.nameForm("Jane Doe")
+        XCTAssertFalse(GlobalSearchQuery("may").matchesSession(date: may, nameForm: jane), "\"she may\" is not a date")
+        XCTAssertTrue(GlobalSearchQuery("may 5").matchesSession(date: may, nameForm: jane))
+        XCTAssertTrue(GlobalSearchQuery("may 2026").matchesSession(date: may, nameForm: jane))
+        XCTAssertFalse(GlobalSearchQuery("may 6").matchesSession(date: may, nameForm: jane))
+        XCTAssertEqual(GlobalSearchQuery("insomnia march").termsAnsweredBy(date: march, nameForm: jane), 0)
+        XCTAssertEqual(GlobalSearchQuery("insomnia mar 3").termsAnsweredBy(date: march, nameForm: jane), 0b110)
+        XCTAssertTrue(GlobalSearchQuery("october").matchesSession(date: GlobalSearchDate(date(2026, 10, 8), calendar: calendar), nameForm: jane),
+                      "other month names need nothing more")
     }
 
     // MARK: Text

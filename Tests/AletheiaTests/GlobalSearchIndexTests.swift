@@ -101,7 +101,8 @@ final class GlobalSearchIndexTests: XCTestCase {
 
         XCTAssertEqual(search("insomnia").section(.transcript)?.total, 2)
         XCTAssertEqual(search("jane insomnia").section(.transcript)?.hits.compactMap(\.session?.id), [janes.id])
-        XCTAssertEqual(search("insomnia march").section(.transcript)?.hits.compactMap(\.session?.id), [bobs.id])
+        XCTAssertEqual(search("insomnia march 2026").section(.transcript)?.hits.compactMap(\.session?.id), [bobs.id])
+        XCTAssertEqual(search("insomnia march").section(.transcript)?.total ?? 0, 0, "march alone is a word, not a date (#354)")
         XCTAssertNil(search("jane").section(.transcript), "a word only the name answers is not a text match")
     }
 
