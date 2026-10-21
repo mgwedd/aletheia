@@ -238,13 +238,23 @@ struct SettingsCardHeader<Trailing: View>: View {
 }
 
 /// A setting: title (14pt) over a muted 12pt detail, with the control at the
-/// trailing edge.
+/// trailing edge. A row whose explanation is a "how this works" aside takes
+/// it as `tip` instead of `detail`: shown on hover, not in the layout.
 struct SettingsRow<Trailing: View>: View {
     let title: String
     var detail: String?
+    var tip: HelpTip?
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
+        if let tip {
+            row.hoverTip(tip)
+        } else {
+            row
+        }
+    }
+
+    private var row: some View {
         HStack(alignment: .center, spacing: 24) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -267,10 +277,11 @@ struct SettingsRow<Trailing: View>: View {
 struct SettingsSwitchRow: View {
     let title: String
     var detail: String?
+    var tip: HelpTip?
     @Binding var isOn: Bool
 
     var body: some View {
-        SettingsRow(title: title, detail: detail) {
+        SettingsRow(title: title, detail: detail, tip: tip) {
             Toggle(title, isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)

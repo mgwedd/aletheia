@@ -46,6 +46,39 @@ enum HelpTips {
         heading: "What answers come from",
         text: PatientChatView.scopeNote
     )
+
+    // Settings. Safety and privacy lines (app lock, encryption, backups,
+    // what reaches the assistant) stay in the layout; these are the asides.
+
+    static let autoTranscribe = HelpTip(
+        id: "settings.autoTranscribe",
+        heading: "Transcribe automatically",
+        text: "Starts transcription as soon as you stop recording, so the transcript is ready when you come back. It keeps running while Aletheia is locked, and you get a notification when it's done."
+    )
+
+    static let aiInstructions = HelpTip(
+        id: "settings.aiInstructions",
+        heading: "AI instructions",
+        text: "The standing instructions sent with every AI request — the assistant's voice and rules. Editing this changes how summaries and chat behave."
+    )
+
+    static let defaultNoteFormat = HelpTip(
+        id: "settings.defaultNoteFormat",
+        heading: "Default progress note format",
+        text: "The format new session notes start in. You can still switch formats for any single session on its Note tab."
+    )
+
+    static let includeComments = HelpTip(
+        id: "settings.includeComments",
+        heading: "Include comments in drafts",
+        text: "Margin comments on the transcript are folded into generated progress notes and summaries."
+    )
+
+    static let summariesOnBattery = HelpTip(
+        id: "settings.summariesOnBattery",
+        heading: "Prepare summaries on battery",
+        text: "Summaries use the local model for a few minutes per hour of session, which drains battery. Low Power Mode still pauses them."
+    )
 }
 
 /// TipKit's store: on this Mac only. Tips hold only which explainer has been

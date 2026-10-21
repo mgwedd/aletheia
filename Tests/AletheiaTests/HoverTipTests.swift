@@ -58,7 +58,13 @@ final class HoverIntentTests: XCTestCase {
 final class HelpTipsTests: XCTestCase {
     private var allTips: [HelpTip] {
         [HelpTips.myNotes, HelpTips.sessionChatScope, HelpTips.patientChatScope]
+            + settingsTips
             + ProgressNoteFormat.allCases.map(HelpTips.noteFormat)
+    }
+
+    private var settingsTips: [HelpTip] {
+        [HelpTips.autoTranscribe, HelpTips.aiInstructions, HelpTips.defaultNoteFormat,
+         HelpTips.includeComments, HelpTips.summariesOnBattery]
     }
 
     func testIdsAreFixed() {
@@ -69,11 +75,15 @@ final class HelpTipsTests: XCTestCase {
         for format in ProgressNoteFormat.allCases {
             XCTAssertEqual(HelpTips.noteFormat(format).id, "notes.format")
         }
+        XCTAssertEqual(settingsTips.map(\.id), [
+            "settings.autoTranscribe", "settings.aiInstructions", "settings.defaultNoteFormat",
+            "settings.includeComments", "settings.summariesOnBattery",
+        ])
     }
 
     func testDistinctTipsHaveDistinctIds() {
-        let ids = [HelpTips.noteFormat(.soap), HelpTips.myNotes,
-                   HelpTips.sessionChatScope, HelpTips.patientChatScope].map(\.id)
+        let ids = ([HelpTips.noteFormat(.soap), HelpTips.myNotes,
+                    HelpTips.sessionChatScope, HelpTips.patientChatScope] + settingsTips).map(\.id)
         XCTAssertEqual(Set(ids).count, ids.count)
     }
 
@@ -112,5 +122,24 @@ final class HelpTipsTests: XCTestCase {
         let expected = ProcessInfo.processInfo.isOperatingSystemAtLeast(
             OperatingSystemVersion(majorVersion: 15, minorVersion: 0, patchVersion: 0)) ? 3 : 2
         XCTAssertEqual(HelpTipsStore.options.count, expected)
+    }
+
+    /// Settings asides moved into tips; the lines needed to act safely stay
+    /// in the layout.
+    func testSettingsKeepSafetyCopyInlineAndMoveAsidesToTips() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let settings = try String(contentsOf: root.appendingPathComponent("Sources/App/Views/SettingsView.swift"), encoding: .utf8)
+        for tip in settingsTips {
+            XCTAssertFalse(settings.contains(tip.text), "\(tip.id) is still inline")
+            XCTAssertTrue(settings.contains("HelpTips.\(tip.id.dropFirst("settings.".count))"), tip.id)
+        }
+        for kept in ["Require Touch ID or your Mac password to open.",
+                     "Aletheia already locks when your Mac locks or sleeps",
+                     "current medications are provided to the assistant",
+                     "Off by default, so Time Machine includes your data folder",
+                     "FileVault encrypts everything on this Mac at rest"] {
+            XCTAssertTrue(settings.contains(kept), kept)
+        }
     }
 }
