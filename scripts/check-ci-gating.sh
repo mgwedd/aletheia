@@ -74,6 +74,8 @@ self_test() {
     expect package true  .github/workflows/release.yml
     expect package true  .github/workflows/cd.yml
     expect package true  scripts/build.sh
+    expect package true  scripts/launch-smoke.sh
+    expect package true  scripts/release-notes.sh
     expect package false Sources/App/Views/SettingsView.swift Tests/AletheiaTests/BuildTierTests.swift
     expect package false docs/SETUP-GUIDE.md .github/workflows/smoke-test.yml
     # no base (push / dispatch) always runs; unknown base fails closed; bad area errors
@@ -81,6 +83,22 @@ self_test() {
     [ "$(cd "$repo" && ./scripts/ci-changes.sh package deadbeefdeadbeefdeadbeefdeadbeefdeadbeef 2>/dev/null)" = true ] \
         || err "unresolvable base must fail closed (true)"
     if (cd "$repo" && ./scripts/ci-changes.sh nonsense >/dev/null 2>&1); then err "unknown area must exit non-zero"; fi
+
+    # release-notes.sh: one version's entry, without its heading or the next one.
+    local log="$repo/CHANGELOG.md"
+    printf '%s\n' '# Changelog' '' '## [1.2.0] - 2026-01-02' '' '### Added' '- new thing (#2)' '' \
+        '## [1.1.0] - 2026-01-01' '' '### Fixed' '- old bug (#1)' '' '## [1.0.0] - 2025-12-31' '' > "$log"
+    [ "$(scripts/release-notes.sh 1.2.0 "$log")" = "$(printf '### Added\n- new thing (#2)')" ] \
+        || err "release-notes.sh 1.2.0: wrong section"
+    [ "$(scripts/release-notes.sh v1.1.0 "$log")" = "$(printf '### Fixed\n- old bug (#1)')" ] \
+        || err "release-notes.sh v1.1.0: wrong section (or v prefix not stripped)"
+    [ "$(scripts/release-notes.sh 1.0.0 "$log")" = "Maintenance release." ] \
+        || err "release-notes.sh: an empty entry must say Maintenance release."
+    [ "$(scripts/release-notes.sh 9.9.9 "$log")" = "Maintenance release." ] \
+        || err "release-notes.sh: a missing entry must say Maintenance release."
+
+    # launch-smoke.sh: passes an app that stays up, fails one that exits.
+    scripts/launch-smoke.sh --self-test >/dev/null || err "launch-smoke.sh self-test failed"
 }
 
 self_test
@@ -110,15 +128,59 @@ def load(path):
 def triggers(wf):
     return wf.get("on", wf.get(True))  # PyYAML parses a bare `on:` as True
 
-# no third-party marketplace actions anywhere
-import glob
+# no third-party marketplace actions anywhere, and every first-party action is
+# pinned to a full commit SHA (a tag can be moved; Dependabot bumps the pins)
+import glob, os
 for path in glob.glob(".github/workflows/*.yml"):
     wf = load(path)
     for jname, job in (wf.get("jobs") or {}).items():
         for step in job.get("steps") or []:
             uses = step.get("uses")
-            if uses and not uses.startswith("actions/") and not uses.startswith("./"):
+            if not uses or uses.startswith("./"):
+                continue
+            if not uses.startswith("actions/"):
                 bad(f"{path}: job {jname} uses third-party action {uses}")
+            elif not re.fullmatch(r"actions/[A-Za-z0-9_.-]+@[0-9a-f]{40}", uses):
+                bad(f"{path}: job {jname} must pin {uses} to a full commit SHA")
+if not os.path.exists(".github/dependabot.yml"):
+    bad(".github/dependabot.yml is missing (it keeps the action pins current)")
+else:
+    eco = [u.get("package-ecosystem") for u in (load(".github/dependabot.yml").get("updates") or [])]
+    if "github-actions" not in eco:
+        bad(".github/dependabot.yml must update the github-actions ecosystem")
+
+# release.yml: a tag publishes only a notarized build, the packaged app is
+# launched first, and the notes come from the version's CHANGELOG entry
+release = load(".github/workflows/release.yml")["jobs"]["release"]
+rsteps = {s.get("name", ""): s for s in release["steps"]}
+guard = rsteps.get("Require a signed, notarized build for a tag")
+if guard is None:
+    bad("release.yml: missing 'Require a signed, notarized build for a tag'")
+else:
+    cond, run = str(guard.get("if", "")), guard.get("run", "")
+    if "env.IS_TAG == 'true'" not in cond or "vars.ALLOW_UNSIGNED_RELEASE" not in cond:
+        bad("release.yml: the signing guard must run on tags unless ALLOW_UNSIGNED_RELEASE is set")
+    if "HAS_SIGNING" not in run or "HAS_NOTARIZATION" not in run or "exit 1" not in run:
+        bad("release.yml: the signing guard must fail without signing and notarization secrets")
+    names = list(rsteps)
+    if names.index("Require a signed, notarized build for a tag") > names.index("Build Release app"):
+        bad("release.yml: the signing guard must run before the build")
+publish = rsteps.get("Create GitHub Release", {})
+prun = publish.get("run", "")
+if 'NOTARIZED:-false}" != "true"' not in prun or "ALLOW_UNSIGNED_RELEASE" not in prun:
+    bad("release.yml: Create GitHub Release must refuse a build that was not notarized")
+if "--notes-file" not in prun:
+    bad("release.yml: the release body must come from --notes-file (the CHANGELOG entry)")
+if "release-notes.sh" not in rsteps.get("Package DMG and appcast", {}).get("run", ""):
+    bad("release.yml: the appcast must take its notes from scripts/release-notes.sh")
+launch = rsteps.get("Launch the packaged app")
+if launch is None or "scripts/launch-smoke.sh" not in launch.get("run", ""):
+    bad("release.yml: missing 'Launch the packaged app' (scripts/launch-smoke.sh)")
+elif list(rsteps).index("Launch the packaged app") > list(rsteps).index("Create GitHub Release"):
+    bad("release.yml: the packaged app must be launched before publishing")
+cd_steps = load(".github/workflows/cd.yml")["jobs"]["package"]["steps"]
+if not any("scripts/launch-smoke.sh" in s.get("run", "") for s in cd_steps):
+    bad("cd.yml: the package job must launch the packaged app (scripts/launch-smoke.sh)")
 
 # smoke-test.yml: tier subset
 smoke = load(".github/workflows/smoke-test.yml")
