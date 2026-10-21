@@ -259,7 +259,8 @@ enum Prompts {
         "Summary of the part search points at" or listed under "Earlier \
         Sessions" are summaries the assistant wrote from that session's \
         transcript: use them for the overall picture, and quote only \
-        transcript lines. Answer only from this material. A line saying a transcript could not be read means that \
+        transcript lines. A block labelled "Transcript excerpt (no summary \
+        yet)" is the start of that session's transcript, not all of it. Answer only from this material. A line saying a transcript could not be read means that \
         session is missing, not that nothing was discussed. When you use \
         something from a session, cite it inline with its tag exactly as \
         written, e.g. [S1]; cite every session you drew from. Never \

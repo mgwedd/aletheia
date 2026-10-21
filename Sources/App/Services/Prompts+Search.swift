@@ -24,7 +24,7 @@ extension Prompts {
     /// transcripts of the newest sessions are.
     static func searchBlock(
         _ result: SessionSearch.Result, shown: Int, whole: Bool, newest: (included: Int, of: Int, cutShort: Bool)? = nil,
-        layered: Bool = false, unreadableSessions: Int
+        layered: Bool = false, openings: Int = 0, unreadableSessions: Int
     ) -> String {
         func plural(_ n: Int, _ word: String) -> String { "\(n) \(word)\(n == 1 ? "" : "s")" }
         let searched = result.sessionsSearched
@@ -32,9 +32,13 @@ extension Prompts {
         if whole {
             included = "the full transcripts are included below"
         } else if layered {
-            included = shown > 0
+            var text = shown > 0
                 ? "no transcript is included whole; below are session summaries, the summaries of the parts search points at, and the top \(plural(shown, "matching transcript passage"))"
                 : "no transcript is included whole; below are session summaries and the summaries of the parts search points at"
+            if openings > 0 {
+                text += ", and the start of the transcripts of \(plural(openings, "session")) with no summary yet"
+            }
+            included = text
         } else if let newest {
             included = newest.cutShort
                 ? "only the newest session's transcript, cut short to fit, is included below (1 of \(plural(newest.of, "session"))); the other transcripts are not included"

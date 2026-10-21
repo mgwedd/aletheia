@@ -134,4 +134,93 @@ final class PatientZoomTests: XCTestCase {
             "Took the matching lines from 3 sessions",
         ])
     }
+
+    // MARK: - Openings of sessions with no summary yet
+
+    /// `lines` lines of about 50 characters, alternating speakers, as stored.
+    private func transcript(_ name: String, lines: Int) -> String {
+        (0..<lines).map { i in
+            "[\(String(format: "%02d", i)):00] \(i % 2 == 0 ? "You" : "Call audio"): \(name) line \(i) about the week."
+        }.joined(separator: "\n")
+    }
+
+    func testAnOpeningIsTheCompactedStartCutAtTheEndOfALine() throws {
+        let long = transcript("Ana", lines: 100)
+        let excerpt = try XCTUnwrap(PatientZoom.openingExcerpt(of: long, limit: 500))
+        XCTAssertLessThanOrEqual(excerpt.count, 500)
+        XCTAssertTrue(excerpt.hasPrefix("[00:00] Y: Ana line 0 about the week."), "compacted as the model reads transcripts")
+        XCTAssertTrue(excerpt.hasSuffix("\n" + PatientZoom.openingCutMarker))
+        let lines = excerpt.split(separator: "\n").dropLast()
+        XCTAssertFalse(lines.isEmpty)
+        for line in lines { XCTAssertTrue(line.hasSuffix("about the week."), "cut only at a line end: \(line)") }
+
+        let short = transcript("Ben", lines: 3)
+        XCTAssertEqual(PatientZoom.openingExcerpt(of: short, limit: 500), TranscriptCompactor.compact(short), "short enough: whole, unmarked")
+
+        XCTAssertNil(PatientZoom.openingExcerpt(of: long, limit: PatientZoom.minOpeningCharacters - 1))
+        XCTAssertNil(PatientZoom.openingExcerpt(of: "  \n ", limit: 500))
+
+        let oneLongLine = "[00:00] You: " + String(repeating: "word ", count: 200)
+        let cut = try XCTUnwrap(PatientZoom.openingExcerpt(of: oneLongLine, limit: 400))
+        XCTAssertLessThanOrEqual(cut.count, 400)
+        XCTAssertTrue(cut.hasSuffix(PatientZoom.openingCutMarker))
+    }
+
+    func testOpeningsShareTheBudgetNewestFirstAndNeverExceedIt() {
+        let sessions = (1...6).map { n in
+            PatientZoom.OpeningInput(tag: "S\(n)", date: date(2026, 1, 10 - n), transcript: transcript("S\(n)", lines: 200))
+        }
+        let budget = 6_000
+        let openings = PatientZoom.openings(sessions, budget: budget)
+
+        XCTAssertEqual(openings.map(\.tag), ["S1", "S2", "S3", "S4"], "newest first, room for \(PatientZoom.openingSlots)")
+        XCTAssertLessThanOrEqual(openings.reduce(0) { $0 + $1.cost }, budget)
+        for opening in openings {
+            XCTAssertLessThanOrEqual(opening.cost, budget / PatientZoom.openingSlots)
+            XCTAssertEqual(opening.cost, opening.block.count + 2 + PatientZoom.headerAllowance)
+            XCTAssertTrue(opening.block.hasPrefix(PatientZoom.openingLabel + "\n[00:00] Y: \(opening.tag) line 0"))
+        }
+
+        // Two sessions split the room in two.
+        let two = PatientZoom.openings(Array(sessions.prefix(2)), budget: budget)
+        XCTAssertEqual(two.count, 2)
+        for opening in two { XCTAssertLessThanOrEqual(opening.cost, budget / 2) }
+
+        XCTAssertEqual(PatientZoom.openings(sessions, budget: 0), [])
+        XCTAssertEqual(PatientZoom.openings([], budget: budget), [])
+    }
+
+    func testRoomAShortOpeningLeavesGoesToTheNextSession() {
+        let short = PatientZoom.OpeningInput(tag: "S1", date: date(2026, 1, 9), transcript: transcript("S1", lines: 2))
+        let long = (2...5).map { n in
+            PatientZoom.OpeningInput(tag: "S\(n)", date: date(2026, 1, 10 - n), transcript: transcript("S\(n)", lines: 200))
+        }
+        let budget = 4_000
+        let openings = PatientZoom.openings([short] + long, budget: budget)
+
+        XCTAssertEqual(openings.map(\.tag), ["S1", "S2", "S3", "S4", "S5"], "the fifth gets what the short first one left")
+        XCTAssertLessThanOrEqual(openings.reduce(0) { $0 + $1.cost }, budget)
+        XCTAssertFalse(openings[0].block.contains(PatientZoom.openingCutMarker), "a short transcript goes in whole")
+    }
+
+    func testCoverageSaysWhichSessionsWereReadFromTheirOpenings() {
+        var coverage = TranscriptCoverage(transcriptSessions: 5, digestSessions: 2)
+        coverage.layered = true
+        coverage.openingSessions = 1
+        coverage.searchOnlySessions = 2
+        coverage.noSummarySessions = 2
+        XCTAssertEqual(
+            coverage.label,
+            "Read: summaries of 2 sessions · transcript opening of 1 session with no summary yet · nothing from 2 sessions (no words to search for; 2 with no summary yet)"
+        )
+        coverage.openingSessions = 3
+        coverage.searchOnlySessions = 0
+        coverage.noSummarySessions = 0
+        XCTAssertEqual(coverage.label, "Read: summaries of 2 sessions · transcript openings of 3 sessions with no summary yet")
+        XCTAssertEqual(PatientAskSteps.finishedLines(coverage), [
+            "Searched 5 sessions",
+            "Read summaries of 2 sessions",
+            "Read the openings of 3 sessions with no summary yet",
+        ])
+    }
 }

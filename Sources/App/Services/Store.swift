@@ -1634,8 +1634,10 @@ final class Store {
     /// The patient's history read by zoom level (`PatientZoom`) when it is too
     /// long to send whole: notes and comments (already in `extras`), session
     /// summaries up to their share, the parts search points at with their
-    /// summaries, and the transcript lines around the best hits. No transcript
-    /// goes in whole; a part is read in full only when the model asks for it.
+    /// summaries, and the transcript lines around the best hits; or, when
+    /// search has no lines to quote, the openings of sessions with no summary
+    /// yet in what the summaries' share has left. No transcript goes in whole;
+    /// a part is read in full only when the model asks for it.
     private func zoomedPatientContext(_ input: ZoomInput) -> PatientContext {
         let search = input.search
         let shares = PatientZoom.Shares(room: input.room)
@@ -1699,12 +1701,27 @@ final class Store {
         }
         let excerptsByDate = Dictionary(grouping: excerpts, by: { $0.date })
 
+        // 1,000 ft, continued: with no transcript lines to quote (no words to
+        // search for, or none in a transcript), the room the summaries' share
+        // keeps for summaries not built yet would go unused. It goes to the
+        // openings of those sessions' transcripts instead, newest first.
+        var openings: [PatientZoom.Opening] = []
+        if excerpts.isEmpty {
+            let unsummarized = input.sessionDigests
+                .filter { $0.digest == nil && input.transcriptDates.contains($0.date) }
+                .map { PatientZoom.OpeningInput(tag: $0.tag, date: $0.date, transcript: $0.transcript) }
+            openings = PatientZoom.openings(unsummarized, budget: max(0, shares.summaries - summariesUsed))
+        }
+        let openingsByDate = Dictionary(grouping: openings, by: { $0.date })
+        let openingDates = Set(openings.map(\.date))
+
         var blocks: [String] = []
         var sources: [CitationSource] = []
         var seenTags = Set<String>()
         for date in input.dates {
             var parts: [String] = []
             if let digestBlock = digestPlan.individualByDate[date] { parts.append(digestBlock) }
+            parts.append(contentsOf: (openingsByDate[date] ?? []).map(\.block))
             parts.append(contentsOf: sectionsByDate[date] ?? [])
             parts.append(contentsOf: (excerptsByDate[date] ?? []).map { $0.text })
             parts.append(contentsOf: input.extras[date] ?? [])
@@ -1736,13 +1753,14 @@ final class Store {
         var searchOnly = 0
         var noSummary = 0
         for date in input.transcriptDates {
-            guard let tag = input.labels[date], !digestTags.contains(tag) else { continue }
+            guard let tag = input.labels[date], !digestTags.contains(tag), !openingDates.contains(date) else { continue }
             searchOnly += 1
             if !digestDates.contains(date) { noSummary += 1 }
         }
 
         let searchBlock = Prompts.searchBlock(
-            search, shown: hitsShown, whole: false, layered: true, unreadableSessions: input.unreadable
+            search, shown: hitsShown, whole: false, layered: true, openings: openingDates.count,
+            unreadableSessions: input.unreadable
         )
         let text = [input.background, searchBlock, areasBlock?.text ?? "", blocks.joined(separator: "\n\n")]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -1766,6 +1784,7 @@ final class Store {
         coverage.summarySections = sectionAreas.count
         coverage.searchOnlySessions = searchOnly
         coverage.noSummarySessions = noSummary
+        coverage.openingSessions = openingDates.count
         return PatientContext(text: text, sources: sources, unreadableSessions: input.unreadable, coverage: coverage)
     }
 
