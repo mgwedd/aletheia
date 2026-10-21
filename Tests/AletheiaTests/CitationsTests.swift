@@ -232,9 +232,9 @@ extension TranscriptCoverageEdgeTests {
     }
 
     func testSearchingNoticeCountAndPlural() {
-        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 0), "Searching…")
-        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 1), "Searching 1 session…")
-        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 7), "Searching 7 sessions…")
+        XCTAssertEqual(PatientAskSteps.gatheringText(sessions: 0), "Searching and gathering summaries and notes…")
+        XCTAssertEqual(PatientAskSteps.gatheringText(sessions: 1), "Searching 1 session and gathering summaries and notes…")
+        XCTAssertEqual(PatientAskSteps.gatheringText(sessions: 7), "Searching 7 sessions and gathering summaries and notes…")
     }
 }
 

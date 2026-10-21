@@ -53,7 +53,7 @@ After the downloads, Aletheia works offline. If a row will not turn green, see t
 3. Open your video call as usual, then click **Record Session** (or use the menu bar icon).
 4. Click **Stop** when finished. Transcription starts by itself if **Settings → General → Transcribe automatically when a recording ends** is on; otherwise click **Transcribe**.
 5. Open the **Notes** tab to jot your own notes and generate the progress note. Choose the format (narrative, SOAP, DAP, BIRP or GIRP) under **Settings → Note format**. Use the **Length** menu to make it shorter or longer, then **Regenerate** to apply. **Edit** it, then **Copy** to paste into your record.
-6. Use the **Ask** tab to question this session, or **Ask about all sessions** on the patient page. Answers say what was read.
+6. Use the **Ask** tab to question this session, or **Ask about this patient** on the patient page. Answers say what was read.
 7. The magnifying glass in the toolbar searches names, transcripts, notes and comments.
 
 Always read the transcript and note before relying on them. Names and clinical terms are often misheard, and AI drafts can be wrong.

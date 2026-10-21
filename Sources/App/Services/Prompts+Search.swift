@@ -24,13 +24,17 @@ extension Prompts {
     /// transcripts of the newest sessions are.
     static func searchBlock(
         _ result: SessionSearch.Result, shown: Int, whole: Bool, newest: (included: Int, of: Int, cutShort: Bool)? = nil,
-        unreadableSessions: Int
+        layered: Bool = false, unreadableSessions: Int
     ) -> String {
         func plural(_ n: Int, _ word: String) -> String { "\(n) \(word)\(n == 1 ? "" : "s")" }
         let searched = result.sessionsSearched
         let included: String
         if whole {
             included = "the full transcripts are included below"
+        } else if layered {
+            included = shown > 0
+                ? "no transcript is included whole; below are session summaries, the summaries of the parts search points at, and the top \(plural(shown, "matching transcript passage"))"
+                : "no transcript is included whole; below are session summaries and the summaries of the parts search points at"
         } else if let newest {
             included = newest.cutShort
                 ? "only the newest session's transcript, cut short to fit, is included below (1 of \(plural(newest.of, "session"))); the other transcripts are not included"

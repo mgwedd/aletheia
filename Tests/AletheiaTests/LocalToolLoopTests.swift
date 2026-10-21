@@ -497,7 +497,8 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(finalCoverage.lookupTags, ["S1"])
         XCTAssertEqual(finalCoverage.digestSessions, 1)
         XCTAssertTrue(try XCTUnwrap(finalCoverage.label).hasSuffix("· Normal"))
-        XCTAssertTrue(progress.completedStages.contains("Searched 2 sessions · 0 sessions with passages"))
+        XCTAssertTrue(progress.completedStages.contains("Searched 2 sessions · 0 matches"))
+        XCTAssertEqual(progress.steps, PatientAskSteps(effort: .normal, layered: true).writing, "the bar ends on writing the answer")
         XCTAssertTrue(progress.completedStages.contains("Read S1 [10:00–15:00]"))
         XCTAssertTrue(progress.completedStages.contains("Read digest for S1"))
     }
@@ -688,6 +689,61 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(coverage.lookupTags, ["S2"])
         XCTAssertEqual(coverage.digestSessions, 1)
         XCTAssertTrue(try XCTUnwrap(coverage.label).contains("follow-up lookups in the transcripts of 1 more session ·"))
+    }
+
+    // MARK: - Zoom levels
+
+    /// What a question costs in model calls depends on the effort, not on how
+    /// many sessions the patient has: gathering is search and stored summaries.
+    func testModelCallsPerQuestionDoNotGrowWithTheHistory() async throws {
+        for sessionCount in [25, 100] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("ZoomCalls-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let store = Store(root: root)
+            let patient = try store.createPatient(name: "Dana Cole")
+            let calendar = Calendar(identifier: .gregorian)
+            for s in 0..<sessionCount {
+                let day = calendar.date(byAdding: .day, value: 7 * s, to: date(2024, 1, 1))!
+                let session = try store.createSession(for: patient, on: day)
+                var lines = (0..<60).map { "[\(String(format: "%02d", $0)):00] Client: Session \(s) line \($0) about work and sleep." }
+                if s % 10 == 3 { lines[30] = "[30:00] Client: The kayaking trip came up again." }
+                try store.saveTranscript(lines.joined(separator: "\n"), for: patient, session: session)
+            }
+            let cases: [(AnswerEffort, Int)] = [(.fast, 1), (.normal, 2), (.focus, 3)]
+            for (effort, expected) in cases {
+                let stub = ToolLoopStubAssistant()
+                stub.planReplies = [#"{"calls":[{"tool":"read_section","session":"S1","start":"00:00","end":"10:00"}]}"#]
+                var service = AssistantService(assistant: stub, model: "m")
+                service.budget = ContextBudget(tokens: 8_192)
+                let question = "When did kayaking come up?"
+                let total = service.patientContextCharacters(history: [], question: question)
+                let context = store.gatherCitedPatientContext(
+                    for: patient, relevantTo: question,
+                    characterBudget: PatientChatAnswer.initialContextBudget(for: effort, totalBudget: total)
+                )
+                XCTAssertTrue(context.coverage.layered)
+                let stream = PatientChatAnswer.stream(
+                    context: context,
+                    history: [],
+                    question: question,
+                    effort: effort,
+                    totalBudget: total,
+                    scope: { store.localToolScope(for: patient) },
+                    service: service,
+                    builder: DigestBuilder(queue: InferenceQueue()),
+                    live: { _, _ in },
+                    onCoverage: { _ in }
+                )
+                for try await _ in stream {}
+                XCTAssertEqual(stub.prompts.count, expected, "\(effort) at \(sessionCount) sessions")
+            }
+        }
+    }
+
+    func testThePlannerIsToldToOpenThePartsSearchPointsAt() {
+        let prompt = LocalToolLoop.planningPrompt(question: "Q", initialContext: "CTX", priorToolOutputs: [], remainingCalls: 2)
+        XCTAssertTrue(prompt.contains("If the material lists \"Where search points\""))
+        XCTAssertTrue(prompt.contains("use read_section with the session and times given there"))
     }
 
     private func LocalToolScopeForSample() -> LocalToolScope {

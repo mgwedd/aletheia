@@ -64,8 +64,11 @@ struct ChatPaneView: View {
     var scopeNote: String = "Answers come from this session's transcript, your notes and comments."
     /// Caveats about the last answer, shown above the composer in muted type.
     var notices: [String] = []
-    /// A caveat shown with a small spinner while work is under way (e.g. searching).
+    /// What is under way before the model starts (e.g. searching), shown in
+    /// place of the progress lines with a small spinner.
     var busyNotice: String?
+    /// Where that work stands overall, for a bar above `busyNotice`.
+    var busySteps: AIRunSteps? = nil
     /// Compacts the conversation, with an optional focus: the Compact button
     /// and the `/compact [focus]` command. Nil hides both.
     var onCompact: ((String) -> Void)? = nil
@@ -109,16 +112,8 @@ struct ChatPaneView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
             }
-            if !notices.isEmpty || busyNotice != nil {
+            if !notices.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
-                    if let busyNotice {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.mini).accessibilityHidden(true)
-                            Text(busyNotice)
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(Theme.muted.color)
-                        }
-                    }
                     ForEach(notices, id: \.self) { notice in
                         Text(notice)
                             .font(Theme.Typography.caption)
@@ -202,8 +197,28 @@ struct ChatPaneView: View {
                         .controlSize(.small)
                 }
             }
+        } else if let busyNotice {
+            VStack(alignment: .leading, spacing: 6) {
+                if let busySteps {
+                    ThemeProgressBar(value: busySteps.fraction)
+                        .frame(maxWidth: 240)
+                }
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini).accessibilityHidden(true)
+                    Text(busyNotice)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
+                }
+            }
         } else {
-            AIProgressView(progress: progress, speed: speed)
+            VStack(alignment: .leading, spacing: 6) {
+                // A run of several calls (a long patient history) shows where it is overall.
+                if let steps = progress.steps {
+                    ThemeProgressBar(value: steps.fraction)
+                        .frame(maxWidth: 240)
+                }
+                AIProgressView(progress: progress, speed: speed)
+            }
         }
     }
 

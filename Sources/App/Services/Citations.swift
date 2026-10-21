@@ -77,6 +77,18 @@ struct TranscriptCoverage: Equatable {
     /// may reach a session outside the question's date range, so it is not one
     /// of the `transcriptSessions` that count is out of.
     var lookupTags: Set<String> = []
+    /// The history didn't fit whole, so it was read by zoom level
+    /// (`PatientZoom`): summaries and notes, then where search points.
+    var layered = false
+    /// Parts of sessions search pointed at, listed for a closer look.
+    var areas: Int = 0
+    /// Of those, the parts whose summary is in the context.
+    var summarySections: Int = 0
+    /// Sessions in the question's range with a transcript whose summary is not
+    /// in the context (none yet, or past this Mac's cap): only search reached them.
+    var searchOnlySessions: Int = 0
+    /// Of `searchOnlySessions`, those with no summary yet.
+    var noSummarySessions: Int = 0
 
     /// Adds what follow-up lookups read. A session counts once however it was
     /// reached: a lookup of a session already in the context adds nothing.
@@ -97,9 +109,32 @@ struct TranscriptCoverage: Equatable {
         }
         if digestSessions > 0 {
             let merged = monthMergedSessions > 0 ? " (\(monthMergedSessions) merged by month)" : ""
-            parts.append("digests of \(sessions(digestSessions))" + merged)
+            parts.append("summaries of \(sessions(digestSessions))" + merged)
         }
-        if transcriptSessions > 0 {
+        if summarySections > 0 {
+            parts.append("\(summarySections) summar\(summarySections == 1 ? "y" : "ies") of the parts search points at")
+        }
+        if layered && transcriptSessions > 0 {
+            var search = ""
+            if searched {
+                search = " (\(mentions) match\(mentions == 1 ? "" : "es") for your words"
+                search += similarMentions > 0 ? ", \(similarMentions) more with similar spelling)" : ")"
+            }
+            if sessionsWithPassages > 0 {
+                parts.append("matching transcript lines from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
+            } else if searched {
+                parts.append("no matching transcript lines" + search)
+            }
+            if searchOnlySessions > 0 {
+                let noSummary = noSummarySessions > 0 ? "\(noSummarySessions) with no summary yet" : nil
+                if searched {
+                    parts.append("only search reached \(sessions(searchOnlySessions))" + (noSummary.map { " (\($0))" } ?? ""))
+                } else {
+                    let why = ["no words to search for", noSummary].compactMap { $0 }.joined(separator: "; ")
+                    parts.append("nothing from \(sessions(searchOnlySessions)) (\(why))")
+                }
+            }
+        } else if transcriptSessions > 0 {
             var search = ""
             if searched {
                 search = " (\(mentions) match\(mentions == 1 ? "" : "es") for your words"
