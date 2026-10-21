@@ -43,6 +43,9 @@ struct ThemeTextArea: View {
     /// Return calls this instead of inserting a line (Shift or Option with
     /// Return still adds one unless `modifiedReturnSubmits`). Nil leaves Return as a newline.
     var onSubmit: (() -> Void)?
+    /// Esc calls this; return true when it was used, so Esc keeps its other
+    /// meanings (closing a sheet) when it isn't.
+    var onEscape: (() -> Bool)?
     /// Shift or Option with Return submits too, so no key makes a line break
     /// (a one-paragraph field such as a chat question).
     var modifiedReturnSubmits = false
@@ -64,6 +67,7 @@ struct ThemeTextArea: View {
             face: face,
             accessibilityLabel: accessibilityLabel ?? (placeholder.isEmpty ? nil : placeholder),
             onSubmit: onSubmit,
+            onEscape: onEscape,
             modifiedReturnSubmits: modifiedReturnSubmits,
             tabMovesFocus: tabMovesFocus,
             autofocus: autofocus,
@@ -130,6 +134,7 @@ final class ThemeTextAreaTextView: NSTextView {
     var placeholder = "" { didSet { if placeholder != oldValue { needsDisplay = true } } }
     var face: ThemeTextArea.Face = .body
     var onSubmit: (() -> Void)?
+    var onEscape: (() -> Bool)?
     var modifiedReturnSubmits = false
     var tabMovesFocus = false
     var onFocusChange: ((Bool) -> Void)?
@@ -167,6 +172,8 @@ final class ThemeTextAreaTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        // 53 is Escape.
+        if event.keyCode == 53, let onEscape, onEscape() { return }
         // 36 is Return, 76 the keypad Enter.
         if let onSubmit, isEditable, event.keyCode == 36 || event.keyCode == 76, !hasMarkedText() {
             let flags = event.modifierFlags
@@ -228,6 +235,7 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
     let face: ThemeTextArea.Face
     let accessibilityLabel: String?
     let onSubmit: (() -> Void)?
+    let onEscape: (() -> Bool)?
     let modifiedReturnSubmits: Bool
     let tabMovesFocus: Bool
     let autofocus: ThemeTextArea.Autofocus
@@ -332,6 +340,7 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
         func configure(_ textView: ThemeTextAreaTextView, with representable: ThemeTextAreaRepresentable) {
             textView.placeholder = representable.placeholder
             textView.onSubmit = representable.onSubmit
+            textView.onEscape = representable.onEscape
             textView.modifiedReturnSubmits = representable.modifiedReturnSubmits
             textView.tabMovesFocus = representable.tabMovesFocus
             textView.setAccessibilityLabel(representable.accessibilityLabel)

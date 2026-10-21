@@ -8,6 +8,24 @@ enum ChatComposerLayout {
     static let minFieldHeight: CGFloat = 40
     static let maxFieldHeight: CGFloat = 120
 
+    /// What sits at the trailing edge of the composer.
+    enum TrailingControl: Equatable {
+        /// The Send button beside the box.
+        case send
+        /// The round Stop button inside the box, while an answer is being made.
+        case stop
+    }
+
+    static func trailingControl(isSending: Bool, canStop: Bool) -> TrailingControl {
+        isSending && canStop ? .stop : .send
+    }
+
+    /// Esc stops a running answer; idle, it is left for whatever else wants it
+    /// (closing a sheet, clearing search).
+    static func escapeStops(isSending: Bool, canStop: Bool) -> Bool {
+        isSending && canStop
+    }
+
     /// A question is one paragraph: any run of line breaks (a pasted
     /// paragraph, say) becomes a single space when it is sent.
     static func collapsingLineBreaks(_ text: String) -> String {
@@ -107,6 +125,8 @@ struct ChatPaneView: View {
         }
         .background(Theme.panel.color)
         .textSelection(.enabled)
+        // Esc from anywhere else in the pane; idle, it is left alone.
+        .onExitCommand(perform: ChatComposerLayout.escapeStops(isSending: isSending, canStop: onStop != nil) ? { _ = escapeStops() } : nil)
     }
 
     // MARK: Conversation
@@ -226,14 +246,7 @@ struct ChatPaneView: View {
                     resetToken: voiceResetToken,
                     input: voiceInput
                 )
-                if isSending, let onStop {
-                    Button(role: .destructive, action: onStop) {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(.themed)
-                    .controlSize(.large)
-                    .help("Stop generating")
-                } else {
+                if ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .send {
                     Button("Send", action: send)
                         .buttonStyle(.themePrimary)
                         .controlSize(.large)
@@ -257,12 +270,26 @@ struct ChatPaneView: View {
             height: .grows(min: ChatComposerLayout.minFieldHeight, max: ChatComposerLayout.maxFieldHeight),
             accessibilityLabel: "Ask about \(title)",
             onSubmit: send,
+            onEscape: escapeStops,
             modifiedReturnSubmits: true,
             tabMovesFocus: true,
             isFocused: $inputFocused
         )
         .disabled(isSending)
+        .overlay(alignment: .trailing) {
+            if ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .stop, let onStop {
+                StopButton(action: onStop)
+                    .padding(.trailing, 6)
+            }
+        }
         .hoverTip(scopeTip, arrowEdge: .top)
+    }
+
+    /// Esc while an answer is being made stops it; true when it did.
+    private func escapeStops() -> Bool {
+        guard ChatComposerLayout.escapeStops(isSending: isSending, canStop: onStop != nil), let onStop else { return false }
+        onStop()
+        return true
     }
 
     private func effortRow(_ effort: Binding<AnswerEffort>) -> some View {
@@ -302,6 +329,35 @@ struct ChatPaneView: View {
         } else {
             onSend(text)
         }
+    }
+}
+
+/// The in-box Stop control: a stop square in a circle on a subtle rounded
+/// background.
+struct StopButton: View {
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                    .fill(hovering ? Theme.hover.color : Theme.raised.color)
+                Circle()
+                    .strokeBorder(Theme.text.color, lineWidth: 1.5)
+                    .frame(width: 22, height: 22)
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Theme.text.color)
+            }
+            .frame(width: 30, height: 30)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Stop (Esc)")
+        .accessibilityLabel("Stop")
+        .accessibilityHint("Stops generating the answer. Escape does the same.")
     }
 }
 

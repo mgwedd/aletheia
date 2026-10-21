@@ -44,6 +44,9 @@ struct PatientChatView: View {
     @State private var searchingNotice: String?
     /// When the current Ask began searching: the status line counts from here.
     @State private var searchingSince: Date?
+    /// The lookup that gathers context before the model starts, and the question it is for.
+    @State private var searchTask: Task<Void, Never>?
+    @State private var searchingMessageID: UUID?
 
     @StateObject private var chatRunner = ChatStreamRunner()
 
@@ -83,7 +86,7 @@ struct PatientChatView: View {
                         isSending: isSending,
                         suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.patient : [],
                         onSend: send,
-                        onStop: { chatRunner.stop() },
+                        onStop: stopAnswer,
                         queuedStatus: chatRunner.queuedStatus,
                         scopeTip: HelpTips.patientChatScope,
                         notices: notices,
@@ -345,7 +348,8 @@ struct PatientChatView: View {
         searchingSince = askedAt
         let patient = patient
         let includeBackground = settings.includePatientBackground
-        Task {
+        searchingMessageID = userMessage.id
+        searchTask = Task {
             let context = await Task.detached(priority: .userInitiated) {
                 store.gatherCitedPatientContext(
                     for: patient,
@@ -354,6 +358,10 @@ struct PatientChatView: View {
                     includeBackground: includeBackground
                 )
             }.value
+            // Stopped while gathering: `stopAnswer` has already put things back.
+            guard !Task.isCancelled else { return }
+            searchTask = nil
+            searchingMessageID = nil
             searchingNotice = nil
             searchingSince = nil
             startAnswer(
@@ -361,6 +369,23 @@ struct PatientChatView: View {
                 effort: effort, totalBudget: characterBudget, askedAt: askedAt,
                 userMessage: userMessage, assistantID: assistantID, threadID: threadID
             )
+        }
+    }
+
+    /// Stop: the running answer, or, while the sessions are still being gathered
+    /// (the model hasn't started), that lookup, taking the unanswered question
+    /// back out of the thread.
+    private func stopAnswer() {
+        if let searchTask {
+            searchTask.cancel()
+            self.searchTask = nil
+            if let id = searchingMessageID { messages.removeAll { $0.id == id } }
+            searchingMessageID = nil
+            searchingNotice = nil
+            searchingSince = nil
+            isSending = false
+        } else {
+            chatRunner.stop()
         }
     }
 
