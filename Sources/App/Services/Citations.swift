@@ -92,6 +92,19 @@ struct TranscriptCoverage: Equatable {
     /// Sessions with no summary yet whose transcript opening is in the context
     /// (`PatientZoom.openings`). Not counted in `searchOnlySessions`.
     var openingSessions: Int = 0
+    /// The words searched for, as search counted them.
+    var searchTerms: [String] = []
+    /// Sessions with any match (transcript, notes or comments).
+    var sessionsWithMentions: Int = 0
+    /// The session's date when every match is in one session.
+    var mentionDate: Date?
+
+    /// Records what search found, for the status line (`PatientAskSteps.finding`).
+    mutating func noteSearch(_ search: SessionSearch.Result) {
+        searchTerms = search.terms.map(\.text)
+        sessionsWithMentions = search.sessionsWithHits
+        mentionDate = search.sessionsWithHits == 1 ? search.hits.first?.date : nil
+    }
 
     /// Adds what follow-up lookups read. A session counts once however it was
     /// reached: a lookup of a session already in the context adds nothing.

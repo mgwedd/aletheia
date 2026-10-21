@@ -64,9 +64,11 @@ struct ChatPaneView: View {
     var scopeTip: HelpTip = HelpTips.sessionChatScope
     /// Caveats about the last answer, shown above the composer in muted type.
     var notices: [String] = []
-    /// What is under way before the model starts (e.g. searching), shown in
-    /// place of the progress lines with a small spinner.
+    /// What is under way before the model starts (e.g. searching), shown as
+    /// the status line in place of the model's progress.
     var busyNotice: String?
+    /// When that work began, for the line's elapsed counter.
+    var busySince: Date? = nil
     /// Where that work stands overall, for a bar above `busyNotice`.
     var busySteps: AIRunSteps? = nil
     /// Compacts the conversation, with an optional focus: the Compact button
@@ -195,11 +197,12 @@ struct ChatPaneView: View {
                     ThemeProgressBar(value: busySteps.fraction)
                         .frame(maxWidth: 240)
                 }
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.mini).accessibilityHidden(true)
-                    Text(busyNotice)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
+                if let busySince {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        AIStatusLineView(text: AIProgressFormat.busyLine(busyNotice, since: busySince, now: context.date))
+                    }
+                } else {
+                    AIStatusLineView(text: busyNotice)
                 }
             }
         } else {

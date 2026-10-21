@@ -89,8 +89,9 @@ enum AIRunEvent {
 
 /// Live state of one run, for `AIProgressView`.
 struct AIRunProgress: Equatable {
-    /// Earlier stages that have already finished in this multi-stage run,
-    /// shown with a checkmark above the active read/write pair.
+    /// Earlier stages that have already finished in this multi-stage run, one
+    /// summary line each. The status line shows only the current stage; these
+    /// say what a run went through (`NoteProgress` reads them for its bar).
     var completedStages: [String] = []
     /// Stage names: "Reading the session", "Writing the note".
     var readTitle = "Reading"
@@ -104,6 +105,13 @@ struct AIRunProgress: Equatable {
     var stats: AIRunStats?
     /// Overall position in a multi-call run (a digest), kept across stages.
     var steps: AIRunSteps?
+    /// When the run's first stage began, kept across stages: the status line's
+    /// elapsed counter runs from here.
+    var runStartedAt: Date?
+    /// What retrieval found, put before the stage while the model reads
+    /// ("1 mention, in the Oct 13 session"). Kept across stages; built from
+    /// search results, never by a model.
+    var lead: String?
 
     /// Advances to a new read/write stage, keeping a one-line summary of the
     /// stage that just finished in `completedStages`.
@@ -116,6 +124,8 @@ struct AIRunProgress: Equatable {
             let summary = [self.readTitle, detail, elapsed].compactMap { $0 }.joined(separator: " · ")
             history.append(summary)
         }
+        let runStart = runStartedAt ?? self.startedAt ?? startedAt
+        let lead = lead
         self = AIRunProgress(
             completedStages: history,
             readTitle: readTitle,
@@ -123,6 +133,8 @@ struct AIRunProgress: Equatable {
             startedAt: startedAt,
             steps: steps
         )
+        runStartedAt = runStart
+        self.lead = lead
     }
 
     /// Appends a completed step (such as a deterministic search or a local tool call)

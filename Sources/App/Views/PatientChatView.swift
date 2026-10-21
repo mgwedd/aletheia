@@ -41,6 +41,8 @@ struct PatientChatView: View {
     @State private var coverageNotice: String?
     /// Shown while the sessions are being decrypted and searched, before the model starts.
     @State private var searchingNotice: String?
+    /// When the current Ask began searching: the status line counts from here.
+    @State private var searchingSince: Date?
 
     @StateObject private var chatRunner = ChatStreamRunner()
 
@@ -85,6 +87,7 @@ struct PatientChatView: View {
                         scopeTip: HelpTips.patientChatScope,
                         notices: notices,
                         busyNotice: searchingNotice,
+                        busySince: searchingSince,
                         busySteps: searchingNotice == nil ? nil : PatientAskSteps(effort: settings.patientChatEffort, layered: true).gathering,
                         onCompact: { compact($0) },
                         progress: chatRunner.progress,
@@ -334,7 +337,10 @@ struct PatientChatView: View {
         // Decrypting and searching every session takes a moment on a long
         // history, so it runs off the main thread with a line saying so.
         let sessionCount = (try? store.listSessions(for: patient))?.count ?? 0
-        searchingNotice = PatientAskSteps.gatheringText(sessions: sessionCount)
+        searchingNotice = PatientAskSteps.gatheringText(
+            sessions: sessionCount, terms: SessionSearch.terms(from: question).map(\.text))
+        let askedAt = Date()
+        searchingSince = askedAt
         let patient = patient
         let includeBackground = settings.includePatientBackground
         Task {
@@ -347,9 +353,10 @@ struct PatientChatView: View {
                 )
             }.value
             searchingNotice = nil
+            searchingSince = nil
             startAnswer(
                 service: service, context: context, history: history, question: question,
-                effort: effort, totalBudget: characterBudget,
+                effort: effort, totalBudget: characterBudget, askedAt: askedAt,
                 userMessage: userMessage, assistantID: assistantID, threadID: threadID
             )
         }
@@ -361,7 +368,7 @@ struct PatientChatView: View {
 
     private func startAnswer(
         service: AssistantService, context: PatientContext, history: [ChatMessage], question: String,
-        effort: AnswerEffort, totalBudget: Int,
+        effort: AnswerEffort, totalBudget: Int, askedAt: Date,
         userMessage: ChatMessage, assistantID: UUID, threadID: UUID
     ) {
         guard let store = appModel.store else { return }
@@ -384,6 +391,7 @@ struct PatientChatView: View {
             label: "patient question",
             readTitle: "Reading what was gathered",
             writeTitle: "Writing the answer",
+            runStartedAt: askedAt,
             makeStream: {
                 PatientChatAnswer.stream(
                     context: context,

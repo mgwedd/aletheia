@@ -1,12 +1,4 @@
 import SwiftUI
-
-/// One row of the progress list.
-struct AIProgressLine: Equatable {
-    enum State { case done, current, pending }
-    let state: State
-    let text: String
-}
-
 /// The wording and arithmetic behind `AIProgressView`, as pure functions so
 /// they can be tested without a clock or a view.
 enum AIProgressFormat {
@@ -45,50 +37,52 @@ enum AIProgressFormat {
         return min(0.95, max(0, elapsed / total))
     }
 
-    /// The stage list for a run at `now`: any earlier completed stages, then read, then write.
-    static func lines(
+    /// The status line for work before any model runs: "Searching 12 sessions
+    /// for “dream”… · 0:03".
+    static func busyLine(_ notice: String, since: Date, now: Date) -> String {
+        "\(notice) · \(elapsed(now.timeIntervalSince(since)))"
+    }
+
+    /// The one status line for a run at `now`: what is happening, a present-tense
+    /// verb and its object, then the concrete detail, then the time since the
+    /// run began. It replaces itself as the run moves on.
+    ///
+    /// Reading: "1 mention, in the Oct 13 session. Reading what was gathered… · ~3K tokens · 0:12"
+    /// (the lead, when retrieval set one), with the time left once this Mac's
+    /// reading speed is known. Writing: "Writing the answer… · 412 tokens · 0:41".
+    static func statusLine(
         _ progress: AIRunProgress, now: Date, readTokensPerSecond: Double?,
         writeTokensPerSecond: Double? = nil, expectedOutputTokens: Int? = nil
-    ) -> [AIProgressLine] {
-        let earlier = progress.completedStages.map { AIProgressLine(state: .done, text: $0) }
+    ) -> String {
         let started = progress.startedAt ?? now
-        let readDetail = progress.estimatedPromptTokens.map(estimatedTokens)
+        let runElapsed = elapsed(now.timeIntervalSince(progress.runStartedAt ?? started))
         func join(_ parts: [String?]) -> String { parts.compactMap { $0 }.joined(separator: " · ") }
 
-        guard let firstToken = progress.firstTokenAt else {
-            let elapsedNow = now.timeIntervalSince(started)
+        guard progress.firstTokenAt != nil else {
             let left = readingRemaining(
-                estimatedTokens: progress.estimatedPromptTokens, tokensPerSecond: readTokensPerSecond, elapsed: elapsedNow)
-            return earlier + [
-                AIProgressLine(state: .current, text: join([
-                    progress.readTitle, readDetail, elapsed(elapsedNow), left.map(remaining),
-                ])),
-                AIProgressLine(state: .pending, text: progress.writeTitle),
-            ]
+                estimatedTokens: progress.estimatedPromptTokens, tokensPerSecond: readTokensPerSecond,
+                elapsed: now.timeIntervalSince(started))
+            let activity = [progress.lead, progress.readTitle + "…"].compactMap { $0 }.joined(separator: ". ")
+            return join([activity, progress.estimatedPromptTokens.map(estimatedTokens), left.map(remaining), runElapsed])
         }
-        let writingFor = now.timeIntervalSince(firstToken)
         // Hidden once the reply passes its typical length: nothing honest to say.
         let writeLeft = expectedOutputTokens.flatMap { expected in
             writeTokensPerSecond.flatMap { $0 > 0 && progress.tokensWritten < expected
                 ? Double(expected - progress.tokensWritten) / $0 : nil }
         }
-        return earlier + [
-            AIProgressLine(state: .done, text: join([
-                progress.readTitle, readDetail, elapsed(firstToken.timeIntervalSince(started)),
-            ])),
-            AIProgressLine(state: .current, text: join([
-                progress.writeTitle,
-                progress.tokensWritten > 0 ? tokens(progress.tokensWritten) : nil,
-                elapsed(writingFor),
-                writeLeft.map(remaining),
-            ])),
-        ]
+        return join([
+            progress.writeTitle + "…",
+            progress.tokensWritten > 0 ? tokens(progress.tokensWritten) : nil,
+            writeLeft.map(remaining),
+            runElapsed,
+        ])
     }
 }
 
-/// Live progress for a long model call: the stages, which one is running, and
-/// how long it has taken. Reading shows the prompt's size and, once this model
-/// has run on this Mac, a time estimate with a bar; writing shows a token count.
+/// Live progress for a model call: one muted line that replaces itself (a
+/// pulsing dot, what is happening, and a live elapsed counter). Every surface
+/// that runs a model shows its progress through this view; a caller with an
+/// overall position adds its own bar.
 struct AIProgressView: View {
     let progress: AIRunProgress
     /// Measured speeds for this model, when known.
@@ -97,43 +91,47 @@ struct AIProgressView: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            let lines = AIProgressFormat.lines(
+            AIStatusLineView(text: AIProgressFormat.statusLine(
                 progress, now: context.date, readTokensPerSecond: speed?.read,
-                writeTokensPerSecond: speed?.write, expectedOutputTokens: speed?.expectedOutput(for: task))
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                    HStack(spacing: 6) {
-                        icon(for: line.state)
-                        Text(line.text)
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(line.state == .pending ? Theme.muted.color : Theme.text.color)
-                            .monospacedDigit()
-                    }
-                }
-                if progress.firstTokenAt == nil, let fraction = AIProgressFormat.readingFraction(
-                    estimatedTokens: progress.estimatedPromptTokens,
-                    tokensPerSecond: speed?.read,
-                    elapsed: context.date.timeIntervalSince(progress.startedAt ?? context.date)
-                ) {
-                    ThemeProgressBar(value: fraction)
-                        .frame(maxWidth: 240)
-                }
-            }
-            .accessibilityElement(children: .combine)
+                writeTokensPerSecond: speed?.write, expectedOutputTokens: speed?.expectedOutput(for: task)))
         }
     }
+}
 
-    @ViewBuilder
-    private func icon(for state: AIProgressLine.State) -> some View {
-        switch state {
-        case .done:
-            Image(systemName: "checkmark").foregroundStyle(Theme.muted.color).font(Theme.Typography.caption)
-                .frame(width: 14)
-        case .current:
-            ProgressView().controlSize(.mini).frame(width: 14)
-        case .pending:
-            Image(systemName: "circle").foregroundStyle(Theme.muted.color).font(Theme.Typography.caption)
-                .frame(width: 14)
+/// The status line's look, for a line worked out elsewhere (search, before
+/// any model runs): a pulsing dot and one muted line.
+struct AIStatusLineView: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            PulsingDot()
+            Text(text)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .monospacedDigit()
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
+        .accessibilityAddTraits(.updatesFrequently)
+    }
+}
+
+/// A small dot that breathes while work runs; still under Reduce Motion.
+private struct PulsingDot: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dim = false
+
+    var body: some View {
+        Circle()
+            .fill(Theme.accent.color)
+            .frame(width: 6, height: 6)
+            .opacity(dim && !reduceMotion ? 0.3 : 1)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: dim)
+            .frame(width: 14)
+            .accessibilityHidden(true)
+            .onAppear { dim = true }
     }
 }
