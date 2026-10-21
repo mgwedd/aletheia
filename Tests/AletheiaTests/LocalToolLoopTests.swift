@@ -483,6 +483,84 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(scope.sessions.first?.digest?.sessionDigest, "Discussed sister boundary.")
     }
 
+    // MARK: - Pressure tests
+
+    func testModelWrittenTimesThatOverflowAreRejectedNotTrapped() {
+        XCTAssertNil(LocalToolScope.parseSeconds("153722867280912931:00"))
+        XCTAssertNil(LocalToolScope.parseSeconds("2562047788015216:00:00"))
+        XCTAssertEqual(LocalToolScope.parseSeconds("1:02:03"), 3723)
+
+        let scope = LocalToolScope(sessions: sampleSessions())
+        let overflowing = scope.execute(LocalToolCall(tool: "read_section", session: "S1", start: "153722867280912931:00"))
+        XCTAssertTrue(overflowing.isError)
+        XCTAssertTrue(overflowing.output.contains("invalid \"start\""))
+
+        // A start near Int.max with no end used to trap computing the default end.
+        let huge = scope.execute(LocalToolCall(tool: "read_section", session: "S1", start: "9223372036854775807"))
+        XCTAssertFalse(huge.isError)
+        XCTAssertTrue(huge.output.contains("No transcript lines in S1"))
+    }
+
+    func testSearchToolShowsTheMatchingNoteParagraph() {
+        let session = LocalToolSession(
+            id: UUID(), tag: "S1", date: date(2026, 3, 15), folderName: "f", transcript: "", digest: nil,
+            notes: "Opening thoughts.\n\nTalked through the move to Denver.\nPacking starts next week.\n\nUnrelated closing line.",
+            comments: []
+        )
+        let outcome = LocalToolScope(sessions: [session]).execute(LocalToolCall(tool: "search", query: "Denver"))
+        XCTAssertFalse(outcome.isError)
+        XCTAssertTrue(outcome.output.contains("Talked through the move to Denver."), outcome.output)
+        XCTAssertTrue(outcome.output.contains("Packing starts next week."), outcome.output)
+        XCTAssertFalse(outcome.output.contains("Unrelated closing line."))
+        XCTAssertTrue(outcome.readTranscriptTags.isEmpty, "a note is not a transcript passage")
+    }
+
+    func testParagraphFollowsTheIndexSplit() {
+        XCTAssertEqual(LocalToolScope.paragraph(in: "a\nb\n \nc", from: 0), "a\nb")
+        XCTAssertEqual(LocalToolScope.paragraph(in: "a\nb\n \nc", from: 3), "c")
+        XCTAssertEqual(LocalToolScope.paragraph(in: "a", from: 5), "")
+    }
+
+    func testRefineLeavesOutALookupThatDidNotFitTheBudget() async throws {
+        let transcript = (0..<40)
+            .map { "[00:\(String(format: "%02d", $0))] Client: Sentence \($0) about the garden, the weather and work." }
+            .joined(separator: "\n")
+        let scope = LocalToolScope(sessions: [LocalToolSession(
+            id: UUID(), tag: "S1", date: date(2026, 3, 15), folderName: "f",
+            transcript: transcript, digest: nil, notes: "", comments: []
+        )])
+        let stub = ToolLoopStubAssistant()
+        stub.planReplies = [#"{"calls":[{"tool":"read_section","session":"S1","start":"00:00","end":"10:00"}]}"#]
+        let service = AssistantService(assistant: stub, model: "m")
+
+        // 210 characters left: each lookup is given at least 240, so this one comes back too big.
+        let result = try await LocalToolLoop.refine(
+            question: "What about the garden?",
+            initialContext: "Initial",
+            scope: scope,
+            effort: .normal,
+            characterBudget: 210,
+            service: service,
+            builder: DigestBuilder(queue: InferenceQueue()),
+            live: { _, _ in }
+        )
+        let outcome = try XCTUnwrap(result.outcomes.first)
+        XCTAssertGreaterThan(outcome.output.count + 2, 210)
+        XCTAssertEqual(result.additionalContext, "", "an output over the budget must not reach the answer")
+        XCTAssertTrue(result.readTranscriptTags.isEmpty, "nor be counted as read")
+    }
+
+    /// A tool search reads every session of the patient; the loop is main-actor
+    /// code, so the lookup itself has to run detached.
+    func testToolLookupsRunOffTheMainActor() throws {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/Services/Digest/LocalToolLoop.swift")
+        let source = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertFalse(source.contains("let outcome = scope.execute("))
+        XCTAssertTrue(source.contains("let outcome = await Task.detached(priority: .userInitiated) {\n                    scope.execute(call, maxCharacters: perCallBudget)"))
+    }
+
     private func LocalToolScopeForSample() -> LocalToolScope {
         LocalToolScope(sessions: sampleSessions())
     }
