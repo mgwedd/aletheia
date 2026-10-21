@@ -81,7 +81,8 @@ final class LongSessionNoteTests: XCTestCase {
 
     private func run(
         transcript: String, effort: AnswerEffort = .normal, stored: SessionDigest? = nil, tokens: Int = 8192,
-        format: ProgressNoteFormat = .soap, phrases: [String] = defaultPhrases, configure: (StubModel) -> Void = { _ in }
+        format: ProgressNoteFormat = .soap, phrases: [String] = defaultPhrases, sectionCache: SectionCacheAccess? = nil,
+        configure: (StubModel) -> Void = { _ in }
     ) async throws -> Run {
         let stub = StubModel()
         configure(stub)
@@ -91,7 +92,7 @@ final class LongSessionNoteTests: XCTestCase {
         let stream = LongSessionNote.stream(
             format: format, transcript: transcript, effort: effort, riskPhrases: phrases, service: service,
             builder: DigestBuilder(queue: InferenceQueue()), sessionID: UUID(),
-            loadDigest: { stored }, saveDigest: { _ in },
+            loadDigest: { stored }, saveDigest: { _ in }, sectionCache: sectionCache,
             live: { _, _ in }, coverage: { coverage.append($0) })
         var snapshots: [String] = []
         for try await snapshot in stream { snapshots.append(snapshot) }
@@ -130,6 +131,22 @@ final class LongSessionNoteTests: XCTestCase {
         let result = try await run(transcript: text, stored: storedDigest(for: text))
         XCTAssertEqual(result.prompts.count, 1)
         XCTAssertTrue(result.prompts[0].contains("STORED DIGEST"))
+    }
+
+    /// A note that builds the digest inline keeps each section summary in the
+    /// session's section cache; the next one reads them back and only merges.
+    func testInlineDigestUsesTheSectionCache() async throws {
+        let text = syntheticTranscript(minutes: 120)
+        var saved: [String: String] = [:]
+        let access = SectionCacheAccess(load: { saved }, save: { saved = $0 })
+        let first = try await run(transcript: text, sectionCache: access)
+        let sectionCalls = first.prompts.filter { $0.contains("Transcript section") }.count
+        XCTAssertGreaterThan(sectionCalls, 1)
+        XCTAssertEqual(saved.count, sectionCalls)
+
+        let second = try await run(transcript: text, sectionCache: access)
+        XCTAssertFalse(second.prompts.contains { $0.contains("Transcript section") }, "every section comes from the cache")
+        XCTAssertTrue(second.prompts.contains { $0.contains("Below are digest notes") }, "only the merge runs again")
     }
 
     // MARK: - Coverage

@@ -938,6 +938,7 @@ enum LongSessionChat {
         builder: DigestBuilder,
         loadDigest: @escaping () async -> SessionDigest?,
         saveDigest: @escaping (SessionDigest) throws -> Void,
+        sectionCache: SectionCacheAccess? = nil,
         live: @escaping DigestBuilder.Live,
         coverage: @escaping (String?) -> Void
     ) -> AsyncThrowingStream<String, Error> {
@@ -976,6 +977,7 @@ enum LongSessionChat {
                             sessionID: sessionID,
                             transcript: transcript,
                             service: service,
+                            sections: sectionCache,
                             live: { started, change in
                                 live(started) {
                                     change(&$0)

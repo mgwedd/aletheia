@@ -451,6 +451,48 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertTrue(progress.completedStages.contains("Read S1 [1:19:00–1:21:00]"))
     }
 
+    /// A long-session chat that builds the digest inline keeps each section
+    /// summary in the session's section cache; the next one reads them back.
+    func testLongSessionChatInlineDigestUsesTheSectionCache() async throws {
+        let lines = (0..<360).map { i -> String in
+            let stamp = String(format: "[%02d:%02d]", (i * 20) / 60, (i * 20) % 60)
+            return "\(stamp) You: Tell me more about topic \(i) and how the week went with work and family."
+        }.joined(separator: "\n")
+        var saved: [String: String] = [:]
+        let access = SectionCacheAccess(load: { saved }, save: { saved = $0 })
+
+        func ask() async throws -> [String] {
+            let stub = ToolLoopStubAssistant()
+            var service = AssistantService(assistant: stub, model: "m")
+            service.budget = ContextBudget(tokens: 8_192)
+            let stream = LongSessionChat.stream(
+                transcript: lines,
+                history: [],
+                question: "What came up about work?",
+                effort: .normal,
+                sessionID: UUID(),
+                service: service,
+                builder: DigestBuilder(queue: InferenceQueue()),
+                loadDigest: { nil },
+                saveDigest: { _ in },
+                sectionCache: access,
+                live: { _, _ in },
+                coverage: { _ in }
+            )
+            for try await _ in stream {}
+            return stub.prompts
+        }
+
+        let first = try await ask()
+        let sectionCalls = first.filter { $0.contains("Transcript section") }.count
+        XCTAssertGreaterThan(sectionCalls, 1)
+        XCTAssertEqual(saved.count, sectionCalls)
+
+        let second = try await ask()
+        XCTAssertFalse(second.contains { $0.contains("Transcript section") }, "every section comes from the cache")
+        XCTAssertTrue(second.contains { $0.contains("Below are digest notes") }, "only the merge runs again")
+    }
+
     func testPatientChatAnswerRefinesPartialContextAndUpdatesCoverage() async throws {
         let stub = ToolLoopStubAssistant()
         stub.planReplies = [
