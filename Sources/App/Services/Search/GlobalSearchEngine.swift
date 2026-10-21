@@ -182,7 +182,7 @@ enum GlobalSearchEngine {
                 guard let best = GlobalSearchText.bestPassage(paragraphs, terms: terms, answered: answered) else { continue }
                 notes.append(SearchHit(
                     id: "note-\(key)-\(note.key)", kind: .note, patient: place.patient, session: place.session,
-                    noteLabel: note.label, noteFormat: note.format,
+                    noteLabel: note.label, noteFormat: note.format, passage: best,
                     snippet: GlobalSearchText.snippet(paragraphs[best], terms: terms)))
             }
         }
@@ -236,6 +236,7 @@ enum GlobalSearchEngine {
             }
             shown.append(SearchHit(
                 id: "transcript-\(document.session)", kind: .transcript, patient: place.patient, session: place.session,
+                passage: line,
                 snippet: GlobalSearchText.snippet(lines[line], terms: terms)))
         }
         let transcriptSection = GlobalSearchSection(kind: .transcript, hits: shown, total: max(shown.count, transcripts.count - dropped))

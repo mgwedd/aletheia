@@ -10,6 +10,14 @@ import Foundation
 ///
 /// Pure `NSString`-range logic, no UI, so it's unit-tested in isolation and the
 /// AppKit text view stays a thin shell over it.
+/// What a transcript focus request scrolls to and flashes: a comment's
+/// passage (a card or highlight was clicked), or a range of text (a search
+/// match opened from global search).
+enum TranscriptFocus: Equatable {
+    case comment(String)
+    case range(NSRange)
+}
+
 enum TranscriptHighlighter {
     /// What the highlighter needs to know about one comment: its id, the quoted
     /// passage, and the offset the quote started at when it was made (nil for
@@ -102,13 +110,25 @@ enum TranscriptHighlighter {
         return best?.commentID
     }
 
-    /// Whether the view should scroll-and-flash for the current focus: a comment
-    /// is focused and its token differs from the one last acted on. Focus is an
-    /// event, not a state — the owner bumps the token on every click, so
-    /// re-clicking the *same* comment after scrolling away still counts, while
-    /// unrelated re-renders (same token) don't re-trigger the flash.
-    static func isNewFocusRequest(commentID: String?, token: Int, lastHandledToken: Int?) -> Bool {
-        commentID != nil && token != lastHandledToken
+    /// Whether the view should scroll-and-flash for the current focus: there is
+    /// something to focus and its token differs from the one last acted on.
+    /// Focus is an event, not a state — the owner bumps the token on every
+    /// click, so re-clicking the *same* comment after scrolling away still
+    /// counts, while unrelated re-renders (same token) don't re-trigger the flash.
+    static func isNewFocusRequest(_ focus: TranscriptFocus?, token: Int, lastHandledToken: Int?) -> Bool {
+        focus != nil && token != lastHandledToken
+    }
+
+    /// The text to scroll to and flash for `focus` (UTF-16): a comment's
+    /// resolved passage, or a range (a search match) still inside the text.
+    static func range(for focus: TranscriptFocus, spans: [Span], length: Int) -> NSRange? {
+        let range: NSRange?
+        switch focus {
+        case .comment(let id): range = spans.first(where: { $0.commentID == id })?.range
+        case .range(let given): range = given
+        }
+        guard let range, range.location >= 0, range.length > 0, NSMaxRange(range) <= length else { return nil }
+        return range
     }
 
     /// `range` with leading/trailing whitespace and newlines dropped, or nil if

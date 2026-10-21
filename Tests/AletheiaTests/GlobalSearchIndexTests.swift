@@ -71,6 +71,25 @@ final class GlobalSearchIndexTests: XCTestCase {
         XCTAssertTrue(results.hits.allSatisfy { $0.snippet.localizedCaseInsensitiveContains("couples") })
     }
 
+    /// A transcript or note hit carries the passage it showed, and opening it
+    /// at that passage flashes the match there, not an earlier mention.
+    func testHitsCarryThePassageToOpenAt() throws {
+        let patient = try store.createPatient(name: "Sam Doe")
+        let session = try store.createSession(for: patient, on: date(2026, 10, 8))
+        let transcript = "[00:01] You: How was the week?\n[00:05] Client: Fine.\n[00:09] Client: The insomnia came back, the insomnia is worse."
+        try store.saveTranscript(transcript, for: patient, session: session)
+        try store.saveNote("Opening check-in.\n\nReports insomnia returning.", for: patient, session: session, format: .soap)
+        store.syncSearchIndex()
+
+        let results = search("insomnia")
+        let hit = try XCTUnwrap(results.section(.transcript)?.hits.first)
+        XCTAssertEqual(hit.passage, 2)
+        let focus = try XCTUnwrap(SearchHitDestination(hit).searchFocus(query: "insomnia"))
+        let range = try XCTUnwrap(focus.transcriptRange(in: transcript))
+        XCTAssertEqual(range, (transcript as NSString).range(of: "insomnia"))
+        XCTAssertEqual(results.section(.note)?.hits.first?.passage, 1)
+    }
+
     func testPatientsByNameAndSessionsByDate() throws {
         let jane = try store.createPatient(name: "Jane Doe")
         let bob = try store.createPatient(name: "Bob Lee")

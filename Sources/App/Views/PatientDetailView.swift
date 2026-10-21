@@ -38,6 +38,9 @@ struct PatientDetailView: View {
     @State private var sessionInitialNoteFormat: ProgressNoteFormat?
     @State private var sessionInitialShowingMyNotes = false
     @State private var sessionInitialFocusedCommentID: String?
+    /// The search match to flash, and the session it is in: only that session
+    /// is opened at it, not one picked from the list afterwards.
+    @State private var sessionInitialSearchFocus: (sessionID: UUID, focus: SearchMatchFocus)?
     @State private var sessionNavigationToken = 0
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var exports: ExportJobCenter
@@ -136,6 +139,7 @@ struct PatientDetailView: View {
                         editGuard: editGuard,
                         initialTab: sessionInitialTab,
                         initialFocusedCommentID: sessionInitialFocusedCommentID,
+                        initialSearchFocus: sessionInitialSearchFocus?.sessionID == selectedSession.id ? sessionInitialSearchFocus?.focus : nil,
                         initialNoteFormat: sessionInitialNoteFormat,
                         initialShowingMyNotes: sessionInitialShowingMyNotes,
                         navigationToken: sessionNavigationToken
@@ -346,6 +350,7 @@ struct PatientDetailView: View {
         sessionInitialNoteFormat = pending.initialNoteFormat
         sessionInitialShowingMyNotes = pending.initialShowingMyNotes
         sessionInitialFocusedCommentID = pending.initialFocusedCommentID
+        sessionInitialSearchFocus = pending.initialSearchFocus.map { (sessionID: target.id, focus: $0) }
         sessionNavigationToken += 1
         if selectedSessionID != target.id {
             requestSelection(target.id)
