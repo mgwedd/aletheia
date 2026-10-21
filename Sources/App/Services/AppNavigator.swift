@@ -41,7 +41,22 @@ final class AppNavigator: ObservableObject {
 
     @Published var pendingSession: PendingSession?
 
+    /// Something to show inside Settings once its window is up (set by the
+    /// Doctor's fix buttons). `SettingsView` consumes it.
+    @Published var pendingSettings: SettingsRequest?
+
     private init() {}
+
+    func requestSettings(_ request: SettingsRequest) {
+        pendingSettings = request
+    }
+
+    /// Takes (and clears) the pending Settings request, so only one Settings
+    /// view acts on it.
+    func takeSettingsRequest() -> SettingsRequest? {
+        defer { pendingSettings = nil }
+        return pendingSettings
+    }
 
     /// Asks the patient view for `patientID` to select a session. The caller
     /// selects the patient itself; this only carries the session through.
@@ -78,6 +93,19 @@ final class AppNavigator: ObservableObject {
         case .session(let patientID, let folderName):
             requestOpen(patientID: patientID)
             requestOpenSession(patientID: patientID, sessionFolderName: folderName)
+        }
+    }
+}
+
+/// A part of Settings that something outside it asks to have shown.
+enum SettingsRequest: Equatable {
+    /// The Setup Assistant sheet (opened from the General pane).
+    case setupAssistant
+
+    /// The pane that holds what is being asked for.
+    var pane: SettingsPane {
+        switch self {
+        case .setupAssistant: return .general
         }
     }
 }

@@ -28,6 +28,7 @@ struct SettingsView: View {
     @State private var healthChecks: [ToolHealthCheck] = []
     @State private var isCheckingHealth = false
     @State private var showSetup = false
+    @ObservedObject private var navigator = AppNavigator.shared
     @State private var newRiskPhrase = ""
     @State private var confirmClearRiskPhrases = false
     @State private var confirmResetRiskPhrases = false
@@ -69,6 +70,8 @@ struct SettingsView: View {
         .background(Theme.window.color)
         .tint(Theme.accent.color)
         .navigationTitle("Settings")
+        .onAppear { showRequestedSection() }
+        .onChange(of: navigator.pendingSettings) { _, _ in showRequestedSection() }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") { dismiss() }
@@ -121,6 +124,16 @@ struct SettingsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    /// Shows what another part of the app asked for (e.g. the Doctor's "Set
+    /// up…"): selects its pane and opens its sheet.
+    private func showRequestedSection() {
+        guard let request = navigator.takeSettingsRequest() else { return }
+        selectedPaneRaw = request.pane.rawValue
+        switch request {
+        case .setupAssistant: showSetup = true
         }
     }
 
