@@ -9,6 +9,21 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.59.0] - 2026-10-21
+
+### Added
+- PDF, Word and Markdown per note and session; whole-patient export as a background zip; rich-text Copy (#345)
+
+### Fixed
+- count every merge round in the build's progress steps (#360)
+- keep a merged section's anchor one flat range (#361)
+- accept a plain number for a tool call's time or session (#357)
+- don't read a month name used as a word as a date filter (#354)
+- show the tool-loop planning call the earlier chat turns (#355)
+- keep patient names out of notifications by default (#359)
+- offer Record and Transcribe only when they can act on the session (#348)
+- unlock once per session; re-lock only when the Mac is left (#356)
+
 ## [2.58.0] - 2026-10-21
 
 ### Added
