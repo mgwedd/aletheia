@@ -737,6 +737,25 @@ final class Store {
         sessionDir(for: patient, session: session).appendingPathComponent(Store.digestFileName)
     }
 
+    /// Section summaries written by a digest build that hasn't finished (see
+    /// `SectionDigestCache`), so it can carry on after a pause or a failure.
+    static let digestSectionsFileName = "digest-sections.json"
+
+    private func digestSectionsURL(for patient: Patient, session: SessionRecord) -> URL {
+        sessionDir(for: patient, session: session).appendingPathComponent(Store.digestSectionsFileName)
+    }
+
+    /// The cached section summaries of `session`, by `DigestSchedulePolicy.sectionKey`; empty when none or unreadable.
+    func sectionDigestCache(for patient: Patient, session: SessionRecord) -> [String: String] {
+        guard let data = (try? protector.dataIfPresent(at: digestSectionsURL(for: patient, session: session))) ?? nil,
+              let entries = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+        return entries
+    }
+
+    func saveSectionDigestCache(_ entries: [String: String], for patient: Patient, session: SessionRecord) throws {
+        try protector.write(try JSONEncoder().encode(entries), to: digestSectionsURL(for: patient, session: session))
+    }
+
     func saveDigest(_ digest: SessionDigest, for patient: Patient, session: SessionRecord) throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

@@ -46,37 +46,46 @@ final class DigestBuilder: ObservableObject {
 
     /// Starts a background build unless the stored digest is already current or
     /// a build for this transcript and model is running. A build for a changed
-    /// transcript or model replaces the one in flight. The stored digest is read
-    /// (and decrypted) off the main thread.
+    /// transcript or model replaces the one in flight. The stored digest and the
+    /// section summaries already written (`SectionDigestCache`) are read (and
+    /// decrypted) off the main thread, so a build that was stopped or failed
+    /// carries on from the sections it finished. Returns the build's task, to
+    /// await; nil when nothing was started.
+    @discardableResult
     func ensureDigest(
         for patient: Patient,
         session: SessionRecord,
         transcript: String,
         store: Store,
         service: AssistantService
-    ) {
+    ) -> Task<Void, Never>? {
         let key = NoteFreshness.fingerprint(of: transcript) + "|" + service.model
-        if builds[session.id]?.key == key || inlineBuilds.contains(session.id) { return }
+        if builds[session.id]?.key == key || inlineBuilds.contains(session.id) { return nil }
         cancel(session.id)
         let id = UUID()
         let task = Task { [weak self] in
             let model = service.model
-            let alreadyCurrent = await Task.detached {
-                store.digest(for: patient, session: session, model: model) != nil
+            let loaded = await Task.detached { () -> (current: Bool, sections: [String: String]) in
+                (store.digest(for: patient, session: session, model: model) != nil,
+                 store.sectionDigestCache(for: patient, session: session))
             }.value
             guard let self, self.builds[session.id]?.id == id else { return }
-            if alreadyCurrent {
+            if loaded.current {
                 self.builds[session.id] = nil
                 return
+            }
+            let cache = SectionDigestCache(entries: loaded.sections) { entries in
+                try? store.saveSectionDigestCache(entries, for: patient, session: session)
             }
             self.progress[session.id] = AIRunProgress(readTitle: "Reading", startedAt: Date())
             do {
                 let digest = try await self.build(transcript: transcript, service: service, live: { started, change in
                     self.update(session.id, build: id, started: started, change)
-                })
+                }, cache: cache)
                 try Task.checkCancellation()
                 guard self.builds[session.id]?.id == id else { return }
                 try store.saveDigest(digest, for: patient, session: session)
+                cache.prune()
             } catch {
                 // Cancelling (Stop, or a newer build replacing this one) is not
                 // a failure.
@@ -90,6 +99,7 @@ final class DigestBuilder: ObservableObject {
             self.progress[session.id] = nil
         }
         builds[session.id] = Build(id: id, key: key, task: task)
+        return task
     }
 
     /// Builds a digest in the caller's own queue job (a note), cancelling any
@@ -129,7 +139,8 @@ final class DigestBuilder: ObservableObject {
         service: AssistantService,
         progress: @escaping (_ section: Int, _ of: Int) -> Void = { _, _ in },
         live: @escaping Live = { _, _ in },
-        inline: Bool = false
+        inline: Bool = false,
+        cache: SectionDigestCache? = nil
     ) async throws -> SessionDigest {
         let sections = TranscriptSections.split(transcript)
         // One call per section, plus the final merge.
@@ -141,9 +152,18 @@ final class DigestBuilder: ObservableObject {
             progress(index + 1, sections.count)
             live(nil) { $0.steps = AIRunSteps(done: index, total: totalSteps) }
             let anchor = section.anchor(index: index, count: sections.count)
-            let text = try await generate(
-                Prompts.sectionDigest(text: section.text, anchor: anchor),
-                stage: "Reading section \(index + 1) of \(sections.count)", service: service, live: live, inline: inline)
+            let sectionKey = DigestSchedulePolicy.sectionKey(
+                text: section.text, anchor: anchor, model: service.model, promptVersion: Prompts.digestVersion)
+            let text: String
+            if let cached = cache?.lookup(sectionKey) {
+                // Written by an earlier build that was stopped or failed.
+                text = cached
+            } else {
+                text = try await generate(
+                    Prompts.sectionDigest(text: section.text, anchor: anchor),
+                    stage: "Reading section \(index + 1) of \(sections.count)", service: service, live: live, inline: inline)
+                cache?.store(sectionKey, text)
+            }
             parts.append(.init(start: section.start, end: section.end, digest: text))
             anchored.append((anchor, text))
         }
@@ -265,6 +285,44 @@ final class DigestBuilder: ObservableObject {
         }
         try Task.checkCancellation()
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// The section summaries of one session's build, kept on disk as each is
+/// written (`Store.digestSectionsFileName`, encrypted like the digest), so a
+/// build that is stopped (a pause, quitting) or fails carries on from the
+/// sections it finished instead of starting over. Keyed by
+/// `DigestSchedulePolicy.sectionKey`, so a changed section is built again.
+@MainActor
+final class SectionDigestCache {
+    private(set) var entries: [String: String]
+    private var used = Set<String>()
+    private let persist: ([String: String]) -> Void
+
+    init(entries: [String: String], persist: @escaping ([String: String]) -> Void) {
+        self.entries = entries
+        self.persist = persist
+    }
+
+    func lookup(_ key: String) -> String? {
+        guard let text = entries[key] else { return nil }
+        used.insert(key)
+        return text
+    }
+
+    /// Keeps a finished section, on disk at once.
+    func store(_ key: String, _ text: String) {
+        entries[key] = text
+        used.insert(key)
+        persist(entries)
+    }
+
+    /// Once the whole digest is saved: drops sections of an older transcript.
+    func prune() {
+        let kept = entries.filter { used.contains($0.key) }
+        guard kept.count != entries.count else { return }
+        entries = kept
+        persist(kept)
     }
 }
 
