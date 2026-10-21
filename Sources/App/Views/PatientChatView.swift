@@ -20,6 +20,7 @@ struct PatientChatView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var recorder: SessionRecorder
 
     @State private var threads: [ChatThread] = []
     @State private var selectedThreadID: UUID?
@@ -93,7 +94,8 @@ struct PatientChatView: View {
                         progress: chatRunner.progress,
                         speed: integrations.modelSpeed,
                         effort: $settings.patientChatEffort,
-                        effortFeature: .patientChat
+                        effortFeature: .patientChat,
+                        isSessionRecording: recorder.isRecording
                     )
                     .frame(minWidth: 360)
                 } else {

@@ -59,9 +59,16 @@ struct ChatPaneView: View {
     var effort: Binding<AnswerEffort>? = nil
     /// Which chat the selector applies to, for its description.
     var effortFeature: EffortFeature = .sessionChat
+    /// True while a session is being recorded: the recorder owns the
+    /// microphone, so the dictation mic is hidden.
+    var isSessionRecording = false
+    /// The dictation engine; nil uses on-device Apple Speech. Tests pass a fake.
+    var voiceInput: VoiceInput? = nil
 
     @State private var draft: String = ""
     @State private var inputFocused = false
+    /// Bumped on send so dictation stops writing into the cleared draft.
+    @State private var voiceResetToken = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var canSend: Bool {
@@ -212,6 +219,13 @@ struct ChatPaneView: View {
             }
             HStack(alignment: .bottom, spacing: 10) {
                 inputField
+                VoiceMicControl(
+                    draft: $draft,
+                    isSending: isSending,
+                    isSessionRecording: isSessionRecording,
+                    resetToken: voiceResetToken,
+                    input: voiceInput
+                )
                 if isSending, let onStop {
                     Button(role: .destructive, action: onStop) {
                         Label("Stop", systemImage: "stop.fill")
@@ -281,6 +295,7 @@ struct ChatPaneView: View {
     private func send() {
         let text = ChatComposerLayout.collapsingLineBreaks(draft.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty else { return }
+        voiceResetToken += 1
         draft = ""
         if let onCompact, let focus = ChatMemory.compactCommand(text) {
             onCompact(focus)

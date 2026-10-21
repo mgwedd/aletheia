@@ -95,6 +95,7 @@ targets:
       - package: LlamaCpp
       - sdk: ScreenCaptureKit.framework
       - sdk: AVFoundation.framework
+      - sdk: Speech.framework
 
   # The Swift surface over whisper.cpp; the C API stays inside it.
   WhisperEngine:

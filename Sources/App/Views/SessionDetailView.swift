@@ -1431,7 +1431,8 @@ struct SessionDetailView: View {
             onCompact: { compactChat($0) },
             progress: chatRunner.progress,
             speed: integrations.modelSpeed,
-            effort: $settings.sessionChatEffort
+            effort: $settings.sessionChatEffort,
+            isSessionRecording: recorder.isRecording
         )
     }
 
