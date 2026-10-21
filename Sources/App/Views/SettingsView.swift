@@ -46,7 +46,9 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
 
-    private var pane: SettingsPane { SettingsPane(rawValue: selectedPaneRaw) ?? .default }
+    private var panes: [SettingsPane] { SettingsPane.available(encryptionOffered: encryptionOffered) }
+
+    private var pane: SettingsPane { SettingsPane.restored(rawValue: selectedPaneRaw, in: panes) }
 
     private var paneSelection: Binding<SettingsPane> {
         Binding(get: { pane }, set: { selectedPaneRaw = $0.rawValue })
@@ -54,7 +56,7 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SettingsSidebar(selection: paneSelection)
+            SettingsSidebar(selection: paneSelection, panes: panes)
             SettingsPaneContainer(title: pane.title) {
                 paneContent
             }
@@ -142,12 +144,14 @@ struct SettingsView: View {
     private var generalPane: some View {
         dataFolderSection
         SettingsHairline()
-        SettingsSwitchRow(
-            title: "Keep raw audio after transcription",
-            detail: audioRetentionCaption,
-            isOn: $settings.keepAudioRecordings
-        )
-        .disabled(!encryption.isEnabled)
+        if SettingsAvailability.showsKeepAudio(encryptionOffered: encryptionOffered) {
+            SettingsSwitchRow(
+                title: "Keep raw audio after transcription",
+                detail: audioRetentionCaption,
+                isOn: $settings.keepAudioRecordings
+            )
+            .disabled(!encryption.isEnabled)
+        }
         SettingsSwitchRow(
             title: "Transcribe automatically when a recording ends",
             detail: "Starts transcription as soon as you stop recording, so the transcript is ready when you come back. It keeps running while Aletheia is locked, and you get a notification when it's done.",
@@ -753,7 +757,10 @@ struct SettingsView: View {
     /// this build or an earlier one — the unlock/manage affordances stay
     /// unconditional regardless of build tier.
     private var encryptionOffered: Bool {
-        encryption.isEnabled || appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
+        SettingsAvailability.encryptionOffered(
+            isEnabled: encryption.isEnabled,
+            moduleInBuild: appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
+        )
     }
 
     @ViewBuilder
@@ -825,9 +832,6 @@ struct SettingsView: View {
                 .padding(.vertical, 12)
             }
         }
-        if !encryptionOffered {
-            SettingsCaption("Encryption isn't offered in this build.")
-        }
     }
 
     /// Only states what the crypto code does: see `DataCipher`, `ChunkedCipher`,
@@ -890,22 +894,6 @@ struct SettingsView: View {
                 detail: "Off by default, so Time Machine includes your data folder — without it you'd have only one copy. Your data folder can hold unencrypted patient data (and audio/transcript files), so keep your Time Machine backups on an encrypted disk. Turn this on only if you'd rather keep the folder out of macOS system backups and rely on your own copy instead.",
                 isOn: $settings.keepDataOutOfSystemBackups
             )
-            .padding(.vertical, 12)
-            SettingsHairline()
-            SettingsSwitchRow(
-                title: "Keep an encrypted backup copy on this Mac",
-                detail: "An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it. Coming soon: nothing is written yet, so this stays off.",
-                isOn: .constant(false)
-            )
-            .disabled(true)
-            .padding(.vertical, 12)
-            SettingsHairline()
-            SettingsSwitchRow(
-                title: "Also back up to iCloud (end-to-end encrypted)",
-                detail: "Uploads the same encrypted snapshot to your private iCloud. It's sealed with your key before it leaves this Mac, so Apple only ever stores data it can't read. Coming soon: it needs a signed build with iCloud configured, so this stays off.",
-                isOn: .constant(false)
-            )
-            .disabled(true)
             .padding(.vertical, 12)
         }
         SettingsCaption("Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder.")
