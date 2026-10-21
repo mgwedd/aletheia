@@ -48,6 +48,7 @@ struct ConsentGuideView: View {
         }
         .frame(width: 580, height: 620)
         .background(Theme.panel.color)
+        .textSelection(.enabled)
     }
 
     private var header: some View {

@@ -114,7 +114,7 @@ enum MermaidCardContext {
     var caption: String {
         switch self {
         case .ask:
-            return "Drawn by the on-device model from this session. Check it against the transcript."
+            return "Drawn by the AI model from this session. Check it against the transcript."
         case .note:
             return "Diagrams are kept in the note as text. Copy and Export include the Mermaid source."
         }
