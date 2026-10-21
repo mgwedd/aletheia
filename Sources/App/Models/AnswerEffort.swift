@@ -10,7 +10,7 @@ enum AnswerEffort: String, CaseIterable, Identifiable, Codable, Hashable {
     static let `default`: AnswerEffort = .normal
 
     /// What the selector is called wherever it appears.
-    static let label = "Model effort"
+    static let label = "AI effort"
 
     var id: String { rawValue }
 
