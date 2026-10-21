@@ -1047,12 +1047,13 @@ struct SessionDetailView: View {
     private var generatedNoteView: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .center, spacing: 8) {
+                // Adapts to the pane's width instead of widening it.
+                AdaptiveActionRow {
                     Text(settings.progressNoteFormat.blurb)
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.muted.color)
                         .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 12)
+                } actions: {
                     if noteRunner.isStreaming {
                         Button(role: .destructive) { noteStopping = true; noteRunner.stop() } label: {
                             Label("Stop", systemImage: "stop.fill")
@@ -1216,7 +1217,11 @@ struct SessionDetailView: View {
                 editingInstructions = true
             }
         } label: {
-            Label("Length: \(settings.summaryVerbosity.displayName) · \(settings.noteEffort.displayName)", systemImage: "text.alignleft")
+            // AdaptiveLabel, not Label: a Menu's label ignores .labelStyle(.iconOnly).
+            AdaptiveLabel(
+                title: "Length: \(settings.summaryVerbosity.displayName) · \(settings.noteEffort.displayName)",
+                systemImage: "text.alignleft"
+            )
         }
         .fixedSize()
         .help("How long the note is, and the AI effort for a long session. \(settings.noteEffort.displayName): \(settings.noteEffort.blurb(for: .note)) Regenerate to apply a change.")
