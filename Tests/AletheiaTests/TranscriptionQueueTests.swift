@@ -106,6 +106,56 @@ final class SessionActionPolicyTests: XCTestCase {
     }
 }
 
+/// A session offers only the actions that can act on it: no Record over an
+/// existing transcript or recording, no Transcribe without audio, no Export
+/// of nothing.
+final class SessionActionOfferTests: XCTestCase {
+    private func record(
+        transcript: Bool = false, recording: Bool = false, transcribing: Bool = false, queued: Bool = false
+    ) -> Bool {
+        SessionActionPolicy.offersRecord(
+            hasTranscript: transcript, hasRecording: recording, isTranscribing: transcribing, isQueued: queued
+        )
+    }
+
+    func testRecordIsOfferedOnlyOnAnEmptySession() {
+        XCTAssertTrue(record())
+        XCTAssertFalse(record(transcript: true), "a transcribed session is not recorded over")
+        XCTAssertFalse(record(recording: true), "audio waiting to be transcribed is not recorded over")
+        XCTAssertFalse(record(transcribing: true))
+        XCTAssertFalse(record(queued: true))
+    }
+
+    func testTranscribeNeedsAudioOrWorkUnderWay() {
+        XCTAssertFalse(SessionActionPolicy.offersTranscribe(hasRecording: false, isTranscribing: false, isQueued: false))
+        XCTAssertTrue(SessionActionPolicy.offersTranscribe(hasRecording: true, isTranscribing: false, isQueued: false))
+        XCTAssertTrue(SessionActionPolicy.offersTranscribe(hasRecording: false, isTranscribing: true, isQueued: false))
+        XCTAssertTrue(SessionActionPolicy.offersTranscribe(hasRecording: false, isTranscribing: false, isQueued: true))
+    }
+
+    func testExportNeedsATranscriptOrSummary() {
+        XCTAssertFalse(SessionActionPolicy.offersExport(hasTranscript: false, hasSummary: false))
+        XCTAssertTrue(SessionActionPolicy.offersExport(hasTranscript: true, hasSummary: false))
+        XCTAssertTrue(SessionActionPolicy.offersExport(hasTranscript: false, hasSummary: true))
+    }
+
+    func testTranscribedSessionWithoutKeptAudioOffersNeitherRecordNorTranscribe() {
+        XCTAssertFalse(record(transcript: true))
+        XCTAssertFalse(SessionActionPolicy.offersTranscribe(hasRecording: false, isTranscribing: false, isQueued: false))
+    }
+
+    func testSessionBarGatesEachActionOnThePolicy() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/Views/SessionDetailView.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(source.contains("} else if offersRecord {"))
+        XCTAssertTrue(source.contains("if offersTranscribe {"))
+        XCTAssertTrue(source.contains("SessionActionPolicy.offersExport("))
+        XCTAssertFalse(source.contains(".disabled(transcriptText.isEmpty && summaryText.isEmpty)"))
+    }
+}
+
 /// Automatic transcription is on until the user turns it off.
 final class AutoTranscribeDefaultTests: XCTestCase {
     private let suite = "AutoTranscribeDefaultTests"
