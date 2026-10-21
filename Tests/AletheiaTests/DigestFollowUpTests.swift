@@ -128,6 +128,29 @@ final class DigestFollowUpTests: XCTestCase {
         XCTAssertEqual(digest.sessionDigest.count, 2_000)
     }
 
+    func testMergedAnchorsStayOneFlatRangeAcrossMergeRounds() async throws {
+        let fake = ScriptedAssistant()
+        fake.replyLength = 2_000
+        var service = AssistantService(assistant: fake, model: "m")
+        // Room for the merge instructions plus two section digests, not three.
+        let overhead = service.systemPrompt.count + Prompts.sessionDigest(sections: []).count
+        let capacity = overhead + 2 * 2_040
+        service.budget = ContextBudget(tokens: ContextBudget.replyHeadroomTokens + capacity / ContextBudget.charactersPerToken)
+        let builder = DigestBuilder(queue: InferenceQueue())
+        let text = minutesOfTalk(45)
+        let sections = TranscriptSections.split(text)
+        XCTAssertEqual(sections.count, 5)
+
+        _ = try await builder.build(transcript: text, service: service)
+
+        // 5 sections, two group merges, a second round merging those two, the final merge.
+        XCTAssertEqual(fake.prompts.count, 9)
+        let wholeRange = "[\(TranscriptTimeline.format(sections[0].start ?? 0))–\(TranscriptTimeline.format(sections[3].end ?? 0))]"
+        let last = try XCTUnwrap(fake.prompts.last)
+        XCTAssertTrue(last.contains(wholeRange + "\n"), "the second round's result is labelled by its whole range")
+        XCTAssertFalse(fake.prompts.contains { $0.contains(" … ") }, "no merged anchor lists its pieces")
+    }
+
     func testDigestCallsAreBudgetChecked() async throws {
         let fake = ScriptedAssistant()
         var service = AssistantService(assistant: fake, model: "m")

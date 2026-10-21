@@ -179,7 +179,7 @@ final class DigestBuilder: ObservableObject {
                 } else {
                     let text = try await generate(
                         Prompts.sessionDigest(sections: group), stage: Self.mergeTitle, service: service, live: live, inline: inline)
-                    next.append(("\(first.anchor) … \(last.anchor)", text))
+                    next.append((TranscriptSection.mergedAnchor(first: first.anchor, last: last.anchor), text))
                 }
                 group = []
             }
