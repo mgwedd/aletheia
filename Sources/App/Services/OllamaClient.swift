@@ -61,7 +61,7 @@ final class PromptPrefixMemory: @unchecked Sendable {
         var index = text.startIndex
         while let end = text.index(index, offsetBy: Self.step, limitedBy: text.endIndex), end != index {
             hasher.combine(text[index..<end])
-            var snapshot = hasher
+            let snapshot = hasher
             hashes.append(snapshot.finalize())
             index = end
         }
@@ -303,7 +303,7 @@ final class OllamaClient: Assistant {
             : PromptPrefixMemory.shared.sharedPrefixCharacters(model: model, text: system + "\n" + prompt)
         let expectedTokens = ContextBudget.estimatedTokens(forCharacters: max(0, system.count + prompt.count - cached))
         let onStats: (@Sendable (AIRunStats) -> Void)? = onStats.map { report in
-            { var stats = $0; stats.task = task; stats.reusedPrefix = cached > 0; report(stats) }
+            { @Sendable raw in var stats = raw; stats.task = task; stats.reusedPrefix = cached > 0; report(stats) }
         }
         return AsyncThrowingStream { continuation in
             OllamaResidency.shared.began(baseURL: baseURL, model: model)

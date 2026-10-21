@@ -384,7 +384,7 @@ final class SQLitePersistenceCore: PersistenceCore {
         if data.isEmpty {
             sqlite3_bind_zeroblob(stmt, index, 0)
         } else {
-            data.withUnsafeBytes { raw in
+            _ = data.withUnsafeBytes { raw in
                 sqlite3_bind_blob(stmt, index, raw.baseAddress, Int32(raw.count), Self.transient)
             }
         }

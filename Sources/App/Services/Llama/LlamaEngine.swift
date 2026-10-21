@@ -24,7 +24,10 @@ import llama
 /// continuations; a stream's cancellation crosses back in through a small
 /// lock-guarded flag, the same pattern `LlamaAssistant` next to this file
 /// already uses for its own decode loop.
-final class LlamaEngine: LocalLLMEngine {
+///
+/// `@unchecked Sendable` rests on that split: the pointers are confined to
+/// `queue`, and every other mutable property goes through `stateLock`.
+final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     private let modelURL: URL
     private let adapterURL: URL?
     /// The sampling this engine was constructed with. Every `generate`/
@@ -56,11 +59,16 @@ final class LlamaEngine: LocalLLMEngine {
     private var _lastStats: AIRunStats?
 
     /// How long the model may sit unused before it is unloaded (matches Ollama's
-    /// `keep_alive`). Tests shorten it.
-    var idleDelay: TimeInterval = 30 * 60
+    /// `keep_alive`). Tests shorten it; the idle timer reads it off the main thread.
+    var idleDelay: TimeInterval {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return _idleDelay }
+        set { stateLock.lock(); _idleDelay = newValue; stateLock.unlock() }
+    }
+    private var _idleDelay: TimeInterval = 30 * 60
     private var idleGeneration = 0
-    /// How many idle unloads have fired (for tests).
-    private(set) var idleUnloads = 0
+    /// How many idle unloads have fired (for tests). Counted under `stateLock`.
+    var idleUnloads: Int { stateLock.lock(); defer { stateLock.unlock() }; return _idleUnloads }
+    private var _idleUnloads = 0
 
     /// Serializes every touch of `model`/`context`/`adapter`: load, decode,
     /// unload. See the threading note on the type.
@@ -153,7 +161,7 @@ final class LlamaEngine: LocalLLMEngine {
             guard let self else { return }
             self.stateLock.lock()
             let stale = self.idleGeneration != generation
-            if !stale { self.idleUnloads += 1 }
+            if !stale { self._idleUnloads += 1 }
             self.stateLock.unlock()
             if !stale { self.unload() }
         }

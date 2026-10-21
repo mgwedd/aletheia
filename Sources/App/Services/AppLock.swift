@@ -219,7 +219,9 @@ final class AppLock: ObservableObject {
     }
 
     /// Whether this Mac can evaluate Touch ID or the login password at all.
-    static func canAuthenticate() -> Bool {
+    /// Touches no `AppLock` state, so it is callable from any thread and can be
+    /// the plain `() -> Bool` default for `init`'s `canAuthenticate`.
+    nonisolated static func canAuthenticate() -> Bool {
         var error: NSError?
         let ok = LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
         return ok
