@@ -6,7 +6,10 @@ import Foundation
 ///
 ///   1,000 ft  the patient's background, the therapist's notes and comments,
 ///             and the stored session summaries (digests), newest first, older
-///             ones merged by month, up to a share of this Mac's budget.
+///             ones merged by month, up to a share of this Mac's budget. When
+///             search has no transcript lines to quote, room that share keeps
+///             for summaries not built yet goes to the openings of those
+///             sessions' transcripts.
 ///     500 ft  search over every transcript, note and comment: exact counts,
 ///             and the parts of sessions the hits fall in ("areas"), ranked.
 ///     100 ft  the summaries of those parts, where the session has a digest,
@@ -256,6 +259,81 @@ enum PatientZoom {
         }
         return out
     }
+
+    // MARK: - Openings of sessions with no summary yet (1,000 ft)
+
+    /// Above the start of a session's transcript that stands in for its missing summary.
+    static let openingLabel = "Transcript excerpt (no summary yet), from the start of the session:"
+    /// Ends an opening that was cut short.
+    static let openingCutMarker = "[…]"
+    /// The summaries' leftover room is shared evenly between at most this many
+    /// sessions, so several get some room before any one gets a lot.
+    static let openingSlots = 4
+    /// The smallest opening worth sending.
+    static let minOpeningCharacters = 300
+
+    /// A session with no summary yet, newest first, whose opening may fill the summaries' share.
+    struct OpeningInput {
+        let tag: String
+        let date: Date
+        let transcript: String
+    }
+
+    /// The opening of one session, as it goes under its session's header.
+    struct Opening: Equatable {
+        let tag: String
+        let date: Date
+        /// `openingLabel`, then the compacted start of the transcript.
+        let block: String
+        /// What it takes from the budget: the block, the blank line before it and a header.
+        let cost: Int
+    }
+
+    /// The start of `transcript` as the model reads it (`TranscriptCompactor`),
+    /// at most `limit` characters, cut at the end of a line and ended with
+    /// `openingCutMarker` when cut. Nil when the transcript is empty or `limit`
+    /// is below `minOpeningCharacters`.
+    static func openingExcerpt(of transcript: String, limit: Int) -> String? {
+        guard limit >= minOpeningCharacters else { return nil }
+        let compacted = TranscriptCompactor.compact(transcript).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compacted.isEmpty else { return nil }
+        if compacted.count <= limit { return compacted }
+        let marker = "\n" + openingCutMarker
+        let room = limit - marker.count
+        var kept: [Substring] = []
+        var used = 0
+        for line in compacted.split(separator: "\n", omittingEmptySubsequences: false) {
+            let cost = line.count + (kept.isEmpty ? 0 : 1)
+            guard used + cost <= room else { break }
+            kept.append(line)
+            used += cost
+        }
+        // A first line longer than the room is cut inside the line.
+        let body = kept.isEmpty ? String(compacted.prefix(room)) : kept.joined(separator: "\n")
+        return body + marker
+    }
+
+    /// The openings of `sessions` (newest first, none with a summary yet) within
+    /// `budget`, newest first. Each takes at most budget / min(n, `openingSlots`);
+    /// what one leaves unused stays for the sessions after it. Their costs never
+    /// add up to more than `budget`.
+    static func openings(_ sessions: [OpeningInput], budget: Int) -> [Opening] {
+        guard !sessions.isEmpty, budget > 0 else { return [] }
+        let slot = budget / min(sessions.count, openingSlots)
+        // Header, the blank line before the block, and the label with its line break.
+        let overhead = headerAllowance + 2 + openingLabel.count + 1
+        var remaining = budget
+        var out: [Opening] = []
+        for session in sessions {
+            let room = min(slot, remaining) - overhead
+            guard let excerpt = openingExcerpt(of: session.transcript, limit: room) else { continue }
+            let block = openingLabel + "\n" + excerpt
+            let cost = block.count + 2 + headerAllowance
+            remaining -= cost
+            out.append(Opening(tag: session.tag, date: session.date, block: block, cost: cost))
+        }
+        return out
+    }
 }
 
 /// The phases of one question to the patient chat, for its progress bar:
@@ -298,6 +376,10 @@ struct PatientAskSteps: Equatable {
         }
         lines.append(searched)
         if coverage.digestSessions > 0 { lines.append("Read summaries of \(sessions(coverage.digestSessions))") }
+        if coverage.openingSessions > 0 {
+            let n = coverage.openingSessions
+            lines.append("Read the opening\(n == 1 ? "" : "s") of \(sessions(n)) with no summary yet")
+        }
         if coverage.areas > 0 {
             lines.append("Found \(coverage.areas) part\(coverage.areas == 1 ? "" : "s") worth a closer look")
         }

@@ -89,6 +89,9 @@ struct TranscriptCoverage: Equatable {
     var searchOnlySessions: Int = 0
     /// Of `searchOnlySessions`, those with no summary yet.
     var noSummarySessions: Int = 0
+    /// Sessions with no summary yet whose transcript opening is in the context
+    /// (`PatientZoom.openings`). Not counted in `searchOnlySessions`.
+    var openingSessions: Int = 0
 
     /// Adds what follow-up lookups read. A session counts once however it was
     /// reached: a lookup of a session already in the context adds nothing.
@@ -113,6 +116,9 @@ struct TranscriptCoverage: Equatable {
         }
         if summarySections > 0 {
             parts.append("\(summarySections) summar\(summarySections == 1 ? "y" : "ies") of the parts search points at")
+        }
+        if openingSessions > 0 {
+            parts.append("transcript opening\(openingSessions == 1 ? "" : "s") of \(sessions(openingSessions)) with no summary yet")
         }
         if layered && transcriptSessions > 0 {
             var search = ""
