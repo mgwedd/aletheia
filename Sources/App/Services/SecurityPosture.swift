@@ -86,16 +86,11 @@ enum SecurityPosture {
                 ? "Security-relevant actions are recorded on this Mac (no names or clinical content)."
                 : "Choose a data folder to begin recording the on-device audit log."))
 
-        // Encrypted backup copy on this Mac. Like iCloud below, the toggle is only
-        // a saved preference until something actually writes the archives, so it
-        // must not read as "secure" — a clinician who believes a backup exists
-        // won't make their own.
-        if !localBackupActive {
-            items.append(PostureItem(id: "encryptedBackup", title: "Encrypted backup", level: .informational,
-                detail: "This build doesn't write backup copies yet, so nothing is being backed up by Aletheia"
-                    + (localEncryptedBackup ? " even though the option is turned on" : "")
-                    + ". Time Machine includes your data folder by default; keep those backups on an encrypted disk."))
-        } else {
+        // Backups Aletheia makes itself. Listed only once something actually
+        // writes them: a row about a copy this build can't make would be advice
+        // or a claim about a feature that isn't there, and a saved preference
+        // must never read as a protection that exists.
+        if localBackupActive {
             items.append(PostureItem(id: "encryptedBackup", title: "Encrypted backup",
                 level: localEncryptedBackup ? .secure : .informational,
                 detail: localEncryptedBackup
@@ -103,19 +98,12 @@ enum SecurityPosture {
                     : "Consider keeping an encrypted backup copy, safe to sit in Time Machine. Keep Time Machine backups on an encrypted disk."))
         }
 
-        // Off-device copy in the user's private iCloud (CloudKit). Only ever
-        // ciphertext leaves the Mac; until a signed build provisions CloudKit the
-        // toggle is a saved preference that uploads nothing, so don't claim it's
-        // active — mirror the Settings copy and keep it informational.
-        if iCloudBackupEnabled && iCloudBackupConfigured {
+        // Off-device copy in the user's private iCloud (CloudKit): only when it is
+        // on and provisioned. Only ciphertext leaves the Mac.
+        let cloudBackupActive = iCloudBackupEnabled && iCloudBackupConfigured
+        if cloudBackupActive {
             items.append(PostureItem(id: "cloudBackup", title: "Encrypted iCloud backup", level: .secure,
                 detail: "An end-to-end-encrypted copy syncs to your private iCloud. It's sealed with your key first, so only ciphertext ever leaves this Mac."))
-        } else if iCloudBackupEnabled {
-            items.append(PostureItem(id: "cloudBackup", title: "Encrypted iCloud backup", level: .informational,
-                detail: "iCloud backup is turned on but activates in a signed build with iCloud configured — nothing is uploaded yet. When it does, only end-to-end-encrypted ciphertext will leave this Mac."))
-        } else {
-            items.append(PostureItem(id: "cloudBackup", title: "Encrypted iCloud backup", level: .informational,
-                detail: "Optionally keep an end-to-end-encrypted copy in your private iCloud for off-device recovery. It's sealed with your key first, so only ciphertext would ever leave this Mac."))
         }
 
         // FileVault: the app can't read its state under the sandbox, so this is a
@@ -126,14 +114,15 @@ enum SecurityPosture {
         // Network activity: connectivity itself is never a problem to fix here —
         // PHI never traverses the network whatever the state — so this stays
         // informational and only phrases what (if anything) leaves.
+        let leaving = cloudBackupActive ? " Only end-to-end-encrypted backups leave." : ""
         let networkDetail: String
         switch networkOnline {
         case .some(true):
-            networkDetail = "This Mac is online, but no patient data is sent. Transcription and AI run locally; only end-to-end-encrypted backups ever leave."
+            networkDetail = "This Mac is online, but no patient data is sent. Transcription and AI run locally." + leaving
         case .some(false):
             networkDetail = "This Mac is offline. Aletheia is fully functional without a network."
         case .none:
-            networkDetail = "No patient data is sent over the network. Transcription and AI run locally; only end-to-end-encrypted backups ever leave."
+            networkDetail = "No patient data is sent over the network. Transcription and AI run locally." + leaving
         }
         items.append(PostureItem(id: "network", title: "Network activity", level: .informational,
             detail: networkDetail))
