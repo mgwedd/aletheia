@@ -224,14 +224,14 @@ docs/                     setup, data safety, encryption, HIPAA safeguards
 
 ```mermaid
 flowchart LR
-  PR["Pull request"] --> S["Smoke test<br/>build all three tiers · full tests on dev<br/>CI guards · secret/PHI scan"]
+  PR["Pull request"] --> S["Smoke test<br/>production + dev tiers (preview on main) · full tests on dev<br/>CI guards · secret/PHI scan"]
   S --> M["Merge to main"]
   M --> S2["Smoke test on main"]
   S2 -- "passes" --> AR["Auto Release<br/>conventional commits → semver"]
   AR --> TAG["v* tag"] --> REL["release.yml<br/>DMG · appcast.json · GitHub Release"]
 ```
 
-CI runs on macOS runners (the only place the Swift code compiles). To save macOS time, the production and preview tiers are built but run only the tier-sensitive tests (the dev tier runs the full suite), and the packaging job (`cd.yml`) runs on a pull request only when packaging inputs change. The path check is `scripts/ci-changes.sh`, applied as a job-level `if:` so a skipped job still reports success to branch protection; `scripts/check-ci-gating.sh` guards that wiring. The benchmarks workflow runs only when started by hand. `main` also requires CodeQL code-scanning results (GitHub's default setup, for the workflows and Python only). Developer ID signing and notarization run only when signing secrets are configured; otherwise the DMG is ad-hoc signed. Model downloads are pinned by commit and SHA-256, checked weekly by `verify-model-pins`.
+CI runs on macOS runners (the only place the Swift code compiles). To save macOS time, a pull request builds the production and dev tiers only (preview is built on pushes to `main` and on a manual run); production and preview run only the tier-sensitive tests while dev runs the full suite, and the packaging job (`cd.yml`) runs on a pull request only when packaging inputs change. The path check is `scripts/ci-changes.sh`, applied as a job-level `if:` so a skipped job still reports success to branch protection; `scripts/check-ci-gating.sh` guards that wiring. The benchmarks workflow runs only when started by hand. `main` also requires CodeQL code-scanning results (GitHub's default setup, for the workflows and Python only). Developer ID signing and notarization run only when signing secrets are configured; otherwise the DMG is ad-hoc signed. Model downloads are pinned by commit and SHA-256, checked weekly by `verify-model-pins`.
 
 ### Conventions
 
