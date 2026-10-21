@@ -63,6 +63,11 @@ struct PatientChatView: View {
 
             AIEngineBanner()
 
+            SummaryStatusRow(scheduler: integrations.digestScheduler, patientID: patient.id)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 6)
+
             HSplitView {
                 threadSidebar
                     .frame(minWidth: 200, idealWidth: 230, maxWidth: 320)
@@ -92,7 +97,10 @@ struct PatientChatView: View {
             }
         }
         .background(Theme.window.color)
-        .onAppear { reloadThreads() }
+        .onAppear {
+            reloadThreads()
+            integrations.digestScheduler.patientOpened(patient)
+        }
         .onChange(of: selectedThreadID) { _, newID in
             // The notice belongs to the question just asked, not to other threads.
             if !isSending {

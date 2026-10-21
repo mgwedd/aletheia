@@ -203,7 +203,7 @@ final class TranscriptionCoordinator: ObservableObject {
                 ))
             }
             try store.saveTranscript(text, for: patient, session: session)
-            integrations.buildDigest(for: patient, session: session, transcript: text, store: store)
+            integrations.digestScheduler.transcriptSaved(patient: patient, session: session)
             // Transcript-only by default: discard the raw audio now that the
             // transcript (the document of record) is saved. Audio is kept only
             // when the user opted in *and* at-rest encryption is on, so anything

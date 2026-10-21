@@ -638,7 +638,9 @@ struct SessionDetailView: View {
 
     private var transcriptTab: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DigestStatusLine(builder: integrations.digests, sessionID: session.id, retry: ensureDigest)
+            DigestStatusLine(builder: integrations.digests, sessionID: session.id, retry: {
+                integrations.digestScheduler.retry(patient: patient, session: session)
+            })
             if let notice = noSpeechNotice {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle")
@@ -954,7 +956,7 @@ struct SessionDetailView: View {
         }
         transcriptText = text
         hasTranscript = true
-        integrations.buildDigest(for: patient, session: session, transcript: text, store: store)
+        integrations.digestScheduler.transcriptSaved(patient: patient, session: session)
         onSessionUpdated()
         return true
     }
@@ -1312,12 +1314,12 @@ struct SessionDetailView: View {
         )
     }
 
-    /// Builds this session's digest if it has none, or its digest is stale (the
-    /// model or the digest prompts changed since it was made). Opening a session
-    /// is the only trigger, so nothing is rebuilt in bulk.
+    /// Puts this session first for a summary, if it needs one (too long to send
+    /// whole, or its patient's history is) and has none. The scheduler builds
+    /// it when nothing else is using the model (`DigestScheduler`).
     private func ensureDigest() {
-        guard let store = appModel.store, transcriptReadError == nil, !transcriptText.isEmpty else { return }
-        integrations.buildDigest(for: patient, session: session, transcript: transcriptText, store: store)
+        guard transcriptReadError == nil, !transcriptText.isEmpty else { return }
+        integrations.digestScheduler.sessionOpened(patient: patient, session: session)
     }
 
     private func load() {

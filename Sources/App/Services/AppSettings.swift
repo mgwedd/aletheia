@@ -104,6 +104,7 @@ final class AppSettings: ObservableObject {
         static let riskPhrases = "riskPhrases"
         static let sessionChatEffort = "sessionChatEffort"
         static let patientChatEffort = "patientChatEffort"
+        static let summariesPaused = "summariesPaused"
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
@@ -230,6 +231,11 @@ final class AppSettings: ObservableObject {
     }
     @Published var patientChatEffort: AnswerEffort {
         didSet { defaults.set(patientChatEffort.rawValue, forKey: Keys.patientChatEffort) }
+    }
+    /// The user paused background summaries (`DigestScheduler`); they stay
+    /// paused across launches until resumed.
+    @Published var summariesPaused: Bool {
+        didSet { defaults.set(summariesPaused, forKey: Keys.summariesPaused) }
     }
     /// Phrases whose lines a long session's note always includes first (and warns
     /// about if they don't fit). Plain text, not PHI. Never set means the built-in
@@ -417,6 +423,7 @@ final class AppSettings: ObservableObject {
         noteEffort = defaults.string(forKey: Keys.noteEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         sessionChatEffort = defaults.string(forKey: Keys.sessionChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         patientChatEffort = defaults.string(forKey: Keys.patientChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
+        summariesPaused = defaults.bool(forKey: Keys.summariesPaused)
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil
