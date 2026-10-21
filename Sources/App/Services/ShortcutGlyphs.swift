@@ -62,14 +62,6 @@ enum ShortcutGlyphs {
     }
 }
 
-/// The app's own shortcuts, defined once (not `AppShortcut`: that is AppIntents' type) so the binding and every hint that
-/// mentions it come from the same value. `.defaultAction` and `.cancelAction`
-/// are SwiftUI's own and already carry their key.
-enum AppHotkey {
-    static let newPatient = KeyboardShortcut("n", modifiers: .command)
-    static let saveComment = KeyboardShortcut(.return, modifiers: .command)
-}
-
 extension View {
     /// Binds `shortcut` and appends it to the tooltip, so the two can't disagree.
     func shortcut(_ shortcut: KeyboardShortcut, help: String) -> some View {
