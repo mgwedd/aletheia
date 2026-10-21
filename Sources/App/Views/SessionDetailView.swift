@@ -1069,21 +1069,6 @@ struct SessionDetailView: View {
                 OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: generateNote)
             }
 
-            if !summaryText.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Chip("AI draft", tone: .accent)
-                    Text("Drafted from the transcript and your notes. Review and edit before it goes in the record.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.text.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.callout.color, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.line.color))
-                .padding(.horizontal, 20)
-            }
-
             if summaryText.isEmpty && !noteRunner.isStreaming {
                 emptyNoteCard
             } else if summaryText.isEmpty {
