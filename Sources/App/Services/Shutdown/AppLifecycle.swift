@@ -1,0 +1,101 @@
+import Combine
+import Foundation
+
+/// The quit and relaunch side of the app's long-running work: the shutdown
+/// coordinator `AppDelegate` runs on quit, and the launch-time pick-up of
+/// whatever the last quit interrupted. Set up once in `AletheiaApp.init`.
+@MainActor
+enum AppLifecycle {
+    static var shutdown: ShutdownCoordinator?
+    static let resume = InterruptedWorkLauncher()
+
+    static func configure(
+        settings: AppSettings,
+        appModel: AppModel,
+        recorder: SessionRecorder,
+        transcription: TranscriptionCoordinator,
+        integrations: Integrations,
+        exports: ExportJobCenter
+    ) {
+        let coordinator = ShutdownCoordinator(ledger: { settings.dataRootURL.map(InterruptedWorkLedger.init) })
+        // All wind down at once; the order only sets which is listed first.
+        coordinator.register(RecordingShutdownJob(
+            recorder: recorder, transcribesAfterRecording: { settings.autoTranscribeAfterRecording }))
+        coordinator.register(transcription)
+        coordinator.register(integrations.digestScheduler)
+        coordinator.register(integrations.inferenceQueue)
+        coordinator.register(exports)
+        coordinator.register(SearchSweepShutdownJob(appModel: appModel))
+        shutdown = coordinator
+
+        resume.start(
+            appModel: appModel,
+            ledger: { settings.dataRootURL.map(InterruptedWorkLedger.init) },
+            transcribe: { [weak transcription] in transcription?.start(patient: $0.patient, session: $0.session) },
+            summarize: { [weak integrations] in
+                integrations?.digestScheduler.sessionOpened(patient: $0.patient, session: $0.session)
+            }
+        )
+    }
+}
+
+/// Stops a recording on quit and finalizes its files (closed, and sealed when
+/// the folder is encrypted), so the audio is kept. Its automatic transcription
+/// is listed to run at the next launch instead of starting on the way out.
+@MainActor
+final class RecordingShutdownJob: ShutdownJob {
+    private let recorder: SessionRecorder
+    private let transcribesAfterRecording: () -> Bool
+
+    init(recorder: SessionRecorder, transcribesAfterRecording: @escaping () -> Bool) {
+        self.recorder = recorder
+        self.transcribesAfterRecording = transcribesAfterRecording
+    }
+
+    func interruptedWork() -> [InterruptedWork] {
+        guard recorder.hasOpenRecording, transcribesAfterRecording(), let active = recorder.active else { return [] }
+        return [InterruptedWork(kind: .transcription, patientID: active.patientID, sessionFolder: active.sessionFolder)]
+    }
+
+    func shutDown() async { await recorder.shutDown() }
+}
+
+/// Stops the background search-index sweep and closes the index.
+@MainActor
+final class SearchSweepShutdownJob: ShutdownJob {
+    private let appModel: AppModel
+
+    init(appModel: AppModel) { self.appModel = appModel }
+
+    func shutDown() async { await appModel.stopSearchSync() }
+}
+
+/// At launch, re-queues the work the last quit interrupted, as soon as the
+/// sessions it names can be read: right away, or once an encrypted folder is
+/// unlocked and its patients load.
+@MainActor
+final class InterruptedWorkLauncher {
+    private var watcher: AnyCancellable?
+
+    func start(
+        appModel: AppModel,
+        ledger: @escaping () -> InterruptedWorkLedger?,
+        transcribe: @escaping (InterruptedWorkResumer.Target) -> Void,
+        summarize: @escaping (InterruptedWorkResumer.Target) -> Void
+    ) {
+        guard let initial = ledger(), !initial.load().isEmpty else { return }
+        // `patients` publishes before it changes; read the store once the change has landed.
+        watcher = appModel.$patients.receive(on: DispatchQueue.main).sink { [weak self, weak appModel] _ in
+            guard let self, let appModel, let store = appModel.store, let ledger = ledger() else { return }
+            let left = InterruptedWorkResumer.resume(
+                ledger.load(),
+                patients: appModel.patients,
+                sessions: { try? store.listSessions(for: $0) },
+                transcribe: transcribe,
+                summarize: summarize
+            )
+            ledger.save(left)
+            if left.isEmpty { self.watcher = nil }
+        }
+    }
+}

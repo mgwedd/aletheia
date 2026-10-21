@@ -79,6 +79,15 @@ final class ExportJobCenter: ObservableObject {
         state = .running(fraction: progressFraction, label: "Cancelling")
     }
 
+    /// Quitting: cancels a running export and waits for it to stop. Nothing is
+    /// written for a cancelled export, so there's nothing to resume; the
+    /// therapist exports again when they need it.
+    func shutDown() async {
+        guard let task else { return }
+        cancel()
+        await task.value
+    }
+
     /// Clears a finished or failed status. A running export is left alone.
     func dismiss() {
         guard !isRunning else { return }
@@ -130,6 +139,8 @@ final class ExportJobCenter: ObservableObject {
         }
     }
 }
+
+extension ExportJobCenter: ShutdownJob {}
 
 /// Carries a value the compiler can't prove is safe to move to another thread.
 /// Used for the closure that reads the store: it only reads, and nothing else

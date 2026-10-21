@@ -27,6 +27,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HelpTipsStore.configure()
     }
 
+    /// Quitting (⌘Q, the menu-bar Quit, logout or restart) waits for the
+    /// running work to wind down, but never longer than the shutdown deadline,
+    /// and never with an alert: interrupted work is saved for the next launch.
+    @MainActor func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let shutdown = AppLifecycle.shutdown else { return .terminateNow }
+        // Already winding down: the reply below ends this quit too.
+        guard !shutdown.isShuttingDown else { return .terminateLater }
+        Task { @MainActor in
+            await shutdown.shutDown()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     #if DEBUG
     @MainActor func applicationDidFinishLaunching(_ notification: Notification) {
         HarnessRun.runIfRequested()
@@ -52,7 +66,7 @@ struct AletheiaApp: App {
     /// screen and shows in the sidebar and menu bar.
     @StateObject private var transcription: TranscriptionCoordinator
     /// Patient-records exports run in the background and report through this.
-    @StateObject private var exports = ExportJobCenter(notifier: UserNotificationService())
+    @StateObject private var exports: ExportJobCenter
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
 
@@ -88,6 +102,11 @@ struct AletheiaApp: App {
             }
         }
         _recorder = StateObject(wrappedValue: recorder)
+        let exports = ExportJobCenter(notifier: UserNotificationService())
+        _exports = StateObject(wrappedValue: exports)
+        AppLifecycle.configure(
+            settings: settings, appModel: appModel, recorder: recorder,
+            transcription: transcription, integrations: integrations, exports: exports)
         _updateService = StateObject(wrappedValue: UpdateService(
             checker: AppcastUpdateChecker(feedURL: settings.updateFeedURL),
             currentVersion: UpdateService.bundleVersion()

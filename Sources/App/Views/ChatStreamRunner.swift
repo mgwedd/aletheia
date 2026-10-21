@@ -244,6 +244,9 @@ final class ChatStreamRunner: ObservableObject {
                 self.jobToken = nil
                 self.jobID = nil
             }
+            // Quitting: keep the saved note or thread as it was rather than
+            // saving a half-written answer, and raise nothing.
+            if self.queue?.isShutDown == true { return }
             if let failure = self.failure, self.target.isEmpty {
                 onError(failure)
             } else {
