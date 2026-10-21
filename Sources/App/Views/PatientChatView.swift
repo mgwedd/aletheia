@@ -322,7 +322,7 @@ struct PatientChatView: View {
         let assistantID = UUID()
         // Snapshot everything the prompt needs now; the request itself is only
         // made when the queue starts this job.
-        let service = integrations.makeAssistantService(report: chatRunner.reporter)
+        let service = integrations.makeAssistantService(report: chatRunner.reporter, clientName: patient.name)
         // The whole context is sized from this Mac's budget less the
         // instructions, the conversation and the question.
         let characterBudget = service.patientContextCharacters(history: history, question: question)
@@ -469,7 +469,7 @@ struct PatientChatView: View {
         guard let threadID = selectedThreadID, !messages.isEmpty else { return }
         isSending = true
         let summaryID = UUID()
-        let service = integrations.makeAssistantService(report: chatRunner.reporter)
+        let service = integrations.makeAssistantService(report: chatRunner.reporter, clientName: patient.name)
         let history = messages
         chatRunner.start(
             queue: integrations.inferenceQueue,

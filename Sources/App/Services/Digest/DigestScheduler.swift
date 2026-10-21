@@ -254,9 +254,11 @@ final class DigestScheduler: ObservableObject {
                 (try? store.readTranscript(for: patient, session: session)) ?? nil
             }.value
             if Task.isCancelled { return }
+            var service = ctx.service
+            service.clientName = patient.name
             guard let transcript, !transcript.isEmpty,
                   let build = builder.ensureDigest(
-                    for: patient, session: session, transcript: transcript, store: store, service: ctx.service)
+                    for: patient, session: session, transcript: transcript, store: store, service: service)
             else {
                 // No transcript any more, or a note is building this one itself.
                 work.removeAll { $0.sessionID == session.id }

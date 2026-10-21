@@ -6,7 +6,7 @@ extension Prompts {
     static let digestVersion = 1
 
     /// Compact notes on one stretch of a session, tied to its time range.
-    static func sectionDigest(text: String, anchor: String) -> String {
+    static func sectionDigest(text: String, anchor: String, clientName: String = "") -> String {
         """
         Below is one section of a therapy session transcript, covering \(anchor). \
         Write compact digest notes for it, for a clinician who will use them to \
@@ -25,7 +25,7 @@ extension Prompts {
         speakers did not say. Leave out a heading if the section has nothing for it. \
         Keep it under 1,200 characters.
 
-        \(transcriptLegend)
+        \(legend(clientName: clientName))
 
         Transcript section \(anchor):
         \(TranscriptCompactor.compact(text))
@@ -33,7 +33,7 @@ extension Prompts {
     }
 
     /// Merges section digests into one digest of the whole session.
-    static func sessionDigest(sections: [(anchor: String, digest: String)]) -> String {
+    static func sessionDigest(sections: [(anchor: String, digest: String)], clientName: String = "") -> String {
         let body = sections.map { "\($0.anchor)\n\($0.digest)" }.joined(separator: "\n\n")
         return """
         Below are digest notes for consecutive sections of one therapy session. \
@@ -44,6 +44,8 @@ extension Prompts {
         time range it came from, copied from the notes, such as "- Poor sleep, \
         about four hours a night [0:00–9:30]", so the reader can find it in the \
         transcript. Write "Risk: none noted" only if the notes flag nothing.
+
+        Refer to the therapist as "You" and to the client as \(clientRef(clientName)), as the notes do.
 
         Use only what is in the notes. Do not infer, diagnose or add anything \
         they do not say. Do not drop a risk flag to save space.

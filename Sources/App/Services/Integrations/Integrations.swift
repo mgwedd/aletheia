@@ -110,10 +110,11 @@ final class Integrations: ObservableObject {
     /// currently selected model. This is what summary/chat call sites use.
     /// `report` hears about the run (see `ChatStreamRunner.reporter`); a finished
     /// run also updates this model's measured speeds.
-    func makeAssistantService(report: (@Sendable (AIRunEvent) -> Void)? = nil) -> AssistantService {
+    func makeAssistantService(report: (@Sendable (AIRunEvent) -> Void)? = nil, clientName: String = "") -> AssistantService {
         let settings = settings
         let model = activeModelName
         var service = AssistantService(assistant: makeAssistant(), model: model, systemPrompt: settings.systemPrompt)
+        service.clientName = clientName
         service.report = { event in
             if case .finished(let stats) = event {
                 Task { @MainActor in settings.recordSpeeds(model: model, from: stats) }
