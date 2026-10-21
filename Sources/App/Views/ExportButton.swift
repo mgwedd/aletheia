@@ -9,6 +9,10 @@ struct ExportButton: View {
 
     @State private var showsFormats = false
     @State private var format = ExportFormat.default
+    /// Keyboard focus starts on Export (the default action), not on the first
+    /// format row: a focus ring on PDF next to a checkmark on Markdown read as
+    /// two selections.
+    @FocusState private var exportFocused: Bool
 
     var body: some View {
         Button {
@@ -54,11 +58,14 @@ struct ExportButton: View {
                     }
                     .buttonStyle(.themePrimary)
                     .keyboardShortcut(.defaultAction)
+                    .focused($exportFocused)
                 }
             }
             .buttonStyle(.themed)
             .padding(14)
             .frame(width: 190)
+            .defaultFocus($exportFocused, true)
+            .onAppear { exportFocused = true }
         }
     }
 }
