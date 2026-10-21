@@ -36,7 +36,7 @@ enum LongSessionNote {
         var text: String {
             switch self {
             case .ran: return "Checked against the passages."
-            case .noRoom: return "Not checked: not enough room on this Mac for the check."
+            case .noRoom: return "Not checked: not enough room for the check."
             case .tooLong: return "Not checked: the draft was too long to check."
             case .failed: return "The check didn't run (it failed), so this is the unchecked draft."
             case .incomplete: return "The check's result looked incomplete, so this is the unchecked draft."

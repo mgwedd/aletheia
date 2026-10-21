@@ -286,9 +286,6 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 12)
                 }
-                SettingsHairline()
-                SettingsCaption("Your acceptance of the terms is recorded only on this Mac. It is never sent anywhere.")
-                    .padding(.vertical, 12)
             }
         }
     }
@@ -365,7 +362,7 @@ struct SettingsView: View {
         if Integrations.appleIntelligenceBlocked {
             HStack(alignment: .top, spacing: 10) {
                 Chip("Off")
-                SettingsCaption("Apple Intelligence is blocked on purpose, so every AI path is on-device.")
+                SettingsCaption("Apple Intelligence is turned off on purpose.")
             }
         }
         // The "Built-in Model" (embedded llama.cpp) management UI — offered
@@ -521,7 +518,7 @@ struct SettingsView: View {
                 .frame(height: 38)
                 .themeField()
         }
-        SettingsCaption("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com. Talks to Ollama on this Mac only.")
+        SettingsCaption("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com.")
         HStack(spacing: 8) {
             if isPullingOllamaModel {
                 ThemeProgressBar(value: ollamaPullProgress)

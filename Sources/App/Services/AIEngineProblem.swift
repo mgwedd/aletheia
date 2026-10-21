@@ -74,7 +74,7 @@ enum AIEngineProblem: Equatable {
     var message: String {
         switch self {
         case .notInstalled:
-            return "Aletheia's AI runs on Ollama, a free engine that stays on this Mac. Install it once, then try again."
+            return "Aletheia's AI runs on Ollama, a free engine. Install it once, then try again."
         case .notRunning:
             return "Ollama is installed but not running. Start it and Aletheia will retry your request."
         case .modelMissing(let name):
@@ -82,7 +82,7 @@ enum AIEngineProblem: Equatable {
         case .erroring(let detail):
             return detail
         case .builtInModelMissing:
-            return "Aletheia's AI model downloads once and then runs on this Mac. Download it and Aletheia will retry your request."
+            return "Aletheia's AI model downloads once. Download it and Aletheia will retry your request."
         case .builtInModelCorrupt:
             return "The downloaded AI model file appears to be damaged or incomplete. Re-download it and Aletheia will retry your request."
         }

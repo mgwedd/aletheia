@@ -50,7 +50,7 @@ struct ContextBudget: Equatable {
 /// for session material on this Mac. Nothing is sent.
 struct PatientContextBudgetError: LocalizedError, Equatable {
     var errorDescription: String? {
-        "This conversation leaves no room to read the sessions on this Mac. Use Compact to shorten it, or start a new chat, and ask again."
+        "This conversation leaves no room to read the sessions. Use Compact to shorten it, or start a new chat, and ask again."
     }
 }
 
