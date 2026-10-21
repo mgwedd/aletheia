@@ -121,10 +121,10 @@ struct PatientChatView: View {
     }
 
     /// What the answers draw on, matching what `gatherCitedPatientContext`
-    /// sends: every session's generated notes, notes and comments, and the
-    /// transcript passages a search of all sessions finds for the question.
+    /// sends: everything when it fits; otherwise the patient's own material and
+    /// session summaries, with transcript text only where search points.
     private var scopeNote: String {
-        "Answers come from every session's generated notes, your notes and comments, plus the transcript passages found by searching all sessions for the names and words in your question. Each answer shows what it read. To ask about one session in full, open it and use its Ask tab."
+        "Answers come from the patient's background, your notes and comments, and each session's summary. When the history is too long to read whole, transcript text is added only where a search of all sessions points: the matching parts and the lines around each match. Each answer shows what it read. To ask about one session in full, open it and use its Ask tab."
     }
 
     /// Caveats about the last question's context, shown above the composer.
@@ -366,6 +366,8 @@ struct PatientChatView: View {
         var initialCoverage = context.coverage
         initialCoverage.effort = effort
         var latestCoverageLabel = initialCoverage.label
+        // Grows when a follow-up lookup reads a session the context didn't hold.
+        var answerSources = context.sources
         // What the notice and caption say comes from what was sent: they are
         // set once the answer starts (or ends), never for a run that was refused.
         func showCoverage() {
@@ -396,7 +398,8 @@ struct PatientChatView: View {
                     onCoverage: { updated in
                         latestCoverageLabel = updated.label
                         if isSending { coverageNotice = updated.label }
-                    }
+                    },
+                    onSources: { answerSources = $0 }
                 )
             },
             // Stream the raw answer live; fold in the numbered source footer once
@@ -430,7 +433,7 @@ struct PatientChatView: View {
                 // answer, without the sources footer.
                 let decorated = Citations.display(
                     answer: finalText,
-                    sources: context.sources,
+                    sources: answerSources,
                     enabled: appModel.featureRegistry.contains(id: SourceCitationsFeatureModule.id)
                 )
                 messages.upsert(id: assistantID, role: .assistant, text: decorated)

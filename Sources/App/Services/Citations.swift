@@ -67,10 +67,42 @@ struct TranscriptCoverage: Equatable {
     var monthMergedSessions: Int = 0
     /// The effort level chosen for this answer, when reported by the caller.
     var effort: AnswerEffort? = nil
+    /// The history didn't fit whole, so it was read in levels (`HistoryRetrieval`):
+    /// summaries, then the parts search pointed at.
+    var layered = false
+    /// Summary sections included because the question points at them.
+    var summarySections: Int = 0
+    /// Transcript sections sent in full under those summaries.
+    var openedSections: Int = 0
+    /// Sessions in range reached by search only: no summary yet, or past the cap.
+    var searchOnlySessions: Int = 0
+    /// Of `searchOnlySessions`, those with no summary yet.
+    var noSummarySessions: Int = 0
+    /// Date spans ("Mar 3, 2025 – Oct 8, 2026") of the sessions read as
+    /// summaries, of those with a transcript section in full, and of those
+    /// reached by search only.
+    var summarySpan: String? = nil
+    var openedSpan: String? = nil
+    var searchOnlySpan: String? = nil
+    /// The sessions (by tag) behind `sessionsWithPassages` and `digestSessions`,
+    /// so a follow-up lookup of a session already read isn't counted twice.
+    var passageTags: Set<String> = []
+    var summaryTags: Set<String> = []
+
+    /// Adds what follow-up lookups read: a session counts once, however it was reached.
+    mutating func addLookups(transcriptTags: Set<String>, digestTags: Set<String>) {
+        let newPassages = transcriptTags.subtracting(passageTags).count
+        let newSummaries = digestTags.subtracting(summaryTags).count
+        passageTags.formUnion(transcriptTags)
+        summaryTags.formUnion(digestTags)
+        sessionsWithPassages += newPassages
+        digestSessions += newSummaries
+    }
 
     /// A plain-language line for the chat sheet, or nil when nothing was read.
     var label: String? {
         func sessions(_ n: Int) -> String { "\(n) session\(n == 1 ? "" : "s")" }
+        func span(_ text: String?) -> String { text.map { ", \($0)" } ?? "" }
         var parts: [String] = []
         if notesSessions > 0 || notesCutSessions > 0 {
             let cut = notesCutSessions > 0 ? " (cut short or left out for \(sessions(notesCutSessions)))" : ""
@@ -78,7 +110,13 @@ struct TranscriptCoverage: Equatable {
         }
         if digestSessions > 0 {
             let merged = monthMergedSessions > 0 ? " (\(monthMergedSessions) merged by month)" : ""
-            parts.append("digests of \(sessions(digestSessions))" + merged)
+            parts.append("summaries of \(sessions(digestSessions))" + merged + span(summarySpan))
+        }
+        if summarySections > 0 {
+            parts.append("\(summarySections) matching summary section\(summarySections == 1 ? "" : "s")")
+        }
+        if openedSections > 0 {
+            parts.append("\(openedSections) transcript section\(openedSections == 1 ? "" : "s") in full" + span(openedSpan))
         }
         if transcriptSessions > 0 {
             var search = ""
@@ -100,6 +138,10 @@ struct TranscriptCoverage: Equatable {
             } else {
                 parts.append("transcript passages from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
             }
+        }
+        if layered && searchOnlySessions > 0 {
+            let missing = noSummarySessions > 0 ? " (\(noSummarySessions) with no summary yet)" : ""
+            parts.append("search only for \(sessions(searchOnlySessions))" + span(searchOnlySpan) + missing)
         }
         if unreadableSessions > 0 { parts.append("\(sessions(unreadableSessions)) could not be read, so answers may be incomplete") }
         guard !parts.isEmpty else { return nil }
@@ -129,6 +171,15 @@ enum Citations {
     /// The sessions actually cited in `answer`, in the order the sources were
     /// provided (newest first). Tags the model invented that don't match a real
     /// session are ignored.
+    /// `base` plus the sessions in `added` it doesn't already have (by tag), in
+    /// the newest-first order of the tags: what an answer can cite once its
+    /// follow-up lookups have read more sessions.
+    static func merged(_ base: [CitationSource], adding added: [CitationSource]) -> [CitationSource] {
+        var seen = Set(base.map(\.tag))
+        let all = base + added.filter { seen.insert($0.tag).inserted }
+        return all.sorted { $0.date > $1.date }
+    }
+
     static func citedSources(in answer: String, from sources: [CitationSource]) -> [CitationSource] {
         sources.filter { answer.contains("[\($0.tag)]") }
     }

@@ -16,6 +16,12 @@ struct ContextBudget: Equatable {
     /// characters a token; 3 leaves margin for timestamps and names. The budget
     /// check, `num_ctx` sizing, the progress display and the truncation tripwire
     /// all use it, so they agree with each other.
+    ///
+    /// Assumes English, the only language supported for now. Scripts that
+    /// tokenize near a token per character (Chinese, Japanese, Korean, and others)
+    /// would be underestimated about threefold; supporting them means a
+    /// script-aware estimate here and a truncation check that also fires when
+    /// the prompt reaches the whole window.
     static let charactersPerToken = 3
 
     static func estimatedTokens(forCharacters characters: Int) -> Int {

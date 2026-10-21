@@ -22,15 +22,20 @@ extension Prompts {
     /// transcript passages are in the text below. `whole` means every
     /// transcript is included; `newest` (included, of) means only the full
     /// transcripts of the newest sessions are.
+    /// `layered`: the history was read in levels (`HistoryRetrieval`), so the
+    /// transcripts are not included in full.
     static func searchBlock(
         _ result: SessionSearch.Result, shown: Int, whole: Bool, newest: (included: Int, of: Int, cutShort: Bool)? = nil,
-        unreadableSessions: Int
+        unreadableSessions: Int, layered: Bool = false
     ) -> String {
         func plural(_ n: Int, _ word: String) -> String { "\(n) \(word)\(n == 1 ? "" : "s")" }
         let searched = result.sessionsSearched
         let included: String
         if whole {
             included = "the full transcripts are included below"
+        } else if layered {
+            included = "the transcripts are not included in full; below are session summaries, the transcript "
+                + "sections the search pointed to, and the top \(plural(shown, "transcript passage"))"
         } else if let newest {
             included = newest.cutShort
                 ? "only the newest session's transcript, cut short to fit, is included below (1 of \(plural(newest.of, "session"))); the other transcripts are not included"

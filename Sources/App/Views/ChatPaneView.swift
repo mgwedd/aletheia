@@ -168,7 +168,14 @@ struct ChatPaneView: View {
                 }
             }
         } else {
-            AIProgressView(progress: progress, speed: speed)
+            VStack(alignment: .leading, spacing: 6) {
+                // A run of several steps (a long patient history) shows where it is overall.
+                if let steps = progress.steps {
+                    ThemeProgressBar(value: steps.fraction)
+                        .frame(maxWidth: 240)
+                }
+                AIProgressView(progress: progress, speed: speed)
+            }
         }
     }
 

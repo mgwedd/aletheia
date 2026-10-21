@@ -1258,6 +1258,7 @@ final class Store {
         var documents: [TranscriptDocument] = []
         var searchDocuments: [SessionSearch.Document] = []
         var datedDigests: [PatientDigestMerger.DatedDigest] = []
+        var fullDigests: [DigestedSession] = []
         var notesDates = Set<Date>()
         var unreadable = 0
         var index = 1
@@ -1300,6 +1301,8 @@ final class Store {
                         folderName: session.folderName,
                         digest: storedDigest.sessionDigest
                     ))
+                    fullDigests.append(.init(
+                        date: session.date, session: session.id, digest: storedDigest, transcript: transcriptText))
                 }
             }
             for part in parts {
@@ -1317,30 +1320,34 @@ final class Store {
         // notes kept and the search block (about 120 characters a term).
         let searchBlockReserve = 400 + 120 * search.terms.count
         let remainingAfterExtras = max(0, room - extrasUsed - searchBlockReserve)
-        let filteredDigests = datedDigests.filter { search.dateRange?.contains($0.date) ?? true }
-        // Only reserve room for digests when stored digests exist and the transcripts won't fit whole.
+        let inRange = { (date: Date) in search.dateRange?.contains(date) ?? true }
+        let filteredDigests = datedDigests.filter { inRange($0.date) }
         let probeSelection = PatientContextRetriever.select(
             transcripts: documents, search: search,
             characterBudget: remainingAfterExtras, labels: labels
         )
-        let digestReserve = (!probeSelection.whole && !filteredDigests.isEmpty)
-            ? min(remainingAfterExtras / 3, filteredDigests.count * 600)
-            : 0
-        let selection = digestReserve > 0
+        // Too much to send whole: read in levels (`HistoryRetrieval`). Summaries
+        // first, then the summary sections and transcript sections search points
+        // at, then the lines around each hit. Transcript text never fills spare room.
+        let layered = !probeSelection.whole
+        let shares = HistoryRetrieval.Shares(room: remainingAfterExtras)
+        let digestPlan = layered && !filteredDigests.isEmpty
+            ? PatientDigestMerger.plan(digests: filteredDigests, characterBudget: shares.summaries)
+            : PatientDigestMerger.Plan(individualByDate: [:], monthBlocks: [], digestSessionCount: 0, monthMergedSessionCount: 0)
+        let digestCost = digestPlan.individualByDate.values.reduce(0) { $0 + $1.count + 2 }
+            + digestPlan.monthBlocks.reduce(0) { $0 + $1.text.count + 2 }
+        let levels = layered
+            ? Store.drillDown(into: fullDigests.filter { inRange($0.date) }, search: search, shares: shares)
+            : DrillDown()
+        let selection = layered
             ? PatientContextRetriever.select(
                 transcripts: documents, search: search,
-                characterBudget: max(0, remainingAfterExtras - digestReserve), labels: labels
+                characterBudget: max(0, remainingAfterExtras - digestCost - levels.cost), labels: labels,
+                hitsOnly: true, excluding: levels.openedDates
             )
             : probeSelection
         let excerpts = selection.excerpts
         let excerptsByDate = Dictionary(grouping: excerpts, by: { $0.date })
-        let excerptsChars = excerpts.reduce(0) { $0 + $1.text.count + 90 }
-        let digestPlan = (!selection.whole && !filteredDigests.isEmpty)
-            ? PatientDigestMerger.plan(
-                digests: filteredDigests,
-                characterBudget: max(digestReserve, remainingAfterExtras - excerptsChars)
-            )
-            : PatientDigestMerger.Plan(individualByDate: [:], monthBlocks: [], digestSessionCount: 0, monthMergedSessionCount: 0)
 
         var blocks: [String] = []
         var sources: [CitationSource] = []
@@ -1350,6 +1357,7 @@ final class Store {
             if let digestBlock = digestPlan.individualByDate[date] {
                 parts.append(digestBlock)
             }
+            parts.append(contentsOf: levels.blocks[date] ?? [])
             parts.append(contentsOf: (excerptsByDate[date] ?? []).map { $0.text })
             parts.append(contentsOf: extras[date] ?? [])
             // Nothing from this session made it into the context: don't cite it.
@@ -1369,22 +1377,22 @@ final class Store {
         let sessionsText = blocks.joined(separator: "\n\n")
         // Counted from what is in `text`: a session whose transcript is
         // unreadable is not counted as read.
-        let transcriptDates = Set(documents.map { $0.date }.filter { search.dateRange?.contains($0) ?? true })
+        let transcriptDates = Set(documents.map { $0.date }.filter(inRange))
         // Whole-transcript selections are counted per session, not per date, so
         // two sessions on one day are not both counted when only one was sent.
         let sessionsRead = selection.fullTexts
             ? selection.wholeCount + (selection.cutShort ? 1 : 0)
-            : transcriptDates.intersection(excerptsByDate.keys).count
+            : transcriptDates.intersection(Set(excerptsByDate.keys).union(levels.openedDates)).count
         let transcriptTotal = selection.fullTexts ? selection.totalCount : transcriptDates.count
         let searchBlock = Prompts.searchBlock(
             search, shown: selection.hitsShown, whole: selection.whole,
             newest: selection.fullTexts ? (sessionsRead, transcriptTotal, selection.cutShort) : nil,
-            unreadableSessions: unreadable
+            unreadableSessions: unreadable, layered: layered
         )
         let text = [background, searchBlock, sessionsText]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n\n")
-        let coverage = TranscriptCoverage(
+        var coverage = TranscriptCoverage(
             transcriptSessions: transcriptTotal,
             sessionsWithPassages: sessionsRead,
             notesSessions: notesDates.count,
@@ -1399,7 +1407,109 @@ final class Store {
             digestSessions: digestPlan.digestSessionCount,
             monthMergedSessions: digestPlan.monthMergedSessionCount
         )
+        coverage.passageTags = Set(
+            transcriptDates.intersection(Set(excerptsByDate.keys).union(levels.openedDates)).compactMap { labels[$0] })
+        coverage.summaryTags = Set(digestPlan.individualByDate.keys.compactMap { labels[$0] })
+            .union(digestPlan.monthBlocks.flatMap(\.tags))
+        if layered {
+            // Which sessions were read as summaries, which had a section in full,
+            // and which only search reached (no summary yet, or past the cap).
+            let summarized = Set(digestPlan.individualByDate.keys)
+                .union(digestPlan.monthBlocks.flatMap { $0.sources.map(\.date) })
+            let withDigest = Set(filteredDigests.map(\.date))
+            let searchOnly = transcriptDates.subtracting(summarized).subtracting(levels.openedDates)
+            coverage.layered = true
+            coverage.summarySections = levels.summarySections
+            coverage.openedSections = levels.openedSections
+            coverage.searchOnlySessions = searchOnly.count
+            coverage.noSummarySessions = searchOnly.subtracting(withDigest).count
+            coverage.summarySpan = HistoryRetrieval.span(Array(summarized), formatter: Store.spanFormatter)
+            coverage.openedSpan = HistoryRetrieval.span(Array(levels.openedDates), formatter: Store.spanFormatter)
+            coverage.searchOnlySpan = HistoryRetrieval.span(Array(searchOnly), formatter: Store.spanFormatter)
+        }
         return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)
+    }
+
+    private static let spanFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        return f
+    }()
+
+    /// A session with a current digest, for the layered patient chat.
+    struct DigestedSession {
+        let date: Date
+        let session: UUID
+        let digest: SessionDigest
+        let transcript: String
+    }
+
+    /// Levels 2 and 3 of `HistoryRetrieval`: the summary sections the question
+    /// points at, and the transcript sections under the best of them, as prompt
+    /// blocks per session date.
+    struct DrillDown {
+        var blocks: [Date: [String]] = [:]
+        var summarySections = 0
+        var openedSections = 0
+        var openedDates = Set<Date>()
+        /// Characters the blocks take, with their separators.
+        var cost = 0
+    }
+
+    static func drillDown(
+        into sessions: [DigestedSession], search: SessionSearch.Result, shares: HistoryRetrieval.Shares
+    ) -> DrillDown {
+        var hitSeconds: [UUID: [Int?]] = [:]
+        for hit in search.hits where hit.kind == .transcript {
+            if let id = hit.sessionID { hitSeconds[id, default: []].append(hit.seconds) }
+        }
+        let inputs = sessions.map {
+            HistoryRetrieval.Session(date: $0.date, sections: $0.digest.sections, hitSeconds: hitSeconds[$0.session] ?? [])
+        }
+        let ranked = HistoryRetrieval.rank(inputs, stems: HistoryRetrieval.stems(of: search.terms))
+        func anchor(_ c: HistoryRetrieval.Candidate) -> String {
+            let sections = sessions[c.session].digest.sections
+            return HistoryRetrieval.anchor(sections[c.section], index: c.section, count: sections.count)
+        }
+        func summaryBlock(_ c: HistoryRetrieval.Candidate) -> String {
+            "Summary of a matching part \(anchor(c)):\n" + sessions[c.session].digest.sections[c.section].digest
+        }
+        // The transcript under a digest section: the same split the digest was
+        // built from (its fingerprint matched), so section i is the same text.
+        var splits: [Int: [TranscriptSection]] = [:]
+        var opened: [String: String] = [:]
+        func transcriptBlock(_ c: HistoryRetrieval.Candidate) -> String? {
+            let key = "\(c.session)-\(c.section)"
+            if let cached = opened[key] { return cached }
+            let item = sessions[c.session]
+            let parts = splits[c.session] ?? TranscriptSections.split(item.transcript)
+            splits[c.session] = parts
+            guard parts.count == item.digest.sections.count, parts.indices.contains(c.section) else { return nil }
+            let block = "Transcript section \(anchor(c)):\n" + TranscriptCompactor.compact(parts[c.section].text)
+            opened[key] = block
+            return block
+        }
+
+        var result = DrillDown()
+        let shown = HistoryRetrieval.sectionsToShow(ranked, budget: shares.sections) { summaryBlock($0).count + 2 }
+        let open = HistoryRetrieval.sectionsToOpen(ranked, budget: shares.opened) { c in
+            transcriptBlock(c).map { $0.count + 2 }
+        }
+        // In section order within a session: summary sections, then the transcript sections.
+        for c in shown.sorted(by: { ($0.session, $0.section) < ($1.session, $1.section) }) {
+            let block = summaryBlock(c)
+            result.blocks[sessions[c.session].date, default: []].append(block)
+            result.cost += block.count + 2
+        }
+        for c in open.sorted(by: { ($0.session, $0.section) < ($1.session, $1.section) }) {
+            guard let block = transcriptBlock(c) else { continue }
+            result.blocks[sessions[c.session].date, default: []].append(block)
+            result.cost += block.count + 2
+            result.openedDates.insert(sessions[c.session].date)
+        }
+        result.summarySections = shown.count
+        result.openedSections = open.count
+        return result
     }
 
     /// Builds a read-only `LocalToolScope` over all readable sessions of `patient`,

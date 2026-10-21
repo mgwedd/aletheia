@@ -394,7 +394,9 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(finalCoverage.sessionsWithPassages, 1)
         XCTAssertEqual(finalCoverage.digestSessions, 1)
         XCTAssertTrue(try XCTUnwrap(finalCoverage.label).hasSuffix("· Normal"))
-        XCTAssertTrue(progress.completedStages.contains("Searched 2 sessions · 0 sessions with passages"))
+        XCTAssertTrue(progress.completedStages.contains("Searched 2 sessions"))
+        // Search done, lookups done, the answer being written: two of three steps.
+        XCTAssertEqual(progress.steps, AIRunSteps(done: 2, total: 3))
         XCTAssertTrue(progress.completedStages.contains("Read S1 [10:00–15:00]"))
         XCTAssertTrue(progress.completedStages.contains("Read digest for S1"))
     }
@@ -488,6 +490,54 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertGreaterThan(outcome.output.count + 2, 210)
         XCTAssertEqual(result.additionalContext, "", "an output over the budget must not reach the answer")
         XCTAssertTrue(result.readTranscriptTags.isEmpty, "nor be counted as read")
+    }
+
+    /// A lookup that reads a session the context didn't hold makes it citable:
+    /// the answer's "[S2]" renders as a date and S2 is in the Sources list.
+    func testALookedUpSessionBecomesACitableSource() async throws {
+        let stub = ToolLoopStubAssistant()
+        stub.planReplies = [#"{"calls":[{"tool":"read_section","session":"S2","start":"00:00","end":"10:00"},{"tool":"list_sessions"}]}"#]
+        stub.answerReply = "She practised breathing before the meeting [S2]."
+        var service = AssistantService(assistant: stub, model: "m")
+        service.budget = ContextBudget(tokens: 16_384)
+        let s1 = CitationSource(tag: "S1", date: date(2026, 3, 15), folderName: "2026-03-15_10-00")
+        let context = PatientContext(
+            text: "===== Session [S1] March 15, 2026 =====\nTherapist note for S1.",
+            sources: [s1],
+            coverage: TranscriptCoverage(transcriptSessions: 2, searched: true)
+        )
+
+        var sources = context.sources
+        var answer = ""
+        for try await snap in PatientChatAnswer.stream(
+            context: context, history: [], question: "Did she practise breathing?", effort: .normal, totalBudget: 12_000,
+            scope: { self.LocalToolScopeForSample() }, service: service, builder: DigestBuilder(queue: InferenceQueue()),
+            live: { _, _ in }, onCoverage: { _ in }, onSources: { sources = $0 }
+        ) { answer = snap }
+
+        XCTAssertEqual(sources.map(\.tag), ["S1", "S2"], "list_sessions shows no session's material, so it adds none")
+        XCTAssertEqual(sources.last?.folderName, "2026-01-10_10-00")
+        let shown = Citations.display(answer: answer, sources: sources, enabled: true)
+        XCTAssertFalse(shown.contains("[S2]"))
+        XCTAssertTrue(shown.contains("Sources: "))
+    }
+
+    func testLookupOutcomesNameTheSessionsTheyShow() {
+        let scope = LocalToolScope(sessions: sampleSessions())
+        XCTAssertEqual(scope.execute(LocalToolCall(tool: "read_section", session: "S2")).sourceTags, ["S2"])
+        XCTAssertEqual(scope.execute(LocalToolCall(tool: "get_digest", session: "S2")).sourceTags, ["S2"], "notes in place of a digest")
+        XCTAssertEqual(scope.execute(LocalToolCall(tool: "search", query: "breathing")).sourceTags, ["S2"])
+        XCTAssertEqual(scope.execute(LocalToolCall(tool: "list_sessions")).sourceTags, [])
+        XCTAssertEqual(scope.citationSources(tags: ["S2", "S9"]).map(\.tag), ["S2"])
+    }
+
+    /// The patient chat's steps show as a bar above the stage list.
+    func testChatPaneShowsTheStepsAsABar() throws {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/Views/ChatPaneView.swift")
+        let source = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertTrue(source.contains("if let steps = progress.steps {\n                    ThemeProgressBar(value: steps.fraction)"))
     }
 
     /// A tool search reads every session of the patient; the loop is main-actor

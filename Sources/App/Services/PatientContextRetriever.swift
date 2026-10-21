@@ -68,19 +68,32 @@ enum PatientContextRetriever {
     /// filter applies here too. `labels` is used to measure header length
     /// against the budget, exactly as the rendered context does. The result
     /// never exceeds `characterBudget`; `whole` is false when anything was left out.
+    ///
+    /// `hitsOnly` (the layered patient chat, see `HistoryRetrieval`) keeps only
+    /// the lines around search hits: no whole transcripts, and nothing when no
+    /// transcript matched. Hits and transcripts dated in `excluding` are skipped.
     static func select(
         transcripts: [TranscriptDocument],
         search: SessionSearch.Result,
         characterBudget: Int,
-        labels: [Date: String] = [:]
+        labels: [Date: String] = [:],
+        hitsOnly: Bool = false,
+        excluding: Set<Date> = []
     ) -> Selection {
         // Compacted for the model (`TranscriptCompactor`), so the budget below
-        // measures what is actually sent.
-        let usable = transcripts.filter {
+        // measures what is actually sent. Only the whole-transcript paths read
+        // the compacted text, so the hits-only path skips the work.
+        let inRange = transcripts.filter {
             !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && (search.dateRange?.contains($0.date) ?? true)
-        }.map { TranscriptDocument(date: $0.date, text: TranscriptCompactor.compact($0.text)) }
-        guard !usable.isEmpty else { return Selection(excerpts: [], hitsShown: 0, whole: true, fullTexts: true) }
+                && !excluding.contains($0.date)
+        }
+        let usable = hitsOnly ? inRange : inRange.map { TranscriptDocument(date: $0.date, text: TranscriptCompactor.compact($0.text)) }
+        guard !usable.isEmpty else {
+            return hitsOnly
+                ? Selection(excerpts: [], hitsShown: 0, whole: false, fullTexts: false)
+                : Selection(excerpts: [], hitsShown: 0, whole: true, fullTexts: true)
+        }
         func newestFirst() -> Selection {
             let kept = wholeExcerpts(usable, budget: characterBudget, labels: labels)
             return Selection(
@@ -88,23 +101,27 @@ enum PatientContextRetriever {
                 wholeCount: kept.whole, totalCount: usable.count, cutShort: kept.cutShort
             )
         }
-        let transcriptHits = search.hits.filter { $0.kind == .transcript }
+        let transcriptHits = search.hits.filter { $0.kind == .transcript && !excluding.contains($0.date) }
 
         // Everything fits: all of it, newest first, so nothing a search could
         // have found is left out.
-        let totalChars = usable.reduce(0) { $0 + blockLength($1, labels: labels) }
-        if totalChars <= characterBudget {
-            return Selection(
-                excerpts: wholeExcerpts(usable, budget: characterBudget, labels: labels).excerpts,
-                hitsShown: search.transcriptHitCount, whole: true, fullTexts: true,
-                wholeCount: usable.count, totalCount: usable.count
-            )
+        if !hitsOnly {
+            let totalChars = usable.reduce(0) { $0 + blockLength($1, labels: labels) }
+            if totalChars <= characterBudget {
+                return Selection(
+                    excerpts: wholeExcerpts(usable, budget: characterBudget, labels: labels).excerpts,
+                    hitsShown: search.transcriptHitCount, whole: true, fullTexts: true,
+                    wholeCount: usable.count, totalCount: usable.count
+                )
+            }
         }
         // No terms to rank on, or terms with no transcript match: the newest
         // sessions that fit, rather than nothing. `whole` is false: older
         // sessions were left out, and the label says how many.
         guard !search.terms.isEmpty, !transcriptHits.isEmpty else {
-            return newestFirst()
+            return hitsOnly
+                ? Selection(excerpts: [], hitsShown: 0, whole: false, fullTexts: false, totalCount: usable.count)
+                : newestFirst()
         }
 
         // Best hits first; each adds only the context lines not already kept

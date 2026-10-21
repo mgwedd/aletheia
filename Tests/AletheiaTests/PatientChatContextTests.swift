@@ -45,6 +45,13 @@ final class PatientChatContextTests: XCTestCase {
             .joined(separator: "\n")
     }
 
+    /// "Jan 5, 2026 – Mar 5, 2026", as the coverage line names a span of sessions.
+    private func span(_ first: Date, _ last: Date) -> String {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        return "\(f.string(from: first)) – \(f.string(from: last))"
+    }
+
     private func occurrences(of needle: String, in text: String) -> Int {
         text.components(separatedBy: needle).count - 1
     }
@@ -199,9 +206,11 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertEqual(context.coverage.notesSessions, 1)
         XCTAssertEqual(context.coverage.mentions, 1)
         XCTAssertFalse(context.coverage.wholeTranscripts)
+        // No session has a summary yet, so search is all that reached them.
         XCTAssertEqual(
             context.coverage.label,
             "Read: notes and comments from 1 session · transcript passages from 1 of 3 sessions (1 match for your words)"
+                + " · search only for 3 sessions, \(span(date(2026, 1, 5), date(2026, 3, 5))) (3 with no summary yet)"
         )
     }
 
@@ -243,7 +252,9 @@ final class PatientChatContextTests: XCTestCase {
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking", characterBudget: Self.tight)
 
         XCTAssertTrue(context.text.contains("- \"kayaking\": 1 mention"))
-        XCTAssertTrue(context.text.contains("Matching passages are in 1 of 3 sessions searched; showing the top 1 transcript passage."))
+        XCTAssertTrue(context.text.contains(
+            "Matching passages are in 1 of 3 sessions searched; the transcripts are not included in full; below are "
+                + "session summaries, the transcript sections the search pointed to, and the top 1 transcript passage."))
         XCTAssertTrue(section(context.text, tag: "S1").contains("kayaking"))
     }
 
@@ -385,13 +396,16 @@ final class PatientChatContextTests: XCTestCase {
 
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "What did we talk about last time?", characterBudget: 12_000)
 
+        // The history doesn't fit whole and nothing points into it: no transcript
+        // text is sent to fill the room, and the line says search is all there was.
         XCTAssertLessThanOrEqual(context.text.count, 12_000)
-        let read = context.coverage.sessionsWithPassages
-        XCTAssertTrue((1..<8).contains(read), "some, not all, of the sessions fit")
+        XCTAssertEqual(context.coverage.sessionsWithPassages, 0)
         XCTAssertFalse(context.coverage.wholeTranscripts)
-        XCTAssertEqual(context.coverage.label, "Read: full transcripts of the newest \(read) of 8 sessions")
-        XCTAssertTrue(context.text.contains("only the full transcripts of the newest \(read) of 8 sessions are included below"))
-        XCTAssertTrue(section(context.text, tag: "S1").contains("weather"), "the newest session is the one kept")
+        XCTAssertFalse(context.text.contains("weather"))
+        XCTAssertEqual(
+            context.coverage.label,
+            "Read: transcript passages from 0 of 8 sessions · search only for 8 sessions, "
+                + "\(span(date(2026, 1, 1), date(2026, 1, 8))) (8 with no summary yet)")
     }
 
     func testWholeContextFitsAnEightGBMacWithManyNotes() throws {
@@ -432,11 +446,11 @@ final class PatientChatContextTests: XCTestCase {
         // A word only a note has: transcript terms find nothing, so the newest sessions that fit go in.
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "zeppelin", characterBudget: 12_000)
 
-        let read = context.coverage.sessionsWithPassages
-        XCTAssertLessThan(read, 6)
+        XCTAssertEqual(context.coverage.sessionsWithPassages, 0, "no transcript text fills the room")
         XCTAssertFalse(context.coverage.wholeTranscripts)
-        XCTAssertTrue(try XCTUnwrap(context.coverage.label).contains("full transcripts of the newest \(read) of 6 sessions"))
+        XCTAssertTrue(try XCTUnwrap(context.coverage.label).contains("search only for 6 sessions"))
         XCTAssertFalse(context.text.contains("the full transcripts are included below"))
+        XCTAssertFalse(context.text.contains("weather"))
     }
 
     func testTranscriptBudgetIsTrimmedForTheBestHitInsteadOfKeptWhole() throws {
@@ -508,7 +522,8 @@ final class PatientChatContextTests: XCTestCase {
         var coverageWithEffort = context.coverage
         coverageWithEffort.effort = .normal
         let label = try XCTUnwrap(coverageWithEffort.label)
-        XCTAssertTrue(label.contains("digests of 9 sessions (3 merged by month)"), label)
+        XCTAssertTrue(label.contains(
+            "summaries of 9 sessions (3 merged by month), \(span(date(2025, 10, 4), date(2026, 3, 15)))"), label)
         XCTAssertTrue(label.hasSuffix("· Normal"), label)
     }
 
@@ -571,6 +586,77 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertFalse(context.sources.contains { $0.folderName == notesOnly.folderName })
         XCTAssertTrue(context.sources.contains { $0.folderName == recorded.folderName })
         assertToolTagsMatch(context, patient)
+    }
+
+    // MARK: - Layers
+
+    /// 15 weekly half-hour sessions, the oldest 12 with summaries. Session 9
+    /// mentions kayaking at 12:30. Returns the sessions, oldest first.
+    private func makeSummarizedHistory(_ patient: Patient) throws -> [SessionRecord] {
+        var made: [SessionRecord] = []
+        for s in 0..<15 {
+            let session = try store.createSession(for: patient, on: date(2026, 1 + s / 4, 1 + (s % 4) * 7))
+            let transcript = (0..<60).map { i -> String in
+                let stamp = String(format: "[%02d:%02d]", i / 2, (i % 2) * 30)
+                return s == 9 && i == 25
+                    ? "\(stamp) Call audio: Then she mentioned the kayaking trip with her brother."
+                    : "\(stamp) You: Session \(s) minute \(i / 2) about errands and the weather."
+            }.joined(separator: "\n")
+            try store.saveTranscript(transcript, for: patient, session: session)
+            if s < 12 {
+                let sections = TranscriptSections.split(transcript).enumerated().map { i, part in
+                    SessionDigest.Section(
+                        start: part.start, end: part.end,
+                        digest: s == 9 && i == 1 ? "Kayaking trip came up." : "Errands and weather.")
+                }
+                try store.saveDigest(SessionDigest(
+                    model: "m", promptVersion: Prompts.digestVersion,
+                    transcriptFingerprint: NoteFreshness.fingerprint(of: transcript),
+                    sections: sections, sessionDigest: "Summary of session \(s).", createdAt: Date()
+                ), for: patient, session: session)
+            }
+            made.append(session)
+        }
+        return made
+    }
+
+    func testOnlyTheTranscriptSectionSearchPointsAtIsOpened() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        _ = try makeSummarizedHistory(patient)
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking", characterBudget: 20_000)
+
+        XCTAssertLessThanOrEqual(context.text.count, 20_000)
+        XCTAssertFalse(context.coverage.wholeTranscripts)
+        XCTAssertTrue(context.coverage.layered)
+        XCTAssertEqual(context.coverage.openedSections, 1)
+        XCTAssertEqual(context.coverage.summarySections, 1)
+        XCTAssertTrue(context.text.contains("Summary of a matching part [10:00–19:30]:\nKayaking trip came up."))
+        XCTAssertTrue(context.text.contains("Transcript section [10:00–19:30]:"))
+        XCTAssertTrue(context.text.contains("kayaking trip with her brother"))
+        // The 19 other lines of that section, and no other transcript text.
+        XCTAssertEqual(occurrences(of: "about errands and the weather", in: context.text), 19)
+        XCTAssertTrue(context.text.contains("Summary of session 11."))
+        XCTAssertEqual(context.coverage.searchOnlySessions, 3)
+        XCTAssertEqual(context.coverage.noSummarySessions, 3)
+        let label = try XCTUnwrap(context.coverage.label)
+        XCTAssertTrue(label.contains("1 transcript section in full"), label)
+        XCTAssertTrue(label.contains("search only for 3 sessions"), label)
+        XCTAssertTrue(label.contains("(3 with no summary yet)"), label)
+        assertToolTagsMatch(context, patient)
+    }
+
+    func testNothingPointsIntoTheHistorySoOnlySummariesAreSent() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        _ = try makeSummarizedHistory(patient)
+
+        let context = store.gatherCitedPatientContext(for: patient, relevantTo: "zeppelin", characterBudget: 20_000)
+
+        XCTAssertEqual(context.coverage.openedSections, 0)
+        XCTAssertEqual(context.coverage.sessionsWithPassages, 0)
+        XCTAssertFalse(context.text.contains("about errands and the weather"), "no transcript text fills the room")
+        XCTAssertTrue(context.text.contains("Summary of session 11."))
+        XCTAssertEqual(context.coverage.digestSessions, 12)
     }
 
     // MARK: - Scale
