@@ -160,7 +160,7 @@ struct EncryptionSetupSheet: View {
 
     @ViewBuilder
     private var passphraseStep: some View {
-        Text("Choose a passphrase. It protects the key that encrypts your notes, transcripts and recordings on this Mac.")
+        Text("Choose a passphrase. It protects the key that encrypts your notes, transcripts and recordings.")
             .font(Theme.Typography.body)
             .foregroundStyle(Theme.muted.color)
             .fixedSize(horizontal: false, vertical: true)
