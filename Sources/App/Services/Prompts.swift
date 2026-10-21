@@ -275,7 +275,7 @@ enum Prompts {
     /// The conversation as `ChatMemory` remembers it. The question is sent
     /// once, on its own line after this; if the history already ends with it
     /// (the chat views append it before sending), it's left out here.
-    private static func formatHistory(_ history: [ChatMessage], question: String? = nil) -> String {
+    static func formatHistory(_ history: [ChatMessage], question: String? = nil) -> String {
         var (summary, recent) = ChatMemory.remembered(history)
         if let last = recent.last, last.role == .user, last.text == question { recent.removeLast() }
         var parts: [String] = []
