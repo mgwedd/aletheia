@@ -34,10 +34,10 @@ final class TranscriptSplitTests: XCTestCase {
     }
 
     func testANarrowPaneFoldsTheCommentsAwayRatherThanSqueezingTheTranscript() {
-        let layout = Split.layout(total: 500, ratio: Split.defaultRatio, hasComments: true, collapsed: nil)
+        let layout = Split.layout(total: 300, ratio: Split.defaultRatio, hasComments: true, collapsed: nil)
         XCTAssertEqual(layout.strip, .comments)
         XCTAssertEqual(layout.comments, 0)
-        XCTAssertEqual(layout.transcript, 500 - Split.stripWidth)
+        XCTAssertEqual(layout.transcript, 300 - Split.stripWidth)
         XCTAssertFalse(layout.showsDivider)
     }
 
@@ -82,12 +82,20 @@ final class TranscriptSplitTests: XCTestCase {
         XCTAssertEqual(Split.resolveDrag(proposedTranscript: 600, total: 901), .resize(ratio: 600.0 / 900.0))
     }
 
+    func testThresholdsLetTheTranscriptGetNarrowBeforeSnapping() {
+        XCTAssertEqual(Split.minTranscript, 200)
+        XCTAssertEqual(Split.minComments, 180)
+        XCTAssertEqual(Split.collapseSlack, 80)
+        // The transcript can be dragged down to 120 before it snaps shut.
+        XCTAssertEqual(Split.minTranscript - Split.collapseSlack, 120)
+    }
+
     func testDragStopsAtTheMinimumBeforeCollapsing() {
         // Up to `collapseSlack` past a minimum the side holds at its minimum.
-        XCTAssertEqual(Split.resolveDrag(proposedTranscript: 340, total: 901), .resize(ratio: 360.0 / 900.0))
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: 150, total: 901), .resize(ratio: 200.0 / 900.0))
         XCTAssertEqual(
             Split.resolveDrag(proposedTranscript: Split.minTranscript - Split.collapseSlack, total: 901),
-            .resize(ratio: 360.0 / 900.0)
+            .resize(ratio: 200.0 / 900.0)
         )
         XCTAssertEqual(
             Split.resolveDrag(proposedTranscript: Split.minTranscript - Split.collapseSlack - 1, total: 901),
@@ -97,9 +105,40 @@ final class TranscriptSplitTests: XCTestCase {
 
     func testDragPastTheCommentsMinimumCollapsesThem() {
         // usable = 900; comments are 900 - proposed.
-        XCTAssertEqual(Split.resolveDrag(proposedTranscript: 690, total: 901), .resize(ratio: 680.0 / 900.0))
-        XCTAssertEqual(Split.resolveDrag(proposedTranscript: 728, total: 901), .resize(ratio: 680.0 / 900.0))
-        XCTAssertEqual(Split.resolveDrag(proposedTranscript: 729, total: 901), .collapse(.comments))
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: 690, total: 901), .resize(ratio: 690.0 / 900.0))
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: 800, total: 901), .resize(ratio: 720.0 / 900.0))
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: 801, total: 901), .collapse(.comments))
+    }
+
+    // MARK: - Dragging out of a collapsed strip
+
+    func testDragOriginIsWhereTheDividerIs() {
+        let both = Split.layout(total: 901, ratio: Split.defaultRatio, hasComments: true, collapsed: nil)
+        XCTAssertEqual(Split.dragOrigin(both, total: 901), 600)
+        let comments = Split.layout(total: 901, ratio: Split.defaultRatio, hasComments: true, collapsed: .comments)
+        XCTAssertEqual(Split.dragOrigin(comments, total: 901), 901 - Split.stripWidth)
+        let transcript = Split.layout(total: 901, ratio: Split.defaultRatio, hasComments: true, collapsed: .transcript)
+        XCTAssertEqual(Split.dragOrigin(transcript, total: 901), Split.stripWidth)
+    }
+
+    func testDraggingTheCommentsStripOutwardsReopensThem() {
+        let layout = Split.layout(total: 901, ratio: Split.defaultRatio, hasComments: true, collapsed: .comments)
+        let origin = Split.dragOrigin(layout, total: 901)
+        // Barely moved, or dragged further shut: still collapsed.
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: origin, total: 901), .collapse(.comments))
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: origin + 30, total: 901), .collapse(.comments))
+        // Dragged until the comments would be 100 wide: they open and follow the mouse.
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: origin - 110, total: 901), .resize(ratio: 720.0 / 900.0))
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: origin - 300, total: 901), .resize(ratio: 577.0 / 900.0))
+    }
+
+    func testDraggingTheTranscriptStripOutwardsReopensIt() {
+        let layout = Split.layout(total: 901, ratio: Split.defaultRatio, hasComments: true, collapsed: .transcript)
+        let origin = Split.dragOrigin(layout, total: 901)
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: origin, total: 901), .collapse(.transcript))
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: origin + 50, total: 901), .collapse(.transcript))
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: origin + 100, total: 901), .resize(ratio: 200.0 / 900.0))
+        XCTAssertEqual(Split.resolveDrag(proposedTranscript: origin + 300, total: 901), .resize(ratio: 324.0 / 900.0))
     }
 
     // MARK: - Opening a collapsed side
@@ -110,13 +149,13 @@ final class TranscriptSplitTests: XCTestCase {
     }
 
     func testArrowSwapsTheSidesWhenThereIsNoRoomForBoth() {
-        XCTAssertEqual(Split.expanded(opening: .comments, total: 500), .transcript)
-        XCTAssertEqual(Split.expanded(opening: .transcript, total: 500), .comments)
+        XCTAssertEqual(Split.expanded(opening: .comments, total: 300), .transcript)
+        XCTAssertEqual(Split.expanded(opening: .transcript, total: 300), .comments)
     }
 
     func testFocusingACommentOpensTheCommentsOnlyWhenTheyFit() {
         XCTAssertNil(Split.revealingComments(collapsed: .comments, total: 901))
-        XCTAssertEqual(Split.revealingComments(collapsed: .comments, total: 500), .comments)
+        XCTAssertEqual(Split.revealingComments(collapsed: .comments, total: 300), .comments)
         XCTAssertEqual(Split.revealingComments(collapsed: .transcript, total: 901), .transcript)
         XCTAssertNil(Split.revealingComments(collapsed: nil, total: 901))
     }

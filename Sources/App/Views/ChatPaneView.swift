@@ -56,7 +56,7 @@ struct ChatPaneView: View {
     var queuedStatus: String? = nil
     /// What the answers are drawn from, as a tip on the question field. The
     /// default describes the per-session chat.
-    var scopeTip: HelpTip = HelpTips.sessionChatScope
+    var scopeTip: HelpTip?
     /// Caveats about the last answer, shown above the composer in muted type.
     var notices: [String] = []
     /// What is under way before the model starts (e.g. searching), shown as
@@ -145,8 +145,19 @@ struct ChatPaneView: View {
                         progressIndicator
                             .id("sending-indicator")
                     }
+                    // Zero-height end marker: scrolling to it lands on the true
+                    // bottom, under the stack's spacing, not 20pt short of it.
+                    Color.clear.frame(height: 0).id(Self.bottomID)
                 }
-                .padding(20)
+                .padding(EdgeInsets(top: 20, leading: 20, bottom: 0, trailing: 20))
+            }
+            // A thread opens at its latest message, not its first. The anchor
+            // covers the first layout and later growth; the explicit jumps
+            // below cover a different thread arriving in this same view.
+            .defaultScrollAnchor(.bottom)
+            .onAppear { jumpToLatest(proxy) }
+            .onChange(of: messages.first?.id) { _, _ in
+                jumpToLatest(proxy)
             }
             .onChange(of: messages.count) { _, _ in
                 scrollToBottom(proxy)
@@ -309,13 +320,19 @@ struct ChatPaneView: View {
         }
     }
 
+    /// Unanimated jump to the latest message, repeated once the lazy stack has
+    /// measured what it just loaded (the first attempt can land short).
+    private static let bottomID = "chat-bottom"
+
+    private func jumpToLatest(_ proxy: ScrollViewProxy) {
+        guard !messages.isEmpty else { return }
+        proxy.scrollTo(Self.bottomID, anchor: .bottom)
+        DispatchQueue.main.async { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+    }
+
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
         withAnimation(reduceMotion ? nil : Animation.easeOut(duration: 0.15)) {
-            if isSending {
-                proxy.scrollTo("sending-indicator", anchor: .bottom)
-            } else if let last = messages.last {
-                proxy.scrollTo(last.id, anchor: .bottom)
-            }
+            proxy.scrollTo(Self.bottomID, anchor: .bottom)
         }
     }
 

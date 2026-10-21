@@ -736,7 +736,6 @@ struct SettingsView: View {
             )
             .accessibilityLabel("Default progress note format")
             .hoverTip(HelpTips.defaultNoteFormat)
-            SettingsCaption(settings.progressNoteFormat.blurb)
         }
         SettingsHairline()
         VStack(alignment: .leading, spacing: 6) {

@@ -25,20 +25,10 @@ struct HelpTip: Tip, Equatable {
 /// Every tip the app shows. The ids are stored on this Mac with each tip's
 /// read state, so renaming one shows it again: treat them as fixed.
 enum HelpTips {
-    static func noteFormat(_ format: ProgressNoteFormat) -> HelpTip {
-        HelpTip(id: "notes.format", heading: format.displayName, text: format.blurb)
-    }
-
     static let myNotes = HelpTip(
         id: "notes.mine",
         heading: "My notes",
         text: "Your own notes for this session — jot things down during or after the session. Kept separate from the transcript, and included when you ask about this session."
-    )
-
-    static let sessionChatScope = HelpTip(
-        id: "chat.session.scope",
-        heading: "What answers come from",
-        text: "Answers come from this session's transcript, your notes and comments."
     )
 
     static let patientChatScope = HelpTip(
@@ -162,6 +152,12 @@ extension View {
     /// counts as read; it doesn't come back.
     func hoverTip(_ tip: HelpTip, arrowEdge: Edge = .bottom) -> some View {
         modifier(HoverTipModifier(tip: tip, arrowEdge: arrowEdge))
+    }
+
+    /// No tip when `tip` is nil.
+    @ViewBuilder
+    func hoverTip(_ tip: HelpTip?, arrowEdge: Edge = .bottom) -> some View {
+        if let tip { modifier(HoverTipModifier(tip: tip, arrowEdge: arrowEdge)) } else { self }
     }
 }
 
