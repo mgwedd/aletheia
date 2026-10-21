@@ -111,8 +111,7 @@ struct PatientsListView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.themed)
-            .keyboardShortcut("n", modifiers: .command)
-            .help("Add a new patient (⌘N)")
+            .shortcut(AppHotkey.newPatient, help: "Add a new patient")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)

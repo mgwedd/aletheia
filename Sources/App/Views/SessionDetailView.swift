@@ -39,9 +39,13 @@ private struct DigestStatusLine: View {
     var body: some View {
         if let progress = builder.progress[sessionID] {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Building digest")
+                Text(DigestBuilder.activityTitle)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
+                if let steps = progress.steps {
+                    ThemeProgressBar(value: steps.fraction)
+                        .frame(maxWidth: 240)
+                }
                 AIProgressView(progress: progress)
             }
             .padding([.horizontal, .top], 20)
@@ -262,6 +266,7 @@ struct SessionDetailView: View {
         }
         .navigationTitle(Self.dateFormatter.string(from: session.date))
         .background(Theme.window.color)
+        .textSelection(.enabled)
         .onAppear {
             if initialShowingMyNotes {
                 showingMyNotes = true
@@ -728,6 +733,9 @@ struct SessionDetailView: View {
                         onDelete: deleteComment,
                         onEdit: editComment
                     )
+                    // The cards focus their comment on click; selectable text
+                    // would take those clicks.
+                    .textSelection(.disabled)
                 }
             }
         }
@@ -1093,21 +1101,6 @@ struct SessionDetailView: View {
                 OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: generateNote)
             }
 
-            if !summaryText.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Chip("AI draft", tone: .accent)
-                    Text("Drafted from the transcript and your notes. Review and edit before it goes in the record.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.text.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.callout.color, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.line.color))
-                .padding(.horizontal, 20)
-            }
-
             if summaryText.isEmpty && !noteRunner.isStreaming {
                 emptyNoteCard
             } else if summaryText.isEmpty {
@@ -1143,9 +1136,8 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.muted.color)
                         .padding(.horizontal, 20)
                 }
-                ScrollView {
+                BoundedScroll {
                     MarkdownMessageView(text: summaryText, style: .note)
-                        .textSelection(.enabled)
                         .frame(maxWidth: 680, alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
@@ -1186,9 +1178,9 @@ struct SessionDetailView: View {
             }
             .pickerStyle(.inline)
             Divider()
-            Picker("Effort", selection: $settings.noteEffort) {
+            Picker(AnswerEffort.label, selection: $settings.noteEffort) {
                 ForEach(AnswerEffort.allCases) { level in
-                    Text("\(level.displayName) — \(level.blurb)").tag(level)
+                    Text(level.displayName).tag(level)
                 }
             }
             .pickerStyle(.inline)
@@ -1804,16 +1796,14 @@ private struct InlineCommentComposerCard: View {
             HStack(alignment: .center, spacing: 12) {
                 Spacer(minLength: 0)
                 HStack(spacing: 8) {
-                    KeyCap("⌘ return")
-                        .accessibilityHidden(true)
+                    ShortcutHint(AppHotkey.saveComment)
                     Button("Cancel", action: onCancel)
                         .buttonStyle(.themed)
                         .keyboardShortcut(.cancelAction)
                     Button("Save comment", action: onSave)
                         .buttonStyle(.themePrimary)
-                        .keyboardShortcut(.return, modifiers: .command)
                         .disabled(!canSave)
-                        .help("Save this comment (Command-Return)")
+                        .shortcut(AppHotkey.saveComment, help: "Save this comment")
                 }
                 .fixedSize()
             }
