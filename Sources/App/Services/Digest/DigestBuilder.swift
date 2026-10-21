@@ -178,7 +178,7 @@ final class DigestBuilder: ObservableObject {
                 text = cached
             } else {
                 text = try await generate(
-                    Prompts.sectionDigest(text: section.text, anchor: anchor),
+                    Prompts.sectionDigest(text: section.text, anchor: anchor, clientName: service.clientName),
                     stage: "Reading section \(index + 1) of \(sections.count)", service: service, live: live, inline: inline)
                 cache?.store(sectionKey, text)
             }
@@ -213,7 +213,7 @@ final class DigestBuilder: ObservableObject {
     ) async throws -> String {
         var items = items
         var done = callsDone
-        while items.count > 1 && !service.fits(prompt: Prompts.sessionDigest(sections: items)) {
+        while items.count > 1 && !service.fits(prompt: Prompts.sessionDigest(sections: items, clientName: service.clientName)) {
             try Task.checkCancellation()
             var next: [(anchor: String, digest: String)] = []
             var group: [(anchor: String, digest: String)] = []
@@ -227,13 +227,13 @@ final class DigestBuilder: ObservableObject {
                     done += 1
                     live(nil) { $0.steps = AIRunSteps(done: before, total: before + 2) }
                     let text = try await generate(
-                        Prompts.sessionDigest(sections: group), stage: Self.mergeTitle, service: service, live: live, inline: inline)
+                        Prompts.sessionDigest(sections: group, clientName: service.clientName), stage: Self.mergeTitle, service: service, live: live, inline: inline)
                     next.append((TranscriptSection.mergedAnchor(first: first.anchor, last: last.anchor), text))
                 }
                 group = []
             }
             for item in items {
-                if group.count >= 2 && !service.fits(prompt: Prompts.sessionDigest(sections: group + [item])) {
+                if group.count >= 2 && !service.fits(prompt: Prompts.sessionDigest(sections: group + [item], clientName: service.clientName)) {
                     try await flush()
                 }
                 group.append(item)
@@ -244,7 +244,7 @@ final class DigestBuilder: ObservableObject {
         let finished = done
         live(nil) { $0.steps = AIRunSteps(done: finished, total: finished + 1) }
         return try await generate(
-            Prompts.sessionDigest(sections: items), stage: Self.mergeTitle, service: service, live: live, inline: inline)
+            Prompts.sessionDigest(sections: items, clientName: service.clientName), stage: Self.mergeTitle, service: service, live: live, inline: inline)
     }
 
     /// One model call, run as a `.digest` job on the shared queue. With `inline`

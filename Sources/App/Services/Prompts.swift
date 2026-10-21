@@ -70,6 +70,12 @@ enum Prompts {
         fullName.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
     }
 
+    /// How notes name the client: the first name in quotes, or "the client".
+    static func clientRef(_ fullName: String) -> String {
+        let first = clientFirstName(fullName)
+        return first.isEmpty ? "\"the client\"" : "\"\(first)\""
+    }
+
     /// The transcript guide, telling the model what to call each speaker in
     /// anything it writes: the microphone speaker is "You" (the therapist), the
     /// call-audio speaker is the patient's first name ("the client" if unknown).

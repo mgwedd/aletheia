@@ -47,6 +47,28 @@ final class SpeakerNamesTests: XCTestCase {
         }
     }
 
+    func testDigestPromptsCarryTheName() {
+        let section = Prompts.sectionDigest(text: "[00:01] You: Hi.", anchor: "0:00–1:00", clientName: "Jane Doe")
+        XCTAssertTrue(section.contains(Prompts.legend(clientName: "Jane Doe")))
+        XCTAssertTrue(section.contains("Never write \"Y\""))
+        let merged = Prompts.sessionDigest(sections: [("0:00–1:00", "- x")], clientName: "Jane Doe")
+        XCTAssertTrue(merged.contains("\"You\""))
+        XCTAssertTrue(merged.contains("\"Jane\""))
+        XCTAssertFalse(merged.contains("Doe"))
+        XCTAssertTrue(Prompts.sessionDigest(sections: [("0:00–1:00", "- x")]).contains("\"the client\""))
+    }
+
+    @MainActor
+    func testBuilderPassesTheServicesClientNameToDigestPrompts() async throws {
+        let fake = NameFake()
+        var service = AssistantService(assistant: fake, model: "m")
+        service.clientName = "Jane Doe"
+        let digest = try await DigestBuilder(queue: InferenceQueue()).build(
+            transcript: "[00:01] You: Hi.\n[00:05] Call audio: Hello.", service: service, inline: true)
+        XCTAssertFalse(digest.sessionDigest.isEmpty)
+        XCTAssertTrue(fake.lastPrompt?.contains("\"Jane\"") ?? false)
+    }
+
     func testServiceThreadsClientNameIntoPrompt() async throws {
         let fake = NameFake()
         var service = AssistantService(assistant: fake, model: "m")
