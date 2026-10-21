@@ -1657,7 +1657,7 @@ struct SessionDetailView: View {
         let instructions = settings.noteInstructions[format.rawValue]
         // Snapshot the inputs now; the request itself is only made when the
         // queue starts this job (it may be waiting behind a chat answer).
-        let service = integrations.makeAssistantService(report: noteRunner.reporter)
+        let service = integrations.makeAssistantService(report: noteRunner.reporter, clientName: patient.name)
         let transcript = transcriptText
         let notes = sessionNote
         let sessionComments = settings.includeCommentsInDrafts ? comments : []
@@ -1720,7 +1720,7 @@ struct SessionDetailView: View {
             onFinish: { raw in
                 // Save the tidied text, so copy, export and edit see the same
                 // paragraphs and labels the pane shows.
-                let final = NoteMarkdown.tidy(raw)
+                let final = SpeakerCodes.scrub(NoteMarkdown.tidy(raw), clientName: patient.name)
                 // Stopped part-way: say the saved note is only what was written so far.
                 if noteStopping, !final.isEmpty, !(produced.text ?? "").contains(LongSessionNote.CheckOutcome.stopped.text) {
                     produced.text = [produced.text, LongSessionNote.stoppedEarlyText].compactMap { $0 }.joined(separator: " ")
@@ -1781,7 +1781,7 @@ struct SessionDetailView: View {
         let assistantID = UUID()
         // Snapshot the inputs now; the request itself is only made when the
         // queue starts this job (it may be waiting behind the note).
-        let service = integrations.makeAssistantService(report: chatRunner.reporter)
+        let service = integrations.makeAssistantService(report: chatRunner.reporter, clientName: patient.name)
         let transcript = transcriptText
         let notes = sessionNote
         let sessionComments = comments
@@ -1860,7 +1860,7 @@ extension SessionDetailView {
         guard let store = appModel.store, !chatMessages.isEmpty else { return }
         isChatSending = true
         let summaryID = UUID()
-        let service = integrations.makeAssistantService(report: chatRunner.reporter)
+        let service = integrations.makeAssistantService(report: chatRunner.reporter, clientName: patient.name)
         let history = chatMessages
         chatRunner.start(
             queue: integrations.inferenceQueue,

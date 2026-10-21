@@ -951,7 +951,8 @@ enum LongSessionChat {
                 comments: commentLines,
                 patientBackground: patientBackground,
                 history: history,
-                question: question
+                question: question,
+                clientName: service.clientName
             )
         }
         if service.budget.fits(system: system, prompt: makePrompt(transcript)) {
@@ -1220,7 +1221,7 @@ enum PatientChatAnswer {
                     }
 
                     let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question)
-                    let prompt = Prompts.patientChat(context: finalContext, history: history, question: question)
+                    let prompt = Prompts.patientChat(context: finalContext, history: history, question: question, clientName: service.clientName)
                     var chatService = service
                     chatService.systemPrompt = system
                     live(nil) { $0.steps = steps.writing }

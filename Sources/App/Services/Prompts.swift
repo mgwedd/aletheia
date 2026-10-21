@@ -62,23 +62,50 @@ enum Prompts {
     /// not over-read the labels or the ordering. The short labels are defined
     /// only here. Keep in step with the labels in `WhisperTranscriber` and the
     /// "(overlapping)" suffix in `TranscriptFormatter`.
-    static let transcriptLegend = """
-    How to read the transcript: each turn is "[MM:SS] Y: text" or \
-    "[MM:SS] C: text" (minutes can exceed 59 in a long session, e.g. \
-    "[75:12]"). The time is when the turn started; a long turn repeats its label and a new time about every \
-    minute. The label comes from which audio track the words were recorded \
-    on, not from voice analysis. "Y" (You) is the microphone, normally the \
-    therapist; it never means you, the reader. "C" (Call audio) is normally \
-    the client. In a session recorded with the microphone only, both people \
-    may appear as "Y". A "~" after the letter ("Y~", "C~") means \
-    "(overlapping)": both tracks had speech at the same time, so the two \
-    people spoke over each other. "(repeated ×N)" after a sentence means the same \
-    sentence was repeated N times in a row (often a transcription loop, but it \
-    can be the speaker repeating it). Filler sounds such as "um" and "uh" were left out. Line order \
-    is approximate to within a few seconds.
-    """
+    static let transcriptLegend = legend(clientName: "")
 
-    static func summarize(transcript: String, patientBackground: String = "") -> String {
+    /// The first whitespace-separated word of a patient's name, or "" when the
+    /// name is empty. Notes name the call-audio speaker with it.
+    static func clientFirstName(_ fullName: String) -> String {
+        fullName.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
+    }
+
+    /// How notes name the client: the first name in quotes, or "the client".
+    static func clientRef(_ fullName: String) -> String {
+        let first = clientFirstName(fullName)
+        return first.isEmpty ? "\"the client\"" : "\"\(first)\""
+    }
+
+    /// The transcript guide, telling the model what to call each speaker in
+    /// anything it writes: the microphone speaker is "You" (the therapist), the
+    /// call-audio speaker is the patient's first name ("the client" if unknown).
+    /// The letter codes are shorthand for reading only and must never be written.
+    static func legend(clientName: String) -> String {
+        let first = clientFirstName(clientName)
+        let client = first.isEmpty ? "the client" : first
+        let clientQuoted = first.isEmpty ? "the client" : "\"\(first)\""
+        return """
+        How to read the transcript: each turn is "[MM:SS] Y: text" or \
+        "[MM:SS] C: text" (minutes can exceed 59 in a long session, e.g. \
+        "[75:12]"). The time is when the turn started; a long turn repeats its label and a new time about every \
+        minute. The label comes from which audio track the words were recorded \
+        on, not from voice analysis. "Y" (You) is the microphone, normally the \
+        therapist. "C" (Call audio) is normally \
+        the client, \(client). In a session recorded with the microphone only, both people \
+        may appear as "Y". A "~" after the letter ("Y~", "C~") means \
+        "(overlapping)": both tracks had speech at the same time, so the two \
+        people spoke over each other. "(repeated ×N)" after a sentence means the same \
+        sentence was repeated N times in a row (often a transcription loop, but it \
+        can be the speaker repeating it). Filler sounds such as "um" and "uh" were left out. Line order \
+        is approximate to within a few seconds.
+        Naming speakers: Y and C are reading shorthand only. Never write "Y", \
+        "C", "Y:" or "C:" in your answer. Refer to the Y speaker as "You" (the \
+        therapist reading this) and to the C speaker as \(clientQuoted). Never \
+        call the client "Y" or "C".
+        """
+    }
+
+    static func summarize(transcript: String, patientBackground: String = "", clientName: String = "") -> String {
         """
         You are helping a therapist review her own session notes. Summarize \
         the following therapy session transcript into concise clinical notes: \
@@ -87,7 +114,7 @@ enum Prompts {
         aren't in the transcript. If the transcript is too short or unclear \
         to summarize, say so plainly.
 
-        \(transcriptLegend)
+        \(legend(clientName: clientName))
         \(backgroundMaterial(patientBackground))
         Transcript:
         \(TranscriptCompactor.compact(transcript))
@@ -167,7 +194,8 @@ enum Prompts {
         comments: [String] = [],
         patientBackground: String = "",
         verbosity: SummaryVerbosity = .default,
-        instructions: String? = nil
+        instructions: String? = nil,
+        clientName: String = ""
     ) -> String {
         let lengthGuidance = format.sections.isEmpty ? verbosity.promptGuidance : verbosity.noteGuidance
         return """
@@ -178,7 +206,7 @@ enum Prompts {
 
         \(noteFormattingRules)
 
-        \(transcriptLegend)
+        \(legend(clientName: clientName))
         \(backgroundMaterial(patientBackground))
         Transcript:
         \(TranscriptCompactor.compact(transcript))
@@ -204,7 +232,8 @@ enum Prompts {
         comments: [String] = [],
         patientBackground: String = "",
         history: [ChatMessage],
-        question: String
+        question: String,
+        clientName: String = ""
     ) -> String {
         """
         You are helping a therapist ask questions about one specific therapy \
@@ -214,7 +243,7 @@ enum Prompts {
         answer isn't in any of that material, say you don't see it in this \
         session. Never speculate.
 
-        \(transcriptLegend)
+        \(legend(clientName: clientName))
         \(backgroundMaterial(patientBackground))
         Transcript:
         \(TranscriptCompactor.compact(transcript))
@@ -245,7 +274,7 @@ enum Prompts {
         return sections.isEmpty ? "" : "\n" + sections.joined(separator: "\n\n") + "\n"
     }
 
-    static func patientChat(context: String, history: [ChatMessage], question: String) -> String {
+    static func patientChat(context: String, history: [ChatMessage], question: String, clientName: String = "") -> String {
         """
         You are helping a therapist ask questions across all of one \
         patient's past sessions, given below (most recent first). Each \
@@ -268,7 +297,7 @@ enum Prompts {
 
         \(patientSearchRule)
 
-        \(transcriptLegend)
+        \(legend(clientName: clientName))
 
         \(context)
 

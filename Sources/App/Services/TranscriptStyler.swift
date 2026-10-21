@@ -14,8 +14,9 @@ enum TranscriptStyler {
     enum Role: Equatable {
         case timestamp
         case speaker(String)
-        /// The " (overlapping)" suffix after a label: a hint the note model
-        /// reads, drawn faintly so it doesn't shout on every busy line.
+        /// The " (overlapping)" suffix after a label: a hint for the note model
+        /// that stays in the stored text (so every character offset, comment
+        /// anchor and search hit is stable) but is never shown to the reader.
         case overlapTag
     }
 
@@ -66,5 +67,22 @@ enum TranscriptStyler {
             }
         }
         return result
+    }
+
+    /// `text` with every " (overlapping)" label suffix removed, for anything
+    /// the reader sees or takes away (copy, exports) that needs no offsets
+    /// into the stored text. The stored transcript itself keeps the suffix:
+    /// the compactor turns it into the `~` hint for the model.
+    static func removingOverlapLabels(_ text: String) -> String {
+        let ns = text as NSString
+        let tags = spans(in: text).filter { $0.role == .overlapTag }.map(\.range)
+        guard !tags.isEmpty else { return text }
+        var out = ""
+        var cursor = 0
+        for tag in tags {
+            out += ns.substring(with: NSRange(location: cursor, length: tag.location - cursor))
+            cursor = NSMaxRange(tag)
+        }
+        return out + ns.substring(from: cursor)
     }
 }

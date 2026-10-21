@@ -118,6 +118,7 @@ struct TranscriptTextView: NSViewRepresentable {
         }
 
         context.coordinator.textView = textView
+        textView.layoutManager?.delegate = context.coordinator
         // Tell the coordinator when the visible area moves or the text re-wraps,
         // so a composer anchored under a passage follows it.
         scroll.contentView.postsBoundsChangedNotifications = true
@@ -154,6 +155,16 @@ struct TranscriptTextView: NSViewRepresentable {
     final class ClickReportingTextView: NSTextView {
         var onPlainClick: ((Int) -> Void)?
 
+        /// Copy and drag take the text without the hidden " (overlapping)"
+        /// labels, so they match what is on screen.
+        override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
+            let ok = super.writeSelection(to: pboard, types: types)
+            if ok, let text = pboard.string(forType: .string) {
+                pboard.setString(TranscriptStyler.removingOverlapLabels(text), forType: .string)
+            }
+            return ok
+        }
+
         override func mouseDown(with event: NSEvent) {
             super.mouseDown(with: event) // runs the whole press-drag-release
             guard event.clickCount == 1, selectedRange().length == 0 else { return }
@@ -161,7 +172,9 @@ struct TranscriptTextView: NSViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
+        /// Marks characters that stay in the stored text but are not drawn.
+        static let hiddenKey = NSAttributedString.Key("aletheia.hiddenOverlapLabel")
         static let font = NSFont.systemFont(ofSize: 15)
         static let timestampFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         /// Where the words start: time stamps sit in a column to the left, and a
@@ -204,10 +217,9 @@ struct TranscriptTextView: NSViewRepresentable {
                     .foregroundColor: color,
                 ]
             case .overlapTag:
-                return [
-                    .font: NSFont.systemFont(ofSize: 10),
-                    .foregroundColor: Theme.muted.nsColor,
-                ]
+                // Kept in the text (offsets and the model hint depend on it) but
+                // laid out as zero-width null glyphs; see `layoutManager(_:shouldGenerateGlyphs:...)`.
+                return [Coordinator.hiddenKey: true]
             }
         }
 
@@ -239,6 +251,35 @@ struct TranscriptTextView: NSViewRepresentable {
         private var isApplyingProgrammaticChange = false
 
         init(_ parent: TranscriptTextView) { self.parent = parent }
+
+        // MARK: Hidden characters
+
+        /// Replaces the glyphs of hidden characters with null glyphs: no width,
+        /// nothing drawn, but the characters (and so every offset) stay put.
+        func layoutManager(
+            _ layoutManager: NSLayoutManager,
+            shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+            properties props: UnsafePointer<NSLayoutManager.GlyphProperty>,
+            characterIndexes charIndexes: UnsafePointer<Int>,
+            font: NSFont,
+            forGlyphRange glyphRange: NSRange
+        ) -> Int {
+            guard let storage = layoutManager.textStorage else { return 0 }
+            var adjusted = Array(UnsafeBufferPointer(start: props, count: glyphRange.length))
+            var changed = false
+            for i in 0..<glyphRange.length {
+                let index = charIndexes[i]
+                if index < storage.length, storage.attribute(Self.hiddenKey, at: index, effectiveRange: nil) != nil {
+                    adjusted[i] = .null
+                    changed = true
+                }
+            }
+            guard changed else { return 0 }
+            layoutManager.setGlyphs(
+                glyphs, properties: adjusted, characterIndexes: charIndexes, font: font, forGlyphRange: glyphRange
+            )
+            return glyphRange.length
+        }
 
         // MARK: Syncing with SwiftUI
 
