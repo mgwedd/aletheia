@@ -67,6 +67,53 @@ struct TranscriptCoverage: Equatable {
     var monthMergedSessions: Int = 0
     /// The effort level chosen for this answer, when reported by the caller.
     var effort: AnswerEffort? = nil
+    /// The sessions (by citation tag) behind `sessionsWithPassages`: those whose
+    /// transcript text is in the context.
+    var passageTags: Set<String> = []
+    /// The sessions (by citation tag) whose digest is in the context.
+    var digestTags: Set<String> = []
+    /// Sessions whose transcript only a follow-up lookup read: not already in
+    /// `passageTags`. Kept apart from `sessionsWithPassages` because a lookup
+    /// may reach a session outside the question's date range, so it is not one
+    /// of the `transcriptSessions` that count is out of.
+    var lookupTags: Set<String> = []
+    /// The history didn't fit whole, so it was read by zoom level
+    /// (`PatientZoom`): summaries and notes, then where search points.
+    var layered = false
+    /// Parts of sessions search pointed at, listed for a closer look.
+    var areas: Int = 0
+    /// Of those, the parts whose summary is in the context.
+    var summarySections: Int = 0
+    /// Sessions in the question's range with a transcript whose summary is not
+    /// in the context (none yet, or past this Mac's cap): only search reached them.
+    var searchOnlySessions: Int = 0
+    /// Of `searchOnlySessions`, those with no summary yet.
+    var noSummarySessions: Int = 0
+    /// Sessions with no summary yet whose transcript opening is in the context
+    /// (`PatientZoom.openings`). Not counted in `searchOnlySessions`.
+    var openingSessions: Int = 0
+    /// The words searched for, as search counted them.
+    var searchTerms: [String] = []
+    /// Sessions with any match (transcript, notes or comments).
+    var sessionsWithMentions: Int = 0
+    /// The session's date when every match is in one session.
+    var mentionDate: Date?
+
+    /// Records what search found, for the status line (`PatientAskSteps.finding`).
+    mutating func noteSearch(_ search: SessionSearch.Result) {
+        searchTerms = search.terms.map(\.text)
+        sessionsWithMentions = search.sessionsWithHits
+        mentionDate = search.sessionsWithHits == 1 ? search.hits.first?.date : nil
+    }
+
+    /// Adds what follow-up lookups read. A session counts once however it was
+    /// reached: a lookup of a session already in the context adds nothing.
+    mutating func addLookups(transcriptTags: Set<String>, digestTags readDigests: Set<String>) {
+        lookupTags.formUnion(transcriptTags.subtracting(passageTags))
+        let newDigests = readDigests.subtracting(digestTags)
+        digestTags.formUnion(newDigests)
+        digestSessions += newDigests.count
+    }
 
     /// A plain-language line for the chat sheet, or nil when nothing was read.
     var label: String? {
@@ -78,9 +125,35 @@ struct TranscriptCoverage: Equatable {
         }
         if digestSessions > 0 {
             let merged = monthMergedSessions > 0 ? " (\(monthMergedSessions) merged by month)" : ""
-            parts.append("digests of \(sessions(digestSessions))" + merged)
+            parts.append("summaries of \(sessions(digestSessions))" + merged)
         }
-        if transcriptSessions > 0 {
+        if summarySections > 0 {
+            parts.append("\(summarySections) summar\(summarySections == 1 ? "y" : "ies") of the parts search points at")
+        }
+        if openingSessions > 0 {
+            parts.append("transcript opening\(openingSessions == 1 ? "" : "s") of \(sessions(openingSessions)) with no summary yet")
+        }
+        if layered && transcriptSessions > 0 {
+            var search = ""
+            if searched {
+                search = " (\(mentions) match\(mentions == 1 ? "" : "es") for your words"
+                search += similarMentions > 0 ? ", \(similarMentions) more with similar spelling)" : ")"
+            }
+            if sessionsWithPassages > 0 {
+                parts.append("matching transcript lines from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
+            } else if searched {
+                parts.append("no matching transcript lines" + search)
+            }
+            if searchOnlySessions > 0 {
+                let noSummary = noSummarySessions > 0 ? "\(noSummarySessions) with no summary yet" : nil
+                if searched {
+                    parts.append("only search reached \(sessions(searchOnlySessions))" + (noSummary.map { " (\($0))" } ?? ""))
+                } else {
+                    let why = ["no words to search for", noSummary].compactMap { $0 }.joined(separator: "; ")
+                    parts.append("nothing from \(sessions(searchOnlySessions)) (\(why))")
+                }
+            }
+        } else if transcriptSessions > 0 {
             var search = ""
             if searched {
                 search = " (\(mentions) match\(mentions == 1 ? "" : "es") for your words"
@@ -100,6 +173,9 @@ struct TranscriptCoverage: Equatable {
             } else {
                 parts.append("transcript passages from \(sessionsWithPassages) of \(sessions(transcriptSessions))" + search)
             }
+        }
+        if !lookupTags.isEmpty {
+            parts.append("follow-up lookups in the transcripts of \(lookupTags.count) more session\(lookupTags.count == 1 ? "" : "s")")
         }
         if unreadableSessions > 0 { parts.append("\(sessions(unreadableSessions)) could not be read, so answers may be incomplete") }
         guard !parts.isEmpty else { return nil }
@@ -131,6 +207,18 @@ enum Citations {
     /// session are ignored.
     static func citedSources(in answer: String, from sources: [CitationSource]) -> [CitationSource] {
         sources.filter { answer.contains("[\($0.tag)]") }
+    }
+
+    /// `base` plus the sessions in `added` it doesn't already have (by tag),
+    /// newest first: what an answer can cite once its follow-up lookups have
+    /// read sessions the context didn't hold.
+    static func merged(_ base: [CitationSource], adding added: [CitationSource]) -> [CitationSource] {
+        var seen = Set<String>()
+        var all: [CitationSource] = []
+        for source in base + added where seen.insert(source.tag).inserted {
+            all.append(source)
+        }
+        return all.sorted { $0.date > $1.date }
     }
 
     /// The answer rewritten for display: each known `[S#]` tag replaced by its

@@ -101,11 +101,15 @@ struct EvalStage {
 enum EvalReport {
     /// `numCtx` is what requests actually carry; it differs from `budget` under --budget,
     /// which only changes what the app treats as fitting.
-    static func header(model: String, budget: Int, numCtx: Int = ContextBudget.current.tokens, transcriptChars: Int) -> String {
+    /// `transcriptTokens` is the transcript's estimate by script; without it, the Latin-text estimate.
+    static func header(
+        model: String, budget: Int, numCtx: Int = ContextBudget.current.tokens, transcriptChars: Int,
+        transcriptTokens: Int? = nil
+    ) -> String {
         let ctx = budget == numCtx ? "" : " (--budget override; requests send num_ctx \(numCtx))"
         return "Aletheia LLM eval: model \(model), seed \(HarnessEvalArgs.seed), temperature 0, "
             + "context budget \(budget) tokens\(ctx), transcript \(transcriptChars) chars "
-            + "(~\(ContextBudget.estimatedTokens(forCharacters: transcriptChars)) tokens estimated)"
+            + "(~\(transcriptTokens ?? ContextBudget.estimatedTokens(forCharacters: transcriptChars)) tokens estimated)"
     }
 
     /// The label for what a successful run read, from the transcript itself.
@@ -182,7 +186,9 @@ enum HarnessEval {
         service.report = { log.record($0) }
         let svc = service
 
-        let header = EvalReport.header(model: model, budget: svc.budget.tokens, transcriptChars: transcript.count)
+        let header = EvalReport.header(
+            model: model, budget: svc.budget.tokens, transcriptChars: transcript.count,
+            transcriptTokens: ContextBudget.estimatedTokens(for: transcript))
         print(header + "\n")
         var stages: [EvalStage] = []
         func stage(_ name: String, coverage: String, _ work: () async throws -> String) async {

@@ -21,6 +21,10 @@ private final class ScriptedAssistant: Assistant, @unchecked Sendable {
     func pullModel(_ name: String, onProgress: @escaping (Double, String) -> Void) async throws {}
 }
 
+private final class Recorded<Value> {
+    var values: [Value] = []
+}
+
 /// A made-up transcript with a line a minute.
 private func minutesOfTalk(_ minutes: Int) -> String {
     (0..<minutes).map { String(format: "[%02d:%02d] You: line %d", $0, 0, $0) }.joined(separator: "\n")
@@ -63,7 +67,9 @@ final class DigestFollowUpTests: XCTestCase {
 
         builder.ensureDigest(for: patient, session: session, transcript: first, store: store, service: service)
         try await wait { fake.prompts.contains { $0.contains("STALL") } }
-        fake.delay = 40_000_000
+        // The new build reuses the sections the first one finished (only the merge
+        // is left), so that call is slowed enough to still be running below.
+        fake.delay = 200_000_000
         try store.saveTranscript(second, for: patient, session: session)
         builder.ensureDigest(for: patient, session: session, transcript: second, store: store, service: service)
 
@@ -124,6 +130,29 @@ final class DigestFollowUpTests: XCTestCase {
         XCTAssertEqual(digest.sessionDigest.count, 2_000)
     }
 
+    func testMergedAnchorsStayOneFlatRangeAcrossMergeRounds() async throws {
+        let fake = ScriptedAssistant()
+        fake.replyLength = 2_000
+        var service = AssistantService(assistant: fake, model: "m")
+        // Room for the merge instructions plus two section digests, not three.
+        let overhead = service.systemPrompt.count + Prompts.sessionDigest(sections: []).count
+        let capacity = overhead + 2 * 2_040
+        service.budget = ContextBudget(tokens: ContextBudget.replyHeadroomTokens + capacity / ContextBudget.charactersPerToken)
+        let builder = DigestBuilder(queue: InferenceQueue())
+        let text = minutesOfTalk(45)
+        let sections = TranscriptSections.split(text)
+        XCTAssertEqual(sections.count, 5)
+
+        _ = try await builder.build(transcript: text, service: service)
+
+        // 5 sections, two group merges, a second round merging those two, the final merge.
+        XCTAssertEqual(fake.prompts.count, 9)
+        let wholeRange = "[\(TranscriptTimeline.format(sections[0].start ?? 0))–\(TranscriptTimeline.format(sections[3].end ?? 0))]"
+        let last = try XCTUnwrap(fake.prompts.last)
+        XCTAssertTrue(last.contains(wholeRange + "\n"), "the second round's result is labelled by its whole range")
+        XCTAssertFalse(fake.prompts.contains { $0.contains(" … ") }, "no merged anchor lists its pieces")
+    }
+
     func testDigestCallsAreBudgetChecked() async throws {
         let fake = ScriptedAssistant()
         var service = AssistantService(assistant: fake, model: "m")
@@ -151,5 +180,102 @@ final class DigestFollowUpTests: XCTestCase {
 
         builder.cancel(session.id)
         XCTAssertNil(builder.failures[session.id])
+    }
+
+    // MARK: - Progress
+
+    func testStepsAdvanceThroughEachSectionThenTheMerge() async throws {
+        let fake = ScriptedAssistant()
+        let service = AssistantService(assistant: fake, model: "m")
+        let builder = DigestBuilder(queue: InferenceQueue())
+        let seen = Recorded<AIRunSteps>()
+        let live: DigestBuilder.Live = { _, change in
+            var progress = AIRunProgress()
+            change(&progress)
+            if let steps = progress.steps { seen.values.append(steps) }
+        }
+
+        let digest = try await builder.build(transcript: minutesOfTalk(25), service: service, live: live)
+
+        let sections = digest.sections.count
+        XCTAssertGreaterThan(sections, 1)
+        // One step per section, then the final merge.
+        XCTAssertEqual(seen.values, (0...sections).map { AIRunSteps(done: $0, total: sections + 1) })
+    }
+
+    func testStepsCountEveryMergeRoundNotJustTheFinalMerge() async throws {
+        let fake = ScriptedAssistant()
+        fake.replyLength = 2_000
+        var service = AssistantService(assistant: fake, model: "m")
+        // Room for the merge instructions plus two section digests, not three.
+        let overhead = service.systemPrompt.count + Prompts.sessionDigest(sections: []).count
+        let capacity = overhead + 2 * 2_040
+        service.budget = ContextBudget(tokens: ContextBudget.replyHeadroomTokens + capacity / ContextBudget.charactersPerToken)
+        let builder = DigestBuilder(queue: InferenceQueue())
+        let seen = Recorded<AIRunSteps>()
+        let live: DigestBuilder.Live = { _, change in
+            var progress = AIRunProgress()
+            change(&progress)
+            if let steps = progress.steps { seen.values.append(steps) }
+        }
+
+        let digest = try await builder.build(transcript: minutesOfTalk(25), service: service, live: live)
+
+        // 3 sections, one group merge, the final merge: 5 calls in all.
+        XCTAssertEqual(digest.sections.count, 3)
+        XCTAssertEqual(fake.prompts.count, 5)
+        XCTAssertEqual(seen.values, [
+            AIRunSteps(done: 0, total: 4),
+            AIRunSteps(done: 1, total: 4),
+            AIRunSteps(done: 2, total: 4),
+            AIRunSteps(done: 3, total: 5),
+            AIRunSteps(done: 4, total: 5),
+        ])
+        XCTAssertEqual(seen.values.last?.total, fake.prompts.count)
+    }
+
+    func testStageTitlesAreNotWrittenInTermsOfDigests() async throws {
+        let fake = ScriptedAssistant()
+        let service = AssistantService(assistant: fake, model: "m")
+        let builder = DigestBuilder(queue: InferenceQueue())
+        let recorded = Recorded<String>()
+        let live: DigestBuilder.Live = { _, change in
+            var progress = AIRunProgress()
+            change(&progress)
+            if progress.readTitle != "Reading" { recorded.values += [progress.readTitle, progress.writeTitle] }
+        }
+
+        _ = try await builder.build(transcript: minutesOfTalk(25), service: service, live: live)
+        let titles = recorded.values
+
+        XCTAssertTrue(titles.contains(DigestBuilder.mergeTitle))
+        XCTAssertTrue(titles.contains(DigestBuilder.writeTitle))
+        for title in titles + [DigestBuilder.activityTitle] {
+            XCTAssertFalse(title.lowercased().contains("digest"), title)
+        }
+    }
+
+    func testStepsSurviveTheNextStage() {
+        var progress = AIRunProgress()
+        progress.steps = AIRunSteps(done: 2, total: 5)
+        progress.beginStage(readTitle: "Reading section 3 of 4", writeTitle: "Writing summary", startedAt: Date())
+        XCTAssertEqual(progress.steps, AIRunSteps(done: 2, total: 5))
+    }
+}
+
+final class AIRunStepsTests: XCTestCase {
+    func testTheCallInFlightCountsAsHalfDone() {
+        XCTAssertEqual(AIRunSteps(done: 0, total: 4).fraction, 0.125, accuracy: 0.0001)
+        XCTAssertEqual(AIRunSteps(done: 3, total: 4).fraction, 0.875, accuracy: 0.0001)
+    }
+
+    func testNeverEmptyOnceStartedNorFullBeforeTheEnd() {
+        XCTAssertGreaterThan(AIRunSteps(done: 0, total: 10).fraction, 0)
+        XCTAssertLessThan(AIRunSteps(done: 9, total: 10).fraction, 1)
+    }
+
+    func testClampsAndHandlesNoSteps() {
+        XCTAssertEqual(AIRunSteps(done: 0, total: 0).fraction, 0)
+        XCTAssertEqual(AIRunSteps(done: 50, total: 4).fraction, 1)
     }
 }

@@ -87,6 +87,11 @@ final class CommentStore {
     /// store's current payloads are sealed under before re-sealing them.
     private let protector: FileProtector
 
+    /// Called with the session after one of its comments or its notes was
+    /// saved, edited, resolved or deleted (`Store` uses it to keep the search
+    /// index in step). Runs on the saving thread; must not block.
+    var onSessionAnnotationsChanged: ((UUID) -> Void)?
+
     /// Every record kind this store's data lives under, for operations (only
     /// `reencrypt`, today) that must walk everything regardless of which
     /// repository owns it.
@@ -139,7 +144,7 @@ final class CommentStore {
         format: ProgressNoteFormat? = nil,
         now: Date = Date()
     ) -> SessionComment? {
-        annotations.addComment(
+        let added = annotations.addComment(
             sessionID: sessionID,
             quotedText: quotedText,
             body: body,
@@ -148,21 +153,36 @@ final class CommentStore {
             format: format,
             now: now
         )
+        if added != nil { onSessionAnnotationsChanged?(sessionID) }
+        return added
     }
 
     @discardableResult
     func updateComment(id: String, body: String, now: Date = Date()) -> Bool {
-        annotations.updateComment(id: id, body: body, now: now)
+        let updated = annotations.updateComment(id: id, body: body, now: now)
+        if updated { commentChanged(id) }
+        return updated
     }
 
     @discardableResult
     func setCommentResolved(id: String, resolved: Bool, now: Date = Date()) -> Bool {
-        annotations.setCommentResolved(id: id, resolved: resolved, now: now)
+        let updated = annotations.setCommentResolved(id: id, resolved: resolved, now: now)
+        if updated { commentChanged(id) }
+        return updated
     }
 
     @discardableResult
     func deleteComment(id: String) -> Bool {
-        annotations.deleteComment(id: id)
+        // Looked up first: once the row is gone, so is the session it was on.
+        let session = onSessionAnnotationsChanged == nil ? nil : annotations.sessionID(ofComment: id)
+        let deleted = annotations.deleteComment(id: id)
+        if deleted, let session { onSessionAnnotationsChanged?(session) }
+        return deleted
+    }
+
+    private func commentChanged(_ id: String) {
+        guard let onSessionAnnotationsChanged, let session = annotations.sessionID(ofComment: id) else { return }
+        onSessionAnnotationsChanged(session)
     }
 
     // MARK: - Notes
@@ -173,7 +193,9 @@ final class CommentStore {
 
     @discardableResult
     func saveNote(sessionID: UUID, text: String, now: Date = Date()) -> Bool {
-        annotations.saveNote(sessionID: sessionID, text: text, now: now)
+        let saved = annotations.saveNote(sessionID: sessionID, text: text, now: now)
+        if saved { onSessionAnnotationsChanged?(sessionID) }
+        return saved
     }
 
     // MARK: - Chat threads

@@ -88,6 +88,19 @@ extension CitationsTests {
         XCTAssertTrue(out.contains("(Mar 5, 2026)(Jan 5, 2026)"))
     }
 
+    func testMergedAddsLookupSessionsOnceNewestFirst() {
+        let lookedUp = [
+            CitationSource(tag: "S2", date: day(2026, 1, 5), folderName: "2026-01-05_Session"),
+            CitationSource(tag: "S40", date: day(2024, 6, 1), folderName: "2024-06-01_Session"),
+        ]
+        let merged = Citations.merged(sources(), adding: lookedUp)
+        XCTAssertEqual(merged.map(\.tag), ["S1", "S2", "S40"])
+
+        let out = Citations.decorate(answer: "First raised long ago [S40].", sources: merged)
+        XCTAssertFalse(out.contains("[S40]"))
+        XCTAssertTrue(out.hasSuffix("Sources: June 1, 2024"), out)
+    }
+
     func testTagsAreCaseSensitive() {
         let out = Citations.decorate(answer: "Maybe [s1]?", sources: sources())
         XCTAssertEqual(out, "Maybe [s1]?")
@@ -128,6 +141,23 @@ extension CitationsTests {
 final class TranscriptCoverageEdgeTests: XCTestCase {
     func testNothingReadIsNoLabel() {
         XCTAssertNil(TranscriptCoverage().label)
+    }
+
+    func testLookupsCountEachSessionOnce() {
+        var c = TranscriptCoverage(
+            transcriptSessions: 3, sessionsWithPassages: 3, searched: true, digestSessions: 1,
+            passageTags: ["S1", "S2", "S3"], digestTags: ["S5"]
+        )
+        c.addLookups(transcriptTags: ["S1", "S40"], digestTags: ["S5", "S41"])
+        c.addLookups(transcriptTags: ["S40"], digestTags: ["S41"])
+
+        XCTAssertEqual(c.sessionsWithPassages, 3, "out of the sessions in the question's range; lookups are counted apart")
+        XCTAssertEqual(c.lookupTags, ["S40"])
+        XCTAssertEqual(c.digestSessions, 2)
+        XCTAssertEqual(
+            c.label,
+            "Read: summaries of 2 sessions · transcript passages from 3 of 3 sessions (0 matches for your words) · follow-up lookups in the transcripts of 1 more session"
+        )
     }
 
     func testLabelPluralsAndSearchCount() {
@@ -202,9 +232,9 @@ extension TranscriptCoverageEdgeTests {
     }
 
     func testSearchingNoticeCountAndPlural() {
-        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 0), "Searching…")
-        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 1), "Searching 1 session…")
-        XCTAssertEqual(PatientChatView.searchingNotice(sessions: 7), "Searching 7 sessions…")
+        XCTAssertEqual(PatientAskSteps.gatheringText(sessions: 0), "Searching and gathering summaries and notes…")
+        XCTAssertEqual(PatientAskSteps.gatheringText(sessions: 1), "Searching 1 session and gathering summaries and notes…")
+        XCTAssertEqual(PatientAskSteps.gatheringText(sessions: 7), "Searching 7 sessions and gathering summaries and notes…")
     }
 }
 

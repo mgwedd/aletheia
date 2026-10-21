@@ -152,11 +152,11 @@ final class LlamaAssistant: Assistant {
         onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {
         if let missingModel { return AsyncThrowingStream { $0.finish(throwing: missingModel) } }
-        let expectedTokens = ContextBudget.estimatedTokens(forCharacters: system.count + prompt.count)
+        let expectedTokens = ContextBudget.estimatedTokens(system: system, prompt: prompt)
         return activeEngine.stream(
             request(system: system, prompt: prompt, task: task, grammar: grammar),
             onStats: onStats.map { callback in
-                { raw in
+                { @Sendable raw in
                     var stats = raw
                     stats.expectedPromptTokens = expectedTokens
                     stats.task = task

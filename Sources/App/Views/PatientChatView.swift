@@ -8,10 +8,11 @@ import SwiftUI
 /// encrypt like any other PHI, and a legacy single-thread `patient_chat.json`
 /// is imported on first open (see `Store.loadChatThreads`).
 ///
-/// This chat covers every session's generated notes and the therapist's own
-/// notes and comments (per-session cap), plus the transcript passages that a
-/// search of every session finds for the question (see `SessionSearch`), up to
-/// a character budget. Each session's own chat lives inside that session.
+/// This chat covers the patient: background, every session's notes and
+/// comments (per-session cap), and when the history is too long to send whole,
+/// session summaries plus what a search of every session points at, read
+/// closer only where it looks worthwhile (see `PatientZoom`). Each session's
+/// own chat lives inside that session.
 struct PatientChatView: View {
     let patient: Patient
     var onDone: () -> Void
@@ -40,6 +41,8 @@ struct PatientChatView: View {
     @State private var coverageNotice: String?
     /// Shown while the sessions are being decrypted and searched, before the model starts.
     @State private var searchingNotice: String?
+    /// When the current Ask began searching: the status line counts from here.
+    @State private var searchingSince: Date?
 
     @StateObject private var chatRunner = ChatStreamRunner()
 
@@ -49,7 +52,7 @@ struct PatientChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Ask About All of \(patient.name)'s Sessions")
+                Text("Ask About \(patient.name)")
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.text.color)
                 Spacer()
@@ -63,26 +66,34 @@ struct PatientChatView: View {
 
             AIEngineBanner()
 
+            SummaryStatusRow(scheduler: integrations.digestScheduler, patientID: patient.id)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 6)
+
             HSplitView {
                 threadSidebar
                     .frame(minWidth: 200, idealWidth: 230, maxWidth: 320)
 
                 if selectedThreadID != nil {
                     ChatPaneView(
-                        title: "all sessions",
+                        title: patient.name,
                         messages: $messages,
                         isSending: isSending,
                         suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.patient : [],
                         onSend: send,
                         onStop: { chatRunner.stop() },
                         queuedStatus: chatRunner.queuedStatus,
-                        scopeNote: scopeNote,
+                        scopeTip: HelpTips.patientChatScope,
                         notices: notices,
                         busyNotice: searchingNotice,
+                        busySince: searchingSince,
+                        busySteps: searchingNotice == nil ? nil : PatientAskSteps(effort: settings.patientChatEffort, layered: true).gathering,
                         onCompact: { compact($0) },
                         progress: chatRunner.progress,
                         speed: integrations.modelSpeed,
-                        effort: $settings.patientChatEffort
+                        effort: $settings.patientChatEffort,
+                        effortFeature: .patientChat
                     )
                     .frame(minWidth: 360)
                 } else {
@@ -92,7 +103,10 @@ struct PatientChatView: View {
             }
         }
         .background(Theme.window.color)
-        .onAppear { reloadThreads() }
+        .onAppear {
+            reloadThreads()
+            integrations.digestScheduler.patientOpened(patient)
+        }
         .onChange(of: selectedThreadID) { _, newID in
             // The notice belongs to the question just asked, not to other threads.
             if !isSending {
@@ -121,11 +135,8 @@ struct PatientChatView: View {
     }
 
     /// What the answers draw on, matching what `gatherCitedPatientContext`
-    /// sends: every session's generated notes, notes and comments, and the
-    /// transcript passages a search of all sessions finds for the question.
-    private var scopeNote: String {
-        "Answers come from every session's generated notes, your notes and comments, plus the transcript passages found by searching all sessions for the names and words in your question. Each answer shows what it read. To ask about one session in full, open it and use its Ask tab."
-    }
+    /// sends (see `PatientZoom`).
+    static let scopeNote = "Answers come from the patient's background, your notes and comments, and each session's summary. When the history is too long to read whole, a search of every session finds the parts worth a closer look, and only those are read in detail. Each answer shows what it read. To ask about one session in full, open it and use its Ask tab."
 
     /// Caveats about the last question's context, shown above the composer.
     private var notices: [String] {
@@ -146,7 +157,7 @@ struct PatientChatView: View {
             Text("No Chat Selected")
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.text.color)
-            Text("Start a new chat to ask questions across all of \(patient.name)'s sessions: transcripts, notes and comments. Chats about a single session live inside that session.")
+            Text("Start a new chat to ask about \(patient.name): background, notes and comments, session summaries, and the transcripts where a search points. Chats about a single session live inside that session.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.muted.color)
                 .multilineTextAlignment(.center)
@@ -186,7 +197,7 @@ struct PatientChatView: View {
                     Text("No chats yet")
                         .font(Theme.Typography.control)
                         .foregroundStyle(Theme.text.color)
-                    Text("Chats here cover all of \(patient.name)'s sessions. Per-session chats live inside each session.")
+                    Text("Chats here cover \(patient.name) across sessions. Per-session chats live inside each session.")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.muted.color)
                         .multilineTextAlignment(.center)
@@ -326,7 +337,10 @@ struct PatientChatView: View {
         // Decrypting and searching every session takes a moment on a long
         // history, so it runs off the main thread with a line saying so.
         let sessionCount = (try? store.listSessions(for: patient))?.count ?? 0
-        searchingNotice = Self.searchingNotice(sessions: sessionCount)
+        searchingNotice = PatientAskSteps.gatheringText(
+            sessions: sessionCount, terms: SessionSearch.terms(from: question).map(\.text))
+        let askedAt = Date()
+        searchingSince = askedAt
         let patient = patient
         let includeBackground = settings.includePatientBackground
         Task {
@@ -339,17 +353,13 @@ struct PatientChatView: View {
                 )
             }.value
             searchingNotice = nil
+            searchingSince = nil
             startAnswer(
                 service: service, context: context, history: history, question: question,
-                effort: effort, totalBudget: characterBudget,
+                effort: effort, totalBudget: characterBudget, askedAt: askedAt,
                 userMessage: userMessage, assistantID: assistantID, threadID: threadID
             )
         }
-    }
-
-    /// The line shown while the history is searched; no count when none is known.
-    static func searchingNotice(sessions n: Int) -> String {
-        n > 0 ? "Searching \(n) session\(n == 1 ? "" : "s")…" : "Searching…"
     }
 
     /// Room (characters) below which a patient question can't be answered
@@ -358,7 +368,7 @@ struct PatientChatView: View {
 
     private func startAnswer(
         service: AssistantService, context: PatientContext, history: [ChatMessage], question: String,
-        effort: AnswerEffort, totalBudget: Int,
+        effort: AnswerEffort, totalBudget: Int, askedAt: Date,
         userMessage: ChatMessage, assistantID: UUID, threadID: UUID
     ) {
         guard let store = appModel.store else { return }
@@ -366,6 +376,9 @@ struct PatientChatView: View {
         var initialCoverage = context.coverage
         initialCoverage.effort = effort
         var latestCoverageLabel = initialCoverage.label
+        // Grows when a follow-up lookup reads a session the context didn't hold,
+        // so a citation of that session shows its date and is listed.
+        var answerSources = context.sources
         // What the notice and caption say comes from what was sent: they are
         // set once the answer starts (or ends), never for a run that was refused.
         func showCoverage() {
@@ -376,8 +389,9 @@ struct PatientChatView: View {
             queue: integrations.inferenceQueue,
             kind: .patientChat,
             label: "patient question",
-            readTitle: "Reading the sessions",
+            readTitle: "Reading what was gathered",
             writeTitle: "Writing the answer",
+            runStartedAt: askedAt,
             makeStream: {
                 PatientChatAnswer.stream(
                     context: context,
@@ -396,7 +410,8 @@ struct PatientChatView: View {
                     onCoverage: { updated in
                         latestCoverageLabel = updated.label
                         if isSending { coverageNotice = updated.label }
-                    }
+                    },
+                    onSources: { answerSources = $0 }
                 )
             },
             // Stream the raw answer live; fold in the numbered source footer once
@@ -430,7 +445,7 @@ struct PatientChatView: View {
                 // answer, without the sources footer.
                 let decorated = Citations.display(
                     answer: finalText,
-                    sources: context.sources,
+                    sources: answerSources,
                     enabled: appModel.featureRegistry.contains(id: SourceCitationsFeatureModule.id)
                 )
                 messages.upsert(id: assistantID, role: .assistant, text: decorated)
@@ -507,12 +522,6 @@ private struct ThreadRow: View {
 
     @State private var isHovered = false
 
-    private static let relative: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .abbreviated
-        return f
-    }()
-
     private var fill: Color {
         if isSelected { return Theme.accentTint.color }
         return isHovered ? Theme.hover.color : .clear
@@ -526,11 +535,14 @@ private struct ThreadRow: View {
                     .font(Theme.Typography.control)
                     .foregroundStyle(Theme.text.color)
                     .lineLimit(1)
-                Text(Self.relative.localizedString(for: thread.updatedAt, relativeTo: Date()))
-                    .font(Theme.Typography.caption)
-                    // Muted ink has no contrast pairing on the selected tint.
-                    .foregroundStyle(isSelected ? Theme.text.color : Theme.muted.color)
-                    .lineLimit(1)
+                // Redrawn every half minute so "Just now" moves on by itself.
+                TimelineView(.periodic(from: .now, by: 30)) { timeline in
+                    Text(ChatThread.activityLabel(for: thread.updatedAt, now: timeline.date))
+                        .font(Theme.Typography.caption)
+                        // Muted ink has no contrast pairing on the selected tint.
+                        .foregroundStyle(isSelected ? Theme.text.color : Theme.muted.color)
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)

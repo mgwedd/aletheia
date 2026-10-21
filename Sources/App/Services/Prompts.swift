@@ -255,7 +255,12 @@ enum Prompts {
         "Generated progress note" were drafted by the assistant from that \
         transcript; blocks labelled "Therapist's session notes" and \
         "Therapist's margin comments" are the therapist's own words and \
-        carry her clinical judgment. Answer only from this material. A line saying a transcript could not be read means that \
+        carry her clinical judgment. Blocks labelled "Session digest", \
+        "Summary of the part search points at" or listed under "Earlier \
+        Sessions" are summaries the assistant wrote from that session's \
+        transcript: use them for the overall picture, and quote only \
+        transcript lines. A block labelled "Transcript excerpt (no summary \
+        yet)" is the start of that session's transcript, not all of it. Answer only from this material. A line saying a transcript could not be read means that \
         session is missing, not that nothing was discussed. When you use \
         something from a session, cite it inline with its tag exactly as \
         written, e.g. [S1]; cite every session you drew from. Never \
@@ -275,7 +280,7 @@ enum Prompts {
     /// The conversation as `ChatMemory` remembers it. The question is sent
     /// once, on its own line after this; if the history already ends with it
     /// (the chat views append it before sending), it's left out here.
-    private static func formatHistory(_ history: [ChatMessage], question: String? = nil) -> String {
+    static func formatHistory(_ history: [ChatMessage], question: String? = nil) -> String {
         var (summary, recent) = ChatMemory.remembered(history)
         if let last = recent.last, last.role == .user, last.text == question { recent.removeLast() }
         var parts: [String] = []

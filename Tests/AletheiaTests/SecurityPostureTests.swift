@@ -13,6 +13,7 @@ final class SecurityPostureTests: XCTestCase {
         idleAutoLockMinutes: Int = 15,
         encryptionEnabled: Bool = true,
         encryptionUnlocked: Bool = true,
+        encryptionOffered: Bool = true,
         auditLogActive: Bool = true,
         localEncryptedBackup: Bool = true,
         localBackupActive: Bool = true,
@@ -26,6 +27,7 @@ final class SecurityPostureTests: XCTestCase {
             idleAutoLockMinutes: idleAutoLockMinutes,
             encryptionEnabled: encryptionEnabled,
             encryptionUnlocked: encryptionUnlocked,
+            encryptionOffered: encryptionOffered,
             auditLogActive: auditLogActive,
             localEncryptedBackup: localEncryptedBackup,
             localBackupActive: localBackupActive,
@@ -37,6 +39,19 @@ final class SecurityPostureTests: XCTestCase {
 
     private func item(_ id: String, in items: [PostureItem]) -> PostureItem? {
         items.first { $0.id == id }
+    }
+
+    func testEncryptionItemIsOmittedWhenTheBuildDoesNotOfferIt() {
+        let items = evaluate(encryptionEnabled: false, encryptionOffered: false)
+        XCTAssertNil(item("encryption", in: items), "nothing to turn on, so no advice to turn it on")
+        XCTAssertFalse(items.contains { $0.level == .actionRecommended })
+        XCTAssertEqual(SecurityPosture.overall(items), .secure)
+    }
+
+    func testEncryptionItemStaysWhenOfferedOrAlreadyOn() {
+        XCTAssertEqual(item("encryption", in: evaluate(encryptionEnabled: false, encryptionOffered: true))?.level, .actionRecommended)
+        // An already-encrypted folder reports its state whatever the build offers.
+        XCTAssertEqual(item("encryption", in: evaluate(encryptionEnabled: true, encryptionOffered: false))?.level, .secure)
     }
 
     func testFullyHardenedHasNoActionItems() {
@@ -86,27 +101,19 @@ final class SecurityPostureTests: XCTestCase {
         XCTAssertEqual(SecurityPosture.overall(items), .secure)
     }
 
-    func testLocalBackupOnlySecureWhenEnabledAndActuallyWritten() {
+    func testLocalBackupIsListedOnlyOnceItIsActuallyWritten() {
         // Toggle on and the app really writes archives: secure.
         XCTAssertEqual(
             item("encryptedBackup", in: evaluate(localEncryptedBackup: true, localBackupActive: true))?.level,
             .secure)
-        // Toggle on but nothing writes archives (this build): a saved preference
-        // only, so it must not read as a protection that exists.
-        let inactive = item("encryptedBackup", in: evaluate(localEncryptedBackup: true, localBackupActive: false))
-        XCTAssertEqual(inactive?.level, .informational)
-        XCTAssertTrue(inactive?.detail.contains("nothing is being backed up") ?? false)
-        XCTAssertFalse(inactive?.detail.contains("is kept") ?? true)
-        // Toggle off: an option, never secure.
+        // Toggle off but available: an option, never secure.
         XCTAssertEqual(
             item("encryptedBackup", in: evaluate(localEncryptedBackup: false, localBackupActive: true))?.level,
             .informational)
-    }
-
-    func testInactiveLocalBackupNeverDrivesActionable() {
+        // Nothing writes archives (this build): no row about a copy that cannot exist,
+        // whatever the saved preference says.
         for enabled in [true, false] {
-            let items = evaluate(localEncryptedBackup: enabled, localBackupActive: false)
-            XCTAssertNotEqual(item("encryptedBackup", in: items)?.level, .actionRecommended)
+            XCTAssertNil(item("encryptedBackup", in: evaluate(localEncryptedBackup: enabled, localBackupActive: false)))
         }
     }
 
@@ -116,20 +123,14 @@ final class SecurityPostureTests: XCTestCase {
         XCTAssertFalse(LocalEncryptedBackupService.isWired)
     }
 
-    func testICloudBackupOnlySecureWhenEnabledAndProvisioned() {
-        // Enabled + provisioned: an active, sealed off-device copy.
+    func testICloudBackupIsListedOnlyWhenOnAndProvisioned() {
         XCTAssertEqual(
             item("cloudBackup", in: evaluate(iCloudBackupEnabled: true, iCloudBackupConfigured: true))?.level,
             .secure)
-        // Enabled but not provisioned (current build): the choice is saved but
-        // nothing is uploaded yet — informational, never "secure".
-        XCTAssertEqual(
-            item("cloudBackup", in: evaluate(iCloudBackupEnabled: true, iCloudBackupConfigured: false))?.level,
-            .informational)
-        // Off: an available option, informational.
-        XCTAssertEqual(
-            item("cloudBackup", in: evaluate(iCloudBackupEnabled: false))?.level,
-            .informational)
+        // Not provisioned (this build) or off: nothing to report.
+        XCTAssertNil(item("cloudBackup", in: evaluate(iCloudBackupEnabled: true, iCloudBackupConfigured: false)))
+        XCTAssertNil(item("cloudBackup", in: evaluate(iCloudBackupEnabled: false, iCloudBackupConfigured: true)))
+        XCTAssertNil(item("cloudBackup", in: evaluate(iCloudBackupEnabled: false)))
     }
 
     func testICloudBackupNeverDrivesActionable() {
@@ -156,6 +157,13 @@ final class SecurityPostureTests: XCTestCase {
         let unknown = item("network", in: evaluate(networkOnline: nil))?.detail ?? ""
         XCTAssertFalse(unknown.contains("online"))
         XCTAssertFalse(unknown.contains("offline"))
+    }
+
+    func testNetworkDetailMentionsBackupsOnlyWhenOneUploads() {
+        let none = item("network", in: evaluate(networkOnline: true))?.detail ?? ""
+        XCTAssertFalse(none.lowercased().contains("backup"))
+        let cloud = item("network", in: evaluate(iCloudBackupEnabled: true, iCloudBackupConfigured: true, networkOnline: true))?.detail ?? ""
+        XCTAssertTrue(cloud.contains("end-to-end-encrypted backups"))
     }
 
     func testNetworkAndCloudDoNotDowngradeHardenedHeadline() {

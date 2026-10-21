@@ -29,11 +29,40 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         }
     }
 
-    /// The pane `delta` rows away (clamped at either end), for up / down.
-    func moved(by delta: Int) -> SettingsPane {
-        let all = Self.allCases
-        guard let index = all.firstIndex(of: self) else { return self }
-        return all[min(max(index + delta, 0), all.count - 1)]
+    /// The panes this build shows. Encryption is left out when there is nothing
+    /// to manage (see `SettingsAvailability`) rather than shown as unavailable.
+    static func available(encryptionOffered: Bool) -> [SettingsPane] {
+        allCases.filter { $0 != .encryption || encryptionOffered }
+    }
+
+    /// The pane for a remembered raw value: the default when it is unknown or
+    /// not among `panes` (a pane this build no longer shows).
+    static func restored(rawValue: String, in panes: [SettingsPane]) -> SettingsPane {
+        guard let pane = SettingsPane(rawValue: rawValue), panes.contains(pane) else { return .default }
+        return pane
+    }
+
+    /// The pane `delta` rows away among `panes` (clamped at either end), for up / down.
+    func moved(by delta: Int, in panes: [SettingsPane] = SettingsPane.allCases) -> SettingsPane {
+        guard let index = panes.firstIndex(of: self) else { return panes.first ?? self }
+        return panes[min(max(index + delta, 0), panes.count - 1)]
+    }
+}
+
+/// What Settings offers depends on what the build ships. Controls for a feature
+/// the build does not have are left out, not shown as unavailable.
+enum SettingsAvailability {
+    /// Encryption is offered when this build includes it, or when a folder is
+    /// already encrypted (by this build or an earlier one), so it can still be
+    /// unlocked and managed.
+    static func encryptionOffered(isEnabled: Bool, moduleInBuild: Bool) -> Bool {
+        isEnabled || moduleInBuild
+    }
+
+    /// Keeping raw audio needs encryption (kept audio must be ciphertext), so
+    /// without it the switch could never be turned on.
+    static func showsKeepAudio(encryptionOffered: Bool) -> Bool {
+        encryptionOffered
     }
 }
 
@@ -41,12 +70,27 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 
 /// The left column: one button per pane, the selected one on the accent tint.
 /// Up / down arrows move the selection while a row has keyboard focus.
+/// Settings window geometry, in one place. `SettingsView` declares its own
+/// minimum size from these; presenters (the sheet, the Settings scene) must not
+/// wrap it in a smaller `.frame(minWidth:)`, which clips the content instead of
+/// growing the window.
+enum SettingsLayout {
+    static let sidebarWidth: CGFloat = 220
+    /// Narrowest a pane's controls (field + button, segmented control) fit.
+    static let paneMinWidth: CGFloat = 680
+    static let minWidth: CGFloat = sidebarWidth + paneMinWidth
+    static let idealWidth: CGFloat = 960
+    static let minHeight: CGFloat = 640
+    static let idealHeight: CGFloat = 680
+}
+
 struct SettingsSidebar: View {
     @Binding var selection: SettingsPane
+    var panes: [SettingsPane] = SettingsPane.allCases
 
     var body: some View {
         VStack(spacing: 2) {
-            ForEach(SettingsPane.allCases) { pane in
+            ForEach(panes) { pane in
                 SettingsSidebarRow(pane: pane, isSelected: pane == selection) {
                     selection = pane
                 }
@@ -55,7 +99,7 @@ struct SettingsSidebar: View {
         }
         .padding(.horizontal, 10)
         .padding(.top, 16)
-        .frame(width: 220)
+        .frame(width: SettingsLayout.sidebarWidth)
         .frame(maxHeight: .infinity)
         .background(Theme.sidebar.color)
         .overlay(alignment: .trailing) {
@@ -63,8 +107,8 @@ struct SettingsSidebar: View {
         }
         .onMoveCommand { direction in
             switch direction {
-            case .up: selection = selection.moved(by: -1)
-            case .down: selection = selection.moved(by: 1)
+            case .up: selection = selection.moved(by: -1, in: panes)
+            case .down: selection = selection.moved(by: 1, in: panes)
             default: break
             }
         }
@@ -194,13 +238,23 @@ struct SettingsCardHeader<Trailing: View>: View {
 }
 
 /// A setting: title (14pt) over a muted 12pt detail, with the control at the
-/// trailing edge.
+/// trailing edge. A row whose explanation is a "how this works" aside takes
+/// it as `tip` instead of `detail`: shown on hover, not in the layout.
 struct SettingsRow<Trailing: View>: View {
     let title: String
     var detail: String?
+    var tip: HelpTip?
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
+        if let tip {
+            row.hoverTip(tip)
+        } else {
+            row
+        }
+    }
+
+    private var row: some View {
         HStack(alignment: .center, spacing: 24) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -223,10 +277,11 @@ struct SettingsRow<Trailing: View>: View {
 struct SettingsSwitchRow: View {
     let title: String
     var detail: String?
+    var tip: HelpTip?
     @Binding var isOn: Bool
 
     var body: some View {
-        SettingsRow(title: title, detail: detail) {
+        SettingsRow(title: title, detail: detail, tip: tip) {
             Toggle(title, isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)

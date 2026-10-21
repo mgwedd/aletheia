@@ -9,7 +9,7 @@ struct AIRunStats: Equatable {
     var outputTokens: Int?
     var outputNanos: Int?
     /// Tokens Ollama should have had to read for this prompt (the shared
-    /// `ContextBudget.estimatedTokens`), minus any leading part of the prompt it already holds from the
+    /// `ContextBudget.estimatedTokens`, by script), minus any leading part of the prompt it already holds from the
     /// previous request (see `PromptPrefixMemory`). 0 when unknown.
     var expectedPromptTokens: Int = 0
     /// What the run was for, and whether `PromptPrefixMemory` found a prefix
@@ -17,6 +17,8 @@ struct AIRunStats: Equatable {
     /// `prompt_eval_count` but spends almost no time on the cached part).
     var task: AITask?
     var reusedPrefix = false
+    /// The window the run was given (Ollama's `num_ctx`); 0 when unknown.
+    var contextTokens = 0
 
     /// Prompt tokens read per second. Needs enough tokens to be a real
     /// measurement; a short prompt's timing is mostly noise. Nil for a run that
@@ -38,7 +40,12 @@ struct AIRunStats: Equatable {
         Self.rate(tokens: outputTokens, nanos: outputNanos, minimumTokens: 20)
     }
 
-    /// The tripwire: Ollama read well under what we sent, so it may have cut
+    /// The tripwire: the prompt may have been cut, because Ollama read well
+    /// under what we sent (`readLessThanSent`) or read up to the edge of its
+    /// window (`nearContextLimit`).
+    var possiblyTruncated: Bool { readLessThanSent || nearContextLimit }
+
+    /// Ollama read well under what we sent, so it may have cut
     /// the prompt. Only judged for prompts big enough that the estimate is
     /// reliable, and against `expectedPromptTokens` so a cached prefix (which
     /// Ollama doesn't count in `prompt_eval_count`) isn't mistaken for a cut.
@@ -48,9 +55,20 @@ struct AIRunStats: Equatable {
     /// read lands near 75% of it, and text heavy in long words nearer 65%). 60%
     /// sits under that spread, so only a real cut (a dropped chunk, not
     /// tokenizer noise) trips it.
-    var possiblyTruncated: Bool {
+    var readLessThanSent: Bool {
         guard let promptTokens, expectedPromptTokens >= 500 else { return false }
         return promptTokens * 10 < expectedPromptTokens * 6
+    }
+
+    /// Ollama read as many tokens as the window holds less the reply room
+    /// (`ContextBudget.replyHeadroomTokens`). The budget check only sends a
+    /// prompt whose estimate is under that, so a real count at it means the
+    /// estimate ran low (a script that tokenizes densely) and Ollama has
+    /// probably dropped the start to make it fit. Not judged when the window
+    /// is unknown.
+    var nearContextLimit: Bool {
+        guard let promptTokens, contextTokens > ContextBudget.replyHeadroomTokens else { return false }
+        return promptTokens >= contextTokens - ContextBudget.replyHeadroomTokens
     }
 
     /// Shown under an answer or note when `possiblyTruncated`.
@@ -71,8 +89,9 @@ enum AIRunEvent {
 
 /// Live state of one run, for `AIProgressView`.
 struct AIRunProgress: Equatable {
-    /// Earlier stages that have already finished in this multi-stage run,
-    /// shown with a checkmark above the active read/write pair.
+    /// Earlier stages that have already finished in this multi-stage run, one
+    /// summary line each. The status line shows only the current stage; these
+    /// say what a run went through (`NoteProgress` reads them for its bar).
     var completedStages: [String] = []
     /// Stage names: "Reading the session", "Writing the note".
     var readTitle = "Reading"
@@ -84,6 +103,15 @@ struct AIRunProgress: Equatable {
     /// Streamed chunks (about one per token) until Ollama reports the real count.
     var tokensWritten = 0
     var stats: AIRunStats?
+    /// Overall position in a multi-call run (a digest), kept across stages.
+    var steps: AIRunSteps?
+    /// When the run's first stage began, kept across stages: the status line's
+    /// elapsed counter runs from here.
+    var runStartedAt: Date?
+    /// What retrieval found, put before the stage while the model reads
+    /// ("1 mention, in the Oct 13 session"). Kept across stages; built from
+    /// search results, never by a model.
+    var lead: String?
 
     /// Advances to a new read/write stage, keeping a one-line summary of the
     /// stage that just finished in `completedStages`.
@@ -96,12 +124,17 @@ struct AIRunProgress: Equatable {
             let summary = [self.readTitle, detail, elapsed].compactMap { $0 }.joined(separator: " · ")
             history.append(summary)
         }
+        let runStart = runStartedAt ?? self.startedAt ?? startedAt
+        let lead = lead
         self = AIRunProgress(
             completedStages: history,
             readTitle: readTitle,
             writeTitle: writeTitle,
-            startedAt: startedAt
+            startedAt: startedAt,
+            steps: steps
         )
+        runStartedAt = runStart
+        self.lead = lead
     }
 
     /// Appends a completed step (such as a deterministic search or a local tool call)

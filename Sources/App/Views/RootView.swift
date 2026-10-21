@@ -7,11 +7,15 @@ struct RootView: View {
     @EnvironmentObject private var updateService: UpdateService
     @EnvironmentObject private var encryption: EncryptionManager
     @EnvironmentObject private var recorder: SessionRecorder
+    @EnvironmentObject private var transcription: TranscriptionCoordinator
+    @EnvironmentObject private var exports: ExportJobCenter
     @ObservedObject private var navigator = AppNavigator.shared
     @Environment(\.openWindow) private var openWindow
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
-    @State private var showSearch = false
+    /// The search field at the top right and its results (see `GlobalSearchField`).
+    @StateObject private var search = GlobalSearchModel()
+    @FocusState private var searchFocused: Bool
     /// The patient whose profile is being edited; the sheet is shared by the
     /// detail view's Edit button and the sidebar's context menu.
     @State private var editingProfile: Patient?
@@ -23,13 +27,6 @@ struct RootView: View {
                 .toolbar {
                     ToolbarItem(placement: .automatic) {
                         Button {
-                            showSearch = true
-                        } label: {
-                            Label("Search", systemImage: "magnifyingglass")
-                        }
-                    }
-                    ToolbarItem(placement: .automatic) {
-                        Button {
                             showSettings = true
                         } label: {
                             Label("Settings", systemImage: "gearshape")
@@ -37,18 +34,26 @@ struct RootView: View {
                     }
                 }
         } detail: {
-            if let selectedPatient, appModel.patients.contains(where: { $0.id == selectedPatient.id }) {
-                PatientDetailView(patient: selectedPatient, onEditProfile: { field in editingFocus = field; editingProfile = selectedPatient })
-                    .id(selectedPatient.id)
-                    .background(Theme.window.color)
-            } else {
-                ContentUnavailableView(
-                    "Select a Patient",
-                    systemImage: "person.text.rectangle",
-                    description: Text("Choose a patient on the left, or add a new one.")
-                )
-                .background(Theme.window.color)
-            }
+            // Results cover the detail pane while there is a query, and the pane
+            // stays underneath (so an open session keeps its unsaved edits).
+            detailContent
+                .accessibilityHidden(search.hasQuery)
+                .overlay {
+                    if search.hasQuery {
+                        GlobalSearchResultsView(model: search, onOpen: { openSearchResult($0) })
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        GlobalSearchField(model: search, isFocused: $searchFocused, onOpen: { openSearchResult($0) })
+                    }
+                }
+        }
+        .modifier(GlobalSearchRunning(search: search, appModel: appModel, isFocused: $searchFocused))
+        // A records export keeps running while the therapist works; its progress and
+        // the finished file are shown here whichever patient is open.
+        .overlay(alignment: .bottomTrailing) {
+            ExportStatusToast(center: exports).padding(16)
         }
         // Data-safety notices: an unopenable database (nothing can be saved) or a
         // single failed save. Non-blocking, but pinned above everything so it's
@@ -61,7 +66,6 @@ struct RootView: View {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(encryption)
-                .frame(minWidth: 560, minHeight: 520)
         }
         .sheet(item: $editingProfile) { patient in
             PatientProfileEditor(
@@ -70,49 +74,6 @@ struct RootView: View {
                 initialFocus: editingFocus
             )
             .environmentObject(appModel)
-        }
-        .sheet(isPresented: $showSearch) {
-            GlobalSearchView(onOpen: { hit in
-                selectedPatient = hit.patient
-                if let session = hit.session {
-                    let initialTab: SessionTab
-                    var noteFormat: ProgressNoteFormat?
-                    var showingMyNotes = false
-                    var commentID: String?
-
-                    switch hit.kind {
-                    case .note:
-                        initialTab = .notes
-                        noteFormat = hit.noteFormat
-                        showingMyNotes = false
-                    case .session:
-                        initialTab = .notes
-                        showingMyNotes = true
-                    case .comment:
-                        if let format = hit.noteFormat {
-                            initialTab = .notes
-                            noteFormat = format
-                            showingMyNotes = false
-                            commentID = hit.commentID
-                        } else {
-                            initialTab = .transcript
-                            commentID = hit.commentID
-                        }
-                    case .transcript, .patient:
-                        initialTab = .transcript
-                    }
-
-                    navigator.requestOpenSession(
-                        patientID: hit.patient.id,
-                        sessionID: session.id,
-                        initialTab: initialTab,
-                        initialNoteFormat: noteFormat,
-                        initialShowingMyNotes: showingMyNotes,
-                        initialFocusedCommentID: commentID
-                    )
-                }
-            })
-                .environmentObject(appModel)
         }
         .sheet(isPresented: updatePresented) {
             if let release = updateService.available {
@@ -149,7 +110,8 @@ struct RootView: View {
             Button("Stop Now", role: .destructive) { Task { await recorder.stop() } }
         } message: {
             Text(SessionNotifications.longRecordingReminder(
-                patientName: recorder.active?.patientName ?? "This patient"
+                patientName: recorder.active?.patientName ?? "This patient",
+                showsName: true   // in-app alert behind the app lock, not a lock-screen banner
             ).body)
         }
         // `selectedPatient` is a snapshot; keep it in step with saves (matched by
@@ -171,6 +133,44 @@ struct RootView: View {
         }
         .onChange(of: navigator.pendingPatientID) { _, _ in navigateToPendingPatient() }
         .onAppear { navigateToPendingPatient() }
+        .modifier(SearchActivityReporting(
+            appModel: appModel, recorder: recorder, transcription: transcription, inferenceQueue: integrations.inferenceQueue))
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        if let selectedPatient, appModel.patients.contains(where: { $0.id == selectedPatient.id }) {
+            PatientDetailView(patient: selectedPatient, onEditProfile: { field in editingFocus = field; editingProfile = selectedPatient })
+                .id(selectedPatient.id)
+                .background(Theme.window.color)
+        } else {
+            ContentUnavailableView(
+                "Select a Patient",
+                systemImage: "person.text.rectangle",
+                description: Text("Choose a patient on the left, or add a new one.")
+            )
+            .background(Theme.window.color)
+        }
+    }
+
+    /// Opens a search result: selects the patient and, for anything inside a
+    /// session, opens that session where the match is. Then the search clears.
+    private func openSearchResult(_ hit: SearchHit) {
+        let destination = SearchHitDestination(hit)
+        selectedPatient = hit.patient
+        if let sessionID = destination.sessionID {
+            navigator.requestOpenSession(
+                patientID: destination.patientID,
+                sessionID: sessionID,
+                initialTab: destination.tab,
+                initialNoteFormat: destination.noteFormat,
+                initialShowingMyNotes: destination.showingMyNotes,
+                initialFocusedCommentID: destination.commentID,
+                initialSearchFocus: destination.searchFocus(query: search.query)
+            )
+        }
+        search.clear()
+        searchFocused = false
     }
 
     private var doctorAvailable: Bool {
@@ -238,5 +238,51 @@ struct RootView: View {
             get: { updateService.manualNotice != nil },
             set: { if !$0 { updateService.clearManualNotice() } }
         )
+    }
+}
+
+/// Tells the background search-index sweep when to wait: while recording,
+/// transcribing, or while the AI model is generating.
+private struct SearchActivityReporting: ViewModifier {
+    let appModel: AppModel
+    @ObservedObject var recorder: SessionRecorder
+    @ObservedObject var transcription: TranscriptionCoordinator
+    @ObservedObject var inferenceQueue: InferenceQueue
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: recorder.isRecording, initial: true) { _, on in
+                appModel.searchActivity.set(.recording, active: on)
+            }
+            .onChange(of: transcription.isBusy, initial: true) { _, on in
+                appModel.searchActivity.set(.transcription, active: on)
+            }
+            .onChange(of: inferenceQueue.running != nil, initial: true) { _, on in
+                appModel.searchActivity.set(.model, active: on)
+            }
+    }
+}
+
+/// Runs the global search whenever its query, its limits or the index change
+/// (each run cancels the one before), and binds ⌘F for the window.
+private struct GlobalSearchRunning: ViewModifier {
+    @ObservedObject var search: GlobalSearchModel
+    let appModel: AppModel
+    var isFocused: FocusState<Bool>.Binding
+    @State private var indexRevision = 0
+
+    private struct Run: Equatable {
+        let query: String
+        let limits: GlobalSearchLimits
+        let revision: Int
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .background { GlobalSearchHotkey(isFocused: isFocused) }
+            .task(id: Run(query: search.query, limits: search.limits, revision: indexRevision)) {
+                await search.run(store: appModel.store)
+            }
+            .onReceive(appModel.searchIndexMonitor.$revision) { indexRevision = $0 }
     }
 }

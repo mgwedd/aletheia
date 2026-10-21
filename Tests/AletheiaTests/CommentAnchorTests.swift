@@ -53,4 +53,23 @@ final class CommentAnchorTests: XCTestCase {
         let sorted = [late, unanchored, early].sorted(by: CommentsRailView.byTranscriptPosition)
         XCTAssertEqual(sorted.map(\.id), ["1", "2", "3"])
     }
+
+    /// A note comment is anchored in the note as the reader shows it: a passage
+    /// selected under a heading and after bold text is quoted as selected,
+    /// highlighted where it was selected, and counted as placed.
+    func testNoteCommentsAnchorInTheRenderedNote() throws {
+        let note = "## Subjective\nClient reports **low mood** and poor sleep.\n\n## Plan\n- Review poor sleep"
+        let rendered = NoteReaderView.rendered(note).string
+        XCTAssertFalse(rendered.contains("**"), "the reader shows the note without its markup")
+        let selection = (rendered as NSString).range(of: "poor sleep")
+        let trimmed = try XCTUnwrap(TranscriptHighlighter.trimmed(selection, in: rendered))
+        let quote = (rendered as NSString).substring(with: trimmed)
+        XCTAssertEqual(quote, "poor sleep")
+
+        let anchors: [TranscriptHighlighter.Anchor] = [(id: "c", quote: quote, start: trimmed.location)]
+        XCTAssertEqual(TranscriptHighlighter.spans(in: rendered, comments: anchors).first?.range, selection,
+                       "the first of two \"poor sleep\"s, the one selected")
+        XCTAssertTrue(TranscriptHighlighter.unplacedIDs(in: rendered, comments: anchors).isEmpty)
+        XCTAssertNotEqual((note as NSString).substring(with: trimmed), quote, "offsets in the Markdown would quote something else")
+    }
 }

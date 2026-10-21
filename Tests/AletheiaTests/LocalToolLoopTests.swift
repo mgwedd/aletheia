@@ -229,6 +229,47 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(broken, [LocalToolCall(tool: "invalid_json")])
     }
 
+    func testParseCallsAcceptsPlainNumbersWhereTheGrammarWantsStrings() {
+        // Ollama does not apply the grammar, so a model may write seconds as a number.
+        let numeric = LocalToolLoop.parseCalls(
+            #"{"calls":[{"tool":"read_section","session":"S1","start":600,"end":900}]}"#
+        )
+        XCTAssertEqual(numeric, [LocalToolCall(tool: "read_section", session: "S1", start: "600", end: "900")])
+
+        let whole = LocalToolLoop.parseCalls(#"{"tool":"read_section","session":1,"start":600.0,"end":"15:00"}"#)
+        XCTAssertEqual(whole, [LocalToolCall(tool: "read_section", session: "1", start: "600", end: "15:00")])
+
+        let fractional = LocalToolLoop.parseCalls(#"[{"tool":"read_section","session":"S1","start":600.9,"end":null}]"#)
+        XCTAssertEqual(fractional, [LocalToolCall(tool: "read_section", session: "S1", start: "600", end: nil)])
+
+        // Strings still decode as written, and a wrong kind of value is still not a plan.
+        let strings = LocalToolLoop.parseCalls(#"{"calls":[{"tool":"read_section","session":"S1","start":"10:00"}]}"#)
+        XCTAssertEqual(strings, [LocalToolCall(tool: "read_section", session: "S1", start: "10:00")])
+        let boolean = LocalToolLoop.parseCalls(#"{"tool":"read_section","start":true}"#)
+        XCTAssertEqual(boolean, [LocalToolCall(tool: "invalid_json")])
+    }
+
+    func testNumericStartAndEndReadTheSameSectionAsTheirTextForm() throws {
+        let scope = LocalToolScope(sessions: sampleSessions())
+        let calls = LocalToolLoop.parseCalls(
+            #"{"calls":[{"tool":"read_section","session":"S1","start":720,"end":780}]}"#
+        )
+        XCTAssertEqual(calls.count, 1)
+        let outcome = scope.execute(try XCTUnwrap(calls.first))
+        XCTAssertFalse(outcome.isError, outcome.output)
+        XCTAssertTrue(outcome.output.contains("sister Dana"))
+        XCTAssertEqual(outcome.readTranscriptTags, ["S1"])
+
+        let text = scope.execute(LocalToolCall(tool: "read_section", session: "S1", start: "12:00", end: "13:00"))
+        XCTAssertEqual(outcome.output, text.output)
+    }
+
+    func testLocalToolCallStillRoundTripsThroughCodable() throws {
+        let call = LocalToolCall(tool: "search", query: "Dana", from: "2026-01-01")
+        let data = try JSONEncoder().encode(call)
+        XCTAssertEqual(try JSONDecoder().decode(LocalToolCall.self, from: data), call)
+    }
+
     func testRefineRespectsEffortCallLimitsAndPassesGrammar() async throws {
         let scope = LocalToolScope(sessions: sampleSessions())
         let stub = ToolLoopStubAssistant()
@@ -298,6 +339,66 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(focusResult.readDigestTags, ["S1"])
     }
 
+    func testPlanningPromptCarriesTheChatHistory() {
+        let history = [
+            ChatMessage(role: .user, text: "What did Dana ask for?"),
+            ChatMessage(role: .assistant, text: "She asked to borrow money [S1]."),
+            ChatMessage(role: .user, text: "And what did the client say back?"),
+        ]
+        let prompt = LocalToolLoop.planningPrompt(
+            question: "And what did the client say back?",
+            initialContext: "Initial",
+            priorToolOutputs: [],
+            remainingCalls: 2,
+            history: history
+        )
+        XCTAssertTrue(prompt.contains("Recent conversation:"))
+        XCTAssertTrue(prompt.contains("Therapist: What did Dana ask for?"))
+        XCTAssertTrue(prompt.contains("Assistant: She asked to borrow money [S1]."))
+        XCTAssertEqual(
+            prompt.components(separatedBy: "And what did the client say back?").count - 1, 1,
+            "the question appears once, on its own line"
+        )
+
+        let first = LocalToolLoop.planningPrompt(
+            question: "What did Dana ask for?",
+            initialContext: "Initial",
+            priorToolOutputs: [],
+            remainingCalls: 2
+        )
+        XCTAssertFalse(first.contains("Recent conversation:"))
+    }
+
+    func testRefineShowsThePlanningCallTheEarlierTurns() async throws {
+        let scope = LocalToolScope(sessions: sampleSessions())
+        let stub = ToolLoopStubAssistant()
+        stub.planReplies = [#"{"calls":[]}"#]
+        let service = AssistantService(assistant: stub, model: "m")
+        let builder = DigestBuilder(queue: InferenceQueue())
+        var progress = AIRunProgress()
+        let history = [
+            ChatMessage(role: .user, text: "What did Dana ask for?"),
+            ChatMessage(role: .assistant, text: "She asked to borrow money [S1]."),
+            ChatMessage(role: .user, text: "And what did the client say back?"),
+        ]
+
+        _ = try await LocalToolLoop.refine(
+            question: "And what did the client say back?",
+            initialContext: "Initial",
+            scope: scope,
+            effort: .normal,
+            characterBudget: 6_000,
+            history: history,
+            service: service,
+            builder: builder,
+            live: { _, change in change(&progress) }
+        )
+
+        let planning = stub.prompts.filter { $0.contains("Available read-only tools:") }
+        XCTAssertEqual(planning.count, 1)
+        XCTAssertTrue(planning[0].contains("She asked to borrow money [S1]."))
+    }
+
     // MARK: - LongSessionChat & PatientChatAnswer
 
     func testLongSessionChatUsesDigestSearchAndToolsWhenOverBudget() async throws {
@@ -350,6 +451,48 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertTrue(progress.completedStages.contains("Read S1 [1:19:00–1:21:00]"))
     }
 
+    /// A long-session chat that builds the digest inline keeps each section
+    /// summary in the session's section cache; the next one reads them back.
+    func testLongSessionChatInlineDigestUsesTheSectionCache() async throws {
+        let lines = (0..<360).map { i -> String in
+            let stamp = String(format: "[%02d:%02d]", (i * 20) / 60, (i * 20) % 60)
+            return "\(stamp) You: Tell me more about topic \(i) and how the week went with work and family."
+        }.joined(separator: "\n")
+        var saved: [String: String] = [:]
+        let access = SectionCacheAccess(load: { saved }, save: { saved = $0 })
+
+        func ask() async throws -> [String] {
+            let stub = ToolLoopStubAssistant()
+            var service = AssistantService(assistant: stub, model: "m")
+            service.budget = ContextBudget(tokens: 8_192)
+            let stream = LongSessionChat.stream(
+                transcript: lines,
+                history: [],
+                question: "What came up about work?",
+                effort: .normal,
+                sessionID: UUID(),
+                service: service,
+                builder: DigestBuilder(queue: InferenceQueue()),
+                loadDigest: { nil },
+                saveDigest: { _ in },
+                sectionCache: access,
+                live: { _, _ in },
+                coverage: { _ in }
+            )
+            for try await _ in stream {}
+            return stub.prompts
+        }
+
+        let first = try await ask()
+        let sectionCalls = first.filter { $0.contains("Transcript section") }.count
+        XCTAssertGreaterThan(sectionCalls, 1)
+        XCTAssertEqual(saved.count, sectionCalls)
+
+        let second = try await ask()
+        XCTAssertFalse(second.contains { $0.contains("Transcript section") }, "every section comes from the cache")
+        XCTAssertTrue(second.contains { $0.contains("Below are digest notes") }, "only the merge runs again")
+    }
+
     func testPatientChatAnswerRefinesPartialContextAndUpdatesCoverage() async throws {
         let stub = ToolLoopStubAssistant()
         stub.planReplies = [
@@ -391,12 +534,54 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(snapshots.last, "FINAL ANSWER")
         let finalCoverage = try XCTUnwrap(reportedCoverages.last)
         XCTAssertEqual(finalCoverage.effort, .normal)
-        XCTAssertEqual(finalCoverage.sessionsWithPassages, 1)
+        // The context held no transcript of S1; the lookup read it.
+        XCTAssertEqual(finalCoverage.sessionsWithPassages, 0)
+        XCTAssertEqual(finalCoverage.lookupTags, ["S1"])
         XCTAssertEqual(finalCoverage.digestSessions, 1)
         XCTAssertTrue(try XCTUnwrap(finalCoverage.label).hasSuffix("· Normal"))
-        XCTAssertTrue(progress.completedStages.contains("Searched 2 sessions · 0 sessions with passages"))
+        XCTAssertTrue(progress.completedStages.contains("Searched 2 sessions · 0 matches"))
+        XCTAssertEqual(progress.steps, PatientAskSteps(effort: .normal, layered: true).writing, "the bar ends on writing the answer")
         XCTAssertTrue(progress.completedStages.contains("Read S1 [10:00–15:00]"))
         XCTAssertTrue(progress.completedStages.contains("Read digest for S1"))
+    }
+
+    /// Whole transcripts skip the lookups but still show the run's stages:
+    /// what was gathered, then reading (with its token estimate) and writing.
+    func testPatientChatAnswerWithWholeTranscriptsShowsItsStages() async throws {
+        let stub = ToolLoopStubAssistant()
+        var service = AssistantService(assistant: stub, model: "m")
+        service.budget = ContextBudget(tokens: 16_384)
+        var coverage = TranscriptCoverage(
+            transcriptSessions: 2, sessionsWithPassages: 2, mentions: 2, searched: true, wholeTranscripts: true, fullTexts: true)
+        coverage.searchTerms = ["michaels", "dream"]
+        coverage.sessionsWithMentions = 2
+        let context = PatientContext(
+            text: "===== Session [S1] March 15, 2026 =====\n[0:10] C: Michaels dream is to sail.",
+            sources: [CitationSource(tag: "S1", date: date(2026, 3, 15), folderName: "f1")],
+            coverage: coverage
+        )
+        var progress = AIRunProgress()
+        let stream = PatientChatAnswer.stream(
+            context: context, history: [], question: "whats michaels dream", effort: .normal, totalBudget: 12_000,
+            scope: { self.LocalToolScopeForSample() },
+            service: service,
+            builder: DigestBuilder(queue: InferenceQueue()),
+            live: { _, change in change(&progress) },
+            onCoverage: { _ in }
+        )
+        var last = ""
+        for try await snap in stream { last = snap }
+        // Let the stage's queued progress updates land.
+        for _ in 0..<5 { await Task.yield() }
+
+        XCTAssertEqual(last, "FINAL ANSWER")
+        XCTAssertFalse(stub.prompts.contains { $0.contains("Available read-only tools:") }, "no lookup round")
+        XCTAssertTrue(progress.completedStages.contains("Gathered the full transcripts of 2 sessions"), "\(progress.completedStages)")
+        XCTAssertEqual(progress.steps, PatientAskSteps(effort: .normal, layered: false).writing)
+        XCTAssertEqual(progress.readTitle, "Reading what was gathered")
+        XCTAssertEqual(progress.lead, "2 mentions, across 2 sessions", "what search found leads the status line")
+        XCTAssertNotNil(progress.startedAt, "the elapsed time runs from the stage's start")
+        XCTAssertNotNil(progress.firstTokenAt)
     }
 
     func testStoreLocalToolScopeIncludesPatientSessionsAndDigests() throws {
@@ -421,6 +606,257 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(scope.sessions.count, 1)
         XCTAssertEqual(scope.sessions.first?.tag, "S1")
         XCTAssertEqual(scope.sessions.first?.digest?.sessionDigest, "Discussed sister boundary.")
+    }
+
+    // MARK: - Pressure tests
+
+    func testModelWrittenTimesThatOverflowAreRejectedNotTrapped() {
+        XCTAssertNil(LocalToolScope.parseSeconds("153722867280912931:00"))
+        XCTAssertNil(LocalToolScope.parseSeconds("2562047788015216:00:00"))
+        XCTAssertEqual(LocalToolScope.parseSeconds("1:02:03"), 3723)
+
+        let scope = LocalToolScope(sessions: sampleSessions())
+        let overflowing = scope.execute(LocalToolCall(tool: "read_section", session: "S1", start: "153722867280912931:00"))
+        XCTAssertTrue(overflowing.isError)
+        XCTAssertTrue(overflowing.output.contains("invalid \"start\""))
+
+        // A start near Int.max with no end used to trap computing the default end.
+        let huge = scope.execute(LocalToolCall(tool: "read_section", session: "S1", start: "9223372036854775807"))
+        XCTAssertFalse(huge.isError)
+        XCTAssertTrue(huge.output.contains("No transcript lines in S1"))
+    }
+
+    func testSearchToolShowsTheMatchingNoteParagraph() {
+        let session = LocalToolSession(
+            id: UUID(), tag: "S1", date: date(2026, 3, 15), folderName: "f", transcript: "", digest: nil,
+            notes: "Opening thoughts.\n\nTalked through the move to Denver.\nPacking starts next week.\n\nUnrelated closing line.",
+            comments: []
+        )
+        let outcome = LocalToolScope(sessions: [session]).execute(LocalToolCall(tool: "search", query: "Denver"))
+        XCTAssertFalse(outcome.isError)
+        XCTAssertTrue(outcome.output.contains("Talked through the move to Denver."), outcome.output)
+        XCTAssertTrue(outcome.output.contains("Packing starts next week."), outcome.output)
+        XCTAssertFalse(outcome.output.contains("Unrelated closing line."))
+        XCTAssertTrue(outcome.readTranscriptTags.isEmpty, "a note is not a transcript passage")
+    }
+
+    func testParagraphFollowsTheIndexSplit() {
+        XCTAssertEqual(LocalToolScope.paragraph(in: "a\nb\n \nc", from: 0), "a\nb")
+        XCTAssertEqual(LocalToolScope.paragraph(in: "a\nb\n \nc", from: 3), "c")
+        XCTAssertEqual(LocalToolScope.paragraph(in: "a", from: 5), "")
+    }
+
+    func testRefineLeavesOutALookupThatDidNotFitTheBudget() async throws {
+        let transcript = (0..<40)
+            .map { "[00:\(String(format: "%02d", $0))] Client: Sentence \($0) about the garden, the weather and work." }
+            .joined(separator: "\n")
+        let scope = LocalToolScope(sessions: [LocalToolSession(
+            id: UUID(), tag: "S1", date: date(2026, 3, 15), folderName: "f",
+            transcript: transcript, digest: nil, notes: "", comments: []
+        )])
+        let stub = ToolLoopStubAssistant()
+        stub.planReplies = [#"{"calls":[{"tool":"read_section","session":"S1","start":"00:00","end":"10:00"}]}"#]
+        let service = AssistantService(assistant: stub, model: "m")
+
+        // 210 characters left: each lookup is given at least 240, so this one comes back too big.
+        let result = try await LocalToolLoop.refine(
+            question: "What about the garden?",
+            initialContext: "Initial",
+            scope: scope,
+            effort: .normal,
+            characterBudget: 210,
+            service: service,
+            builder: DigestBuilder(queue: InferenceQueue()),
+            live: { _, _ in }
+        )
+        let outcome = try XCTUnwrap(result.outcomes.first)
+        XCTAssertGreaterThan(outcome.output.count + 2, 210)
+        XCTAssertEqual(result.additionalContext, "", "an output over the budget must not reach the answer")
+        XCTAssertTrue(result.readTranscriptTags.isEmpty, "nor be counted as read")
+    }
+
+    /// A tool search reads every session of the patient; the loop is main-actor
+    /// code, so the lookup itself has to run detached.
+    func testToolLookupsRunOffTheMainActor() throws {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/Services/Digest/LocalToolLoop.swift")
+        let source = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertFalse(source.contains("let outcome = scope.execute("))
+        XCTAssertTrue(source.contains("let outcome = await Task.detached(priority: .userInitiated) {\n                    scope.execute(call, maxCharacters: perCallBudget)"))
+    }
+
+    /// Focus asks for up to ten lookups and keeps room for all of them: each
+    /// gets an even share of the reserve. (Each used to take up to 2,400, so the
+    /// last ones found the room gone and were dropped.)
+    func testFocusFitsEveryLookupItsReserveWasKeptFor() async throws {
+        let lines = (0..<3_600).map { i in
+            "[\(TranscriptTimeline.format(i * 2))] Client: Line \(i) of a long session about work, sleep and family."
+        }
+        let scope = LocalToolScope(sessions: [LocalToolSession(
+            id: UUID(), tag: "S1", date: date(2026, 3, 15), folderName: "f",
+            transcript: lines.joined(separator: "\n"), digest: nil, notes: "", comments: []
+        )])
+        let calls = (0..<10).map { k in
+            #"{"tool":"read_section","session":"S1","start":"\#(k * 10):00","end":"\#(k * 10 + 9):59"}"#
+        }
+        let stub = ToolLoopStubAssistant()
+        stub.planReplies = ["{\"calls\":[" + calls.joined(separator: ",") + "]}"]
+        let reserve = AnswerEffort.focus.lookupReserve(total: 80_000)
+
+        let result = try await LocalToolLoop.refine(
+            question: "How was sleep?",
+            initialContext: "Initial",
+            scope: scope,
+            effort: .focus,
+            characterBudget: reserve,
+            service: AssistantService(assistant: stub, model: "m"),
+            builder: DigestBuilder(queue: InferenceQueue()),
+            live: { _, _ in }
+        )
+        XCTAssertEqual(result.outcomes.count, 10)
+        XCTAssertEqual(result.additionalContext.components(separatedBy: "Transcript S1 (").count - 1, 10, "every lookup reached the answer")
+    }
+
+    // MARK: - Citations from lookups
+
+    func testRefineReturnsTheSessionsItReadAsCitationSources() async throws {
+        let scope = LocalToolScope(sessions: sampleSessions())
+        let stub = ToolLoopStubAssistant()
+        // list_sessions names every tag but shows no session's material, so it is no source.
+        stub.planReplies = [#"{"calls":[{"tool":"read_section","session":"S2","start":"00:00","end":"10:00"},{"tool":"list_sessions"}]}"#]
+        let service = AssistantService(assistant: stub, model: "m")
+
+        let result = try await LocalToolLoop.refine(
+            question: "How was work?",
+            initialContext: "Initial",
+            scope: scope,
+            effort: .normal,
+            characterBudget: 6_000,
+            service: service,
+            builder: DigestBuilder(queue: InferenceQueue()),
+            live: { _, _ in }
+        )
+        XCTAssertEqual(result.outcomes.count, 2)
+        XCTAssertEqual(result.sources, [CitationSource(tag: "S2", date: date(2026, 1, 10), folderName: "2026-01-10_10-00")])
+    }
+
+    func testACommentFoundBySearchIsASourceButNotATranscriptRead() {
+        // Only S1's margin comment says "boundary".
+        let outcome = LocalToolScope(sessions: sampleSessions()).execute(LocalToolCall(tool: "search", query: "boundary"))
+        XCTAssertFalse(outcome.isError)
+        XCTAssertTrue(outcome.output.contains("boundary progress"), outcome.output)
+        XCTAssertEqual(outcome.sourceTags, ["S1"])
+        XCTAssertTrue(outcome.readTranscriptTags.isEmpty)
+    }
+
+    /// A session read only through a lookup ([S2] here) used to stay a raw tag in
+    /// the answer and be missing from the Sources footer, and the coverage line
+    /// counted lookups by number rather than by session.
+    func testALookupOnlySessionIsCitableAndEachSessionIsCountedOnce() async throws {
+        let stub = ToolLoopStubAssistant()
+        stub.planReplies = [
+            #"{"calls":[{"tool":"read_section","session":"S1","start":"10:00","end":"15:00"},{"tool":"read_section","session":"S2","start":"00:00","end":"10:00"},{"tool":"get_digest","session":"S1"}]}"#
+        ]
+        stub.answerReply = "Dana called [S1]; work was intense [S2]."
+        var service = AssistantService(assistant: stub, model: "m")
+        service.budget = ContextBudget(tokens: 16_384)
+
+        let initialCoverage = TranscriptCoverage(
+            transcriptSessions: 2,
+            sessionsWithPassages: 1,
+            searched: true,
+            passageTags: ["S1"]
+        )
+        let context = PatientContext(
+            text: "===== Session [S1] March 15, 2026 =====\n[12:15] Client: My sister Dana called on Tuesday night.",
+            sources: [CitationSource(tag: "S1", date: date(2026, 3, 15), folderName: "2026-03-15_10-00")],
+            coverage: initialCoverage
+        )
+
+        var reportedCoverages: [TranscriptCoverage] = []
+        var reportedSources: [CitationSource] = []
+        let stream = PatientChatAnswer.stream(
+            context: context,
+            history: [],
+            question: "What happened when Dana called, and how was work?",
+            effort: .normal,
+            totalBudget: 12_000,
+            scope: { self.LocalToolScopeForSample() },
+            service: service,
+            builder: DigestBuilder(queue: InferenceQueue()),
+            live: { _, _ in },
+            onCoverage: { reportedCoverages.append($0) },
+            onSources: { reportedSources = $0 }
+        )
+        var answer = ""
+        for try await snap in stream { answer = snap }
+
+        XCTAssertEqual(reportedSources.map(\.tag), ["S1", "S2"])
+        let shown = Citations.decorate(answer: answer, sources: reportedSources)
+        XCTAssertFalse(shown.contains("[S2]"), shown)
+        XCTAssertTrue(shown.hasSuffix("Sources: March 15, 2026; January 10, 2026"), shown)
+
+        let coverage = try XCTUnwrap(reportedCoverages.last)
+        XCTAssertEqual(coverage.sessionsWithPassages, 1, "S1's transcript was already in the context")
+        XCTAssertEqual(coverage.lookupTags, ["S2"])
+        XCTAssertEqual(coverage.digestSessions, 1)
+        XCTAssertTrue(try XCTUnwrap(coverage.label).contains("follow-up lookups in the transcripts of 1 more session ·"))
+    }
+
+    // MARK: - Zoom levels
+
+    /// What a question costs in model calls depends on the effort, not on how
+    /// many sessions the patient has: gathering is search and stored summaries.
+    func testModelCallsPerQuestionDoNotGrowWithTheHistory() async throws {
+        for sessionCount in [25, 100] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("ZoomCalls-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let store = Store(root: root)
+            let patient = try store.createPatient(name: "Dana Cole")
+            let calendar = Calendar(identifier: .gregorian)
+            for s in 0..<sessionCount {
+                let day = calendar.date(byAdding: .day, value: 7 * s, to: date(2024, 1, 1))!
+                let session = try store.createSession(for: patient, on: day)
+                var lines = (0..<60).map { "[\(String(format: "%02d", $0)):00] Client: Session \(s) line \($0) about work and sleep." }
+                if s % 10 == 3 { lines[30] = "[30:00] Client: The kayaking trip came up again." }
+                try store.saveTranscript(lines.joined(separator: "\n"), for: patient, session: session)
+            }
+            let cases: [(AnswerEffort, Int)] = [(.fast, 1), (.normal, 2), (.focus, 3)]
+            for (effort, expected) in cases {
+                let stub = ToolLoopStubAssistant()
+                stub.planReplies = [#"{"calls":[{"tool":"read_section","session":"S1","start":"00:00","end":"10:00"}]}"#]
+                var service = AssistantService(assistant: stub, model: "m")
+                service.budget = ContextBudget(tokens: 8_192)
+                let question = "When did kayaking come up?"
+                let total = service.patientContextCharacters(history: [], question: question)
+                let context = store.gatherCitedPatientContext(
+                    for: patient, relevantTo: question,
+                    characterBudget: PatientChatAnswer.initialContextBudget(for: effort, totalBudget: total)
+                )
+                XCTAssertTrue(context.coverage.layered)
+                let stream = PatientChatAnswer.stream(
+                    context: context,
+                    history: [],
+                    question: question,
+                    effort: effort,
+                    totalBudget: total,
+                    scope: { store.localToolScope(for: patient) },
+                    service: service,
+                    builder: DigestBuilder(queue: InferenceQueue()),
+                    live: { _, _ in },
+                    onCoverage: { _ in }
+                )
+                for try await _ in stream {}
+                XCTAssertEqual(stub.prompts.count, expected, "\(effort) at \(sessionCount) sessions")
+            }
+        }
+    }
+
+    func testThePlannerIsToldToOpenThePartsSearchPointsAt() {
+        let prompt = LocalToolLoop.planningPrompt(question: "Q", initialContext: "CTX", priorToolOutputs: [], remainingCalls: 2)
+        XCTAssertTrue(prompt.contains("If the material lists \"Where search points\""))
+        XCTAssertTrue(prompt.contains("use read_section with the session and times given there"))
     }
 
     private func LocalToolScopeForSample() -> LocalToolScope {

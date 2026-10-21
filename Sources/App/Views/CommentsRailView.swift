@@ -28,7 +28,6 @@ struct CommentsRailView: View {
     var onDelete: (SessionComment) -> Void
     /// The comment's new body, after Save in the card's editor.
     var onEdit: (SessionComment, String) -> Void = { _, _ in }
-    var emptyMessage: String = "Select a passage in the transcript and click “Comment on selection” to add one here."
 
     /// The card being edited, and its text so far. One at a time; nothing is
     /// written until Save.
@@ -82,52 +81,40 @@ struct CommentsRailView: View {
             .padding(.horizontal, 16)
             .frame(height: 44)
 
-            if comments.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "text.bubble")
-                        .font(.title2)
-                        .foregroundStyle(Theme.muted.color)
-                    Text(emptyMessage)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
-                        .multilineTextAlignment(.center)
+            // The pane only exists once there are comments (`TranscriptSplit`),
+            // so there is no empty state to explain here.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(active) { comment in
+                            card(for: comment)
+                        }
+                        if !resolved.isEmpty {
+                            resolvedSection
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 16)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(16)
-            } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 10) {
-                            ForEach(active) { comment in
-                                card(for: comment)
-                            }
-                            if !resolved.isEmpty {
-                                resolvedSection
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 16)
+                .onChange(of: focusToken) { _, _ in
+                    guard let id = focusedCommentID else { return }
+                    if resolved.contains(where: { $0.id == id }) {
+                        resolvedExpanded = true
                     }
-                    .onChange(of: focusToken) { _, _ in
-                        guard let id = focusedCommentID else { return }
-                        if resolved.contains(where: { $0.id == id }) {
-                            resolvedExpanded = true
-                        }
+                    withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
+                }
+                .onAppear {
+                    guard let id = focusedCommentID else { return }
+                    if resolved.contains(where: { $0.id == id }) {
+                        resolvedExpanded = true
+                    }
+                    DispatchQueue.main.async {
                         withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
-                    }
-                    .onAppear {
-                        guard let id = focusedCommentID else { return }
-                        if resolved.contains(where: { $0.id == id }) {
-                            resolvedExpanded = true
-                        }
-                        DispatchQueue.main.async {
-                            withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
-                        }
                     }
                 }
             }
         }
-        .frame(minWidth: 240, idealWidth: 296, maxWidth: 340)
+        .frame(maxWidth: .infinity)
         .background(Theme.window.color)
     }
 

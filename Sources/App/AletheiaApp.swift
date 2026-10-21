@@ -24,6 +24,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Before any window is created, so a forced Light or Dark appearance
         // never flashes the system one first.
         AppSettings.shared.appearance.apply()
+        HelpTipsStore.configure()
+    }
+
+    /// Quitting (⌘Q, the menu-bar Quit, logout or restart) waits for the
+    /// running work to wind down, but never longer than the shutdown deadline,
+    /// and never with an alert: interrupted work is saved for the next launch.
+    @MainActor func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let shutdown = AppLifecycle.shutdown else { return .terminateNow }
+        // Already winding down: the reply below ends this quit too.
+        guard !shutdown.isShuttingDown else { return .terminateLater }
+        Task { @MainActor in
+            await shutdown.shutDown()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     #if DEBUG
@@ -50,6 +65,8 @@ struct AletheiaApp: App {
     /// App-level transcription runner, so progress survives leaving the session
     /// screen and shows in the sidebar and menu bar.
     @StateObject private var transcription: TranscriptionCoordinator
+    /// Patient-records exports run in the background and report through this.
+    @StateObject private var exports: ExportJobCenter
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
 
@@ -77,11 +94,19 @@ struct AletheiaApp: App {
         recorder.onLongRunning = { [weak integrations] recording in
             Task {
                 await integrations?.makeNotifier().post(
-                    SessionNotifications.longRecordingReminder(patientName: recording.patientName)
+                    SessionNotifications.longRecordingReminder(
+                        patientName: recording.patientName,
+                        showsName: settings.notificationsShowPatientNames
+                    )
                 )
             }
         }
         _recorder = StateObject(wrappedValue: recorder)
+        let exports = ExportJobCenter(notifier: UserNotificationService())
+        _exports = StateObject(wrappedValue: exports)
+        AppLifecycle.configure(
+            settings: settings, appModel: appModel, recorder: recorder,
+            transcription: transcription, integrations: integrations, exports: exports)
         _updateService = StateObject(wrappedValue: UpdateService(
             checker: AppcastUpdateChecker(feedURL: settings.updateFeedURL),
             currentVersion: UpdateService.bundleVersion()
@@ -97,6 +122,25 @@ struct AletheiaApp: App {
             appModel?.recordAudit(.appUnlockFailed, detail: reason)
         }
         _appLock = StateObject(wrappedValue: appLock)
+
+        // Background summaries: only when nothing else is using the model, no
+        // recording or transcription is running and the app is unlocked.
+        integrations.digestScheduler.attach(
+            context: { [weak appModel, weak integrations] in
+                guard let appModel, let integrations, let store = appModel.store else { return nil }
+                return DigestScheduler.Context(
+                    store: store, patients: appModel.patients, service: integrations.makeAssistantService())
+            },
+            activity: { [weak recorder, weak transcription, weak appLock] in
+                DigestActivity(
+                    locked: appLock?.isLocked ?? true,
+                    recording: recorder?.isBusy ?? false,
+                    transcribing: transcription?.isBusy ?? false,
+                    lowPowerMode: PowerSource.isLowPowerMode,
+                    onBattery: PowerSource.isOnBattery
+                )
+            }
+        )
     }
 
     var body: some Scene {
@@ -110,6 +154,7 @@ struct AletheiaApp: App {
                 .environmentObject(recorder)
                 .environmentObject(transcription)
                 .environmentObject(encryption)
+                .environmentObject(exports)
                 .sheet(isPresented: showFirstRun) {
                     FirstRunView()
                         .environmentObject(settings)
@@ -144,7 +189,7 @@ struct AletheiaApp: App {
                 Button("Close Window") {
                     NSApp.keyWindow?.performClose(nil)
                 }
-                .keyboardShortcut("w", modifiers: .command)
+                .keyboardShortcut(AppHotkey.closeWindow)
             }
             // Put a real "Check for Updates…" in the app menu, next to About,
             // so updates aren't only a silent on-launch check.
@@ -157,6 +202,10 @@ struct AletheiaApp: App {
             // (see DoctorFeatureModule). Also reachable from Settings and from the
             // database-unavailable banner.
             CommandGroup(after: .help) {
+                Button("Keyboard Shortcuts") {
+                    openWindow(id: ShortcutsWindow.id)
+                }
+                .keyboardShortcut(AppHotkey.showShortcuts)
                 if appModel.featureRegistry.contains(id: DoctorFeatureModule.id) {
                     Button("Aletheia Doctor…") {
                         openWindow(id: DoctorFeatureModule.windowID)
@@ -168,7 +217,7 @@ struct AletheiaApp: App {
         // The patient-wide chat. A window, not a sheet, so it resizes, goes full
         // screen and closes with ⌘W. It carries the same lock covers as the main
         // window, since it shows patient data.
-        WindowGroup("Ask About All Sessions", id: PatientChatWindow.windowID, for: UUID.self) { $patientID in
+        WindowGroup("Ask About This Patient", id: PatientChatWindow.windowID, for: UUID.self) { $patientID in
             PatientChatWindow(patientID: patientID)
                 .environmentObject(settings)
                 .environmentObject(appModel)
@@ -182,12 +231,20 @@ struct AletheiaApp: App {
         Window("Aletheia Doctor", id: DoctorFeatureModule.windowID) {
             DoctorView()
                 .environmentObject(settings)
+                .environmentObject(updateService)
                 .environmentObject(recorder)
                 .environmentObject(appModel)
                 .environmentObject(integrations)
                 .environmentObject(encryption)
         }
         .defaultSize(width: 620, height: 640)
+
+        // The Keyboard Shortcuts window, opened from the Help menu. It lists keys
+        // only, never patient data, so it carries no lock cover.
+        Window("Keyboard Shortcuts", id: ShortcutsWindow.id) {
+            ShortcutsView()
+        }
+        .defaultSize(width: 460, height: 560)
 
         // Gives the standard "Settings…" (⌘,) item in the app menu — the macOS
         // home every Mac user reaches for — backed by the same AppSettings the
@@ -199,7 +256,6 @@ struct AletheiaApp: App {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(encryption)
-                .frame(minWidth: 520, minHeight: 480)
         }
 
         MenuBarExtra("Aletheia Recording", systemImage: menuBarSymbol) {

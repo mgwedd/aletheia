@@ -25,9 +25,6 @@ enum LongSessionNote {
     static let passageFloor = 4_000
     /// The most of the material room the digest may take.
     static let digestShare = 2_500
-    /// Maximum material room (digest + risk lines + top topic hits) used at Fast effort
-    /// so the model reads a compact prompt quickly while still keeping risk lines.
-    static let fastMaterialLimit = 8_000
 
     /// How the Focus check ended.
     enum CheckOutcome: Equatable {
@@ -36,7 +33,7 @@ enum LongSessionNote {
         var text: String {
             switch self {
             case .ran: return "Checked against the passages."
-            case .noRoom: return "Not checked: not enough room on this Mac for the check."
+            case .noRoom: return "Not checked: not enough room for the check."
             case .tooLong: return "Not checked: the draft was too long to check."
             case .failed: return "The check didn't run (it failed), so this is the unchecked draft."
             case .incomplete: return "The check's result looked incomplete, so this is the unchecked draft."
@@ -48,6 +45,9 @@ enum LongSessionNote {
 
     /// Added to the coverage line when the user stopped while the note was being written.
     static let stoppedEarlyText = "Stopped early: this note is only what was written before you stopped."
+
+    /// The check stage's reading title; `NoteProgress` places the bar by it.
+    static let checkTitle = "Checking"
 
     // MARK: - Run
 
@@ -66,6 +66,7 @@ enum LongSessionNote {
         sessionID: UUID,
         loadDigest: @escaping () async -> SessionDigest?,
         saveDigest: @escaping (SessionDigest) throws -> Void,
+        sectionCache: SectionCacheAccess? = nil,
         live: @escaping DigestBuilder.Live,
         coverage: @escaping (String) -> Void
     ) -> AsyncThrowingStream<String, Error> {
@@ -88,19 +89,24 @@ enum LongSessionNote {
                 do {
                     let digest = try await currentDigest(
                         transcript: transcript, service: service, builder: builder, sessionID: sessionID,
-                        load: loadDigest, save: saveDigest, live: live)
+                        load: loadDigest, save: saveDigest, sections: sectionCache, live: live)
 
-                    // Room for material, after the instructions, the note's own wrapper and headings.
-                    let total = service.budget.availableCharacters(
-                        reserving: service.systemPrompt.count + prompt("").count + headerReserve)
+                    // Room for material, after the instructions, the note's own wrapper and headings,
+                    // in characters of this transcript's script.
+                    let total = ContextBudget.characters(
+                        fitting: service.budget.availableCharacters(
+                            reserving: ContextBudget.weightedLength(of: service.systemPrompt)
+                                + ContextBudget.weightedLength(of: prompt("")) + headerReserve),
+                        like: transcript)
                     let transcriptCopy = transcript
                     let flaggedCost = await offMain { strongCost(in: transcriptCopy, phrases: riskPhrases) }
                     try Task.checkCancellation()
                     var room = total
                     var plannedCheck: CheckOutcome?
-                    if effort == .fast {
-                        room = min(total, max(fastMaterialLimit, flaggedCost + digestShare))
-                    } else if effort == .focus {
+                    if let cap = effort.materialCap(for: .note) {
+                        // Fast: a compact prompt, but never short of the risk lines.
+                        room = min(total, max(cap, flaggedCost + digestShare))
+                    } else if effort.checksDraft(for: .note) {
                         let reserve = min(draftReserve, total / 3)
                         let digestSize = min(digest.sessionDigest.count, digestShare)
                         if total - reserve - digestSize < passageFloor {
@@ -148,7 +154,7 @@ enum LongSessionNote {
                         service: drafter, live: live, onSnapshot: { continuation.yield($0) })
                     try Task.checkCancellation()
 
-                    if effort == .focus, plannedCheck == nil, !draft.isEmpty {
+                    if effort.checksDraft(for: .note), plannedCheck == nil, !draft.isEmpty {
                         let outcome = await check(
                             draft: draft, material: material, format: format, phrases: riskPhrases, service: service,
                             builder: builder, live: live, accept: { continuation.yield($0) })
@@ -178,7 +184,7 @@ enum LongSessionNote {
         guard service.fits(prompt: prompt) else { return .tooLong }
         do {
             let corrected = try await builder.runStage(
-                prompt, read: "Checking", write: "Writing corrections", task: .note,
+                prompt, read: checkTitle, write: "Writing corrections", task: .note,
                 grammar: format.grammar, service: service, live: live)
             if let why = rejection(corrected, draft: draft, format: format, phrases: phrases) { return why }
             accept(corrected)
@@ -261,15 +267,16 @@ enum LongSessionNote {
     /// the same session is cancelled first so the two don't both run.
     private static func currentDigest(
         transcript: String, service: AssistantService, builder: DigestBuilder, sessionID: UUID,
-        load: () async -> SessionDigest?, save: (SessionDigest) throws -> Void, live: @escaping DigestBuilder.Live
+        load: () async -> SessionDigest?, save: (SessionDigest) throws -> Void,
+        sections: SectionCacheAccess?, live: @escaping DigestBuilder.Live
     ) async throws -> SessionDigest {
         if let stored = await load() { return stored }
         let built = try await builder.buildInline(
-            sessionID: sessionID, transcript: transcript, service: service,
+            sessionID: sessionID, transcript: transcript, service: service, sections: sections,
             live: { started, change in
                 live(started) {
                     change(&$0)
-                    if !$0.readTitle.hasPrefix("Building digest") { $0.readTitle = "Building digest · \($0.readTitle)" }
+                    if !$0.readTitle.hasPrefix(DigestBuilder.activityTitle) { $0.readTitle = "\(DigestBuilder.activityTitle) · \($0.readTitle)" }
                 }
             })
         // Failing to keep the digest must not fail the note.

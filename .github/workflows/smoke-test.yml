@@ -16,9 +16,13 @@ on:
       - '**/*.md'
       - 'docs/**'
   pull_request:
+  # Manual run (Actions tab): all three tiers, e.g. to check preview on a branch.
+  workflow_dispatch:
 
 concurrency:
-  group: smoke-${{ github.ref }}
+  # The event is part of the group so a manual run on main can't cancel the
+  # push run that Auto Release waits for.
+  group: smoke-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -30,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check per-tier entitlements
         run: ./scripts/check-entitlements.sh
       # Screens take every color from Theme (CLAUDE.md, Conventions).
@@ -43,10 +47,40 @@ jobs:
         run: ./scripts/check-audit-wiring.sh --self-test
       - name: Check audit actions are recorded
         run: ./scripts/check-audit-wiring.sh
+      # The workflows' macOS gating: tier test subsets, path-gated benchmark and
+      # packaging jobs (job-level `if:`, never `on.paths`), unchanged job names.
+      - name: Self-test the CI gating guard
+        run: ./scripts/check-ci-gating.sh --self-test
+      - name: Check CI gating
+        run: ./scripts/check-ci-gating.sh
+
+  # Is this more than a docs change? Cheap Ubuntu job; build-and-test reads it.
+  changes:
+    name: Code changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.check.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Does this change more than docs?
+        id: check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: echo "code=$(./scripts/ci-changes.sh code "$BASE_SHA")" >> "$GITHUB_OUTPUT"
 
   build-and-test:
     name: Build & test (${{ matrix.tier }}, ${{ matrix.runner }})
-    runs-on: ${{ matrix.runner }}
+    # A docs-only pull request needs no build. A job skipped by `if:` would
+    # report its check under the unexpanded matrix name, leaving the required
+    # "Build & test (dev, macos-15)" pending, so instead the job runs on Ubuntu
+    # with every step skipped: same check names, success in seconds, no macOS
+    # runner. If `changes` fails, its output is empty and the job builds.
+    needs: changes
+    if: ${{ !cancelled() }}
+    runs-on: ${{ needs.changes.outputs.code == 'false' && 'ubuntu-latest' || matrix.runner }}
     timeout-minutes: 40
     # Build AND test each build tier, so a production or preview binary that
     # fails to compile (or a tier that composes the wrong feature set) is caught
@@ -61,17 +95,27 @@ jobs:
     # canary (continue-on-error) so a newest-toolchain hiccup surfaces without
     # blocking the merge, while macos-15 (Xcode 16) stays the required signal.
     #
-    # To save macOS minutes (billed 10x), the three-tier matrix runs on macos-15
-    # (the required signal); on main pushes and manual dispatch a single macos-26
+    # To save macOS minutes (billed 10x), the matrix runs on macos-15 (the
+    # required signal); on main pushes and manual dispatch a single macos-26
     # dev-tier canary is added (the dev tier compiles the whole surface).
+    #
+    # Pull requests build production and dev only, to fit more PRs into the
+    # five concurrent macOS runners. Preview adds almost nothing there: its
+    # only own code is `BuildTier.compiled` returning `.preview` (every other
+    # tier branch is `#if ALETHEIA_DEV`, compiled by dev and by production),
+    # and its feature set is composed at runtime and tested for every tier in
+    # the dev suite. Preview still builds and tests on every push to main and
+    # on a manual run, so a broken preview binary shows up one merge later.
     continue-on-error: ${{ matrix.runner == 'macos-26' }}
     strategy:
       fail-fast: false
       matrix:
-        tier: [production, preview, dev]
+        tier: ${{ github.event_name == 'pull_request' && fromJSON('["production","dev"]') || fromJSON('["production","preview","dev"]') }}
         runner: [macos-15]
         include: ${{ github.event_name == 'pull_request' && fromJSON('[]') || fromJSON('[{"tier":"dev","runner":"macos-26"}]') }}
     env:
+      # False only for a docs-only pull request (see `changes`); gates every step.
+      RUN_BUILD: ${{ needs.changes.outputs.code != 'false' }}
       # Stream xcodebuild output line-by-line so the xcbeautify pipe renders in
       # real time instead of buffering until the step ends.
       NSUnbufferedIO: "YES"
@@ -83,22 +127,31 @@ jobs:
             || (matrix.tier == 'preview' && 'DEBUG ALETHEIA_PREVIEW')
             || 'DEBUG' }}
     steps:
-      - uses: actions/checkout@v5
+      - name: Docs-only change, nothing to build
+        if: env.RUN_BUILD != 'true'
+        run: echo "Only documentation changed; skipping the build and tests."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.RUN_BUILD == 'true'
 
       - name: Show selected Xcode
+        if: env.RUN_BUILD == 'true'
         run: xcodebuild -version
 
       - name: Install tools (XcodeGen, xcbeautify)
+        if: env.RUN_BUILD == 'true'
         run: brew install xcodegen xcbeautify
 
       - name: Generate Xcode project
+        if: env.RUN_BUILD == 'true'
         run: xcodegen generate
 
       # Cache the resolved Swift packages (the pinned whisper.cpp and llama.cpp XCFrameworks)
       # so we don't re-download them every run. Keyed on where dependency versions
       # live and the runner image, so each Xcode toolchain keeps its own cache.
       - name: Cache Swift packages
-        uses: actions/cache@v5
+        if: env.RUN_BUILD == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/SourcePackages
           key: spm-${{ matrix.runner }}-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
@@ -108,6 +161,7 @@ jobs:
       # network-dependent step; do it once up front so a failure here is clearly
       # a dependency problem rather than a build problem.
       - name: Resolve Swift packages
+        if: env.RUN_BUILD == 'true'
         run: |
           set -o pipefail
           xcodebuild -resolvePackageDependencies \
@@ -118,6 +172,7 @@ jobs:
             | xcbeautify --renderer github-actions
 
       - name: Build (${{ matrix.tier }} tier)
+        if: env.RUN_BUILD == 'true'
         run: |
           set -o pipefail
           xcodebuild build \
@@ -130,9 +185,36 @@ jobs:
             SWIFT_ACTIVE_COMPILATION_CONDITIONS="$TIER_CONDITIONS" \
             | xcbeautify --renderer github-actions
 
+      # The tiers nest (production < preview < dev) and the dev tier compiles
+      # the whole surface, so dev runs the full suite. Production and preview are
+      # built above (catching a tier that fails to compile) and then run only the
+      # tier-sensitive tests: the ones that branch on the tier's compilation
+      # conditions or compose the real feature catalog. This keeps the macOS
+      # time per PR down. scripts/check-ci-gating.sh checks every class named
+      # here exists. Add a class here when a new test depends on the tier.
       - name: Run unit tests (${{ matrix.tier }} tier)
+        if: env.RUN_BUILD == 'true'
         run: |
           set -o pipefail
+          ONLY=()
+          COVERAGE=YES
+          if [ "${{ matrix.tier }}" != "dev" ]; then
+            COVERAGE=NO
+            for t in \
+              BuildTierTests \
+              FeatureRegistryTests \
+              ProductionTierCompositionTests \
+              AtRestEncryptionFeatureModuleTests \
+              EmbeddedLlamaFeatureModuleTests \
+              EventKitSchedulingFeatureModuleTests \
+              PatientMedicationsFeatureModuleTests \
+              SourceCitationsFeatureModuleTests \
+              SpotlightFeatureModuleTests \
+              SuggestedQuestionsFeatureModuleTests \
+              UpdateServiceTests; do
+              ONLY+=("-only-testing:AletheiaTests/$t")
+            done
+          fi
           xcodebuild test \
             -project Aletheia.xcodeproj \
             -scheme Aletheia \
@@ -140,13 +222,14 @@ jobs:
             -destination 'platform=macOS' \
             -derivedDataPath build \
             -skipPackagePluginValidation \
-            -enableCodeCoverage YES \
+            -enableCodeCoverage "$COVERAGE" \
             -resultBundlePath build/TestResults.xcresult \
+            ${ONLY[@]+"${ONLY[@]}"} \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS="$TIER_CONDITIONS" \
             | xcbeautify --renderer github-actions
 
       - name: Code coverage summary
-        if: always()
+        if: always() && matrix.tier == 'dev' && env.RUN_BUILD == 'true'
         run: |
           if [ -d build/TestResults.xcresult ]; then
             echo "### Code coverage (${{ matrix.tier }} tier, ${{ matrix.runner }})" >> "$GITHUB_STEP_SUMMARY"
@@ -158,8 +241,8 @@ jobs:
       # On failure, keep the result bundle so a maintainer can open it in Xcode
       # and see exactly which test/assertion failed without re-running CI.
       - name: Upload test results on failure
-        if: failure()
-        uses: actions/upload-artifact@v6
+        if: failure() && env.RUN_BUILD == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: TestResults-${{ matrix.tier }}-${{ matrix.runner }}
           path: build/TestResults.xcresult

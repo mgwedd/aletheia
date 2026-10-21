@@ -11,7 +11,7 @@ import Foundation
 ///   Patients/<slug>/patient.json, patient_chat.json
 ///   Patients/<slug>/ChatThreads/<id>.json
 ///   Patients/<slug>/<…_Session>/{transcript.txt, summary.txt, chat.json,
-///                                 note.<format>.txt, note.<format>.meta.json, digest.json,
+///                                 note.<format>.txt, note.<format>.meta.json, digest.json, digest-sections.json,
 ///                                 mic.caf, call.caf}
 ///   Aletheia.sqlite  (the comment/notes DB, field-level)
 ///
@@ -30,7 +30,7 @@ enum DataMigrator {
     private static let audioNames = ["mic.caf", "call.caf"]
     /// The fixed one-shot-sealed text/JSON files in a session folder. The
     /// per-format notes (`note.<format>.txt`) are added by `sessionFiles(in:)`.
-    private static let sessionFileNames = ["transcript.txt", "summary.txt", "chat.json", Store.digestFileName]
+    private static let sessionFileNames = ["transcript.txt", "summary.txt", "chat.json", Store.digestFileName, Store.digestSectionsFileName]
     /// The one-shot-sealed files directly under a patient folder.
     private static let patientFileNames = ["patient.json", "patient_chat.json"]
 

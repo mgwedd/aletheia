@@ -24,6 +24,12 @@ final class AppModel: ObservableObject {
     /// `saveFailureSubject` is what failed ("chat", "note"), so a later
     /// successful save of the same thing clears it.
     @Published private(set) var saveFailureSubject: String?
+    /// Tells an open search that the index changed (see `SearchIndexMonitor`).
+    /// Separate from this object so indexing doesn't redraw every view.
+    let searchIndexMonitor = SearchIndexMonitor()
+    /// Recording, transcription and model use, reported by the views; the
+    /// background index sweep waits while any is going on.
+    let searchActivity = SearchIndexActivity()
 
     private(set) var store: Store?
     /// Local SQLite store for the therapist's own annotations (inline comments
@@ -122,6 +128,10 @@ final class AppModel: ObservableObject {
         searchIndex = index
         index.mayOpen = { SessionSearch.mayOpenIndex }
         index.onReopen = { [weak self] in DispatchQueue.main.async { self?.startSearchSync() } }
+        // A damaged or outdated file was thrown away: sweep again to refill it.
+        index.onReset = { [weak self] in DispatchQueue.main.async { self?.startSearchSync() } }
+        let monitor = searchIndexMonitor
+        index.progress.onChange { monitor.noteChange() }
         // The file is a plaintext copy: not to be left behind while the folder is locked (e.g. from the last session).
         if encryption.isEnabled && !encryption.isUnlocked { index.destroy() }
         SessionSearch.index = index
@@ -142,15 +152,29 @@ final class AppModel: ObservableObject {
         refreshPatients()
     }
 
-    /// Brings the index up to date in the background (launch, unlock, folder change). Not while either
-    /// lock is engaged, when no transcript may be read, and it stops as soon as one engages.
+    /// Brings the index up to date in the background (launch, unlock, folder change, the index starting
+    /// over). Not while either lock is engaged, when no transcript may be read, and it stops as soon as one
+    /// engages. It pauses while a recording, a transcription or the AI model is running (`searchActivity`).
     private func startSearchSync() {
         searchSync?.cancel()
         searchSync = nil
         guard let store, let index = searchIndex, !index.isBlocked else { return }
+        let activity = searchActivity
         searchSync = Task.detached(priority: .utility) {
-            store.syncSearchIndex(shouldContinue: { !Task.isCancelled && !index.isBlocked })
+            await SearchIndexSweep.run(
+                store: store, index: index,
+                isBusy: { activity.isBusy },
+                shouldContinue: { !Task.isCancelled && !index.isBlocked })
         }
+    }
+
+    /// Quitting: stops the background index sweep and closes the index, off the
+    /// main thread (closing waits for an index write in progress).
+    func stopSearchSync() async {
+        searchSync?.cancel()
+        searchSync = nil
+        guard let index = searchIndex else { return }
+        await Task.detached(priority: .userInitiated) { index.close() }.value
     }
 
     /// Runs a save that goes to the database and, if it throws, raises the

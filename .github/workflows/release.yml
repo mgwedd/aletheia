@@ -4,11 +4,12 @@ name: Release
 # drag-to-Applications DMG, generates the `appcast.json` the in-app updater
 # polls, and publishes both as a GitHub Release.
 #
-# Signing/notarization is OPTIONAL and gated on repository secrets (in the `release` environment) — with none
-# set, this produces the same ad-hoc-signed build as before (first launch needs
-# right-click → Open). Add the secrets below to get a Developer ID-signed,
-# notarized, stapled DMG that opens with a double-click. Set each with
-# `gh secret set NAME` (hidden prompt, or piped on stdin).
+# Signing/notarization uses secrets in the `release` environment. A TAG release
+# requires them and fails without them (set the repository variable
+# ALLOW_UNSIGNED_RELEASE=true to publish an ad-hoc build anyway). A dry run
+# builds with or without them; without them the build is ad-hoc signed (first
+# launch needs right-click → Open). Set each with `gh secret set NAME --env
+# release` (hidden prompt, or piped on stdin).
 #   MACOS_CERTIFICATE            base64 of your Developer ID Application .p12
 #   MACOS_CERTIFICATE_PWD        password for that .p12
 #   KEYCHAIN_PASSWORD            any strong throwaway string
@@ -58,7 +59,20 @@ jobs:
       # Only a tag publishes. Dispatching from a branch is a dry run.
       IS_TAG: ${{ github.ref_type == 'tag' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # A published release reaches every user through the updater, so a tag
+      # must ship signed and notarized: fail before building rather than
+      # publish a DMG Gatekeeper warns about. Dry runs (branch dispatch) still
+      # build without the secrets. Set the repository variable
+      # ALLOW_UNSIGNED_RELEASE to `true` to publish an ad-hoc build anyway.
+      - name: Require a signed, notarized build for a tag
+        if: env.IS_TAG == 'true' && vars.ALLOW_UNSIGNED_RELEASE != 'true'
+        run: |
+          if [ "${HAS_SIGNING}" != "true" ] || [ "${HAS_NOTARIZATION}" != "true" ]; then
+            echo "::error::A tag release needs the signing and notarization secrets in the release environment (or ALLOW_UNSIGNED_RELEASE=true)."
+            exit 1
+          fi
 
       - name: Show selected Xcode
         run: xcodebuild -version
@@ -154,15 +168,17 @@ jobs:
           hdiutil create -volname "Aletheia" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
 
           DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/Aletheia-${VERSION}.dmg"
-          cat > dist/appcast.json <<EOF
-          {
-            "version": "${VERSION}",
-            "downloadURL": "${DOWNLOAD_URL}",
-            "releaseNotes": "Aletheia ${VERSION}. See the release page for details.",
-            "minimumSystemVersion": "14.0",
-            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          }
-          EOF
+          # The version's CHANGELOG entry, which Auto Release wrote into the
+          # tagged commit. jq escapes it for JSON.
+          ./scripts/release-notes.sh "$VERSION" > dist/release-notes.md
+          jq -n \
+            --arg version "$VERSION" \
+            --arg url "$DOWNLOAD_URL" \
+            --rawfile notes dist/release-notes.md \
+            --arg published "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{version: $version, downloadURL: $url, releaseNotes: $notes,
+              minimumSystemVersion: "14.0", publishedAt: $published}' \
+            > dist/appcast.json
 
           echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -240,12 +256,25 @@ jobs:
 
           echo "NOTARIZED=true" >> "$GITHUB_ENV"
 
+      # The unit tests run a Debug build without Hardened Runtime. This starts
+      # the build users get, copied out of the DMG, and fails if it doesn't
+      # stay up (a missing entitlement, a library the runtime won't load).
+      - name: Launch the packaged app
+        run: ./scripts/launch-smoke.sh "${{ steps.package.outputs.dmg }}"
+
       - name: Create GitHub Release
         if: env.IS_TAG == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALLOW_UNSIGNED_RELEASE: ${{ vars.ALLOW_UNSIGNED_RELEASE }}
         run: |
           set -euo pipefail
+          # Second guard: whatever the secrets said, publish only what was
+          # actually notarized and stapled above.
+          if [ "${NOTARIZED:-false}" != "true" ] && [ "${ALLOW_UNSIGNED_RELEASE:-}" != "true" ]; then
+            echo "::error::The DMG was not notarized; not publishing."
+            exit 1
+          fi
           if [ "${NOTARIZED:-false}" = "true" ]; then
             LAUNCH_NOTE="Signed with Developer ID and notarized — opens with a double-click."
           elif [ "${HAS_SIGNING}" = "true" ]; then
@@ -253,16 +282,17 @@ jobs:
           else
             LAUNCH_NOTE="First launch: right-click the app and choose Open (ad-hoc signed, not notarized)."
           fi
+          { cat dist/release-notes.md; printf '\n%s\n' "$LAUNCH_NOTE"; } > dist/release-body.md
           gh release create "${GITHUB_REF_NAME}" \
             "${{ steps.package.outputs.dmg }}" \
             "dist/appcast.json" \
             --title "Aletheia ${{ steps.package.outputs.version }}" \
-            --notes "Automated release for ${GITHUB_REF_NAME}. ${LAUNCH_NOTE}" \
+            --notes-file dist/release-body.md \
             --verify-tag
 
       - name: Attach dry-run DMG
         if: env.IS_TAG != 'true'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: aletheia-dryrun-dmg
           path: ${{ steps.package.outputs.dmg }}

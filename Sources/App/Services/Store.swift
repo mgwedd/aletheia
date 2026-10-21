@@ -100,6 +100,10 @@ final class Store {
     /// App Intents and background work as well as the UI.
     private let unreadableLock = NSLock()
     private var recordedUnreadable: [UnreadableEntry] = []
+    /// Sessions whose notes and comments are queued for the index (see
+    /// `refreshSearchMaterial`), so a burst of saves queues one refresh.
+    private let refreshLock = NSLock()
+    private var queuedRefreshes = Set<UUID>()
     private let dateFolderFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
@@ -120,6 +124,13 @@ final class Store {
         self.protector = protector
         self.commentStore = commentStore ?? (openDatabaseIfMissing ? CommentStore(root: root, protector: protector) : nil)
         self.schemaCompatibility = Store.reconcileSchema(at: root)
+        // Comments and the therapist's own notes are saved straight to the
+        // database by the views; this keeps the index in step with them.
+        if searchIndex != nil {
+            self.commentStore?.onSessionAnnotationsChanged = { [weak self] sessionID in
+                self?.refreshSearchMaterial(sessionID: sessionID)
+            }
+        }
     }
 
     // MARK: - Schema
@@ -316,8 +327,15 @@ final class Store {
         // Purge database records
         commentStore?.purgePatientRecords(patientID: patient.id, sessionIDs: sessionIDs)
 
-        // Purge search index documents and session entries
-        searchIndex?.purgePatient(patient.id.uuidString)
+        // Purge search index documents and session entries, now and again after
+        // any save of this patient's text still queued for the index.
+        if let index = searchIndex {
+            let patientKey = patient.id.uuidString
+            let sessionKeys = sessionIDs.map(\.uuidString)
+            index.purgePatient(patientKey, sessions: sessionKeys)
+            index.async { index.purgePatient(patientKey, sessions: sessionKeys) }
+            index.progress.forget(sessions: sessionKeys)
+        }
 
         // Remove patient directory and all session files from disk
         try fileManager.removeItem(at: dir)
@@ -550,21 +568,26 @@ final class Store {
             let item = Store.indexItem(SessionSearch.Document(
                 date: session.date, tag: "", kind: .transcript, text: text, session: session.id, patient: patient.id))
             let stamp = Store.stamp(of: url)
+            let key = session.id.uuidString
+            index.progress.beginWrite(session: key)
             index.async {
                 index.replace(
-                    session: session.id.uuidString, patient: patient.id.uuidString, kinds: [.transcript],
+                    session: key, patient: patient.id.uuidString, kinds: [.transcript],
                     items: [item], stamp: stamp)
+                index.progress.endWrite(session: key)
             }
         }
     }
 
     // MARK: - Search index
 
-    /// Modification time and size of a file: enough to tell whether a transcript changed.
+    /// Modification time and size of a file: enough to tell whether a transcript
+    /// changed. `SearchIndexStaleness.noTranscript` when there is no file.
     private static func stamp(of url: URL) -> String? {
-        guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
-              let modified = values.contentModificationDate, let size = values.fileSize else { return nil }
-        return "\(modified.timeIntervalSinceReferenceDate)-\(size)"
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        return SearchIndexStaleness.stamp(
+            exists: FileManager.default.fileExists(atPath: url.path),
+            modified: values?.contentModificationDate, size: values?.fileSize)
     }
 
     private static func indexItem(_ d: SessionSearch.Document) -> SearchIndex.Item {
@@ -573,56 +596,179 @@ final class Store {
             date: d.date.timeIntervalSinceReferenceDate, fingerprint: SearchIndex.fingerprint(of: d.text), text: d.text)
     }
 
-    /// Brings the search index in line with the data folder: indexes sessions
-    /// whose transcript changed since last time (by modification time and
-    /// size), refreshes their notes and comments, and drops sessions that no
-    /// longer exist. Run in the background at launch and unlock. A transcript
-    /// that can't be read (folder locked) is left as it was, and nothing is
-    /// dropped unless every patient and session listed cleanly.
-    func syncSearchIndex(shouldContinue: () -> Bool = { true }) {
-        guard let index = searchIndex else { return }
-        var live = Set<String>()
+    /// One session for the sweep to bring up to date.
+    struct SearchIndexTarget {
+        let patient: Patient
+        let session: SessionRecord
+        /// Whether the transcript must be read: it changed, was never indexed, or can't be stamped.
+        let transcriptStale: Bool
+    }
+
+    /// What the sweep has to do, from one listing of the data folder.
+    struct SearchIndexPlan {
+        /// Every listed session, in the order to index them (`SearchIndexStaleness.order`).
+        let targets: [SearchIndexTarget]
+        /// Every listed session's id: what `drop(sessionsNotIn:)` keeps.
+        let live: Set<String>
+        /// Whether every patient and session listed cleanly, so a session missing
+        /// from the listing really is gone (otherwise nothing is dropped).
+        let complete: Bool
+
+        /// Sessions whose transcript is not in the index as it is now.
+        var staleSessions: Set<String> {
+            Set(targets.filter { $0.transcriptStale }.map { $0.session.id.uuidString })
+        }
+    }
+
+    /// Lists every patient and session and compares each transcript's stamp
+    /// with the one the index recorded. nil when there is no index, it can't be
+    /// read, or the folder can't be listed.
+    func searchIndexPlan() -> SearchIndexPlan? {
+        guard let index = searchIndex, let stored = index.allStamps(), let listing = try? patientListing() else { return nil }
         var complete = true
-        guard let listing = try? patientListing() else { return }
         // A patient record sealed while locked is skipped silently by the listing, so count folders too.
         let folders = ((try? fileManager.contentsOfDirectory(at: patientsDir, includingPropertiesForKeys: nil)) ?? [])
             .filter { fileManager.fileExists(atPath: $0.appendingPathComponent("patient.json").path) }
         if folders.count != listing.patients.count || !listing.unreadable.isEmpty { complete = false }
+        var targets: [SearchIndexTarget] = []
+        var live = Set<String>()
         for patient in listing.patients {
             guard let sessions = try? sessionListing(for: patient) else { complete = false; continue }
             if !sessions.unreadable.isEmpty { complete = false }
             for session in sessions.sessions {
-                guard shouldContinue() else { return }
                 let id = session.id.uuidString
                 live.insert(id)
-                var documents: [SessionSearch.Document] = []
-                var kinds: [SessionSearch.Kind] = [.sessionNotes, .comment, .note]
                 let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
-                let stamp = Store.stamp(of: url)
-                if stamp == nil || stamp != index.stamp(session: id) {
-                    kinds.append(.transcript)
-                    if stamp != nil {
-                        do {
-                            if let text = try readTranscript(for: patient, session: session) {
-                                documents.append(.init(
-                                    date: session.date, tag: "", kind: .transcript, text: text, session: session.id, patient: patient.id))
-                            }
-                        } catch {
-                            complete = false
-                            continue   // unreadable: keep what is indexed, retry next time
-                        }
-                    }
-                }
-                for part in sessionMaterialParts(for: patient, session: session) {
-                    documents.append(.init(
-                        date: session.date, tag: "", kind: part.kind, text: part.text, session: session.id, patient: patient.id))
-                }
-                index.replace(
-                    session: id, patient: patient.id.uuidString, kinds: kinds,
-                    items: documents.map(Store.indexItem), stamp: kinds.contains(.transcript) ? stamp : nil)
+                let stale = SearchIndexStaleness.needsIndexing(current: Store.stamp(of: url), stored: stored[id])
+                targets.append(SearchIndexTarget(patient: patient, session: session, transcriptStale: stale))
             }
         }
-        if complete, shouldContinue() { index.drop(sessionsNotIn: live) }
+        return SearchIndexPlan(targets: SearchIndexStaleness.order(targets), live: live, complete: complete)
+    }
+
+    /// Stores one session's current text: its notes and comments always (they
+    /// are small), its transcript when `transcriptStale`. Returns false, leaving
+    /// what is indexed as it was, when the transcript can't be read (locked).
+    @discardableResult
+    func indexSearchTarget(_ target: SearchIndexTarget) -> Bool {
+        guard let index = searchIndex else { return false }
+        let patient = target.patient
+        let session = target.session
+        var kinds: [SessionSearch.Kind] = [.sessionNotes, .comment, .note]
+        var documents: [SessionSearch.Document] = []
+        var stamp: String?
+        if target.transcriptStale {
+            kinds.append(.transcript)
+            let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
+            stamp = Store.stamp(of: url)   // taken before reading, so a save in between reads as a change next time
+            do {
+                if let text = try readTranscript(for: patient, session: session) {
+                    documents.append(.init(
+                        date: session.date, tag: "", kind: .transcript, text: text, session: session.id, patient: patient.id))
+                }
+            } catch {
+                return false
+            }
+        }
+        documents += searchMaterial(for: patient, session: session)
+        index.replace(
+            session: session.id.uuidString, patient: patient.id.uuidString, kinds: kinds,
+            items: documents.map(Store.indexItem), stamp: stamp)
+        return true
+    }
+
+    /// Brings the search index in line with the data folder, synchronously:
+    /// indexes sessions whose transcript changed since last time (by
+    /// modification time and size), refreshes every session's notes and
+    /// comments, and drops sessions that no longer exist. The app runs the same
+    /// steps in the background with `SearchIndexSweep`. A transcript that can't
+    /// be read (folder locked) is left as it was, and nothing is dropped unless
+    /// every patient and session listed and read cleanly.
+    func syncSearchIndex(shouldContinue: () -> Bool = { true }) {
+        guard let index = searchIndex else { return }
+        index.progress.beginChecking()
+        guard let plan = searchIndexPlan() else { return }
+        index.progress.checked(stale: plan.staleSessions)
+        var everyTargetRead = true
+        for target in plan.targets {
+            guard shouldContinue() else { return }
+            if !indexSearchTarget(target) { everyTargetRead = false }
+            index.progress.indexed(session: target.session.id.uuidString)
+        }
+        if plan.complete, everyTargetRead, shouldContinue() { index.drop(sessionsNotIn: plan.live) }
+    }
+
+    /// A session's notes and comments as the index stores them: what the patient
+    /// chat searches (`sessionMaterialParts`, so the chat finds them already
+    /// stored), plus resolved comments, which the chat leaves out but global
+    /// search finds.
+    private func searchMaterial(for patient: Patient, session: SessionRecord) -> [SessionSearch.Document] {
+        var parts = sessionMaterialParts(for: patient, session: session)
+        if let resolved = Store.resolvedCommentsText(commentStore?.comments(sessionID: session.id) ?? []) {
+            parts.append((kind: .comment, text: resolved))
+        }
+        return parts.map { part in
+            SessionSearch.Document(
+                date: session.date, tag: "", kind: part.kind, text: part.text, session: session.id, patient: patient.id)
+        }
+    }
+
+    /// Resolved comments as one document, written like the chat's comment
+    /// lines; nil when there are none.
+    static func resolvedCommentsText(_ comments: [SessionComment]) -> String? {
+        var lines: [String] = []
+        for comment in comments where comment.resolved {
+            let quote = comment.quotedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            lines.append(quote.isEmpty ? "- \(comment.body)" : "- On \u{201C}\(quote)\u{201D}: \(comment.body)")
+        }
+        return lines.isEmpty ? nil : "Resolved margin comments:\n" + lines.joined(separator: "\n")
+    }
+
+    /// Re-indexes a session's notes and comments after a save, in the background.
+    /// Saves that come faster than the index keeps up with share one refresh,
+    /// which reads the text when it runs, so the last save always wins.
+    func refreshSearchMaterial(patient: Patient, session: SessionRecord) {
+        scheduleMaterialRefresh(sessionID: session.id) { (patient: patient, session: session) }
+    }
+
+    /// The same, for a save that only knows the session (comments, the
+    /// therapist's notes); the session is looked up when the refresh runs.
+    func refreshSearchMaterial(sessionID: UUID) {
+        scheduleMaterialRefresh(sessionID: sessionID) { [weak self] in self?.locateSession(id: sessionID) }
+    }
+
+    private func scheduleMaterialRefresh(
+        sessionID: UUID, locate: @escaping () -> (patient: Patient, session: SessionRecord)?
+    ) {
+        guard let index = searchIndex else { return }
+        refreshLock.lock()
+        let isNew = queuedRefreshes.insert(sessionID).inserted
+        refreshLock.unlock()
+        guard isNew else { return }
+        let key = sessionID.uuidString
+        index.progress.beginWrite(session: key)
+        index.async { [weak self] in
+            defer { index.progress.endWrite(session: key) }
+            guard let self else { return }
+            self.refreshLock.lock()
+            self.queuedRefreshes.remove(sessionID)
+            self.refreshLock.unlock()
+            guard let found = locate() else { return }
+            let documents = self.searchMaterial(for: found.patient, session: found.session)
+            index.replace(
+                session: key, patient: found.patient.id.uuidString, kinds: [.sessionNotes, .comment, .note],
+                items: documents.map(Store.indexItem), stamp: nil)
+        }
+    }
+
+    /// The patient and session with this id, by listing the data folder.
+    func locateSession(id: UUID) -> (patient: Patient, session: SessionRecord)? {
+        for patient in (try? listPatients()) ?? [] {
+            if let session = ((try? listSessions(for: patient)) ?? []).first(where: { $0.id == id }) {
+                return (patient: patient, session: session)
+            }
+        }
+        return nil
     }
 
     func summary(for patient: Patient, session: SessionRecord) -> String? {
@@ -633,6 +779,7 @@ final class Store {
     func saveSummary(_ text: String, for patient: Patient, session: SessionRecord) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("summary.txt")
         try protector.write(text, to: url)
+        refreshSearchMaterial(patient: patient, session: session)
     }
 
     // MARK: - Per-format progress notes
@@ -735,6 +882,25 @@ final class Store {
 
     private func digestURL(for patient: Patient, session: SessionRecord) -> URL {
         sessionDir(for: patient, session: session).appendingPathComponent(Store.digestFileName)
+    }
+
+    /// Section summaries written by a digest build that hasn't finished (see
+    /// `SectionDigestCache`), so it can carry on after a pause or a failure.
+    static let digestSectionsFileName = "digest-sections.json"
+
+    private func digestSectionsURL(for patient: Patient, session: SessionRecord) -> URL {
+        sessionDir(for: patient, session: session).appendingPathComponent(Store.digestSectionsFileName)
+    }
+
+    /// The cached section summaries of `session`, by `DigestSchedulePolicy.sectionKey`; empty when none or unreadable.
+    func sectionDigestCache(for patient: Patient, session: SessionRecord) -> [String: String] {
+        guard let data = (try? protector.dataIfPresent(at: digestSectionsURL(for: patient, session: session))) ?? nil,
+              let entries = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+        return entries
+    }
+
+    func saveSectionDigestCache(_ entries: [String: String], for patient: Patient, session: SessionRecord) throws {
+        try protector.write(try JSONEncoder().encode(entries), to: digestSectionsURL(for: patient, session: session))
     }
 
     func saveDigest(_ digest: SessionDigest, for patient: Patient, session: SessionRecord) throws {
@@ -1044,15 +1210,75 @@ final class Store {
         return results
     }
 
-    /// The flat list behind global search: every place `query` matches, across
-    /// all patients. Patients come alphabetically (as `listPatients`), their
-    /// sessions newest first. Per patient: a name match, then for each session
-    /// its transcript, generated progress notes, session notes, and comments.
+    /// Global search: patients by name, sessions by date, and every note,
+    /// comment and transcript, answered from the search index
+    /// (`GlobalSearchEngine`). Reads original text only for what it shows, so it
+    /// costs about the same for 10 sessions as for 1,000. Falls back to reading
+    /// every file (`searchHits`) when there is no index or it can't be read.
+    /// Off the main thread; stops early when `shouldContinue` turns false.
+    func globalSearch(
+        query text: String,
+        limits: GlobalSearchLimits = GlobalSearchLimits(),
+        calendar: Calendar = .current,
+        shouldContinue: () -> Bool = { true }
+    ) -> GlobalSearchResults {
+        let query = GlobalSearchQuery(text)
+        guard !query.isEmpty else { return .empty }
+        let catalog = searchCatalog()
+        guard shouldContinue() else { return .empty }
+        if let index = searchIndex,
+           let found = GlobalSearchEngine.search(
+               query, catalog: catalog, index: index, reader: searchReader, limits: limits,
+               calendar: calendar, shouldContinue: shouldContinue) {
+            return found
+        }
+        let scanned = searchHits(query: text, shouldContinue: shouldContinue)
+        return GlobalSearchEngine.scannedResults(query, catalog: catalog, scanned: scanned, limits: limits, calendar: calendar)
+    }
+
+    /// Every patient and their sessions, for global search to point results at.
+    func searchCatalog() -> GlobalSearchCatalog {
+        let patients = (try? listPatients()) ?? []
+        return GlobalSearchCatalog(entries: patients.map { patient in
+            GlobalSearchCatalog.Entry(patient: patient, sessions: (try? listSessions(for: patient)) ?? [])
+        })
+    }
+
+    /// How global search reads the original text of the places it shows.
+    var searchReader: GlobalSearchReader {
+        GlobalSearchReader(
+            transcript: { [weak self] patient, session in self?.transcript(for: patient, session: session) },
+            notes: { [weak self] patient, session in
+                guard let self else { return [] }
+                return self.generatedNoteEntries(for: patient, session: session).map { entry -> GlobalSearchNote in
+                    // A note from before per-format notes opens as the Summary.
+                    var format: ProgressNoteFormat? = entry.format
+                    if entry.isLegacy { format = .narrative }
+                    return GlobalSearchNote(
+                        format: format, label: format?.shortName ?? entry.raw, text: entry.text,
+                        key: entry.isLegacy ? "summary" : entry.raw)
+                }
+            },
+            sessionNotes: { [weak self] id in self?.commentStore?.note(sessionID: id) ?? "" },
+            comments: { [weak self] id in self?.commentStore?.comments(sessionID: id) ?? [] }
+        )
+    }
+
+    /// The file-by-file search behind global search when the index can't be
+    /// read: every place `query` matches, across all patients. Patients come
+    /// alphabetically (as `listPatients`), their sessions newest first. Per
+    /// patient: a name match, then for each session its transcript, generated
+    /// progress notes, session notes, and comments.
     ///
     /// Everything is read through the same accessors the rest of the app uses
     /// (`transcript`, `note(for:session:format:)`, the comment store), so content
     /// that can't be opened right now (locked, unreadable) simply doesn't match.
-    func searchHits(query: String, snippetRadius: Int = 40) -> [SearchHit] {
+    ///
+    /// Reads and decrypts every transcript and note, so it belongs off the main
+    /// thread. It stops (returning what it has so far) as soon as
+    /// `shouldContinue` is false, checked before each patient and session, so a
+    /// superseded query doesn't keep scanning a long history.
+    func searchHits(query: String, snippetRadius: Int = 40, shouldContinue: () -> Bool = { true }) -> [SearchHit] {
         guard !TextSearch.queryTerms(query).isEmpty else { return [] }
         let patients = (try? listPatients()) ?? []
         var hits: [SearchHit] = []
@@ -1062,6 +1288,7 @@ final class Store {
         }
 
         for patient in patients {
+            guard shouldContinue() else { return hits }
             if TextSearch.matches(patient.name, query: query) {
                 let sessionCount = ((try? listSessions(for: patient)) ?? []).count
                 hits.append(SearchHit(
@@ -1076,6 +1303,7 @@ final class Store {
             }
 
             for session in (try? listSessions(for: patient)) ?? [] {
+                guard shouldContinue() else { return hits }
                 func hit(
                     _ kind: SearchKind,
                     _ idSuffix: String,
@@ -1123,7 +1351,7 @@ final class Store {
                 if let commentStore {
                     let notes = commentStore.note(sessionID: session.id)
                     if TextSearch.matches(notes, query: query) {
-                        hits.append(hit(.session, "", text: notes))
+                        hits.append(hit(.sessionNotes, "", text: notes))
                     }
                     for comment in commentStore.comments(sessionID: session.id) {
                         // Prefer what the therapist wrote; fall back to the passage it's on.
@@ -1145,6 +1373,11 @@ final class Store {
 
     // MARK: - Export
 
+    /// The therapist's comments on a session's transcript (none when the database isn't open).
+    func comments(for session: SessionRecord) -> [SessionComment] {
+        commentStore?.comments(sessionID: session.id) ?? []
+    }
+
     func exportSessionMarkdown(patient: Patient, session: SessionRecord) -> String {
         MarkdownExporter.session(
             date: session.date,
@@ -1152,18 +1385,6 @@ final class Store {
             transcript: transcript(for: patient, session: session),
             summary: summary(for: patient, session: session)
         )
-    }
-
-    func exportPatientHistoryMarkdown(patient: Patient) -> String {
-        let sessions = (try? listSessions(for: patient)) ?? []
-        let exports = sessions.map { session in
-            SessionExport(
-                date: session.date,
-                transcript: transcript(for: patient, session: session) ?? "",
-                summary: summary(for: patient, session: session) ?? ""
-            )
-        }
-        return MarkdownExporter.patientHistory(patientName: patient.name, notes: patient.notes, sessions: exports)
     }
 
     // MARK: - Cross-session context (the RAG swap-point)
@@ -1218,15 +1439,18 @@ final class Store {
     /// and returns the tag→session mapping. This is what lets the chat show
     /// which sessions an answer drew from (see `Citations`).
     ///
-    /// Under each header go the retriever's transcript excerpt (if the ranker
-    /// kept one), then that session's generated notes, the therapist's own
-    /// notes and her transcript comments. `sources` lists only the sessions
-    /// that appear in the text.
+    /// When every transcript fits, each goes in whole under its header with
+    /// that session's generated notes, the therapist's own notes and her
+    /// transcript comments. When they don't, the history is read by zoom level
+    /// (`PatientZoom`, `zoomedPatientContext`): notes and comments, session
+    /// summaries, the parts search points at and their summaries, and the
+    /// lines around the best hits; no transcript goes in whole. `sources`
+    /// lists only the sessions that appear in the text.
     ///
     /// `characterBudget` is the most the whole text may run to (see
     /// `AssistantService.patientContextCharacters`): background, search block,
     /// notes and comments (newest sessions first, up to a third of what is
-    /// left) and transcripts all come out of it.
+    /// left) and the rest all come out of it.
     func gatherCitedPatientContext(
         for patient: Patient,
         relevantTo question: String,
@@ -1251,6 +1475,7 @@ final class Store {
         var documents: [TranscriptDocument] = []
         var searchDocuments: [SessionSearch.Document] = []
         var datedDigests: [PatientDigestMerger.DatedDigest] = []
+        var sessionDigests: [ZoomSessionMaterial] = []
         var notesDates = Set<Date>()
         var unreadable = 0
         var index = 1
@@ -1271,7 +1496,9 @@ final class Store {
                 material.insert(Store.unreadableTranscriptMarker, at: 0)
             }
             let transcriptText = transcript ?? ""
-            guard !transcriptText.isEmpty || !material.isEmpty else { continue }
+            // Tagged by what the session has, not by what this budget kept of it,
+            // so the tags match `localToolScope(for:)`.
+            guard !transcriptText.isEmpty || !material.isEmpty || !parts.isEmpty else { continue }
 
             if labels[session.date] == nil {
                 labels[session.date] = "S\(index)"
@@ -1284,7 +1511,8 @@ final class Store {
                 documents.append(TranscriptDocument(date: session.date, text: transcriptText))
                 searchDocuments.append(.init(
                     date: session.date, tag: tag, kind: .transcript, text: transcriptText, session: session.id, patient: patient.id))
-                if let storedDigest = anyCurrentDigest(for: patient, session: session, transcript: transcriptText) {
+                let storedDigest = anyCurrentDigest(for: patient, session: session, transcript: transcriptText)
+                if let storedDigest {
                     datedDigests.append(.init(
                         tag: tag,
                         date: session.date,
@@ -1292,6 +1520,8 @@ final class Store {
                         digest: storedDigest.sessionDigest
                     ))
                 }
+                sessionDigests.append(ZoomSessionMaterial(
+                    id: session.id, tag: tag, date: session.date, transcript: transcriptText, digest: storedDigest))
             }
             for part in parts {
                 searchDocuments.append(.init(
@@ -1309,44 +1539,197 @@ final class Store {
         let searchBlockReserve = 400 + 120 * search.terms.count
         let remainingAfterExtras = max(0, room - extrasUsed - searchBlockReserve)
         let filteredDigests = datedDigests.filter { search.dateRange?.contains($0.date) ?? true }
-        // Only reserve room for digests when stored digests exist and the transcripts won't fit whole.
-        let probeSelection = PatientContextRetriever.select(
+        let selection = PatientContextRetriever.select(
             transcripts: documents, search: search,
-            characterBudget: remainingAfterExtras, labels: labels
+            characterBudget: remainingAfterExtras, labels: labels,
+            wantsWholeTranscripts: SessionSearch.readsAcrossSessions(question)
         )
-        let digestReserve = (!probeSelection.whole && !filteredDigests.isEmpty)
-            ? min(remainingAfterExtras / 3, filteredDigests.count * 600)
-            : 0
-        let selection = digestReserve > 0
-            ? PatientContextRetriever.select(
-                transcripts: documents, search: search,
-                characterBudget: max(0, remainingAfterExtras - digestReserve), labels: labels
+        // Counted from what is in `text`: a session whose transcript is
+        // unreadable is not counted as read.
+        let transcriptDates = Set(documents.map { $0.date }.filter { search.dateRange?.contains($0) ?? true })
+        let notesCoverage = (sessions: notesDates.count, cut: notesCut)
+        guard selection.whole else {
+            // Too long to send whole: read it by zoom level instead.
+            return zoomedPatientContext(
+                ZoomInput(
+                    background: background, room: remainingAfterExtras, search: search, documents: documents,
+                    labels: labels, dates: dates, firstFolder: firstFolder, extras: extras,
+                    digests: filteredDigests, sessionDigests: sessionDigests, transcriptDates: transcriptDates,
+                    notes: notesCoverage, unreadable: unreadable
+                )
             )
-            : probeSelection
-        let excerpts = selection.excerpts
-        let excerptsByDate = Dictionary(grouping: excerpts, by: { $0.date })
-        let excerptsChars = excerpts.reduce(0) { $0 + $1.text.count + 90 }
-        let digestPlan = (!selection.whole && !filteredDigests.isEmpty)
-            ? PatientDigestMerger.plan(
-                digests: filteredDigests,
-                characterBudget: max(digestReserve, remainingAfterExtras - excerptsChars)
-            )
-            : PatientDigestMerger.Plan(individualByDate: [:], monthBlocks: [], digestSessionCount: 0, monthMergedSessionCount: 0)
+        }
 
+        // Everything fits: every transcript whole, with the notes and comments.
+        let excerptsByDate = Dictionary(grouping: selection.excerpts, by: { $0.date })
         var blocks: [String] = []
         var sources: [CitationSource] = []
-        var seenTags = Set<String>()
         for date in dates {
             var parts: [String] = []
-            if let digestBlock = digestPlan.individualByDate[date] {
-                parts.append(digestBlock)
-            }
             parts.append(contentsOf: (excerptsByDate[date] ?? []).map { $0.text })
             parts.append(contentsOf: extras[date] ?? [])
             // Nothing from this session made it into the context: don't cite it.
             guard !parts.isEmpty, let tag = labels[date], let folderName = firstFolder[date] else { continue }
             let header = PatientContextRetriever.header(date, labels: labels)
             blocks.append("\(header)\n\(parts.joined(separator: "\n\n"))")
+            sources.append(CitationSource(tag: tag, date: date, folderName: folderName))
+        }
+        let sessionsText = blocks.joined(separator: "\n\n")
+        let passageDates = transcriptDates.intersection(excerptsByDate.keys)
+        // The same sessions by tag, so follow-up lookups of a session already
+        // read are not counted again (`TranscriptCoverage.addLookups`).
+        let passageTags = Set(passageDates.compactMap { labels[$0] })
+        let searchBlock = Prompts.searchBlock(
+            search, shown: selection.hitsShown, whole: true, unreadableSessions: unreadable
+        )
+        let text = [background, searchBlock, sessionsText]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n\n")
+        var coverage = TranscriptCoverage(
+            transcriptSessions: selection.totalCount,
+            sessionsWithPassages: selection.wholeCount,
+            notesSessions: notesDates.count,
+            unreadableSessions: unreadable,
+            mentions: search.totalMentions - search.similarMentions,
+            similarMentions: search.similarMentions,
+            searched: !search.terms.isEmpty,
+            wholeTranscripts: true,
+            fullTexts: true,
+            notesCutSessions: notesCut,
+            passageTags: passageTags
+        )
+        coverage.noteSearch(search)
+        return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)
+    }
+
+    /// What `zoomedPatientContext` works from, gathered by `gatherCitedPatientContext`.
+    private struct ZoomInput {
+        let background: String
+        /// Characters left for session material after the background, the notes and the search block.
+        let room: Int
+        let search: SessionSearch.Result
+        let documents: [TranscriptDocument]
+        let labels: [Date: String]
+        /// Session dates with material, newest first.
+        let dates: [Date]
+        let firstFolder: [Date: String]
+        /// Each date's notes and comments, already capped.
+        let extras: [Date: [String]]
+        /// Current digests of sessions in the question's date range.
+        let digests: [PatientDigestMerger.DatedDigest]
+        /// Every session with a readable transcript: its tag, date, transcript and current digest.
+        let sessionDigests: [ZoomSessionMaterial]
+        /// Dates in range with a readable transcript.
+        let transcriptDates: Set<Date>
+        let notes: (sessions: Int, cut: Int)
+        let unreadable: Int
+    }
+
+    struct ZoomSessionMaterial {
+        let id: UUID
+        let tag: String
+        let date: Date
+        let transcript: String
+        let digest: SessionDigest?
+    }
+
+    /// The patient's history read by zoom level (`PatientZoom`) when it is too
+    /// long to send whole: notes and comments (already in `extras`), session
+    /// summaries up to their share, the parts search points at with their
+    /// summaries, and the transcript lines around the best hits; or, when
+    /// search has no lines to quote, the openings of sessions with no summary
+    /// yet in what the summaries' share has left. No transcript goes in whole;
+    /// a part is read in full only when the model asks for it.
+    private func zoomedPatientContext(_ input: ZoomInput) -> PatientContext {
+        let search = input.search
+        let shares = PatientZoom.Shares(room: input.room)
+
+        // 1,000 ft: summaries, newest first, older ones merged by month.
+        // Each summary kept under its own session header needs room for that header.
+        let individualLimit = PatientZoom.individualSummaryLimit(summaryRoom: shares.summaries)
+        let digestPlan = PatientDigestMerger.plan(
+            digests: input.digests,
+            recentIndividualLimit: individualLimit,
+            characterBudget: max(0, shares.summaries - individualLimit * PatientZoom.headerAllowance)
+        )
+        var summariesUsed = digestPlan.individualByDate.count * PatientZoom.headerAllowance
+        for block in digestPlan.individualByDate.values { summariesUsed += block.count + 2 }
+        for month in digestPlan.monthBlocks { summariesUsed += month.text.count + 2 }
+
+        // 500 ft: the parts of sessions the hits fall in, and the summaries that name the question's words.
+        var hitSessions = Set<UUID>()
+        for hit in search.hits where hit.kind == .transcript {
+            if let id = hit.sessionID { hitSessions.insert(id) }
+        }
+        var inputs: [PatientZoom.SessionInput] = []
+        for material in input.sessionDigests where input.transcriptDates.contains(material.date) {
+            let hit = hitSessions.contains(material.id)
+            guard material.digest != nil || hit else { continue }
+            let parts = material.digest == nil ? TranscriptSections.split(material.transcript) : []
+            let lineCount = hit ? LineTable(material.transcript).count : 0
+            inputs.append(PatientZoom.SessionInput(
+                tag: material.tag, date: material.date, sessionID: material.id,
+                digest: material.digest, parts: parts, lineCount: lineCount
+            ))
+        }
+        let ranked = PatientZoom.areas(sessions: inputs, hits: search.hits, stems: PatientZoom.stems(of: search.terms))
+        let areasBlock = PatientZoom.areasBlock(ranked, budget: shares.areas)
+        let listed = areasBlock?.shown ?? []
+        let areasUsed = areasBlock.map { $0.text.count + 2 } ?? 0
+
+        // 100 ft: the summaries of those parts, then the lines around the best hits.
+        let sectionAreas = PatientZoom.sectionSummaries(listed, budget: shares.sections)
+        var sectionsUsed = 0
+        var sectionsByDate: [Date: [String]] = [:]
+        for area in sectionAreas {
+            let block = PatientZoom.sectionSummaryBlock(area)
+            sectionsUsed += block.count + 2 + PatientZoom.headerAllowance
+            sectionsByDate[area.date, default: []].append(block)
+        }
+        let passageRoom = max(0, input.room - summariesUsed - areasUsed - sectionsUsed)
+        let hasTranscriptHits = search.hits.contains { $0.kind == .transcript }
+        var excerpts: [PatientContextRetriever.Excerpt] = []
+        var hitsShown = 0
+        if !search.terms.isEmpty, hasTranscriptHits, passageRoom > 200 {
+            // The transcripts don't fit `room`, or the question is about one
+            // thing: `select` keeps the best hits' lines, never whole transcripts.
+            let passages = PatientContextRetriever.select(
+                transcripts: input.documents, search: search, characterBudget: passageRoom, labels: input.labels,
+                wantsWholeTranscripts: false
+            )
+            if !passages.fullTexts {
+                excerpts = passages.excerpts
+                hitsShown = passages.hitsShown
+            }
+        }
+        let excerptsByDate = Dictionary(grouping: excerpts, by: { $0.date })
+
+        // 1,000 ft, continued: with no transcript lines to quote (no words to
+        // search for, or none in a transcript), the room the summaries' share
+        // keeps for summaries not built yet would go unused. It goes to the
+        // openings of those sessions' transcripts instead, newest first.
+        var openings: [PatientZoom.Opening] = []
+        if excerpts.isEmpty {
+            let unsummarized = input.sessionDigests
+                .filter { $0.digest == nil && input.transcriptDates.contains($0.date) }
+                .map { PatientZoom.OpeningInput(tag: $0.tag, date: $0.date, transcript: $0.transcript) }
+            openings = PatientZoom.openings(unsummarized, budget: max(0, shares.summaries - summariesUsed))
+        }
+        let openingsByDate = Dictionary(grouping: openings, by: { $0.date })
+        let openingDates = Set(openings.map(\.date))
+
+        var blocks: [String] = []
+        var sources: [CitationSource] = []
+        var seenTags = Set<String>()
+        for date in input.dates {
+            var parts: [String] = []
+            if let digestBlock = digestPlan.individualByDate[date] { parts.append(digestBlock) }
+            parts.append(contentsOf: (openingsByDate[date] ?? []).map(\.block))
+            parts.append(contentsOf: sectionsByDate[date] ?? [])
+            parts.append(contentsOf: (excerptsByDate[date] ?? []).map { $0.text })
+            parts.append(contentsOf: input.extras[date] ?? [])
+            guard !parts.isEmpty, let tag = input.labels[date], let folderName = input.firstFolder[date] else { continue }
+            blocks.append("\(PatientContextRetriever.header(date, labels: input.labels))\n\(parts.joined(separator: "\n\n"))")
             if seenTags.insert(tag).inserted {
                 sources.append(CitationSource(tag: tag, date: date, folderName: folderName))
             }
@@ -1357,40 +1740,56 @@ final class Store {
                 sources.append(source)
             }
         }
-        let sessionsText = blocks.joined(separator: "\n\n")
-        // Counted from what is in `text`: a session whose transcript is
-        // unreadable is not counted as read.
-        let transcriptDates = Set(documents.map { $0.date }.filter { search.dateRange?.contains($0) ?? true })
-        // Whole-transcript selections are counted per session, not per date, so
-        // two sessions on one day are not both counted when only one was sent.
-        let sessionsRead = selection.fullTexts
-            ? selection.wholeCount + (selection.cutShort ? 1 : 0)
-            : transcriptDates.intersection(excerptsByDate.keys).count
-        let transcriptTotal = selection.fullTexts ? selection.totalCount : transcriptDates.count
+        // A listed part says what search found in that session, so it can be cited.
+        for area in listed where !seenTags.contains(area.tag) {
+            guard let folderName = input.firstFolder[area.date] else { continue }
+            seenTags.insert(area.tag)
+            sources.append(CitationSource(tag: area.tag, date: area.date, folderName: folderName))
+        }
+        sources.sort { $0.date > $1.date }
+
+        let passageDates = input.transcriptDates.intersection(excerptsByDate.keys)
+        let passageTags = Set(passageDates.compactMap { input.labels[$0] })
+        var digestTags = Set(digestPlan.individualByDate.keys.compactMap { input.labels[$0] })
+        for month in digestPlan.monthBlocks { digestTags.formUnion(month.tags) }
+        let digestDates = Set(input.digests.map(\.date))
+        var searchOnly = 0
+        var noSummary = 0
+        for date in input.transcriptDates {
+            guard let tag = input.labels[date], !digestTags.contains(tag), !openingDates.contains(date) else { continue }
+            searchOnly += 1
+            if !digestDates.contains(date) { noSummary += 1 }
+        }
+
         let searchBlock = Prompts.searchBlock(
-            search, shown: selection.hitsShown, whole: selection.whole,
-            newest: selection.fullTexts ? (sessionsRead, transcriptTotal, selection.cutShort) : nil,
-            unreadableSessions: unreadable
+            search, shown: hitsShown, whole: false, layered: true, openings: openingDates.count,
+            unreadableSessions: input.unreadable
         )
-        let text = [background, searchBlock, sessionsText]
+        let text = [input.background, searchBlock, areasBlock?.text ?? "", blocks.joined(separator: "\n\n")]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n\n")
-        let coverage = TranscriptCoverage(
-            transcriptSessions: transcriptTotal,
-            sessionsWithPassages: sessionsRead,
-            notesSessions: notesDates.count,
-            unreadableSessions: unreadable,
+        var coverage = TranscriptCoverage(
+            transcriptSessions: input.transcriptDates.count,
+            sessionsWithPassages: passageDates.count,
+            notesSessions: input.notes.sessions,
+            unreadableSessions: input.unreadable,
             mentions: search.totalMentions - search.similarMentions,
             similarMentions: search.similarMentions,
             searched: !search.terms.isEmpty,
-            wholeTranscripts: selection.whole,
-            fullTexts: selection.fullTexts,
-            newestCutShort: selection.cutShort,
-            notesCutSessions: notesCut,
+            notesCutSessions: input.notes.cut,
             digestSessions: digestPlan.digestSessionCount,
-            monthMergedSessions: digestPlan.monthMergedSessionCount
+            monthMergedSessions: digestPlan.monthMergedSessionCount,
+            passageTags: passageTags,
+            digestTags: digestTags
         )
-        return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)
+        coverage.layered = true
+        coverage.areas = listed.count
+        coverage.summarySections = sectionAreas.count
+        coverage.searchOnlySessions = searchOnly
+        coverage.noSummarySessions = noSummary
+        coverage.openingSessions = openingDates.count
+        coverage.noteSearch(search)
+        return PatientContext(text: text, sources: sources, unreadableSessions: input.unreadable, coverage: coverage)
     }
 
     /// Builds a read-only `LocalToolScope` over all readable sessions of `patient`,
@@ -1401,7 +1800,14 @@ final class Store {
         var index = 1
         var toolSessions: [LocalToolSession] = []
         for session in sessions {
-            let transcriptText = (try? readTranscript(for: patient, session: session)) ?? ""
+            // An unreadable transcript still takes its tag, as it does in the context.
+            var unreadable = false
+            var transcriptText = ""
+            do {
+                transcriptText = try readTranscript(for: patient, session: session) ?? ""
+            } catch {
+                unreadable = true
+            }
             let notes = commentStore?.note(sessionID: session.id) ?? ""
             let comments = AssistantService.formatComments(commentStore?.comments(sessionID: session.id) ?? [])
             let generated = generatedNotes(for: patient, session: session)
@@ -1410,7 +1816,7 @@ final class Store {
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
-            guard !transcriptText.isEmpty || !combinedNotes.isEmpty || !comments.isEmpty else { continue }
+            guard !transcriptText.isEmpty || unreadable || !combinedNotes.isEmpty || !comments.isEmpty else { continue }
             if labels[session.date] == nil {
                 labels[session.date] = "S\(index)"
                 index += 1
@@ -1464,24 +1870,43 @@ final class Store {
     /// per-format file exists. Reads files directly rather than through
     /// `note(for:session:format:)`, which adopts a legacy summary by writing.
     private func generatedNotes(for patient: Patient, session: SessionRecord) -> [(String, String)] {
+        generatedNoteEntries(for: patient, session: session).map { entry -> (String, String) in
+            let label = entry.isLegacy ? "earlier format" : (entry.format?.shortName ?? entry.raw)
+            return (label, entry.text)
+        }
+    }
+
+    /// One generated note file: `raw` is the format part of its name
+    /// ("note.soap.txt" -> "soap"); `isLegacy` marks the `summary.txt` of a
+    /// session from before per-format notes.
+    struct GeneratedNoteEntry {
+        let raw: String
+        let format: ProgressNoteFormat?
+        let text: String
+        let isLegacy: Bool
+    }
+
+    /// The non-empty generated notes, by file name, trimmed; the legacy summary
+    /// when there is no per-format note file at all.
+    func generatedNoteEntries(for patient: Patient, session: SessionRecord) -> [GeneratedNoteEntry] {
         let dir = sessionDir(for: patient, session: session)
         let names = ((try? fileManager.contentsOfDirectory(atPath: dir.path)) ?? [])
             .filter { Store.isNoteFileName($0) }
             .sorted()
-        var result: [(String, String)] = []
+        var result: [GeneratedNoteEntry] = []
         for name in names {
             let url = dir.appendingPathComponent(name)
             let text = ((try? protector.stringIfPresent(at: url)) ?? nil) ?? ""
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
-            // "note.soap.txt" -> "soap"
             let raw = String(name.dropFirst("note.".count).dropLast(".txt".count))
-            let label = ProgressNoteFormat(rawValue: raw)?.shortName ?? raw
-            result.append((label, trimmed))
+            result.append(GeneratedNoteEntry(raw: raw, format: ProgressNoteFormat(rawValue: raw), text: trimmed, isLegacy: false))
         }
         if names.isEmpty, let legacy = summary(for: patient, session: session) {
             let trimmed = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { result.append(("earlier format", trimmed)) }
+            if !trimmed.isEmpty {
+                result.append(GeneratedNoteEntry(raw: "summary", format: nil, text: trimmed, isLegacy: true))
+            }
         }
         return result
     }

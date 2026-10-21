@@ -28,6 +28,7 @@ struct SettingsView: View {
     @State private var healthChecks: [ToolHealthCheck] = []
     @State private var isCheckingHealth = false
     @State private var showSetup = false
+    @ObservedObject private var navigator = AppNavigator.shared
     @State private var newRiskPhrase = ""
     @State private var confirmClearRiskPhrases = false
     @State private var confirmResetRiskPhrases = false
@@ -46,7 +47,9 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
 
-    private var pane: SettingsPane { SettingsPane(rawValue: selectedPaneRaw) ?? .default }
+    private var panes: [SettingsPane] { SettingsPane.available(encryptionOffered: encryptionOffered) }
+
+    private var pane: SettingsPane { SettingsPane.restored(rawValue: selectedPaneRaw, in: panes) }
 
     private var paneSelection: Binding<SettingsPane> {
         Binding(get: { pane }, set: { selectedPaneRaw = $0.rawValue })
@@ -54,16 +57,24 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SettingsSidebar(selection: paneSelection)
+            SettingsSidebar(selection: paneSelection, panes: panes)
             SettingsPaneContainer(title: pane.title) {
                 paneContent
             }
             .id(pane)
         }
-        .frame(minWidth: 900, idealWidth: 960, minHeight: 640, idealHeight: 680)
+        .frame(
+            minWidth: SettingsLayout.minWidth,
+            idealWidth: SettingsLayout.idealWidth,
+            minHeight: SettingsLayout.minHeight,
+            idealHeight: SettingsLayout.idealHeight
+        )
         .background(Theme.window.color)
         .tint(Theme.accent.color)
+        .textSelection(.enabled)
         .navigationTitle("Settings")
+        .onAppear { showRequestedSection() }
+        .onChange(of: navigator.pendingSettings) { _, _ in showRequestedSection() }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") { dismiss() }
@@ -119,6 +130,16 @@ struct SettingsView: View {
         }
     }
 
+    /// Shows what another part of the app asked for (e.g. the Doctor's "Set
+    /// up…"): selects its pane and opens its sheet.
+    private func showRequestedSection() {
+        guard let request = navigator.takeSettingsRequest() else { return }
+        selectedPaneRaw = request.pane.rawValue
+        switch request {
+        case .setupAssistant: showSetup = true
+        }
+    }
+
     @ViewBuilder
     private var paneContent: some View {
         switch pane {
@@ -137,15 +158,17 @@ struct SettingsView: View {
     private var generalPane: some View {
         dataFolderSection
         SettingsHairline()
-        SettingsSwitchRow(
-            title: "Keep raw audio after transcription",
-            detail: audioRetentionCaption,
-            isOn: $settings.keepAudioRecordings
-        )
-        .disabled(!encryption.isEnabled)
+        if SettingsAvailability.showsKeepAudio(encryptionOffered: encryptionOffered) {
+            SettingsSwitchRow(
+                title: "Keep raw audio after transcription",
+                detail: audioRetentionCaption,
+                isOn: $settings.keepAudioRecordings
+            )
+            .disabled(!encryption.isEnabled)
+        }
         SettingsSwitchRow(
             title: "Transcribe automatically when a recording ends",
-            detail: "Starts transcription as soon as you stop recording, so the transcript is ready when you come back. It keeps running while Aletheia is locked, and you get a notification when it's done.",
+            tip: HelpTips.autoTranscribe,
             isOn: $settings.autoTranscribeAfterRecording
         )
         SettingsRow(title: "Appearance") {
@@ -281,9 +304,6 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 12)
                 }
-                SettingsHairline()
-                SettingsCaption("Your acceptance of the terms is recorded only on this Mac. It is never sent anywhere.")
-                    .padding(.vertical, 12)
             }
         }
     }
@@ -360,7 +380,7 @@ struct SettingsView: View {
         if Integrations.appleIntelligenceBlocked {
             HStack(alignment: .top, spacing: 10) {
                 Chip("Off")
-                SettingsCaption("Apple Intelligence is blocked on purpose, so every AI path is on-device.")
+                SettingsCaption("Apple Intelligence is turned off on purpose.")
             }
         }
         // The "Built-in Model" (embedded llama.cpp) management UI — offered
@@ -516,7 +536,7 @@ struct SettingsView: View {
                 .frame(height: 38)
                 .themeField()
         }
-        SettingsCaption("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com. Talks to Ollama on this Mac only.")
+        SettingsCaption("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com.")
         HStack(spacing: 8) {
             if isPullingOllamaModel {
                 ThemeProgressBar(value: ollamaPullProgress)
@@ -614,8 +634,8 @@ struct SettingsView: View {
     private var instructionsCard: some View {
         SettingsCard {
             SettingsCardHeader(title: "AI instructions") { EmptyView() }
-            SettingsCaption("The standing instructions sent with every AI request — the assistant's voice and rules. Editing this changes how summaries and chat behave.")
             EditorField(text: $settings.systemPrompt, minHeight: 140)
+                .hoverTip(HelpTips.aiInstructions)
             HStack {
                 Spacer()
                 Button("Reset to Default") { settings.systemPrompt = Prompts.defaultSystemPrompt }
@@ -715,8 +735,8 @@ struct SettingsView: View {
                 selection: $settings.progressNoteFormat
             )
             .accessibilityLabel("Default progress note format")
+            .hoverTip(HelpTips.defaultNoteFormat)
             SettingsCaption(settings.progressNoteFormat.blurb)
-            SettingsCaption("The format new session notes start in. You can still switch formats for any single session on its Note tab.")
         }
         SettingsHairline()
         VStack(alignment: .leading, spacing: 6) {
@@ -731,13 +751,18 @@ struct SettingsView: View {
         SettingsHairline()
         SettingsSwitchRow(
             title: "Include comments in drafts",
-            detail: "Margin comments on the transcript are folded into generated progress notes and summaries.",
+            tip: HelpTips.includeComments,
             isOn: $settings.includeCommentsInDrafts
         )
         SettingsSwitchRow(
             title: "Include patient background",
             detail: "The patient's clinical history, profile notes, and current medications are provided to the assistant.",
             isOn: $settings.includePatientBackground
+        )
+        SettingsSwitchRow(
+            title: "Prepare summaries on battery",
+            tip: HelpTips.summariesOnBattery,
+            isOn: $settings.prepareSummariesOnBattery
         )
     }
 
@@ -748,7 +773,10 @@ struct SettingsView: View {
     /// this build or an earlier one — the unlock/manage affordances stay
     /// unconditional regardless of build tier.
     private var encryptionOffered: Bool {
-        encryption.isEnabled || appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
+        SettingsAvailability.encryptionOffered(
+            isEnabled: encryption.isEnabled,
+            moduleInBuild: appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
+        )
     }
 
     @ViewBuilder
@@ -820,9 +848,6 @@ struct SettingsView: View {
                 .padding(.vertical, 12)
             }
         }
-        if !encryptionOffered {
-            SettingsCaption("Encryption isn't offered in this build.")
-        }
     }
 
     /// Only states what the crypto code does: see `DataCipher`, `ChunkedCipher`,
@@ -886,22 +911,6 @@ struct SettingsView: View {
                 isOn: $settings.keepDataOutOfSystemBackups
             )
             .padding(.vertical, 12)
-            SettingsHairline()
-            SettingsSwitchRow(
-                title: "Keep an encrypted backup copy on this Mac",
-                detail: "An end-to-end-encrypted snapshot of your database, sealed with your key — safe to sit in Time Machine or on an external drive. Only you can open it. Coming soon: nothing is written yet, so this stays off.",
-                isOn: .constant(false)
-            )
-            .disabled(true)
-            .padding(.vertical, 12)
-            SettingsHairline()
-            SettingsSwitchRow(
-                title: "Also back up to iCloud (end-to-end encrypted)",
-                detail: "Uploads the same encrypted snapshot to your private iCloud. It's sealed with your key before it leaves this Mac, so Apple only ever stores data it can't read. Coming soon: it needs a signed build with iCloud configured, so this stays off.",
-                isOn: .constant(false)
-            )
-            .disabled(true)
-            .padding(.vertical, 12)
         }
         SettingsCaption("Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder.")
         Button("Show backups folder in Finder", action: showBackupsFolder)
@@ -924,7 +933,7 @@ struct SettingsView: View {
     private var securityPane: some View {
         SettingsSwitchRow(
             title: "App lock",
-            detail: "Require Touch ID or your Mac password to open. Locks the app when it opens and whenever it's hidden, so your patients' notes stay behind it.",
+            detail: "Require Touch ID or your Mac password to open. You unlock once when it opens. It locks again when your Mac sleeps, its screen locks or you switch user, so your patients' notes stay behind it.",
             isOn: $settings.appLockEnabled
         )
         SettingsRow(
@@ -941,6 +950,11 @@ struct SettingsView: View {
             .frame(width: 180)
             .disabled(!settings.appLockEnabled)
         }
+        SettingsSwitchRow(
+            title: "Show patient names in notifications",
+            detail: "Off by default. Notifications appear on the lock screen and stay in Notification Center, so they just say that a session is ready. Turn this on to include the patient's name and the session date.",
+            isOn: $settings.notificationsShowPatientNames
+        )
         SettingsRow(
             title: "Encrypt this Mac's disk with FileVault",
             detail: "Recommended. FileVault encrypts everything on this Mac at rest so patient data can't be read if the computer is lost or stolen. macOS manages it; it doesn't affect your backups."

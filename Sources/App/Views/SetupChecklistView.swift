@@ -62,7 +62,7 @@ struct SetupChecklistView: View {
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
 
-            Text("Everything runs on this Mac. Aletheia's AI model downloads inside Aletheia and runs here; nothing else to install. This list updates itself as you grant each permission; no restart needed.")
+            Text("Everything runs on this Mac. Aletheia's AI model downloads inside Aletheia and runs here; nothing else to install.")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)

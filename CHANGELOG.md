@@ -9,6 +9,75 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.60.0] - 2026-10-21
+
+### Added
+- show one line and a progress bar while a note is generated (#384)
+- fill the room kept for missing summaries with those sessions' openings (#374)
+- resume inline digest builds from the section cache (#376)
+- one search field at the top right for everything (#367)
+- add a setting to prepare summaries on battery (#369)
+- read a long patient history by zoom level, summaries first, transcripts only where search points (#362)
+
+### Fixed
+- make the transcript/comments divider draggable (#386)
+- size the Notes format picker's segments to their labels (#383)
+- keep the Notes tab's action row within the pane, and focus Export in the export popover (#381)
+- clear the Swift 6 sendability and isolation warnings (#377)
+- estimate tokens by script so non-Latin text can't overflow the window (#370)
+- pressure-test fixes for search, tool loop and long histories (#351)
+
+## [2.59.0] - 2026-10-21
+
+### Added
+- PDF, Word and Markdown per note and session; whole-patient export as a background zip; rich-text Copy (#345)
+
+### Fixed
+- count every merge round in the build's progress steps (#360)
+- keep a merged section's anchor one flat range (#361)
+- accept a plain number for a tool call's time or session (#357)
+- don't read a month name used as a word as a date filter (#354)
+- show the tool-loop planning call the earlier chat turns (#355)
+- keep patient names out of notifications by default (#359)
+- offer Record and Transcribe only when they can act on the session (#348)
+- unlock once per session; re-lock only when the Mac is left (#356)
+
+## [2.58.0] - 2026-10-21
+
+### Added
+- shortcut hints from bindings, plus a Keyboard Shortcuts window (#352)
+- let text be selected and copied on read-only screens (#343)
+- segmented AI effort control and a scrollable input field (#337)
+- add an overall progress bar and plain stage wording (#339)
+- floating comment button, comments pane only when there are comments, draggable split (#349)
+
+### Fixed
+- stop a long note from growing the window past the screen (#341)
+- remove the AI draft banner above a note (#344)
+- say it stays on this Mac up front, not everywhere (#346)
+- omit what this build doesn't offer instead of showing it as unavailable (#340)
+- drop the Remembers line above the composer (#342)
+- drop Copy Details from the AI engine banner (#336)
+- show Save and Discard only when there are edits (#338)
+- stop truncating the update prompt's buttons (#333)
+- drop the "list updates itself" sentence from the checklist intro (#334)
+- make the Doctor's fix buttons do something (#335)
+
+## [2.57.2] - 2026-10-20
+
+### Fixed
+- merge a speaker's segments by pause, not start-to-start (#332)
+
+## [2.57.1] - 2026-10-20
+
+### Fixed
+- stop clipping the Settings sheet (#331)
+
+## [2.57.0] - 2026-10-20
+
+### Added
+- consent guide, terms checklist, open ollama, mermaid errors and styles, and patient meta (#234) (#330)
+
 ## [2.56.0] - 2026-10-20
 
 ### Added

@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 @testable import Aletheia
 
 private final class FakeChecker: UpdateChecking, @unchecked Sendable {
@@ -242,5 +243,45 @@ final class UpdateServiceTests: XCTestCase {
 
         AppSettings.shared.autoCheckForUpdates = true
         XCTAssertTrue(AppSettings.shared.autoCheckForUpdates)
+    }
+}
+
+final class UpdatePromptLayoutTests: XCTestCase {
+    /// Mirrors `Theme.Typography.control` (system 13, medium).
+    private let controlFont = NSFont.systemFont(ofSize: 13, weight: .medium)
+    /// Horizontal padding of a themed button (12 each side).
+    private let chrome: CGFloat = 24
+
+    private func width(of label: String) -> CGFloat {
+        ceil((label as NSString).size(withAttributes: [.font: controlFont]).width) + chrome
+    }
+
+    private func rowWidth(_ labels: [String], spacing: CGFloat) -> CGFloat {
+        labels.map(width(of:)).reduce(0, +) + spacing * CGFloat(max(labels.count - 1, 0))
+    }
+
+    func testEveryActionRowFitsWithRoomToSpare() {
+        // 15% slack for fonts and text sizes that run wider than measured here.
+        let available = UpdatePromptLayout.contentWidth * 0.85
+        for row in UpdatePromptLayout.rows {
+            XCTAssertLessThanOrEqual(
+                rowWidth(row, spacing: 16), available,
+                "\(row) needs more than the prompt offers; its labels would truncate"
+            )
+        }
+    }
+
+    func testAllFourActionsAreOnOfferedRows() {
+        XCTAssertEqual(
+            Set(UpdatePromptLayout.rows.flatMap { $0 }),
+            [UpdatePromptLayout.viewOnGitHub, UpdatePromptLayout.skip, UpdatePromptLayout.later, UpdatePromptLayout.download]
+        )
+    }
+
+    /// The reported bug: all four controls in one row do not fit, which is why
+    /// they are split across two.
+    func testAllFourInOneRowWouldNotFit() {
+        let single = UpdatePromptLayout.rows.flatMap { $0 }
+        XCTAssertGreaterThan(rowWidth(single, spacing: UpdatePromptLayout.rowSpacing), UpdatePromptLayout.contentWidth)
     }
 }

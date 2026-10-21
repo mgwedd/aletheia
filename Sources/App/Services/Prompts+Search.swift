@@ -1,14 +1,18 @@
 import Foundation
 
 /// The "Search results" block and the not-discussed rule for the patient-wide
-/// chat. The counts are computed by `SessionSearch`; the model only quotes them.
+/// chat. The counts are computed by `SessionSearch`; the model uses them but
+/// does not recite them.
 extension Prompts {
     /// Added to `patientChat`: a topic may be called not discussed only when
     /// the search found nothing for that word, and then only as "no match found".
     static let patientSearchRule = """
         The lines starting with "- " under "Search results" are the app's own \
         counts of matches for each word of the question across the recorded \
-        sessions. Quote the numbers exactly and never count yourself. Say a \
+        sessions. They are for you, not for the reader: use them to decide \
+        what you can say, but do not repeat, list or quote them, and never \
+        open the answer with them; answer the question itself. Never count \
+        yourself. Say a \
         word was not discussed only if its own line reports 0 matches, and \
         then say "no match found in the recorded sessions", never "never \
         discussed". A word's other counts do not cover a different word. \
@@ -18,19 +22,31 @@ extension Prompts {
         the question, so a search can miss a paraphrase.
         """
 
+    /// Beside the counts, where a small model reads it: they steer the answer
+    /// and are not part of it.
+    static let countsNote = "for you only, do not repeat these counts"
+
     /// The block put at the top of the patient context. `shown` is how many
     /// transcript passages are in the text below. `whole` means every
     /// transcript is included; `newest` (included, of) means only the full
     /// transcripts of the newest sessions are.
     static func searchBlock(
         _ result: SessionSearch.Result, shown: Int, whole: Bool, newest: (included: Int, of: Int, cutShort: Bool)? = nil,
-        unreadableSessions: Int
+        layered: Bool = false, openings: Int = 0, unreadableSessions: Int
     ) -> String {
         func plural(_ n: Int, _ word: String) -> String { "\(n) \(word)\(n == 1 ? "" : "s")" }
         let searched = result.sessionsSearched
         let included: String
         if whole {
             included = "the full transcripts are included below"
+        } else if layered {
+            var text = shown > 0
+                ? "no transcript is included whole; below are session summaries, the summaries of the parts search points at, and the top \(plural(shown, "matching transcript passage"))"
+                : "no transcript is included whole; below are session summaries and the summaries of the parts search points at"
+            if openings > 0 {
+                text += ", and the start of the transcripts of \(plural(openings, "session")) with no summary yet"
+            }
+            included = text
         } else if let newest {
             included = newest.cutShort
                 ? "only the newest session's transcript, cut short to fit, is included below (1 of \(plural(newest.of, "session"))); the other transcripts are not included"
@@ -47,7 +63,7 @@ extension Prompts {
             lines = ["Search: the question has no searchable words, so no count was made. Do not say anything was not discussed."]
             if !whole { lines.append("Not every transcript fits: \(included).") }
         } else {
-            lines = ["Search results (\(plural(searched, "session")) searched):"]
+            lines = ["Search results (\(plural(searched, "session")) searched; \(countsNote)):"]
             for count in result.termCounts {
                 var line = "- \"\(count.term.text)\": "
                 let also = (result.matchedVariants[count.term.text] ?? []).joined(separator: ", ")

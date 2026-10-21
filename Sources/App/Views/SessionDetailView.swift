@@ -38,11 +38,12 @@ private struct DigestStatusLine: View {
 
     var body: some View {
         if let progress = builder.progress[sessionID] {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Building digest")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                AIProgressView(progress: progress)
+            VStack(alignment: .leading, spacing: 6) {
+                AIProgressView(progress: DigestBuilder.statusProgress(progress))
+                if let steps = progress.steps {
+                    ThemeProgressBar(value: steps.fraction)
+                        .frame(maxWidth: 240)
+                }
             }
             .padding([.horizontal, .top], 20)
         } else if let failure = builder.failures[sessionID] {
@@ -55,6 +56,28 @@ private struct DigestStatusLine: View {
                     .controlSize(.small)
             }
             .padding([.horizontal, .top], 20)
+        }
+    }
+}
+
+/// The note pane's progress: the shared status line, led by "Generating SOAP
+/// note", over a bar that never moves backwards.
+private struct NoteProgressRow: View {
+    let title: String
+    let progress: AIRunProgress
+    let speed: ModelSpeed?
+    /// Owned by the session view and replaced per run: the row is rebuilt
+    /// mid-run (when the first text arrives), which would reset a `@State` here.
+    let highWater: ProgressHighWater
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            VStack(alignment: .leading, spacing: 6) {
+                AIStatusLineView(text: NoteProgress.statusLine(title: title, progress, now: context.date, speed: speed))
+                ThemeProgressBar(value: highWater.clamp(NoteProgress.fraction(progress, now: context.date, speed: speed)))
+                    .frame(maxWidth: 240)
+            }
+            .accessibilityElement(children: .combine)
         }
     }
 }
@@ -72,6 +95,8 @@ struct SessionDetailView: View {
     var editGuard: UnsavedTranscriptGuard? = nil
     var initialTab: SessionTab = .transcript
     var initialFocusedCommentID: String? = nil
+    /// A search match to scroll to and flash on `initialTab` (transcript or note).
+    var initialSearchFocus: SearchMatchFocus? = nil
     var initialNoteFormat: ProgressNoteFormat? = nil
     var initialShowingMyNotes: Bool = false
     var navigationToken: Int = 0
@@ -83,6 +108,7 @@ struct SessionDetailView: View {
         editGuard: UnsavedTranscriptGuard? = nil,
         initialTab: SessionTab = .transcript,
         initialFocusedCommentID: String? = nil,
+        initialSearchFocus: SearchMatchFocus? = nil,
         initialNoteFormat: ProgressNoteFormat? = nil,
         initialShowingMyNotes: Bool = false,
         navigationToken: Int = 0
@@ -93,6 +119,7 @@ struct SessionDetailView: View {
         self.editGuard = editGuard
         self.initialTab = initialTab
         self.initialFocusedCommentID = initialFocusedCommentID
+        self.initialSearchFocus = initialSearchFocus
         self.initialNoteFormat = initialNoteFormat
         self.initialShowingMyNotes = initialShowingMyNotes
         self.navigationToken = navigationToken
@@ -137,6 +164,10 @@ struct SessionDetailView: View {
     @State private var sessionChatCoverage: String?
     /// Stop was pressed and the stopped note's job may still be unwinding.
     @State private var noteStopping = false
+    /// The format of the note being generated, for its progress line.
+    @State private var generatingFormat: ProgressNoteFormat = .default
+    /// Keeps that progress bar from moving backwards; a new one per run.
+    @State private var noteHighWater = ProgressHighWater()
     /// Waits for a stopped note's job to unwind before starting the next one.
     @State private var noteWaiter: Task<Void, Never>?
     @State private var summaryText: String = ""
@@ -156,10 +187,15 @@ struct SessionDetailView: View {
     @State private var comments: [SessionComment] = []
     @State private var noteComments: [SessionComment] = []
     /// The passage currently selected in the transcript view (empty = just a
-    /// caret), driving the "Comment on selection" affordance.
+    /// caret), driving the floating comment button.
     @State private var transcriptSelection = ""
     /// Where that selection sits in the transcript (UTF-16), nil for a caret.
     @State private var transcriptSelectionRange: NSRange?
+    /// The first line of that selection in the transcript pane, where the
+    /// floating comment button goes (nil for a caret).
+    @State private var transcriptSelectionRect: CGRect?
+    /// Which side of the transcript / comments split the reader folded away.
+    @State private var splitCollapsed: TranscriptSplit.Side?
     /// The passage and its start offset, frozen when the comment is begun so
     /// the composer sheet opening (or the selection changing) can't move what
     /// the comment gets anchored to.
@@ -182,7 +218,14 @@ struct SessionDetailView: View {
     @State private var noteComposerHeight: CGFloat = 230
     @State private var noteInlineCommentBody = ""
     @State private var focusedNoteCommentID: String?
+    /// Bumped on every note focus request (a comment, or a search match), so
+    /// the note scrolls to and flashes it each time.
     @State private var noteFocusToken = 0
+    /// Bumped for comment focus only, so a collapsed note comments pane opens
+    /// for a comment but not for a search match.
+    @State private var noteCommentRevealToken = 0
+    /// Which side of the note / comments split the reader folded away.
+    @State private var noteSplitCollapsed: TranscriptSplit.Side?
     @State private var selectedTab: SessionTab = .transcript
     /// Whether the Notes tab shows the therapist's own notes instead of a drafted note.
     @State private var showingMyNotes = false
@@ -193,6 +236,15 @@ struct SessionDetailView: View {
     /// Bumped on every focus request so the scroll-and-flash is an event, not a
     /// state: re-clicking the already-focused card still jumps to its passage.
     @State private var focusToken = 0
+    /// Bumped with `focusToken` for comment focus only, so opening the
+    /// transcript at a search match doesn't also reveal the comments rail.
+    @State private var commentRevealToken = 0
+    /// The search match the transcript scrolls to and flashes, when no comment
+    /// is focused (see `transcriptFocus`).
+    @State private var searchMatchRange: NSRange?
+    /// The search match to scroll to and flash in the drafted note. Shown on
+    /// the next `noteFocusToken`, like a focused note comment.
+    @State private var noteSearchFocus: SearchMatchFocus?
     /// Set when the last transcription came back blank and the recording was
     /// kept (see `AudioRetentionPolicy.decision`); shown inline, not as an alert.
     @State private var noSpeechNotice: String?
@@ -268,6 +320,7 @@ struct SessionDetailView: View {
         }
         .navigationTitle(Self.dateFormatter.string(from: session.date))
         .background(Theme.window.color)
+        .textSelection(.enabled)
         .onAppear {
             if initialShowingMyNotes {
                 showingMyNotes = true
@@ -286,6 +339,7 @@ struct SessionDetailView: View {
                     focusComment(initialFocusedCommentID)
                 }
             }
+            applySearchFocus()
             ensureDigest()
             // Load the model now so the first note or question skips the load.
             integrations.makeAssistant().warmUp(model: integrations.activeModelName)
@@ -322,6 +376,8 @@ struct SessionDetailView: View {
             noteFingerprint = savedFingerprint(for: newFormat)
             noteCoverage = savedCoverage(for: newFormat)
             refreshHasPreviousNote()
+            // Note comments belong to one format.
+            reloadNoteComments(for: newFormat)
         }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -406,51 +462,55 @@ struct SessionDetailView: View {
                     .help("Pause recording")
                 }
                 recordingTimer
-            } else if recorder.isRecording {
-                // A different session is recording (via the menu bar); don't let
-                // this view start a second one or stop the other by surprise.
-                Label("Recording another session", systemImage: "record.circle")
-                    .font(Theme.Typography.control)
-                    .foregroundStyle(Theme.muted.color)
-                    .help("Stop the current recording from the menu bar first")
-            } else {
-                Button {
-                    Task { await startRecording() }
-                } label: {
-                    Label("Record Session", systemImage: "record.circle")
+            } else if offersRecord {
+                if recorder.isRecording {
+                    // A different session is recording (via the menu bar); don't let
+                    // this view start a second one or stop the other by surprise.
+                    Label("Recording another session", systemImage: "record.circle")
+                        .font(Theme.Typography.control)
+                        .foregroundStyle(Theme.muted.color)
+                        .help("Stop the current recording from the menu bar first")
+                } else {
+                    Button {
+                        Task { await startRecording() }
+                    } label: {
+                        Label("Record Session", systemImage: "record.circle")
+                    }
+                    .help(recordBlocker ?? "Record this session's audio")
+                    .disabled(recordBlocker != nil)
                 }
-                .help(recordBlocker ?? "Record this session's audio")
-                .disabled(recordBlocker != nil)
             }
 
-            Rectangle()
-                .fill(Theme.line.color)
-                .frame(width: 1, height: 20)
-                .padding(.horizontal, 4)
+            if offersRecord || isRecordingThisSession, offersTranscribe {
+                Rectangle()
+                    .fill(Theme.line.color)
+                    .frame(width: 1, height: 20)
+                    .padding(.horizontal, 4)
+            }
 
             // The label stays put; a spinner beside it shows work is under way
             // (the progress itself is the band under the tab bar).
-            Button {
-                noSpeechNotice = nil
-                transcription.start(patient: patient, session: session)
-            } label: {
-                Label("Transcribe", systemImage: "waveform")
-            }
-            .help(transcribeBlocker ?? (transcription.isBusy
-                  ? "Another session is being transcribed. This one will start when it finishes"
-                  : "Transcribe the recorded audio on-device"))
-            .disabled(transcribeBlocker != nil)
-            if isTranscribing {
-                ProgressView().controlSize(.small)
+            if offersTranscribe {
+                Button {
+                    noSpeechNotice = nil
+                    transcription.start(patient: patient, session: session)
+                } label: {
+                    Label("Transcribe", systemImage: "waveform")
+                }
+                .help(transcribeBlocker ?? (transcription.isBusy
+                      ? "Another session is being transcribed. This one will start when it finishes"
+                      : "Transcribe the recording"))
+                .disabled(transcribeBlocker != nil)
+                if isTranscribing {
+                    ProgressView().controlSize(.small)
+                }
             }
 
-            Button {
-                exportSession()
-            } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
+            if SessionActionPolicy.offersExport(hasTranscript: !transcriptText.isEmpty, hasSummary: !summaryText.isEmpty) {
+                ExportButton(help: "Save this session's note and transcript as a PDF, Word or Markdown file") {
+                    exportSession(as: $0)
+                }
             }
-            .help("Export this session to Markdown")
-            .disabled(transcriptText.isEmpty && summaryText.isEmpty)
 
             // "Remind Me" / "Schedule Next…" belong to the `.dev`-tier EventKit
             // scheduling module; absent from production/preview builds. See
@@ -522,7 +582,7 @@ struct SessionDetailView: View {
             }
             Text(recorder.isPaused
                  ? "Paused. Nothing is being recorded until you resume."
-                 : "Recording on this Mac. Stop when the session ends, then transcribe.")
+                 : "Stop when the session ends, then transcribe.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.muted.color)
                 .multilineTextAlignment(.center)
@@ -624,13 +684,27 @@ struct SessionDetailView: View {
         )
     }
 
-    private func exportSession() {
+    private func exportSession(as format: ExportFormat) {
         guard let store = appModel.store else { return }
-        let markdown = store.exportSessionMarkdown(patient: patient, session: session)
+        let document = ExportDocument(markdown: store.exportSessionMarkdown(patient: patient, session: session))
+        let base = FileSaver.fileName(patient.name, String(session.folderName.prefix(10)))
+        if ExportRenderer.save(document, as: format, baseName: base, onFailure: { appModel.errorMessage = $0 }) {
+            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
+        }
+    }
+
+    /// Saves the note on screen in `format`, after the usual save panel.
+    private func exportNote(as format: ExportFormat) {
+        let noteFormat = settings.progressNoteFormat.shortName
         let dateStr = String(session.folderName.prefix(10))
-        let name = FileSaver.fileName(patient.name, dateStr) + ".md"
-        if FileSaver.saveText(markdown, suggestedName: name) {
-            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, Markdown")
+        let document = ExportDocument(
+            title: patient.name,
+            subtitle: "\(noteFormat) · \(Self.dateFormatter.string(from: session.date))",
+            markdown: summaryText
+        )
+        let base = FileSaver.fileName(patient.name, dateStr, noteFormat)
+        if ExportRenderer.save(document, as: format, baseName: base, onFailure: { appModel.errorMessage = $0 }) {
+            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
         }
     }
 
@@ -643,7 +717,9 @@ struct SessionDetailView: View {
 
     private var transcriptTab: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DigestStatusLine(builder: integrations.digests, sessionID: session.id, retry: ensureDigest)
+            DigestStatusLine(builder: integrations.digests, sessionID: session.id, retry: {
+                integrations.digestScheduler.retry(patient: patient, session: session)
+            })
             if let notice = noSpeechNotice {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle")
@@ -676,51 +752,38 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.text.color)
                         .padding([.horizontal, .top], 20)
                 }
-                HStack(spacing: 10) {
-                    Button {
-                        beginInlineComment()
-                    } label: {
-                        Label("Comment on selection", systemImage: "text.bubble")
+                if TranscriptEditBar.showsEditControls(isDirty: transcriptIsDirty) {
+                    HStack(spacing: 10) {
+                        Spacer(minLength: 12)
+                        if let note = TranscriptEditBar.statusNote(isDirty: transcriptIsDirty) {
+                            Text(note)
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(Theme.muted.color)
+                                .lineLimit(1)
+                        }
+                        Button("Discard") { showDiscardConfirm = true }
+                            .help("Throw away your unsaved edits")
+                        Button("Save") { saveTranscriptDraft() }
+                            .disabled(transcriptReadError != nil)
+                            .shortcut(AppHotkey.saveEdits, help: "Save your edits to the transcript")
                     }
-                    .disabled(transcriptSelection.isEmpty || transcriptIsDirty)
-                    .help(transcriptIsDirty
-                          ? "Save or discard your transcript edits before adding a comment"
-                          : transcriptSelection.isEmpty
-                          ? "Select a passage in the transcript to comment on it"
-                          : "Add a comment on the selected passage")
-                    Spacer(minLength: 12)
-                    if transcriptIsDirty {
-                        Text("Edits to the transcript are not saved yet")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.muted.color)
-                            .lineLimit(1)
-                            .transition(.opacity)
-                    } else if transcriptSelection.isEmpty && !showInlineComposer {
-                        Text("Select any part of the transcript to comment")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.muted.color)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .transition(.opacity)
-                    }
-                    Button("Discard") { showDiscardConfirm = true }
-                        .disabled(!transcriptIsDirty)
-                        .help("Throw away your unsaved edits")
-                    Button("Save") { saveTranscriptDraft() }
-                        .keyboardShortcut("s", modifiers: .command)
-                        .disabled(!transcriptIsDirty || transcriptReadError != nil)
-                        .help("Save your edits to the transcript")
+                    .buttonStyle(.themed)
+                    .padding(.horizontal, 20)
+                    .frame(height: 52)
+                    .themeDivider(.bottom)
                 }
-                .buttonStyle(.themed)
-                .padding(.horizontal, 20)
-                .frame(height: 52)
-                .themeDivider(.bottom)
-                .animation(.easeOut(duration: 0.15), value: transcriptIsDirty)
                 // Google-Docs layout: the transcript on the left, its comments in
-                // a margin rail on the right. Only *unresolved* comments carry a
-                // highlight in the text; the rail keeps resolved ones tucked away.
-                // The view edits the draft, and highlights follow it.
-                HStack(spacing: 0) {
+                // a margin rail on the right, shown once there are comments and
+                // sized by a draggable divider. Only *unresolved* comments carry
+                // a highlight in the text; the rail keeps resolved ones tucked
+                // away. The view edits the draft, and highlights follow it.
+                TranscriptSplitView(
+                    hasComments: !comments.isEmpty,
+                    commentCount: comments.filter { !$0.resolved }.count,
+                    ratio: $settings.transcriptSplitRatio,
+                    collapsed: $splitCollapsed,
+                    revealToken: commentRevealToken
+                ) {
                     TranscriptTextView(
                         text: $transcriptDraft,
                         isEditable: transcriptReadError == nil,
@@ -728,16 +791,18 @@ struct SessionDetailView: View {
                         selection: $transcriptSelection,
                         selectionRange: $transcriptSelectionRange,
                         onOpenComment: openComment,
-                        focusedCommentID: focusedCommentID,
+                        focus: transcriptFocus,
                         focusToken: focusToken,
                         composingRange: composingRange,
-                        onComposingRectChange: { composerAnchor = $0 }
+                        onComposingRectChange: { composerAnchor = $0 },
+                        onSelectionRectChange: { transcriptSelectionRect = $0 }
                     )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     // The comment composer sits on the transcript, just under the
-                    // passage being commented on.
+                    // passage being commented on; the comment button floats at
+                    // the selection.
                     .overlay { composerOverlay }
-                    Rectangle().fill(Theme.line.color).frame(width: 1)
+                    .overlay { commentButtonOverlay }
+                } comments: {
                     CommentsRailView(
                         comments: comments,
                         focusedCommentID: $focusedCommentID,
@@ -748,6 +813,9 @@ struct SessionDetailView: View {
                         onDelete: deleteComment,
                         onEdit: editComment
                     )
+                    // The cards focus their comment on click; selectable text
+                    // would take those clicks.
+                    .textSelection(.disabled)
                 }
             }
         }
@@ -804,6 +872,35 @@ struct SessionDetailView: View {
                 .offset(x: Self.composerLeading, y: composerY(in: proxy.size.height))
             }
             .onPreferenceChange(ComposerHeightKey.self) { composerHeight = $0 }
+        }
+    }
+
+    /// The comment button, floating just above the first line of the selected
+    /// passage (below it when there is no room above). Shown only for a saved
+    /// transcript, since a comment is pinned to saved text.
+    @ViewBuilder
+    private var commentButtonOverlay: some View {
+        let hasSelection = !transcriptSelection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if CommentButtonPlacement.isVisible(
+            hasSelection: hasSelection,
+            isDirty: transcriptIsDirty,
+            isComposing: showInlineComposer,
+            isReadable: transcriptReadError == nil
+        ), let anchor = transcriptSelectionRect {
+            GeometryReader { proxy in
+                if let origin = CommentButtonPlacement.origin(anchor: anchor, in: proxy.size) {
+                    Button {
+                        beginInlineComment()
+                    } label: {
+                        Label("Comment", systemImage: "text.bubble")
+                    }
+                    .buttonStyle(.themed)
+                    .keyboardShortcut("m", modifiers: [.command, .option])
+                    .help("Comment on the selected passage (\u{2325}\u{2318}M)")
+                    .frame(width: CommentButtonPlacement.size.width, height: CommentButtonPlacement.size.height)
+                    .offset(x: origin.x, y: origin.y)
+                }
+            }
         }
     }
 
@@ -884,8 +981,47 @@ struct SessionDetailView: View {
     /// already-focused comment again (after scrolling away) works too.
     private func focusComment(_ id: String) {
         focusedCommentID = id
+        searchMatchRange = nil
         focusToken += 1
+        commentRevealToken += 1
     }
+
+    /// What the transcript scrolls to and flashes: the focused comment's
+    /// passage, else the search match it was opened at.
+    private var transcriptFocus: TranscriptFocus? {
+        if let focusedCommentID { return .comment(focusedCommentID) }
+        return searchMatchRange.map { .range($0) }
+    }
+
+    /// Opens at the search match this session was opened for: flashes it in
+    /// the transcript, or asks the drafted note to scroll to it.
+    private func applySearchFocus() {
+        guard let initialSearchFocus else { return }
+        switch initialTab {
+        case .transcript:
+            guard let range = initialSearchFocus.transcriptRange(in: transcriptDraft) else { return }
+            focusedCommentID = nil
+            searchMatchRange = range
+            focusToken += 1
+        case .notes:
+            focusedNoteCommentID = nil
+            noteSearchFocus = initialSearchFocus
+            noteFocusToken += 1
+        case .ask:
+            break
+        }
+    }
+
+    /// What the note scrolls to and flashes on the next `noteFocusToken`: the
+    /// focused comment, or else the search match it was opened at (in the
+    /// rendered note, where the reader's offsets are).
+    private var noteFocus: TranscriptFocus? {
+        if let focusedNoteCommentID { return .comment(focusedNoteCommentID) }
+        return noteSearchFocus?.noteRange(in: renderedNote, note: summaryText).map { .range($0) }
+    }
+
+    /// The note's text as the reader shows it (see `NoteReaderView.rendered`).
+    private var renderedNote: String { NoteReaderView.rendered(summaryText).string }
 
     /// Clicking a highlighted passage focuses its card in the margin rail (and
     /// scrolls it into view) — no tab change, since the rail is right there.
@@ -904,6 +1040,7 @@ struct SessionDetailView: View {
             noteFingerprint = savedFingerprint(for: initialNoteFormat)
             noteCoverage = savedCoverage(for: initialNoteFormat)
             refreshHasPreviousNote()
+            reloadNoteComments(for: initialNoteFormat)
         }
         selectedTab = initialTab
         if let initialFocusedCommentID {
@@ -913,6 +1050,7 @@ struct SessionDetailView: View {
                 focusComment(initialFocusedCommentID)
             }
         }
+        applySearchFocus()
     }
 
     private func resolveComment(_ comment: SessionComment, _ resolved: Bool) {
@@ -941,7 +1079,7 @@ struct SessionDetailView: View {
         }
         transcriptText = text
         hasTranscript = true
-        integrations.buildDigest(for: patient, session: session, transcript: text, store: store)
+        integrations.digestScheduler.transcriptSaved(patient: patient, session: session)
         onSessionUpdated()
         return true
     }
@@ -952,11 +1090,6 @@ struct SessionDetailView: View {
 
     private var myNotesView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Your own notes for this session — jot things down during or after the session. Kept separate from the transcript, and included when you ask about this session.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.muted.color)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 20)
             RichNoteEditor(
                 markdown: $sessionNote,
                 placeholder: "Jot things down during or after the session…",
@@ -981,12 +1114,13 @@ struct SessionDetailView: View {
         return VStack(alignment: .leading, spacing: 14) {
             ThemeSegmentedControl(
                 options: NotesPane.all.map { ThemeTab(value: $0, title: $0.label) },
-                selection: notesPaneBinding
+                selection: notesPaneBinding,
+                sizing: .fitted
             )
-            .frame(maxWidth: 560)
             .disabled(locked)
             .opacity(locked ? 0.55 : 1)
             .accessibilityLabel("Note")
+            .hoverTip(showingMyNotes ? HelpTips.myNotes : HelpTips.noteFormat(settings.progressNoteFormat))
             .padding([.horizontal, .top], 20)
 
             if showingMyNotes {
@@ -1016,12 +1150,10 @@ struct SessionDetailView: View {
     private var generatedNoteView: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .center, spacing: 8) {
-                    Text(settings.progressNoteFormat.blurb)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 12)
+                // Adapts to the pane's width instead of widening it.
+                AdaptiveActionRow {
+                    EmptyView()
+                } actions: {
                     if noteRunner.isStreaming {
                         Button(role: .destructive) { noteStopping = true; noteRunner.stop() } label: {
                             Label("Stop", systemImage: "stop.fill")
@@ -1040,8 +1172,8 @@ struct SessionDetailView: View {
                         } label: {
                             Label("Regenerate", systemImage: "sparkles")
                         }
-                        .keyboardShortcut("g", modifiers: .command)
                         .disabled(transcriptText.isEmpty || isEditingNote)
+                        .shortcut(AppHotkey.generateNote, help: "Regenerate the note")
                     }
                     if !noteRunner.isStreaming && !noteRunner.isQueued && !isEditingNote {
                         noteLengthMenu
@@ -1057,7 +1189,7 @@ struct SessionDetailView: View {
                             Button {
                                 beginNoteInlineComment()
                             } label: {
-                                Label("Comment on selection", systemImage: "text.bubble")
+                                Label("Comment", systemImage: "text.bubble")
                             }
                             .disabled(noteSelection.isEmpty || noteRunner.isQueued)
                             .help(noteSelection.isEmpty
@@ -1073,16 +1205,24 @@ struct SessionDetailView: View {
                             .help("Edit this note before it goes in the record")
                         }
                         Button {
-                            copyToPasteboard(NoteMarkdown.tidy(summaryText))
+                            RichClipboard.write(RichClipboard.payload(markdown: summaryText))
                             noteCopied = true
                             Task {
                                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                                 noteCopied = false
                             }
                         } label: {
-                            Label(noteCopied ? "Copied" : "Copy", systemImage: noteCopied ? "checkmark" : "doc.on.doc")
+                            Label("Copy", systemImage: "doc.on.doc")
                         }
-                        .help("Copy the note to paste into your EHR")
+                        .help("Copy the note, with its formatting, to paste into your EHR or a document")
+                        .popover(isPresented: $noteCopied, arrowEdge: .bottom) {
+                            Label("Copied", systemImage: "checkmark.circle.fill")
+                                .font(Theme.Typography.control)
+                                .foregroundStyle(Theme.text.color)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                        }
+                        ExportButton(help: "Save this note as a PDF, Word or Markdown file") { exportNote(as: $0) }
                     }
                 }
                 if let status = noteRunner.queuedStatus {
@@ -1096,21 +1236,6 @@ struct SessionDetailView: View {
 
             if noteIsOutdated {
                 OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: generateNote)
-            }
-
-            if !summaryText.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Chip("AI draft", tone: .accent)
-                    Text("Drafted from the transcript and your notes. Review and edit before it goes in the record.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.text.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.callout.color, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.line.color))
-                .padding(.horizontal, 20)
             }
 
             if summaryText.isEmpty && !noteRunner.isStreaming {
@@ -1148,34 +1273,37 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.muted.color)
                         .padding(.horizontal, 20)
                 }
-                HStack(spacing: 0) {
+                TranscriptSplitView(
+                    hasComments: !noteComments.isEmpty,
+                    commentCount: noteComments.filter { !$0.resolved }.count,
+                    ratio: $settings.transcriptSplitRatio,
+                    collapsed: $noteSplitCollapsed,
+                    revealToken: noteCommentRevealToken
+                ) {
                     NoteReaderView(
                         text: summaryText,
                         comments: activeNoteAnchors,
                         selection: $noteSelection,
                         selectionRange: $noteSelectionRange,
                         onOpenComment: focusNoteComment,
-                        focusedCommentID: focusedNoteCommentID,
+                        focus: noteFocus,
                         focusToken: noteFocusToken,
                         composingRange: noteComposingRange,
                         onComposingRectChange: { noteComposerAnchor = $0 }
                     )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .overlay { noteComposerOverlay }
-
-                    Rectangle().fill(Theme.line.color).frame(width: 1)
-
+                } comments: {
                     CommentsRailView(
                         comments: noteComments,
                         focusedCommentID: $focusedNoteCommentID,
-                        unplacedIDs: TranscriptHighlighter.unplacedIDs(in: summaryText, comments: activeNoteAnchors),
+                        unplacedIDs: TranscriptHighlighter.unplacedIDs(in: renderedNote, comments: activeNoteAnchors),
                         focusToken: noteFocusToken,
                         onFocus: focusNoteComment,
                         onResolve: resolveNoteComment,
                         onDelete: deleteNoteComment,
-                        onEdit: editNoteComment,
-                        emptyMessage: "Select a passage in the note and click “Comment on selection” to add one here."
+                        onEdit: editNoteComment
                     )
+                    .textSelection(.disabled)
                 }
             }
         }
@@ -1212,9 +1340,11 @@ struct SessionDetailView: View {
     }
 
     private func beginNoteInlineComment() {
+        // The selection is a range in the rendered note, not in the Markdown.
+        let rendered = renderedNote
         if let range = noteSelectionRange,
-           let trimmed = TranscriptHighlighter.trimmed(range, in: summaryText) {
-            notePendingQuote = (summaryText as NSString).substring(with: trimmed)
+           let trimmed = TranscriptHighlighter.trimmed(range, in: rendered) {
+            notePendingQuote = (rendered as NSString).substring(with: trimmed)
             notePendingQuoteStart = trimmed.location
         } else {
             notePendingQuote = noteSelection.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1250,7 +1380,9 @@ struct SessionDetailView: View {
 
     private func focusNoteComment(_ id: String) {
         focusedNoteCommentID = id
+        noteSearchFocus = nil
         noteFocusToken &+= 1
+        noteCommentRevealToken &+= 1
     }
 
     private func reloadNoteComments(for format: ProgressNoteFormat? = nil) {
@@ -1330,9 +1462,9 @@ struct SessionDetailView: View {
             }
             .pickerStyle(.inline)
             Divider()
-            Picker("Effort", selection: $settings.noteEffort) {
+            Picker(AnswerEffort.label, selection: $settings.noteEffort) {
                 ForEach(AnswerEffort.allCases) { level in
-                    Text("\(level.displayName) — \(level.blurb)").tag(level)
+                    Text(level.displayName).tag(level)
                 }
             }
             .pickerStyle(.inline)
@@ -1341,16 +1473,21 @@ struct SessionDetailView: View {
                 editingInstructions = true
             }
         } label: {
-            Label("Length: \(settings.summaryVerbosity.displayName) · \(settings.noteEffort.displayName)", systemImage: "text.alignleft")
+            // AdaptiveLabel, not Label: a Menu's label ignores .labelStyle(.iconOnly).
+            AdaptiveLabel(
+                title: "Length: \(settings.summaryVerbosity.displayName) · \(settings.noteEffort.displayName)",
+                systemImage: "text.alignleft"
+            )
         }
         .fixedSize()
-        .help("How long the note is and how thoroughly long sessions are checked. Regenerate to apply a change.")
+        .help("How long the note is, and the AI effort for a long session. \(settings.noteEffort.displayName): \(settings.noteEffort.blurb(for: .note)) Regenerate to apply a change.")
     }
 
-    /// Shown between pressing Generate and the first token, which can take a
-    /// minute on a long session.
+    /// Shown while a note is generated: one line and a bar.
     private var noteWorkingRow: some View {
-        AIProgressView(progress: noteRunner.progress, speed: integrations.modelSpeed, task: .note)
+        NoteProgressRow(
+            title: NoteProgress.title(for: generatingFormat),
+            progress: noteRunner.progress, speed: integrations.modelSpeed, highWater: noteHighWater)
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1376,12 +1513,17 @@ struct SessionDetailView: View {
             Button {
                 requestGenerateNote()
             } label: {
-                Label("Generate \(format) note", systemImage: "sparkles")
+                HStack(spacing: 8) {
+                    Label("Generate \(format) note", systemImage: "sparkles")
+                    ShortcutHint(AppHotkey.generateNote, onAccent: true)
+                }
             }
             .buttonStyle(.themePrimary)
-            .keyboardShortcut("g", modifiers: .command)
             .disabled(transcriptText.isEmpty || noteRunner.isQueued)
-            .help(transcriptText.isEmpty ? "Transcribe the session first" : "Draft a \(format) note from the transcript")
+            .shortcut(
+                AppHotkey.generateNote,
+                help: transcriptText.isEmpty ? "Transcribe the session first" : "Draft a \(format) note from the transcript"
+            )
         }
         .padding(28)
         .frame(maxWidth: 520)
@@ -1464,12 +1606,12 @@ struct SessionDetailView: View {
         )
     }
 
-    /// Builds this session's digest if it has none, or its digest is stale (the
-    /// model or the digest prompts changed since it was made). Opening a session
-    /// is the only trigger, so nothing is rebuilt in bulk.
+    /// Puts this session first for a summary, if it needs one (too long to send
+    /// whole, or its patient's history is) and has none. The scheduler builds
+    /// it when nothing else is using the model (`DigestScheduler`).
     private func ensureDigest() {
-        guard let store = appModel.store, transcriptReadError == nil, !transcriptText.isEmpty else { return }
-        integrations.buildDigest(for: patient, session: session, transcript: transcriptText, store: store)
+        guard transcriptReadError == nil, !transcriptText.isEmpty else { return }
+        integrations.digestScheduler.sessionOpened(patient: patient, session: session)
     }
 
     private func load() {
@@ -1572,6 +1714,19 @@ struct SessionDetailView: View {
         transcription.isWaiting(session.id)
     }
 
+    private var offersRecord: Bool {
+        SessionActionPolicy.offersRecord(
+            hasTranscript: !transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            hasRecording: hasAnyRecording, isTranscribing: isTranscribing, isQueued: isQueued
+        )
+    }
+
+    private var offersTranscribe: Bool {
+        SessionActionPolicy.offersTranscribe(
+            hasRecording: hasAnyRecording, isTranscribing: isTranscribing, isQueued: isQueued
+        )
+    }
+
     private var recordBlocker: String? {
         SessionActionPolicy.recordBlocker(
             isTranscribing: isTranscribing, isQueued: isQueued, isStarting: recorder.isStarting
@@ -1667,6 +1822,8 @@ struct SessionDetailView: View {
         }
         noteStopping = false
         let format = settings.progressNoteFormat
+        generatingFormat = format
+        noteHighWater = ProgressHighWater()
         let verbosity = settings.summaryVerbosity
         let instructions = settings.noteInstructions[format.rawValue]
         // Snapshot the inputs now; the request itself is only made when the
@@ -1674,8 +1831,11 @@ struct SessionDetailView: View {
         let service = integrations.makeAssistantService(report: noteRunner.reporter)
         let transcript = transcriptText
         let notes = sessionNote
-        let allComments = (appModel.commentStore?.comments(sessionID: session.id) ?? (comments + noteComments))
-        let sessionComments = settings.includeCommentsInDrafts ? allComments : []
+        // The transcript's comments, and those on this format's note: a comment
+        // on another format's note quotes text this draft doesn't have.
+        let draftComments = (appModel.commentStore?.comments(sessionID: session.id) ?? (comments + noteComments))
+            .filter { $0.format == nil || $0.format == format }
+        let sessionComments = settings.includeCommentsInDrafts ? draftComments : []
         let patientBackground = settings.includePatientBackground ? patient.aiBackgroundBlock : ""
         let effort = settings.noteEffort
         let riskPhrases = settings.riskPhrases
@@ -1708,6 +1868,7 @@ struct SessionDetailView: View {
                         await Task.detached { store.digest(for: patient, session: session, model: model) }.value
                     },
                     saveDigest: { [patient, session] in try store.saveDigest($0, for: patient, session: session) },
+                    sectionCache: .store(store, patient: patient, session: session),
                     live: { started, change in noteRunner.update(started: started, change) },
                     coverage: {
                         produced.text = $0
@@ -1771,18 +1932,14 @@ struct SessionDetailView: View {
                 onSessionUpdated()
                 Task {
                     await integrations.makeNotifier().post(
-                        SessionNotifications.summaryReady(patientName: patient.name, date: session.date)
+                        SessionNotifications.summaryReady(
+                            patientName: patient.name, date: session.date,
+                            showsName: settings.notificationsShowPatientNames
+                        )
                     )
                 }
             }
         )
-    }
-
-    private func copyToPasteboard(_ text: String) {
-        #if canImport(AppKit)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        #endif
     }
 
     private func sendChat(_ question: String) {
@@ -1834,6 +1991,7 @@ struct SessionDetailView: View {
                         await Task.detached { store.digest(for: patient, session: session, model: model) }.value
                     },
                     saveDigest: { try store.saveDigest($0, for: patient, session: session) },
+                    sectionCache: .store(store, patient: patient, session: session),
                     live: { started, change in chatRunner.update(started: started, change) },
                     coverage: { sessionChatCoverage = $0 }
                 )
@@ -1950,16 +2108,14 @@ private struct InlineCommentComposerCard: View {
             HStack(alignment: .center, spacing: 12) {
                 Spacer(minLength: 0)
                 HStack(spacing: 8) {
-                    KeyCap("⌘ return")
-                        .accessibilityHidden(true)
+                    ShortcutHint(AppHotkey.saveComment)
                     Button("Cancel", action: onCancel)
                         .buttonStyle(.themed)
                         .keyboardShortcut(.cancelAction)
                     Button("Save comment", action: onSave)
                         .buttonStyle(.themePrimary)
-                        .keyboardShortcut(.return, modifiers: .command)
                         .disabled(!canSave)
-                        .help("Save this comment (Command-Return)")
+                        .shortcut(AppHotkey.saveComment, help: "Save this comment")
                 }
                 .fixedSize()
             }

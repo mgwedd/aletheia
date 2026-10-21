@@ -96,6 +96,9 @@ final class ChatStreamRunner: ObservableObject {
     private var jobToken: UUID?
     private var onCancelledWhileQueued: (() -> Void)?
     private var titles = (read: "Reading", write: "Writing")
+    /// When the work behind this run began (an Ask's search), so the status
+    /// line's counter carries on from it; nil starts it with the model.
+    private var runStartedAt: Date?
     private var chunkCount = 0
 
     /// Interval between reveal ticks. Small enough to feel live, large enough
@@ -118,6 +121,7 @@ final class ChatStreamRunner: ObservableObject {
         label: String,
         readTitle: String = "Reading",
         writeTitle: String = "Writing",
+        runStartedAt: Date? = nil,
         makeStream: @escaping () -> AsyncThrowingStream<String, Error>,
         onReveal: @escaping (String) -> Void,
         onError: @escaping (Error) -> Void,
@@ -126,6 +130,7 @@ final class ChatStreamRunner: ObservableObject {
     ) {
         stop()
         titles = (readTitle, writeTitle)
+        self.runStartedAt = runStartedAt
         self.queue = queue
         self.onCancelledWhileQueued = onCancelledWhileQueued
         isQueued = true
@@ -201,6 +206,7 @@ final class ChatStreamRunner: ObservableObject {
         externalStages = false
         chunkCount = 0
         progress = AIRunProgress(readTitle: titles.read, writeTitle: titles.write, startedAt: Date())
+        progress.runStartedAt = runStartedAt
         isStreaming = true
 
         let stream = makeStream()
@@ -244,6 +250,9 @@ final class ChatStreamRunner: ObservableObject {
                 self.jobToken = nil
                 self.jobID = nil
             }
+            // Quitting: keep the saved note or thread as it was rather than
+            // saving a half-written answer, and raise nothing.
+            if self.queue?.isShutDown == true { return }
             if let failure = self.failure, self.target.isEmpty {
                 onError(failure)
             } else {

@@ -15,11 +15,21 @@ struct TranscribedLine: Equatable {
 /// "*sigh*", ...) from a transcript. Pure and independent of the Whisper
 /// binding so it can be unit tested directly.
 enum TranscriptCleaner {
-    /// Consecutive kept lines from one source whose start times are this
-    /// close together are merged into a single line, unless the later line
-    /// opens with a "- " turn marker (see `startsNewTurn`) or the other source
-    /// started a line in between (see `coalesce`).
-    static let coalesceWindow: TimeInterval = 2.0
+    /// Consecutive kept lines from one source separated by a pause no longer
+    /// than this (from the end of one segment to the start of the next) are
+    /// merged into a single line, unless the later line opens with a "- " turn
+    /// marker (see `startsNewTurn`) or the other source started a line in
+    /// between (see `coalesce`).
+    ///
+    /// Measured end to start, not start to start: Whisper segments run several
+    /// seconds, so a start-to-start window shorter than a segment never merges
+    /// anything and every segment became its own line.
+    static let coalesceWindow: TimeInterval = 3.0
+
+    /// A merged line never spans more than this many seconds from its first
+    /// start to its last end, so an unbroken monologue stays a few readable,
+    /// timestamped paragraphs instead of one wall of text.
+    static let maxMergedSpan: TimeInterval = 45.0
 
     /// Most segments a split tag is allowed to span before giving up.
     private static let maxTagSpan = 3
@@ -144,11 +154,12 @@ enum TranscriptCleaner {
     ///   timeline:     [A1] [B] [A2 A3]      B splits the turn
     ///
     /// A line merges into its source's previous line only if ALL hold:
-    ///   1. it starts within `coalesceWindow` of that source's previous
-    ///      segment (chained: a run of close segments is one turn);
+    ///   1. it starts within `coalesceWindow` of where that source's previous
+    ///      segment ended (chained: a run of close segments is one turn);
     ///   2. it does not open with a "- " turn marker (`startsNewTurn`);
     ///   3. no other-source line has started since, i.e. that previous line is
-    ///      still the last one on the timeline so far.
+    ///      still the last one on the timeline so far;
+    ///   4. the merged line would span at most `maxMergedSpan`.
     /// A merged line keeps its first start time and takes the latest end time.
     /// Speech that merely overlaps (B starts before A1 ends) is not hidden
     /// here; `TranscriptFormatter` marks it.
@@ -158,14 +169,15 @@ enum TranscriptCleaner {
         var result: [TranscribedLine] = []
         // source -> index in `result` of its latest line
         var lastIndex: [String: Int] = [:]
-        // source -> start of its previous raw segment (not of the merged line)
-        var previousStart: [String: TimeInterval] = [:]
+        // source -> end of its previous raw segment (not of the merged line)
+        var previousEnd: [String: TimeInterval] = [:]
         for line in timeline {
             if let index = lastIndex[line.source],
                index == result.count - 1,
-               let previous = previousStart[line.source],
+               let previous = previousEnd[line.source],
                line.startTime - previous <= coalesceWindow,
-               !startsNewTurn(line.text) {
+               !startsNewTurn(line.text),
+               max(result[index].endTime, line.endTime) - result[index].startTime <= maxMergedSpan {
                 let last = result[index]
                 result[index] = TranscribedLine(
                     source: last.source,
@@ -177,7 +189,7 @@ enum TranscriptCleaner {
                 result.append(line)
                 lastIndex[line.source] = result.count - 1
             }
-            previousStart[line.source] = line.startTime
+            previousEnd[line.source] = line.endTime
         }
         return result
     }

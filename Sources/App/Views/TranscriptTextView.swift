@@ -14,7 +14,7 @@ import AppKit
 ///    change to it (Discard, a new transcription) replaces the view's content.
 ///    Nothing here saves anything: the owner decides when a draft is committed.
 ///  - `selection` reports the currently selected substring (empty when the
-///    selection is just a caret), so a "Comment on selection" button can enable
+///    selection is just a caret), so the floating comment button can show
 ///    and prefill itself. `selectionRange` reports where it sits (UTF-16, nil
 ///    for a caret) so a comment can be pinned to *that* occurrence rather than
 ///    the first place the same words appear.
@@ -40,14 +40,15 @@ struct TranscriptTextView: NSViewRepresentable {
     @Binding var selection: String
     @Binding var selectionRange: NSRange?
     var onOpenComment: (String) -> Void = { _ in }
-    /// When set, the passage this comment anchors to is scrolled into view and
-    /// briefly flashed — the "click a card in the rail → jump to the text"
-    /// direction of the Google-Docs two-way focus. Cleared by the owner.
-    var focusedCommentID: String? = nil
-    /// Bumped by the owner on every focus request (a card or highlight click).
-    /// The scroll-and-flash fires whenever this changes, even if
-    /// `focusedCommentID` is the same one as last time, so clicking the same
-    /// card again after scrolling away jumps back to its passage.
+    /// When set, this is scrolled into view and briefly flashed: the passage a
+    /// comment anchors to (the "click a card in the rail → jump to the text"
+    /// direction of the Google-Docs two-way focus), or a search match. Cleared
+    /// by the owner.
+    var focus: TranscriptFocus? = nil
+    /// Bumped by the owner on every focus request (a card or highlight click,
+    /// a search hit opened). The scroll-and-flash fires whenever this changes,
+    /// even if `focus` is the same as last time, so clicking the same card
+    /// again after scrolling away jumps back to its passage.
     var focusToken: Int = 0
     /// The passage a comment is being written for (UTF-16, in this view's text).
     /// While set, the passage is shown highlighted and scrolled into view, the
@@ -59,6 +60,11 @@ struct TranscriptTextView: NSViewRepresentable {
     /// view). Reported again as the text scrolls or re-wraps; nil when there is
     /// no passage or it can't be placed.
     var onComposingRectChange: (CGRect?) -> Void = { _ in }
+    /// The first line of the current selection in this view's own visible area
+    /// (top-left origin, like `onComposingRectChange`). Reported as the
+    /// selection changes and as the text scrolls or re-wraps; nil for a caret.
+    /// It anchors the floating comment button.
+    var onSelectionRectChange: (CGRect?) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -137,7 +143,7 @@ struct TranscriptTextView: NSViewRepresentable {
         // actually changed; rebuilding on every SwiftUI pass would clobber the
         // user's caret and selection.
         context.coordinator.sync(into: textView)
-        context.coordinator.flashIfNeeded(in: textView, focusedCommentID: focusedCommentID, focusToken: focusToken)
+        context.coordinator.flashIfNeeded(in: textView, focus: focus, focusToken: focusToken)
         context.coordinator.syncComposing(in: textView)
     }
 
@@ -350,25 +356,26 @@ struct TranscriptTextView: NSViewRepresentable {
         /// manager's temporary attributes so the text storage is never mutated.
         /// A comment whose passage couldn't be placed has no span, so focusing
         /// it leaves the scroll position alone.
-        func flashIfNeeded(in textView: NSTextView, focusedCommentID: String?, focusToken: Int) {
+        func flashIfNeeded(in textView: NSTextView, focus: TranscriptFocus?, focusToken: Int) {
             guard TranscriptHighlighter.isNewFocusRequest(
-                commentID: focusedCommentID, token: focusToken, lastHandledToken: lastFlashedToken
-            ), let id = focusedCommentID else {
-                if focusedCommentID == nil { lastFlashedToken = nil }
+                focus, token: focusToken, lastHandledToken: lastFlashedToken
+            ), let focus else {
+                if focus == nil { lastFlashedToken = nil }
                 return
             }
             lastFlashedToken = focusToken
             guard
-                let span = spans.first(where: { $0.commentID == id }),
-                NSMaxRange(span.range) <= (textView.string as NSString).length,
+                let range = TranscriptHighlighter.range(
+                    for: focus, spans: spans, length: (textView.string as NSString).length
+                ),
                 let layoutManager = textView.layoutManager
             else { return }
 
-            textView.scrollRangeToVisible(span.range)
+            textView.scrollRangeToVisible(range)
             let flash = Theme.accentTint.nsColor
-            layoutManager.addTemporaryAttributes([.backgroundColor: flash], forCharacterRange: span.range)
+            layoutManager.addTemporaryAttributes([.backgroundColor: flash], forCharacterRange: range)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak layoutManager] in
-                layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: span.range)
+                layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: range)
             }
         }
 
@@ -411,11 +418,33 @@ struct TranscriptTextView: NSViewRepresentable {
                 }
             }
             reportComposingRect(for: textView)
+            reportSelectionRect(for: textView)
         }
 
         @objc func viewportChanged(_ notification: Notification) {
             guard let textView else { return }
             reportComposingRect(for: textView)
+            reportSelectionRect(for: textView)
+        }
+
+        private var lastReportedSelectionRect: CGRect?
+
+        /// The selection's first line in the scroll view's visible area,
+        /// top-left origin (nil for a caret).
+        private func reportSelectionRect(for textView: NSTextView) {
+            var rect: CGRect?
+            let range = textView.selectedRange()
+            if range.length > 0,
+               let clip = textView.enclosingScrollView?.contentView,
+               let line = TranscriptSelectionGeometry.firstLineRect(of: range, in: textView) {
+                let inClip = textView.convert(line, to: clip)
+                rect = inClip.offsetBy(dx: -clip.bounds.origin.x, dy: -clip.bounds.origin.y).integral
+            }
+            guard rect != lastReportedSelectionRect else { return }
+            lastReportedSelectionRect = rect
+            // Deferred for the same reason as the composing rect: this can run
+            // inside a SwiftUI update pass.
+            DispatchQueue.main.async { [weak self] in self?.parent.onSelectionRectChange(rect) }
         }
 
         /// The last line of the composing passage in the scroll view's visible
@@ -480,6 +509,7 @@ struct TranscriptTextView: NSViewRepresentable {
             } else {
                 publish()
             }
+            reportSelectionRect(for: textView)
         }
 
         /// A plain click at `index`: if it landed inside a highlighted passage,
@@ -489,6 +519,33 @@ struct TranscriptTextView: NSViewRepresentable {
             guard let id = TranscriptHighlighter.commentID(at: index, in: spans), !id.isEmpty else { return }
             parent.onOpenComment(id)
         }
+    }
+}
+#endif
+
+#if canImport(AppKit)
+/// Where a selection sits in a text view, kept apart from the coordinator so it
+/// can be checked against a real `NSTextView` without a window.
+enum TranscriptSelectionGeometry {
+    /// The part of `range` on its first line, in `textView`'s own coordinates
+    /// (text container origin included). Nil for an empty or out-of-range
+    /// selection.
+    static func firstLineRect(of range: NSRange, in textView: NSTextView) -> CGRect? {
+        guard let layoutManager = textView.layoutManager, let container = textView.textContainer else { return nil }
+        let length = (textView.string as NSString).length
+        guard range.length > 0, NSMaxRange(range) <= length else { return nil }
+        layoutManager.ensureLayout(forCharacterRange: range)
+        let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        guard glyphs.length > 0 else { return nil }
+        var lineGlyphs = NSRange()
+        _ = layoutManager.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: &lineGlyphs)
+        let first = NSIntersectionRange(glyphs, lineGlyphs)
+        guard first.length > 0 else { return nil }
+        var rect = layoutManager.boundingRect(forGlyphRange: first, in: container)
+        let origin = textView.textContainerOrigin
+        rect.origin.x += origin.x
+        rect.origin.y += origin.y
+        return rect
     }
 }
 #endif

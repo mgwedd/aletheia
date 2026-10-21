@@ -96,6 +96,8 @@ final class AppSettings: ObservableObject {
         static let progressNoteFormat = "progressNoteFormat"
         static let summaryVerbosity = "summaryVerbosity"
         static let includeCommentsInDrafts = "includeCommentsInDrafts"
+        static let notificationsShowPatientNames = "notificationsShowPatientNames"
+        static let transcriptSplitRatio = "transcriptSplitRatio"
         static let includePatientBackground = "includePatientBackground"
         static let noteInstructions = "noteInstructions"
         static let modelSpeeds = "modelSpeeds"
@@ -103,6 +105,8 @@ final class AppSettings: ObservableObject {
         static let riskPhrases = "riskPhrases"
         static let sessionChatEffort = "sessionChatEffort"
         static let patientChatEffort = "patientChatEffort"
+        static let summariesPaused = "summariesPaused"
+        static let prepareSummariesOnBattery = "prepareSummariesOnBattery"
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
@@ -191,6 +195,16 @@ final class AppSettings: ObservableObject {
     @Published var includeCommentsInDrafts: Bool {
         didSet { defaults.set(includeCommentsInDrafts, forKey: Keys.includeCommentsInDrafts) }
     }
+    /// Whether system notifications name the patient and session date. Off by
+    /// default: banners show on the lock screen and macOS keeps them.
+    @Published var notificationsShowPatientNames: Bool {
+        didSet { defaults.set(notificationsShowPatientNames, forKey: Keys.notificationsShowPatientNames) }
+    }
+    /// The share of the session pane the transcript takes beside its comments
+    /// (the rest is the comments). Where the divider was last dragged.
+    @Published var transcriptSplitRatio: Double {
+        didSet { defaults.set(transcriptSplitRatio, forKey: Keys.transcriptSplitRatio) }
+    }
     /// Whether the patient's clinical history, profile notes, and medications are included in AI context.
     /// On by default.
     @Published var includePatientBackground: Bool {
@@ -224,6 +238,17 @@ final class AppSettings: ObservableObject {
     }
     @Published var patientChatEffort: AnswerEffort {
         didSet { defaults.set(patientChatEffort.rawValue, forKey: Keys.patientChatEffort) }
+    }
+    /// The user paused background summaries (`DigestScheduler`); they stay
+    /// paused across launches until resumed.
+    @Published var summariesPaused: Bool {
+        didSet { defaults.set(summariesPaused, forKey: Keys.summariesPaused) }
+    }
+    /// Whether background summaries may be prepared while the Mac runs on
+    /// battery. Off by default: they use the local model and drain it. Low
+    /// Power Mode still pauses them either way.
+    @Published var prepareSummariesOnBattery: Bool {
+        didSet { defaults.set(prepareSummariesOnBattery, forKey: Keys.prepareSummariesOnBattery) }
     }
     /// Phrases whose lines a long session's note always includes first (and warns
     /// about if they don't fit). Plain text, not PHI. Never set means the built-in
@@ -401,6 +426,10 @@ final class AppSettings: ObservableObject {
         summaryVerbosity = defaults.string(forKey: Keys.summaryVerbosity)
             .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
         includeCommentsInDrafts = defaults.object(forKey: Keys.includeCommentsInDrafts) as? Bool ?? true
+        notificationsShowPatientNames = defaults.object(forKey: Keys.notificationsShowPatientNames) as? Bool ?? false
+        transcriptSplitRatio = TranscriptSplit.sanitized(
+            ratio: defaults.object(forKey: Keys.transcriptSplitRatio) as? Double ?? TranscriptSplit.defaultRatio
+        )
         includePatientBackground = defaults.object(forKey: Keys.includePatientBackground) as? Bool ?? true
         noteInstructions = defaults.dictionary(forKey: Keys.noteInstructions) as? [String: String] ?? [:]
         modelSpeeds = defaults.dictionary(forKey: Keys.modelSpeeds) as? [String: [String: Double]] ?? [:]
@@ -408,6 +437,8 @@ final class AppSettings: ObservableObject {
         noteEffort = defaults.string(forKey: Keys.noteEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         sessionChatEffort = defaults.string(forKey: Keys.sessionChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         patientChatEffort = defaults.string(forKey: Keys.patientChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
+        summariesPaused = defaults.bool(forKey: Keys.summariesPaused)
+        prepareSummariesOnBattery = defaults.bool(forKey: Keys.prepareSummariesOnBattery)
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil

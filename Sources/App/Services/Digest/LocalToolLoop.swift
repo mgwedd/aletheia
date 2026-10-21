@@ -192,6 +192,41 @@ struct LocalToolCall: Equatable, Codable {
     var to: String?
 }
 
+/// A model that is not held to the grammar (Ollama) often writes a time as a
+/// bare number, `"start": 600`, where the grammar demands a string. Every field
+/// is read as text when it is a string or a number, so such a plan still decodes.
+extension LocalToolCall {
+    private enum Key: String, CodingKey {
+        case tool, query, session, start, end, from, to
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: Key.self)
+        self.init(
+            tool: try container.decode(String.self, forKey: .tool),
+            query: try Self.text(container, .query),
+            session: try Self.text(container, .session),
+            start: try Self.text(container, .start),
+            end: try Self.text(container, .end),
+            from: try Self.text(container, .from),
+            to: try Self.text(container, .to)
+        )
+    }
+
+    /// The field as text: a string as written, a whole number without a
+    /// fraction (`600` and `600.0` both read "600"), nil when absent or null.
+    /// Anything else (a bool, an object) still fails the decode.
+    private static func text(_ container: KeyedDecodingContainer<Key>, _ key: Key) throws -> String? {
+        guard container.contains(key) else { return nil }
+        if try container.decodeNil(forKey: key) { return nil }
+        if let string = try? container.decode(String.self, forKey: key) { return string }
+        if let whole = try? container.decode(Int.self, forKey: key) { return String(whole) }
+        let number = try container.decode(Double.self, forKey: key)
+        if number.isFinite && abs(number) < 1e15 { return String(Int(number.rounded(.down))) }
+        return String(number)
+    }
+}
+
 /// The outcome of running one `LocalToolCall` against local session data.
 struct LocalToolOutcome: Equatable {
     let call: LocalToolCall
@@ -205,6 +240,9 @@ struct LocalToolOutcome: Equatable {
     let readTranscriptTags: Set<String>
     /// Session tags whose digests were read by this call.
     let readDigestTags: Set<String>
+    /// Every session whose material is in `output` (transcript, digest, notes or
+    /// comments), so an answer citing it can be traced back to that session.
+    var sourceTags: Set<String> = []
 }
 
 /// Read-only view of one session exposed to `LocalToolScope`. Never writes or touches the network.
@@ -310,20 +348,27 @@ struct LocalToolScope {
         ]
         var used = lines[0].count
         var readTags = Set<String>()
+        var shownTags = Set<String>()
         for hit in result.hits.prefix(6) {
-            let snippet = TranscriptCompactor.compact(hit.context.joined(separator: "\n"))
+            // Only transcript hits carry context lines; a notes or comment hit is its paragraph.
+            let passage = hit.kind == .transcript
+                ? hit.context.joined(separator: "\n")
+                : Self.paragraph(in: docs[hit.documentIndex].text, from: hit.lineIndex)
+            let snippet = TranscriptCompactor.compact(passage)
             let entry = "[\(hit.tag)] (\(Self.dateFormatter.string(from: hit.date))):\n\(snippet)"
             if used + entry.count + 2 > maxCharacters {
                 let left = maxCharacters - used - 20
                 if left > 60 {
                     lines.append(String(entry.prefix(left)) + "…")
                     if hit.kind == .transcript { readTags.insert(hit.tag) }
+                    shownTags.insert(hit.tag)
                 }
                 break
             }
             lines.append(entry)
             used += entry.count + 2
             if hit.kind == .transcript { readTags.insert(hit.tag) }
+            shownTags.insert(hit.tag)
         }
         return LocalToolOutcome(
             call: call,
@@ -331,7 +376,8 @@ struct LocalToolScope {
             stageTitle: stage,
             output: lines.joined(separator: "\n"),
             readTranscriptTags: readTags,
-            readDigestTags: []
+            readDigestTags: [],
+            sourceTags: shownTags
         )
     }
 
@@ -359,7 +405,9 @@ struct LocalToolScope {
             }
             endSec = parsed
         } else {
-            endSec = startSec + 600
+            // Saturates: a model-written start near Int.max must not trap.
+            let (sum, overflow) = startSec.addingReportingOverflow(600)
+            endSec = overflow ? Int.max : sum
         }
 
         let rangeLabel = "\(TranscriptTimeline.format(startSec))–\(TranscriptTimeline.format(endSec))"
@@ -411,7 +459,8 @@ struct LocalToolScope {
             stageTitle: stage,
             output: header + body,
             readTranscriptTags: [target.tag],
-            readDigestTags: []
+            readDigestTags: [],
+            sourceTags: [target.tag]
         )
     }
 
@@ -448,7 +497,8 @@ struct LocalToolScope {
                 stageTitle: stage,
                 output: header + text,
                 readTranscriptTags: [],
-                readDigestTags: [target.tag]
+                readDigestTags: [target.tag],
+                sourceTags: [target.tag]
             )
         }
 
@@ -460,7 +510,8 @@ struct LocalToolScope {
                 stageTitle: stage,
                 output: header + "(No stored session digest; showing session notes)\n" + body,
                 readTranscriptTags: [],
-                readDigestTags: []
+                readDigestTags: [],
+                sourceTags: [target.tag]
             )
         }
 
@@ -524,6 +575,31 @@ struct LocalToolScope {
 
     // MARK: Helpers
 
+    /// The sessions tagged `tags`, newest first as the scope lists them, one per
+    /// tag (same-day sessions share a tag and cite as one source).
+    func citationSources(tags: Set<String>) -> [CitationSource] {
+        var seen = Set<String>()
+        var sources: [CitationSource] = []
+        for session in sessions where tags.contains(session.tag) && seen.insert(session.tag).inserted {
+            sources.append(CitationSource(tag: session.tag, date: session.date, folderName: session.folderName))
+        }
+        return sources
+    }
+
+    /// The paragraph of `text` that starts at line `start`: lines up to the next
+    /// blank one, split as `SearchIndex.passages` splits notes.
+    static func paragraph(in text: String, from start: Int) -> String {
+        let lines = LineTable(text)
+        guard start >= 0, start < lines.count else { return "" }
+        var kept: [String] = []
+        for index in start..<lines.count {
+            let line = lines[index]
+            if line.allSatisfy({ $0 == " " || $0 == "\t" || $0 == "\r" }) { break }
+            kept.append(line)
+        }
+        return kept.joined(separator: "\n")
+    }
+
     private func resolveSession(_ rawTag: String?) -> LocalToolSession? {
         guard let raw = rawTag?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
             return sessions.count == 1 ? sessions.first : nil
@@ -549,11 +625,11 @@ struct LocalToolScope {
         if let whole = Int(trimmed) { return whole }
         let parts = trimmed.split(separator: ":")
         if parts.count == 2, let m = Int(parts[0]), let s = Int(parts[1]), m >= 0, (0..<60).contains(s) {
-            return m * 60 + s
+            return TranscriptTimeline.seconds(fromParts: [m, s])
         }
         if parts.count == 3, let h = Int(parts[0]), let m = Int(parts[1]), let s = Int(parts[2]),
            h >= 0, (0..<60).contains(m), (0..<60).contains(s) {
-            return h * 3600 + m * 60 + s
+            return TranscriptTimeline.seconds(fromParts: [h, m, s])
         }
         return nil
     }
@@ -667,8 +743,13 @@ enum LocalToolLoop {
         question: String,
         initialContext: String,
         priorToolOutputs: [String],
-        remainingCalls: Int
+        remainingCalls: Int,
+        history: [ChatMessage] = []
     ) -> String {
+        // The earlier turns, so a follow-up like "and the week before?" is
+        // planned against what it follows from, as the final answer is.
+        let conversation = Prompts.formatHistory(history, question: question)
+        let historyBlock = conversation.isEmpty ? "" : "\n\n" + conversation
         let priorBlock = priorToolOutputs.isEmpty
             ? ""
             : "\n\nResults from earlier tool lookups:\n" + priorToolOutputs.joined(separator: "\n\n")
@@ -685,10 +766,13 @@ enum LocalToolLoop {
         - get_digest: {"tool":"get_digest","session":"S1"}
         - list_sessions: {"tool":"list_sessions","from":"YYYY-MM-DD (optional)","to":"YYYY-MM-DD (optional)"}
 
+        If the material lists "Where search points", those parts are the best \
+        places to read in full: use read_section with the session and times given there.
+
         Respond ONLY with a JSON object of the form {"calls":[...]}. Do not write the final answer yet.
 
         Initial material:
-        \(initialContext)\(priorBlock)
+        \(initialContext)\(priorBlock)\(historyBlock)
 
         Therapist's question: \(question)
         """
@@ -703,6 +787,10 @@ enum LocalToolLoop {
         let readTranscriptTags: Set<String>
         /// Session tags whose digests were read via tools.
         let readDigestTags: Set<String>
+        /// The sessions whose material reached the answer through a lookup,
+        /// newest first, so an answer citing one of them shows its date and
+        /// lists it under Sources.
+        var sources: [CitationSource] = []
     }
 
     /// Runs up to `effort.maxRefinementRounds` (and at most `effort.maxToolCalls` total calls),
@@ -714,9 +802,11 @@ enum LocalToolLoop {
         scope: LocalToolScope,
         effort: AnswerEffort,
         characterBudget: Int,
+        history: [ChatMessage] = [],
         service: AssistantService,
         builder: DigestBuilder,
-        live: @escaping DigestBuilder.Live
+        live: @escaping DigestBuilder.Live,
+        onRound: @escaping (Int) -> Void = { _ in }
     ) async throws -> RefinementResult {
         let maxCalls = effort.maxToolCalls
         let maxRounds = effort.maxRefinementRounds
@@ -728,19 +818,24 @@ enum LocalToolLoop {
         var remainingBudget = characterBudget
         var outcomes: [LocalToolOutcome] = []
         var outputs: [String] = []
+        /// Successful outputs that fit `characterBudget`: the only ones the answer gets.
+        var accepted: [String] = []
         var transcriptTags = Set<String>()
         var digestTags = Set<String>()
+        var sourceTags = Set<String>()
         var seenCalls: [LocalToolCall] = []
 
         for round in 0..<maxRounds {
             try Task.checkCancellation()
             guard remainingCalls > 0, remainingBudget > 200 else { break }
+            onRound(round)
 
             let planPrompt = planningPrompt(
                 question: question,
                 initialContext: initialContext,
                 priorToolOutputs: outputs,
-                remainingCalls: remainingCalls
+                remainingCalls: remainingCalls,
+                history: history
             )
             guard service.fits(prompt: planPrompt) else { break }
 
@@ -748,8 +843,8 @@ enum LocalToolLoop {
             do {
                 rawPlan = try await builder.runStage(
                     planPrompt,
-                    read: round == 0 ? "Checking what to look up" : "Checking follow-up lookups",
-                    write: "Selecting passages",
+                    read: round == 0 ? "Choosing what to read closely" : "Choosing what else to read",
+                    write: "Choosing what to read",
                     task: .digest,
                     grammar: grammar,
                     service: service,
@@ -772,36 +867,46 @@ enum LocalToolLoop {
                 if seenCalls.contains(call) { continue }
                 seenCalls.append(call)
 
-                let perCallBudget = max(240, min(2_400, remainingBudget))
-                let outcome = scope.execute(call, maxCharacters: perCallBudget)
+                // An even share of the reserve, so the last lookup has the room the first had.
+                let perCallBudget = max(240, min(effort.lookupCharacters(reserve: characterBudget), remainingBudget))
+                // A search reads every session of a long history: off the main thread.
+                let outcome = await Task.detached(priority: .userInitiated) {
+                    scope.execute(call, maxCharacters: perCallBudget)
+                }.value
                 remainingCalls -= 1
                 outcomes.append(outcome)
 
                 if let stage = outcome.stageTitle {
                     live(nil) { $0.recordCompletedStage(stage) }
                 }
-                transcriptTags.formUnion(outcome.readTranscriptTags)
-                digestTags.formUnion(outcome.readDigestTags)
 
+                // An output over the remaining budget is dropped: it reaches neither
+                // the next round nor the answer, and its tags are not counted as read.
                 let cost = outcome.output.count + 2
                 if cost <= remainingBudget {
                     outputs.append(outcome.output)
                     remainingBudget -= cost
-                    if !outcome.isError { madeProgress = true }
+                    if !outcome.isError {
+                        madeProgress = true
+                        accepted.append(outcome.output)
+                        transcriptTags.formUnion(outcome.readTranscriptTags)
+                        digestTags.formUnion(outcome.readDigestTags)
+                        sourceTags.formUnion(outcome.sourceTags)
+                    }
                 }
             }
             if !madeProgress { break }
         }
 
-        let validOutputs = outcomes.filter { !$0.isError }.map(\.output)
-        let block = validOutputs.isEmpty
+        let block = accepted.isEmpty
             ? ""
-            : "Additional passages and digests from follow-up lookups:\n" + validOutputs.joined(separator: "\n\n")
+            : "Additional passages and digests from follow-up lookups:\n" + accepted.joined(separator: "\n\n")
         return RefinementResult(
             additionalContext: block,
             outcomes: outcomes,
             readTranscriptTags: transcriptTags,
-            readDigestTags: digestTags
+            readDigestTags: digestTags,
+            sources: scope.citationSources(tags: sourceTags)
         )
     }
 }
@@ -817,7 +922,6 @@ enum LocalToolLoop {
 enum LongSessionChat {
     static let headerReserve = 1_200
     static let digestShare = 2_500
-    static let fastMaterialLimit = 7_500
 
     static func stream(
         transcript: String,
@@ -834,6 +938,7 @@ enum LongSessionChat {
         builder: DigestBuilder,
         loadDigest: @escaping () async -> SessionDigest?,
         saveDigest: @escaping (SessionDigest) throws -> Void,
+        sectionCache: SectionCacheAccess? = nil,
         live: @escaping DigestBuilder.Live,
         coverage: @escaping (String?) -> Void
     ) -> AsyncThrowingStream<String, Error> {
@@ -849,7 +954,7 @@ enum LongSessionChat {
                 question: question
             )
         }
-        if service.budget.fits(promptCharacters: system.count + makePrompt(transcript).count) {
+        if service.budget.fits(system: system, prompt: makePrompt(transcript)) {
             coverage(nil)
             return service.streamAnswerAboutSession(
                 transcript: transcript,
@@ -872,11 +977,12 @@ enum LongSessionChat {
                             sessionID: sessionID,
                             transcript: transcript,
                             service: service,
+                            sections: sectionCache,
                             live: { started, change in
                                 live(started) {
                                     change(&$0)
-                                    if !$0.readTitle.hasPrefix("Building digest") {
-                                        $0.readTitle = "Building digest · \($0.readTitle)"
+                                    if !$0.readTitle.hasPrefix(DigestBuilder.activityTitle) {
+                                        $0.readTitle = "\(DigestBuilder.activityTitle) · \($0.readTitle)"
                                     }
                                 }
                             }
@@ -885,20 +991,23 @@ enum LongSessionChat {
                         digest = built
                     }
 
-                    let total = service.budget.availableCharacters(
-                        reserving: system.count + makePrompt("").count + headerReserve
+                    // Room for material, in characters of this transcript's script.
+                    let total = ContextBudget.characters(
+                        fitting: service.budget.availableCharacters(
+                            reserving: ContextBudget.weightedLength(of: system)
+                                + ContextBudget.weightedLength(of: makePrompt("")) + headerReserve
+                        ),
+                        like: transcript
                     )
                     guard total >= 600 else {
                         throw ContextBudgetError(minutes: service.budget.approximateMinutes)
                     }
 
-                    let toolReserve = effort.maxToolCalls > 0 ? min(3_600, total / 3) : 0
                     let initialRoom: Int
-                    switch effort {
-                    case .fast:
-                        initialRoom = min(total, fastMaterialLimit)
-                    case .normal, .focus:
-                        initialRoom = max(600, total - toolReserve)
+                    if let cap = effort.materialCap(for: .sessionChat) {
+                        initialRoom = min(total, cap)
+                    } else {
+                        initialRoom = max(600, total - effort.lookupReserve(total: total))
                     }
 
                     let (digestText, _) = LongSessionNote.fit(
@@ -978,6 +1087,7 @@ enum LongSessionChat {
                             scope: scope,
                             effort: effort,
                             characterBudget: remainingForTools,
+                            history: history,
                             service: service,
                             builder: builder,
                             live: live
@@ -1014,27 +1124,31 @@ enum LongSessionChat {
 
 // MARK: - Patient-Wide Chat Runner (#286 Steps 3b, 5, 5b)
 
-/// Runs a patient-wide chat turn across all sessions. When every session's
-/// transcript fit in full (`context.coverage.wholeTranscripts`), streams the
-/// answer directly. Otherwise records the initial search stage, optionally runs
-/// `LocalToolLoop.refine` (up to 4 tool calls at `Normal`, 10 at `Focus`, 0 at
-/// `Fast`), updates `TranscriptCoverage`, and streams the final answer.
+/// Runs a patient chat turn. When every session's transcript fit in full
+/// (`context.coverage.wholeTranscripts`), writes the answer with no lookups.
+/// Otherwise the context was gathered by zoom level (`PatientZoom`): it lists
+/// what was gathered, then at Normal and Focus lets the model open the parts
+/// search points at (`LocalToolLoop.refine`, the 10 ft level), then writes the
+/// answer. The progress bar follows `PatientAskSteps`.
 @MainActor
 enum PatientChatAnswer {
-    static let fastContextCap = 12_000
-
-    static func toolReserve(for effort: AnswerEffort, budget: Int) -> Int {
-        guard effort.maxToolCalls > 0 else { return 0 }
-        return min(4_800, max(0, budget / 4))
+    /// The most the gathered material may run to at Normal and Focus, in
+    /// tokens, however much this Mac could read: a local model takes about a
+    /// minute to read 20K tokens before it writes a word. Fast has its own,
+    /// smaller cap (`AnswerEffort.materialCap`).
+    static func contextTokenBudget(for effort: AnswerEffort) -> Int {
+        effort == .focus ? 20_000 : 10_000
     }
 
+    /// The room for the gathered material: Fast's cap, or the whole budget less
+    /// the room kept for every lookup (`AnswerEffort.lookupReserve`), at most
+    /// `contextTokenBudget`.
     static func initialContextBudget(for effort: AnswerEffort, totalBudget: Int) -> Int {
-        switch effort {
-        case .fast:
-            return min(totalBudget, fastContextCap)
-        case .normal, .focus:
-            return max(2_000, totalBudget - toolReserve(for: effort, budget: totalBudget))
+        if let cap = effort.materialCap(for: .patientChat) {
+            return min(totalBudget, cap)
         }
+        let cap = contextTokenBudget(for: effort) * ContextBudget.charactersPerToken
+        return min(cap, max(2_000, totalBudget - effort.lookupReserve(total: totalBudget)))
     }
 
     static func stream(
@@ -1047,19 +1161,16 @@ enum PatientChatAnswer {
         service: AssistantService,
         builder: DigestBuilder,
         live: @escaping DigestBuilder.Live,
-        onCoverage: @escaping (TranscriptCoverage) -> Void
+        onCoverage: @escaping (TranscriptCoverage) -> Void,
+        onSources: @escaping ([CitationSource]) -> Void = { _ in }
     ) -> AsyncThrowingStream<String, Error> {
         var baseCoverage = context.coverage
         baseCoverage.effort = effort
 
-        if context.coverage.wholeTranscripts {
-            onCoverage(baseCoverage)
-            return service.streamAnswerAboutPatient(
-                context: context.text,
-                history: history,
-                question: question
-            )
-        }
+        // Whole transcripts leave nothing to look up: straight to the answer,
+        // through the same stages so the progress shows what was gathered,
+        // the elapsed time and the tokens read.
+        let layered = !context.coverage.wholeTranscripts
 
         return AsyncThrowingStream { continuation in
             let task = Task { @MainActor in
@@ -1067,11 +1178,19 @@ enum PatientChatAnswer {
                     var currentCoverage = baseCoverage
                     onCoverage(currentCoverage)
 
-                    let searchStage = "Searched \(currentCoverage.transcriptSessions) session\(currentCoverage.transcriptSessions == 1 ? "" : "s") · \(currentCoverage.sessionsWithPassages) session\(currentCoverage.sessionsWithPassages == 1 ? "" : "s") with passages"
-                    live(nil) { $0.recordCompletedStage(searchStage) }
+                    // Gathering (search, summaries, notes) was done before the
+                    // model started; the bar moves on through the lookups.
+                    let steps = PatientAskSteps(effort: effort, layered: layered)
+                    let finished = PatientAskSteps.finishedLines(currentCoverage)
+                    let finding = PatientAskSteps.finding(currentCoverage)
+                    live(nil) { progress in
+                        for line in finished { progress.recordCompletedStage(line) }
+                        progress.lead = finding
+                        progress.steps = layered ? steps.choosing(round: 0) : steps.writing
+                    }
 
                     var finalContext = context.text
-                    if effort.maxToolCalls > 0 {
+                    if layered && effort.maxToolCalls > 0 {
                         let toolScope = await scope()
                         try Task.checkCancellation()
                         let remaining = max(0, totalBudget - context.text.count - 80)
@@ -1081,22 +1200,22 @@ enum PatientChatAnswer {
                             scope: toolScope,
                             effort: effort,
                             characterBudget: remaining,
+                            history: history,
                             service: service,
                             builder: builder,
-                            live: live
+                            live: live,
+                            onRound: { round in live(nil) { $0.steps = steps.choosing(round: round) } }
                         )
                         try Task.checkCancellation()
                         if !refinement.additionalContext.isEmpty {
                             finalContext += "\n\n" + refinement.additionalContext
-                            currentCoverage.sessionsWithPassages = min(
-                                max(currentCoverage.transcriptSessions, refinement.readTranscriptTags.count),
-                                max(currentCoverage.sessionsWithPassages, refinement.readTranscriptTags.count)
-                            )
-                            currentCoverage.digestSessions = max(
-                                currentCoverage.digestSessions,
-                                refinement.readDigestTags.count
+                            currentCoverage.addLookups(
+                                transcriptTags: refinement.readTranscriptTags,
+                                digestTags: refinement.readDigestTags
                             )
                             onCoverage(currentCoverage)
+                            // A session read only through a lookup is citable too.
+                            onSources(Citations.merged(context.sources, adding: refinement.sources))
                         }
                     }
 
@@ -1104,9 +1223,10 @@ enum PatientChatAnswer {
                     let prompt = Prompts.patientChat(context: finalContext, history: history, question: question)
                     var chatService = service
                     chatService.systemPrompt = system
+                    live(nil) { $0.steps = steps.writing }
                     _ = try await builder.runStage(
                         prompt,
-                        read: "Reading the sessions",
+                        read: "Reading what was gathered",
                         write: "Writing the answer",
                         task: .chat,
                         service: chatService,

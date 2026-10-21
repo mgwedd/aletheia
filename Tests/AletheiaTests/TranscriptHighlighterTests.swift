@@ -186,13 +186,31 @@ final class TranscriptHighlighterTests: XCTestCase {
     /// Focus is an event: re-clicking the same comment bumps the token, so it
     /// scrolls again; a plain re-render (same token) must not.
     func testFocusRequestFiresOnTokenChangeEvenForTheSameComment() {
-        XCTAssertTrue(TranscriptHighlighter.isNewFocusRequest(commentID: "a", token: 1, lastHandledToken: nil))
-        XCTAssertFalse(TranscriptHighlighter.isNewFocusRequest(commentID: "a", token: 1, lastHandledToken: 1))
-        XCTAssertTrue(TranscriptHighlighter.isNewFocusRequest(commentID: "a", token: 2, lastHandledToken: 1))
+        XCTAssertTrue(TranscriptHighlighter.isNewFocusRequest(.comment("a"), token: 1, lastHandledToken: nil))
+        XCTAssertFalse(TranscriptHighlighter.isNewFocusRequest(.comment("a"), token: 1, lastHandledToken: 1))
+        XCTAssertTrue(TranscriptHighlighter.isNewFocusRequest(.comment("a"), token: 2, lastHandledToken: 1))
     }
 
-    func testFocusRequestNeedsAFocusedComment() {
-        XCTAssertFalse(TranscriptHighlighter.isNewFocusRequest(commentID: nil, token: 5, lastHandledToken: 4))
+    /// A search match is a focus request like a comment: once per token.
+    func testSearchMatchFocusFiresOncePerToken() {
+        let match = TranscriptFocus.range(NSRange(location: 3, length: 5))
+        XCTAssertTrue(TranscriptHighlighter.isNewFocusRequest(match, token: 1, lastHandledToken: nil))
+        XCTAssertFalse(TranscriptHighlighter.isNewFocusRequest(match, token: 1, lastHandledToken: 1))
+        XCTAssertTrue(TranscriptHighlighter.isNewFocusRequest(match, token: 2, lastHandledToken: 1))
+    }
+
+    func testFocusRequestNeedsSomethingToFocus() {
+        XCTAssertFalse(TranscriptHighlighter.isNewFocusRequest(nil, token: 5, lastHandledToken: 4))
+    }
+
+    func testFocusRangeIsTheCommentsPassageOrAMatchInsideTheText() {
+        let spans = [TranscriptHighlighter.Span(range: NSRange(location: 2, length: 4), commentID: "a")]
+        XCTAssertEqual(TranscriptHighlighter.range(for: .comment("a"), spans: spans, length: 10), NSRange(location: 2, length: 4))
+        XCTAssertNil(TranscriptHighlighter.range(for: .comment("gone"), spans: spans, length: 10))
+        XCTAssertNil(TranscriptHighlighter.range(for: .comment("a"), spans: spans, length: 5), "the text got shorter")
+        XCTAssertEqual(TranscriptHighlighter.range(for: .range(NSRange(location: 6, length: 4)), spans: [], length: 10), NSRange(location: 6, length: 4))
+        XCTAssertNil(TranscriptHighlighter.range(for: .range(NSRange(location: 8, length: 4)), spans: [], length: 10))
+        XCTAssertNil(TranscriptHighlighter.range(for: .range(NSRange(location: 2, length: 0)), spans: [], length: 10))
     }
 
     // MARK: - Selection trimming

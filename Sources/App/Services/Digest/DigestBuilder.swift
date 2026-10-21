@@ -32,6 +32,22 @@ final class DigestBuilder: ObservableObject {
     /// or build are dropped.
     typealias Live = @MainActor (_ started: Date?, _ change: (inout AIRunProgress) -> Void) -> Void
 
+    /// What the user sees for this work: it reads and condenses the transcript,
+    /// so the wording avoids "digest".
+    static let activityTitle = "Processing transcript"
+    static let writeTitle = "Writing summary"
+
+    /// A background build's progress for its status line, led by
+    /// `activityTitle` while the model reads ("Processing transcript. Reading
+    /// part 2 of 5… · 0:12") unless the stage already names it.
+    static func statusProgress(_ progress: AIRunProgress) -> AIRunProgress {
+        guard !progress.readTitle.hasPrefix(activityTitle) else { return progress }
+        var led = progress
+        led.lead = activityTitle
+        return led
+    }
+    static let mergeTitle = "Combining sections"
+
     init(queue: InferenceQueue) {
         self.queue = queue
     }
@@ -40,37 +56,45 @@ final class DigestBuilder: ObservableObject {
 
     /// Starts a background build unless the stored digest is already current or
     /// a build for this transcript and model is running. A build for a changed
-    /// transcript or model replaces the one in flight. The stored digest is read
-    /// (and decrypted) off the main thread.
+    /// transcript or model replaces the one in flight. The stored digest and the
+    /// section summaries already written (`SectionDigestCache`) are read (and
+    /// decrypted) off the main thread, so a build that was stopped or failed
+    /// carries on from the sections it finished. Returns the build's task, to
+    /// await; nil when nothing was started.
+    @discardableResult
     func ensureDigest(
         for patient: Patient,
         session: SessionRecord,
         transcript: String,
         store: Store,
         service: AssistantService
-    ) {
+    ) -> Task<Void, Never>? {
         let key = NoteFreshness.fingerprint(of: transcript) + "|" + service.model
-        if builds[session.id]?.key == key || inlineBuilds.contains(session.id) { return }
+        if builds[session.id]?.key == key || inlineBuilds.contains(session.id) { return nil }
         cancel(session.id)
         let id = UUID()
+        let stored = SectionCacheAccess.store(store, patient: patient, session: session)
         let task = Task { [weak self] in
             let model = service.model
-            let alreadyCurrent = await Task.detached {
-                store.digest(for: patient, session: session, model: model) != nil
+            let load = stored.load
+            let loaded = await Task.detached { () -> (current: Bool, sections: [String: String]) in
+                (store.digest(for: patient, session: session, model: model) != nil, load())
             }.value
             guard let self, self.builds[session.id]?.id == id else { return }
-            if alreadyCurrent {
+            if loaded.current {
                 self.builds[session.id] = nil
                 return
             }
+            let cache = SectionDigestCache(entries: loaded.sections, persist: stored.save)
             self.progress[session.id] = AIRunProgress(readTitle: "Reading", startedAt: Date())
             do {
                 let digest = try await self.build(transcript: transcript, service: service, live: { started, change in
                     self.update(session.id, build: id, started: started, change)
-                })
+                }, cache: cache)
                 try Task.checkCancellation()
                 guard self.builds[session.id]?.id == id else { return }
                 try store.saveDigest(digest, for: patient, session: session)
+                cache.prune()
             } catch {
                 // Cancelling (Stop, or a newer build replacing this one) is not
                 // a failure.
@@ -84,18 +108,27 @@ final class DigestBuilder: ObservableObject {
             self.progress[session.id] = nil
         }
         builds[session.id] = Build(id: id, key: key, task: task)
+        return task
     }
 
-    /// Builds a digest in the caller's own queue job (a note), cancelling any
-    /// background build of the same session and keeping a new one from starting
-    /// until this is done.
+    /// Builds a digest in the caller's own queue job (a note or a chat answer),
+    /// cancelling any background build of the same session and keeping a new one
+    /// from starting until this is done. With `sections` it reads and writes the
+    /// same section summaries as a background build (`SectionDigestCache`), so
+    /// either one carries on from the sections the other finished, and prunes
+    /// them once the digest is built.
     func buildInline(
-        sessionID: UUID, transcript: String, service: AssistantService, live: @escaping Live
+        sessionID: UUID, transcript: String, service: AssistantService,
+        sections: SectionCacheAccess? = nil, live: @escaping Live
     ) async throws -> SessionDigest {
         cancel(sessionID)
         inlineBuilds.insert(sessionID)
         defer { inlineBuilds.remove(sessionID) }
-        return try await build(transcript: transcript, service: service, live: live, inline: true)
+        var cache: SectionDigestCache?
+        if let sections { cache = await SectionDigestCache.open(sections) }
+        let digest = try await build(transcript: transcript, service: service, live: live, inline: true, cache: cache)
+        cache?.prune()
+        return digest
     }
 
     func cancel(_ sessionID: UUID) {
@@ -123,23 +156,38 @@ final class DigestBuilder: ObservableObject {
         service: AssistantService,
         progress: @escaping (_ section: Int, _ of: Int) -> Void = { _, _ in },
         live: @escaping Live = { _, _ in },
-        inline: Bool = false
+        inline: Bool = false,
+        cache: SectionDigestCache? = nil
     ) async throws -> SessionDigest {
         let sections = TranscriptSections.split(transcript)
+        // One call per section, plus the final merge. Merging a long session
+        // takes more rounds than that; `merge` raises the total as it finds them.
+        let totalSteps = sections.count + 1
         var parts: [SessionDigest.Section] = []
         var anchored: [(anchor: String, digest: String)] = []
         for (index, section) in sections.enumerated() {
             try Task.checkCancellation()
             progress(index + 1, sections.count)
+            live(nil) { $0.steps = AIRunSteps(done: index, total: totalSteps) }
             let anchor = section.anchor(index: index, count: sections.count)
-            let text = try await generate(
-                Prompts.sectionDigest(text: section.text, anchor: anchor),
-                stage: "Reading section \(index + 1) of \(sections.count)", service: service, live: live, inline: inline)
+            let sectionKey = DigestSchedulePolicy.sectionKey(
+                text: section.text, anchor: anchor, model: service.model, promptVersion: Prompts.digestVersion)
+            let text: String
+            if let cached = cache?.lookup(sectionKey) {
+                // Written by an earlier build that was stopped or failed.
+                text = cached
+            } else {
+                text = try await generate(
+                    Prompts.sectionDigest(text: section.text, anchor: anchor),
+                    stage: "Reading section \(index + 1) of \(sections.count)", service: service, live: live, inline: inline)
+                cache?.store(sectionKey, text)
+            }
             parts.append(.init(start: section.start, end: section.end, digest: text))
             anchored.append((anchor, text))
         }
         try Task.checkCancellation()
-        let merged = try await merge(anchored, service: service, live: live, inline: inline)
+        let merged = try await merge(
+            anchored, callsDone: sections.count, service: service, live: live, inline: inline)
         return SessionDigest(
             model: service.model,
             promptVersion: Prompts.digestVersion,
@@ -154,10 +202,17 @@ final class DigestBuilder: ObservableObject {
     /// prompt, merges them in groups of as many as fit and repeats on the
     /// results, so the final merge is always within budget (or fails with
     /// `ContextBudgetError` when even two can't be merged).
+    ///
+    /// `callsDone` is how many model calls the build has finished (the
+    /// sections). Each call reports `steps` before it runs: every group merge
+    /// counts, and the total always leaves room for the final merge, so the bar
+    /// grows with the work found rather than reading full while rounds remain.
     private func merge(
-        _ items: [(anchor: String, digest: String)], service: AssistantService, live: @escaping Live, inline: Bool
+        _ items: [(anchor: String, digest: String)], callsDone: Int,
+        service: AssistantService, live: @escaping Live, inline: Bool
     ) async throws -> String {
         var items = items
+        var done = callsDone
         while items.count > 1 && !service.fits(prompt: Prompts.sessionDigest(sections: items)) {
             try Task.checkCancellation()
             var next: [(anchor: String, digest: String)] = []
@@ -167,9 +222,13 @@ final class DigestBuilder: ObservableObject {
                 if group.count == 1 {
                     next.append(first)
                 } else {
+                    // This call and the final merge are still to come.
+                    let before = done
+                    done += 1
+                    live(nil) { $0.steps = AIRunSteps(done: before, total: before + 2) }
                     let text = try await generate(
-                        Prompts.sessionDigest(sections: group), stage: "Merging digests", service: service, live: live, inline: inline)
-                    next.append(("\(first.anchor) … \(last.anchor)", text))
+                        Prompts.sessionDigest(sections: group), stage: Self.mergeTitle, service: service, live: live, inline: inline)
+                    next.append((TranscriptSection.mergedAnchor(first: first.anchor, last: last.anchor), text))
                 }
                 group = []
             }
@@ -182,8 +241,10 @@ final class DigestBuilder: ObservableObject {
             try await flush()
             items = next
         }
+        let finished = done
+        live(nil) { $0.steps = AIRunSteps(done: finished, total: finished + 1) }
         return try await generate(
-            Prompts.sessionDigest(sections: items), stage: "Merging digests", service: service, live: live, inline: inline)
+            Prompts.sessionDigest(sections: items), stage: Self.mergeTitle, service: service, live: live, inline: inline)
     }
 
     /// One model call, run as a `.digest` job on the shared queue. With `inline`
@@ -193,7 +254,7 @@ final class DigestBuilder: ObservableObject {
         _ prompt: String, stage: String, service: AssistantService, live: @escaping Live, inline: Bool
     ) async throws -> String {
         if inline {
-            return try await runStage(prompt, read: stage, write: "Writing digest", service: service, live: live)
+            return try await runStage(prompt, read: stage, write: Self.writeTitle, service: service, live: live)
         }
         let waiter = JobWaiter()
         return try await withTaskCancellationHandler {
@@ -203,7 +264,7 @@ final class DigestBuilder: ObservableObject {
                 waiter.jobID = queue.enqueue(kind: .digest, label: "digest") {
                     do {
                         waiter.finish(.success(try await self.runStage(
-                            prompt, read: stage, write: "Writing digest", service: service, live: live)))
+                            prompt, read: stage, write: Self.writeTitle, service: service, live: live)))
                     } catch {
                         waiter.finish(.failure(error))
                     }
@@ -255,6 +316,66 @@ final class DigestBuilder: ObservableObject {
         }
         try Task.checkCancellation()
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// The section summaries of one session's build, kept on disk as each is
+/// written (`Store.digestSectionsFileName`, encrypted like the digest), so a
+/// build that is stopped (a pause, quitting) or fails carries on from the
+/// sections it finished instead of starting over. Keyed by
+/// `DigestSchedulePolicy.sectionKey`, so a changed section is built again.
+@MainActor
+final class SectionDigestCache {
+    private(set) var entries: [String: String]
+    private var used = Set<String>()
+    private let persist: ([String: String]) -> Void
+
+    init(entries: [String: String], persist: @escaping ([String: String]) -> Void) {
+        self.entries = entries
+        self.persist = persist
+    }
+
+    /// The summaries `access` keeps, read (and decrypted) off the main thread.
+    static func open(_ access: SectionCacheAccess) async -> SectionDigestCache {
+        let load = access.load
+        let entries = await Task.detached { load() }.value
+        return SectionDigestCache(entries: entries, persist: access.save)
+    }
+
+    func lookup(_ key: String) -> String? {
+        guard let text = entries[key] else { return nil }
+        used.insert(key)
+        return text
+    }
+
+    /// Keeps a finished section, on disk at once.
+    func store(_ key: String, _ text: String) {
+        entries[key] = text
+        used.insert(key)
+        persist(entries)
+    }
+
+    /// Once the whole digest is saved: drops sections of an older transcript.
+    func prune() {
+        let kept = entries.filter { used.contains($0.key) }
+        guard kept.count != entries.count else { return }
+        entries = kept
+        persist(kept)
+    }
+}
+
+/// Where one session's section summaries are read from and written to: the
+/// session's encrypted `Store.digestSectionsFileName` (`.store`), shared by the
+/// background build and a note or chat building inline. A pair of closures, so a
+/// caller needs no `Store` of its own and a test can keep them in memory.
+struct SectionCacheAccess {
+    let load: () -> [String: String]
+    let save: ([String: String]) -> Void
+
+    static func store(_ store: Store, patient: Patient, session: SessionRecord) -> SectionCacheAccess {
+        SectionCacheAccess(
+            load: { store.sectionDigestCache(for: patient, session: session) },
+            save: { try? store.saveSectionDigestCache($0, for: patient, session: session) })
     }
 }
 

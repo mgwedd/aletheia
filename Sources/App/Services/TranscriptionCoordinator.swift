@@ -29,6 +29,10 @@ final class TranscriptionCoordinator: ObservableObject {
     private var tasks: [UUID: Task<Void, Never>] = [:]
     /// What to transcribe for each waiting session, until its turn comes.
     private var pending: [UUID: (patient: Patient, session: SessionRecord)] = [:]
+    /// What the running job is transcribing, so a quit can list it as interrupted.
+    private var running: (patient: Patient, session: SessionRecord)?
+    /// Set once the app has started quitting: nothing new starts after that.
+    private var isShutDown = false
     private let appModel: AppModel
     private let integrations: Integrations
     private let settings: AppSettings
@@ -64,6 +68,7 @@ final class TranscriptionCoordinator: ObservableObject {
     /// Starts transcribing a session, or queues it behind the one that is
     /// running. Asking again for a session already running or waiting is a no-op.
     func start(patient: Patient, session: SessionRecord) {
+        guard !isShutDown else { return }
         switch queue.submit(session.id) {
         case .alreadyKnown:
             return
@@ -87,6 +92,7 @@ final class TranscriptionCoordinator: ObservableObject {
             ))
             return
         }
+        running = (patient, session)
         jobs[sessionID] = TranscriptionJob(
             startedAt: Date(),
             modelName: "Whisper \(settings.whisperModel.rawValue)"
@@ -99,7 +105,10 @@ final class TranscriptionCoordinator: ObservableObject {
             switch outcome {
             case .failed, .blank:
                 await self.integrations.makeNotifier().post(
-                    SessionNotifications.transcriptionProblem(patientName: patient.name, date: session.date)
+                    SessionNotifications.transcriptionProblem(
+                        patientName: patient.name, date: session.date,
+                        showsName: self.settings.notificationsShowPatientNames
+                    )
                 )
             case .completed, .cancelled:
                 break
@@ -132,7 +141,21 @@ final class TranscriptionCoordinator: ObservableObject {
         }
         guard var job = jobs[sessionID], job.requestCancel() else { return }
         jobs[sessionID] = job
+        // Cancelled on purpose: a quit while it winds down doesn't run it again.
+        if running?.session.id == sessionID { running = nil }
         tasks[sessionID]?.cancel()
+    }
+
+    /// Quitting: the running and waiting sessions are listed to run again at
+    /// the next launch, and the running one is cancelled. Nothing is written for
+    /// a cancelled run, so the session is left as it was.
+    private func shutDownTranscriptions() async {
+        isShutDown = true
+        for id in queue.waiting { _ = queue.withdraw(id) }
+        pending = [:]
+        let inFlight = Array(tasks.values)
+        for id in Array(tasks.keys) { cancel(sessionID: id) }
+        for task in inFlight { await task.value }
     }
 
     private func apply(_ progress: TranscriptionProgress, to sessionID: UUID) {
@@ -144,6 +167,7 @@ final class TranscriptionCoordinator: ObservableObject {
     private func finish(_ sessionID: UUID, outcome: TranscriptionOutcome) {
         tasks[sessionID] = nil
         jobs[sessionID] = nil
+        if running?.session.id == sessionID { running = nil }
         outcomes[sessionID] = outcome
         if let next = queue.finishRunning(), let waiting = pending.removeValue(forKey: next) {
             begin(patient: waiting.patient, session: waiting.session)
@@ -203,7 +227,7 @@ final class TranscriptionCoordinator: ObservableObject {
                 ))
             }
             try store.saveTranscript(text, for: patient, session: session)
-            integrations.buildDigest(for: patient, session: session, transcript: text, store: store)
+            integrations.digestScheduler.transcriptSaved(patient: patient, session: session)
             // Transcript-only by default: discard the raw audio now that the
             // transcript (the document of record) is saved. Audio is kept only
             // when the user opted in *and* at-rest encryption is on, so anything
@@ -215,7 +239,10 @@ final class TranscriptionCoordinator: ObservableObject {
             }
             appModel.refreshPatients()
             await integrations.makeNotifier().post(
-                SessionNotifications.transcriptionComplete(patientName: patient.name, date: session.date)
+                SessionNotifications.transcriptionComplete(
+                    patientName: patient.name, date: session.date,
+                    showsName: settings.notificationsShowPatientNames
+                )
             )
             return .completed
         } catch is CancellationError {
@@ -224,4 +251,15 @@ final class TranscriptionCoordinator: ObservableObject {
             return .failed(message: error.localizedDescription)
         }
     }
+}
+
+extension TranscriptionCoordinator: ShutdownJob {
+    func interruptedWork() -> [InterruptedWork] {
+        let waiting = queue.waiting.compactMap { pending[$0] }
+        return ([running].compactMap { $0 } + waiting).map {
+            InterruptedWork(kind: .transcription, patientID: $0.patient.id, sessionFolder: $0.session.folderName)
+        }
+    }
+
+    func shutDown() async { await shutDownTranscriptions() }
 }

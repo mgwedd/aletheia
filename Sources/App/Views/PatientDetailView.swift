@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct PatientDetailView: View {
     let patient: Patient
@@ -37,8 +38,12 @@ struct PatientDetailView: View {
     @State private var sessionInitialNoteFormat: ProgressNoteFormat?
     @State private var sessionInitialShowingMyNotes = false
     @State private var sessionInitialFocusedCommentID: String?
+    /// The search match to flash, and the session it is in: only that session
+    /// is opened at it, not one picked from the list afterwards.
+    @State private var sessionInitialSearchFocus: (sessionID: UUID, focus: SearchMatchFocus)?
     @State private var sessionNavigationToken = 0
     @Environment(\.openWindow) private var openWindow
+    @EnvironmentObject private var exports: ExportJobCenter
     @State private var errorMessage: String?
     /// The selected session, resolved against the current listing so a session
     /// that has dropped out of it can't leave a dangling selection.
@@ -79,6 +84,7 @@ struct PatientDetailView: View {
                             exportButton
                         }
                     }
+                    SummaryStatusRow(scheduler: integrations.digestScheduler, patientID: patient.id)
 
                     Rectangle()
                         .fill(Theme.line.color)
@@ -133,6 +139,7 @@ struct PatientDetailView: View {
                         editGuard: editGuard,
                         initialTab: sessionInitialTab,
                         initialFocusedCommentID: sessionInitialFocusedCommentID,
+                        initialSearchFocus: sessionInitialSearchFocus?.sessionID == selectedSession.id ? sessionInitialSearchFocus?.focus : nil,
                         initialNoteFormat: sessionInitialNoteFormat,
                         initialShowingMyNotes: sessionInitialShowingMyNotes,
                         navigationToken: sessionNavigationToken
@@ -152,6 +159,7 @@ struct PatientDetailView: View {
         .onAppear {
             refresh()
             openPendingSession()
+            integrations.digestScheduler.patientOpened(patient)
         }
         .onChange(of: navigator.pendingSession) { _, _ in openPendingSession() }
         // A transcription finishing changes which sessions have a transcript or
@@ -222,7 +230,7 @@ struct PatientDetailView: View {
         Button {
             openWindow(id: PatientChatWindow.windowID, value: patient.id)
         } label: {
-            Label("Ask about all sessions", systemImage: "bubble.left.and.bubble.right")
+            Label("Ask about this patient", systemImage: "bubble.left.and.bubble.right")
         }
         .buttonStyle(.themed)
         .disabled(sessions.isEmpty)
@@ -230,12 +238,15 @@ struct PatientDetailView: View {
 
     private var exportButton: some View {
         Button {
-            exportHistory()
+            exportRecords()
         } label: {
-            Label("Export history", systemImage: "square.and.arrow.up")
+            Label("Export all records", systemImage: "square.and.arrow.up.on.square")
         }
         .buttonStyle(.themed)
-        .disabled(sessions.isEmpty)
+        .disabled(sessions.isEmpty || exports.isRunning)
+        .help(exports.isRunning
+            ? "An export is already running"
+            : "Save every transcript, note and comment as a zip of text files. It's prepared in the background and you'll be told when it's ready.")
     }
 
     /// The session list. Selection is by id and goes through `guardedSelection`,
@@ -339,6 +350,7 @@ struct PatientDetailView: View {
         sessionInitialNoteFormat = pending.initialNoteFormat
         sessionInitialShowingMyNotes = pending.initialShowingMyNotes
         sessionInitialFocusedCommentID = pending.initialFocusedCommentID
+        sessionInitialSearchFocus = pending.initialSearchFocus.map { (sessionID: target.id, focus: $0) }
         sessionNavigationToken += 1
         if selectedSessionID != target.id {
             requestSelection(target.id)
@@ -356,12 +368,29 @@ struct PatientDetailView: View {
         }
     }
 
-    private func exportHistory() {
-        guard let store = appModel.store else { return }
-        let markdown = store.exportPatientHistoryMarkdown(patient: patient)
-        let name = FileSaver.fileName(patient.name, "Session History") + ".md"
-        if FileSaver.saveText(markdown, suggestedName: name) {
-            appModel.recordAudit(.recordExported, subjectID: patient.id.uuidString, detail: "Patient history, Markdown")
+    /// Asks where to save, then builds the zip in the background. A whole patient's
+    /// history is far too long for one PDF, so this is text files in a zip; PDF, Word
+    /// and Markdown are per session and per note.
+    private func exportRecords() {
+        guard let store = appModel.store, !exports.isRunning else { return }
+        guard let destination = FileSaver.chooseDestination(
+            suggestedName: FileSaver.fileName(patient.name, "Records") + ".zip",
+            type: .zip
+        ) else { return }
+        let patient = patient
+        let sessions = sessions
+        let model = appModel
+        exports.start(
+            patientName: patient.name,
+            background: patient.notes,
+            sessionCount: sessions.count,
+            load: { try ArchiveLoader.load(store: store, patient: patient, session: sessions[$0]) },
+            destination: destination
+        ) { outcome in
+            model.recordAudit(
+                .recordExported, subjectID: patient.id.uuidString,
+                detail: "Patient records, zip of \(outcome.sessionCount) sessions"
+            )
         }
     }
 }

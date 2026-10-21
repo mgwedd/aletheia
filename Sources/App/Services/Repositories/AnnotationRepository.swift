@@ -112,6 +112,11 @@ final class AnnotationRepository {
         core.remove(kind: Self.commentKind, id: id)
     }
 
+    /// The session a comment hangs off, nil when there is no such comment.
+    func sessionID(ofComment id: String) -> UUID? {
+        core.record(kind: Self.commentKind, id: id)?.itemID
+    }
+
     /// A record that can't be decoded under the current protector (reading a
     /// sealed database with a passthrough/wrong key) still surfaces as a
     /// comment rather than silently vanishing — with best-effort text, the

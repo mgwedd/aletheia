@@ -1,0 +1,425 @@
+import Foundation
+
+/// How the patient chat reads a history too long to send whole, from far out
+/// to close up. Search (the FTS index) picks where to look; the model never
+/// reads a transcript to find out whether it matters.
+///
+///   1,000 ft  the patient's background, the therapist's notes and comments,
+///             and the stored session summaries (digests), newest first, older
+///             ones merged by month, up to a share of this Mac's budget. When
+///             search has no transcript lines to quote, room that share keeps
+///             for summaries not built yet goes to the openings of those
+///             sessions' transcripts.
+///     500 ft  search over every transcript, note and comment: exact counts,
+///             and the parts of sessions the hits fall in ("areas"), ranked.
+///     100 ft  the summaries of those parts, where the session has a digest,
+///             plus the few transcript lines around the best hits.
+///      10 ft  a transcript part read in full, only when the model asks for it
+///             (`LocalToolLoop`, `read_section`) at Normal or Focus.
+///
+/// Nothing here calls a model. `Store.gatherCitedPatientContext` gathers the
+/// sessions and the search result and assembles the text from these pieces.
+enum PatientZoom {
+    /// Most areas listed for one question.
+    static let maxAreas = 12
+
+    /// Room kept for the session header a block may need ("===== Session [S12]
+    /// September 30, 2026 =====" and the blank line before it).
+    static let headerAllowance = 60
+
+    /// How the room left after the background, the notes and the search block
+    /// is shared between the levels. What a level leaves unused goes to the
+    /// transcript lines around the hits, which are assembled last.
+    struct Shares: Equatable {
+        let summaries: Int
+        let areas: Int
+        let sections: Int
+
+        init(room: Int) {
+            let room = max(0, room)
+            summaries = room * 45 / 100
+            areas = room * 10 / 100
+            sections = room * 20 / 100
+        }
+    }
+
+    /// How many of the newest sessions keep their own summary before older ones
+    /// are merged by month: about one per 1,500 characters of the summaries'
+    /// share, so a Mac with more memory reads more sessions' summaries whole
+    /// (at Normal on an empty conversation, with notes using their full third:
+    /// about 5 on 8 GB, 14 on 16 GB, 32 on 32 GB and up; more when there are fewer notes).
+    static func individualSummaryLimit(summaryRoom: Int) -> Int {
+        max(4, summaryRoom / 1_500)
+    }
+
+    // MARK: - Areas (500 ft)
+
+    /// One session as the area ranking sees it.
+    struct SessionInput {
+        let tag: String
+        let date: Date
+        let sessionID: UUID
+        /// The session's current digest, if it has one.
+        let digest: SessionDigest?
+        /// The transcript's parts (`TranscriptSections.split`), used for a
+        /// session without a digest. Empty when the session has a digest.
+        let parts: [TranscriptSection]
+        /// Lines in the transcript, to place an untimed hit in its part.
+        let lineCount: Int
+    }
+
+    /// One part of one session that the question points at.
+    struct Area: Equatable {
+        let tag: String
+        let date: Date
+        let sessionID: UUID
+        /// Index of the part in its session, and how many parts it has.
+        let index: Int
+        let count: Int
+        let start: Int?
+        let end: Int?
+        /// Transcript search hits in this part.
+        let transcriptHits: Int
+        /// The question's words found in this part's summary.
+        let summaryMatches: Int
+        /// The part's summary, when the session has a digest.
+        let summary: String?
+
+        /// A word spoken in the session counts for more than one in its AI summary.
+        var score: Int { transcriptHits * 2 + summaryMatches }
+
+        /// `[12:30–22:10]`, or `[part 2 of 5]` for an untimed transcript.
+        var anchor: String {
+            TranscriptSection(start: start, end: end, text: "").anchor(index: index, count: count)
+        }
+
+        /// The `read_section` times that open this part. An untimed transcript is
+        /// read in parts of ten minutes' worth (`LocalToolScope`), so part k starts at k × 10:00.
+        var readTimes: (start: String, end: String) {
+            if let start, let end {
+                return (TranscriptTimeline.format(start), TranscriptTimeline.format(end))
+            }
+            let from = index * TranscriptSections.targetSeconds
+            return (TranscriptTimeline.format(from), TranscriptTimeline.format(from + TranscriptSections.targetSeconds - 1))
+        }
+    }
+
+    /// The question's words as the index compares them (stemmed), stopwords left out.
+    static func stems(of terms: [SessionSearch.Term]) -> Set<String> {
+        var result = Set<String>()
+        for term in terms {
+            for word in term.words where !SessionSearch.stopwords.contains(word) {
+                result.insert(SessionSearch.stem(word))
+            }
+        }
+        return result
+    }
+
+    /// How many words of `text` are one of `stems`.
+    static func matches(of stems: Set<String>, in text: String) -> Int {
+        guard !stems.isEmpty else { return 0 }
+        var count = 0
+        for word in SessionSearch.tokenize(text) where stems.contains(SessionSearch.stem(word)) {
+            count += 1
+        }
+        return count
+    }
+
+    /// The part a hit at `seconds` falls in: the last one starting at or before
+    /// it (the first part for a hit before any start). Nil for untimed parts.
+    static func partIndex(forSeconds seconds: Int, starts: [Int?]) -> Int? {
+        var found: Int?
+        for (index, start) in starts.enumerated() {
+            guard let start else { return nil }
+            if start <= seconds || found == nil { found = index }
+            if start > seconds { break }
+        }
+        return found
+    }
+
+    /// The part an untimed hit on line `line` of `lineCount` falls in, by position.
+    static func partIndex(forLine line: Int, lineCount: Int, parts: Int) -> Int {
+        guard parts > 1, lineCount > 0 else { return 0 }
+        return min(parts - 1, max(0, line * parts / lineCount))
+    }
+
+    /// Every part the question points at, best first: by transcript hits and by
+    /// the question's words in the part's summary. Ties go to the newer session,
+    /// then the earlier part.
+    static func areas(sessions: [SessionInput], hits: [SessionSearch.Hit], stems: Set<String>) -> [Area] {
+        var hitsByPart: [UUID: [Int: Int]] = [:]
+        var inputByID: [UUID: SessionInput] = [:]
+        for session in sessions { inputByID[session.sessionID] = session }
+        for hit in hits where hit.kind == .transcript {
+            guard let id = hit.sessionID, let session = inputByID[id] else { continue }
+            let starts: [Int?] = session.digest.map { $0.sections.map(\.start) } ?? session.parts.map(\.start)
+            guard !starts.isEmpty else { continue }
+            var index: Int?
+            if let seconds = hit.seconds {
+                index = partIndex(forSeconds: seconds, starts: starts)
+            }
+            let part = index ?? partIndex(forLine: hit.lineIndex, lineCount: session.lineCount, parts: starts.count)
+            hitsByPart[id, default: [:]][part, default: 0] += 1
+        }
+
+        var out: [Area] = []
+        for session in sessions {
+            let partHits = hitsByPart[session.sessionID] ?? [:]
+            if let digest = session.digest {
+                for (index, section) in digest.sections.enumerated() {
+                    let area = Area(
+                        tag: session.tag, date: session.date, sessionID: session.sessionID,
+                        index: index, count: digest.sections.count, start: section.start, end: section.end,
+                        transcriptHits: partHits[index] ?? 0,
+                        summaryMatches: matches(of: stems, in: section.digest),
+                        summary: section.digest
+                    )
+                    if area.score > 0 { out.append(area) }
+                }
+            } else {
+                for (index, part) in session.parts.enumerated() {
+                    guard let hitCount = partHits[index], hitCount > 0 else { continue }
+                    out.append(Area(
+                        tag: session.tag, date: session.date, sessionID: session.sessionID,
+                        index: index, count: session.parts.count, start: part.start, end: part.end,
+                        transcriptHits: hitCount, summaryMatches: 0, summary: nil
+                    ))
+                }
+            }
+        }
+        out.sort { l, r in
+            if l.score != r.score { return l.score > r.score }
+            if l.date != r.date { return l.date > r.date }
+            return l.index < r.index
+        }
+        return out
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.dateStyle = .medium
+        return f
+    }()
+
+    /// One line of the areas list: where, why, and how to open it.
+    static func areaLine(_ area: Area) -> String {
+        var reasons: [String] = []
+        if area.transcriptHits > 0 {
+            reasons.append("\(area.transcriptHits) matching transcript line\(area.transcriptHits == 1 ? "" : "s")")
+        }
+        if area.summaryMatches > 0 {
+            reasons.append("its summary has \(area.summaryMatches) of your words")
+        }
+        if area.summary == nil {
+            reasons.append("no summary yet")
+        }
+        let times = area.readTimes
+        return "- [\(area.tag)] \(dateFormatter.string(from: area.date)) \(area.anchor): "
+            + reasons.joined(separator: ", ")
+            + " (read_section session \(area.tag), start \(times.start), end \(times.end))"
+    }
+
+    static let areasHeader = "Where search points, best first (these transcript parts are not included in full):"
+
+    /// The areas list, best first, as many lines as fit `budget`. Nil when none fit.
+    static func areasBlock(_ areas: [Area], budget: Int) -> (text: String, shown: [Area])? {
+        var lines: [String] = [areasHeader]
+        var used = areasHeader.count + 1
+        var shown: [Area] = []
+        for area in areas.prefix(maxAreas) {
+            let line = areaLine(area)
+            guard used + line.count + 1 <= budget else { continue }
+            lines.append(line)
+            used += line.count + 1
+            shown.append(area)
+        }
+        guard !shown.isEmpty else { return nil }
+        return (lines.joined(separator: "\n"), shown)
+    }
+
+    /// The summary of one part, as it goes under its session's header.
+    static func sectionSummaryBlock(_ area: Area) -> String {
+        let why = area.transcriptHits > 0
+            ? " (\(area.transcriptHits) matching transcript line\(area.transcriptHits == 1 ? "" : "s"))"
+            : ""
+        return "Summary of the part search points at \(area.anchor)\(why):\n" + (area.summary ?? "")
+    }
+
+    /// The part summaries (100 ft) to show, best first, while they fit `budget`;
+    /// one that doesn't fit is skipped, not cut.
+    static func sectionSummaries(_ areas: [Area], budget: Int) -> [Area] {
+        var used = 0
+        var out: [Area] = []
+        for area in areas where area.summary != nil {
+            let cost = sectionSummaryBlock(area).count + 2 + headerAllowance
+            guard used + cost <= budget else { continue }
+            out.append(area)
+            used += cost
+        }
+        return out
+    }
+
+    // MARK: - Openings of sessions with no summary yet (1,000 ft)
+
+    /// Above the start of a session's transcript that stands in for its missing summary.
+    static let openingLabel = "Transcript excerpt (no summary yet), from the start of the session:"
+    /// Ends an opening that was cut short.
+    static let openingCutMarker = "[…]"
+    /// The summaries' leftover room is shared evenly between at most this many
+    /// sessions, so several get some room before any one gets a lot.
+    static let openingSlots = 4
+    /// The smallest opening worth sending.
+    static let minOpeningCharacters = 300
+
+    /// A session with no summary yet, newest first, whose opening may fill the summaries' share.
+    struct OpeningInput {
+        let tag: String
+        let date: Date
+        let transcript: String
+    }
+
+    /// The opening of one session, as it goes under its session's header.
+    struct Opening: Equatable {
+        let tag: String
+        let date: Date
+        /// `openingLabel`, then the compacted start of the transcript.
+        let block: String
+        /// What it takes from the budget: the block, the blank line before it and a header.
+        let cost: Int
+    }
+
+    /// The start of `transcript` as the model reads it (`TranscriptCompactor`),
+    /// at most `limit` characters, cut at the end of a line and ended with
+    /// `openingCutMarker` when cut. Nil when the transcript is empty or `limit`
+    /// is below `minOpeningCharacters`.
+    static func openingExcerpt(of transcript: String, limit: Int) -> String? {
+        guard limit >= minOpeningCharacters else { return nil }
+        let compacted = TranscriptCompactor.compact(transcript).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compacted.isEmpty else { return nil }
+        if compacted.count <= limit { return compacted }
+        let marker = "\n" + openingCutMarker
+        let room = limit - marker.count
+        var kept: [Substring] = []
+        var used = 0
+        for line in compacted.split(separator: "\n", omittingEmptySubsequences: false) {
+            let cost = line.count + (kept.isEmpty ? 0 : 1)
+            guard used + cost <= room else { break }
+            kept.append(line)
+            used += cost
+        }
+        // A first line longer than the room is cut inside the line.
+        let body = kept.isEmpty ? String(compacted.prefix(room)) : kept.joined(separator: "\n")
+        return body + marker
+    }
+
+    /// The openings of `sessions` (newest first, none with a summary yet) within
+    /// `budget`, newest first. Each takes at most budget / min(n, `openingSlots`);
+    /// what one leaves unused stays for the sessions after it. Their costs never
+    /// add up to more than `budget`.
+    static func openings(_ sessions: [OpeningInput], budget: Int) -> [Opening] {
+        guard !sessions.isEmpty, budget > 0 else { return [] }
+        let slot = budget / min(sessions.count, openingSlots)
+        // Header, the blank line before the block, and the label with its line break.
+        let overhead = headerAllowance + 2 + openingLabel.count + 1
+        var remaining = budget
+        var out: [Opening] = []
+        for session in sessions {
+            let room = min(slot, remaining) - overhead
+            guard let excerpt = openingExcerpt(of: session.transcript, limit: room) else { continue }
+            let block = openingLabel + "\n" + excerpt
+            let cost = block.count + 2 + headerAllowance
+            remaining -= cost
+            out.append(Opening(tag: session.tag, date: session.date, block: block, cost: cost))
+        }
+        return out
+    }
+}
+
+/// The phases of one question to the patient chat, for its progress bar:
+/// gathering (search, summaries, notes: no model), then at Normal and Focus
+/// up to `maxRefinementRounds` rounds of choosing what to open (one model call
+/// each), then writing the answer (one model call).
+struct PatientAskSteps: Equatable {
+    let total: Int
+    let rounds: Int
+
+    init(effort: AnswerEffort, layered: Bool) {
+        rounds = layered && effort.maxToolCalls > 0 ? effort.maxRefinementRounds : 0
+        total = 1 + rounds + 1
+    }
+
+    var gathering: AIRunSteps { AIRunSteps(done: 0, total: total) }
+    /// Choosing what to open, round `round` (0-based).
+    func choosing(round: Int) -> AIRunSteps { AIRunSteps(done: 1 + min(round, max(0, rounds - 1)), total: total) }
+    var writing: AIRunSteps { AIRunSteps(done: total - 1, total: total) }
+
+    /// What the status line says while the sessions are searched:
+    /// "Searching 12 sessions for “dream”, “michaels”…".
+    /// The most words the searching line names; the rest are counted.
+    static let gatheringTermLimit = 3
+
+    static func gatheringText(sessions n: Int, terms: [String] = []) -> String {
+        let what = n > 0 ? " \(n) session\(n == 1 ? "" : "s")" : ""
+        guard !terms.isEmpty else { return "Searching\(what) and gathering summaries and notes…" }
+        let shown = terms.prefix(gatheringTermLimit)
+        let more = terms.count - shown.count
+        let words = quotedList(Array(shown), joiner: ",") + (more > 0 ? " and \(more) more" : "")
+        return "Searching\(what.isEmpty ? " the sessions" : what) for \(words)…"
+    }
+
+    /// What search found, said before the model reads it: "1 mention, in the
+    /// Oct 13 session", "5 mentions, across 3 sessions", "No mention of
+    /// “dream” in any session". Nil when the question had nothing to search for.
+    static func finding(_ coverage: TranscriptCoverage) -> String? {
+        guard coverage.searched, !coverage.searchTerms.isEmpty else { return nil }
+        let total = coverage.mentions + coverage.similarMentions
+        guard total > 0 else {
+            return "No mention of \(quotedList(coverage.searchTerms, joiner: " or")) in any session"
+        }
+        let mentions = "\(total) mention\(total == 1 ? "" : "s")"
+        if coverage.sessionsWithMentions == 1, let date = coverage.mentionDate {
+            return "\(mentions), in the \(date.formatted(.dateTime.month(.abbreviated).day())) session"
+        }
+        let n = coverage.sessionsWithMentions
+        return n > 1 ? "\(mentions), across \(n) sessions" : mentions
+    }
+
+    /// “a”, “b” — or, for `" or"`, “a” or “b”; “a”, “b” or “c”.
+    private static func quotedList(_ words: [String], joiner: String) -> String {
+        let quoted = words.map { "“\($0)”" }
+        guard joiner == " or", quoted.count > 1 else { return quoted.joined(separator: ", ") }
+        return quoted.dropLast().joined(separator: ", ") + " or " + quoted[quoted.count - 1]
+    }
+
+    /// The finished steps listed once the model starts, from what was gathered.
+    static func finishedLines(_ coverage: TranscriptCoverage) -> [String] {
+        func sessions(_ n: Int) -> String { "\(n) session\(n == 1 ? "" : "s")" }
+        var lines: [String] = []
+        if coverage.wholeTranscripts {
+            lines.append("Gathered the full transcripts of \(sessions(coverage.sessionsWithPassages))")
+            return lines
+        }
+        var searched = "Searched \(sessions(coverage.transcriptSessions))"
+        if coverage.searched {
+            let total = coverage.mentions + coverage.similarMentions
+            searched += " · \(total) match\(total == 1 ? "" : "es")"
+        }
+        lines.append(searched)
+        if coverage.digestSessions > 0 { lines.append("Read summaries of \(sessions(coverage.digestSessions))") }
+        if coverage.openingSessions > 0 {
+            let n = coverage.openingSessions
+            lines.append("Read the opening\(n == 1 ? "" : "s") of \(sessions(n)) with no summary yet")
+        }
+        if coverage.areas > 0 {
+            lines.append("Found \(coverage.areas) part\(coverage.areas == 1 ? "" : "s") worth a closer look")
+        }
+        if coverage.summarySections > 0 {
+            lines.append("Read the summaries of \(coverage.summarySections) of them")
+        }
+        if coverage.sessionsWithPassages > 0 && !coverage.fullTexts {
+            lines.append("Took the matching lines from \(sessions(coverage.sessionsWithPassages))")
+        }
+        return lines
+    }
+}

@@ -1,5 +1,11 @@
 name: Benchmarks
 
+# DISABLED for now: the job isn't producing reliable results. It only runs when
+# started by hand (Actions > Benchmarks > Run workflow); on push and on pull
+# requests it is skipped. To turn it back on, delete `false && ` from the job's
+# `if:`; it then runs on main pushes and on PRs touching search, index or
+# transcript-compactor code (see the `changes` job).
+
 # Fast benchmarks (PRBenchmarkTests, well under two minutes once built) on every
 # PR and main push. Informational only: nothing here fails on a timing. Main
 # runs upload their results as the baseline; a PR run compares its medians with
@@ -31,15 +37,39 @@ permissions:
   pull-requests: write   # the PR comment
 
 jobs:
+  # Path relevance for PRs (scripts/ci-changes.sh). A job-level `if:` rather than
+  # `on.paths`, so a skipped benchmark still reports success to required checks.
+  changes:
+    name: Benchmark changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      benchmarks: ${{ steps.diff.outputs.benchmarks }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Did benchmark inputs change?
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: echo "benchmarks=$(./scripts/ci-changes.sh benchmarks "$BASE_SHA")" >> "$GITHUB_OUTPUT"
+
   bench:
     name: Benchmarks (informational)
+    needs: changes
+    # Runs on main pushes and on PRs touching search, index or the transcript
+    # compactor (their sources and tests) or the benchmark files. Fails open if
+    # the changes job fails. Still DISABLED: while the `false &&` is in place only
+    # a manual dispatch runs. To re-enable, delete `false && `.
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (false && (needs.changes.result != 'success' || needs.changes.outputs.benchmarks == 'true'))) }}
     runs-on: macos-15
     timeout-minutes: 30
     env:
       NSUnbufferedIO: "YES"
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install tools (XcodeGen, xcbeautify)
         run: brew install xcodegen xcbeautify
@@ -48,7 +78,7 @@ jobs:
         run: xcodegen generate
 
       - name: Cache Swift packages
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/SourcePackages
           key: spm-macos-15-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
@@ -75,7 +105,7 @@ jobs:
 
       - name: Upload results (main baseline)
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bench-results
           path: bench/results.json

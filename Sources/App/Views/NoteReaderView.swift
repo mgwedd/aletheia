@@ -10,8 +10,9 @@ import AppKit
 ///  - Highlighting is handled via `TranscriptHighlighter.spans` directly on the
 ///    rendered rich text storage, keeping comment spans and clicks synchronized.
 ///  - Clicking a highlighted passage opens/focuses the corresponding comment in the rail.
-///  - Tapping a card in the comment rail scrolls to and flashes the highlighted passage.
-///  - Reports `selection` and `selectionRange` so the toolbar's "Comment on selection"
+///  - Tapping a card in the comment rail scrolls to and flashes the highlighted passage,
+///    and opening the note at a search match flashes the match the same way.
+///  - Reports `selection` and `selectionRange` so the toolbar's "Comment"
 ///    button can enable and anchor an inline composer card.
 #if canImport(AppKit)
 struct NoteReaderView: NSViewRepresentable {
@@ -21,10 +22,19 @@ struct NoteReaderView: NSViewRepresentable {
     @Binding var selection: String
     @Binding var selectionRange: NSRange?
     var onOpenComment: (String) -> Void = { _ in }
-    var focusedCommentID: String? = nil
+    /// What to scroll to and flash on a new `focusToken`: a comment's passage, or
+    /// a range of the rendered text (a search match).
+    var focus: TranscriptFocus? = nil
     var focusToken: Int = 0
     var composingRange: NSRange? = nil
     var onComposingRectChange: (CGRect?) -> Void = { _ in }
+
+    /// The note as the reader shows it: Markdown rendered to styled text.
+    /// Selections, quote offsets and highlights are positions in its string,
+    /// not in the Markdown.
+    static func rendered(_ markdown: String) -> NSAttributedString {
+        NoteRichText.attributedString(fromMarkdown: markdown, font: .serif)
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -90,7 +100,7 @@ struct NoteReaderView: NSViewRepresentable {
         guard let textView = scroll.documentView as? NSTextView else { return }
         context.coordinator.parent = self
         context.coordinator.sync(into: textView)
-        context.coordinator.flashIfNeeded(in: textView, focusedCommentID: focusedCommentID, focusToken: focusToken)
+        context.coordinator.flashIfNeeded(in: textView, focus: focus, focusToken: focusToken)
         context.coordinator.updateComposing(in: textView, composingRange: composingRange)
     }
 
@@ -117,6 +127,8 @@ struct NoteReaderView: NSViewRepresentable {
 
         init(_ parent: NoteReaderView) { self.parent = parent }
 
+        deinit { NotificationCenter.default.removeObserver(self) }
+
         func sync(into textView: NSTextView) {
             let textChanged = parent.text != appliedText
             let anchorsChanged = Self.signature(of: parent.comments) != appliedAnchorsSignature
@@ -130,7 +142,7 @@ struct NoteReaderView: NSViewRepresentable {
             appliedText = parent.text
             appliedAnchorsSignature = Self.signature(of: parent.comments)
 
-            let formatted = NoteRichText.attributedString(fromMarkdown: parent.text, font: .serif)
+            let formatted = NoteReaderView.rendered(parent.text)
             spans = TranscriptHighlighter.spans(in: formatted.string, comments: parent.comments)
 
             isApplyingProgrammaticChange = true
@@ -172,18 +184,27 @@ struct NoteReaderView: NSViewRepresentable {
             reportComposingRect(for: textView)
         }
 
-        func flashIfNeeded(in textView: NSTextView, focusedCommentID: String?, focusToken: Int) {
-            guard focusToken != lastFlashedToken, let targetID = focusedCommentID else { return }
-            lastFlashedToken = focusToken
-            guard let span = spans.first(where: { $0.commentID == targetID }),
+        /// Scrolls to and flashes the focus once per token. A request that comes
+        /// before its target exists (the note not loaded yet) waits for it
+        /// rather than being used up.
+        func flashIfNeeded(in textView: NSTextView, focus: TranscriptFocus?, focusToken: Int) {
+            guard focusToken != lastFlashedToken, let focus else { return }
+            let target: NSRange?
+            switch focus {
+            case .comment(let id): target = spans.first(where: { $0.commentID == id })?.range
+            case .range(let range): target = range
+            }
+            guard let range = target,
                   let layoutManager = textView.layoutManager,
-                  NSMaxRange(span.range) <= (textView.textStorage?.length ?? 0) else { return }
+                  NSMaxRange(range) <= (textView.textStorage?.length ?? 0) else { return }
+            lastFlashedToken = focusToken
 
-            textView.scrollRangeToVisible(span.range)
+            textView.scrollRangeToVisible(range)
             let flashAttrs: [NSAttributedString.Key: Any] = [.backgroundColor: Theme.accentTint.nsColor]
-            layoutManager.setTemporaryAttributes(flashAttrs, forCharacterRange: span.range)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak layoutManager] in
-                layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: span.range)
+            layoutManager.setTemporaryAttributes(flashAttrs, forCharacterRange: range)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak layoutManager] in
+                guard let layoutManager, NSMaxRange(range) <= (layoutManager.textStorage?.length ?? 0) else { return }
+                layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: range)
             }
         }
 

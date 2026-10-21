@@ -27,30 +27,6 @@ final class MarkdownExporterTests: XCTestCase {
         XCTAssertTrue(md.contains("No transcript or summary recorded"))
     }
 
-    func testPatientHistoryIncludesNotesAndEachSession() {
-        let sessions = [
-            SessionExport(date: date(2026, 3, 1), transcript: "Newer transcript.", summary: "Newer summary."),
-            SessionExport(date: date(2026, 1, 1), transcript: "Older transcript.", summary: ""),
-        ]
-        let md = MarkdownExporter.patientHistory(patientName: "Jane Doe", notes: "Prefers mornings.", sessions: sessions)
-        XCTAssertTrue(md.contains("# Jane Doe — Session History"))
-        XCTAssertTrue(md.contains("## Patient Notes"))
-        XCTAssertTrue(md.contains("Prefers mornings."))
-        XCTAssertTrue(md.contains("Newer transcript."))
-        XCTAssertTrue(md.contains("Older transcript."))
-
-        // Caller passes newest-first; the exporter preserves that order.
-        let newer = md.range(of: "Newer transcript.")!
-        let older = md.range(of: "Older transcript.")!
-        XCTAssertLessThan(newer.lowerBound, older.lowerBound)
-    }
-
-    func testPatientHistoryWithNoSessions() {
-        let md = MarkdownExporter.patientHistory(patientName: "Jane Doe", notes: "", sessions: [])
-        XCTAssertTrue(md.contains("No sessions recorded yet."))
-        XCTAssertFalse(md.contains("## Patient Notes"))
-    }
-
     func testFileNameStripsPathSeparators() {
         let name = FileSaver.fileName("Jane/Doe", "2026-09-16")
         XCTAssertFalse(name.contains("/"))

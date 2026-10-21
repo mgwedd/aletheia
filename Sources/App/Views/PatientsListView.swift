@@ -6,17 +6,11 @@ struct PatientsListView: View {
     @Binding var selectedPatient: Patient?
     let onEditProfile: (Patient) -> Void
 
-    @State private var searchText = ""
     @State private var showAddPatient = false
     @State private var newPatientName = ""
 
     private var visibleUnreadablePatients: [UnreadableEntry] {
         appModel.unreadablePatients.filter { !settings.isDamagedRecordDismissed(id: $0.id) }
-    }
-
-    private var filteredPatients: [Patient] {
-        guard !searchText.isEmpty else { return appModel.patients }
-        return appModel.patients.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
     var body: some View {
@@ -28,7 +22,9 @@ struct PatientsListView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 8)
 
-            List(filteredPatients, selection: $selectedPatient) { patient in
+            // Not filtered by the search field: patients it matches are the first
+            // group of its results (see `GlobalSearchResultsView`).
+            List(appModel.patients, selection: $selectedPatient) { patient in
                 PatientRow(
                     patient: patient,
                     meta: appModel.store?.fastSessionMeta(for: patient),
@@ -53,14 +49,11 @@ struct PatientsListView: View {
                         }
                         .buttonStyle(.themePrimary)
                     }
-                } else if filteredPatients.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
                 }
             }
             .scrollContentBackground(.hidden)
         }
         .background(Theme.sidebar.color)
-        .searchable(text: $searchText, prompt: "Search patients")
         .navigationTitle("Patients")
         // An always-visible footer at the foot of the sidebar. The toolbar "+"
         // alone gets swept into the window's ">>" overflow when the pane is
@@ -111,8 +104,7 @@ struct PatientsListView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.themed)
-            .keyboardShortcut("n", modifiers: .command)
-            .help("Add a new patient (⌘N)")
+            .shortcut(AppHotkey.newPatient, help: "Add a new patient")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)

@@ -67,6 +67,29 @@ final class TranscriptSectionsTests: XCTestCase {
         XCTAssertEqual(sections[1].anchor(index: 1, count: 3), "[part 2 of 3]")
     }
 
+    func testMergedAnchorIsOneFlatRangeEvenWhenMergedAgain() {
+        let one = TranscriptSection.mergedAnchor(first: "[00:00–09:00]", last: "[10:00–19:00]")
+        XCTAssertEqual(one, "[00:00–19:00]")
+        let two = TranscriptSection.mergedAnchor(first: "[20:00–29:00]", last: "[30:00–34:00]")
+        XCTAssertEqual(TranscriptSection.mergedAnchor(first: one, last: two), "[00:00–34:00]")
+        XCTAssertEqual(
+            TranscriptSection.mergedAnchor(first: "[0:50:00–0:59:00]", last: "[1:00:00–1:09:00]"),
+            "[0:50:00–1:09:00]"
+        )
+
+        let parts = TranscriptSection.mergedAnchor(first: "[part 1 of 5]", last: "[part 2 of 5]")
+        XCTAssertEqual(parts, "[part 1–2 of 5]")
+        XCTAssertEqual(
+            TranscriptSection.mergedAnchor(first: parts, last: "[part 3–4 of 5]"),
+            "[part 1–4 of 5]"
+        )
+
+        // A timed and an untimed section side by side keep only their two ends.
+        let mixed = TranscriptSection.mergedAnchor(first: "[00:00–09:00]", last: "[part 3 of 5]")
+        XCTAssertEqual(mixed, "[00:00–09:00] … [part 3 of 5]")
+        XCTAssertEqual(TranscriptSection.mergedAnchor(first: mixed, last: "[part 4 of 5]"), "[00:00–09:00] … [part 4 of 5]")
+    }
+
     func testEmptyTranscriptHasNoSections() {
         XCTAssertTrue(TranscriptSections.split(" \n\n").count <= 1)
         XCTAssertTrue(TranscriptSections.split("").isEmpty)

@@ -89,7 +89,7 @@ struct PatientProfileEditor: View {
                             minHeight: 84,
                             autofocus: initialFocus == .notes
                         )
-                        infoCaption("Your own notes about this patient. Available to the local AI model and included in exports.")
+                        infoCaption("Your own notes about this patient. Available to the AI and included in exports.")
                     }
 
                     field("Clinical history") {
@@ -99,7 +99,7 @@ struct PatientProfileEditor: View {
                             minHeight: 100,
                             autofocus: initialFocus == .clinicalHistory
                         )
-                        infoCaption("A short summary of the background. Saved with the patient and available to the local AI model. It stays on this Mac.")
+                        infoCaption("A short summary of the background. Saved with the patient and available to the AI.")
                     }
 
                     if showsMedications { medicationsField }
@@ -182,7 +182,7 @@ struct PatientProfileEditor: View {
         // Keeps Command-S working now that Return is the default action.
         .background {
             Button("Save", action: save)
-                .keyboardShortcut("s", modifiers: .command)
+                .keyboardShortcut(AppHotkey.saveEdits)
                 .disabled(!canSave)
                 .opacity(0)
                 .allowsHitTesting(false)

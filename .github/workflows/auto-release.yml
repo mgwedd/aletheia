@@ -55,6 +55,9 @@ jobs:
   release:
     name: Tag and hand off
     runs-on: ubuntu-latest   # pure git work; the macOS build lives in release.yml
+    # Holds RELEASE_DEPLOY_KEY, the deploy key on main's ruleset bypass list.
+    # GITHUB_TOKEN can't be on that list, so its push to main is rejected.
+    environment: release
     # A pull_request run of Smoke Test can also report here; only a green push
     # run on main, or a manual dispatch, may release.
     if: >-
@@ -62,11 +65,14 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0   # full history + tags for version math
           # Release exactly the commit that passed (manual dispatch: its own ref).
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # Fetch and push over SSH as the deploy key. If the secret is unset,
+          # checkout falls back to GITHUB_TOKEN as before.
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
 
       - name: Check main has not moved past the tested commit
         id: tip
@@ -108,8 +114,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           ./scripts/apply-release.sh "$NEXT"
           git add Sources/App/Resources/Info.plist CHANGELOG.md
-          # [skip ci] is belt-and-suspenders: a commit pushed with GITHUB_TOKEN
-          # already can't re-trigger this workflow (recursion is suppressed).
+          # [skip ci] keeps this commit from starting push workflows: a push
+          # made with the deploy key starts them (a GITHUB_TOKEN push doesn't).
           git commit -m "chore(release): v${NEXT} [skip ci]"
           git tag -a "v${NEXT}" -m "Aletheia ${NEXT}"
           git push origin HEAD:main
@@ -120,9 +126,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT: ${{ steps.version.outputs.next }}
+          HAS_DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY != '' }}
         run: |
           set -euo pipefail
-          # The tag push above can't trigger release.yml (default-token pushes
-          # don't start workflows), so dispatch it explicitly against the tag.
+          # A tag pushed with the deploy key starts release.yml by itself
+          # (on: push: tags). Dispatching too would build the release twice.
+          if [ "$HAS_DEPLOY_KEY" = "true" ]; then
+            echo "v${NEXT} was pushed with the deploy key; release.yml starts from the tag push."
+            exit 0
+          fi
+          # A tag pushed with GITHUB_TOKEN can't start workflows, so dispatch
+          # release.yml explicitly against the tag.
           gh workflow run release.yml --ref "v${NEXT}"
           echo "Dispatched release.yml for v${NEXT}."
