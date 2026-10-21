@@ -58,6 +58,13 @@ self_test() {
         [ "$got" = "$want" ] || err "ci-changes.sh $area for [$*]: want $want, got $got"
     }
     # benchmarks
+    # code: anything that isn't documentation
+    expect code false README.md docs/SETUP-GUIDE.md CHANGELOG.md .claude/agents/x.md
+    expect code false LICENSE .github/ISSUE_TEMPLATE/bug.yml
+    expect code true  README.md Sources/App/AletheiaApp.swift
+    expect code true  .github/workflows/smoke-test.yml
+    expect code true  scripts/build.sh
+    expect code true  Sources/App/Views/Notes.md.swift
     expect benchmarks true  Sources/App/Services/Search/SearchIndex.swift
     expect benchmarks true  Sources/App/Services/TranscriptCompactor.swift
     expect benchmarks true  Sources/App/Services/TextSearch.swift
@@ -204,6 +211,30 @@ group = str((smoke.get("concurrency") or {}).get("group", ""))
 if "github.event_name" not in group:
     bad("smoke-test.yml: concurrency group must include github.event_name "
         "(a manual run must not cancel main's push run)")
+# Docs-only pull requests: build-and-test runs on Ubuntu with every step
+# skipped, keeping its check names (a job skipped by `if:` would report under
+# the unexpanded matrix name and leave required checks pending).
+ch = smoke["jobs"].get("changes")
+if not ch or "ci-changes.sh code" not in "".join(st.get("run", "") for st in ch.get("steps") or []):
+    bad("smoke-test.yml: needs a `changes` job running scripts/ci-changes.sh code")
+elif ch.get("runs-on") != "ubuntu-latest":
+    bad("smoke-test.yml: `changes` must run on ubuntu-latest")
+if job.get("needs") != "changes":
+    bad("smoke-test.yml: build-and-test must need `changes`")
+if "!cancelled()" not in str(job.get("if", "")):
+    bad("smoke-test.yml: build-and-test `if:` must be !cancelled() (never false: that drops the matrix names)")
+if str(job.get("runs-on")) != "${{ needs.changes.outputs.code == 'false' && 'ubuntu-latest' || matrix.runner }}":
+    bad("smoke-test.yml: build-and-test must run on Ubuntu only when code == 'false'")
+if str((job.get("env") or {}).get("RUN_BUILD")) != "${{ needs.changes.outputs.code != 'false' }}":
+    bad("smoke-test.yml: build-and-test needs env RUN_BUILD from needs.changes.outputs.code")
+for st in job["steps"]:
+    nm = st.get("name") or st.get("uses", "")
+    cond = str(st.get("if", ""))
+    if nm.startswith("Docs-only"):
+        if "env.RUN_BUILD != 'true'" not in cond:
+            bad("smoke-test.yml: the docs-only step must run only when RUN_BUILD is not true")
+    elif "env.RUN_BUILD == 'true'" not in cond:
+        bad(f"smoke-test.yml: step {nm!r} must be gated on env.RUN_BUILD == 'true'")
 step = next((s for s in job["steps"] if s.get("name", "").startswith("Run unit tests")), None)
 if step is None:
     bad("smoke-test.yml: no 'Run unit tests' step")
