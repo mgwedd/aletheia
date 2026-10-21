@@ -1182,8 +1182,10 @@ enum PatientChatAnswer {
                     // model started; the bar moves on through the lookups.
                     let steps = PatientAskSteps(effort: effort, layered: layered)
                     let finished = PatientAskSteps.finishedLines(currentCoverage)
+                    let finding = PatientAskSteps.finding(currentCoverage)
                     live(nil) { progress in
                         for line in finished { progress.recordCompletedStage(line) }
+                        progress.lead = finding
                         progress.steps = layered ? steps.choosing(round: 0) : steps.writing
                     }
 

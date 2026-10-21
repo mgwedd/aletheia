@@ -36,6 +36,16 @@ final class DigestBuilder: ObservableObject {
     /// so the wording avoids "digest".
     static let activityTitle = "Processing transcript"
     static let writeTitle = "Writing summary"
+
+    /// A background build's progress for its status line, led by
+    /// `activityTitle` while the model reads ("Processing transcript. Reading
+    /// part 2 of 5… · 0:12") unless the stage already names it.
+    static func statusProgress(_ progress: AIRunProgress) -> AIRunProgress {
+        guard !progress.readTitle.hasPrefix(activityTitle) else { return progress }
+        var led = progress
+        led.lead = activityTitle
+        return led
+    }
     static let mergeTitle = "Combining sections"
 
     init(queue: InferenceQueue) {

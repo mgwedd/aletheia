@@ -1585,7 +1585,7 @@ final class Store {
         let text = [background, searchBlock, sessionsText]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n\n")
-        let coverage = TranscriptCoverage(
+        var coverage = TranscriptCoverage(
             transcriptSessions: selection.totalCount,
             sessionsWithPassages: selection.wholeCount,
             notesSessions: notesDates.count,
@@ -1598,6 +1598,7 @@ final class Store {
             notesCutSessions: notesCut,
             passageTags: passageTags
         )
+        coverage.noteSearch(search)
         return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)
     }
 
@@ -1787,6 +1788,7 @@ final class Store {
         coverage.searchOnlySessions = searchOnly
         coverage.noSummarySessions = noSummary
         coverage.openingSessions = openingDates.count
+        coverage.noteSearch(search)
         return PatientContext(text: text, sources: sources, unreadableSessions: input.unreadable, coverage: coverage)
     }
 

@@ -551,8 +551,10 @@ final class LocalToolLoopTests: XCTestCase {
         let stub = ToolLoopStubAssistant()
         var service = AssistantService(assistant: stub, model: "m")
         service.budget = ContextBudget(tokens: 16_384)
-        let coverage = TranscriptCoverage(
-            transcriptSessions: 2, sessionsWithPassages: 2, searched: true, wholeTranscripts: true, fullTexts: true)
+        var coverage = TranscriptCoverage(
+            transcriptSessions: 2, sessionsWithPassages: 2, mentions: 2, searched: true, wholeTranscripts: true, fullTexts: true)
+        coverage.searchTerms = ["michaels", "dream"]
+        coverage.sessionsWithMentions = 2
         let context = PatientContext(
             text: "===== Session [S1] March 15, 2026 =====\n[0:10] C: Michaels dream is to sail.",
             sources: [CitationSource(tag: "S1", date: date(2026, 3, 15), folderName: "f1")],
@@ -577,6 +579,7 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertTrue(progress.completedStages.contains("Gathered the full transcripts of 2 sessions"), "\(progress.completedStages)")
         XCTAssertEqual(progress.steps, PatientAskSteps(effort: .normal, layered: false).writing)
         XCTAssertEqual(progress.readTitle, "Reading what was gathered")
+        XCTAssertEqual(progress.lead, "2 mentions, across 2 sessions", "what search found leads the status line")
         XCTAssertNotNil(progress.startedAt, "the elapsed time runs from the stage's start")
         XCTAssertNotNil(progress.firstTokenAt)
     }

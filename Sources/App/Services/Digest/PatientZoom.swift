@@ -354,11 +354,42 @@ struct PatientAskSteps: Equatable {
     func choosing(round: Int) -> AIRunSteps { AIRunSteps(done: 1 + min(round, max(0, rounds - 1)), total: total) }
     var writing: AIRunSteps { AIRunSteps(done: total - 1, total: total) }
 
-    /// What the line beside the bar says while the sessions are searched.
-    static func gatheringText(sessions n: Int) -> String {
-        n > 0
-            ? "Searching \(n) session\(n == 1 ? "" : "s") and gathering summaries and notes…"
-            : "Searching and gathering summaries and notes…"
+    /// What the status line says while the sessions are searched:
+    /// "Searching 12 sessions for “dream”, “michaels”…".
+    /// The most words the searching line names; the rest are counted.
+    static let gatheringTermLimit = 3
+
+    static func gatheringText(sessions n: Int, terms: [String] = []) -> String {
+        let what = n > 0 ? " \(n) session\(n == 1 ? "" : "s")" : ""
+        guard !terms.isEmpty else { return "Searching\(what) and gathering summaries and notes…" }
+        let shown = terms.prefix(gatheringTermLimit)
+        let more = terms.count - shown.count
+        let words = quotedList(Array(shown), joiner: ",") + (more > 0 ? " and \(more) more" : "")
+        return "Searching\(what.isEmpty ? " the sessions" : what) for \(words)…"
+    }
+
+    /// What search found, said before the model reads it: "1 mention, in the
+    /// Oct 13 session", "5 mentions, across 3 sessions", "No mention of
+    /// “dream” in any session". Nil when the question had nothing to search for.
+    static func finding(_ coverage: TranscriptCoverage) -> String? {
+        guard coverage.searched, !coverage.searchTerms.isEmpty else { return nil }
+        let total = coverage.mentions + coverage.similarMentions
+        guard total > 0 else {
+            return "No mention of \(quotedList(coverage.searchTerms, joiner: " or")) in any session"
+        }
+        let mentions = "\(total) mention\(total == 1 ? "" : "s")"
+        if coverage.sessionsWithMentions == 1, let date = coverage.mentionDate {
+            return "\(mentions), in the \(date.formatted(.dateTime.month(.abbreviated).day())) session"
+        }
+        let n = coverage.sessionsWithMentions
+        return n > 1 ? "\(mentions), across \(n) sessions" : mentions
+    }
+
+    /// “a”, “b” — or, for `" or"`, “a” or “b”; “a”, “b” or “c”.
+    private static func quotedList(_ words: [String], joiner: String) -> String {
+        let quoted = words.map { "“\($0)”" }
+        guard joiner == " or", quoted.count > 1 else { return quoted.joined(separator: ", ") }
+        return quoted.dropLast().joined(separator: ", ") + " or " + quoted[quoted.count - 1]
     }
 
     /// The finished steps listed once the model starts, from what was gathered.

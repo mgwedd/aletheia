@@ -38,15 +38,12 @@ private struct DigestStatusLine: View {
 
     var body: some View {
         if let progress = builder.progress[sessionID] {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(DigestBuilder.activityTitle)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
+            VStack(alignment: .leading, spacing: 6) {
+                AIProgressView(progress: DigestBuilder.statusProgress(progress))
                 if let steps = progress.steps {
                     ThemeProgressBar(value: steps.fraction)
                         .frame(maxWidth: 240)
                 }
-                AIProgressView(progress: progress)
             }
             .padding([.horizontal, .top], 20)
         } else if let failure = builder.failures[sessionID] {
@@ -63,8 +60,8 @@ private struct DigestStatusLine: View {
     }
 }
 
-/// The note pane's progress: "Generating SOAP note" over a bar that never
-/// moves backwards.
+/// The note pane's progress: the shared status line, led by "Generating SOAP
+/// note", over a bar that never moves backwards.
 private struct NoteProgressRow: View {
     let title: String
     let progress: AIRunProgress
@@ -76,9 +73,7 @@ private struct NoteProgressRow: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.text.color)
+                AIStatusLineView(text: NoteProgress.statusLine(title: title, progress, now: context.date, speed: speed))
                 ThemeProgressBar(value: highWater.clamp(NoteProgress.fraction(progress, now: context.date, speed: speed)))
                     .frame(maxWidth: 240)
             }
