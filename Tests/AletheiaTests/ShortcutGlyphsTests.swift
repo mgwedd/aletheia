@@ -30,18 +30,18 @@ final class ShortcutGlyphsTests: XCTestCase {
     }
 
     func testSymbolsRunTheKeysTogether() {
-        XCTAssertEqual(ShortcutGlyphs.symbols(for: AppShortcut.newPatient), "⌘N")
-        XCTAssertEqual(ShortcutGlyphs.symbols(for: AppShortcut.saveComment), "⌘↩")
+        XCTAssertEqual(ShortcutGlyphs.symbols(for: AppHotkey.newPatient), "⌘N")
+        XCTAssertEqual(ShortcutGlyphs.symbols(for: AppHotkey.saveComment), "⌘↩")
     }
 
     func testSpokenNamesSpellOutEveryKey() {
         XCTAssertEqual(ShortcutGlyphs.spoken(for: KeyboardShortcut("m", modifiers: [.command, .option])), "Option Command M")
-        XCTAssertEqual(ShortcutGlyphs.spoken(for: AppShortcut.saveComment), "Command Return")
+        XCTAssertEqual(ShortcutGlyphs.spoken(for: AppHotkey.saveComment), "Command Return")
         XCTAssertEqual(ShortcutGlyphs.spoken(for: .cancelAction), "Escape")
     }
 
     func testHelpAppendsTheShortcutToTheTooltip() {
-        XCTAssertEqual(ShortcutGlyphs.help("Add a new patient", AppShortcut.newPatient), "Add a new patient (⌘N)")
+        XCTAssertEqual(ShortcutGlyphs.help("Add a new patient", AppHotkey.newPatient), "Add a new patient (⌘N)")
         XCTAssertEqual(ShortcutGlyphs.help("Close", .cancelAction), "Close (esc)")
     }
 }
@@ -89,8 +89,8 @@ final class ShortcutHintWiringTests: XCTestCase {
 
     func testTheAppShortcutsAreBoundThroughTheHelper() throws {
         let all = try sourceFiles().map(\.text).joined(separator: "\n")
-        XCTAssertTrue(all.contains(".shortcut(AppShortcut.newPatient"))
-        XCTAssertTrue(all.contains(".shortcut(AppShortcut.saveComment"))
-        XCTAssertTrue(all.contains("ShortcutHint(AppShortcut.saveComment)"))
+        XCTAssertTrue(all.contains(".shortcut(AppHotkey.newPatient"))
+        XCTAssertTrue(all.contains(".shortcut(AppHotkey.saveComment"))
+        XCTAssertTrue(all.contains("ShortcutHint(AppHotkey.saveComment)"))
     }
 }
