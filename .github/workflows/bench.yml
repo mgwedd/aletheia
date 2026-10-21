@@ -1,5 +1,9 @@
 name: Benchmarks
 
+# DISABLED for now: the job isn't producing reliable results. It only runs when
+# started by hand (Actions > Benchmarks > Run workflow); on push and on pull
+# requests it is skipped. To turn it back on, delete the `if:` line on the job.
+
 # Fast benchmarks (PRBenchmarkTests, well under two minutes once built) on every
 # PR and main push. Informational only: nothing here fails on a timing. Main
 # runs upload their results as the baseline; a PR run compares its medians with
@@ -33,6 +37,7 @@ permissions:
 jobs:
   bench:
     name: Benchmarks (informational)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 30
     env:

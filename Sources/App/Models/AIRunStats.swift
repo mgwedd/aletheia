@@ -84,6 +84,8 @@ struct AIRunProgress: Equatable {
     /// Streamed chunks (about one per token) until Ollama reports the real count.
     var tokensWritten = 0
     var stats: AIRunStats?
+    /// Overall position in a multi-call run (a digest), kept across stages.
+    var steps: AIRunSteps?
 
     /// Advances to a new read/write stage, keeping a one-line summary of the
     /// stage that just finished in `completedStages`.
@@ -100,7 +102,8 @@ struct AIRunProgress: Equatable {
             completedStages: history,
             readTitle: readTitle,
             writeTitle: writeTitle,
-            startedAt: startedAt
+            startedAt: startedAt,
+            steps: steps
         )
     }
 

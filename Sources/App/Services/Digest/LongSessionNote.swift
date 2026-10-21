@@ -269,7 +269,7 @@ enum LongSessionNote {
             live: { started, change in
                 live(started) {
                     change(&$0)
-                    if !$0.readTitle.hasPrefix("Building digest") { $0.readTitle = "Building digest · \($0.readTitle)" }
+                    if !$0.readTitle.hasPrefix(DigestBuilder.activityTitle) { $0.readTitle = "\(DigestBuilder.activityTitle) · \($0.readTitle)" }
                 }
             })
         // Failing to keep the digest must not fail the note.

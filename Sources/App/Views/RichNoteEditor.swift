@@ -51,17 +51,17 @@ struct RichNoteEditor: View {
         HStack(spacing: 2) {
             styleMenu
             toolbarDivider
-            formatButton("Bold", symbol: "bold", help: "Bold (⌘B)", active: controller.isBold) {
+            formatButton("Bold", symbol: "bold", help: ShortcutGlyphs.help("Bold", AppHotkey.bold), active: controller.isBold) {
                 controller.toggleBold()
             }
-            formatButton("Italic", symbol: "italic", help: "Italic (⌘I)", active: controller.isItalic) {
+            formatButton("Italic", symbol: "italic", help: ShortcutGlyphs.help("Italic", AppHotkey.italic), active: controller.isItalic) {
                 controller.toggleItalic()
             }
             toolbarDivider
-            formatButton("Bulleted list", symbol: "list.bullet", help: "Bulleted list (⇧⌘7)", active: controller.block == .bullet) {
+            formatButton("Bulleted list", symbol: "list.bullet", help: ShortcutGlyphs.help("Bulleted list", AppHotkey.bulletedList), active: controller.block == .bullet) {
                 controller.setBlock(.bullet)
             }
-            formatButton("Numbered list", symbol: "list.number", help: "Numbered list (⇧⌘9)", active: controller.block == .numbered) {
+            formatButton("Numbered list", symbol: "list.number", help: ShortcutGlyphs.help("Numbered list", AppHotkey.numberedList), active: controller.block == .numbered) {
                 controller.setBlock(.numbered)
             }
             Spacer(minLength: 0)
@@ -101,7 +101,7 @@ struct RichNoteEditor: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Text style: Body (⇧⌘B), Heading (⇧⌘H), Subheading (⇧⌘J)")
+        .help("Text style: Body (\(ShortcutGlyphs.symbols(for: AppHotkey.bodyText))), Heading (\(ShortcutGlyphs.symbols(for: AppHotkey.heading))), Subheading (\(ShortcutGlyphs.symbols(for: AppHotkey.subheading)))")
         .accessibilityLabel("Text style")
         .accessibilityValue(styleTitle)
     }
