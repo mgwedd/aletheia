@@ -192,6 +192,41 @@ struct LocalToolCall: Equatable, Codable {
     var to: String?
 }
 
+/// A model that is not held to the grammar (Ollama) often writes a time as a
+/// bare number, `"start": 600`, where the grammar demands a string. Every field
+/// is read as text when it is a string or a number, so such a plan still decodes.
+extension LocalToolCall {
+    private enum Key: String, CodingKey {
+        case tool, query, session, start, end, from, to
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: Key.self)
+        self.init(
+            tool: try container.decode(String.self, forKey: .tool),
+            query: try Self.text(container, .query),
+            session: try Self.text(container, .session),
+            start: try Self.text(container, .start),
+            end: try Self.text(container, .end),
+            from: try Self.text(container, .from),
+            to: try Self.text(container, .to)
+        )
+    }
+
+    /// The field as text: a string as written, a whole number without a
+    /// fraction (`600` and `600.0` both read "600"), nil when absent or null.
+    /// Anything else (a bool, an object) still fails the decode.
+    private static func text(_ container: KeyedDecodingContainer<Key>, _ key: Key) throws -> String? {
+        guard container.contains(key) else { return nil }
+        if try container.decodeNil(forKey: key) { return nil }
+        if let string = try? container.decode(String.self, forKey: key) { return string }
+        if let whole = try? container.decode(Int.self, forKey: key) { return String(whole) }
+        let number = try container.decode(Double.self, forKey: key)
+        if number.isFinite && abs(number) < 1e15 { return String(Int(number.rounded(.down))) }
+        return String(number)
+    }
+}
+
 /// The outcome of running one `LocalToolCall` against local session data.
 struct LocalToolOutcome: Equatable {
     let call: LocalToolCall

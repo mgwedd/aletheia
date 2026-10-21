@@ -50,6 +50,8 @@ struct AletheiaApp: App {
     /// App-level transcription runner, so progress survives leaving the session
     /// screen and shows in the sidebar and menu bar.
     @StateObject private var transcription: TranscriptionCoordinator
+    /// Patient-records exports run in the background and report through this.
+    @StateObject private var exports = ExportJobCenter(notifier: UserNotificationService())
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
 
@@ -132,6 +134,7 @@ struct AletheiaApp: App {
                 .environmentObject(recorder)
                 .environmentObject(transcription)
                 .environmentObject(encryption)
+                .environmentObject(exports)
                 .sheet(isPresented: showFirstRun) {
                     FirstRunView()
                         .environmentObject(settings)

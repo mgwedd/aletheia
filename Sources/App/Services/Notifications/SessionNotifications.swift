@@ -56,4 +56,22 @@ enum SessionNotifications {
                 : "A session has been recording for over 90 minutes. Did you forget to end it?"
         )
     }
+
+    /// The records export finished. Deliberately generic: a notification can show
+    /// on a locked screen, so it never names the patient or the contents.
+    static func exportReady() -> AppNotificationContent {
+        AppNotificationContent(
+            identifier: "records-export",
+            title: "Export ready",
+            body: "Your records export is ready in Aletheia."
+        )
+    }
+
+    static func exportFailed() -> AppNotificationContent {
+        AppNotificationContent(
+            identifier: "records-export",
+            title: "Export didn't finish",
+            body: "Open Aletheia to see why."
+        )
+    }
 }

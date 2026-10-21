@@ -14,6 +14,43 @@ struct TranscriptSection: Equatable {
         guard let start, let end else { return "[part \(index + 1) of \(count)]" }
         return "[\(TranscriptTimeline.format(start))–\(TranscriptTimeline.format(end))]"
     }
+
+    /// The anchor for a run of consecutive sections merged into one, from where
+    /// the `first` starts to where the `last` ends: `[00:00–09:00]` and
+    /// `[10:00–19:00]` give `[00:00–19:00]`, `[part 1 of 5]` and `[part 2 of 5]`
+    /// give `[part 1–2 of 5]`. Merging merged anchors stays one flat range
+    /// rather than listing every piece. Anchors of a different shape give
+    /// `first … last` (endpoints only).
+    static func mergedAnchor(first: String, last: String) -> String {
+        if let a = partRange(first), let b = partRange(last), a.count == b.count {
+            return "[part \(a.from)–\(b.to) of \(a.count)]"
+        }
+        let firstEnd = unbracketed(first)
+        let lastEnd = unbracketed(last)
+        if let start = firstEnd.components(separatedBy: "–").first,
+           let end = lastEnd.components(separatedBy: "–").last,
+           firstEnd.contains("–"), lastEnd.contains("–"),
+           !firstEnd.hasPrefix("part "), !lastEnd.hasPrefix("part ") {
+            return "[\(start)–\(end)]"
+        }
+        let head = first.components(separatedBy: " … ").first ?? first
+        let tail = last.components(separatedBy: " … ").last ?? last
+        return "\(head) … \(tail)"
+    }
+
+    private static func unbracketed(_ anchor: String) -> String {
+        anchor.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+    }
+
+    /// `[part 2 of 5]` or `[part 1–2 of 5]`: the first and last part and the count.
+    private static func partRange(_ anchor: String) -> (from: String, to: String, count: String)? {
+        let inner = unbracketed(anchor)
+        guard inner.hasPrefix("part ") else { return nil }
+        let pieces = inner.dropFirst("part ".count).components(separatedBy: " of ")
+        guard pieces.count == 2, let from = pieces[0].components(separatedBy: "–").first,
+              let to = pieces[0].components(separatedBy: "–").last else { return nil }
+        return (from, to, pieces[1])
+    }
 }
 
 /// Splits a transcript into sections of about ten minutes (by its `[MM:SS]`

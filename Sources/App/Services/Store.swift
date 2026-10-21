@@ -1373,6 +1373,11 @@ final class Store {
 
     // MARK: - Export
 
+    /// The therapist's comments on a session's transcript (none when the database isn't open).
+    func comments(for session: SessionRecord) -> [SessionComment] {
+        commentStore?.comments(sessionID: session.id) ?? []
+    }
+
     func exportSessionMarkdown(patient: Patient, session: SessionRecord) -> String {
         MarkdownExporter.session(
             date: session.date,
@@ -1380,18 +1385,6 @@ final class Store {
             transcript: transcript(for: patient, session: session),
             summary: summary(for: patient, session: session)
         )
-    }
-
-    func exportPatientHistoryMarkdown(patient: Patient) -> String {
-        let sessions = (try? listSessions(for: patient)) ?? []
-        let exports = sessions.map { session in
-            SessionExport(
-                date: session.date,
-                transcript: transcript(for: patient, session: session) ?? "",
-                summary: summary(for: patient, session: session) ?? ""
-            )
-        }
-        return MarkdownExporter.patientHistory(patientName: patient.name, notes: patient.notes, sessions: exports)
     }
 
     // MARK: - Cross-session context (the RAG swap-point)
