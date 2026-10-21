@@ -14,8 +14,9 @@ final class SearchHomeViewTests: XCTestCase {
     private struct Host: View {
         @ObservedObject var model: GlobalSearchModel
         @ObservedObject var probe: Probe
+        @FocusState private var focused: Bool
         var body: some View {
-            SearchHomeView(model: model, onOpen: { _ in })
+            SearchHomeView(model: model, onOpen: { _ in }, isFocused: $focused)
                 .background(GeometryReader { proxy in
                     Color.clear.onAppear { probe.size = proxy.size }.onChange(of: proxy.size) { _, size in probe.size = size }
                 })
