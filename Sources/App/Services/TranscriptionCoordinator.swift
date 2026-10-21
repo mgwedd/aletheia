@@ -99,7 +99,10 @@ final class TranscriptionCoordinator: ObservableObject {
             switch outcome {
             case .failed, .blank:
                 await self.integrations.makeNotifier().post(
-                    SessionNotifications.transcriptionProblem(patientName: patient.name, date: session.date)
+                    SessionNotifications.transcriptionProblem(
+                        patientName: patient.name, date: session.date,
+                        showsName: self.settings.notificationsShowPatientNames
+                    )
                 )
             case .completed, .cancelled:
                 break
@@ -215,7 +218,10 @@ final class TranscriptionCoordinator: ObservableObject {
             }
             appModel.refreshPatients()
             await integrations.makeNotifier().post(
-                SessionNotifications.transcriptionComplete(patientName: patient.name, date: session.date)
+                SessionNotifications.transcriptionComplete(
+                    patientName: patient.name, date: session.date,
+                    showsName: settings.notificationsShowPatientNames
+                )
             )
             return .completed
         } catch is CancellationError {

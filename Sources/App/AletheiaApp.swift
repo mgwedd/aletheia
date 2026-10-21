@@ -77,7 +77,10 @@ struct AletheiaApp: App {
         recorder.onLongRunning = { [weak integrations] recording in
             Task {
                 await integrations?.makeNotifier().post(
-                    SessionNotifications.longRecordingReminder(patientName: recording.patientName)
+                    SessionNotifications.longRecordingReminder(
+                        patientName: recording.patientName,
+                        showsName: settings.notificationsShowPatientNames
+                    )
                 )
             }
         }

@@ -96,6 +96,7 @@ final class AppSettings: ObservableObject {
         static let progressNoteFormat = "progressNoteFormat"
         static let summaryVerbosity = "summaryVerbosity"
         static let includeCommentsInDrafts = "includeCommentsInDrafts"
+        static let notificationsShowPatientNames = "notificationsShowPatientNames"
         static let transcriptSplitRatio = "transcriptSplitRatio"
         static let includePatientBackground = "includePatientBackground"
         static let noteInstructions = "noteInstructions"
@@ -191,6 +192,11 @@ final class AppSettings: ObservableObject {
     /// On by default.
     @Published var includeCommentsInDrafts: Bool {
         didSet { defaults.set(includeCommentsInDrafts, forKey: Keys.includeCommentsInDrafts) }
+    }
+    /// Whether system notifications name the patient and session date. Off by
+    /// default: banners show on the lock screen and macOS keeps them.
+    @Published var notificationsShowPatientNames: Bool {
+        didSet { defaults.set(notificationsShowPatientNames, forKey: Keys.notificationsShowPatientNames) }
     }
     /// The share of the session pane the transcript takes beside its comments
     /// (the rest is the comments). Where the divider was last dragged.
@@ -407,6 +413,7 @@ final class AppSettings: ObservableObject {
         summaryVerbosity = defaults.string(forKey: Keys.summaryVerbosity)
             .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
         includeCommentsInDrafts = defaults.object(forKey: Keys.includeCommentsInDrafts) as? Bool ?? true
+        notificationsShowPatientNames = defaults.object(forKey: Keys.notificationsShowPatientNames) as? Bool ?? false
         transcriptSplitRatio = TranscriptSplit.sanitized(
             ratio: defaults.object(forKey: Keys.transcriptSplitRatio) as? Double ?? TranscriptSplit.defaultRatio
         )
