@@ -78,6 +78,8 @@ struct ChatPaneView: View {
     var speed: ModelSpeed? = nil
     /// Optional Fast / Normal / Focus selector shown above the field (#286 Step 5b).
     var effort: Binding<AnswerEffort>? = nil
+    /// Which chat the selector applies to, for its description.
+    var effortFeature: EffortFeature = .sessionChat
 
     @State private var draft: String = ""
     @FocusState private var inputFocused: Bool
@@ -327,7 +329,7 @@ struct ChatPaneView: View {
             )
             .frame(width: 240)
             .disabled(isSending)
-            .help(effort.wrappedValue.blurb)
+            .help(effort.wrappedValue.blurb(for: effortFeature))
             .accessibilityLabel(AnswerEffort.label)
             Spacer(minLength: 0)
         }
