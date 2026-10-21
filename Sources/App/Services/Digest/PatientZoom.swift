@@ -43,7 +43,8 @@ enum PatientZoom {
     /// How many of the newest sessions keep their own summary before older ones
     /// are merged by month: about one per 1,500 characters of the summaries'
     /// share, so a Mac with more memory reads more sessions' summaries whole
-    /// (8 GB about 6, 16 GB about 12, 32 GB about 25 on an empty conversation).
+    /// (at Normal on an empty conversation, with notes using their full third:
+    /// about 5 on 8 GB, 14 on 16 GB, 32 on 32 GB and up; more when there are fewer notes).
     static func individualSummaryLimit(summaryRoom: Int) -> Int {
         max(4, summaryRoom / 1_500)
     }
