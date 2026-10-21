@@ -39,9 +39,13 @@ private struct DigestStatusLine: View {
     var body: some View {
         if let progress = builder.progress[sessionID] {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Building digest")
+                Text(DigestBuilder.activityTitle)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
+                if let steps = progress.steps {
+                    ThemeProgressBar(value: steps.fraction)
+                        .frame(maxWidth: 240)
+                }
                 AIProgressView(progress: progress)
             }
             .padding([.horizontal, .top], 20)

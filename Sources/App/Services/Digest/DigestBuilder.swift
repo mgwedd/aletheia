@@ -32,6 +32,12 @@ final class DigestBuilder: ObservableObject {
     /// or build are dropped.
     typealias Live = @MainActor (_ started: Date?, _ change: (inout AIRunProgress) -> Void) -> Void
 
+    /// What the user sees for this work: it reads and condenses the transcript,
+    /// so the wording avoids "digest".
+    static let activityTitle = "Processing transcript"
+    static let writeTitle = "Writing summary"
+    static let mergeTitle = "Combining sections"
+
     init(queue: InferenceQueue) {
         self.queue = queue
     }
@@ -126,11 +132,14 @@ final class DigestBuilder: ObservableObject {
         inline: Bool = false
     ) async throws -> SessionDigest {
         let sections = TranscriptSections.split(transcript)
+        // One call per section, plus the final merge.
+        let totalSteps = sections.count + 1
         var parts: [SessionDigest.Section] = []
         var anchored: [(anchor: String, digest: String)] = []
         for (index, section) in sections.enumerated() {
             try Task.checkCancellation()
             progress(index + 1, sections.count)
+            live(nil) { $0.steps = AIRunSteps(done: index, total: totalSteps) }
             let anchor = section.anchor(index: index, count: sections.count)
             let text = try await generate(
                 Prompts.sectionDigest(text: section.text, anchor: anchor),
@@ -139,6 +148,7 @@ final class DigestBuilder: ObservableObject {
             anchored.append((anchor, text))
         }
         try Task.checkCancellation()
+        live(nil) { $0.steps = AIRunSteps(done: sections.count, total: totalSteps) }
         let merged = try await merge(anchored, service: service, live: live, inline: inline)
         return SessionDigest(
             model: service.model,
@@ -168,7 +178,7 @@ final class DigestBuilder: ObservableObject {
                     next.append(first)
                 } else {
                     let text = try await generate(
-                        Prompts.sessionDigest(sections: group), stage: "Merging digests", service: service, live: live, inline: inline)
+                        Prompts.sessionDigest(sections: group), stage: Self.mergeTitle, service: service, live: live, inline: inline)
                     next.append(("\(first.anchor) … \(last.anchor)", text))
                 }
                 group = []
@@ -183,7 +193,7 @@ final class DigestBuilder: ObservableObject {
             items = next
         }
         return try await generate(
-            Prompts.sessionDigest(sections: items), stage: "Merging digests", service: service, live: live, inline: inline)
+            Prompts.sessionDigest(sections: items), stage: Self.mergeTitle, service: service, live: live, inline: inline)
     }
 
     /// One model call, run as a `.digest` job on the shared queue. With `inline`
@@ -193,7 +203,7 @@ final class DigestBuilder: ObservableObject {
         _ prompt: String, stage: String, service: AssistantService, live: @escaping Live, inline: Bool
     ) async throws -> String {
         if inline {
-            return try await runStage(prompt, read: stage, write: "Writing digest", service: service, live: live)
+            return try await runStage(prompt, read: stage, write: Self.writeTitle, service: service, live: live)
         }
         let waiter = JobWaiter()
         return try await withTaskCancellationHandler {
@@ -203,7 +213,7 @@ final class DigestBuilder: ObservableObject {
                 waiter.jobID = queue.enqueue(kind: .digest, label: "digest") {
                     do {
                         waiter.finish(.success(try await self.runStage(
-                            prompt, read: stage, write: "Writing digest", service: service, live: live)))
+                            prompt, read: stage, write: Self.writeTitle, service: service, live: live)))
                     } catch {
                         waiter.finish(.failure(error))
                     }
