@@ -91,11 +91,8 @@ struct GlobalSearchResults: Equatable {
     /// Non-empty groups, in `SearchKind` order.
     var sections: [GlobalSearchSection]
     var coverage: GlobalSearchCoverage
-    /// Typed words that weren't looked up in text, filled only when none could
-    /// be (so the screen can say why no note or transcript matched).
-    var unsearchedWords: [String]
 
-    static let empty = GlobalSearchResults(sections: [], coverage: .complete, unsearchedWords: [])
+    static let empty = GlobalSearchResults(sections: [], coverage: .complete)
 
     /// Every shown hit, group by group.
     var hits: [SearchHit] { sections.flatMap { $0.hits } }

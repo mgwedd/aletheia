@@ -104,12 +104,12 @@ enum PatientZoom {
         }
     }
 
-    /// The question's words as the index compares them (stemmed), stopwords left out.
+    /// The question's words as the index stores them (`SearchIndex.stored`), stopwords left out.
     static func stems(of terms: [SessionSearch.Term]) -> Set<String> {
         var result = Set<String>()
         for term in terms {
             for word in term.words where !SessionSearch.stopwords.contains(word) {
-                result.insert(SessionSearch.stem(word))
+                result.insert(SearchIndex.stored(word))
             }
         }
         return result
@@ -119,7 +119,7 @@ enum PatientZoom {
     static func matches(of stems: Set<String>, in text: String) -> Int {
         guard !stems.isEmpty else { return 0 }
         var count = 0
-        for word in SessionSearch.tokenize(text) where stems.contains(SessionSearch.stem(word)) {
+        for word in SessionSearch.tokenize(text) where stems.contains(SearchIndex.stored(word)) {
             count += 1
         }
         return count
