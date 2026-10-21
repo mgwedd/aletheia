@@ -8,14 +8,10 @@ enum ChatComposerLayout {
     static let minFieldHeight: CGFloat = 40
     static let maxFieldHeight: CGFloat = 120
 
-    enum ReturnKeyAction: Equatable {
-        case send
-        case newline
-    }
-
-    /// Return sends; Shift or Option with Return adds a line.
-    static func returnKeyAction(shift: Bool, option: Bool) -> ReturnKeyAction {
-        shift || option ? .newline : .send
+    /// A question is one paragraph: any run of line breaks (a pasted
+    /// paragraph, say) becomes a single space when it is sent.
+    static func collapsingLineBreaks(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\s*[\\r\\n]+\\s*", with: " ", options: .regularExpression)
     }
 }
 
@@ -238,8 +234,8 @@ struct ChatPaneView: View {
     }
 
     /// The shared themed text area: it grows with the text up to
-    /// `maxFieldHeight`, then scrolls. Return sends; Shift or Option with
-    /// Return adds a line; Tab moves on to the next control.
+    /// `maxFieldHeight`, then scrolls. Return, Enter, Shift-Return and
+    /// Option-Return all send (never a line break); Tab moves on to the next control.
     private var inputField: some View {
         ThemeTextArea(
             text: $draft,
@@ -247,6 +243,7 @@ struct ChatPaneView: View {
             height: .grows(min: ChatComposerLayout.minFieldHeight, max: ChatComposerLayout.maxFieldHeight),
             accessibilityLabel: "Ask about \(title)",
             onSubmit: send,
+            modifiedReturnSubmits: true,
             tabMovesFocus: true,
             isFocused: $inputFocused
         )
@@ -282,7 +279,7 @@ struct ChatPaneView: View {
     }
 
     private func send() {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = ChatComposerLayout.collapsingLineBreaks(draft.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty else { return }
         draft = ""
         if let onCompact, let focus = ChatMemory.compactCommand(text) {

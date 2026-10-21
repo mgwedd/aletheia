@@ -16,6 +16,20 @@ final class ThemeTextAreaTests: XCTestCase {
         XCTAssertEqual(ThemeTextAreaMetrics.textContainerInset.width + ThemeTextAreaMetrics.lineFragmentPadding, 12)
     }
 
+    func testSingleLineFieldUsesTheSameInsetAsTheTextArea() {
+        XCTAssertEqual(ThemeTextFieldMetrics.horizontalPadding, ThemeTextAreaMetrics.textOrigin.x)
+    }
+
+    func testThemeTextFieldHostsAndFitsItsHeight() {
+        struct Host: View {
+            @State var name = ""
+            var body: some View { ThemeTextField(placeholder: "Patient name", text: $name).frame(width: 300) }
+        }
+        let hosting = NSHostingView(rootView: Host())
+        hosting.layoutSubtreeIfNeeded()
+        XCTAssertEqual(hosting.fittingSize.height, ThemeTextFieldMetrics.height, accuracy: 1)
+    }
+
     func testBodyAndPlaceholderShareFontAndParagraphStyle() {
         for face in [ThemeTextArea.Face.body, .monospaced] {
             let text = ThemeTextAreaMetrics.attributes(face: face, color: .black)
@@ -141,6 +155,20 @@ final class ThemeTextAreaTests: XCTestCase {
         textView.keyDown(with: keyDown(36, flags: .option, in: window))
         XCTAssertEqual(sent, 1)
         XCTAssertEqual(textView.string, "hi\n\n")
+    }
+
+    func testChatStyleFieldSendsOnEveryReturnAndNeverAddsALine() {
+        let (textView, _, window) = makeTextView(text: "hi")
+        var sent = 0
+        textView.onSubmit = { sent += 1 }
+        textView.modifiedReturnSubmits = true
+        window.makeFirstResponder(textView)
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
+        for (code, flags) in [(UInt16(36), NSEvent.ModifierFlags()), (76, []), (36, .shift), (36, .option), (36, [.shift, .option])] {
+            textView.keyDown(with: keyDown(code, flags: flags, in: window))
+        }
+        XCTAssertEqual(sent, 5)
+        XCTAssertEqual(textView.string, "hi")
     }
 
     func testReturnIsANewlineWhenThereIsNoSubmitHandler() {

@@ -41,8 +41,11 @@ struct ThemeTextArea: View {
     var face: Face = .body
     var accessibilityLabel: String?
     /// Return calls this instead of inserting a line (Shift or Option with
-    /// Return still adds one). Nil leaves Return as a newline.
+    /// Return still adds one unless `modifiedReturnSubmits`). Nil leaves Return as a newline.
     var onSubmit: (() -> Void)?
+    /// Shift or Option with Return submits too, so no key makes a line break
+    /// (a one-paragraph field such as a chat question).
+    var modifiedReturnSubmits = false
     /// Tab moves focus to the next control instead of typing a tab character.
     var tabMovesFocus = false
     var autofocus: Autofocus = .none
@@ -61,6 +64,7 @@ struct ThemeTextArea: View {
             face: face,
             accessibilityLabel: accessibilityLabel ?? (placeholder.isEmpty ? nil : placeholder),
             onSubmit: onSubmit,
+            modifiedReturnSubmits: modifiedReturnSubmits,
             tabMovesFocus: tabMovesFocus,
             autofocus: autofocus,
             isFocused: focus
@@ -126,6 +130,7 @@ final class ThemeTextAreaTextView: NSTextView {
     var placeholder = "" { didSet { if placeholder != oldValue { needsDisplay = true } } }
     var face: ThemeTextArea.Face = .body
     var onSubmit: (() -> Void)?
+    var modifiedReturnSubmits = false
     var tabMovesFocus = false
     var onFocusChange: ((Bool) -> Void)?
 
@@ -165,14 +170,12 @@ final class ThemeTextAreaTextView: NSTextView {
         // 36 is Return, 76 the keypad Enter.
         if let onSubmit, isEditable, event.keyCode == 36 || event.keyCode == 76, !hasMarkedText() {
             let flags = event.modifierFlags
-            switch ChatComposerLayout.returnKeyAction(shift: flags.contains(.shift), option: flags.contains(.option)) {
-            case .send:
+            if modifiedReturnSubmits || !(flags.contains(.shift) || flags.contains(.option)) {
                 onSubmit()
-                return
-            case .newline:
+            } else {
                 insertNewlineIgnoringFieldEditor(nil)
-                return
             }
+            return
         }
         super.keyDown(with: event)
     }
@@ -225,6 +228,7 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
     let face: ThemeTextArea.Face
     let accessibilityLabel: String?
     let onSubmit: (() -> Void)?
+    let modifiedReturnSubmits: Bool
     let tabMovesFocus: Bool
     let autofocus: ThemeTextArea.Autofocus
     @Binding var isFocused: Bool
@@ -328,6 +332,7 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
         func configure(_ textView: ThemeTextAreaTextView, with representable: ThemeTextAreaRepresentable) {
             textView.placeholder = representable.placeholder
             textView.onSubmit = representable.onSubmit
+            textView.modifiedReturnSubmits = representable.modifiedReturnSubmits
             textView.tabMovesFocus = representable.tabMovesFocus
             textView.setAccessibilityLabel(representable.accessibilityLabel)
             textView.onFocusChange = { [weak self] focused in

@@ -2,11 +2,10 @@ import XCTest
 @testable import Aletheia
 
 final class ChatComposerLayoutTests: XCTestCase {
-    func testReturnSendsAndModifiedReturnAddsALine() {
-        XCTAssertEqual(ChatComposerLayout.returnKeyAction(shift: false, option: false), .send)
-        XCTAssertEqual(ChatComposerLayout.returnKeyAction(shift: true, option: false), .newline)
-        XCTAssertEqual(ChatComposerLayout.returnKeyAction(shift: false, option: true), .newline)
-        XCTAssertEqual(ChatComposerLayout.returnKeyAction(shift: true, option: true), .newline)
+    func testLineBreaksCollapseToASingleSpaceOnSend() {
+        XCTAssertEqual(ChatComposerLayout.collapsingLineBreaks("one\ntwo"), "one two")
+        XCTAssertEqual(ChatComposerLayout.collapsingLineBreaks("one \n\n  two\r\nthree"), "one two three")
+        XCTAssertEqual(ChatComposerLayout.collapsingLineBreaks("no breaks here"), "no breaks here")
     }
 
     func testFieldGrowsThenScrolls() {
