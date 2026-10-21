@@ -229,6 +229,47 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(broken, [LocalToolCall(tool: "invalid_json")])
     }
 
+    func testParseCallsAcceptsPlainNumbersWhereTheGrammarWantsStrings() {
+        // Ollama does not apply the grammar, so a model may write seconds as a number.
+        let numeric = LocalToolLoop.parseCalls(
+            #"{"calls":[{"tool":"read_section","session":"S1","start":600,"end":900}]}"#
+        )
+        XCTAssertEqual(numeric, [LocalToolCall(tool: "read_section", session: "S1", start: "600", end: "900")])
+
+        let whole = LocalToolLoop.parseCalls(#"{"tool":"read_section","session":1,"start":600.0,"end":"15:00"}"#)
+        XCTAssertEqual(whole, [LocalToolCall(tool: "read_section", session: "1", start: "600", end: "15:00")])
+
+        let fractional = LocalToolLoop.parseCalls(#"[{"tool":"read_section","session":"S1","start":600.9,"end":null}]"#)
+        XCTAssertEqual(fractional, [LocalToolCall(tool: "read_section", session: "S1", start: "600", end: nil)])
+
+        // Strings still decode as written, and a wrong kind of value is still not a plan.
+        let strings = LocalToolLoop.parseCalls(#"{"calls":[{"tool":"read_section","session":"S1","start":"10:00"}]}"#)
+        XCTAssertEqual(strings, [LocalToolCall(tool: "read_section", session: "S1", start: "10:00")])
+        let boolean = LocalToolLoop.parseCalls(#"{"tool":"read_section","start":true}"#)
+        XCTAssertEqual(boolean, [LocalToolCall(tool: "invalid_json")])
+    }
+
+    func testNumericStartAndEndReadTheSameSectionAsTheirTextForm() throws {
+        let scope = LocalToolScope(sessions: sampleSessions())
+        let calls = LocalToolLoop.parseCalls(
+            #"{"calls":[{"tool":"read_section","session":"S1","start":720,"end":780}]}"#
+        )
+        XCTAssertEqual(calls.count, 1)
+        let outcome = scope.execute(try XCTUnwrap(calls.first))
+        XCTAssertFalse(outcome.isError, outcome.output)
+        XCTAssertTrue(outcome.output.contains("sister Dana"))
+        XCTAssertEqual(outcome.readTranscriptTags, ["S1"])
+
+        let text = scope.execute(LocalToolCall(tool: "read_section", session: "S1", start: "12:00", end: "13:00"))
+        XCTAssertEqual(outcome.output, text.output)
+    }
+
+    func testLocalToolCallStillRoundTripsThroughCodable() throws {
+        let call = LocalToolCall(tool: "search", query: "Dana", from: "2026-01-01")
+        let data = try JSONEncoder().encode(call)
+        XCTAssertEqual(try JSONDecoder().decode(LocalToolCall.self, from: data), call)
+    }
+
     func testRefineRespectsEffortCallLimitsAndPassesGrammar() async throws {
         let scope = LocalToolScope(sessions: sampleSessions())
         let stub = ToolLoopStubAssistant()
