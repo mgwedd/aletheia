@@ -32,7 +32,9 @@ final class WhisperEngineTests: XCTestCase {
         let junk = FileManager.default.temporaryDirectory.appendingPathComponent("junk-\(UUID()).bin")
         try Data(repeating: 7, count: 4096).write(to: junk)
         defer { try? FileManager.default.removeItem(at: junk) }
-        XCTAssertThrowsError(try WhisperEngine(modelPath: junk)) {
+        // CPU only: this must fail at model load, so there is no reason to pay for
+        // a Metal shader compile (unmeasured on CI; see issue #350).
+        XCTAssertThrowsError(try WhisperEngine(modelPath: junk, useGPU: false)) {
             XCTAssertEqual($0 as? WhisperEngineError, .modelLoadFailed)
         }
     }

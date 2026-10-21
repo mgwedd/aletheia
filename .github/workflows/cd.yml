@@ -4,12 +4,12 @@ name: CD (build artifact)
 # drag-to-Applications DMG, and uploads it as a downloadable workflow artifact.
 # Versioned, notarized releases are cut separately by release.yml on a tag.
 #
-# Where it runs: on main pushes, on demand (Run workflow), and on every pull
-# request — so a reviewer always has a real, runnable build to test the change
-# by hand without a Mac toolchain of their own. The repo is public, so standard
-# macOS runners are free (only -xlarge runners bill), which is what makes the
-# per-PR build affordable. Docs-only changes are skipped, and concurrency
-# cancels superseded runs so rapid pushes don't stack.
+# Where it runs: on main pushes and on demand (Run workflow) always, and on a
+# pull request only when it touches packaging inputs (project.yml, packages,
+# resources/entitlements/Info.plist, this and the release workflow, packaging
+# scripts; see scripts/ci-changes.sh). Other PRs skip the macOS job, which
+# still reports success to branch protection. Docs-only changes are skipped,
+# and concurrency cancels superseded runs so rapid pushes don't stack.
 #
 # The build is ad-hoc signed (no secrets), so it works the same on a PR from a
 # fork as on main; first launch still needs a right-click > Open (see the job
@@ -35,8 +35,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decides whether the macOS packaging job is relevant. On main pushes and
+  # manual runs it always is; on a PR only when packaging inputs changed
+  # (scripts/ci-changes.sh lists the paths). Not an `on.paths` filter: a
+  # skipped workflow leaves a required check pending forever, whereas a job
+  # skipped by `if:` reports success.
+  changes:
+    name: Packaging changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      package: ${{ steps.diff.outputs.package }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Did packaging inputs change?
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: echo "package=$(./scripts/ci-changes.sh package "$BASE_SHA")" >> "$GITHUB_OUTPUT"
+
   package:
     name: Build & package (macOS)
+    needs: changes
+    # Fail open: if the changes job itself fails, run the build anyway.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.package == 'true') }}
     runs-on: macos-15
     timeout-minutes: 40
     steps:
