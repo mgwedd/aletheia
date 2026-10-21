@@ -1774,16 +1774,14 @@ private struct InlineCommentComposerCard: View {
             HStack(alignment: .center, spacing: 12) {
                 Spacer(minLength: 0)
                 HStack(spacing: 8) {
-                    KeyCap("⌘ return")
-                        .accessibilityHidden(true)
+                    ShortcutHint(AppShortcut.saveComment)
                     Button("Cancel", action: onCancel)
                         .buttonStyle(.themed)
                         .keyboardShortcut(.cancelAction)
                     Button("Save comment", action: onSave)
                         .buttonStyle(.themePrimary)
-                        .keyboardShortcut(.return, modifiers: .command)
                         .disabled(!canSave)
-                        .help("Save this comment (Command-Return)")
+                        .shortcut(AppShortcut.saveComment, help: "Save this comment")
                 }
                 .fixedSize()
             }
