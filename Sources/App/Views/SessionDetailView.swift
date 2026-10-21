@@ -1128,9 +1128,8 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.muted.color)
                         .padding(.horizontal, 20)
                 }
-                ScrollView {
+                BoundedScroll {
                     MarkdownMessageView(text: summaryText, style: .note)
-                        .textSelection(.enabled)
                         .frame(maxWidth: 680, alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
