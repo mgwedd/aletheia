@@ -65,6 +65,15 @@ final class AppNavigatorTests: XCTestCase {
         )
         XCTAssertEqual(navigator.pendingSession?.initialTab, .transcript)
         XCTAssertEqual(navigator.pendingSession?.initialFocusedCommentID, "comment-abc")
+        XCTAssertNil(navigator.pendingSession?.initialSearchFocus)
+        navigator.pendingSession = nil
+    }
+
+    func testRequestOpenSessionAtASearchMatch() {
+        let navigator = AppNavigator.shared
+        let focus = SearchMatchFocus(query: "garden", passage: 4)
+        navigator.requestOpenSession(patientID: UUID(), sessionID: UUID(), initialTab: .transcript, initialSearchFocus: focus)
+        XCTAssertEqual(navigator.pendingSession?.initialSearchFocus, focus)
         navigator.pendingSession = nil
     }
 

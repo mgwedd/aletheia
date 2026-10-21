@@ -165,7 +165,8 @@ struct RootView: View {
                 initialTab: destination.tab,
                 initialNoteFormat: destination.noteFormat,
                 initialShowingMyNotes: destination.showingMyNotes,
-                initialFocusedCommentID: destination.commentID
+                initialFocusedCommentID: destination.commentID,
+                initialSearchFocus: destination.searchFocus(query: search.query)
             )
         }
         search.clear()

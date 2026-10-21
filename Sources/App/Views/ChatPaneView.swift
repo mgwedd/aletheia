@@ -59,9 +59,9 @@ struct ChatPaneView: View {
     /// `InferenceQueue`). Replaces the "Thinking…" spinner with this calm
     /// status and a Cancel button (which calls `onStop`).
     var queuedStatus: String? = nil
-    /// One line under the top edge saying what the answers are drawn from.
-    /// The default describes the per-session chat; an empty string hides it.
-    var scopeNote: String = "Answers come from this session's transcript, your notes and comments."
+    /// What the answers are drawn from, as a tip on the question field. The
+    /// default describes the per-session chat.
+    var scopeTip: HelpTip = HelpTips.sessionChatScope
     /// Caveats about the last answer, shown above the composer in muted type.
     var notices: [String] = []
     /// What is under way before the model starts (e.g. searching), shown as
@@ -93,16 +93,6 @@ struct ChatPaneView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !scopeNote.isEmpty {
-                Text(scopeNote)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .themeDivider(.bottom)
-            }
             conversation
             if onCompact != nil, ChatMemory.hasHistory(messages) {
                 HStack(spacing: 8) {
@@ -319,6 +309,7 @@ struct ChatPaneView: View {
                 }
             }
             .themeField(isFocused: inputFocused)
+            .hoverTip(scopeTip, arrowEdge: .top)
     }
 
     private func effortRow(_ effort: Binding<AnswerEffort>) -> some View {

@@ -44,6 +44,8 @@ final class InferenceQueue: ObservableObject {
     /// Mirrors `waiting` with the closures attached.
     private var pending: [Pending] = []
     private var runningTask: Task<Void, Never>?
+    /// Set once the app has started quitting: jobs enqueued after that never run.
+    private(set) var isShutDown = false
 
     /// Adds a job to the back of the queue; it starts as soon as nothing is
     /// ahead of it. A body that throws is treated as finished (the caller owns
@@ -101,7 +103,24 @@ final class InferenceQueue: ObservableObject {
         return "Still answering another question, yours will run next."
     }
 
+    /// Quitting: drops every waiting job, cancels the running one and returns
+    /// once its body has returned (a body should stop promptly when cancelled;
+    /// the shutdown deadline covers one that doesn't).
+    func shutDown() async {
+        isShutDown = true
+        pending.removeAll()
+        waiting = []
+        guard let task = runningTask else { return }
+        task.cancel()
+        await task.value
+    }
+
     private func startNextIfIdle() {
+        guard !isShutDown else {
+            pending.removeAll()
+            waiting = []
+            return
+        }
         guard running == nil, !pending.isEmpty else {
             waiting = pending.map { $0.info }
             return
@@ -125,3 +144,5 @@ final class InferenceQueue: ObservableObject {
         startNextIfIdle()
     }
 }
+
+extension InferenceQueue: ShutdownJob {}

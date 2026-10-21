@@ -9,6 +9,24 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.60.0] - 2026-10-21
+
+### Added
+- show one line and a progress bar while a note is generated (#384)
+- fill the room kept for missing summaries with those sessions' openings (#374)
+- resume inline digest builds from the section cache (#376)
+- one search field at the top right for everything (#367)
+- add a setting to prepare summaries on battery (#369)
+- read a long patient history by zoom level, summaries first, transcripts only where search points (#362)
+
+### Fixed
+- make the transcript/comments divider draggable (#386)
+- size the Notes format picker's segments to their labels (#383)
+- keep the Notes tab's action row within the pane, and focus Export in the export popover (#381)
+- clear the Swift 6 sendability and isolation warnings (#377)
+- estimate tokens by script so non-Latin text can't overflow the window (#370)
+- pressure-test fixes for search, tool loop and long histories (#351)
+
 ## [2.59.0] - 2026-10-21
 
 ### Added

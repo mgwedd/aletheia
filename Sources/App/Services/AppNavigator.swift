@@ -19,6 +19,8 @@ final class AppNavigator: ObservableObject {
         let initialNoteFormat: ProgressNoteFormat?
         let initialShowingMyNotes: Bool
         let initialFocusedCommentID: String?
+        /// A search match to scroll to and flash (a transcript or note hit).
+        let initialSearchFocus: SearchMatchFocus?
 
         init(
             patientID: UUID,
@@ -27,7 +29,8 @@ final class AppNavigator: ObservableObject {
             initialTab: SessionTab? = nil,
             initialNoteFormat: ProgressNoteFormat? = nil,
             initialShowingMyNotes: Bool = false,
-            initialFocusedCommentID: String? = nil
+            initialFocusedCommentID: String? = nil,
+            initialSearchFocus: SearchMatchFocus? = nil
         ) {
             self.patientID = patientID
             self.sessionID = sessionID
@@ -36,6 +39,7 @@ final class AppNavigator: ObservableObject {
             self.initialNoteFormat = initialNoteFormat
             self.initialShowingMyNotes = initialShowingMyNotes
             self.initialFocusedCommentID = initialFocusedCommentID
+            self.initialSearchFocus = initialSearchFocus
         }
     }
 
@@ -67,7 +71,8 @@ final class AppNavigator: ObservableObject {
         initialTab: SessionTab? = nil,
         initialNoteFormat: ProgressNoteFormat? = nil,
         initialShowingMyNotes: Bool = false,
-        initialFocusedCommentID: String? = nil
+        initialFocusedCommentID: String? = nil,
+        initialSearchFocus: SearchMatchFocus? = nil
     ) {
         pendingSession = PendingSession(
             patientID: patientID,
@@ -76,7 +81,8 @@ final class AppNavigator: ObservableObject {
             initialTab: initialTab,
             initialNoteFormat: initialNoteFormat,
             initialShowingMyNotes: initialShowingMyNotes,
-            initialFocusedCommentID: initialFocusedCommentID
+            initialFocusedCommentID: initialFocusedCommentID,
+            initialSearchFocus: initialSearchFocus
         )
     }
 
