@@ -156,7 +156,7 @@ final class TranscriptCoverageEdgeTests: XCTestCase {
         XCTAssertEqual(c.digestSessions, 2)
         XCTAssertEqual(
             c.label,
-            "Read: digests of 2 sessions · transcript passages from 3 of 3 sessions (0 matches for your words) · follow-up lookups in the transcripts of 1 more session"
+            "Read: summaries of 2 sessions · transcript passages from 3 of 3 sessions (0 matches for your words) · follow-up lookups in the transcripts of 1 more session"
         )
     }
 
