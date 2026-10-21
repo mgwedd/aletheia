@@ -62,26 +62,22 @@ struct TranscriptSplitView<Transcript: View, Comments: View>: View {
 
     /// An invisible strip over the divider that takes the drag. It starts at the
     /// divider and reaches into the comments side, so it never covers the
-    /// transcript's scroll bar.
+    /// transcript's scroll bar. It is an AppKit view: the transcript and the
+    /// comments are AppKit scroll views, and a SwiftUI gesture laid over them
+    /// never receives the mouse.
     private func grip(layout: TranscriptSplit.Layout, total: CGFloat) -> some View {
-        Color.clear
-            .frame(width: Self.gripWidth)
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .overlay(ResizeCursorArea())
-            .offset(x: layout.transcript - 1)
-            .gesture(
-                DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                    .onChanged { value in
-                        let start = dragStart ?? layout.transcript
-                        dragStart = start
-                        apply(TranscriptSplit.resolveDrag(
-                            proposedTranscript: start + value.translation.width, total: total
-                        ))
-                    }
-                    .onEnded { _ in dragStart = nil }
-            )
-            .accessibilityHidden(true)
+        DividerGrip(
+            onDrag: { translation in
+                let start = dragStart ?? layout.transcript
+                dragStart = start
+                apply(TranscriptSplit.resolveDrag(proposedTranscript: start + translation, total: total))
+            },
+            onEnd: { dragStart = nil }
+        )
+        .frame(width: Self.gripWidth)
+        .frame(maxHeight: .infinity)
+        .offset(x: layout.transcript - 1)
+        .accessibilityHidden(true)
     }
 
     private static var gripWidth: CGFloat { 8 }
@@ -132,17 +128,43 @@ struct TranscriptSplitView<Transcript: View, Comments: View>: View {
 }
 
 #if canImport(AppKit)
-/// A transparent overlay that shows the left-right resize cursor over its
-/// bounds. Mouse events pass through it to the view below.
-private struct ResizeCursorArea: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { CursorView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
+/// The divider's drag handle: shows the left-right resize cursor and reports
+/// how far the mouse has moved since it went down.
+private struct DividerGrip: NSViewRepresentable {
+    let onDrag: (CGFloat) -> Void
+    let onEnd: () -> Void
 
-    private final class CursorView: NSView {
-        override func resetCursorRects() {
-            addCursorRect(bounds, cursor: .resizeLeftRight)
-        }
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    func makeNSView(context: Context) -> TranscriptSplitGripView { TranscriptSplitGripView() }
+    func updateNSView(_ nsView: TranscriptSplitGripView, context: Context) {
+        nsView.onDrag = onDrag
+        nsView.onEnd = onEnd
+    }
+}
+
+final class TranscriptSplitGripView: NSView {
+    var onDrag: (CGFloat) -> Void = { _ in }
+    var onEnd: () -> Void = {}
+    private var downX: CGFloat?
+
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        downX = event.locationInWindow.x
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let downX else { return }
+        onDrag(event.locationInWindow.x - downX)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard downX != nil else { return }
+        downX = nil
+        onEnd()
     }
 }
 #endif
