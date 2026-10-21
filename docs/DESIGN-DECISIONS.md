@@ -36,6 +36,16 @@ flowchart TD
 | Total prompt | 10% headroom kept to allow budget margin | `ContextBudget.availableCharacters` |
 | Model context window | sized to prompt per budget | `ContextBudget.neededTokens` |
 
+**Since this analysis:** when the transcripts do not fit, the chat no longer
+sends only the top search hits. It reads the history by zoom level
+(`PatientZoom`): stored session summaries (digests) first, then search over
+every transcript to find the parts of sessions that matter, their summaries,
+and the lines around the best hits. A transcript part is read in full only when
+the model asks (`read_section`, at Normal or Focus effort). The diagram above is
+the search-only path; option D's per-session summaries now exist as digests,
+built in the background. Token estimates are now by script (`ContextBudget`),
+not a flat 3 characters per token.
+
 An hour of speech is tens of thousands of characters, so a long history is cut
 to a small fraction of the transcript text. Ranking is TF-IDF over substring
 matches (`TextSearch.queryTerms` keeps every word, no stopword filter), so a

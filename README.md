@@ -52,9 +52,9 @@ After the downloads, Aletheia works offline. If a row will not turn green, see t
 2. Click **New session**.
 3. Open your video call as usual, then click **Record Session** (or use the menu bar icon).
 4. Click **Stop** when finished. Transcription starts by itself if **Settings → General → Transcribe automatically when a recording ends** is on; otherwise click **Transcribe**.
-5. Open the **Notes** tab to jot your own notes and generate the progress note. Choose the format (narrative, SOAP, DAP, BIRP or GIRP) under **Settings → Note format**. Use the **Length** menu to make it shorter or longer, then **Regenerate** to apply. **Edit** it, then **Copy** to paste into your record.
+5. Open the **Notes** tab to jot your own notes and generate the progress note. Choose the format (narrative, SOAP, DAP, BIRP or GIRP) under **Settings → Note format**. Use the **Length** menu to make it shorter or longer, then **Regenerate** to apply. **Edit** it, then **Copy** to paste into your record (formatting is kept), or **Export** it as a PDF, Word or Markdown file. **Export** on the session saves the note and transcript together. On the patient page, **Export all records** builds a zip of the whole history in the background. ⌘S saves your edits and ⌘G generates or regenerates the note.
 6. Use the **Ask** tab to question this session, or **Ask about this patient** on the patient page. Answers say what was read.
-7. The magnifying glass in the toolbar searches names, transcripts, notes and comments.
+7. The **Search** field at the top right (⌘F) searches patients, sessions, your notes, progress notes, comments and transcripts. Results appear in one grouped list; use the arrow keys to move and Return to open. **Help → Keyboard Shortcuts** (⌘/) lists every shortcut.
 
 Always read the transcript and note before relying on them. Names and clinical terms are often misheard, and AI drafts can be wrong.
 
@@ -87,20 +87,21 @@ flowchart LR
 ### What a note or answer reads
 
 - **Context window.** Ollama is sent a fixed context window (`num_ctx`) equal to this Mac's context budget, so it never truncates silently. Each Mac has a prompt budget: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB or more (one tier lower on Intel). A prompt over budget fails with a clear message and nothing is sent.
-- **Tripwire.** If Ollama reports reading well under what was sent, the answer shows a notice that the model may not have read everything.
+- **Token estimate.** The budget check counts by script: about 3 Latin characters a token, but about a token per character for Japanese, Chinese, Korean and similar scripts.
+- **Tripwire.** If Ollama reports reading well under what was sent, or reading right up to its window's limit, the answer shows a notice that the model may not have read everything.
 - **Progress.** Notes and chat show the stage, elapsed time and token counts while the model works.
 - **Chat memory.** Past about 12,000 characters, older messages are replaced by a summary (also `/compact [focus]`). Source material is always sent fresh.
 - **One session** chat sends the session's transcript.
-- **Patient-wide chat** is sized from the Mac's budget less the instructions, conversation and question. Background, notes and comments (newest sessions first, up to a third of the room) come first; transcripts take the rest. If the transcripts fit, they go in whole, newest first. Otherwise it searches them for the question's names and words and sends the best passages with surrounding lines. If too little room is left, the question is refused rather than cut.
+- **Patient-wide chat** is sized from the Mac's budget less the instructions, conversation and question. Background, notes and comments (newest sessions first, up to a third of the room) come first; transcripts take the rest. If the transcripts fit, they go in whole, newest first. Otherwise the history is read by zoom level (`PatientZoom`): stored session summaries (newest first, older ones merged by month), then a search over every transcript for the question's names and words, then the summaries of the parts of sessions the hits fall in plus the transcript lines around the best hits. No transcript goes in whole. When search finds no lines to quote, the room kept for sessions with no summary yet goes to the openings of their transcripts. At Normal or Focus effort the model can also ask to read a transcript part in full. If too little room is left, the question is refused rather than cut.
 
-The search (`SessionSearch`) runs in memory, with indexes cached by content fingerprint and never written to disk:
+The search (`SessionSearch`) reads a persistent SQLite FTS5 index (`search.sqlite` in the data folder), keyed by content fingerprint and rebuilt if missing:
 
 - BM25 ranking over passages (a transcript line or a paragraph of notes);
 - whole-word matching with a stemmer, one-letter typo tolerance, and sound-alike matching for names, because Whisper misspells them;
 - quoted phrases match exactly; date phrases such as "past 6 months" narrow the sessions searched;
 - exact counts ("14 mentions in 6 of 22 sessions"), and the model may say a topic was not discussed only when the search found nothing, worded "no match found".
 
-Each all-session answer carries a coverage label built from what was actually sent, for example `Read: notes and comments from 22 sessions · transcript passages from 6 of 22 sessions (search: 14 mentions)`. Sessions whose notes were cut short or left out, and unreadable sessions, are reported as such. There is no click-through from a search hit to a transcript moment.
+Each patient-wide answer carries a coverage label built from what was actually sent, for example `Read: notes and comments from 22 sessions · transcript passages from 6 of 22 sessions (search: 14 mentions)`; on a long history it also names the summaries and transcript openings that were read. Sessions whose notes were cut short or left out, and unreadable sessions, are reported as such. There is no click-through from a search hit to a transcript moment.
 
 ### Session digests
 
@@ -108,7 +109,8 @@ A digest is an AI-written summary of one session, stored as `digest.json` beside
 
 - The transcript is split into sections of about ten minutes (cut sooner at 12,000 characters). Each section gets a digest of topics, the patient's key statements, interventions, affect, risk flags and follow-ups, tied to its time range. The sections are then merged into one session digest of at most about 2,000 characters.
 - A digest is valid only for the transcript fingerprint, model and prompt version it was built from; otherwise it is ignored and rebuilt at the next trigger.
-- Progress shows as one line on the session ("Building digest · section 4 of 11"). A failed or cancelled build is retried at the next trigger.
+- Progress shows as one line on the session ("Building digest · section 4 of 11"). A failed or cancelled build is retried at the next trigger. Finished section summaries are kept, so a build that is paused, quit, or taken over by a note or chat answer resumes from them.
+- A background scheduler also prepares missing summaries, newest session first, only while nothing else is using the model. It pauses while locked, recording, transcribing or busy, in Low Power Mode, and on battery unless **Prepare summaries on battery** is on in Settings. The patient page shows its status with Pause, Resume and Prepare now.
 - Digests are sealed like transcripts when encryption is on. Notes and chat read transcripts, not digests.
 
 ### Where data lives
@@ -206,7 +208,7 @@ Sources/App/
   Views/                  SwiftUI views
   Services/               recorder, transcriber, assistant, store, app lock, settings
     Digest/               section splitting and background digest builder
-    Search/               in-memory BM25 search
+    Search/               BM25 search over a persistent FTS5 index
     Persistence/          SQLite core, schema migrator, migration backup
     Repositories/         annotation and chat repositories
     Crypto/               encryption, keystore, snapshots, backup
@@ -214,7 +216,7 @@ Sources/App/
     Features/             build tiers, feature registry, Doctor
     Llama/                embedded llama.cpp backend
 Tests/AletheiaTests/      XCTest suite
-scripts/                  build, release, secret scan, entitlement and pin checks
+scripts/                  build, release, secret scan, entitlement, pin and CI-gating checks
 docs/                     setup, data safety, encryption, HIPAA safeguards
 ```
 
@@ -222,14 +224,14 @@ docs/                     setup, data safety, encryption, HIPAA safeguards
 
 ```mermaid
 flowchart LR
-  PR["Pull request"] --> S["Smoke test<br/>build + test × production/preview/dev<br/>entitlements guard · secret/PHI scan"]
+  PR["Pull request"] --> S["Smoke test<br/>production + dev tiers (preview on main) · full tests on dev<br/>CI guards · secret/PHI scan"]
   S --> M["Merge to main"]
   M --> S2["Smoke test on main"]
   S2 -- "passes" --> AR["Auto Release<br/>conventional commits → semver"]
   AR --> TAG["v* tag"] --> REL["release.yml<br/>DMG · appcast.json · GitHub Release"]
 ```
 
-CI runs on macOS runners (the only place the Swift code compiles). Developer ID signing and notarization run only when signing secrets are configured; otherwise the DMG is ad-hoc signed. Model downloads are pinned by commit and SHA-256, checked weekly by `verify-model-pins`.
+CI runs on macOS runners (the only place the Swift code compiles). To save macOS time, a pull request builds the production and dev tiers only (preview is built on pushes to `main` and on a manual run); production and preview run only the tier-sensitive tests while dev runs the full suite, and the packaging job (`cd.yml`) runs on a pull request only when packaging inputs change. The path check is `scripts/ci-changes.sh`, applied as a job-level `if:` so a skipped job still reports success to branch protection; `scripts/check-ci-gating.sh` guards that wiring. The benchmarks workflow runs only when started by hand. `main` also requires CodeQL code-scanning results (GitHub's default setup, for the workflows and Python only). Developer ID signing and notarization run only when signing secrets are configured; otherwise the DMG is ad-hoc signed. Model downloads are pinned by commit and SHA-256, checked weekly by `verify-model-pins`.
 
 ### Conventions
 
@@ -256,7 +258,7 @@ The engine applies the model's chat template. The context is sized to the prompt
 
 ### Releases
 
-Merging to `main` is enough once Smoke Test passes on the merge commit: Auto Release then computes the version, updates the changelog, tags it, and dispatches `release.yml`. A failed or cancelled run releases nothing, and if `main` has moved on, the newer commit's run releases the whole range. A manual release can be dispatched from the Actions tab.
+Merging to `main` is enough once Smoke Test passes on the merge commit: Auto Release then computes the version, updates the changelog and tags it. It runs in the `release` environment and pushes the release commit and tag with the `RELEASE_DEPLOY_KEY` deploy key (which is on the branch ruleset's bypass list); the tag push starts `release.yml`. Only when that secret is unset does Auto Release dispatch `release.yml` explicitly. A failed or cancelled run releases nothing, and if `main` has moved on, the newer commit's run releases the whole range. A manual release can be dispatched from the Actions tab.
 
 ---
 
@@ -264,7 +266,7 @@ Merging to `main` is enough once Smoke Test passes on the merge commit: Auto Rel
 
 - The Swift code compiles only on macOS CI; recording and transcription on real hardware need manual verification before each release.
 - Mic and call tracks are not sample-accurate with each other, so interleaved lines can be off by a short interval.
-- Patient-wide chat on a long history sends search passages, not every transcript.
+- Patient-wide chat on a long history reads summaries and search passages, not every transcript; sessions with no summary yet may be represented only by their opening.
 - A session longer than the Mac's prompt budget cannot be summarized in one pass.
 - No CoreML encoder is bundled; transcription uses CPU/Metal.
 - Encryption is in the dev tier only, and release builds are notarized only when signing secrets are configured.
