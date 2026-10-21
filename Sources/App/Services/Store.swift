@@ -317,7 +317,7 @@ final class Store {
         commentStore?.purgePatientRecords(patientID: patient.id, sessionIDs: sessionIDs)
 
         // Purge search index documents and session entries
-        searchIndex?.purgePatient(patient.id.uuidString)
+        searchIndex?.purgePatient(patient.id.uuidString, sessions: sessionIDs.map(\.uuidString))
 
         // Remove patient directory and all session files from disk
         try fileManager.removeItem(at: dir)
@@ -1052,7 +1052,12 @@ final class Store {
     /// Everything is read through the same accessors the rest of the app uses
     /// (`transcript`, `note(for:session:format:)`, the comment store), so content
     /// that can't be opened right now (locked, unreadable) simply doesn't match.
-    func searchHits(query: String, snippetRadius: Int = 40) -> [SearchHit] {
+    ///
+    /// Reads and decrypts every transcript and note, so it belongs off the main
+    /// thread. It stops (returning what it has so far) as soon as
+    /// `shouldContinue` is false, checked before each patient and session, so a
+    /// superseded query doesn't keep scanning a long history.
+    func searchHits(query: String, snippetRadius: Int = 40, shouldContinue: () -> Bool = { true }) -> [SearchHit] {
         guard !TextSearch.queryTerms(query).isEmpty else { return [] }
         let patients = (try? listPatients()) ?? []
         var hits: [SearchHit] = []
@@ -1062,6 +1067,7 @@ final class Store {
         }
 
         for patient in patients {
+            guard shouldContinue() else { return hits }
             if TextSearch.matches(patient.name, query: query) {
                 let sessionCount = ((try? listSessions(for: patient)) ?? []).count
                 hits.append(SearchHit(
@@ -1076,6 +1082,7 @@ final class Store {
             }
 
             for session in (try? listSessions(for: patient)) ?? [] {
+                guard shouldContinue() else { return hits }
                 func hit(
                     _ kind: SearchKind,
                     _ idSuffix: String,
@@ -1271,7 +1278,9 @@ final class Store {
                 material.insert(Store.unreadableTranscriptMarker, at: 0)
             }
             let transcriptText = transcript ?? ""
-            guard !transcriptText.isEmpty || !material.isEmpty else { continue }
+            // Tagged by what the session has, not by what this budget kept of it,
+            // so the tags match `localToolScope(for:)`.
+            guard !transcriptText.isEmpty || !material.isEmpty || !parts.isEmpty else { continue }
 
             if labels[session.date] == nil {
                 labels[session.date] = "S\(index)"
@@ -1401,7 +1410,14 @@ final class Store {
         var index = 1
         var toolSessions: [LocalToolSession] = []
         for session in sessions {
-            let transcriptText = (try? readTranscript(for: patient, session: session)) ?? ""
+            // An unreadable transcript still takes its tag, as it does in the context.
+            var unreadable = false
+            var transcriptText = ""
+            do {
+                transcriptText = try readTranscript(for: patient, session: session) ?? ""
+            } catch {
+                unreadable = true
+            }
             let notes = commentStore?.note(sessionID: session.id) ?? ""
             let comments = AssistantService.formatComments(commentStore?.comments(sessionID: session.id) ?? [])
             let generated = generatedNotes(for: patient, session: session)
@@ -1410,7 +1426,7 @@ final class Store {
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
-            guard !transcriptText.isEmpty || !combinedNotes.isEmpty || !comments.isEmpty else { continue }
+            guard !transcriptText.isEmpty || unreadable || !combinedNotes.isEmpty || !comments.isEmpty else { continue }
             if labels[session.date] == nil {
                 labels[session.date] = "S\(index)"
                 index += 1

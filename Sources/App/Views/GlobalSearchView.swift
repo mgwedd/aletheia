@@ -217,7 +217,15 @@ struct GlobalSearchView: View {
         }
         try? await Task.sleep(nanoseconds: Self.debounceNanoseconds)
         guard !Task.isCancelled else { return }
-        hits = store.searchHits(query: query)
+        // Reads every transcript and note: off the main thread, and stopped when
+        // the next keystroke cancels this run.
+        let typed = query
+        let search = Task.detached(priority: .userInitiated) {
+            store.searchHits(query: typed, shouldContinue: { !Task.isCancelled })
+        }
+        let found = await withTaskCancellationHandler { await search.value } onCancel: { search.cancel() }
+        guard !Task.isCancelled else { return }
+        hits = found
         selectedID = visibleHits.first?.id
     }
 

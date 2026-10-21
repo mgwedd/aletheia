@@ -369,14 +369,26 @@ final class SearchIndex {
         settle()
     }
 
-    /// Removes all indexed documents, passages, and session stamps for a patient.
-    func purgePatient(_ patient: String) {
+    /// Removes all indexed documents, passages, and session stamps for a patient:
+    /// those stored under its id, those stored under one of its `sessions`
+    /// without a patient (a search that named only the session), and every ad
+    /// hoc (session-less) document, which can't be traced to a patient and may
+    /// be this one's text.
+    func purgePatient(_ patient: String, sessions: [String] = []) {
         lock.lock()
         defer { lock.unlock() }
         guard let db = open(), exec(db, "BEGIN") else { return }
-        each(db, "SELECT id FROM doc WHERE patient = ?1", binds: [.text(patient)]) { stmt in
-            self.pendingDelete.append(sqlite3_column_int64(stmt, 0))
+        var ids = Set<Int64>()
+        each(db, "SELECT id FROM doc WHERE patient = ?1 OR session = ''", binds: [.text(patient)]) { stmt in
+            ids.insert(sqlite3_column_int64(stmt, 0))
         }
+        for session in sessions {
+            each(db, "SELECT id FROM doc WHERE session = ?1", binds: [.text(session)]) { stmt in
+                ids.insert(sqlite3_column_int64(stmt, 0))
+            }
+            run(db, "DELETE FROM session WHERE id = ?1", binds: [.text(session)])
+        }
+        pendingDelete.append(contentsOf: ids)
         removeDocs(db)
         run(db, "DELETE FROM session WHERE patient = ?1", binds: [.text(patient)])
         if !exec(db, "COMMIT") { exec(db, "ROLLBACK") }
