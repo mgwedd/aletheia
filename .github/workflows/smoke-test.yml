@@ -16,9 +16,13 @@ on:
       - '**/*.md'
       - 'docs/**'
   pull_request:
+  # Manual run (Actions tab): all three tiers, e.g. to check preview on a branch.
+  workflow_dispatch:
 
 concurrency:
-  group: smoke-${{ github.ref }}
+  # The event is part of the group so a manual run on main can't cancel the
+  # push run that Auto Release waits for.
+  group: smoke-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -67,14 +71,22 @@ jobs:
     # canary (continue-on-error) so a newest-toolchain hiccup surfaces without
     # blocking the merge, while macos-15 (Xcode 16) stays the required signal.
     #
-    # To save macOS minutes (billed 10x), the three-tier matrix runs on macos-15
-    # (the required signal); on main pushes and manual dispatch a single macos-26
+    # To save macOS minutes (billed 10x), the matrix runs on macos-15 (the
+    # required signal); on main pushes and manual dispatch a single macos-26
     # dev-tier canary is added (the dev tier compiles the whole surface).
+    #
+    # Pull requests build production and dev only, to fit more PRs into the
+    # five concurrent macOS runners. Preview adds almost nothing there: its
+    # only own code is `BuildTier.compiled` returning `.preview` (every other
+    # tier branch is `#if ALETHEIA_DEV`, compiled by dev and by production),
+    # and its feature set is composed at runtime and tested for every tier in
+    # the dev suite. Preview still builds and tests on every push to main and
+    # on a manual run, so a broken preview binary shows up one merge later.
     continue-on-error: ${{ matrix.runner == 'macos-26' }}
     strategy:
       fail-fast: false
       matrix:
-        tier: [production, preview, dev]
+        tier: ${{ github.event_name == 'pull_request' && fromJSON('["production","dev"]') || fromJSON('["production","preview","dev"]') }}
         runner: [macos-15]
         include: ${{ github.event_name == 'pull_request' && fromJSON('[]') || fromJSON('[{"tier":"dev","runner":"macos-26"}]') }}
     env:

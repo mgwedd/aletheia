@@ -4,7 +4,9 @@
 # Asserts the intended workflow structure:
 #   - smoke-test.yml: only the dev tier runs the full suite; production and
 #     preview run a `-only-testing:` subset, and every class in that subset
-#     exists under Tests/AletheiaTests.
+#     exists under Tests/AletheiaTests. Pull requests build production and
+#     dev; main pushes and manual runs (workflow_dispatch) add preview, and
+#     the concurrency group keeps a manual run from cancelling a push run.
 #   - cd.yml ("Build & package (macOS)") and bench.yml ("Benchmarks
 #     (informational)") are gated by a job-level `if:` on an Ubuntu `changes`
 #     job's output, with their job names unchanged. Neither workflow uses
@@ -188,8 +190,20 @@ text = open(".github/workflows/smoke-test.yml").read()
 job = smoke["jobs"]["build-and-test"]
 if job["name"] != "Build & test (${{ matrix.tier }}, ${{ matrix.runner }})":
     bad("smoke-test.yml: build-and-test job name changed")
-if "dev" not in job["strategy"]["matrix"]["tier"] or len(job["strategy"]["matrix"]["tier"]) != 3:
-    bad("smoke-test.yml: matrix must still build production, preview and dev")
+# Pull requests build production and dev; main pushes and manual runs add preview.
+tier_expr = str(job["strategy"]["matrix"]["tier"]).replace(" ", "")
+want_tiers = ("${{github.event_name=='pull_request'&&fromJSON('[\"production\",\"dev\"]')"
+              "||fromJSON('[\"production\",\"preview\",\"dev\"]')}}")
+if tier_expr != want_tiers:
+    bad("smoke-test.yml: matrix tier must be production+dev on pull_request, "
+        "production+preview+dev otherwise")
+on = triggers(smoke)
+if not isinstance(on, dict) or "workflow_dispatch" not in on:
+    bad("smoke-test.yml: needs workflow_dispatch so preview can be run by hand")
+group = str((smoke.get("concurrency") or {}).get("group", ""))
+if "github.event_name" not in group:
+    bad("smoke-test.yml: concurrency group must include github.event_name "
+        "(a manual run must not cancel main's push run)")
 step = next((s for s in job["steps"] if s.get("name", "").startswith("Run unit tests")), None)
 if step is None:
     bad("smoke-test.yml: no 'Run unit tests' step")
