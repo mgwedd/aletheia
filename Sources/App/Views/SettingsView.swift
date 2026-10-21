@@ -635,7 +635,6 @@ struct SettingsView: View {
         SettingsCard {
             SettingsCardHeader(title: "AI instructions") { EmptyView() }
             EditorField(text: $settings.systemPrompt, minHeight: 140)
-                .hoverTip(HelpTips.aiInstructions)
             HStack {
                 Spacer()
                 Button("Reset to Default") { settings.systemPrompt = Prompts.defaultSystemPrompt }
@@ -643,6 +642,9 @@ struct SettingsView: View {
                     .disabled(settings.systemPrompt == Prompts.defaultSystemPrompt)
             }
         }
+        // On the section, opening above its header: on the editor the
+        // popover sat over the instructions being read.
+        .hoverTip(HelpTips.aiInstructions, arrowEdge: .top)
     }
 
     private var riskPhrasesCard: some View {

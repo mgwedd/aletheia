@@ -161,4 +161,18 @@ final class HelpTipsTests: XCTestCase {
             XCTAssertTrue(settings.contains(kept), kept)
         }
     }
+
+    /// The AI instructions tip opens above the section's header, not over the
+    /// instructions editor.
+    func testAIInstructionsTipIsAnchoredToTheSectionNotTheEditor() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let settings = try String(contentsOf: root.appendingPathComponent("Sources/App/Views/SettingsView.swift"), encoding: .utf8)
+        let start = try XCTUnwrap(settings.range(of: "private var instructionsCard: some View {"))
+        let end = try XCTUnwrap(settings.range(of: "private var riskPhrasesCard", range: start.upperBound..<settings.endIndex))
+        let card = settings[start.upperBound..<end.lowerBound]
+        XCTAssertFalse(card.contains("minHeight: 140)\n                .hoverTip"), "tip is on the editor")
+        XCTAssertTrue(card.contains("        }\n        // On the section"), "tip should follow the card's closing brace")
+        XCTAssertTrue(card.contains(".hoverTip(HelpTips.aiInstructions, arrowEdge: .top)"))
+    }
 }
