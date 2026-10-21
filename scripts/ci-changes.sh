@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Decides whether an expensive macOS CI job is relevant to a change.
 #
-# Usage: scripts/ci-changes.sh <benchmarks|package> [BASE_REF [HEAD_REF]]
+# Usage: scripts/ci-changes.sh <code|benchmarks|package> [BASE_REF [HEAD_REF]]
 #
 # Prints `true` or `false` on stdout. Without BASE_REF (push, manual dispatch)
 # it prints `true`: those events always run. With BASE_REF it lists the files
@@ -23,7 +23,15 @@ area="${1:-}"
 base="${2:-}"
 head="${3:-HEAD}"
 
+invert=0
 case "$area" in
+    # Anything that isn't documentation: Markdown anywhere, docs/, LICENSE and
+    # issue templates don't need the app built or tested. True when ANY changed
+    # file falls outside that set.
+    code)
+        pattern='(\.md$|^docs/|^LICENSE$|^\.github/ISSUE_TEMPLATE/)'
+        invert=1
+        ;;
     # Search, index and transcript-compactor sources and their tests, plus the
     # benchmark workflow and its scripts.
     benchmarks)
@@ -36,7 +44,7 @@ case "$area" in
         pattern='^(project\.yml$|Packages/|Sources/App/Resources/|\.github/workflows/(cd|release)\.yml$|scripts/(build|apply-release|compute-release|changelog-section|ci-changes|launch-smoke|release-notes)\.sh$)'
         ;;
     *)
-        echo "usage: $0 <benchmarks|package> [BASE_REF [HEAD_REF]]" >&2
+        echo "usage: $0 <code|benchmarks|package> [BASE_REF [HEAD_REF]]" >&2
         exit 2
         ;;
 esac
@@ -52,7 +60,10 @@ if ! files="$(git diff --name-only "$base" "$head" -- 2>/dev/null)"; then
     exit 0
 fi
 
-if grep -Eq "$pattern" <<<"$files"; then
+if [ "$invert" -eq 1 ]; then
+    # True when some changed file is outside the pattern.
+    if grep -Evq "$pattern" <<<"$files"; then echo true; else echo false; fi
+elif grep -Eq "$pattern" <<<"$files"; then
     echo true
 else
     echo false
