@@ -158,7 +158,10 @@ enum SessionSearch {
 
     /// The date range a question asks for, relative to `now`, or nil if it
     /// doesn't name one. Forms: "past/last N days|weeks|months|years",
-    /// "since <Month> [year]", "in <Month> [year]", "this year", "last year".
+    /// "since <Month> [day] [year]", "in <Month> [day] [year]", "this year", "last year".
+    /// A month name used as an ordinary word is not a date ("in may be", "in
+    /// June's session"): "may" and "march" count only with a day or year, or
+    /// capitalized, or when the phrase ends there.
     static func dateRange(in question: String, now: Date, calendar: Calendar = .current) -> DateRange? {
         DateFilter.parse(question, now: now, calendar: calendar).range
     }
@@ -191,16 +194,45 @@ enum SessionSearch {
                 let year = calendar.component(.year, from: now) - (m.groups[0] == "last" ? 1 : 0)
                 return (yearRange(year, calendar), remove(m.range, from: question))
             }
-            if let m = match(#"\bsince\s+(\#(monthPattern))\b(?:\s+(\d{4}))?"#, in: lower) {
-                guard let start = monthStart(m.groups[0]!, year: m.groups[1], now: now, calendar: calendar) else { return (nil, question) }
-                return (DateRange(start: start, end: now), remove(m.range, from: question))
+            if let m = monthPhrase(after: "since", in: question, now: now, calendar: calendar) {
+                return (DateRange(start: m.start, end: now), removing(m.range, from: question))
             }
-            if let m = match(#"\bin\s+(\#(monthPattern))\b(?:\s+(\d{4}))?"#, in: lower) {
-                guard let start = monthStart(m.groups[0]!, year: m.groups[1], now: now, calendar: calendar),
-                      let next = calendar.date(byAdding: .month, value: 1, to: start) else { return (nil, question) }
-                return (DateRange(start: start, end: next.addingTimeInterval(-1)), remove(m.range, from: question))
+            if let m = monthPhrase(after: "in", in: question, now: now, calendar: calendar) {
+                let unit: Calendar.Component = m.day == nil ? .month : .day
+                guard let next = calendar.date(byAdding: unit, value: 1, to: m.start) else { return (nil, question) }
+                return (DateRange(start: m.start, end: next.addingTimeInterval(-1)), removing(m.range, from: question))
             }
             return (nil, question)
+        }
+
+        /// Month names that are also everyday words.
+        private static let ambiguousMonths: Set<String> = ["may", "march"]
+
+        /// The first "<keyword> <Month> [day][,] [year]" in `question` that is a
+        /// date: the month is real and the day exists in it. A month name with
+        /// neither day nor year is a date unless it is an everyday word ("may",
+        /// "march") that is lower case and followed by more words.
+        private static func monthPhrase(
+            after keyword: String, in question: String, now: Date, calendar: Calendar
+        ) -> (range: Range<String.Index>, start: Date, day: Int?)? {
+            let pattern = #"\b\#(keyword)\s+(\#(monthPattern))\b(?!['’])(?:\s+(\d{1,2})(?:st|nd|rd|th)?\b)?(?:,?\s+(?:of\s+)?(\d{4})\b)?"#
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
+            func group(_ m: NSTextCheckingResult, _ i: Int) -> Substring? {
+                Range(m.range(at: i), in: question).map { question[$0] }
+            }
+            for m in regex.matches(in: question, range: NSRange(question.startIndex..., in: question)) {
+                guard let whole = Range(m.range, in: question), let typed = group(m, 1) else { continue }
+                let day = group(m, 2).flatMap { Int($0) }
+                let year = group(m, 3).map(String.init)
+                if day == nil, year == nil, ambiguousMonths.contains(typed.lowercased()) {
+                    let rest = question[whole.upperBound...].drop { $0.isWhitespace }
+                    let readsAsMonth = typed.first?.isUppercase == true || (rest.first.map { $0.isPunctuation } ?? true)
+                    if !readsAsMonth { continue }
+                }
+                guard let start = monthStart(typed.lowercased(), year: year, day: day, now: now, calendar: calendar) else { continue }
+                return (whole, start, day)
+            }
+            return nil
         }
 
         private static func yearRange(_ year: Int, _ calendar: Calendar) -> DateRange? {
@@ -209,14 +241,19 @@ enum SessionSearch {
             return DateRange(start: start, end: next.addingTimeInterval(-1))
         }
 
-        /// First day of the month. Without a year, the most recent such month
-        /// that isn't in the future.
-        private static func monthStart(_ name: String, year: String?, now: Date, calendar: Calendar) -> Date? {
+        /// First day of the month (or the given day). Without a year, the most
+        /// recent such date that isn't in the future.
+        private static func monthStart(_ name: String, year: String?, day: Int? = nil, now: Date, calendar: Calendar) -> Date? {
             guard let month = months[name] else { return nil }
             let currentYear = calendar.component(.year, from: now)
-            if let year, let y = Int(year) { return calendar.date(from: DateComponents(year: y, month: month, day: 1)) }
-            guard let thisYears = calendar.date(from: DateComponents(year: currentYear, month: month, day: 1)) else { return nil }
-            return thisYears <= now ? thisYears : calendar.date(from: DateComponents(year: currentYear - 1, month: month, day: 1))
+            func make(_ y: Int) -> Date? {
+                guard let start = calendar.date(from: DateComponents(year: y, month: month, day: day ?? 1)) else { return nil }
+                // A day the month doesn't have (February 30) would roll into the next month.
+                return calendar.component(.day, from: start) == (day ?? 1) ? start : nil
+            }
+            if let year, let y = Int(year) { return make(y) }
+            guard let thisYears = make(currentYear) else { return nil }
+            return thisYears <= now ? thisYears : make(currentYear - 1)
         }
 
         private struct Match {
@@ -231,6 +268,12 @@ enum SessionSearch {
                   let whole = Range(m.range, in: text) else { return nil }
             let groups = (1..<m.numberOfRanges).map { i in Range(m.range(at: i), in: text).map { String(text[$0]) } }
             return Match(range: whole, text: String(text[whole]), groups: groups)
+        }
+
+        private static func removing(_ range: Range<String.Index>, from question: String) -> String {
+            var copy = question
+            copy.replaceSubrange(range, with: " ")
+            return copy
         }
 
         /// `lower` has the same length as the question for ASCII; for anything
