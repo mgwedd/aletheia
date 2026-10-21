@@ -423,7 +423,7 @@ struct SessionDetailView: View {
             }
             .help(transcribeBlocker ?? (transcription.isBusy
                   ? "Another session is being transcribed. This one will start when it finishes"
-                  : "Transcribe the recorded audio on-device"))
+                  : "Transcribe the recording"))
             .disabled(transcribeBlocker != nil)
             if isTranscribing {
                 ProgressView().controlSize(.small)
@@ -507,7 +507,7 @@ struct SessionDetailView: View {
             }
             Text(recorder.isPaused
                  ? "Paused. Nothing is being recorded until you resume."
-                 : "Recording on this Mac. Stop when the session ends, then transcribe.")
+                 : "Stop when the session ends, then transcribe.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.muted.color)
                 .multilineTextAlignment(.center)
