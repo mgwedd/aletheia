@@ -311,7 +311,11 @@ struct LocalToolScope {
         var used = lines[0].count
         var readTags = Set<String>()
         for hit in result.hits.prefix(6) {
-            let snippet = TranscriptCompactor.compact(hit.context.joined(separator: "\n"))
+            // Only transcript hits carry context lines; a notes or comment hit is its paragraph.
+            let passage = hit.kind == .transcript
+                ? hit.context.joined(separator: "\n")
+                : Self.paragraph(in: docs[hit.documentIndex].text, from: hit.lineIndex)
+            let snippet = TranscriptCompactor.compact(passage)
             let entry = "[\(hit.tag)] (\(Self.dateFormatter.string(from: hit.date))):\n\(snippet)"
             if used + entry.count + 2 > maxCharacters {
                 let left = maxCharacters - used - 20
@@ -359,7 +363,9 @@ struct LocalToolScope {
             }
             endSec = parsed
         } else {
-            endSec = startSec + 600
+            // Saturates: a model-written start near Int.max must not trap.
+            let (sum, overflow) = startSec.addingReportingOverflow(600)
+            endSec = overflow ? Int.max : sum
         }
 
         let rangeLabel = "\(TranscriptTimeline.format(startSec))–\(TranscriptTimeline.format(endSec))"
@@ -524,6 +530,20 @@ struct LocalToolScope {
 
     // MARK: Helpers
 
+    /// The paragraph of `text` that starts at line `start`: lines up to the next
+    /// blank one, split as `SearchIndex.passages` splits notes.
+    static func paragraph(in text: String, from start: Int) -> String {
+        let lines = LineTable(text)
+        guard start >= 0, start < lines.count else { return "" }
+        var kept: [String] = []
+        for index in start..<lines.count {
+            let line = lines[index]
+            if line.allSatisfy({ $0 == " " || $0 == "\t" || $0 == "\r" }) { break }
+            kept.append(line)
+        }
+        return kept.joined(separator: "\n")
+    }
+
     private func resolveSession(_ rawTag: String?) -> LocalToolSession? {
         guard let raw = rawTag?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
             return sessions.count == 1 ? sessions.first : nil
@@ -549,11 +569,11 @@ struct LocalToolScope {
         if let whole = Int(trimmed) { return whole }
         let parts = trimmed.split(separator: ":")
         if parts.count == 2, let m = Int(parts[0]), let s = Int(parts[1]), m >= 0, (0..<60).contains(s) {
-            return m * 60 + s
+            return TranscriptTimeline.seconds(fromParts: [m, s])
         }
         if parts.count == 3, let h = Int(parts[0]), let m = Int(parts[1]), let s = Int(parts[2]),
            h >= 0, (0..<60).contains(m), (0..<60).contains(s) {
-            return h * 3600 + m * 60 + s
+            return TranscriptTimeline.seconds(fromParts: [h, m, s])
         }
         return nil
     }
@@ -728,6 +748,8 @@ enum LocalToolLoop {
         var remainingBudget = characterBudget
         var outcomes: [LocalToolOutcome] = []
         var outputs: [String] = []
+        /// Successful outputs that fit `characterBudget`: the only ones the answer gets.
+        var accepted: [String] = []
         var transcriptTags = Set<String>()
         var digestTags = Set<String>()
         var seenCalls: [LocalToolCall] = []
@@ -773,30 +795,37 @@ enum LocalToolLoop {
                 seenCalls.append(call)
 
                 let perCallBudget = max(240, min(2_400, remainingBudget))
-                let outcome = scope.execute(call, maxCharacters: perCallBudget)
+                // A search reads every session of a long history: off the main thread.
+                let outcome = await Task.detached(priority: .userInitiated) {
+                    scope.execute(call, maxCharacters: perCallBudget)
+                }.value
                 remainingCalls -= 1
                 outcomes.append(outcome)
 
                 if let stage = outcome.stageTitle {
                     live(nil) { $0.recordCompletedStage(stage) }
                 }
-                transcriptTags.formUnion(outcome.readTranscriptTags)
-                digestTags.formUnion(outcome.readDigestTags)
 
+                // An output over the remaining budget is dropped: it reaches neither
+                // the next round nor the answer, and its tags are not counted as read.
                 let cost = outcome.output.count + 2
                 if cost <= remainingBudget {
                     outputs.append(outcome.output)
                     remainingBudget -= cost
-                    if !outcome.isError { madeProgress = true }
+                    if !outcome.isError {
+                        madeProgress = true
+                        accepted.append(outcome.output)
+                        transcriptTags.formUnion(outcome.readTranscriptTags)
+                        digestTags.formUnion(outcome.readDigestTags)
+                    }
                 }
             }
             if !madeProgress { break }
         }
 
-        let validOutputs = outcomes.filter { !$0.isError }.map(\.output)
-        let block = validOutputs.isEmpty
+        let block = accepted.isEmpty
             ? ""
-            : "Additional passages and digests from follow-up lookups:\n" + validOutputs.joined(separator: "\n\n")
+            : "Additional passages and digests from follow-up lookups:\n" + accepted.joined(separator: "\n\n")
         return RefinementResult(
             additionalContext: block,
             outcomes: outcomes,
