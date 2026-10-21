@@ -59,12 +59,8 @@ struct ChatPaneView: View {
                     .themeDivider(.bottom)
             }
             conversation
-            if onCompact != nil, let memory = ChatMemory.status(messages) {
+            if onCompact != nil, ChatMemory.hasHistory(messages) {
                 HStack(spacing: 8) {
-                    Text(memory)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
-                        .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     Button("Compact") { onCompact?("") }
                         .buttonStyle(.themed)

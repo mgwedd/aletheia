@@ -150,7 +150,7 @@ struct DoctorView: View {
             Image(systemName: "lock")
                 .font(.system(size: 12))
                 .accessibilityHidden(true)
-            Text("This report contains check names, statuses, counts and versions only — never patient names, session names or note text. Everything is checked on this Mac.")
+            Text("This report contains check names, statuses, counts and versions only — never patient names, session names or note text.")
                 .fixedSize(horizontal: false, vertical: true)
         }
         .font(Theme.Typography.caption)

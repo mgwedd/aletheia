@@ -196,12 +196,12 @@ struct GlobalSearchView: View {
     }
 
     private var footerSummary: String {
-        guard hasQuery else { return "Searched on this Mac." }
+        guard hasQuery else { return "" }
         let shown = visibleHits
         let patients = SearchHit.patientCount(shown)
         let results = shown.count == 1 ? "1 result" : "\(shown.count) results"
         let people = patients == 1 ? "1 patient" : "\(patients) patients"
-        return "\(results) across \(people). Searched on this Mac."
+        return "\(results) across \(people)."
     }
 
     // MARK: Behaviour
