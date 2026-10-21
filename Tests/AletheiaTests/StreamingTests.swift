@@ -119,4 +119,18 @@ final class AssistantServiceStreamingTests: XCTestCase {
         let lines = AssistantService.formatComments([active, resolved])
         XCTAssertEqual(lines, ["- On “sleep”: worse lately"], "a resolved comment stays out of the AI context")
     }
+
+    func testFormatCommentsIncludesNoteFormatLabel() {
+        let now = Date()
+        let noteQuoted = SessionComment(id: "1", quotedText: "Plan: CBT", body: "switch to DBT", createdAt: now, updatedAt: now, format: .soap)
+        let notePlain = SessionComment(id: "2", quotedText: "", body: "overall impression good", createdAt: now, updatedAt: now, format: .narrative)
+        let transcript = SessionComment(id: "3", quotedText: "Therapist: hello", body: "greeted", createdAt: now, updatedAt: now)
+
+        let lines = AssistantService.formatComments([noteQuoted, notePlain, transcript])
+        XCTAssertEqual(lines, [
+            "- [On SOAP note “Plan: CBT”]: switch to DBT",
+            "- [On Summary note]: overall impression good",
+            "- On “Therapist: hello”: greeted"
+        ])
+    }
 }

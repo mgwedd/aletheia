@@ -45,6 +45,8 @@ final class AnnotationRepository {
         /// written before this field existed decode cleanly (treated as
         /// unresolved); `makeComment` maps a missing/`nil` value to `false`.
         var resolved: Bool?
+        /// The note format rawValue if anchored to a generated note, nil for transcript comments.
+        var format: String?
     }
 
     func comments(sessionID: UUID) -> [SessionComment] {
@@ -58,11 +60,12 @@ final class AnnotationRepository {
         body: String,
         anchorSeconds: Double? = nil,
         quoteStart: Int? = nil,
+        format: ProgressNoteFormat? = nil,
         now: Date = Date()
     ) -> SessionComment? {
         let payload = CommentPayload(
             quotedText: quotedText, body: body, anchorSeconds: anchorSeconds,
-            quoteStart: quoteStart, resolved: false
+            quoteStart: quoteStart, resolved: false, format: format?.rawValue
         )
         guard let data = RecordPayloadCodec.encode(payload, using: protector) else { return nil }
         let record = PersistedRecord(
@@ -115,11 +118,13 @@ final class AnnotationRepository {
     /// same "still there, just garbled" behavior the old per-column SQL had.
     private func makeComment(_ record: PersistedRecord) -> SessionComment {
         if let payload = RecordPayloadCodec.decode(CommentPayload.self, from: record.payload, using: protector) {
+            let noteFormat = payload.format.flatMap(ProgressNoteFormat.init(rawValue:))
             return SessionComment(
                 id: record.id, quotedText: payload.quotedText, body: payload.body,
                 createdAt: record.createdAt, updatedAt: record.updatedAt,
                 anchorSeconds: payload.anchorSeconds, quoteStart: payload.quoteStart,
-                resolved: payload.resolved ?? false
+                resolved: payload.resolved ?? false,
+                format: noteFormat
             )
         }
         let garbled = RecordPayloadCodec.openedText(from: record.payload, using: protector)

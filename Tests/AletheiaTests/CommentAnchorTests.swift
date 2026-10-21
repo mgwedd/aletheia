@@ -43,4 +43,14 @@ final class CommentAnchorTests: XCTestCase {
         let comments = store.comments(sessionID: session)
         XCTAssertEqual(comments.map(\.quoteStart), [8, 83, nil])
     }
+
+    func testNoteCommentOrderingByQuoteStartWithoutTimestamps() {
+        let t0 = Date(timeIntervalSince1970: 1000)
+        let early = SessionComment(id: "1", quotedText: "Intro", body: "first paragraph", createdAt: t0.addingTimeInterval(10), updatedAt: t0, quoteStart: 15, format: .soap)
+        let late = SessionComment(id: "2", quotedText: "Conclusion", body: "last paragraph", createdAt: t0, updatedAt: t0, quoteStart: 250, format: .soap)
+        let unanchored = SessionComment(id: "3", quotedText: "", body: "general remark", createdAt: t0.addingTimeInterval(5), updatedAt: t0, format: .soap)
+
+        let sorted = [late, unanchored, early].sorted(by: CommentsRailView.byTranscriptPosition)
+        XCTAssertEqual(sorted.map(\.id), ["1", "2", "3"])
+    }
 }

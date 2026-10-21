@@ -154,6 +154,7 @@ struct SessionDetailView: View {
     /// this keeps that echo (and any no-op change) from being saved back.
     @State private var persistedSessionNote: String = ""
     @State private var comments: [SessionComment] = []
+    @State private var noteComments: [SessionComment] = []
     /// The passage currently selected in the transcript view (empty = just a
     /// caret), driving the "Comment on selection" affordance.
     @State private var transcriptSelection = ""
@@ -172,6 +173,16 @@ struct SessionDetailView: View {
     @State private var composerAnchor: CGRect?
     @State private var composerHeight: CGFloat = 230
     @State private var inlineCommentBody = ""
+    @State private var noteSelection = ""
+    @State private var noteSelectionRange: NSRange?
+    @State private var showNoteComposer = false
+    @State private var notePendingQuote = ""
+    @State private var notePendingQuoteStart: Int?
+    @State private var noteComposerAnchor: CGRect?
+    @State private var noteComposerHeight: CGFloat = 230
+    @State private var noteInlineCommentBody = ""
+    @State private var focusedNoteCommentID: String?
+    @State private var noteFocusToken = 0
     @State private var selectedTab: SessionTab = .transcript
     /// Whether the Notes tab shows the therapist's own notes instead of a drafted note.
     @State private var showingMyNotes = false
@@ -269,7 +280,11 @@ struct SessionDetailView: View {
             load()
 
             if let initialFocusedCommentID {
-                focusComment(initialFocusedCommentID)
+                if initialTab == .notes {
+                    focusNoteComment(initialFocusedCommentID)
+                } else {
+                    focusComment(initialFocusedCommentID)
+                }
             }
             ensureDigest()
             // Load the model now so the first note or question skips the load.
@@ -853,7 +868,7 @@ struct SessionDetailView: View {
             anchorSeconds: anchorSecs.map { Double($0) },
             quoteStart: pendingQuoteStart
         )
-        comments = commentStore.comments(sessionID: session.id)
+        comments = commentStore.comments(sessionID: session.id, format: nil)
         showInlineComposer = false
         // Bring the new card into view in the rail.
         if let id = created?.id {
@@ -892,14 +907,18 @@ struct SessionDetailView: View {
         }
         selectedTab = initialTab
         if let initialFocusedCommentID {
-            focusComment(initialFocusedCommentID)
+            if initialTab == .notes {
+                focusNoteComment(initialFocusedCommentID)
+            } else {
+                focusComment(initialFocusedCommentID)
+            }
         }
     }
 
     private func resolveComment(_ comment: SessionComment, _ resolved: Bool) {
         guard let commentStore = appModel.commentStore else { return }
         commentStore.setCommentResolved(id: comment.id, resolved: resolved)
-        comments = commentStore.comments(sessionID: session.id)
+        comments = commentStore.comments(sessionID: session.id, format: nil)
         // A resolved comment loses its highlight; don't keep focusing it.
         if resolved, focusedCommentID == comment.id { focusedCommentID = nil }
     }
@@ -988,6 +1007,7 @@ struct SessionDetailView: View {
                 case .format(let format):
                     showingMyNotes = false
                     settings.progressNoteFormat = format
+                    reloadNoteComments(for: format)
                 }
             }
         )
@@ -1034,6 +1054,15 @@ struct SessionDetailView: View {
                             .help("Swap back to the version you edited before the last regenerate")
                         }
                         if !isEditingNote {
+                            Button {
+                                beginNoteInlineComment()
+                            } label: {
+                                Label("Comment on selection", systemImage: "text.bubble")
+                            }
+                            .disabled(noteSelection.isEmpty || noteRunner.isQueued)
+                            .help(noteSelection.isEmpty
+                                  ? "Select a passage in the note to comment on it"
+                                  : "Add a comment on the selected passage in this note")
                             Button {
                                 noteDraft = summaryText
                                 isEditingNote = true
@@ -1119,13 +1148,34 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.muted.color)
                         .padding(.horizontal, 20)
                 }
-                ScrollView {
-                    MarkdownMessageView(text: summaryText, style: .note)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: 680, alignment: .leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
+                HStack(spacing: 0) {
+                    NoteReaderView(
+                        text: summaryText,
+                        comments: activeNoteAnchors,
+                        selection: $noteSelection,
+                        selectionRange: $noteSelectionRange,
+                        onOpenComment: focusNoteComment,
+                        focusedCommentID: focusedNoteCommentID,
+                        focusToken: noteFocusToken,
+                        composingRange: noteComposingRange,
+                        onComposingRectChange: { noteComposerAnchor = $0 }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay { noteComposerOverlay }
+
+                    Rectangle().fill(Theme.line.color).frame(width: 1)
+
+                    CommentsRailView(
+                        comments: noteComments,
+                        focusedCommentID: $focusedNoteCommentID,
+                        unplacedIDs: TranscriptHighlighter.unplacedIDs(in: summaryText, comments: activeNoteAnchors),
+                        focusToken: noteFocusToken,
+                        onFocus: focusNoteComment,
+                        onResolve: resolveNoteComment,
+                        onDelete: deleteNoteComment,
+                        onEdit: editNoteComment,
+                        emptyMessage: "Select a passage in the note and click “Comment on selection” to add one here."
+                    )
                 }
             }
         }
@@ -1147,6 +1197,124 @@ struct SessionDetailView: View {
         } message: {
             Text("You edited this \(settings.progressNoteFormat.shortName) note. Regenerating replaces it; your edited version is kept and can be brought back with Restore Previous.")
         }
+        .onChange(of: summaryText) { _, _ in showNoteComposer = false }
+        .onChange(of: isEditingNote) { _, editing in if editing { showNoteComposer = false } }
+    }
+
+    private var activeNoteAnchors: [TranscriptHighlighter.Anchor] {
+        noteComments.filter { !$0.resolved }.map { (id: $0.id, quote: $0.quotedText, start: $0.quoteStart) }
+    }
+
+    private var noteComposingRange: NSRange? {
+        guard showNoteComposer, let start = notePendingQuoteStart else { return nil }
+        let length = (notePendingQuote as NSString).length
+        return length > 0 ? NSRange(location: start, length: length) : nil
+    }
+
+    private func beginNoteInlineComment() {
+        if let range = noteSelectionRange,
+           let trimmed = TranscriptHighlighter.trimmed(range, in: summaryText) {
+            notePendingQuote = (summaryText as NSString).substring(with: trimmed)
+            notePendingQuoteStart = trimmed.location
+        } else {
+            notePendingQuote = noteSelection.trimmingCharacters(in: .whitespacesAndNewlines)
+            notePendingQuoteStart = nil
+        }
+        noteInlineCommentBody = ""
+        noteComposerAnchor = nil
+        showNoteComposer = true
+    }
+
+    private func saveNoteInlineComment() {
+        guard let commentStore = appModel.commentStore else { return }
+        let quote = notePendingQuote
+        let body = noteInlineCommentBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !quote.isEmpty, !body.isEmpty else { return }
+        let format = settings.progressNoteFormat
+        let created = commentStore.addComment(
+            sessionID: session.id,
+            quotedText: quote,
+            body: body,
+            anchorSeconds: nil,
+            quoteStart: notePendingQuoteStart,
+            format: format
+        )
+        reloadNoteComments(for: format)
+        showNoteComposer = false
+        if let id = created?.id {
+            focusNoteComment(id)
+        } else {
+            focusedNoteCommentID = nil
+        }
+    }
+
+    private func focusNoteComment(_ id: String) {
+        focusedNoteCommentID = id
+        noteFocusToken &+= 1
+    }
+
+    private func reloadNoteComments(for format: ProgressNoteFormat? = nil) {
+        guard let commentStore = appModel.commentStore else { return }
+        let target = format ?? settings.progressNoteFormat
+        noteComments = commentStore.comments(sessionID: session.id, format: target)
+        showNoteComposer = false
+        noteSelection = ""
+        noteSelectionRange = nil
+    }
+
+    private func resolveNoteComment(_ comment: SessionComment, _ resolved: Bool) {
+        guard let commentStore = appModel.commentStore else { return }
+        commentStore.setCommentResolved(id: comment.id, resolved: resolved)
+        reloadNoteComments()
+        if resolved, focusedNoteCommentID == comment.id { focusedNoteCommentID = nil }
+    }
+
+    private func editNoteComment(_ comment: SessionComment, _ body: String) {
+        guard let commentStore = appModel.commentStore,
+              CommentsRailView.canSaveEdit(draft: body, original: comment.body) else { return }
+        commentStore.updateComment(id: comment.id, body: body)
+        reloadNoteComments()
+    }
+
+    private func deleteNoteComment(_ comment: SessionComment) {
+        guard let commentStore = appModel.commentStore else { return }
+        commentStore.deleteComment(id: comment.id)
+        reloadNoteComments()
+    }
+
+    @ViewBuilder
+    private var noteComposerOverlay: some View {
+        if showNoteComposer {
+            GeometryReader { proxy in
+                InlineCommentComposerCard(
+                    timeLabel: nil,
+                    quote: notePendingQuote,
+                    text: $noteInlineCommentBody,
+                    onCancel: { showNoteComposer = false },
+                    onSave: saveNoteInlineComment
+                )
+                .frame(width: max(300, proxy.size.width - Self.composerLeading - Self.composerTrailing))
+                .background(
+                    GeometryReader { card in
+                        Color.clear.preference(key: ComposerHeightKey.self, value: card.size.height)
+                    }
+                )
+                .opacity(noteComposerAnchor == nil && noteComposingRange != nil ? 0 : 1)
+                .offset(x: Self.composerLeading, y: noteComposerY(in: proxy.size.height))
+            }
+            .onPreferenceChange(ComposerHeightKey.self) { noteComposerHeight = $0 }
+        }
+    }
+
+    private func noteComposerY(in paneHeight: CGFloat) -> CGFloat {
+        let margin = Self.composerMargin
+        let gap = Self.composerGap
+        guard let anchor = noteComposerAnchor else { return margin }
+        let below = anchor.maxY + gap
+        if below + noteComposerHeight <= paneHeight - margin { return max(margin, below) }
+        let above = anchor.minY - gap - noteComposerHeight
+        if above >= margin { return above }
+        return max(margin, paneHeight - noteComposerHeight - margin)
     }
 
     /// Length for every format, effort for long sessions, and the per-format
@@ -1327,7 +1495,8 @@ struct SessionDetailView: View {
             let storedNote = commentStore.note(sessionID: session.id)
             persistedSessionNote = storedNote
             sessionNote = storedNote
-            comments = commentStore.comments(sessionID: session.id)
+            comments = commentStore.comments(sessionID: session.id, format: nil)
+            noteComments = commentStore.comments(sessionID: session.id, format: settings.progressNoteFormat)
         }
     }
 
@@ -1352,13 +1521,13 @@ struct SessionDetailView: View {
         guard let commentStore = appModel.commentStore,
               CommentsRailView.canSaveEdit(draft: body, original: comment.body) else { return }
         commentStore.updateComment(id: comment.id, body: body)
-        comments = commentStore.comments(sessionID: session.id)
+        comments = commentStore.comments(sessionID: session.id, format: nil)
     }
 
     private func deleteComment(_ comment: SessionComment) {
         guard let commentStore = appModel.commentStore else { return }
         commentStore.deleteComment(id: comment.id)
-        comments = commentStore.comments(sessionID: session.id)
+        comments = commentStore.comments(sessionID: session.id, format: nil)
     }
 
     /// Whether the app-wide recorder is recording *this* session (vs. another
@@ -1505,7 +1674,8 @@ struct SessionDetailView: View {
         let service = integrations.makeAssistantService(report: noteRunner.reporter)
         let transcript = transcriptText
         let notes = sessionNote
-        let sessionComments = settings.includeCommentsInDrafts ? comments : []
+        let allComments = (appModel.commentStore?.comments(sessionID: session.id) ?? (comments + noteComments))
+        let sessionComments = settings.includeCommentsInDrafts ? allComments : []
         let patientBackground = settings.includePatientBackground ? patient.aiBackgroundBlock : ""
         let effort = settings.noteEffort
         let riskPhrases = settings.riskPhrases

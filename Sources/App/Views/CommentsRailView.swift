@@ -28,6 +28,7 @@ struct CommentsRailView: View {
     var onDelete: (SessionComment) -> Void
     /// The comment's new body, after Save in the card's editor.
     var onEdit: (SessionComment, String) -> Void = { _, _ in }
+    var emptyMessage: String = "Select a passage in the transcript and click “Comment on selection” to add one here."
 
     /// The card being edited, and its text so far. One at a time; nothing is
     /// written until Save.
@@ -58,7 +59,13 @@ struct CommentsRailView: View {
         case let (x?, y?): return x != y ? x < y : a.createdAt < b.createdAt
         case (_?, nil): return true
         case (nil, _?): return false
-        case (nil, nil): return a.createdAt < b.createdAt
+        case (nil, nil):
+            switch (a.quoteStart, b.quoteStart) {
+            case let (x?, y?): return x != y ? x < y : a.createdAt < b.createdAt
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return a.createdAt < b.createdAt
+            }
         }
     }
 
@@ -80,7 +87,7 @@ struct CommentsRailView: View {
                     Image(systemName: "text.bubble")
                         .font(.title2)
                         .foregroundStyle(Theme.muted.color)
-                    Text("Select a passage in the transcript and click “Comment on selection” to add one here.")
+                    Text(emptyMessage)
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.muted.color)
                         .multilineTextAlignment(.center)

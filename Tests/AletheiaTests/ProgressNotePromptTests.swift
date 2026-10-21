@@ -105,6 +105,16 @@ final class ProgressNotePromptTests: XCTestCase {
         XCTAssertFalse(withoutComments.contains("Therapist's margin comments"))
     }
 
+    func testProgressNoteIncludesFormattedNoteComments() {
+        let noteComment = SessionComment(
+            id: "1", quotedText: "Treatment goals", body: "Focus on sleep hygiene",
+            createdAt: Date(), updatedAt: Date(), format: .soap
+        )
+        let formatted = AssistantService.formatComments([noteComment])
+        let prompt = Prompts.progressNote(format: .soap, transcript: transcript, comments: formatted)
+        XCTAssertTrue(prompt.contains("- [On SOAP note “Treatment goals”]: Focus on sleep hygiene"))
+    }
+
     func testSessionChatAndSummarizeIncludePatientBackground() {
         let bg = "===== Patient background =====\nClinical history:\nPTSD"
         let chatPrompt = Prompts.sessionChat(transcript: transcript, patientBackground: bg, history: [], question: "Q?")

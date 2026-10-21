@@ -89,8 +89,15 @@ struct RootView: View {
                         initialTab = .notes
                         showingMyNotes = true
                     case .comment:
-                        initialTab = .transcript
-                        commentID = hit.commentID
+                        if let format = hit.noteFormat {
+                            initialTab = .notes
+                            noteFormat = format
+                            showingMyNotes = false
+                            commentID = hit.commentID
+                        } else {
+                            initialTab = .transcript
+                            commentID = hit.commentID
+                        }
                     case .transcript, .patient:
                         initialTab = .transcript
                     }

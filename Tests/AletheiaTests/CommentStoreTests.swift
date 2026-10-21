@@ -112,4 +112,30 @@ final class CommentStoreTests: XCTestCase {
         let store = try XCTUnwrap(CommentStore(root: tempRoot))
         XCTAssertEqual(store.note(sessionID: UUID()), "")
     }
+
+    func testCommentsFilterByFormat() throws {
+        let store = try XCTUnwrap(CommentStore(root: tempRoot))
+        let session = UUID()
+
+        store.addComment(sessionID: session, quotedText: "Therapist: hi", body: "transcript comment")
+        store.addComment(sessionID: session, quotedText: "Objective: stable", body: "soap comment", format: .soap)
+        store.addComment(sessionID: session, quotedText: "Discussion", body: "summary comment", format: .narrative)
+
+        // All comments
+        let all = store.comments(sessionID: session)
+        XCTAssertEqual(all.count, 3)
+
+        // Filtered by format
+        let transcriptComments = store.comments(sessionID: session, format: nil)
+        XCTAssertEqual(transcriptComments.map(\.body), ["transcript comment"])
+
+        let soapComments = store.comments(sessionID: session, format: .soap)
+        XCTAssertEqual(soapComments.map(\.body), ["soap comment"])
+
+        let summaryComments = store.comments(sessionID: session, format: .narrative)
+        XCTAssertEqual(summaryComments.map(\.body), ["summary comment"])
+
+        let girpComments = store.comments(sessionID: session, format: .girp)
+        XCTAssertTrue(girpComments.isEmpty)
+    }
 }

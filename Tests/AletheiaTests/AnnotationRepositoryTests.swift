@@ -177,4 +177,46 @@ final class AnnotationRepositoryTests: XCTestCase {
     func testMissingNoteIsEmptyString() {
         XCTAssertEqual(repository.note(sessionID: UUID()), "")
     }
+
+    // MARK: - Note comments
+
+    func testNoteCommentsRoundTripAndCarryFormat() throws {
+        let session = UUID()
+        let created = try XCTUnwrap(
+            repository.addComment(
+                sessionID: session,
+                quotedText: "Plan: weekly CBT",
+                body: "Clarify frequency to bi-weekly",
+                quoteStart: 45,
+                format: .soap
+            )
+        )
+        XCTAssertEqual(created.format, .soap)
+        XCTAssertNil(created.anchorSeconds)
+        XCTAssertEqual(created.quoteStart, 45)
+        XCTAssertEqual(created.quotedText, "Plan: weekly CBT")
+
+        let all = repository.comments(sessionID: session)
+        XCTAssertEqual(all.count, 1)
+        XCTAssertEqual(all.first?.format, .soap)
+    }
+
+    func testTranscriptCommentsDefaultToNilFormat() throws {
+        let session = UUID()
+        let transcriptComment = try XCTUnwrap(
+            repository.addComment(sessionID: session, quotedText: "Therapist: hello", body: "greeting", anchorSeconds: 5)
+        )
+        XCTAssertNil(transcriptComment.format)
+        XCTAssertEqual(transcriptComment.anchorSeconds, 5)
+
+        let noteComment = try XCTUnwrap(
+            repository.addComment(sessionID: session, quotedText: "Assessment", body: "Check severity", format: .dap)
+        )
+        XCTAssertEqual(noteComment.format, .dap)
+
+        let all = repository.comments(sessionID: session)
+        XCTAssertEqual(all.count, 2)
+        XCTAssertNil(all[0].format)
+        XCTAssertEqual(all[1].format, .dap)
+    }
 }
