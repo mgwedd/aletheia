@@ -13,7 +13,10 @@ struct RootView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
-    /// The search field at the top right and its results (see `GlobalSearchField`).
+    /// Bound so the sidebar can be brought back from the detail pane's title bar
+    /// and from the search home (View > Show/Hide Sidebar is `SidebarCommands`).
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
+    /// The search field at the foot of the sidebar and its results (see `GlobalSearchField`).
     @StateObject private var search = GlobalSearchModel()
     @FocusState private var searchFocused: Bool
     /// The patient whose profile is being edited; the sheet is shared by the
@@ -22,32 +25,29 @@ struct RootView: View {
     @State private var editingFocus: ProfileField = .name
 
     var body: some View {
-        NavigationSplitView {
-            PatientsListView(selectedPatient: $selectedPatient, onEditProfile: { editingFocus = .name; editingProfile = $0 })
-                .toolbar {
-                    ToolbarItem(placement: .automatic) {
-                        Button {
-                            showSettings = true
-                        } label: {
-                            Label("Settings", systemImage: "gearshape")
-                        }
-                    }
-                }
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            PatientsListView(
+                selectedPatient: $selectedPatient,
+                search: search,
+                searchFocused: $searchFocused,
+                onOpenSearchResult: { openSearchResult($0) },
+                onOpenSettings: { showSettings = true },
+                onEditProfile: { editingFocus = .name; editingProfile = $0 }
+            )
         } detail: {
             // Results cover the detail pane while there is a query, and the pane
             // stays underneath (so an open session keeps its unsaved edits).
             detailContent
-                .accessibilityHidden(search.hasQuery)
+                .accessibilityHidden(search.hasQuery && hasOpenPatient)
                 .overlay {
-                    if search.hasQuery {
+                    // With no patient open the search home shows its own results.
+                    if search.hasQuery && hasOpenPatient {
                         GlobalSearchResultsView(model: search, onOpen: { openSearchResult($0) })
                     }
                 }
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        GlobalSearchField(model: search, isFocused: $searchFocused, onOpen: { openSearchResult($0) })
-                    }
-                }
+                // No toolbar items here on purpose: a wide one (the old 280pt search
+                // field) pushed the system sidebar toggle into the » overflow menu,
+                // leaving a collapsed sidebar with no way back.
         }
         .modifier(GlobalSearchRunning(search: search, appModel: appModel, isFocused: $searchFocused))
         // A records export keeps running while the therapist works; its progress and
@@ -144,13 +144,16 @@ struct RootView: View {
                 .id(selectedPatient.id)
                 .background(Theme.window.color)
         } else {
-            ContentUnavailableView(
-                "Select a Patient",
-                systemImage: "person.text.rectangle",
-                description: Text("Choose a patient on the left, or add a new one.")
+            SearchHomeView(
+                model: search, onOpen: { openSearchResult($0) },
+                sidebarHidden: columnVisibility == .detailOnly, onShowSidebar: { columnVisibility = .all }
             )
-            .background(Theme.window.color)
         }
+    }
+
+    private var hasOpenPatient: Bool {
+        if let selectedPatient { return appModel.patients.contains { $0.id == selectedPatient.id } }
+        return false
     }
 
     /// Opens a search result: selects the patient and, for anything inside a

@@ -4,7 +4,14 @@ struct PatientsListView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var settings: AppSettings
     @Binding var selectedPatient: Patient?
+    @ObservedObject var search: GlobalSearchModel
+    var searchFocused: FocusState<Bool>.Binding
+    let onOpenSearchResult: (SearchHit) -> Void
+    let onOpenSettings: () -> Void
     let onEditProfile: (Patient) -> Void
+
+    /// The one name for adding a patient: the empty state, the footer, the shortcuts list.
+    static let addPatientTitle = "Add Patient"
 
     @State private var showAddPatient = false
     @State private var newPatientName = ""
@@ -43,11 +50,12 @@ struct PatientsListView: View {
                     } description: {
                         Text("Add your first patient to start recording and reviewing sessions.")
                     } actions: {
-                        Button("Add Patient") {
+                        Button(Self.addPatientTitle) {
                             newPatientName = ""
                             showAddPatient = true
                         }
                         .buttonStyle(.themePrimary)
+                        .shortcut(AppHotkey.newPatient, help: "Add a new patient")
                     }
                 }
             }
@@ -59,16 +67,6 @@ struct PatientsListView: View {
         // alone gets swept into the window's ">>" overflow when the pane is
         // narrow, so adding a patient looked impossible — this never hides.
         .safeAreaInset(edge: .bottom, spacing: 0) { footer }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    newPatientName = ""
-                    showAddPatient = true
-                } label: {
-                    Label("Add Patient", systemImage: "plus")
-                }
-            }
-        }
         .sheet(isPresented: $showAddPatient) {
             AddPatientSheet(name: $newPatientName) {
                 if let created = appModel.addPatient(name: newPatientName) {
@@ -84,6 +82,8 @@ struct PatientsListView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 12) {
+            GlobalSearchField(model: search, isFocused: searchFocused, onOpen: onOpenSearchResult)
+
             if !visibleUnreadablePatients.isEmpty {
                 DamagedRecordsNotice(
                     title: visibleUnreadablePatients.count == 1
@@ -96,15 +96,31 @@ struct PatientsListView: View {
                 )
             }
 
-            Button {
-                newPatientName = ""
-                showAddPatient = true
-            } label: {
-                Label("New patient", systemImage: "plus")
-                    .frame(maxWidth: .infinity)
+            // In the footer, not the toolbar: toolbar items get swept into the
+            // window's » overflow menu when the window is narrow.
+            HStack(spacing: 8) {
+                // While the list is empty its "No Patients Yet" state has the one Add Patient button.
+                if !appModel.patients.isEmpty {
+                    Button {
+                        newPatientName = ""
+                        showAddPatient = true
+                    } label: {
+                        Label(Self.addPatientTitle, systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.themed)
+                    .shortcut(AppHotkey.newPatient, help: "Add a new patient")
+                } else {
+                    Spacer(minLength: 0)
+                }
+
+                Button(action: onOpenSettings) {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .buttonStyle(.themeIcon)
+                .help(ShortcutGlyphs.help("Settings", ShortcutCatalog.settings))
+                .accessibilityIdentifier("sidebar-settings")
             }
-            .buttonStyle(.themed)
-            .shortcut(AppHotkey.newPatient, help: "Add a new patient")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)

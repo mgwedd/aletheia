@@ -42,7 +42,7 @@ final class ShortcutCatalogTests: XCTestCase {
 
     func testTheCatalogReadsAsMacKeys() {
         let symbols = Dictionary(uniqueKeysWithValues: allEntries.map { ($0.title, ShortcutGlyphs.symbols(for: $0.shortcut)) })
-        XCTAssertEqual(symbols["New patient"], "⌘N")
+        XCTAssertEqual(symbols["Add Patient"], "⌘N")
         XCTAssertEqual(symbols["Bulleted list"], "⇧⌘7")
         XCTAssertEqual(symbols["Heading"], "⇧⌘H")
         XCTAssertEqual(symbols["Save a comment"], "⌘↩")

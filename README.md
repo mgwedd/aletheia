@@ -54,7 +54,7 @@ After the downloads, Aletheia works offline. If a row will not turn green, see t
 4. Click **Stop** when finished. Transcription starts by itself if **Settings → General → Transcribe automatically when a recording ends** is on; otherwise click **Transcribe**.
 5. Open the **Notes** tab to jot your own notes and generate the progress note. Choose the format (narrative, SOAP, DAP, BIRP or GIRP) under **Settings → Note format**. Use the **Length** menu to make it shorter or longer, then **Regenerate** to apply. **Edit** it, then **Copy** to paste into your record (formatting is kept), or **Export** it as a PDF, Word or Markdown file. **Export** on the session saves the note and transcript together. On the patient page, **Export all records** builds a zip of the whole history in the background. ⌘S saves your edits and ⌘G generates or regenerates the note.
 6. Use the **Ask** tab to question this session, or **Ask about this patient** on the patient page. Answers say what was read.
-7. The **Search** field at the top right (⌘F) searches patients, sessions, your notes, progress notes, comments and transcripts. Results appear in one grouped list; use the arrow keys to move and Return to open. **Help → Keyboard Shortcuts** (⌘/) lists every shortcut.
+7. The **Search all patients** field at the foot of the sidebar (⌘F, wherever the cursor is; ⌥⌘F finds within the open transcript or note) searches patients, sessions, your notes, progress notes, comments and transcripts. Results appear in one grouped list; use the arrow keys to move and Return to open. **Help → Keyboard Shortcuts** (⌘/) lists every shortcut.
 
 Always read the transcript and note before relying on them. Names and clinical terms are often misheard, and AI drafts can be wrong.
 

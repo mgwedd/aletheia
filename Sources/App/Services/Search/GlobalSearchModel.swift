@@ -146,9 +146,25 @@ struct SearchHitDestination: Equatable {
     }
 }
 
-/// ⌘F: focus the search field, except while the cursor is in a transcript or
-/// note, where it opens that text's own find bar as before.
+/// ⌥⌘F: the find bar of the transcript or note that has the cursor (⌘F is
+/// always the global search).
 enum GlobalSearchShortcut {
+    /// Plain ⌘F, the key a text view's find bar would otherwise claim.
+    static func isGlobalSearch(_ event: NSEvent) -> Bool {
+        isF(event, modifiers: .command)
+    }
+
+    /// ⌥⌘F.
+    static func isFindInText(_ event: NSEvent) -> Bool {
+        isF(event, modifiers: [.command, .option])
+    }
+
+    private static func isF(_ event: NSEvent, modifiers: NSEvent.ModifierFlags) -> Bool {
+        event.type == .keyDown
+            && event.modifierFlags.intersection([.command, .shift, .option, .control]) == modifiers
+            && event.charactersIgnoringModifiers?.lowercased() == "f"
+    }
+
     /// The responder if it is a text view with its own find bar (the transcript
     /// or a note), not the editor of a text field such as the search field.
     @MainActor
