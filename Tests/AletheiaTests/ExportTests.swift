@@ -91,7 +91,7 @@ final class RichClipboardTests: XCTestCase {
 
     func testRichTextCarriesTheFormatting() throws {
         let rtf = try XCTUnwrap(RichClipboard.payload(markdown: note).rtf)
-        let text = try NSAttributedString(rtf: rtf, documentAttributes: nil)
+        let text = try XCTUnwrap(NSAttributedString(rtf: rtf, documentAttributes: nil))
         let whole = text.string as NSString
         let heading = text.attribute(.font, at: whole.range(of: "Plan").location, effectiveRange: nil) as? NSFont
         let body = text.attribute(.font, at: whole.range(of: "Continue").location, effectiveRange: nil) as? NSFont
