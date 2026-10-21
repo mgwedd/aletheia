@@ -128,10 +128,16 @@ enum ZipArchive {
     /// MS-DOS time and date, in local time, clamped to the format's 1980...2107 range.
     private static func dosStamp(_ date: Date) -> (time: UInt16, date: UInt16) {
         let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
-        let year = min(max(parts.year ?? 1980, 1980), 2107)
-        let day = UInt16((year - 1980) << 9 | (parts.month ?? 1) << 5 | (parts.day ?? 1))
-        let time = UInt16((parts.hour ?? 0) << 11 | (parts.minute ?? 0) << 5 | (parts.second ?? 0) / 2)
-        return (time, day)
+        let year: Int = min(max(parts.year ?? 1980, 1980), 2107)
+        let month: Int = parts.month ?? 1
+        let day: Int = parts.day ?? 1
+        let hour: Int = parts.hour ?? 0
+        let minute: Int = parts.minute ?? 0
+        let halfSeconds: Int = (parts.second ?? 0) / 2
+        // Split into typed steps: one long chain of shifts and ORs times out the type checker.
+        let datePart: Int = ((year - 1980) << 9) | (month << 5) | day
+        let timePart: Int = (hour << 11) | (minute << 5) | halfSeconds
+        return (UInt16(timePart), UInt16(datePart))
     }
 }
 
