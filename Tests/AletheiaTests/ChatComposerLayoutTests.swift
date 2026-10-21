@@ -28,7 +28,7 @@ final class ChatComposerLayoutTests: XCTestCase {
     }
 
     func testEffortSelectorIsCalledModelEffortAndNamesEveryLevel() {
-        XCTAssertEqual(AnswerEffort.label, "Model effort")
+        XCTAssertEqual(AnswerEffort.label, "AI effort")
         XCTAssertEqual(AnswerEffort.allCases.map(\.displayName), ["Fast", "Normal", "Focus"])
     }
 
