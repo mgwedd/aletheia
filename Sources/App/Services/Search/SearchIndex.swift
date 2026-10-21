@@ -20,7 +20,13 @@ import SQLite3
 ///   doc      one row per indexed document: patient, session, kind, date, and a
 ///            fingerprint of its text. (session, kind, fp) is unique, so
 ///            unchanged text is never re-indexed and an edit is a new row.
-///   session  per-session stamp (transcript mtime + size) for the launch sweep.
+///            `live` is 1 for the documents `replace` last stored for their
+///            session and kind (the launch sweep and the save hooks), which is
+///            what global search reads; a chat or tool search stores what it was
+///            handed with `live` 0, so an older or not yet saved version never
+///            shows up there.
+///   session  per-session stamp (transcript mtime + size, or "none" for a
+///            session without a transcript) for the launch sweep.
 ///   passage  FTS5, one row per transcript line or notes paragraph. Its rowid is
 ///            `doc << 24 | line`, which maps a hit to its document and line and
 ///            makes deleting a document one rowid range. `text` holds the
@@ -35,7 +41,7 @@ import SQLite3
 /// it, so a search can run while another thread is indexing.
 final class SearchIndex {
     static let stopToken = "qzstop"
-    private static let schemaVersion: Int32 = 2
+    private static let schemaVersion: Int32 = 3
     private static let lineBits: Int64 = 24
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -76,6 +82,11 @@ final class SearchIndex {
     var mayOpen: () -> Bool = { true }
     /// Called after `reopen()` succeeds, to re-run the (incremental) sweep.
     var onReopen: (() -> Void)?
+    /// Called when a damaged or outdated file was thrown away and the index
+    /// started over empty, so the owner can re-run the sweep to refill it.
+    var onReset: (() -> Void)?
+    /// What the index is known to be missing right now (see `SearchIndexProgress`).
+    let progress = SearchIndexProgress()
     private let worker = DispatchQueue(label: "aletheia.search-index", qos: .utility)
 
     init(url: URL? = nil) { self.url = url }
@@ -113,6 +124,7 @@ final class SearchIndex {
         verified = false
         Self.removeFiles(url)
         lock.unlock()
+        progress.invalidate()
     }
 
     /// Whether the index is closed, or a lock is engaged, so work on it would be dropped.
@@ -168,6 +180,11 @@ final class SearchIndex {
     }
 
     static func rowid(doc: Int64, line: Int) -> Int64 { (doc << lineBits) | Int64(line) }
+
+    /// The document and line a passage rowid stands for (the inverse of `rowid(doc:line:)`).
+    static func split(rowid: Int64) -> (doc: Int64, line: Int) {
+        (rowid >> lineBits, Int(rowid & ((1 << lineBits) - 1)))
+    }
 
     /// A transcript line, or a paragraph of notes, per passage; empty ones skipped.
     static func passages(of text: String, kind: SessionSearch.Kind) -> [Passage] {
@@ -316,6 +333,7 @@ final class SearchIndex {
                 return
             }
             keep.insert(id)
+            run(db, "UPDATE doc SET live = 1 WHERE id = ?1", binds: [.int(id)])
         }
         for kind in kinds {
             each(db, "SELECT id FROM doc WHERE session = ?1 AND kind = ?2", binds: [.text(session), .text(kind.rawValue)]) { stmt in
@@ -335,6 +353,16 @@ final class SearchIndex {
     /// Runs `work` on the index's background queue (never the main thread).
     func async(_ work: @escaping () -> Void) { worker.async(execute: work) }
 
+    /// Runs `work` on the index's background queue and waits for it without
+    /// blocking a thread. Saves (`async`) and the sweep go through this one
+    /// serial queue, so a session's text is read and stored in the order the
+    /// writes happened and the last write always wins.
+    func perform<T>(_ work: @escaping () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            worker.async { continuation.resume(returning: work()) }
+        }
+    }
+
     /// Waits for work queued with `async` (tests).
     func flush() { worker.sync {} }
 
@@ -346,6 +374,90 @@ final class SearchIndex {
         each(db, "SELECT stamp FROM session WHERE id = ?1", binds: [.text(session)]) { result = Self.text($0, 0) }
         settle()
         return result
+    }
+
+    /// Every session's stamp, by session id. nil when the index can't be read.
+    func allStamps() -> [String: String]? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let db = open() else { return nil }
+        var result: [String: String] = [:]
+        each(db, "SELECT id, stamp FROM session") { result[Self.text($0, 0)] = Self.text($0, 1) }
+        return settle() ? result : nil
+    }
+
+    // MARK: - Global search
+
+    /// A document global search may show: one `replace` stored as current.
+    struct LiveDocument: Equatable {
+        let id: Int64
+        let session: String
+        let patient: String
+        let kind: String
+        let date: Double
+        let fingerprint: String
+    }
+
+    /// A passage that matched one clause, with FTS5's BM25 turned positive (higher is better).
+    struct MatchedPassage: Equatable {
+        let doc: Int64
+        let line: Int
+        let score: Double
+    }
+
+    enum LiveMatch {
+        /// Closed, locked, or damaged: the caller should read the files instead.
+        case unavailable
+        /// `shouldContinue` turned false part way.
+        case cancelled
+        /// Every live document, and per clause every passage of a live document it matched.
+        case found(documents: [Int64: LiveDocument], passages: [[MatchedPassage]])
+    }
+
+    /// Runs each FTS5 MATCH `clauses[i]` over every live document (all
+    /// patients), ranked by FTS5's own bm25(). One query per clause, so the
+    /// caller can tell which terms a document matched. Only ids, line numbers
+    /// and scores come back; the caller builds snippets from the original text.
+    func matchLive(clauses: [String], shouldContinue: () -> Bool = { true }) -> LiveMatch {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let db = open() else { return .unavailable }
+        var documents: [Int64: LiveDocument] = [:]
+        each(db, "SELECT id, session, patient, kind, date, fp FROM doc WHERE live = 1") { stmt in
+            let id = sqlite3_column_int64(stmt, 0)
+            documents[id] = LiveDocument(
+                id: id, session: Self.text(stmt, 1), patient: Self.text(stmt, 2), kind: Self.text(stmt, 3),
+                date: sqlite3_column_double(stmt, 4), fingerprint: Self.text(stmt, 5))
+        }
+        guard settle() else { return .unavailable }
+        var passages: [[MatchedPassage]] = []
+        for clause in clauses {
+            guard shouldContinue() else { return .cancelled }
+            guard let stmt = prepare(db, "SELECT rowid, bm25(passage) FROM passage WHERE passage MATCH ?1") else {
+                settle()
+                return .unavailable
+            }
+            bind(stmt, [.text(clause)])
+            var rows: [MatchedPassage] = []
+            var code = sqlite3_step(stmt)
+            while code == SQLITE_ROW {
+                let rowid = sqlite3_column_int64(stmt, 0)
+                let doc = rowid >> Self.lineBits
+                if documents[doc] != nil {
+                    let line = Int(rowid & ((1 << Self.lineBits) - 1))
+                    rows.append(MatchedPassage(doc: doc, line: line, score: -sqlite3_column_double(stmt, 1)))
+                }
+                code = sqlite3_step(stmt)
+            }
+            sqlite3_finalize(stmt)
+            if code != SQLITE_DONE {
+                note(code)
+                settle()
+                return .unavailable
+            }
+            passages.append(rows)
+        }
+        return .found(documents: documents, passages: passages)
     }
 
     /// Removes everything stored for sessions not in `live`, and every ad hoc
@@ -421,6 +533,7 @@ final class SearchIndex {
             if let handle = openOnce() { db = handle; return handle }
             guard let url, attempt == 0 else { return nil }
             Self.removeFiles(url)
+            startedOver()
         }
         return nil
     }
@@ -451,7 +564,7 @@ final class SearchIndex {
             CREATE TABLE IF NOT EXISTS doc(
                 id INTEGER PRIMARY KEY, patient TEXT, session TEXT NOT NULL, kind TEXT NOT NULL,
                 date REAL NOT NULL, fp TEXT NOT NULL, lines INTEGER NOT NULL, tokens INTEGER NOT NULL,
-                UNIQUE(session, kind, fp));
+                live INTEGER NOT NULL DEFAULT 0, UNIQUE(session, kind, fp));
             CREATE TABLE IF NOT EXISTS session(id TEXT PRIMARY KEY, patient TEXT, stamp TEXT);
             CREATE VIRTUAL TABLE IF NOT EXISTS passage USING fts5(
                 line UNINDEXED, text, tokenize = 'unicode61 remove_diacritics 0');
@@ -488,8 +601,17 @@ final class SearchIndex {
         verified = false
         sqlite3_close_v2(db)
         db = nil
-        if let url { Self.removeFiles(url) }
+        if let url {
+            Self.removeFiles(url)
+            startedOver()
+        }
         return false
+    }
+
+    /// Everything stored is gone: nothing about coverage is known until a sweep checks again.
+    private func startedOver() {
+        progress.invalidate()
+        onReset?()
     }
 
     private static func removeFiles(_ url: URL) {

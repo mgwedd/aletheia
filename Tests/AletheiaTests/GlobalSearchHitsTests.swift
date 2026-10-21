@@ -1,8 +1,9 @@
 import XCTest
 @testable import Aletheia
 
-/// The flat global-search list: which sources `Store.searchHits` covers, how
-/// hits are titled and counted, and where a query is highlighted.
+/// Global search when the index can't be read: which sources the file-by-file
+/// `Store.searchHits` covers, how hits are titled and counted, and where a
+/// query is highlighted. (The index-backed search: `GlobalSearchIndexTests`.)
 final class GlobalSearchHitsTests: XCTestCase {
     private var tempRoot: URL!
     private var comments: CommentStore!
@@ -35,14 +36,14 @@ final class GlobalSearchHitsTests: XCTestCase {
         XCTAssertNotNil(comments.addComment(sessionID: session.id, quotedText: "thinking about it", body: "Raise couples therapy referrals.", anchorSeconds: 57))
 
         let hits = store.searchHits(query: "couples therapy")
-        XCTAssertEqual(SearchHit.counts(hits), [.transcript: 1, .note: 1, .session: 1, .comment: 1])
+        XCTAssertEqual(SearchHit.counts(hits), [.transcript: 1, .note: 1, .sessionNotes: 1, .comment: 1])
         XCTAssertEqual(SearchHit.patientCount(hits), 1)
 
         let titles = Dictionary(uniqueKeysWithValues: hits.map { ($0.kind, $0.title) })
         XCTAssertEqual(titles[.transcript], "Sam Doe, \(SearchHit.dateText(session.date))")
         XCTAssertEqual(titles[.note], "Sam Doe, \(SearchHit.dateText(session.date)) (SOAP)")
         XCTAssertEqual(titles[.comment], "Sam Doe, \(SearchHit.dateText(session.date)) at 0:57")
-        XCTAssertEqual(titles[.session], "Sam Doe, \(SearchHit.dateText(session.date))")
+        XCTAssertEqual(titles[.sessionNotes], "Sam Doe, \(SearchHit.dateText(session.date))")
         XCTAssertTrue(hits.allSatisfy { $0.session?.id == session.id })
     }
 
@@ -141,9 +142,11 @@ final class GlobalSearchHitsTests: XCTestCase {
         XCTAssertEqual(SearchHit.clockText(-4), "0:00")
     }
 
-    func testKindLabelsFollowChipOrder() {
-        XCTAssertEqual(SearchKind.allCases.map(\.filterLabel), ["Patients", "Sessions", "Transcripts", "Notes", "Comments"])
-        XCTAssertEqual(SearchKind.allCases.map(\.badge), ["Patient", "Session", "Transcript", "Note", "Comment"])
+    func testKindLabelsFollowGroupOrder() {
+        XCTAssertEqual(
+            SearchKind.allCases.map(\.filterLabel),
+            ["Patients", "Sessions", "My notes", "Progress notes", "Comments", "Transcripts"])
+        XCTAssertEqual(SearchKind.allCases.map(\.badge), ["Patient", "Session", "My notes", "Note", "Comment", "Transcript"])
     }
 
     // MARK: SearchHighlighter
@@ -195,14 +198,15 @@ final class GlobalSearchHitsTests: XCTestCase {
         XCTAssertTrue(store.searchHits(query: "garden", shouldContinue: { false }).isEmpty)
     }
 
-    /// Global search reads and decrypts every transcript; on a long history that
-    /// must not run on the main actor (it used to, on every paused keystroke).
+    /// Global search reads the index and the text it shows; that must not run on
+    /// the main actor (it used to, on every paused keystroke).
     func testGlobalSearchScansOffTheMainActor() throws {
         let file = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/App/Views/GlobalSearchView.swift")
         let source = try String(contentsOf: file, encoding: .utf8)
-        XCTAssertFalse(source.contains("hits = store.searchHits("))
-        XCTAssertTrue(source.contains("Task.detached(priority: .userInitiated) {\n            store.searchHits(query: typed, shouldContinue: { !Task.isCancelled })"))
+        XCTAssertFalse(source.contains("= store.globalSearch("))
+        XCTAssertFalse(source.contains("store.searchHits("), "the file-by-file scan is only the fallback")
+        XCTAssertTrue(source.contains("Task.detached(priority: .userInitiated) {\n            store.globalSearch(query: typed, limits: limits, shouldContinue: { !Task.isCancelled })"))
     }
 }
