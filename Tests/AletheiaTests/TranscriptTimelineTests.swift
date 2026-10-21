@@ -20,6 +20,17 @@ final class TranscriptTimelineTests: XCTestCase {
         XCTAssertEqual(TranscriptTimeline.leadingSeconds(of: "   [00:30] x"), 30)
     }
 
+    func testLeadingSecondsRejectsOverflowingAndNegativeTimes() {
+        // Hand-edited or pasted stamps used to trap on the multiplication.
+        XCTAssertNil(TranscriptTimeline.leadingSeconds(of: "[153722867280912931:00] You: hi"))
+        XCTAssertNil(TranscriptTimeline.leadingSeconds(of: "[2562047788015216:00:00] You: hi"))
+        XCTAssertNil(TranscriptTimeline.leadingSeconds(of: "[-1:30] You: hi"))
+        XCTAssertEqual(TranscriptTimeline.leadingSeconds(of: "[153722867280912930:00] You: hi"), 153_722_867_280_912_930 * 60)
+        // Splitting such a transcript into digest sections doesn't trap either.
+        let sections = TranscriptSections.split("[00:10] You: a\n[153722867280912931:00] You: b\n[2562047788015215:00:00] You: c")
+        XCTAssertEqual(sections.count, 2)
+    }
+
     func testLeadingSecondsNilForUntimestampedLine() {
         XCTAssertNil(TranscriptTimeline.leadingSeconds(of: "Therapist: no time code here"))
         XCTAssertNil(TranscriptTimeline.leadingSeconds(of: ""))
