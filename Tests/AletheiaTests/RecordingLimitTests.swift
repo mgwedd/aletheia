@@ -18,9 +18,15 @@ final class RecordingLimitTests: XCTestCase {
         XCTAssertEqual(RecordingLimit.reminderThreshold, 90 * 60)
     }
 
-    func testLongRecordingNotificationMentionsPatient() {
-        let content = SessionNotifications.longRecordingReminder(patientName: "Jane Doe")
+    func testLongRecordingNotificationMentionsPatientWhenOptedIn() {
+        let content = SessionNotifications.longRecordingReminder(patientName: "Jane Doe", showsName: true)
         XCTAssertTrue(content.body.contains("Jane Doe"))
+        XCTAssertTrue(content.body.contains("90 minutes"))
+    }
+
+    func testLongRecordingNotificationIsGenericByDefault() {
+        let content = SessionNotifications.longRecordingReminder(patientName: "Jane Doe", showsName: false)
+        XCTAssertFalse(content.body.contains("Jane"))
         XCTAssertTrue(content.body.contains("90 minutes"))
     }
 }

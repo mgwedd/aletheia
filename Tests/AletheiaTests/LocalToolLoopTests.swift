@@ -298,6 +298,66 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(focusResult.readDigestTags, ["S1"])
     }
 
+    func testPlanningPromptCarriesTheChatHistory() {
+        let history = [
+            ChatMessage(role: .user, text: "What did Dana ask for?"),
+            ChatMessage(role: .assistant, text: "She asked to borrow money [S1]."),
+            ChatMessage(role: .user, text: "And what did the client say back?"),
+        ]
+        let prompt = LocalToolLoop.planningPrompt(
+            question: "And what did the client say back?",
+            initialContext: "Initial",
+            priorToolOutputs: [],
+            remainingCalls: 2,
+            history: history
+        )
+        XCTAssertTrue(prompt.contains("Recent conversation:"))
+        XCTAssertTrue(prompt.contains("Therapist: What did Dana ask for?"))
+        XCTAssertTrue(prompt.contains("Assistant: She asked to borrow money [S1]."))
+        XCTAssertEqual(
+            prompt.components(separatedBy: "And what did the client say back?").count - 1, 1,
+            "the question appears once, on its own line"
+        )
+
+        let first = LocalToolLoop.planningPrompt(
+            question: "What did Dana ask for?",
+            initialContext: "Initial",
+            priorToolOutputs: [],
+            remainingCalls: 2
+        )
+        XCTAssertFalse(first.contains("Recent conversation:"))
+    }
+
+    func testRefineShowsThePlanningCallTheEarlierTurns() async throws {
+        let scope = LocalToolScope(sessions: sampleSessions())
+        let stub = ToolLoopStubAssistant()
+        stub.planReplies = [#"{"calls":[]}"#]
+        let service = AssistantService(assistant: stub, model: "m")
+        let builder = DigestBuilder(queue: InferenceQueue())
+        var progress = AIRunProgress()
+        let history = [
+            ChatMessage(role: .user, text: "What did Dana ask for?"),
+            ChatMessage(role: .assistant, text: "She asked to borrow money [S1]."),
+            ChatMessage(role: .user, text: "And what did the client say back?"),
+        ]
+
+        _ = try await LocalToolLoop.refine(
+            question: "And what did the client say back?",
+            initialContext: "Initial",
+            scope: scope,
+            effort: .normal,
+            characterBudget: 6_000,
+            history: history,
+            service: service,
+            builder: builder,
+            live: { _, change in change(&progress) }
+        )
+
+        let planning = stub.prompts.filter { $0.contains("Available read-only tools:") }
+        XCTAssertEqual(planning.count, 1)
+        XCTAssertTrue(planning[0].contains("She asked to borrow money [S1]."))
+    }
+
     // MARK: - LongSessionChat & PatientChatAnswer
 
     func testLongSessionChatUsesDigestSearchAndToolsWhenOverBudget() async throws {

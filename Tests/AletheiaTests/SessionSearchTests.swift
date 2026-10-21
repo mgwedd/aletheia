@@ -82,6 +82,47 @@ final class SessionSearchTests: XCTestCase {
         XCTAssertEqual(range("in December")?.0, date(2025, 12, 1))
     }
 
+    func testMonthNameUsedAsAnOrdinaryWordIsNotADateFilter() {
+        XCTAssertNil(range("what she said in may be true"))
+        XCTAssertNil(range("in march forward she planned a trip"))
+        XCTAssertNil(range("since march forward"))
+        XCTAssertNil(range("they march forward"))
+        XCTAssertNil(range("in may or june"), "lower case 'may' with more words after it is not a month")
+        XCTAssertNil(range("worries in June's session"), "a possessive is a name, not a month")
+        XCTAssertNil(range("in February 30"), "a day the month does not have")
+        // The words stay search terms when they are not a date.
+        XCTAssertTrue(SessionSearch.terms(from: "decided in may be wrong").map(\.text).contains("may"))
+    }
+
+    func testMonthWithADayOrYearOrAtTheEndStillFilters() throws {
+        let may = try XCTUnwrap(range("in may 2025"))
+        XCTAssertEqual(may.0, date(2025, 5, 1))
+        XCTAssertLessThan(may.1, date(2025, 6, 1))
+        XCTAssertEqual(range("in May")?.0, date(2026, 5, 1), "capitalized is a month")
+        XCTAssertEqual(range("what changed in march")?.0, date(2026, 3, 1), "the phrase ends at the month")
+        XCTAssertEqual(range("what changed in march?")?.0, date(2026, 3, 1))
+        XCTAssertEqual(range("in march, did she sleep")?.0, date(2026, 3, 1))
+        XCTAssertEqual(range("since march 2025")?.0, date(2025, 3, 1))
+        XCTAssertEqual(range("in june")?.0, date(2026, 6, 1), "'june' is not an everyday word")
+    }
+
+    func testMonthWithADayIsThatDay() throws {
+        let day = try XCTUnwrap(range("in March 5"))
+        XCTAssertEqual(day.0, date(2026, 3, 5))
+        XCTAssertGreaterThanOrEqual(day.1, date(2026, 3, 5))
+        XCTAssertLessThan(day.1, date(2026, 3, 6))
+        XCTAssertEqual(range("in March 5th, 2025")?.0, date(2025, 3, 5))
+        XCTAssertEqual(range("in march 12 2024")?.0, date(2024, 3, 12))
+        XCTAssertEqual(range("since March 12")?.0, date(2026, 3, 12))
+        XCTAssertEqual(range("since March 12")?.1, now)
+        XCTAssertEqual(range("in March 2025")?.0, date(2025, 3, 1), "a four digit number is the year, not a day")
+    }
+
+    func testDateExpressionsLeaveTheRestAsTerms() {
+        XCTAssertEqual(SessionSearch.terms(from: "sleep in March 5th, 2025").map(\.text), ["sleep"])
+        XCTAssertEqual(SessionSearch.terms(from: "sleep since may 2025").map(\.text), ["sleep"])
+    }
+
     func testThisYearAndLastYear() throws {
         XCTAssertEqual(range("this year")?.0, date(2026, 1, 1))
         let last = try XCTUnwrap(range("last year"))
