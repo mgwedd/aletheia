@@ -705,34 +705,38 @@ struct SessionDetailView: View {
                 // a margin rail on the right. Only *unresolved* comments carry a
                 // highlight in the text; the rail keeps resolved ones tucked away.
                 // The view edits the draft, and highlights follow it.
-                HStack(spacing: 0) {
-                    TranscriptTextView(
-                        text: $transcriptDraft,
-                        isEditable: transcriptReadError == nil,
-                        comments: activeAnchors,
-                        selection: $transcriptSelection,
-                        selectionRange: $transcriptSelectionRange,
-                        onOpenComment: openComment,
-                        focusedCommentID: focusedCommentID,
-                        focusToken: focusToken,
-                        composingRange: composingRange,
-                        onComposingRectChange: { composerAnchor = $0 }
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    // The comment composer sits on the transcript, just under the
-                    // passage being commented on.
-                    .overlay { composerOverlay }
-                    Rectangle().fill(Theme.line.color).frame(width: 1)
-                    CommentsRailView(
-                        comments: comments,
-                        focusedCommentID: $focusedCommentID,
-                        unplacedIDs: TranscriptHighlighter.unplacedIDs(in: transcriptDraft, comments: activeAnchors),
-                        focusToken: focusToken,
-                        onFocus: focusComment,
-                        onResolve: resolveComment,
-                        onDelete: deleteComment,
-                        onEdit: editComment
-                    )
+                GeometryReader { geometry in
+                    HStack(spacing: 0) {
+                        TranscriptTextView(
+                            text: $transcriptDraft,
+                            isEditable: transcriptReadError == nil,
+                            comments: activeAnchors,
+                            selection: $transcriptSelection,
+                            selectionRange: $transcriptSelectionRange,
+                            onOpenComment: openComment,
+                            focusedCommentID: focusedCommentID,
+                            focusToken: focusToken,
+                            composingRange: composingRange,
+                            onComposingRectChange: { composerAnchor = $0 }
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        // The comment composer sits on the transcript, just under the
+                        // passage being commented on.
+                        .overlay { composerOverlay }
+                        if TranscriptLayout.showsCommentsRail(width: geometry.size.width) {
+                            Rectangle().fill(Theme.line.color).frame(width: 1)
+                            CommentsRailView(
+                                comments: comments,
+                                focusedCommentID: $focusedCommentID,
+                                unplacedIDs: TranscriptHighlighter.unplacedIDs(in: transcriptDraft, comments: activeAnchors),
+                                focusToken: focusToken,
+                                onFocus: focusComment,
+                                onResolve: resolveComment,
+                                onDelete: deleteComment,
+                                onEdit: editComment
+                            )
+                        }
+                    }
                 }
             }
         }

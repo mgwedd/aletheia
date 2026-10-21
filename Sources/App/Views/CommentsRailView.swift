@@ -12,6 +12,8 @@ import SwiftUI
 /// passage does the same from the other side, which scrolls the matching card
 /// into view here.
 struct CommentsRailView: View {
+    static let minWidth: CGFloat = 240
+
     let comments: [SessionComment]
     @Binding var focusedCommentID: String?
     /// Comments whose quoted passage couldn't be placed in the transcript (it
@@ -120,7 +122,7 @@ struct CommentsRailView: View {
                 }
             }
         }
-        .frame(minWidth: 240, idealWidth: 296, maxWidth: 340)
+        .frame(minWidth: Self.minWidth, idealWidth: 296, maxWidth: 340)
         .background(Theme.window.color)
     }
 
@@ -222,5 +224,20 @@ struct CommentsRailView: View {
                 .foregroundStyle(Theme.muted.color)
         }
         .padding(.top, 4)
+    }
+}
+
+/// How the transcript and its comments rail share the pane. The transcript is
+/// the content; when the pane is too narrow to give it a readable column next
+/// to the rail, the rail is dropped instead of squeezing the text.
+enum TranscriptLayout {
+    /// The narrowest the transcript text may get while the rail is showing.
+    static let minTextWidth: CGFloat = 400
+
+    /// The rail's own width plus the 1 pt divider.
+    static var railWidth: CGFloat { CommentsRailView.minWidth + 1 }
+
+    static func showsCommentsRail(width: CGFloat) -> Bool {
+        width >= minTextWidth + railWidth
     }
 }
