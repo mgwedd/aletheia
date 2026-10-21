@@ -105,7 +105,7 @@ struct ChatPaneView: View {
 
     private var conversation: some View {
         ScrollViewReader { proxy in
-            ScrollView {
+            BoundedScroll {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     if messages.isEmpty {
                         emptyState
