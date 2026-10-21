@@ -28,13 +28,9 @@ enum ChatMemory {
         return String(trimmed.dropFirst("/compact".count)).trimmingCharacters(in: .whitespaces)
     }
 
-    /// One line for the chat pane on what the next answer will remember.
-    static func status(_ messages: [ChatMessage]) -> String? {
+    /// Whether there is anything to compact yet (a message, or an earlier summary).
+    static func hasHistory(_ messages: [ChatMessage]) -> Bool {
         let (summary, recent) = remembered(messages)
-        guard summary != nil || !recent.isEmpty else { return nil }
-        let count = recent.count == 1 ? "1 message" : "\(recent.count) messages"
-        return summary == nil
-            ? "Remembers the whole conversation (\(count))."
-            : "Remembers a summary of the earlier conversation and the \(count) since."
+        return summary != nil || !recent.isEmpty
     }
 }

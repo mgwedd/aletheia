@@ -46,4 +46,21 @@ final class ChatMemoryTests: XCTestCase {
         XCTAssertTrue(prompt.contains("Therapist: First question"))
         XCTAssertFalse(Prompts.compactChat(history: [q1], focus: "").contains("in full detail"))
     }
+
+    func testHasHistoryOnceThereIsAMessageOrASummary() {
+        XCTAssertFalse(ChatMemory.hasHistory([]))
+        XCTAssertTrue(ChatMemory.hasHistory([q1]))
+        XCTAssertTrue(ChatMemory.hasHistory([summary]))
+    }
+
+    /// The pane no longer narrates what the next answer will remember.
+    func testChatPaneHasNoRemembersLine() throws {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for path in ["Sources/App/Services/ChatMemory.swift", "Sources/App/Views/ChatPaneView.swift"] {
+            let source = try String(contentsOf: file.appendingPathComponent(path), encoding: .utf8)
+            XCTAssertFalse(source.contains("Remembers the whole conversation"), path)
+            XCTAssertFalse(source.contains("Remembers a summary"), path)
+        }
+    }
 }
