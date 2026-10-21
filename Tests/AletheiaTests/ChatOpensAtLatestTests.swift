@@ -19,7 +19,8 @@ final class ChatOpensAtLatestTests: XCTestCase {
                 title: "this session",
                 messages: $model.messages,
                 isSending: false,
-                onSend: { _ in }
+                onSend: { _ in },
+                voiceInput: FakeVoiceInput()
             )
         }
     }
