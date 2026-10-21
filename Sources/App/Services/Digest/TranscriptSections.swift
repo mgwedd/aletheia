@@ -55,7 +55,8 @@ struct TranscriptSection: Equatable {
 
 /// Splits a transcript into sections of about ten minutes (by its `[MM:SS]`
 /// stamps) so each can be digested on its own. Dense speech is cut sooner, at
-/// `maxCharacters`, so a section always fits a small model's window. Pure logic,
+/// `maxCharacters` (a `ContextBudget.weightedLength`, so a Japanese section is cut
+/// at about a third of the characters), so a section always fits a small model's window. Pure logic,
 /// unit-tested in isolation.
 enum TranscriptSections {
     static let targetSeconds = 600
@@ -83,17 +84,18 @@ enum TranscriptSections {
             // characters so no section can exceed it.
             var rest = Substring(raw)
             repeat {
-                let piece = rest.prefix(maxCharacters)
+                let piece = ContextBudget.prefix(rest, weightedLength: maxCharacters)
+                let size = ContextBudget.weightedLength(of: piece)
                 rest = rest.dropFirst(piece.count)
                 let seconds = TranscriptTimeline.leadingSeconds(of: String(piece))
                 let overTime = seconds.map { s in start.map { s - $0 >= targetSeconds } ?? false } ?? false
-                if !lines.isEmpty, overTime || length + piece.count + 1 > maxCharacters { flush() }
+                if !lines.isEmpty, overTime || length + size + 1 > maxCharacters { flush() }
                 if let seconds {
                     start = start ?? seconds
                     end = seconds
                 }
                 lines.append(String(piece))
-                length += piece.count + 1
+                length += size + 1
             } while !rest.isEmpty
         }
         flush()

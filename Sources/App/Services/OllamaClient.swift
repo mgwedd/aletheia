@@ -301,7 +301,8 @@ final class OllamaClient: Assistant {
     ) -> AsyncThrowingStream<String, Error> {
         let cached = onStats == nil ? 0
             : PromptPrefixMemory.shared.sharedPrefixCharacters(model: model, text: system + "\n" + prompt)
-        let expectedTokens = ContextBudget.estimatedTokens(forCharacters: max(0, system.count + prompt.count - cached))
+        let expectedTokens = Self.expectedPromptTokens(system: system, prompt: prompt, cachedCharacters: cached)
+        let contextTokens = ContextBudget.current.tokens
         let onStats: (@Sendable (AIRunStats) -> Void)? = onStats.map { report in
             { var stats = $0; stats.task = task; stats.reusedPrefix = cached > 0; report(stats) }
         }
@@ -315,7 +316,9 @@ final class OllamaClient: Assistant {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.timeoutInterval = 600
                     request.httpBody = try JSONSerialization.data(
-                        withJSONObject: Self.generateBody(model: model, system: system, prompt: prompt, stream: true, task: task))
+                        withJSONObject: Self.generateBody(
+                            model: model, system: system, prompt: prompt, stream: true, task: task,
+                            contextTokens: contextTokens))
 
                     let (bytes, response) = try await mappingConnectionErrors { try await session.bytes(for: request) }
                     guard let http = response as? HTTPURLResponse else { throw OllamaError.notReachable }
@@ -326,7 +329,8 @@ final class OllamaClient: Assistant {
                     var full = ""
                     for try await line in bytes.lines {
                         if Task.isCancelled { break }
-                        guard let chunk = OllamaClient.streamChunk(fromLine: line, expectedPromptTokens: expectedTokens)
+                        guard let chunk = OllamaClient.streamChunk(
+                            fromLine: line, expectedPromptTokens: expectedTokens, contextTokens: contextTokens)
                         else { continue }
                         full += chunk.text
                         continuation.yield(full)
@@ -425,11 +429,21 @@ final class OllamaClient: Assistant {
         }
     }
 
+    /// Tokens Ollama should have to read for `system` and `prompt` (estimated by
+    /// script), less the first `cachedCharacters` of `system + "\n" + prompt`
+    /// it probably still holds (`PromptPrefixMemory`).
+    static func expectedPromptTokens(system: String, prompt: String, cachedCharacters: Int) -> Int {
+        let sent = ContextBudget.weightedLength(of: system) + ContextBudget.weightedLength(of: prompt)
+        guard cachedCharacters > 0 else { return ContextBudget.estimatedTokens(forCharacters: sent) }
+        let held = ContextBudget.weightedLength(of: (system + "\n" + prompt).prefix(cachedCharacters))
+        return ContextBudget.estimatedTokens(forCharacters: max(0, sent - held))
+    }
+
     /// Parses one NDJSON line from `/api/generate` streaming into its text delta,
     /// done flag and, on the final chunk, the run's stats. Pure, so the streaming
     /// accumulation is unit-testable.
     static func streamChunk(
-        fromLine line: String, expectedPromptTokens: Int = 0
+        fromLine line: String, expectedPromptTokens: Int = 0, contextTokens: Int = 0
     ) -> (text: String, done: Bool, stats: AIRunStats?)? {
         guard let data = line.data(using: .utf8),
               let decoded = try? JSONDecoder().decode(OllamaGenerateResponse.self, from: data)
@@ -438,7 +452,7 @@ final class OllamaClient: Assistant {
             ? AIRunStats(
                 promptTokens: decoded.promptEvalCount, promptNanos: decoded.promptEvalDuration,
                 outputTokens: decoded.evalCount, outputNanos: decoded.evalDuration,
-                expectedPromptTokens: expectedPromptTokens)
+                expectedPromptTokens: expectedPromptTokens, contextTokens: contextTokens)
             : nil
         return (decoded.response, decoded.done, stats)
     }

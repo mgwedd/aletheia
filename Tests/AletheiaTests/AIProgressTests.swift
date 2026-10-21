@@ -241,6 +241,47 @@ final class AIProgressTests: XCTestCase {
         XCTAssertEqual(fake.sent, 0)
     }
 
+    func testLongJapaneseNoteIsRefusedNotSent() async {
+        let fake = CountingAssistant()
+        var service = AssistantService(assistant: fake, model: "m")
+        service.budget = ContextBudget(tokens: 32_768)
+        let japanese = String(repeating: "今日はとても疲れました。", count: 2_500)   // 30,000 characters
+        XCTAssertFalse(service.fits(prompt: Prompts.progressNote(format: .narrative, transcript: japanese)))
+        var thrown: Error?
+        do {
+            for try await _ in service.streamProgressNote(format: .narrative, transcript: japanese) {}
+        } catch { thrown = error }
+        XCTAssertTrue(thrown is ContextBudgetError)
+        XCTAssertEqual(fake.sent, 0)
+    }
+
+    func testJapaneseConversationLeavesLessRoomForPatientMaterial() {
+        var service = AssistantService(assistant: CountingAssistant(), model: "m")
+        service.budget = ContextBudget(tokens: 32_768)
+        let english = service.patientContextCharacters(
+            history: [ChatMessage(role: .user, text: String(repeating: "a", count: 3_000))], question: "q")
+        let japanese = service.patientContextCharacters(
+            history: [ChatMessage(role: .user, text: String(repeating: "疲", count: 3_000))], question: "q")
+        XCTAssertGreaterThan(english, 0)
+        XCTAssertLessThan(japanese, english)
+    }
+
+    func testReadingEstimateCountsByScript() async throws {
+        let fake = CountingAssistant()
+        var service = AssistantService(assistant: fake, model: "m")
+        service.budget = ContextBudget(tokens: 16_384)
+        let events = EventLog()
+        service.report = { events.add($0) }
+        let transcript = "今日はとても疲れました。"
+        for try await _ in service.streamProgressNote(format: .narrative, transcript: transcript) {}
+        let prompt = Prompts.progressNote(
+            format: .narrative, transcript: transcript, notes: "", comments: [], verbosity: .default, instructions: nil)
+        XCTAssertEqual(events.readingEstimates.first,
+                       ContextBudget.estimatedTokens(system: service.systemPrompt, prompt: prompt))
+        XCTAssertGreaterThan(try XCTUnwrap(events.readingEstimates.first),
+                             ContextBudget.estimatedTokens(forCharacters: service.systemPrompt.count + prompt.count))
+    }
+
     func testWithinBudgetPromptIsSentAndReported() async throws {
         let fake = CountingAssistant()
         var service = AssistantService(assistant: fake, model: "m")
