@@ -60,6 +60,28 @@ enum DoctorAction: String, Equatable {
         case .checkForUpdates: return "Check for Updates…"
         }
     }
+
+    /// What the Doctor window does for this action. Kept apart from the view so
+    /// it can be tested: a button that only sends an AppKit selector nothing
+    /// handles does nothing, and the user sees nothing happen.
+    var route: DoctorActionRoute {
+        switch self {
+        case .openSettings: return .settings(nil)
+        case .setupAssistant: return .settings(.setupAssistant)
+        case .openSystemSettings: return .systemSettings
+        case .reviewRecords: return .reviewRecords
+        case .checkForUpdates: return .updateCheck
+        }
+    }
+}
+
+enum DoctorActionRoute: Equatable {
+    /// Open the Settings window, showing `request` when there is one.
+    case settings(SettingsRequest?)
+    case systemSettings
+    case reviewRecords
+    /// Run an update check and bring the main window forward to show it.
+    case updateCheck
 }
 
 /// One line of the Doctor report: what was checked, how it came out, in plain
