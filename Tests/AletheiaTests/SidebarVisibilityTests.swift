@@ -13,14 +13,14 @@ final class SidebarVisibilityTests: XCTestCase {
         func clear() {}
     }
 
-    private final class State: ObservableObject {
+    private final class Visibility: ObservableObject {
         @Published var visibility = NavigationSplitViewVisibility.all
     }
 
     private struct Host: View {
         let appModel: AppModel
         let settings: AppSettings
-        @ObservedObject var state: State
+        @ObservedObject var state: Visibility
         @StateObject private var search = GlobalSearchModel()
         @FocusState private var focused: Bool
         @State private var selected: Patient?
@@ -43,7 +43,7 @@ final class SidebarVisibilityTests: XCTestCase {
     private var tempRoot: URL!
     private var originalDataRoot: URL?
     private var window: NSWindow!
-    private var state: State!
+    private var state: Visibility!
 
     override func setUp() async throws {
         tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -55,7 +55,7 @@ final class SidebarVisibilityTests: XCTestCase {
         let appModel = AppModel(
             settings: settings, encryption: EncryptionManager(dataRootProvider: { root }),
             spotlightIndexer: NoopSpotlightIndexer())
-        state = State()
+        state = Visibility()
         let controller = NSHostingController(rootView: Host(appModel: appModel, settings: settings, state: state))
         window = NSWindow(contentViewController: controller)
         window.styleMask = [.titled, .closable, .resizable]
