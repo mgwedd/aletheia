@@ -1372,9 +1372,17 @@ final class Store {
         let transcriptDates = Set(documents.map { $0.date }.filter { search.dateRange?.contains($0) ?? true })
         // Whole-transcript selections are counted per session, not per date, so
         // two sessions on one day are not both counted when only one was sent.
+        let passageDates = transcriptDates.intersection(excerptsByDate.keys)
         let sessionsRead = selection.fullTexts
             ? selection.wholeCount + (selection.cutShort ? 1 : 0)
-            : transcriptDates.intersection(excerptsByDate.keys).count
+            : passageDates.count
+        // The same sessions by tag, so follow-up lookups of a session already
+        // read are not counted again (`TranscriptCoverage.addLookups`).
+        let passageTags = Set(passageDates.compactMap { labels[$0] })
+        var digestTags = Set(digestPlan.individualByDate.keys.compactMap { labels[$0] })
+        for month in digestPlan.monthBlocks {
+            digestTags.formUnion(month.tags)
+        }
         let transcriptTotal = selection.fullTexts ? selection.totalCount : transcriptDates.count
         let searchBlock = Prompts.searchBlock(
             search, shown: selection.hitsShown, whole: selection.whole,
@@ -1397,7 +1405,9 @@ final class Store {
             newestCutShort: selection.cutShort,
             notesCutSessions: notesCut,
             digestSessions: digestPlan.digestSessionCount,
-            monthMergedSessions: digestPlan.monthMergedSessionCount
+            monthMergedSessions: digestPlan.monthMergedSessionCount,
+            passageTags: passageTags,
+            digestTags: digestTags
         )
         return PatientContext(text: text, sources: sources, unreadableSessions: unreadable, coverage: coverage)
     }

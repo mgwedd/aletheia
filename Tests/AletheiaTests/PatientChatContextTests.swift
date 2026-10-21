@@ -196,6 +196,7 @@ final class PatientChatContextTests: XCTestCase {
         // Three sessions have transcripts; only March mentions kayaking.
         XCTAssertEqual(context.coverage.transcriptSessions, 3)
         XCTAssertEqual(context.coverage.sessionsWithPassages, 1)
+        XCTAssertEqual(context.coverage.passageTags, ["S1"], "the sessions behind the count, by tag")
         XCTAssertEqual(context.coverage.notesSessions, 1)
         XCTAssertEqual(context.coverage.mentions, 1)
         XCTAssertFalse(context.coverage.wholeTranscripts)
@@ -499,6 +500,7 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertFalse(context.coverage.wholeTranscripts)
         XCTAssertEqual(context.coverage.digestSessions, 9)
         XCTAssertEqual(context.coverage.monthMergedSessions, 3)
+        XCTAssertEqual(context.coverage.digestTags, Set((1...9).map { "S\($0)" }))
         // Recent 6 sessions (S1..S6) get individual digests; older 3 (S7..S9 in Oct/Nov 2025) are merged by month.
         XCTAssertTrue(section(context.text, tag: "S1").contains("Session digest:\nDigest summary for session 9"))
         XCTAssertTrue(context.text.contains("===== Earlier Sessions: November 2025 [S7] ====="))

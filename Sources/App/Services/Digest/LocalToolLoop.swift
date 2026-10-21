@@ -205,6 +205,9 @@ struct LocalToolOutcome: Equatable {
     let readTranscriptTags: Set<String>
     /// Session tags whose digests were read by this call.
     let readDigestTags: Set<String>
+    /// Every session whose material is in `output` (transcript, digest, notes or
+    /// comments), so an answer citing it can be traced back to that session.
+    var sourceTags: Set<String> = []
 }
 
 /// Read-only view of one session exposed to `LocalToolScope`. Never writes or touches the network.
@@ -310,6 +313,7 @@ struct LocalToolScope {
         ]
         var used = lines[0].count
         var readTags = Set<String>()
+        var shownTags = Set<String>()
         for hit in result.hits.prefix(6) {
             // Only transcript hits carry context lines; a notes or comment hit is its paragraph.
             let passage = hit.kind == .transcript
@@ -322,12 +326,14 @@ struct LocalToolScope {
                 if left > 60 {
                     lines.append(String(entry.prefix(left)) + "…")
                     if hit.kind == .transcript { readTags.insert(hit.tag) }
+                    shownTags.insert(hit.tag)
                 }
                 break
             }
             lines.append(entry)
             used += entry.count + 2
             if hit.kind == .transcript { readTags.insert(hit.tag) }
+            shownTags.insert(hit.tag)
         }
         return LocalToolOutcome(
             call: call,
@@ -335,7 +341,8 @@ struct LocalToolScope {
             stageTitle: stage,
             output: lines.joined(separator: "\n"),
             readTranscriptTags: readTags,
-            readDigestTags: []
+            readDigestTags: [],
+            sourceTags: shownTags
         )
     }
 
@@ -417,7 +424,8 @@ struct LocalToolScope {
             stageTitle: stage,
             output: header + body,
             readTranscriptTags: [target.tag],
-            readDigestTags: []
+            readDigestTags: [],
+            sourceTags: [target.tag]
         )
     }
 
@@ -454,7 +462,8 @@ struct LocalToolScope {
                 stageTitle: stage,
                 output: header + text,
                 readTranscriptTags: [],
-                readDigestTags: [target.tag]
+                readDigestTags: [target.tag],
+                sourceTags: [target.tag]
             )
         }
 
@@ -466,7 +475,8 @@ struct LocalToolScope {
                 stageTitle: stage,
                 output: header + "(No stored session digest; showing session notes)\n" + body,
                 readTranscriptTags: [],
-                readDigestTags: []
+                readDigestTags: [],
+                sourceTags: [target.tag]
             )
         }
 
@@ -529,6 +539,17 @@ struct LocalToolScope {
     }
 
     // MARK: Helpers
+
+    /// The sessions tagged `tags`, newest first as the scope lists them, one per
+    /// tag (same-day sessions share a tag and cite as one source).
+    func citationSources(tags: Set<String>) -> [CitationSource] {
+        var seen = Set<String>()
+        var sources: [CitationSource] = []
+        for session in sessions where tags.contains(session.tag) && seen.insert(session.tag).inserted {
+            sources.append(CitationSource(tag: session.tag, date: session.date, folderName: session.folderName))
+        }
+        return sources
+    }
 
     /// The paragraph of `text` that starts at line `start`: lines up to the next
     /// blank one, split as `SearchIndex.passages` splits notes.
@@ -723,6 +744,10 @@ enum LocalToolLoop {
         let readTranscriptTags: Set<String>
         /// Session tags whose digests were read via tools.
         let readDigestTags: Set<String>
+        /// The sessions whose material reached the answer through a lookup,
+        /// newest first, so an answer citing one of them shows its date and
+        /// lists it under Sources.
+        var sources: [CitationSource] = []
     }
 
     /// Runs up to `effort.maxRefinementRounds` (and at most `effort.maxToolCalls` total calls),
@@ -752,6 +777,7 @@ enum LocalToolLoop {
         var accepted: [String] = []
         var transcriptTags = Set<String>()
         var digestTags = Set<String>()
+        var sourceTags = Set<String>()
         var seenCalls: [LocalToolCall] = []
 
         for round in 0..<maxRounds {
@@ -817,6 +843,7 @@ enum LocalToolLoop {
                         accepted.append(outcome.output)
                         transcriptTags.formUnion(outcome.readTranscriptTags)
                         digestTags.formUnion(outcome.readDigestTags)
+                        sourceTags.formUnion(outcome.sourceTags)
                     }
                 }
             }
@@ -830,7 +857,8 @@ enum LocalToolLoop {
             additionalContext: block,
             outcomes: outcomes,
             readTranscriptTags: transcriptTags,
-            readDigestTags: digestTags
+            readDigestTags: digestTags,
+            sources: scope.citationSources(tags: sourceTags)
         )
     }
 }
@@ -1076,7 +1104,8 @@ enum PatientChatAnswer {
         service: AssistantService,
         builder: DigestBuilder,
         live: @escaping DigestBuilder.Live,
-        onCoverage: @escaping (TranscriptCoverage) -> Void
+        onCoverage: @escaping (TranscriptCoverage) -> Void,
+        onSources: @escaping ([CitationSource]) -> Void = { _ in }
     ) -> AsyncThrowingStream<String, Error> {
         var baseCoverage = context.coverage
         baseCoverage.effort = effort
@@ -1117,15 +1146,13 @@ enum PatientChatAnswer {
                         try Task.checkCancellation()
                         if !refinement.additionalContext.isEmpty {
                             finalContext += "\n\n" + refinement.additionalContext
-                            currentCoverage.sessionsWithPassages = min(
-                                max(currentCoverage.transcriptSessions, refinement.readTranscriptTags.count),
-                                max(currentCoverage.sessionsWithPassages, refinement.readTranscriptTags.count)
-                            )
-                            currentCoverage.digestSessions = max(
-                                currentCoverage.digestSessions,
-                                refinement.readDigestTags.count
+                            currentCoverage.addLookups(
+                                transcriptTags: refinement.readTranscriptTags,
+                                digestTags: refinement.readDigestTags
                             )
                             onCoverage(currentCoverage)
+                            // A session read only through a lookup is citable too.
+                            onSources(Citations.merged(context.sources, adding: refinement.sources))
                         }
                     }
 
