@@ -63,7 +63,7 @@ enum PatientArchive {
             let folder = "\(root)/Sessions/\(uniqueFolder(for: session.date, taken: &taken))"
             let before = files.count
 
-            let transcript = session.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            let transcript = TranscriptStyler.removingOverlapLabels(session.transcript).trimmingCharacters(in: .whitespacesAndNewlines)
             if !transcript.isEmpty {
                 files.append(ArchiveFile(path: "\(folder)/Transcript.txt", text: transcript + "\n", modified: session.date))
             }

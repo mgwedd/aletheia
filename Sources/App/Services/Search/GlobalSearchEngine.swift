@@ -237,7 +237,7 @@ enum GlobalSearchEngine {
             shown.append(SearchHit(
                 id: "transcript-\(document.session)", kind: .transcript, patient: place.patient, session: place.session,
                 passage: line,
-                snippet: GlobalSearchText.snippet(lines[line], terms: terms)))
+                snippet: GlobalSearchText.snippet(TranscriptStyler.removingOverlapLabels(lines[line]), terms: terms)))
         }
         let transcriptSection = GlobalSearchSection(kind: .transcript, hits: shown, total: max(shown.count, transcripts.count - dropped))
 

@@ -19,7 +19,7 @@ enum MarkdownExporter {
         ]
 
         let summaryText = summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let transcriptText = transcript?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let transcriptText = transcript.map(TranscriptStyler.removingOverlapLabels)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         if !summaryText.isEmpty {
             lines += ["## Summary", "", "_AI-generated. Read alongside the transcript._", "", summaryText, ""]
