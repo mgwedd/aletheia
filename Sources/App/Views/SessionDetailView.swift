@@ -1621,13 +1621,6 @@ struct SessionDetailView: View {
         )
     }
 
-    private func copyToPasteboard(_ text: String) {
-        #if canImport(AppKit)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        #endif
-    }
-
     private func sendChat(_ question: String) {
         guard let store = appModel.store else { return }
         // Past ChatMemory's budget, compact first so the answer still has the

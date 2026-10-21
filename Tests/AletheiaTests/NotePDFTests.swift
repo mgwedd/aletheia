@@ -64,7 +64,6 @@ final class NotePDFTests: XCTestCase {
         XCTAssertTrue(text.contains("•\tone"))
         XCTAssertTrue(text.contains("2.\tsecond"))
     }
-}
 
     func testAnEmptyTitleAndSubtitleLeaveOutTheHeader() {
         let text = NotePDF.attributedText(markdown: "Body.", title: "", subtitle: "").string
