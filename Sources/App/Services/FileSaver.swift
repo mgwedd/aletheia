@@ -23,13 +23,14 @@ enum FileSaver {
         }
     }
 
-    /// Saves PDF bytes to a user-chosen location via NSSavePanel.
+    /// Saves bytes to a user-chosen location via NSSavePanel, restricted to
+    /// `type` (a PDF, a Word document, ...).
     @discardableResult
-    static func savePDF(_ data: Data, suggestedName: String) -> Bool {
+    static func saveData(_ data: Data, suggestedName: String, type: UTType) -> Bool {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = suggestedName
         panel.canCreateDirectories = true
-        panel.allowedContentTypes = [.pdf]
+        panel.allowedContentTypes = [type]
         guard panel.runModal() == .OK, let url = panel.url else { return false }
         do {
             try data.write(to: url, options: .atomic)

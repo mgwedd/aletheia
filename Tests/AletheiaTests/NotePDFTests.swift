@@ -66,14 +66,8 @@ final class NotePDFTests: XCTestCase {
     }
 }
 
-final class NotePDFButtonTests: XCTestCase {
-    /// Each drafted note tab has a PDF button beside Copy.
-    func testNoteToolbarHasAPDFButton() throws {
-        let file = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/App/Views/SessionDetailView.swift")
-        let source = try String(contentsOf: file, encoding: .utf8)
-        XCTAssertTrue(source.contains("exportNotePDF()"))
-        XCTAssertTrue(source.contains("Label(\"PDF\""))
+    func testAnEmptyTitleAndSubtitleLeaveOutTheHeader() {
+        let text = NotePDF.attributedText(markdown: "Body.", title: "", subtitle: "").string
+        XCTAssertEqual(text, "Body.\n")
     }
 }

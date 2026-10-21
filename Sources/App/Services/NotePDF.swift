@@ -1,9 +1,10 @@
 import AppKit
 
-/// Renders a note's Markdown as a paginated, print-styled PDF, entirely on this
+/// Renders Markdown as print-styled text, as a paginated PDF, entirely on this
 /// Mac: black serif text on white, US Letter, headings, lists, quotes and code.
-/// Pure of any file or window access, so the output is unit tested directly;
-/// saving goes through `FileSaver`.
+/// The same styled text is what the Word export, and the rich-text copy, are
+/// made from. Pure of any file or window access, so the output is unit tested
+/// directly; saving goes through `FileSaver`.
 enum NotePDF {
     static let paper = NSSize(width: 612, height: 792)
     static let margin: CGFloat = 54
@@ -11,12 +12,16 @@ enum NotePDF {
 
     // MARK: - Styled text
 
-    /// The note as styled text: `title` and `subtitle` as a header, then the
-    /// Markdown blocks.
+    /// The note as styled text: `title` and `subtitle` as a header (each left
+    /// out when empty), then the Markdown blocks.
     static func attributedText(markdown: String, title: String, subtitle: String) -> NSAttributedString {
         let out = NSMutableAttributedString()
-        out.append(line(title, font: serif(18, bold: true), color: .black, after: 2))
-        out.append(line(subtitle, font: serif(10), color: .darkGray, after: 14))
+        if !title.isEmpty {
+            out.append(line(title, font: serif(18, bold: true), color: .black, after: 2))
+        }
+        if !subtitle.isEmpty {
+            out.append(line(subtitle, font: serif(10), color: .darkGray, after: 14))
+        }
 
         let blocks = MarkdownParser.parse(MarkdownTextStyle.note.prepared(markdown))
         for block in blocks {

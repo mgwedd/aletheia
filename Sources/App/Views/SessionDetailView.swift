@@ -429,12 +429,9 @@ struct SessionDetailView: View {
                 ProgressView().controlSize(.small)
             }
 
-            Button {
-                exportSession()
-            } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
+            ExportButton(help: "Save this session's note and transcript as a PDF, Word or Markdown file") {
+                exportSession(as: $0)
             }
-            .help("Export this session to Markdown")
             .disabled(transcriptText.isEmpty && summaryText.isEmpty)
 
             // "Remind Me" / "Schedule Next…" belong to the `.dev`-tier EventKit
@@ -609,31 +606,27 @@ struct SessionDetailView: View {
         )
     }
 
-    private func exportSession() {
+    private func exportSession(as format: ExportFormat) {
         guard let store = appModel.store else { return }
-        let markdown = store.exportSessionMarkdown(patient: patient, session: session)
-        let dateStr = String(session.folderName.prefix(10))
-        let name = FileSaver.fileName(patient.name, dateStr) + ".md"
-        if FileSaver.saveText(markdown, suggestedName: name) {
-            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, Markdown")
+        let document = ExportDocument(markdown: store.exportSessionMarkdown(patient: patient, session: session))
+        let base = FileSaver.fileName(patient.name, String(session.folderName.prefix(10)))
+        if ExportRenderer.save(document, as: format, baseName: base, onFailure: { appModel.errorMessage = $0 }) {
+            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
         }
     }
 
-    /// Saves the note on screen as a PDF, after the usual save panel.
-    private func exportNotePDF() {
-        let format = settings.progressNoteFormat.shortName
+    /// Saves the note on screen in `format`, after the usual save panel.
+    private func exportNote(as format: ExportFormat) {
+        let noteFormat = settings.progressNoteFormat.shortName
         let dateStr = String(session.folderName.prefix(10))
-        guard let data = NotePDF.render(
-            markdown: summaryText,
+        let document = ExportDocument(
             title: patient.name,
-            subtitle: "\(format) · \(Self.dateFormatter.string(from: session.date))"
-        ) else {
-            appModel.errorMessage = "The PDF couldn't be made."
-            return
-        }
-        let name = FileSaver.fileName(patient.name, dateStr, format) + ".pdf"
-        if FileSaver.savePDF(data, suggestedName: name) {
-            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(format), PDF")
+            subtitle: "\(noteFormat) · \(Self.dateFormatter.string(from: session.date))",
+            markdown: summaryText
+        )
+        let base = FileSaver.fileName(patient.name, dateStr, noteFormat)
+        if ExportRenderer.save(document, as: format, baseName: base, onFailure: { appModel.errorMessage = $0 }) {
+            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
         }
     }
 
@@ -1056,22 +1049,24 @@ struct SessionDetailView: View {
                             .help("Edit this note before it goes in the record")
                         }
                         Button {
-                            copyToPasteboard(NoteMarkdown.tidy(summaryText))
+                            RichClipboard.write(RichClipboard.payload(markdown: summaryText))
                             noteCopied = true
                             Task {
                                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                                 noteCopied = false
                             }
                         } label: {
-                            Label(noteCopied ? "Copied" : "Copy", systemImage: noteCopied ? "checkmark" : "doc.on.doc")
+                            Label("Copy", systemImage: "doc.on.doc")
                         }
-                        .help("Copy the note to paste into your EHR")
-                        Button {
-                            exportNotePDF()
-                        } label: {
-                            Label("PDF", systemImage: "arrow.down.doc")
+                        .help("Copy the note, with its formatting, to paste into your EHR or a document")
+                        .popover(isPresented: $noteCopied, arrowEdge: .bottom) {
+                            Label("Copied", systemImage: "checkmark.circle.fill")
+                                .font(Theme.Typography.control)
+                                .foregroundStyle(Theme.text.color)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
                         }
-                        .help("Save this note as a PDF")
+                        ExportButton(help: "Save this note as a PDF, Word or Markdown file") { exportNote(as: $0) }
                     }
                 }
                 if let status = noteRunner.queuedStatus {

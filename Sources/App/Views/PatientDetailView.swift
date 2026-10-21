@@ -229,10 +229,8 @@ struct PatientDetailView: View {
     }
 
     private var exportButton: some View {
-        Button {
-            exportHistory()
-        } label: {
-            Label("Export history", systemImage: "square.and.arrow.up")
+        ExportButton(title: "Export history", help: "Save this patient's session history as a PDF, Word or Markdown file") {
+            exportHistory(as: $0)
         }
         .buttonStyle(.themed)
         .disabled(sessions.isEmpty)
@@ -356,12 +354,12 @@ struct PatientDetailView: View {
         }
     }
 
-    private func exportHistory() {
+    private func exportHistory(as format: ExportFormat) {
         guard let store = appModel.store else { return }
-        let markdown = store.exportPatientHistoryMarkdown(patient: patient)
-        let name = FileSaver.fileName(patient.name, "Session History") + ".md"
-        if FileSaver.saveText(markdown, suggestedName: name) {
-            appModel.recordAudit(.recordExported, subjectID: patient.id.uuidString, detail: "Patient history, Markdown")
+        let document = ExportDocument(markdown: store.exportPatientHistoryMarkdown(patient: patient))
+        let base = FileSaver.fileName(patient.name, "Session History")
+        if ExportRenderer.save(document, as: format, baseName: base, onFailure: { errorMessage = $0 }) {
+            appModel.recordAudit(.recordExported, subjectID: patient.id.uuidString, detail: "Patient history, \(format.title)")
         }
     }
 }
