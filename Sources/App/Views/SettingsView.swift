@@ -684,7 +684,7 @@ struct SettingsView: View {
                 .themeField()
             }
             HStack(spacing: 8) {
-                TextField("Add a phrase (e.g. kill myself)", text: $newRiskPhrase)
+                TextField("Add a phrase", text: $newRiskPhrase)
                     .textFieldStyle(.plain)
                     .font(Theme.Typography.body)
                     .padding(.horizontal, 12)

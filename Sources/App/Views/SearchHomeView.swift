@@ -6,7 +6,6 @@ import SwiftUI
 /// typing in either shows the same results, which render here in place.
 ///
 ///        [🔍 Search all patients, sessions and notes   ⌘ F]
-///             or choose a patient on the left
 struct SearchHomeView: View {
     @ObservedObject var model: GlobalSearchModel
     let onOpen: (SearchHit) -> Void
@@ -14,7 +13,6 @@ struct SearchHomeView: View {
     var onShowSidebar: () -> Void = {}
     @FocusState private var focused: Bool
 
-    static let hint = "or choose a patient on the left"
     static let hiddenHint = "or show the sidebar to choose a patient"
 
     var body: some View {
@@ -37,11 +35,6 @@ struct SearchHomeView: View {
                     }
                     .buttonStyle(.themed)
                     .padding(.top, 6)
-                } else {
-                    Text(Self.hint)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.muted.color)
-                        .padding(.top, 6)
                 }
                 Spacer(minLength: 0)
             }

@@ -16,6 +16,13 @@ final class SettingsSidebarPolishTests: XCTestCase {
         XCTAssertTrue(components[row.lowerBound...].contains(".focusEffectDisabled()"))
     }
 
+    /// The risk-phrase field shows no example phrase.
+    func testRiskPhraseFieldHasNoExample() throws {
+        let settings = try source("Sources/App/Views/SettingsView.swift")
+        XCTAssertTrue(settings.contains(#"TextField("Add a phrase", text: $newRiskPhrase)"#))
+        XCTAssertFalse(settings.contains("e.g. kill myself"))
+    }
+
     func testSummaryLengthCaptionIsOnlyTheBlurb() throws {
         XCTAssertFalse(try source("Sources/App/Views/SettingsView.swift").contains("Clarity comes first"))
     }

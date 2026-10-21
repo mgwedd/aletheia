@@ -99,4 +99,9 @@ final class SearchHomeViewTests: XCTestCase {
         XCTAssertFalse(root.contains("ContentUnavailableView"))
         XCTAssertTrue(root.contains("SearchHomeView("))
     }
+
+    /// The field is enough; the patients are in plain sight on the left.
+    func testNoHintUnderTheField() throws {
+        XCTAssertFalse(try source("Sources/App/Views/SearchHomeView.swift").contains("on the left"))
+    }
 }
