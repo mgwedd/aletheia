@@ -514,12 +514,6 @@ private struct ThreadRow: View {
 
     @State private var isHovered = false
 
-    private static let relative: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .abbreviated
-        return f
-    }()
-
     private var fill: Color {
         if isSelected { return Theme.accentTint.color }
         return isHovered ? Theme.hover.color : .clear
@@ -533,11 +527,14 @@ private struct ThreadRow: View {
                     .font(Theme.Typography.control)
                     .foregroundStyle(Theme.text.color)
                     .lineLimit(1)
-                Text(Self.relative.localizedString(for: thread.updatedAt, relativeTo: Date()))
-                    .font(Theme.Typography.caption)
-                    // Muted ink has no contrast pairing on the selected tint.
-                    .foregroundStyle(isSelected ? Theme.text.color : Theme.muted.color)
-                    .lineLimit(1)
+                // Redrawn every half minute so "Just now" moves on by itself.
+                TimelineView(.periodic(from: .now, by: 30)) { timeline in
+                    Text(ChatThread.activityLabel(for: thread.updatedAt, now: timeline.date))
+                        .font(Theme.Typography.caption)
+                        // Muted ink has no contrast pairing on the selected tint.
+                        .foregroundStyle(isSelected ? Theme.text.color : Theme.muted.color)
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)

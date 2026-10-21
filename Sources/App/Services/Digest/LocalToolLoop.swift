@@ -1125,20 +1125,30 @@ enum LongSessionChat {
 // MARK: - Patient-Wide Chat Runner (#286 Steps 3b, 5, 5b)
 
 /// Runs a patient chat turn. When every session's transcript fit in full
-/// (`context.coverage.wholeTranscripts`), streams the answer directly.
+/// (`context.coverage.wholeTranscripts`), writes the answer with no lookups.
 /// Otherwise the context was gathered by zoom level (`PatientZoom`): it lists
 /// what was gathered, then at Normal and Focus lets the model open the parts
 /// search points at (`LocalToolLoop.refine`, the 10 ft level), then writes the
 /// answer. The progress bar follows `PatientAskSteps`.
 @MainActor
 enum PatientChatAnswer {
+    /// The most the gathered material may run to at Normal and Focus, in
+    /// tokens, however much this Mac could read: a local model takes about a
+    /// minute to read 20K tokens before it writes a word. Fast has its own,
+    /// smaller cap (`AnswerEffort.materialCap`).
+    static func contextTokenBudget(for effort: AnswerEffort) -> Int {
+        effort == .focus ? 20_000 : 10_000
+    }
+
     /// The room for the gathered material: Fast's cap, or the whole budget less
-    /// the room kept for every lookup (`AnswerEffort.lookupReserve`).
+    /// the room kept for every lookup (`AnswerEffort.lookupReserve`), at most
+    /// `contextTokenBudget`.
     static func initialContextBudget(for effort: AnswerEffort, totalBudget: Int) -> Int {
         if let cap = effort.materialCap(for: .patientChat) {
             return min(totalBudget, cap)
         }
-        return max(2_000, totalBudget - effort.lookupReserve(total: totalBudget))
+        let cap = contextTokenBudget(for: effort) * ContextBudget.charactersPerToken
+        return min(cap, max(2_000, totalBudget - effort.lookupReserve(total: totalBudget)))
     }
 
     static func stream(
@@ -1157,14 +1167,10 @@ enum PatientChatAnswer {
         var baseCoverage = context.coverage
         baseCoverage.effort = effort
 
-        if context.coverage.wholeTranscripts {
-            onCoverage(baseCoverage)
-            return service.streamAnswerAboutPatient(
-                context: context.text,
-                history: history,
-                question: question
-            )
-        }
+        // Whole transcripts leave nothing to look up: straight to the answer,
+        // through the same stages so the progress shows what was gathered,
+        // the elapsed time and the tokens read.
+        let layered = !context.coverage.wholeTranscripts
 
         return AsyncThrowingStream { continuation in
             let task = Task { @MainActor in
@@ -1174,15 +1180,15 @@ enum PatientChatAnswer {
 
                     // Gathering (search, summaries, notes) was done before the
                     // model started; the bar moves on through the lookups.
-                    let steps = PatientAskSteps(effort: effort, layered: true)
+                    let steps = PatientAskSteps(effort: effort, layered: layered)
                     let finished = PatientAskSteps.finishedLines(currentCoverage)
                     live(nil) { progress in
                         for line in finished { progress.recordCompletedStage(line) }
-                        progress.steps = steps.choosing(round: 0)
+                        progress.steps = layered ? steps.choosing(round: 0) : steps.writing
                     }
 
                     var finalContext = context.text
-                    if effort.maxToolCalls > 0 {
+                    if layered && effort.maxToolCalls > 0 {
                         let toolScope = await scope()
                         try Task.checkCancellation()
                         let remaining = max(0, totalBudget - context.text.count - 80)

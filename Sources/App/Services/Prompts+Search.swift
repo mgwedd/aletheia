@@ -1,14 +1,18 @@
 import Foundation
 
 /// The "Search results" block and the not-discussed rule for the patient-wide
-/// chat. The counts are computed by `SessionSearch`; the model only quotes them.
+/// chat. The counts are computed by `SessionSearch`; the model uses them but
+/// does not recite them.
 extension Prompts {
     /// Added to `patientChat`: a topic may be called not discussed only when
     /// the search found nothing for that word, and then only as "no match found".
     static let patientSearchRule = """
         The lines starting with "- " under "Search results" are the app's own \
         counts of matches for each word of the question across the recorded \
-        sessions. Quote the numbers exactly and never count yourself. Say a \
+        sessions. They are for you, not for the reader: use them to decide \
+        what you can say, but do not repeat, list or quote them, and never \
+        open the answer with them; answer the question itself. Never count \
+        yourself. Say a \
         word was not discussed only if its own line reports 0 matches, and \
         then say "no match found in the recorded sessions", never "never \
         discussed". A word's other counts do not cover a different word. \
@@ -17,6 +21,10 @@ extension Prompts {
         excerpts below don't show it. Wording in a session can differ from \
         the question, so a search can miss a paraphrase.
         """
+
+    /// Beside the counts, where a small model reads it: they steer the answer
+    /// and are not part of it.
+    static let countsNote = "for you only, do not repeat these counts"
 
     /// The block put at the top of the patient context. `shown` is how many
     /// transcript passages are in the text below. `whole` means every
@@ -55,7 +63,7 @@ extension Prompts {
             lines = ["Search: the question has no searchable words, so no count was made. Do not say anything was not discussed."]
             if !whole { lines.append("Not every transcript fits: \(included).") }
         } else {
-            lines = ["Search results (\(plural(searched, "session")) searched):"]
+            lines = ["Search results (\(plural(searched, "session")) searched; \(countsNote)):"]
             for count in result.termCounts {
                 var line = "- \"\(count.term.text)\": "
                 let also = (result.matchedVariants[count.term.text] ?? []).joined(separator: ", ")

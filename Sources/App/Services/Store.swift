@@ -1541,7 +1541,8 @@ final class Store {
         let filteredDigests = datedDigests.filter { search.dateRange?.contains($0.date) ?? true }
         let selection = PatientContextRetriever.select(
             transcripts: documents, search: search,
-            characterBudget: remainingAfterExtras, labels: labels
+            characterBudget: remainingAfterExtras, labels: labels,
+            wantsWholeTranscripts: SessionSearch.readsAcrossSessions(question)
         )
         // Counted from what is in `text`: a session whose transcript is
         // unreadable is not counted as read.
@@ -1689,10 +1690,11 @@ final class Store {
         var excerpts: [PatientContextRetriever.Excerpt] = []
         var hitsShown = 0
         if !search.terms.isEmpty, hasTranscriptHits, passageRoom > 200 {
-            // The transcripts don't fit `room`, so they don't fit this either:
-            // `select` keeps the best hits' lines, never whole transcripts.
+            // The transcripts don't fit `room`, or the question is about one
+            // thing: `select` keeps the best hits' lines, never whole transcripts.
             let passages = PatientContextRetriever.select(
-                transcripts: input.documents, search: search, characterBudget: passageRoom, labels: input.labels
+                transcripts: input.documents, search: search, characterBudget: passageRoom, labels: input.labels,
+                wantsWholeTranscripts: false
             )
             if !passages.fullTexts {
                 excerpts = passages.excerpts
