@@ -156,7 +156,7 @@ final class LlamaAssistant: Assistant {
         return activeEngine.stream(
             request(system: system, prompt: prompt, task: task, grammar: grammar),
             onStats: onStats.map { callback in
-                { raw in
+                { @Sendable raw in
                     var stats = raw
                     stats.expectedPromptTokens = expectedTokens
                     stats.task = task
