@@ -692,27 +692,21 @@ struct SessionDetailView: View {
                           ? "Select a passage in the transcript to comment on it"
                           : "Add a comment on the selected passage")
                     Spacer(minLength: 12)
-                    if transcriptIsDirty {
-                        Text("Edits to the transcript are not saved yet")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.muted.color)
-                            .lineLimit(1)
-                            .transition(.opacity)
-                    } else if transcriptSelection.isEmpty && !showInlineComposer {
-                        Text("Select any part of the transcript to comment")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.muted.color)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .transition(.opacity)
+                    if TranscriptEditBar.showsEditControls(isDirty: transcriptIsDirty) {
+                        if let note = TranscriptEditBar.statusNote(isDirty: transcriptIsDirty) {
+                            Text(note)
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(Theme.muted.color)
+                                .lineLimit(1)
+                                .transition(.opacity)
+                        }
+                        Button("Discard") { showDiscardConfirm = true }
+                            .help("Throw away your unsaved edits")
+                        Button("Save") { saveTranscriptDraft() }
+                            .keyboardShortcut("s", modifiers: .command)
+                            .disabled(transcriptReadError != nil)
+                            .help("Save your edits to the transcript")
                     }
-                    Button("Discard") { showDiscardConfirm = true }
-                        .disabled(!transcriptIsDirty)
-                        .help("Throw away your unsaved edits")
-                    Button("Save") { saveTranscriptDraft() }
-                        .keyboardShortcut("s", modifiers: .command)
-                        .disabled(!transcriptIsDirty || transcriptReadError != nil)
-                        .help("Save your edits to the transcript")
                 }
                 .buttonStyle(.themed)
                 .padding(.horizontal, 20)

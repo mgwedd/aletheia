@@ -19,6 +19,26 @@ enum ReleaseNotesFormatter {
     }
 }
 
+/// Sizes and labels of the update prompt's action rows, shared with the view
+/// so a test can measure the real strings. The buttons are single-line (the
+/// themed style sets `lineLimit(1)`), so a row wider than the prompt truncates
+/// its labels ("Remind m...") instead of wrapping them.
+enum UpdatePromptLayout {
+    static let width: CGFloat = 480
+    static let padding: CGFloat = 28
+    static var contentWidth: CGFloat { width - 2 * padding }
+    static let rowSpacing: CGFloat = 8
+
+    static let viewOnGitHub = "View on GitHub"
+    static let skip = "Skip this version"
+    static let later = "Remind me later"
+    static let download = "Download update"
+
+    /// Links on the first row, buttons on the second: four controls in one row
+    /// need more than the prompt's width.
+    static let rows = [[viewOnGitHub, skip], [later, download]]
+}
+
 struct UpdatePromptView: View {
     let release: ReleaseInfo
     let onUpdate: () -> Void
@@ -71,23 +91,26 @@ struct UpdatePromptView: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                Link("View on GitHub", destination: release.releasePageOrWebURL)
-                    .font(Theme.Typography.control)
-                    .foregroundStyle(Theme.accent.color)
-                Spacer(minLength: 0)
-                Button("Skip this version", action: onSkip)
-                    .buttonStyle(.plain)
-                    .font(Theme.Typography.control)
-                    .foregroundStyle(Theme.muted.color)
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 34)
-                    .contentShape(Rectangle())
-                Button("Remind me later", role: .cancel, action: onLater)
-                    .buttonStyle(.themed)
-                Button("Download update", action: onUpdate)
-                    .buttonStyle(.themePrimary)
-                    .keyboardShortcut(.defaultAction)
+            VStack(spacing: 12) {
+                HStack(spacing: 16) {
+                    Link(UpdatePromptLayout.viewOnGitHub, destination: release.releasePageOrWebURL)
+                        .font(Theme.Typography.control)
+                        .foregroundStyle(Theme.accent.color)
+                    Button(UpdatePromptLayout.skip, action: onSkip)
+                        .buttonStyle(.plain)
+                        .font(Theme.Typography.control)
+                        .foregroundStyle(Theme.muted.color)
+                        .contentShape(Rectangle())
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: UpdatePromptLayout.rowSpacing) {
+                    Spacer(minLength: 0)
+                    Button(UpdatePromptLayout.later, role: .cancel, action: onLater)
+                        .buttonStyle(.themed)
+                    Button(UpdatePromptLayout.download, action: onUpdate)
+                        .buttonStyle(.themePrimary)
+                        .keyboardShortcut(.defaultAction)
+                }
             }
 
             Text("Download update starts the download and closes this window. Aletheia stays open so you can finish and save your work; quit it when you're ready, then drag the new version into your Applications folder to replace this one. The version check sent no client data.")
@@ -95,8 +118,8 @@ struct UpdatePromptView: View {
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(28)
-        .frame(width: 480)
+        .padding(UpdatePromptLayout.padding)
+        .frame(width: UpdatePromptLayout.width)
         .background(Theme.panel.color)
     }
 }

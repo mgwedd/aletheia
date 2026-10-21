@@ -82,4 +82,52 @@ final class AppNavigatorTests: XCTestCase {
         XCTAssertTrue(navigator.pendingSession?.initialShowingMyNotes ?? false)
         navigator.pendingSession = nil
     }
+
+    // MARK: - Settings requests
+
+    func testSettingsRequestIsTakenOnceThenCleared() {
+        let navigator = AppNavigator.shared
+        navigator.pendingSettings = nil
+        navigator.requestSettings(.setupAssistant)
+        XCTAssertEqual(navigator.pendingSettings, .setupAssistant)
+        XCTAssertEqual(navigator.takeSettingsRequest(), .setupAssistant)
+        XCTAssertNil(navigator.pendingSettings)
+        XCTAssertNil(navigator.takeSettingsRequest())
+    }
+
+    func testTakingWithNothingPendingReturnsNil() {
+        let navigator = AppNavigator.shared
+        navigator.pendingSettings = nil
+        XCTAssertNil(navigator.takeSettingsRequest())
+    }
+
+    func testSetupAssistantRequestOpensTheGeneralPane() {
+        // The Setup Assistant button lives in the General pane.
+        XCTAssertEqual(SettingsRequest.setupAssistant.pane, .general)
+    }
+}
+
+final class DoctorActionRouteTests: XCTestCase {
+    func testSetupAssistantOpensSettingsAtTheAssistant() {
+        XCTAssertEqual(DoctorAction.setupAssistant.route, .settings(.setupAssistant))
+    }
+
+    func testOpenSettingsOpensSettingsWithoutARequest() {
+        XCTAssertEqual(DoctorAction.openSettings.route, .settings(nil))
+    }
+
+    func testOtherActionsRoute() {
+        XCTAssertEqual(DoctorAction.openSystemSettings.route, .systemSettings)
+        XCTAssertEqual(DoctorAction.reviewRecords.route, .reviewRecords)
+        XCTAssertEqual(DoctorAction.checkForUpdates.route, .updateCheck)
+    }
+
+    /// The Doctor once sent AppKit selectors nothing handled, so its buttons
+    /// did nothing. Every action now resolves to a route the view handles;
+    /// `DoctorAction.route` is an exhaustive switch, so a new action must add one.
+    func testEveryActionHasARoute() {
+        let all: [DoctorAction] = [.openSettings, .openSystemSettings, .reviewRecords, .setupAssistant, .checkForUpdates]
+        // No two actions share a route (openSettings and setupAssistant differ by their request).
+        XCTAssertEqual(Set(all.map { "\($0.route)" }).count, all.count)
+    }
 }

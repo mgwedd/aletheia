@@ -9,6 +9,9 @@ struct DoctorView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
     @EnvironmentObject private var recorder: SessionRecorder
+    @EnvironmentObject private var updateService: UpdateService
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     @State private var report: DoctorReport?
     @State private var isRunning = false
@@ -241,19 +244,22 @@ struct DoctorView: View {
     }
 
     private func perform(_ action: DoctorAction) {
-        switch action {
-        case .openSettings:
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        case .openSystemSettings:
+        switch action.route {
+        case .settings(let request):
+            if let request { AppNavigator.shared.requestSettings(request) }
+            openSettings()
+            NSApp.activate(ignoringOtherApps: true)
+        case .systemSettings:
             if let url = URL(string: "x-apple.systempreferences:") {
                 NSWorkspace.shared.open(url)
             }
         case .reviewRecords:
             showReviewRecords = true
-        case .setupAssistant:
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        case .checkForUpdates:
-            NSApp.sendAction(Selector(("checkForUpdates:")), to: nil, from: nil)
+        case .updateCheck:
+            // The result (update prompt or "you're up to date") shows in the
+            // main window, so bring that forward.
+            MainWindow.show(openWindow: openWindow)
+            Task { await updateService.checkForUpdates(force: true) }
         }
     }
 
