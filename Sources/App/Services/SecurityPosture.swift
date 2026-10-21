@@ -31,6 +31,9 @@ enum SecurityPosture {
         idleAutoLockMinutes: Int,
         encryptionEnabled: Bool,
         encryptionUnlocked: Bool,
+        /// False in a build without at-rest encryption (and no folder encrypted):
+        /// there is nothing to turn on, so the item is left out.
+        encryptionOffered: Bool = true,
         auditLogActive: Bool,
         localEncryptedBackup: Bool,
         localBackupActive: Bool,
@@ -71,7 +74,7 @@ enum SecurityPosture {
         } else if encryptionEnabled {
             items.append(PostureItem(id: "encryption", title: "At-rest encryption", level: .informational,
                 detail: "Encryption is on for this folder; unlock with your passphrase to read its sessions."))
-        } else {
+        } else if encryptionOffered {
             items.append(PostureItem(id: "encryption", title: "At-rest encryption", level: .actionRecommended,
                 detail: "Turn on at-rest encryption for defense in depth beyond FileVault."))
         }
