@@ -27,9 +27,9 @@ final class AdaptiveActionRowTests: XCTestCase {
 
     private var newRow: some View {
         AdaptiveActionRow {
-            Text(caption).fixedSize(horizontal: false, vertical: true)
+            Text(self.caption).fixedSize(horizontal: false, vertical: true)
         } actions: {
-            buttons
+            self.buttons
         }
         .buttonStyle(.themed)
     }
