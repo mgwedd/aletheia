@@ -8,7 +8,7 @@ import SwiftUI
 /// the keyboard the whole time: up/down move through the results, Return opens
 /// one, esc clears the query (and, when empty, leaves the field). ⌘F focuses it.
 ///
-///   [🔍 Search all patients ............ ⌘ F]
+///   [🔍 Search all patients ...............]
 struct GlobalSearchField: View {
     @ObservedObject var model: GlobalSearchModel
     var isFocused: FocusState<Bool>.Binding
@@ -52,8 +52,12 @@ struct GlobalSearchField: View {
     @ViewBuilder
     private var trailing: some View {
         if model.query.isEmpty {
-            ShortcutHint(AppHotkey.search)
-                .opacity(isFocused.wrappedValue ? 0 : 1)
+            // Only the large field has room for the keycaps; in the sidebar they
+            // squeeze the placeholder, and the tooltip names ⌘F.
+            if large {
+                ShortcutHint(AppHotkey.search)
+                    .opacity(isFocused.wrappedValue ? 0 : 1)
+            }
         } else {
             Button {
                 model.clear()

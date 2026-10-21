@@ -87,7 +87,10 @@ final class GlobalSearchModelTests: XCTestCase {
         let common = GlobalSearchResults(sections: [], coverage: .complete, unsearchedWords: ["the"])
         XCTAssertEqual(
             GlobalSearchRow.emptyMessage(query: "the", results: common),
-            "\u{201C}the\u{201D} is too common or too short to search notes and transcripts for. Add another word.")
+            "\u{201C}the\u{201D} is too common to search notes and transcripts for. Add another word.")
+        XCTAssertEqual(GlobalSearchRow.unsearchedReason(["you", "are"]), "too common")
+        XCTAssertEqual(GlobalSearchRow.unsearchedReason(["x"]), "too short")
+        XCTAssertEqual(GlobalSearchRow.unsearchedReason(["the", "x"]), "too common or too short")
         XCTAssertEqual(GlobalSearchRow.emptyMessage(query: " kayak ", results: .empty), "No results for \u{201C}kayak\u{201D}")
         let indexing = GlobalSearchResults(sections: [], coverage: .indexing(sessions: 3), unsearchedWords: [])
         XCTAssertEqual(GlobalSearchRow.emptyMessage(query: "kayak", results: indexing), "No results yet for \u{201C}kayak\u{201D}")
@@ -222,6 +225,8 @@ final class GlobalSearchModelTests: XCTestCase {
         let field = try source("Sources/App/Views/GlobalSearchField.swift")
         XCTAssertEqual(ShortcutGlyphs.symbols(for: AppHotkey.findInText), "⌥⌘F")
         XCTAssertTrue(field.contains("ShortcutHint(AppHotkey.search)"))
+        XCTAssertTrue(field.contains("if large {\n                ShortcutHint(AppHotkey.search)"),
+                      "the keycaps only show on the large field; in the sidebar they squeeze the placeholder")
         XCTAssertTrue(field.contains("GlobalSearchShortcut.isGlobalSearch(event)"))
         let list = try source("Sources/App/Views/PatientsListView.swift")
         XCTAssertTrue(list.contains("GlobalSearchField("), "the field is in the sidebar")
