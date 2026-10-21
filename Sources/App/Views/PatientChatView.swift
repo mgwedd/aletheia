@@ -89,7 +89,8 @@ struct PatientChatView: View {
                         onCompact: { compact($0) },
                         progress: chatRunner.progress,
                         speed: integrations.modelSpeed,
-                        effort: $settings.patientChatEffort
+                        effort: $settings.patientChatEffort,
+                        effortFeature: .patientChat
                     )
                     .frame(minWidth: 360)
                 } else {

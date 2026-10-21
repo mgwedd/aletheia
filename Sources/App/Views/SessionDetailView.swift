@@ -1220,7 +1220,7 @@ struct SessionDetailView: View {
             Label("Length: \(settings.summaryVerbosity.displayName) · \(settings.noteEffort.displayName)", systemImage: "text.alignleft")
         }
         .fixedSize()
-        .help("How long the note is and how thoroughly long sessions are checked. Regenerate to apply a change.")
+        .help("How long the note is, and the AI effort for a long session. \(settings.noteEffort.displayName): \(settings.noteEffort.blurb(for: .note)) Regenerate to apply a change.")
     }
 
     /// Shown between pressing Generate and the first token, which can take a

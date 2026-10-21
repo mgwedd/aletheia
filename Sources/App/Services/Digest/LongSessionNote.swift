@@ -25,9 +25,6 @@ enum LongSessionNote {
     static let passageFloor = 4_000
     /// The most of the material room the digest may take.
     static let digestShare = 2_500
-    /// Maximum material room (digest + risk lines + top topic hits) used at Fast effort
-    /// so the model reads a compact prompt quickly while still keeping risk lines.
-    static let fastMaterialLimit = 8_000
 
     /// How the Focus check ended.
     enum CheckOutcome: Equatable {
@@ -98,9 +95,10 @@ enum LongSessionNote {
                     try Task.checkCancellation()
                     var room = total
                     var plannedCheck: CheckOutcome?
-                    if effort == .fast {
-                        room = min(total, max(fastMaterialLimit, flaggedCost + digestShare))
-                    } else if effort == .focus {
+                    if let cap = effort.materialCap(for: .note) {
+                        // Fast: a compact prompt, but never short of the risk lines.
+                        room = min(total, max(cap, flaggedCost + digestShare))
+                    } else if effort.checksDraft(for: .note) {
                         let reserve = min(draftReserve, total / 3)
                         let digestSize = min(digest.sessionDigest.count, digestShare)
                         if total - reserve - digestSize < passageFloor {
@@ -148,7 +146,7 @@ enum LongSessionNote {
                         service: drafter, live: live, onSnapshot: { continuation.yield($0) })
                     try Task.checkCancellation()
 
-                    if effort == .focus, plannedCheck == nil, !draft.isEmpty {
+                    if effort.checksDraft(for: .note), plannedCheck == nil, !draft.isEmpty {
                         let outcome = await check(
                             draft: draft, material: material, format: format, phrases: riskPhrases, service: service,
                             builder: builder, live: live, accept: { continuation.yield($0) })
