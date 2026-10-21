@@ -266,6 +266,7 @@ struct SessionDetailView: View {
         }
         .navigationTitle(Self.dateFormatter.string(from: session.date))
         .background(Theme.window.color)
+        .textSelection(.enabled)
         .onAppear {
             if initialShowingMyNotes {
                 showingMyNotes = true
@@ -732,6 +733,9 @@ struct SessionDetailView: View {
                         onDelete: deleteComment,
                         onEdit: editComment
                     )
+                    // The cards focus their comment on click; selectable text
+                    // would take those clicks.
+                    .textSelection(.disabled)
                 }
             }
         }

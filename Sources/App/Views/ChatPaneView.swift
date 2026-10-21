@@ -133,6 +133,7 @@ struct ChatPaneView: View {
             composer
         }
         .background(Theme.panel.color)
+        .textSelection(.enabled)
     }
 
     // MARK: Conversation

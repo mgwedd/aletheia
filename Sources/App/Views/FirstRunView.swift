@@ -95,6 +95,7 @@ struct FirstRunView: View {
         }
         .frame(width: 720, height: 720)
         .background(Theme.panel.color)
+        .textSelection(.enabled)
         .sheet(isPresented: $showConsentGuide) {
             ConsentGuideView()
         }
