@@ -152,9 +152,12 @@ final class ExportWiringTests: XCTestCase {
         XCTAssertTrue(session.contains("Label(\"Copied\", systemImage: \"checkmark.circle.fill\")"))
     }
 
-    func testTheMenuListsEveryFormatWithPDFPreselected() throws {
+    func testTheMenuListsEveryFormatWithPDFCheckedAndNoExtraLabel() throws {
         let button = try source("Views/ExportButton.swift")
         XCTAssertTrue(button.contains("format = .default"))
         XCTAssertTrue(button.contains("ForEach(ExportFormat.allCases)"))
+        XCTAssertTrue(button.contains("Image(systemName: \"checkmark\")"))
+        XCTAssertFalse(button.lowercased().contains("preselected\")"))
+        XCTAssertFalse(button.contains("Text(\"Default"))
     }
 }
