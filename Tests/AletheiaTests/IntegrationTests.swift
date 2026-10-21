@@ -37,10 +37,10 @@ final class IntegrationTests: XCTestCase {
         let context = store.gatherPatientContext(for: patient, relevantTo: "medication")
         XCTAssertTrue(context.contains("medication"))
 
-        // Export carries both transcript and summary.
-        let markdown = store.exportPatientHistoryMarkdown(patient: patient)
-        XCTAssertTrue(markdown.contains("We discussed her sleep"))
-        XCTAssertTrue(markdown.contains("Focused on sleep"))
+        // The records export carries both transcript and summary.
+        let exported = try archiveText(for: patient)
+        XCTAssertTrue(exported.contains("We discussed her sleep"))
+        XCTAssertTrue(exported.contains("Focused on sleep"))
 
         // Timeline lookup points back at the session.
         XCTAssertEqual(store.firstMention(of: "medication", for: patient)?.folderName, session.folderName)
@@ -65,10 +65,19 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(griefHits.count, 1)
         XCTAssertEqual(griefHits.first?.session.folderName, mar.folderName)
 
-        // Export lists sessions newest-first.
-        let markdown = store.exportPatientHistoryMarkdown(patient: patient)
-        let griefRange = try XCTUnwrap(markdown.range(of: "grief"))
-        let kayakRange = try XCTUnwrap(markdown.range(of: "kayaking"))
-        XCTAssertLessThan(griefRange.lowerBound, kayakRange.lowerBound)
+        // The records export lists sessions oldest first.
+        let exported = try archiveText(for: patient)
+        let kayakRange = try XCTUnwrap(exported.range(of: "kayaking"))
+        let griefRange = try XCTUnwrap(exported.range(of: "grief"))
+        XCTAssertLessThan(kayakRange.lowerBound, griefRange.lowerBound)
+    }
+
+    /// Every file of the patient's records archive, joined in archive order.
+    private func archiveText(for patient: Patient) throws -> String {
+        let sessions = try store.listSessions(for: patient).map {
+            try ArchiveLoader.load(store: store, patient: patient, session: $0)
+        }
+        let files = PatientArchive.files(patientName: patient.name, background: "", sessions: sessions, exportedOn: Date())
+        return files.map(\.text).joined(separator: "\n")
     }
 }
