@@ -42,14 +42,6 @@ enum RelockTrigger: CaseIterable, Equatable {
     case screenLock
     case userSwitch
 
-    var reason: LockReason {
-        switch self {
-        case .systemSleep: return .systemSleep
-        case .screenLock: return .screenLock
-        case .userSwitch: return .userSwitch
-        }
-    }
-
     var notificationName: Notification.Name {
         switch self {
         case .systemSleep: return NSWorkspace.willSleepNotification
@@ -65,7 +57,7 @@ enum RelockTrigger: CaseIterable, Equatable {
 
 /// After the user cancels the system sheet, don't auto-prompt again until the app
 /// has really been left and come back: the sheet's own activation changes would
-/// otherwise re-prompt in a loop. The Unlock button is never gated.
+/// otherwise re-prompt in a loop. The lock button is never gated.
 struct AutoPromptGate: Equatable {
     private var cancelled = false
     private var resignedSinceCancel = false
@@ -95,35 +87,29 @@ struct SingleFlight: Equatable {
     }
 }
 
-/// The cause of the app presenting its lock screen, recorded so `LockView`
-/// can display a clear, context-aware explanation to the user.
-enum LockReason: Equatable {
-    case launch
-    case idle(minutes: Int)
-    case userSwitch
-    case systemSleep
-    case screenLock
-    case manual
+/// The only words the lock flow uses. The lock screen itself is just a lock
+/// symbol; the system sheet carries the reason.
+enum LockScreenCopy {
+    /// Accessibility label and tooltip of the lock symbol button.
+    static let unlockLabel = "Unlock"
+    /// Passed to `evaluatePolicy`. macOS renders the sheet as
+    /// "<App> is trying to <reason>." (it adds the prefix and the final period),
+    /// so this is lowercase-initial, does not name the app, and has no period.
+    static let authenticationReason = "unlock your patient notes"
+}
 
-    var explanation: String {
-        switch self {
-        case .launch:
-            return "Locked on launch to protect client notes."
-        case .idle(let minutes):
-            if minutes == 1 {
-                return "Locked after 1 minute of inactivity."
-            } else {
-                return "Locked after \(minutes) minutes of inactivity."
-            }
-        case .userSwitch:
-            return "Locked because you switched to another user on this Mac."
-        case .systemSleep:
-            return "Locked because your Mac went to sleep."
-        case .screenLock:
-            return "Locked because your screen was locked."
-        case .manual:
-            return "Locked to protect client notes."
-        }
+/// Shows the system Touch ID / password sheet. A seam so the unlock flow is
+/// testable without a real sheet.
+protocol UnlockAuthenticator {
+    /// Returns true when the user authenticated; throws on cancel or failure.
+    func authenticate(reason: String) async throws -> Bool
+}
+
+struct SystemUnlockAuthenticator: UnlockAuthenticator {
+    func authenticate(reason: String) async throws -> Bool {
+        let context = LAContext()
+        context.localizedFallbackTitle = "Use Password"
+        return try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
     }
 }
 
@@ -140,8 +126,6 @@ final class AppLock: ObservableObject {
     @Published private(set) var isLocked: Bool {
         didSet { OllamaResidency.shared.setLocked(isLocked) }
     }
-    /// Why the app is currently locked.
-    @Published private(set) var lockReason: LockReason = .launch
     /// Set when an unlock attempt fails, for the lock screen to show.
     @Published var lastError: String?
 
@@ -154,6 +138,8 @@ final class AppLock: ObservableObject {
 
     private let settings: AppSettings
     private let canAuthenticateProvider: () -> Bool
+    private let authenticator: UnlockAuthenticator
+    private let isAppActive: () -> Bool
     private var unlockFlight = SingleFlight()
 
     /// The last time the user interacted with the app (mouse/keyboard event
@@ -176,8 +162,15 @@ final class AppLock: ObservableObject {
     /// shortest offered timeout is a minute.
     private static let idleCheckInterval: TimeInterval = 10
 
-    init(settings: AppSettings, canAuthenticate: @escaping () -> Bool = AppLock.canAuthenticate) {
+    init(
+        settings: AppSettings,
+        canAuthenticate: @escaping () -> Bool = AppLock.canAuthenticate,
+        authenticator: UnlockAuthenticator = SystemUnlockAuthenticator(),
+        isAppActive: @escaping () -> Bool = { NSApp.isActive }
+    ) {
         self.settings = settings
+        self.authenticator = authenticator
+        self.isAppActive = isAppActive
         self.canAuthenticateProvider = canAuthenticate
         self.isLocked = AppLockPolicy.shouldLock(
             enabled: settings.appLockEnabled,
@@ -229,9 +222,8 @@ final class AppLock: ObservableObject {
 
     /// Re-lock now (e.g. when the Mac sleeps or locks), so
     /// stepping away re-requires authentication. No-op when the lock is off.
-    func lockIfEnabled(reason: LockReason = .manual) {
+    func lockIfEnabled() {
         if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: canAuthenticateProvider()) {
-            lockReason = reason
             isLocked = true
             SessionSearch.setAppLocked(true)
             // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
@@ -255,10 +247,16 @@ final class AppLock: ObservableObject {
 
     /// The automatic prompt: only when locked and the app is frontmost.
     func unlockIfActive() async {
-        guard AppLockPolicy.shouldPromptNow(isLocked: isLocked, appIsActive: NSApp.isActive),
+        guard AppLockPolicy.shouldPromptNow(isLocked: isLocked, appIsActive: isAppActive()),
               promptGate.allowsAutoPrompt else { return }
         promptGate.reset()
         await unlock()
+    }
+
+    /// Fire-and-forget unlock for the lock button. Overlapping calls are
+    /// coalesced by the single-flight guard in `unlock()`.
+    func requestUnlock() {
+        Task { await unlock() }
     }
 
     /// Prompt for Touch ID / password and unlock on success. Password fallback
@@ -266,13 +264,8 @@ final class AppLock: ObservableObject {
     func unlock() async {
         guard unlockFlight.begin() else { return }
         defer { unlockFlight.end() }
-        let context = LAContext()
-        context.localizedFallbackTitle = "Use Password"
         do {
-            let ok = try await context.evaluatePolicy(
-                .deviceOwnerAuthentication,
-                localizedReason: "Unlock Aletheia to view your patients' confidential notes."
-            )
+            let ok = try await authenticator.authenticate(reason: LockScreenCopy.authenticationReason)
             if ok {
                 isLocked = false
                 SessionSearch.setAppLocked(false)
@@ -291,10 +284,12 @@ final class AppLock: ObservableObject {
             if let laError = error as? LAError,
                [.userCancel, .appCancel, .systemCancel].contains(laError.code) {
                 promptGate.userCancelled()
+                // Cancelling is not an error: the lock screen stays a bare symbol.
+                lastError = nil
             } else {
                 onUnlockFailed?(detail)
+                lastError = detail
             }
-            lastError = detail
         }
     }
 
@@ -327,7 +322,7 @@ final class AppLock: ObservableObject {
                 ? DistributedNotificationCenter.default()
                 : NSWorkspace.shared.notificationCenter
             let observer = center.addObserver(forName: trigger.notificationName, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.lockIfEnabled(reason: trigger.reason) }
+                Task { @MainActor in self?.lockIfEnabled() }
             }
             if trigger.isDistributed {
                 distributedObservers.append(observer)
@@ -356,7 +351,7 @@ final class AppLock: ObservableObject {
     private func checkIdleTimeout() {
         guard !isLocked else { return }
         if AppLockPolicy.shouldAutoLock(lastActivity: lastActivity, timeoutMinutes: settings.idleAutoLockMinutes, now: Date()) {
-            lockIfEnabled(reason: .idle(minutes: settings.idleAutoLockMinutes))
+            lockIfEnabled()
         }
     }
 }
