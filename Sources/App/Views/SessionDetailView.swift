@@ -63,6 +63,30 @@ private struct DigestStatusLine: View {
     }
 }
 
+/// The note pane's progress: "Generating SOAP note" over a bar that never
+/// moves backwards.
+private struct NoteProgressRow: View {
+    let title: String
+    let progress: AIRunProgress
+    let speed: ModelSpeed?
+    /// Owned by the session view and replaced per run: the row is rebuilt
+    /// mid-run (when the first text arrives), which would reset a `@State` here.
+    let highWater: ProgressHighWater
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.text.color)
+                ThemeProgressBar(value: highWater.clamp(NoteProgress.fraction(progress, now: context.date, speed: speed)))
+                    .frame(maxWidth: 240)
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+}
+
 struct SessionDetailView: View {
     let patient: Patient
     let session: SessionRecord
@@ -141,6 +165,10 @@ struct SessionDetailView: View {
     @State private var sessionChatCoverage: String?
     /// Stop was pressed and the stopped note's job may still be unwinding.
     @State private var noteStopping = false
+    /// The format of the note being generated, for its progress line.
+    @State private var generatingFormat: ProgressNoteFormat = .default
+    /// Keeps that progress bar from moving backwards; a new one per run.
+    @State private var noteHighWater = ProgressHighWater()
     /// Waits for a stopped note's job to unwind before starting the next one.
     @State private var noteWaiter: Task<Void, Never>?
     @State private var summaryText: String = ""
@@ -1013,9 +1041,9 @@ struct SessionDetailView: View {
         return VStack(alignment: .leading, spacing: 14) {
             ThemeSegmentedControl(
                 options: NotesPane.all.map { ThemeTab(value: $0, title: $0.label) },
-                selection: notesPaneBinding
+                selection: notesPaneBinding,
+                sizing: .fitted
             )
-            .frame(maxWidth: 560)
             .disabled(locked)
             .opacity(locked ? 0.55 : 1)
             .accessibilityLabel("Note")
@@ -1227,10 +1255,11 @@ struct SessionDetailView: View {
         .help("How long the note is, and the AI effort for a long session. \(settings.noteEffort.displayName): \(settings.noteEffort.blurb(for: .note)) Regenerate to apply a change.")
     }
 
-    /// Shown between pressing Generate and the first token, which can take a
-    /// minute on a long session.
+    /// Shown while a note is generated: one line and a bar.
     private var noteWorkingRow: some View {
-        AIProgressView(progress: noteRunner.progress, speed: integrations.modelSpeed, task: .note)
+        NoteProgressRow(
+            title: NoteProgress.title(for: generatingFormat),
+            progress: noteRunner.progress, speed: integrations.modelSpeed, highWater: noteHighWater)
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1564,6 +1593,8 @@ struct SessionDetailView: View {
         }
         noteStopping = false
         let format = settings.progressNoteFormat
+        generatingFormat = format
+        noteHighWater = ProgressHighWater()
         let verbosity = settings.summaryVerbosity
         let instructions = settings.noteInstructions[format.rawValue]
         // Snapshot the inputs now; the request itself is only made when the

@@ -393,8 +393,21 @@ private struct TabButtonStyle: ButtonStyle {
 /// The design's segmented control: a recessed track with the selected segment
 /// raised, sliding between options.
 struct ThemeSegmentedControl<Value: Hashable>: View {
+    /// How the segments share the width.
+    enum Sizing {
+        /// Every segment as wide as the widest, filling the space given.
+        case equal
+        /// Each segment as wide as its label plus `labelPadding` on each side,
+        /// and the control only as wide as that. For labels of mixed lengths,
+        /// where equal widths leave uneven gaps between them.
+        case fitted
+    }
+
+    static var labelPadding: CGFloat { 14 }
+
     let options: [ThemeTab<Value>]
     @Binding var selection: Value
+    var sizing: Sizing = .equal
     @Namespace private var thumb
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -409,7 +422,8 @@ struct ThemeSegmentedControl<Value: Hashable>: View {
                         .font(Theme.Typography.control)
                         .lineLimit(1)
                         .foregroundStyle(isSelected ? Theme.text.color : Theme.muted.color)
-                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, sizing == .fitted ? Self.labelPadding : 0)
+                        .frame(maxWidth: sizing == .equal ? .infinity : nil)
                         .frame(height: 30)
                         .background {
                             if isSelected {
@@ -429,6 +443,7 @@ struct ThemeSegmentedControl<Value: Hashable>: View {
             }
         }
         .padding(3)
+        .fixedSize(horizontal: sizing == .fitted, vertical: false)
         .background(Theme.field.color, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
