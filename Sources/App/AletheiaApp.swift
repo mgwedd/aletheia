@@ -225,6 +225,7 @@ struct AletheiaApp: App {
                 .environmentObject(settings)
                 .environmentObject(appModel)
                 .environmentObject(integrations)
+                .environmentObject(recorder)
                 .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
         }
         .defaultSize(width: 920, height: 720)

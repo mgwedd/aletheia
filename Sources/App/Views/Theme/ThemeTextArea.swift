@@ -51,6 +51,9 @@ struct ThemeTextArea: View {
     var modifiedReturnSubmits = false
     /// Tab moves focus to the next control instead of typing a tab character.
     var tabMovesFocus = false
+    /// Room kept clear on the right for icons drawn over the box: lines wrap
+    /// before it and the placeholder stops at it.
+    var trailingInset: CGFloat = 0
     var autofocus: Autofocus = .none
     /// Optional two-way focus state; the field also draws its own focus border.
     var isFocused: Binding<Bool>?
@@ -70,6 +73,7 @@ struct ThemeTextArea: View {
             onEscape: onEscape,
             modifiedReturnSubmits: modifiedReturnSubmits,
             tabMovesFocus: tabMovesFocus,
+            trailingInset: trailingInset,
             autofocus: autofocus,
             isFocused: focus
         )
@@ -100,6 +104,12 @@ enum ThemeTextAreaMetrics {
     /// in the text view's coordinates.
     static var textOrigin: NSPoint {
         NSPoint(x: textContainerInset.width + lineFragmentPadding, y: textContainerInset.height)
+    }
+
+    /// The width lines wrap at in a view `viewWidth` wide: the box less its
+    /// padding on both sides and the room kept for trailing icons.
+    static func containerWidth(forViewWidth viewWidth: CGFloat, trailingInset: CGFloat) -> CGFloat {
+        max(1, viewWidth - 2 * textContainerInset.width - max(0, trailingInset))
     }
 
     static func font(for face: ThemeTextArea.Face) -> NSFont {
@@ -138,6 +148,25 @@ final class ThemeTextAreaTextView: NSTextView {
     var modifiedReturnSubmits = false
     var tabMovesFocus = false
     var onFocusChange: ((Bool) -> Void)?
+    /// See `ThemeTextArea.trailingInset`. The container's width is managed here
+    /// (it does not track the view) so the reservation survives resizing.
+    var trailingInset: CGFloat = 0 {
+        didSet { if trailingInset != oldValue { updateContainerWidth() } }
+    }
+
+    private func updateContainerWidth() {
+        guard let container = textContainer else { return }
+        let width = ThemeTextAreaMetrics.containerWidth(forViewWidth: frame.width, trailingInset: trailingInset)
+        if container.containerSize.width != width {
+            container.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+            needsDisplay = true
+        }
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateContainerWidth()
+    }
 
     /// The placeholder's attributes: the typed text's, in the muted color.
     var placeholderAttributes: [NSAttributedString.Key: Any] {
@@ -156,7 +185,9 @@ final class ThemeTextAreaTextView: NSTextView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard showsPlaceholder else { return }
-        NSAttributedString(string: placeholder, attributes: placeholderAttributes).draw(at: placeholderOrigin)
+        let width = max(1, (textContainer?.containerSize.width ?? bounds.width) - 2 * (textContainer?.lineFragmentPadding ?? 0))
+        NSAttributedString(string: placeholder, attributes: placeholderAttributes)
+            .draw(with: NSRect(origin: placeholderOrigin, size: NSSize(width: width, height: 10_000)), options: [.usesLineFragmentOrigin])
     }
 
     override func becomeFirstResponder() -> Bool {
@@ -214,7 +245,7 @@ final class ThemeTextAreaTextView: NSTextView {
     func contentHeight(forWidth width: CGFloat) -> CGFloat {
         guard let container = textContainer, let layout = layoutManager else { return 0 }
         container.containerSize = NSSize(
-            width: max(1, width - 2 * textContainerInset.width),
+            width: ThemeTextAreaMetrics.containerWidth(forViewWidth: width, trailingInset: trailingInset),
             height: CGFloat.greatestFiniteMagnitude
         )
         layout.ensureLayout(for: container)
@@ -238,6 +269,7 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
     let onEscape: (() -> Bool)?
     let modifiedReturnSubmits: Bool
     let tabMovesFocus: Bool
+    let trailingInset: CGFloat
     let autofocus: ThemeTextArea.Autofocus
     @Binding var isFocused: Bool
 
@@ -261,7 +293,7 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         textView.textContainer?.containerSize = NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.widthTracksTextView = false
         textView.textContainer?.lineFragmentPadding = ThemeTextAreaMetrics.lineFragmentPadding
         textView.textContainerInset = ThemeTextAreaMetrics.textContainerInset
         textView.isRichText = false
@@ -343,6 +375,7 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
             textView.onEscape = representable.onEscape
             textView.modifiedReturnSubmits = representable.modifiedReturnSubmits
             textView.tabMovesFocus = representable.tabMovesFocus
+            textView.trailingInset = representable.trailingInset
             textView.setAccessibilityLabel(representable.accessibilityLabel)
             textView.onFocusChange = { [weak self] focused in
                 guard let self else { return }

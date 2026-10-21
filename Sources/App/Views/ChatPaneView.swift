@@ -7,6 +7,9 @@ enum ChatComposerLayout {
     /// The field grows with its text between these heights, then scrolls.
     static let minFieldHeight: CGFloat = 40
     static let maxFieldHeight: CGFloat = 120
+    /// Width kept clear inside the box, at its trailing edge, for the Stop or
+    /// mic icon (a 28pt button, 6pt in from the edge, and a little air).
+    static let accessoryWidth: CGFloat = 40
 
     /// What sits at the trailing edge of the composer.
     enum TrailingControl: Equatable {
@@ -77,9 +80,18 @@ struct ChatPaneView: View {
     var effort: Binding<AnswerEffort>? = nil
     /// Which chat the selector applies to, for its description.
     var effortFeature: EffortFeature = .sessionChat
+    /// True while a session is being recorded: the recorder owns the
+    /// microphone, so the dictation mic is hidden.
+    var isSessionRecording = false
+    /// The dictation engine; nil uses on-device Apple Speech. Tests pass a fake.
+    var voiceInput: VoiceInput? = nil
 
     @State private var draft: String = ""
     @State private var inputFocused = false
+    /// Bumped on send so dictation stops writing into the cleared draft.
+    @State private var voiceResetToken = 0
+    /// Whether the mic is drawn, reported by the mic itself.
+    @State private var micShown = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var canSend: Bool {
@@ -270,16 +282,32 @@ struct ChatPaneView: View {
             onEscape: escapeStops,
             modifiedReturnSubmits: true,
             tabMovesFocus: true,
+            trailingInset: trailingAccessoryShown ? ChatComposerLayout.accessoryWidth : 0,
             isFocused: $inputFocused
         )
         .disabled(isSending)
         .overlay(alignment: .trailing) {
-            if ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .stop, let onStop {
-                StopButton(action: onStop)
-                    .padding(.trailing, 6)
+            HStack(spacing: 2) {
+                if ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .stop, let onStop {
+                    StopButton(action: onStop)
+                }
+                VoiceMicControl(
+                    draft: $draft,
+                    isSending: isSending,
+                    isSessionRecording: isSessionRecording,
+                    resetToken: voiceResetToken,
+                    input: voiceInput,
+                    onShownChange: { micShown = $0 }
+                )
             }
+            .padding(.trailing, 6)
         }
         .hoverTip(scopeTip, arrowEdge: .top)
+    }
+
+    /// Stop or the mic is drawn over the box's trailing edge.
+    private var trailingAccessoryShown: Bool {
+        micShown || ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .stop
     }
 
     /// Esc while an answer is being made stops it; true when it did.
@@ -325,6 +353,7 @@ struct ChatPaneView: View {
     private func send() {
         let text = ChatComposerLayout.collapsingLineBreaks(draft.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty else { return }
+        voiceResetToken += 1
         draft = ""
         if let onCompact, let focus = ChatMemory.compactCommand(text) {
             onCompact(focus)
@@ -334,8 +363,7 @@ struct ChatPaneView: View {
     }
 }
 
-/// The in-box Stop control: a stop square in a circle on a subtle rounded
-/// background.
+/// The in-box Stop control: a stop square in a circle, no fill or border.
 struct StopButton: View {
     let action: () -> Void
     @State private var hovering = false
@@ -343,16 +371,14 @@ struct StopButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .fill(hovering ? Theme.hover.color : Theme.raised.color)
                 Circle()
-                    .strokeBorder(Theme.text.color, lineWidth: 1.5)
-                    .frame(width: 22, height: 22)
+                    .strokeBorder(hovering ? Theme.text.color : Theme.muted.color, lineWidth: 1.5)
+                    .frame(width: 20, height: 20)
                 Image(systemName: "stop.fill")
                     .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(Theme.text.color)
+                    .foregroundStyle(hovering ? Theme.text.color : Theme.muted.color)
             }
-            .frame(width: 30, height: 30)
+            .frame(width: 28, height: 28)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
