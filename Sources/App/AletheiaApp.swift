@@ -104,6 +104,7 @@ struct AletheiaApp: App {
         _recorder = StateObject(wrappedValue: recorder)
         let exports = ExportJobCenter(notifier: UserNotificationService())
         _exports = StateObject(wrappedValue: exports)
+        ReturnKeyActivation.install()
         AppLifecycle.configure(
             settings: settings, appModel: appModel, recorder: recorder,
             transcription: transcription, integrations: integrations, exports: exports)

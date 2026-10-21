@@ -112,14 +112,12 @@ final class AppLockPolicyTests: XCTestCase {
         await Task.yield()
         await Task.yield()
         XCTAssertTrue(appLock.isLocked)
-        XCTAssertEqual(appLock.lockReason, .systemSleep)
 
         appLock.simulateUnlockedForTesting()
         NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
         await Task.yield()
         await Task.yield()
         XCTAssertTrue(appLock.isLocked)
-        XCTAssertEqual(appLock.lockReason, .userSwitch)
     }
 
     func testRelockTriggersAreLeavingTheMacOnly() {
@@ -133,7 +131,6 @@ final class AppLockPolicyTests: XCTestCase {
         XCTAssertFalse(names.contains(NSApplication.didHideNotification))
         XCTAssertFalse(names.contains(NSWorkspace.screensDidSleepNotification))
         XCTAssertEqual(RelockTrigger.allCases.filter(\.isDistributed), [.screenLock])
-        XCTAssertEqual(RelockTrigger.allCases.map(\.reason), [.systemSleep, .screenLock, .userSwitch])
     }
 
     func testAppLockSourceHasNoHideOrDisplaySleepTrigger() throws {
@@ -144,37 +141,18 @@ final class AppLockPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("screensDidSleepNotification"))
     }
 
-    func testLockReasonExplanations() {
-        XCTAssertEqual(LockReason.launch.explanation, "Locked on launch to protect client notes.")
-        XCTAssertEqual(LockReason.idle(minutes: 1).explanation, "Locked after 1 minute of inactivity.")
-        XCTAssertEqual(LockReason.idle(minutes: 5).explanation, "Locked after 5 minutes of inactivity.")
-        XCTAssertEqual(LockReason.userSwitch.explanation, "Locked because you switched to another user on this Mac.")
-        XCTAssertEqual(LockReason.systemSleep.explanation, "Locked because your Mac went to sleep.")
-        XCTAssertEqual(LockReason.screenLock.explanation, "Locked because your screen was locked.")
-        XCTAssertEqual(LockReason.manual.explanation, "Locked to protect client notes.")
-    }
-
     @MainActor
-    func testAppLockSetsReasonWhenRelocking() async {
+    func testLockIfEnabledRelocksAnUnlockedApp() {
         let settings = AppSettings.shared
         let priorEnabled = settings.appLockEnabled
         defer { settings.appLockEnabled = priorEnabled }
         settings.appLockEnabled = true
 
         let appLock = AppLock(settings: settings, canAuthenticate: { true })
-        XCTAssertEqual(appLock.lockReason, .launch)
-
         appLock.simulateUnlockedForTesting()
         XCTAssertFalse(appLock.isLocked)
-
-        appLock.lockIfEnabled(reason: .idle(minutes: 15))
+        appLock.lockIfEnabled()
         XCTAssertTrue(appLock.isLocked)
-        XCTAssertEqual(appLock.lockReason, .idle(minutes: 15))
-
-        appLock.simulateUnlockedForTesting()
-        appLock.lockIfEnabled(reason: .screenLock)
-        XCTAssertTrue(appLock.isLocked)
-        XCTAssertEqual(appLock.lockReason, .screenLock)
     }
 
     @MainActor

@@ -113,10 +113,15 @@ final class FineTunedModelTests: XCTestCase {
 
     // MARK: - Engine factory routes a plan without changing call sites
 
-    func testFactoryAcceptsAPlanAndDegradesGracefully() async {
+    func testFactoryAcceptsAPlanAndDegradesGracefully() async throws {
         // The plan routes through the same seam, proving adapter selection needs
         // no call-site change. With the runtime linked the engine is the real one
         // (weights absent here, so it must fail to load rather than answer).
+        // On a Mac that has downloaded the weights the engine really answers, so
+        // there is nothing to check.
+        try XCTSkipIf(
+            FileManager.default.fileExists(atPath: LlamaRuntime.modelURL(for: .llama31_8b).path),
+            "Llama 3.1 8B weights are installed on this Mac")
         let plan = ModelLoadPlan(base: .llama31_8b)
         let engine = LocalLLMEngineFactory.make(plan: plan)
         if case .unavailable = engine.state {
