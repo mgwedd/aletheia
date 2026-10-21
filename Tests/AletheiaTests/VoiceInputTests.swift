@@ -252,14 +252,78 @@ final class VoiceInputTests: XCTestCase {
         }
     }
 
-    private func hasMic<V: View>(_ root: V) -> Bool {
+    private var keepAlive: [NSWindow] = []
+
+    private func hostedLayout<V: View>(_ root: V) -> NSHostingView<V> {
         let hosting = NSHostingView(rootView: root)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 420), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = hosting
         hosting.layoutSubtreeIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
         hosting.layoutSubtreeIfNeeded()
-        return containsMic(hosting)
+        keepAlive.append(window)
+        return hosting
+    }
+
+    private func hasMic<V: View>(_ root: V) -> Bool {
+        containsMic(hostedLayout(root))
+    }
+
+    private func findMarker(_ view: NSView) -> VoiceMicMarkerView? {
+        if let m = view as? VoiceMicMarkerView { return m }
+        for sub in view.subviews { if let m = findMarker(sub) { return m } }
+        return nil
+    }
+
+    private func findTextView(_ view: NSView) -> ThemeTextAreaTextView? {
+        if let t = view as? ThemeTextAreaTextView { return t }
+        for sub in view.subviews { if let t = findTextView(sub) { return t } }
+        return nil
+    }
+
+    /// Space between the end of the wrapping column and the view's right edge.
+    private func rightGap(_ textView: ThemeTextAreaTextView) -> CGFloat {
+        textView.frame.width - (textView.textContainerOrigin.x + textView.textContainer!.containerSize.width)
+    }
+
+    func testMicReservesRoomInsideTheBoxAndTextNeverRunsUnderIt() throws {
+        let hosting = hostedLayout(Host(fake: FakeVoiceInput()))
+        let textView = try XCTUnwrap(findTextView(hosting))
+        XCTAssertGreaterThanOrEqual(rightGap(textView), ChatComposerLayout.accessoryWidth, "the right inset is at least the accessory width")
+
+        textView.string = String(repeating: "a long question about the session ", count: 20)
+        textView.didChangeText()
+        hosting.layoutSubtreeIfNeeded()
+        let layout = try XCTUnwrap(textView.layoutManager)
+        let used = layout.usedRect(for: textView.textContainer!)
+        let textRight = textView.textContainerOrigin.x + used.maxX
+        XCTAssertLessThanOrEqual(textRight, textView.frame.width - ChatComposerLayout.accessoryWidth + 0.5, "wrapped text stops before the icon")
+    }
+
+    func testNoRoomIsReservedWhenThereIsNoMic() throws {
+        let fake = FakeVoiceInput()
+        fake.isOnDeviceSupported = false
+        let hosting = hostedLayout(Host(fake: fake))
+        let textView = try XCTUnwrap(findTextView(hosting))
+        XCTAssertEqual(rightGap(textView), ThemeTextAreaMetrics.textContainerInset.width, accuracy: 0.5)
+    }
+
+    func testHostedMicSitsInsideTheBoxFrame() throws {
+        let hosting = hostedLayout(Host(fake: FakeVoiceInput()))
+        let textView = try XCTUnwrap(findTextView(hosting))
+        let scroll = try XCTUnwrap(textView.enclosingScrollView)
+        let marker = try XCTUnwrap(findMarker(hosting))
+        let box = hosting.convert(scroll.bounds, from: scroll)
+        let mic = hosting.convert(marker.bounds, from: marker)
+        XCTAssertTrue(box.insetBy(dx: -0.5, dy: -0.5).contains(mic), "mic \(mic) should lie inside the box \(box)")
+        XCTAssertGreaterThan(mic.midX, box.midX, "at the trailing edge")
+    }
+
+    func testContainerWidthKeepsTrailingRoom() {
+        let inset = ThemeTextAreaMetrics.textContainerInset.width
+        XCTAssertEqual(ThemeTextAreaMetrics.containerWidth(forViewWidth: 300, trailingInset: 0), 300 - 2 * inset)
+        XCTAssertEqual(ThemeTextAreaMetrics.containerWidth(forViewWidth: 300, trailingInset: 40), 300 - 2 * inset - 40)
+        XCTAssertEqual(ThemeTextAreaMetrics.containerWidth(forViewWidth: 10, trailingInset: 400), 1)
     }
 
     private func containsMic(_ view: NSView) -> Bool {

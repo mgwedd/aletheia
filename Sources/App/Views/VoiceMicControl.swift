@@ -14,6 +14,8 @@ struct VoiceMicControl: View {
     var isSessionRecording: Bool
     /// Changes when the draft is sent, so a late result can't refill the box.
     var resetToken: Int
+    /// Told whenever the mic appears or disappears, so the box can keep room for it.
+    var onShownChange: (Bool) -> Void = { _ in }
 
     @StateObject private var dictation: VoiceDictation
     @State private var isPressed = false
@@ -24,19 +26,22 @@ struct VoiceMicControl: View {
         isSending: Bool,
         isSessionRecording: Bool,
         resetToken: Int,
-        input: VoiceInput?
+        input: VoiceInput?,
+        onShownChange: @escaping (Bool) -> Void = { _ in }
     ) {
         _draft = draft
         self.isSending = isSending
         self.isSessionRecording = isSessionRecording
         self.resetToken = resetToken
+        self.onShownChange = onShownChange
         // Evaluated once, when the view first appears.
         _dictation = StateObject(wrappedValue: VoiceDictation(input: input ?? SpeechVoiceInput()))
     }
 
     var body: some View {
-        Group {
-            if dictation.showsMic(isSending: isSending, isSessionRecording: isSessionRecording) {
+        let shown = dictation.showsMic(isSending: isSending, isSessionRecording: isSessionRecording)
+        return Group {
+            if shown {
                 MicButtonFace(isRecording: dictation.isRecording)
                     .background(VoiceMicMarker())
                     .gesture(hold)
@@ -48,6 +53,7 @@ struct VoiceMicControl: View {
                     .accessibilityAddTraits(.isButton)
             }
         }
+        .onChange(of: shown, initial: true) { _, now in onShownChange(now) }
         .onChange(of: dictation.isRecording) { _, recording in
             recording ? installEscMonitor() : removeEscMonitor()
         }
@@ -94,8 +100,8 @@ struct VoiceMicControl: View {
     }
 }
 
-/// The mic's look: a raised circle with a muted glyph; while held, the
-/// recording fill with a soft pulse.
+/// The mic's look: a plain glyph in a 28pt hit area, muted until hovered;
+/// while held, the recording tint with a soft pulse behind it.
 private struct MicButtonFace: View {
     let isRecording: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -103,25 +109,21 @@ private struct MicButtonFace: View {
     @State private var pulse = false
 
     var body: some View {
-        let side: CGFloat = 40
+        let side: CGFloat = 28
         ZStack {
             if isRecording {
                 Circle()
                     .fill(Theme.recordingTint.color)
                     .frame(width: side, height: side)
-                    .scaleEffect(pulse ? 1.35 : 1)
+                    .scaleEffect(pulse ? 1.4 : 1)
                     .opacity(pulse ? 0 : 0.9)
             }
-            Circle()
-                .fill(isRecording ? Theme.recordingFill.color : (isHovered ? Theme.hover.color : Theme.raised.color))
-                .frame(width: side, height: side)
-                .overlay(Circle().strokeBorder(isRecording ? Theme.recordingFill.color : Theme.line.color, lineWidth: 1))
             Image(systemName: isRecording ? "mic.fill" : "mic")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(isRecording ? Theme.recordingInk.color : Theme.text.color)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(isRecording ? Theme.recordingFill.color : (isHovered ? Theme.text.color : Theme.muted.color))
         }
         .frame(width: side, height: side)
-        .contentShape(Circle())
+        .contentShape(Rectangle())
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isRecording)
         .onChange(of: isRecording, initial: true) { _, recording in
