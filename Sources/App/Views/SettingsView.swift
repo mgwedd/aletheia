@@ -759,6 +759,11 @@ struct SettingsView: View {
             detail: "The patient's clinical history, profile notes, and current medications are provided to the assistant.",
             isOn: $settings.includePatientBackground
         )
+        SettingsSwitchRow(
+            title: "Prepare summaries on battery",
+            detail: "Summaries use the local model for a few minutes per hour of session, which drains battery. Low Power Mode still pauses them.",
+            isOn: $settings.prepareSummariesOnBattery
+        )
     }
 
     // MARK: - Encryption
