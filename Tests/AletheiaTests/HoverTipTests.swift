@@ -57,9 +57,8 @@ final class HoverIntentTests: XCTestCase {
 
 final class HelpTipsTests: XCTestCase {
     private var allTips: [HelpTip] {
-        [HelpTips.myNotes, HelpTips.sessionChatScope, HelpTips.patientChatScope]
+        [HelpTips.myNotes, HelpTips.patientChatScope]
             + settingsTips
-            + ProgressNoteFormat.allCases.map(HelpTips.noteFormat)
     }
 
     private var settingsTips: [HelpTip] {
@@ -70,11 +69,7 @@ final class HelpTipsTests: XCTestCase {
     func testIdsAreFixed() {
         // Read state is stored under these ids; changing one re-shows the tip.
         XCTAssertEqual(HelpTips.myNotes.id, "notes.mine")
-        XCTAssertEqual(HelpTips.sessionChatScope.id, "chat.session.scope")
         XCTAssertEqual(HelpTips.patientChatScope.id, "chat.patient.scope")
-        for format in ProgressNoteFormat.allCases {
-            XCTAssertEqual(HelpTips.noteFormat(format).id, "notes.format")
-        }
         XCTAssertEqual(settingsTips.map(\.id), [
             "settings.autoTranscribe", "settings.aiInstructions", "settings.defaultNoteFormat",
             "settings.includeComments", "settings.summariesOnBattery",
@@ -82,8 +77,7 @@ final class HelpTipsTests: XCTestCase {
     }
 
     func testDistinctTipsHaveDistinctIds() {
-        let ids = ([HelpTips.noteFormat(.soap), HelpTips.myNotes,
-                    HelpTips.sessionChatScope, HelpTips.patientChatScope] + settingsTips).map(\.id)
+        let ids = ([HelpTips.myNotes, HelpTips.patientChatScope] + settingsTips).map(\.id)
         XCTAssertEqual(Set(ids).count, ids.count)
     }
 
@@ -96,12 +90,37 @@ final class HelpTipsTests: XCTestCase {
         }
     }
 
-    func testNoteFormatTipFollowsTheSelectedFormat() {
-        for format in ProgressNoteFormat.allCases {
-            let tip = HelpTips.noteFormat(format)
-            XCTAssertEqual(tip.heading, format.displayName)
-            XCTAssertEqual(tip.text, format.blurb)
+    func testRemovedCopyDoesNotReturnToTheSources() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+        let banned = [
+            "Answers come from this session's transcript",
+            "AI-generated. Read alongside",
+            "centers what happened in the room",
+            "most widely accepted progress-note format",
+            "# Aletheia —",
+            "var blurb: String",
+        ]
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+        var offenders: [String] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            for phrase in banned where text.contains(phrase) {
+                // Effort and verbosity levels keep their own blurbs; only the note format's is gone.
+                if phrase == "var blurb: String" && !url.lastPathComponent.hasPrefix("ProgressNoteFormat") { continue }
+                offenders.append("\(url.lastPathComponent): \(phrase)")
+            }
         }
+        XCTAssertEqual(offenders, [])
+    }
+
+    func testExportFormatRowsHaveNoFocusRing() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/App/Views/ExportButton.swift"), encoding: .utf8)
+        XCTAssertTrue(source.contains(".focusEffectDisabled()"))
     }
 
     func testPatientChatTipKeepsTheScopeTheContextBuilderUses() {

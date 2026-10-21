@@ -141,7 +141,7 @@ enum PatientArchive {
     private static func readMeText(patientName: String, exportedOn: Date, sessionCount: Int, emptyCount: Int) -> String {
         var lines = [
             "\(patientName.isEmpty ? "Patient" : patientName): records",
-            "Exported on \(longFormatter.string(from: exportedOn)) from Aletheia, on this Mac.",
+            "Exported on \(longFormatter.string(from: exportedOn)).",
             "",
             "The Sessions folder has one folder per session, oldest first. Each holds that session's transcript, notes and comments as plain text files that open in any text editor.",
             "",

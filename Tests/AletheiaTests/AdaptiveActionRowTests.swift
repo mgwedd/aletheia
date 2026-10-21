@@ -76,7 +76,7 @@ final class AdaptiveActionRowTests: XCTestCase {
         let source = try String(contentsOf: Self.source("SessionDetailView.swift"), encoding: .utf8)
         XCTAssertTrue(source.contains("AdaptiveActionRow {\n                    EmptyView()\n                } actions: {"))
         XCTAssertFalse(source.contains("Text(settings.progressNoteFormat.blurb)"))
-        XCTAssertTrue(source.contains(".hoverTip(showingMyNotes ? HelpTips.myNotes : HelpTips.noteFormat(settings.progressNoteFormat))"))
+        XCTAssertTrue(source.contains(".hoverTip(showingMyNotes ? HelpTips.myNotes : nil)"))
         XCTAssertTrue(source.contains("AdaptiveLabel(\n                title: \"Length:"),
                       "the Length menu label should compact with the row")
     }

@@ -61,7 +61,7 @@ struct ChatPaneView: View {
     var queuedStatus: String? = nil
     /// What the answers are drawn from, as a tip on the question field. The
     /// default describes the per-session chat.
-    var scopeTip: HelpTip = HelpTips.sessionChatScope
+    var scopeTip: HelpTip?
     /// Caveats about the last answer, shown above the composer in muted type.
     var notices: [String] = []
     /// What is under way before the model starts (e.g. searching), shown as

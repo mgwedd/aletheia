@@ -12,7 +12,7 @@ enum MarkdownExporter {
 
     static func session(date: Date, patientName: String, transcript: String?, summary: String?) -> String {
         var lines: [String] = [
-            "# Aletheia — \(patientName)",
+            "# \(patientName)",
             "",
             "**Date:** \(dateFormatter.string(from: date))",
             "",
@@ -22,7 +22,7 @@ enum MarkdownExporter {
         let transcriptText = transcript?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         if !summaryText.isEmpty {
-            lines += ["## Summary", "", "_AI-generated. Read alongside the transcript._", "", summaryText, ""]
+            lines += ["## Summary", "", summaryText, ""]
         }
         if !transcriptText.isEmpty {
             lines += ["## Transcript", "", transcriptText, ""]

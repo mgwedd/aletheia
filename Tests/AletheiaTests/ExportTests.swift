@@ -66,12 +66,12 @@ final class ExportRendererTests: XCTestCase {
     }
 
     func testWordAndPDFOfADocumentWithoutATitleStartWithTheBody() throws {
-        let plain = ExportDocument(markdown: "# Aletheia — Dana\n\nBody text")
+        let plain = ExportDocument(markdown: "# Dana\n\nBody text")
         let word = try XCTUnwrap(ExportRenderer.data(for: .word, document: plain))
         let readBack = try NSAttributedString(
             data: word, options: [.documentType: NSAttributedString.DocumentType.officeOpenXML], documentAttributes: nil
         )
-        XCTAssertTrue(readBack.string.hasPrefix("Aletheia"))
+        XCTAssertTrue(readBack.string.hasPrefix("Dana"))
     }
 }
 
