@@ -70,8 +70,8 @@ final class AnswerEffortTests: XCTestCase {
     func testFastCapsWhatThePatientChatGathers() {
         XCTAssertEqual(PatientChatAnswer.initialContextBudget(for: .fast, totalBudget: 50_000), 12_000)
         XCTAssertEqual(PatientChatAnswer.initialContextBudget(for: .fast, totalBudget: 9_000), 9_000)
-        XCTAssertEqual(PatientChatAnswer.initialContextBudget(for: .normal, totalBudget: 50_000), 50_000 - 8_000)
-        XCTAssertEqual(PatientChatAnswer.initialContextBudget(for: .focus, totalBudget: 90_000), 90_000 - 20_000)
+        XCTAssertEqual(PatientChatAnswer.initialContextBudget(for: .normal, totalBudget: 30_000), 30_000 - 8_000)
+        XCTAssertEqual(PatientChatAnswer.initialContextBudget(for: .focus, totalBudget: 70_000), 70_000 - 20_000)
     }
 
     func testGroupedNumbersReadTheSameEverywhere() {

@@ -254,7 +254,7 @@ final class PatientChatContextTests: XCTestCase {
         _ = try makeRankedHistory(patient)
 
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "zeppelin", characterBudget: Self.tight)
-        XCTAssertTrue(context.text.contains("Search results (3 sessions searched):\n- \"zeppelin\": 0 matches"))
+        XCTAssertTrue(context.text.contains("Search results (3 sessions searched; \(Prompts.countsNote)):\n- \"zeppelin\": 0 matches"))
 
         let prompt = Prompts.patientChat(context: context.text, history: [], question: "zeppelin?")
         XCTAssertTrue(prompt.contains("- \"zeppelin\": 0 matches"))

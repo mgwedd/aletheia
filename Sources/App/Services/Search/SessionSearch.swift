@@ -139,6 +139,9 @@ enum SessionSearch {
         return result
     }
 
+    /// Words never counted or searched: function words, question words (also
+    /// typed without the apostrophe, "whats"), and words about the sessions
+    /// themselves. A count for one of them only gets read back to the reader.
     static let stopwords: Set<String> = Set("""
         a about above after again all also am an and any are as at be because been before being between both but by \
         can could did do does doing done down during each few for from further get got had has have having he her here \
@@ -151,8 +154,23 @@ enum SessionSearch {
         say said says tell told talk talked talking mention mentioned mentions discuss discussed discussing show find \
         give list summarize summarise describe happen happened session sessions patient patients client clients \
         therapist anything something everything anyone someone thing things time times past last since ago week weeks \
-        month months year years day days ever always never again yes yeah okay ok please
+        month months year years day days ever always never again yes yeah okay ok please \
+        whats whos hows wheres whens whys thats theres heres dont doesnt didnt isnt wasnt cant
         """.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init))
+
+    /// Words that ask about the history as a whole rather than one thing in it.
+    private static let acrossSessionWords: Set<String> = [
+        "summarize", "summarise", "summary", "summaries", "overview", "overall", "recap", "theme", "themes",
+        "pattern", "patterns", "progress", "trend", "trends", "change", "changed", "changes", "compare",
+        "comparison", "timeline", "history", "everything", "whole",
+    ]
+
+    /// Whether `question` asks about the sessions as a whole ("Summarize her
+    /// progress"), so it needs whole transcripts, rather than about one thing
+    /// search can find passages for ("What's Michael's dream?").
+    static func readsAcrossSessions(_ question: String) -> Bool {
+        tokenize(question).contains { acrossSessionWords.contains($0) }
+    }
 
     // MARK: - Date filter
 

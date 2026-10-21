@@ -47,6 +47,13 @@ enum PatientContextRetriever {
     /// caller doesn't size it from the Mac's `ContextBudget`.
     static let defaultCharacterBudget = 6000
 
+    /// Transcripts this short (about 6K tokens, some 15 minutes of
+    /// conversation) go in whole for any question: passages would save little.
+    /// Longer ones go in whole only for a question that reads across them
+    /// (`wantsWholeTranscripts`); otherwise the passages search found are sent,
+    /// since a model reading a whole history takes minutes to start answering.
+    static let passageFirstCharacters = 18_000
+
     static func context(
         for documents: [TranscriptDocument],
         question: String,
@@ -68,11 +75,15 @@ enum PatientContextRetriever {
     /// filter applies here too. `labels` is used to measure header length
     /// against the budget, exactly as the rendered context does. The result
     /// never exceeds `characterBudget`; `whole` is false when anything was left out.
+    /// `wantsWholeTranscripts` false (a question about one thing) sends the
+    /// passages search found instead of whole transcripts past
+    /// `passageFirstCharacters`, even when they would fit.
     static func select(
         transcripts: [TranscriptDocument],
         search: SessionSearch.Result,
         characterBudget: Int,
-        labels: [Date: String] = [:]
+        labels: [Date: String] = [:],
+        wantsWholeTranscripts: Bool = true
     ) -> Selection {
         // Compacted for the model (`TranscriptCompactor`), so the budget below
         // measures what is actually sent.
@@ -91,9 +102,12 @@ enum PatientContextRetriever {
         let transcriptHits = search.hits.filter { $0.kind == .transcript }
 
         // Everything fits: all of it, newest first, so nothing a search could
-        // have found is left out.
+        // have found is left out. Unless the question is about one thing search
+        // found, and the passages are much shorter than the whole.
         let totalChars = usable.reduce(0) { $0 + blockLength($1, labels: labels) }
-        if totalChars <= characterBudget {
+        let passagesWillDo = !wantsWholeTranscripts && !search.terms.isEmpty && !transcriptHits.isEmpty
+            && totalChars > passageFirstCharacters
+        if totalChars <= characterBudget && !passagesWillDo {
             return Selection(
                 excerpts: wholeExcerpts(usable, budget: characterBudget, labels: labels).excerpts,
                 hitsShown: search.transcriptHitCount, whole: true, fullTexts: true,

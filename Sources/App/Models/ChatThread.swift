@@ -34,6 +34,21 @@ struct ChatThread: Identifiable, Codable, Equatable {
         self.messages = messages
     }
 
+    private static let relative: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+
+    /// When the thread was last active, for the sidebar: "Just now" under a
+    /// minute, then "2 min. ago", "3 days ago". Never a future time: a thread
+    /// saved as an answer finished read "in 0 sec." before.
+    static func activityLabel(for date: Date, now: Date = Date()) -> String {
+        let past = min(date, now)
+        if now.timeIntervalSince(past) < 60 { return "Just now" }
+        return relative.localizedString(for: past, relativeTo: now)
+    }
+
     /// The name to show: the user's title if set, otherwise one derived from the
     /// first question, otherwise a neutral placeholder for an empty thread.
     var displayTitle: String {

@@ -545,6 +545,42 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertTrue(progress.completedStages.contains("Read digest for S1"))
     }
 
+    /// Whole transcripts skip the lookups but still show the run's stages:
+    /// what was gathered, then reading (with its token estimate) and writing.
+    func testPatientChatAnswerWithWholeTranscriptsShowsItsStages() async throws {
+        let stub = ToolLoopStubAssistant()
+        var service = AssistantService(assistant: stub, model: "m")
+        service.budget = ContextBudget(tokens: 16_384)
+        let coverage = TranscriptCoverage(
+            transcriptSessions: 2, sessionsWithPassages: 2, searched: true, wholeTranscripts: true, fullTexts: true)
+        let context = PatientContext(
+            text: "===== Session [S1] March 15, 2026 =====\n[0:10] C: Michaels dream is to sail.",
+            sources: [CitationSource(tag: "S1", date: date(2026, 3, 15), folderName: "f1")],
+            coverage: coverage
+        )
+        var progress = AIRunProgress()
+        let stream = PatientChatAnswer.stream(
+            context: context, history: [], question: "whats michaels dream", effort: .normal, totalBudget: 12_000,
+            scope: { self.LocalToolScopeForSample() },
+            service: service,
+            builder: DigestBuilder(queue: InferenceQueue()),
+            live: { _, change in change(&progress) },
+            onCoverage: { _ in }
+        )
+        var last = ""
+        for try await snap in stream { last = snap }
+        // Let the stage's queued progress updates land.
+        for _ in 0..<5 { await Task.yield() }
+
+        XCTAssertEqual(last, "FINAL ANSWER")
+        XCTAssertFalse(stub.prompts.contains { $0.contains("Available read-only tools:") }, "no lookup round")
+        XCTAssertTrue(progress.completedStages.contains("Gathered the full transcripts of 2 sessions"), "\(progress.completedStages)")
+        XCTAssertEqual(progress.steps, PatientAskSteps(effort: .normal, layered: false).writing)
+        XCTAssertEqual(progress.readTitle, "Reading what was gathered")
+        XCTAssertNotNil(progress.startedAt, "the elapsed time runs from the stage's start")
+        XCTAssertNotNil(progress.firstTokenAt)
+    }
+
     func testStoreLocalToolScopeIncludesPatientSessionsAndDigests() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("ToolScope-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
