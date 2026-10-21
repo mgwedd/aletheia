@@ -5,6 +5,9 @@ import SwiftUI
 /// `AppShortcut`: that is AppIntents' type.) `.defaultAction` and `.cancelAction`
 /// are SwiftUI's own and already carry their key.
 enum AppHotkey {
+    /// Focuses the search field at the top right (global search). While a
+    /// transcript or note has the cursor it opens that text's own find bar instead.
+    static let search = KeyboardShortcut("f", modifiers: .command)
     static let newPatient = KeyboardShortcut("n", modifiers: .command)
     static let closeWindow = KeyboardShortcut("w", modifiers: .command)
     static let showShortcuts = KeyboardShortcut("/", modifiers: .command)
@@ -48,6 +51,7 @@ enum ShortcutCatalog {
 
     static let sections: [ShortcutSection] = [
         ShortcutSection(title: "Patients and sessions", entries: [
+            ShortcutEntry(title: "Search everything", shortcut: AppHotkey.search),
             ShortcutEntry(title: "New patient", shortcut: AppHotkey.newPatient),
             ShortcutEntry(title: "Save your edits", shortcut: AppHotkey.saveEdits),
             ShortcutEntry(title: "Generate or regenerate the note", shortcut: AppHotkey.generateNote),
