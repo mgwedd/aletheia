@@ -178,9 +178,7 @@ private struct AddPatientSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("New Patient").font(.title2.bold())
-            TextField("Patient name", text: $name)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(onAdd)
+            ThemeTextField(placeholder: "Patient name", text: $name, onSubmit: onAdd)
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)

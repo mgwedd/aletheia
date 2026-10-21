@@ -8,33 +8,28 @@ enum ChatComposerLayout {
     static let minFieldHeight: CGFloat = 40
     static let maxFieldHeight: CGFloat = 120
 
-    enum ReturnKeyAction: Equatable {
+    /// What sits at the trailing edge of the composer.
+    enum TrailingControl: Equatable {
+        /// The Send button beside the box.
         case send
-        case newline
+        /// The round Stop button inside the box, while an answer is being made.
+        case stop
     }
 
-    /// Return sends; Shift or Option with Return adds a line.
-    static func returnKeyAction(shift: Bool, option: Bool) -> ReturnKeyAction {
-        shift || option ? .newline : .send
+    static func trailingControl(isSending: Bool, canStop: Bool) -> TrailingControl {
+        isSending && canStop ? .stop : .send
     }
 
-    enum TabKeyAction: Equatable {
-        case nextControl
-        case previousControl
+    /// Esc stops a running answer; idle, it is left for whatever else wants it
+    /// (closing a sheet, clearing search).
+    static func escapeStops(isSending: Bool, canStop: Bool) -> Bool {
+        isSending && canStop
     }
 
-    /// A multi-line editor inserts a tab character for Tab; here it moves focus
-    /// on, as the single-line field it replaced did.
-    static func tabKeyAction(shift: Bool) -> TabKeyAction {
-        shift ? .previousControl : .nextControl
-    }
-
-    /// The text the invisible sizing copy of the field measures: never empty
-    /// (the empty field is still one line tall), and a trailing newline counts
-    /// as the line it starts.
-    static func sizingText(for draft: String) -> String {
-        if draft.isEmpty || draft.hasSuffix("\n") { return draft + " " }
-        return draft
+    /// A question is one paragraph: any run of line breaks (a pasted
+    /// paragraph, say) becomes a single space when it is sent.
+    static func collapsingLineBreaks(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\s*[\\r\\n]+\\s*", with: " ", options: .regularExpression)
     }
 }
 
@@ -84,7 +79,7 @@ struct ChatPaneView: View {
     var effortFeature: EffortFeature = .sessionChat
 
     @State private var draft: String = ""
-    @FocusState private var inputFocused: Bool
+    @State private var inputFocused = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var canSend: Bool {
@@ -123,6 +118,8 @@ struct ChatPaneView: View {
         }
         .background(Theme.panel.color)
         .textSelection(.enabled)
+        // Esc from anywhere else in the pane; idle, it is left alone.
+        .onExitCommand(perform: ChatComposerLayout.escapeStops(isSending: isSending, canStop: onStop != nil) ? { _ = escapeStops() } : nil)
     }
 
     // MARK: Conversation
@@ -246,14 +243,7 @@ struct ChatPaneView: View {
             }
             HStack(alignment: .bottom, spacing: 10) {
                 inputField
-                if isSending, let onStop {
-                    Button(role: .destructive, action: onStop) {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(.themed)
-                    .controlSize(.large)
-                    .help("Stop generating")
-                } else {
+                if ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .send {
                     Button("Send", action: send)
                         .buttonStyle(.themePrimary)
                         .controlSize(.large)
@@ -267,60 +257,36 @@ struct ChatPaneView: View {
         .themeDivider(.top)
     }
 
-    /// The field is a `TextEditor` so it scrolls (a vertical `TextField` clips
-    /// past its line limit). An invisible copy of the text sizes it: it grows
-    /// with the text up to `maxFieldHeight`, then the editor scrolls.
+    /// The shared themed text area: it grows with the text up to
+    /// `maxFieldHeight`, then scrolls. Return, Enter, Shift-Return and
+    /// Option-Return all send (never a line break); Tab moves on to the next control.
     private var inputField: some View {
-        Text(ChatComposerLayout.sizingText(for: draft))
-            .font(Theme.Typography.body)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .hidden()
-            .frame(minHeight: ChatComposerLayout.minFieldHeight, maxHeight: ChatComposerLayout.maxFieldHeight)
-            .overlay {
-                TextEditor(text: $draft)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.text.color)
-                    .scrollContentBackground(.hidden)
-                    .focused($inputFocused)
-                    .disabled(isSending)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .onKeyPress(.tab, phases: .down) { press in
-                        switch ChatComposerLayout.tabKeyAction(shift: press.modifiers.contains(.shift)) {
-                        case .nextControl: NSApp.keyWindow?.selectNextKeyView(nil)
-                        case .previousControl: NSApp.keyWindow?.selectPreviousKeyView(nil)
-                        }
-                        return .handled
-                    }
-                    .onKeyPress(.return, phases: .down) { press in
-                        switch ChatComposerLayout.returnKeyAction(
-                            shift: press.modifiers.contains(.shift),
-                            option: press.modifiers.contains(.option)
-                        ) {
-                        case .send:
-                            send()
-                            return .handled
-                        case .newline:
-                            return .ignored
-                        }
-                    }
+        ThemeTextArea(
+            text: $draft,
+            placeholder: "Ask about \(title)…",
+            height: .grows(min: ChatComposerLayout.minFieldHeight, max: ChatComposerLayout.maxFieldHeight),
+            accessibilityLabel: "Ask about \(title)",
+            onSubmit: send,
+            onEscape: escapeStops,
+            modifiedReturnSubmits: true,
+            tabMovesFocus: true,
+            isFocused: $inputFocused
+        )
+        .disabled(isSending)
+        .overlay(alignment: .trailing) {
+            if ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .stop, let onStop {
+                StopButton(action: onStop)
+                    .padding(.trailing, 6)
             }
-            .overlay(alignment: .topLeading) {
-                if draft.isEmpty {
-                    Text("Ask about \(title)…")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.muted.color)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
-            }
-            .themeField(isFocused: inputFocused)
-            .hoverTip(scopeTip, arrowEdge: .top)
+        }
+        .hoverTip(scopeTip, arrowEdge: .top)
+    }
+
+    /// Esc while an answer is being made stops it; true when it did.
+    private func escapeStops() -> Bool {
+        guard ChatComposerLayout.escapeStops(isSending: isSending, canStop: onStop != nil), let onStop else { return false }
+        onStop()
+        return true
     }
 
     private func effortRow(_ effort: Binding<AnswerEffort>) -> some View {
@@ -357,7 +323,7 @@ struct ChatPaneView: View {
     }
 
     private func send() {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = ChatComposerLayout.collapsingLineBreaks(draft.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty else { return }
         draft = ""
         if let onCompact, let focus = ChatMemory.compactCommand(text) {
@@ -365,6 +331,35 @@ struct ChatPaneView: View {
         } else {
             onSend(text)
         }
+    }
+}
+
+/// The in-box Stop control: a stop square in a circle on a subtle rounded
+/// background.
+struct StopButton: View {
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                    .fill(hovering ? Theme.hover.color : Theme.raised.color)
+                Circle()
+                    .strokeBorder(Theme.text.color, lineWidth: 1.5)
+                    .frame(width: 22, height: 22)
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Theme.text.color)
+            }
+            .frame(width: 30, height: 30)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Stop (Esc)")
+        .accessibilityLabel("Stop")
+        .accessibilityHint("Stops generating the answer. Escape does the same.")
     }
 }
 

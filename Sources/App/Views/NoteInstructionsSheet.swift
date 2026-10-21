@@ -27,13 +27,12 @@ struct NoteInstructionsSheet: View {
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)
-            TextEditor(text: $text)
-                .font(.system(size: 13, design: .monospaced))
-                .foregroundStyle(Theme.text.color)
-                .scrollContentBackground(.hidden)
-                .padding(8)
-                .frame(minHeight: 280)
-                .themeField()
+            ThemeTextArea(
+                text: $text,
+                height: .flexible(min: 280),
+                face: .monospaced,
+                accessibilityLabel: "\(format.shortName) prompt instructions"
+            )
             HStack {
                 Button("Reset to Default") { text = defaultText }
                     .disabled(text == defaultText)
