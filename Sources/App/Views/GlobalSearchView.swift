@@ -94,12 +94,11 @@ struct GlobalSearchView: View {
 
             // The esc key cap doubles as the mouse way out.
             Button { dismiss() } label: {
-                KeyCap("esc")
+                ShortcutHint(.cancelAction)
             }
             .buttonStyle(.plain)
-            .keyboardShortcut(.cancelAction)
             .accessibilityLabel("Close search")
-            .help("Close (esc)")
+            .shortcut(.cancelAction, help: "Close")
         }
         .padding(.horizontal, 18)
     }
@@ -189,10 +188,10 @@ struct GlobalSearchView: View {
             Spacer(minLength: 12)
             if !visibleHits.isEmpty {
                 HStack(spacing: 6) {
-                    KeyCap("\u{2191}")
-                    KeyCap("\u{2193}")
+                    ShortcutHint(KeyboardShortcut(.upArrow, modifiers: []))
+                    ShortcutHint(KeyboardShortcut(.downArrow, modifiers: []))
                     Text("move")
-                    KeyCap("return").padding(.leading, 8)
+                    ShortcutHint(.defaultAction).padding(.leading, 8)
                     Text("open")
                 }
                 .accessibilityElement(children: .ignore)

@@ -1,4 +1,42 @@
 import SwiftUI
+import AppKit
+
+/// Sizes and key handling of the chat composer, apart from the view so they
+/// can be tested.
+enum ChatComposerLayout {
+    /// The field grows with its text between these heights, then scrolls.
+    static let minFieldHeight: CGFloat = 40
+    static let maxFieldHeight: CGFloat = 120
+
+    enum ReturnKeyAction: Equatable {
+        case send
+        case newline
+    }
+
+    /// Return sends; Shift or Option with Return adds a line.
+    static func returnKeyAction(shift: Bool, option: Bool) -> ReturnKeyAction {
+        shift || option ? .newline : .send
+    }
+
+    enum TabKeyAction: Equatable {
+        case nextControl
+        case previousControl
+    }
+
+    /// A multi-line editor inserts a tab character for Tab; here it moves focus
+    /// on, as the single-line field it replaced did.
+    static func tabKeyAction(shift: Bool) -> TabKeyAction {
+        shift ? .previousControl : .nextControl
+    }
+
+    /// The text the invisible sizing copy of the field measures: never empty
+    /// (the empty field is still one line tall), and a trailing newline counts
+    /// as the line it starts.
+    static func sizingText(for draft: String) -> String {
+        if draft.isEmpty || draft.hasSuffix("\n") { return draft + " " }
+        return draft
+    }
+}
 
 /// Reusable chat UI shared by the per-session and cross-patient chat
 /// features. Deliberately dumb: the caller owns the message list and
@@ -35,7 +73,7 @@ struct ChatPaneView: View {
     /// (for the time estimate); drives the progress line under the conversation.
     var progress = AIRunProgress()
     var speed: ModelSpeed? = nil
-    /// Optional Fast / Normal / Focus selector shown in the composer (#286 Step 5b).
+    /// Optional Fast / Normal / Focus selector shown above the field (#286 Step 5b).
     var effort: Binding<AnswerEffort>? = nil
 
     @State private var draft: String = ""
@@ -95,13 +133,14 @@ struct ChatPaneView: View {
             composer
         }
         .background(Theme.panel.color)
+        .textSelection(.enabled)
     }
 
     // MARK: Conversation
 
     private var conversation: some View {
         ScrollViewReader { proxy in
-            ScrollView {
+            BoundedScroll {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     if messages.isEmpty {
                         emptyState
@@ -181,22 +220,11 @@ struct ChatPaneView: View {
                     }
                 }
             }
+            if let effort {
+                effortRow(effort)
+            }
             HStack(alignment: .bottom, spacing: 10) {
-                TextField("Ask about \(title)…", text: $draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.text.color)
-                    .lineLimit(1...4)
-                    .focused($inputFocused)
-                    .onSubmit(send)
-                    .disabled(isSending)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .frame(minHeight: 40)
-                    .themeField(isFocused: inputFocused)
-                if let effort {
-                    effortMenu(effort)
-                }
+                inputField
                 if isSending, let onStop {
                     Button(role: .destructive, action: onStop) {
                         Label("Stop", systemImage: "stop.fill")
@@ -218,22 +246,76 @@ struct ChatPaneView: View {
         .themeDivider(.top)
     }
 
-    private func effortMenu(_ effort: Binding<AnswerEffort>) -> some View {
-        Menu {
-            Picker("Effort", selection: effort) {
-                ForEach(AnswerEffort.allCases) { level in
-                    Text("\(level.displayName) — \(level.blurb)").tag(level)
+    /// The field is a `TextEditor` so it scrolls (a vertical `TextField` clips
+    /// past its line limit). An invisible copy of the text sizes it: it grows
+    /// with the text up to `maxFieldHeight`, then the editor scrolls.
+    private var inputField: some View {
+        Text(ChatComposerLayout.sizingText(for: draft))
+            .font(Theme.Typography.body)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .hidden()
+            .frame(minHeight: ChatComposerLayout.minFieldHeight, maxHeight: ChatComposerLayout.maxFieldHeight)
+            .overlay {
+                TextEditor(text: $draft)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .scrollContentBackground(.hidden)
+                    .focused($inputFocused)
+                    .disabled(isSending)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .onKeyPress(.tab, phases: .down) { press in
+                        switch ChatComposerLayout.tabKeyAction(shift: press.modifiers.contains(.shift)) {
+                        case .nextControl: NSApp.keyWindow?.selectNextKeyView(nil)
+                        case .previousControl: NSApp.keyWindow?.selectPreviousKeyView(nil)
+                        }
+                        return .handled
+                    }
+                    .onKeyPress(.return, phases: .down) { press in
+                        switch ChatComposerLayout.returnKeyAction(
+                            shift: press.modifiers.contains(.shift),
+                            option: press.modifiers.contains(.option)
+                        ) {
+                        case .send:
+                            send()
+                            return .handled
+                        case .newline:
+                            return .ignored
+                        }
+                    }
+            }
+            .overlay(alignment: .topLeading) {
+                if draft.isEmpty {
+                    Text("Ask about \(title)…")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.muted.color)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                 }
             }
-            .pickerStyle(.inline)
-        } label: {
-            Text(effort.wrappedValue.displayName)
+            .themeField(isFocused: inputFocused)
+    }
+
+    private func effortRow(_ effort: Binding<AnswerEffort>) -> some View {
+        HStack(spacing: 10) {
+            Text(AnswerEffort.label)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+            ThemeSegmentedControl(
+                options: AnswerEffort.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
+                selection: effort
+            )
+            .frame(width: 240)
+            .disabled(isSending)
+            .help(effort.wrappedValue.blurb)
+            .accessibilityLabel(AnswerEffort.label)
+            Spacer(minLength: 0)
         }
-        .controlSize(.large)
-        .fixedSize()
-        .disabled(isSending)
-        .help(effort.wrappedValue.blurb)
-        .accessibilityLabel("Effort: \(effort.wrappedValue.displayName)")
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {

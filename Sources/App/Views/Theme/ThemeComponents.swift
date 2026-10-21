@@ -265,6 +265,25 @@ struct KeyCap: View {
     }
 }
 
+/// A shortcut as one key cap per key (⌥ ⌘ M), built from the `KeyboardShortcut`
+/// that is bound so the hint and the binding can't disagree. VoiceOver reads it
+/// as one phrase ("Shortcut: Option Command M").
+struct ShortcutHint: View {
+    let shortcut: KeyboardShortcut
+
+    init(_ shortcut: KeyboardShortcut) { self.shortcut = shortcut }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(Array(ShortcutGlyphs.keys(for: shortcut).enumerated()), id: \.offset) { _, key in
+                KeyCap(key)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Shortcut: \(ShortcutGlyphs.spoken(for: shortcut))")
+    }
+}
+
 // MARK: - Progress bar
 
 /// A thin determinate bar: setup progress, transcription, passphrase strength.
