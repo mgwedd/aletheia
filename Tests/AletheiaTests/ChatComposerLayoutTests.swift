@@ -9,18 +9,6 @@ final class ChatComposerLayoutTests: XCTestCase {
         XCTAssertEqual(ChatComposerLayout.returnKeyAction(shift: true, option: true), .newline)
     }
 
-    func testTabMovesFocusInsteadOfTyping() {
-        XCTAssertEqual(ChatComposerLayout.tabKeyAction(shift: false), .nextControl)
-        XCTAssertEqual(ChatComposerLayout.tabKeyAction(shift: true), .previousControl)
-    }
-
-    func testSizingTextIsNeverEmptyAndCountsATrailingNewline() {
-        XCTAssertEqual(ChatComposerLayout.sizingText(for: ""), " ")
-        XCTAssertEqual(ChatComposerLayout.sizingText(for: "hello"), "hello")
-        XCTAssertEqual(ChatComposerLayout.sizingText(for: "hello\n"), "hello\n ")
-        XCTAssertEqual(ChatComposerLayout.sizingText(for: "a\n\n"), "a\n\n ")
-    }
-
     func testFieldGrowsThenScrolls() {
         XCTAssertLessThan(ChatComposerLayout.minFieldHeight, ChatComposerLayout.maxFieldHeight)
         // Room for several lines of body text before it has to scroll.

@@ -1904,7 +1904,7 @@ private struct InlineCommentComposerCard: View {
     var onCancel: () -> Void
     var onSave: () -> Void
 
-    @FocusState private var focused: Bool
+    @State private var focused = false
 
     private var canSave: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -1954,29 +1954,14 @@ private struct InlineCommentComposerCard: View {
     }
 
     private var editor: some View {
-        TextEditor(text: $text)
-            .font(Theme.Typography.body)
-            .lineSpacing(4)
-            .foregroundStyle(Theme.text.color)
-            .scrollContentBackground(.hidden)
-            .focused($focused)
-            // TextEditor insets its text by 5pt; this brings it to the design's
-            // 12 x 10 padding.
-            .padding(.horizontal, 7)
-            .padding(.vertical, 10)
-            .frame(height: 84)
-            .overlay(alignment: .topLeading) {
-                if text.isEmpty {
-                    Text("Add a comment…")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.muted.color)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .allowsHitTesting(false)
-                }
-            }
-            .themeField(isFocused: focused)
-            .accessibilityLabel("Comment")
+        ThemeTextArea(
+            text: $text,
+            placeholder: "Add a comment…",
+            height: .flexible(min: 84),
+            accessibilityLabel: "Comment",
+            isFocused: $focused
+        )
+        .frame(height: 84)
     }
 }
 

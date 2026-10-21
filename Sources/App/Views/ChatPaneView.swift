@@ -17,25 +17,6 @@ enum ChatComposerLayout {
     static func returnKeyAction(shift: Bool, option: Bool) -> ReturnKeyAction {
         shift || option ? .newline : .send
     }
-
-    enum TabKeyAction: Equatable {
-        case nextControl
-        case previousControl
-    }
-
-    /// A multi-line editor inserts a tab character for Tab; here it moves focus
-    /// on, as the single-line field it replaced did.
-    static func tabKeyAction(shift: Bool) -> TabKeyAction {
-        shift ? .previousControl : .nextControl
-    }
-
-    /// The text the invisible sizing copy of the field measures: never empty
-    /// (the empty field is still one line tall), and a trailing newline counts
-    /// as the line it starts.
-    static func sizingText(for draft: String) -> String {
-        if draft.isEmpty || draft.hasSuffix("\n") { return draft + " " }
-        return draft
-    }
 }
 
 /// Reusable chat UI shared by the per-session and cross-patient chat
@@ -84,7 +65,7 @@ struct ChatPaneView: View {
     var effortFeature: EffortFeature = .sessionChat
 
     @State private var draft: String = ""
-    @FocusState private var inputFocused: Bool
+    @State private var inputFocused = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var canSend: Bool {
@@ -256,60 +237,21 @@ struct ChatPaneView: View {
         .themeDivider(.top)
     }
 
-    /// The field is a `TextEditor` so it scrolls (a vertical `TextField` clips
-    /// past its line limit). An invisible copy of the text sizes it: it grows
-    /// with the text up to `maxFieldHeight`, then the editor scrolls.
+    /// The shared themed text area: it grows with the text up to
+    /// `maxFieldHeight`, then scrolls. Return sends; Shift or Option with
+    /// Return adds a line; Tab moves on to the next control.
     private var inputField: some View {
-        Text(ChatComposerLayout.sizingText(for: draft))
-            .font(Theme.Typography.body)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .hidden()
-            .frame(minHeight: ChatComposerLayout.minFieldHeight, maxHeight: ChatComposerLayout.maxFieldHeight)
-            .overlay {
-                TextEditor(text: $draft)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.text.color)
-                    .scrollContentBackground(.hidden)
-                    .focused($inputFocused)
-                    .disabled(isSending)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .onKeyPress(.tab, phases: .down) { press in
-                        switch ChatComposerLayout.tabKeyAction(shift: press.modifiers.contains(.shift)) {
-                        case .nextControl: NSApp.keyWindow?.selectNextKeyView(nil)
-                        case .previousControl: NSApp.keyWindow?.selectPreviousKeyView(nil)
-                        }
-                        return .handled
-                    }
-                    .onKeyPress(.return, phases: .down) { press in
-                        switch ChatComposerLayout.returnKeyAction(
-                            shift: press.modifiers.contains(.shift),
-                            option: press.modifiers.contains(.option)
-                        ) {
-                        case .send:
-                            send()
-                            return .handled
-                        case .newline:
-                            return .ignored
-                        }
-                    }
-            }
-            .overlay(alignment: .topLeading) {
-                if draft.isEmpty {
-                    Text("Ask about \(title)…")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.muted.color)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
-            }
-            .themeField(isFocused: inputFocused)
-            .hoverTip(scopeTip, arrowEdge: .top)
+        ThemeTextArea(
+            text: $draft,
+            placeholder: "Ask about \(title)…",
+            height: .grows(min: ChatComposerLayout.minFieldHeight, max: ChatComposerLayout.maxFieldHeight),
+            accessibilityLabel: "Ask about \(title)",
+            onSubmit: send,
+            tabMovesFocus: true,
+            isFocused: $inputFocused
+        )
+        .disabled(isSending)
+        .hoverTip(scopeTip, arrowEdge: .top)
     }
 
     private func effortRow(_ effort: Binding<AnswerEffort>) -> some View {
