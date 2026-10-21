@@ -424,7 +424,7 @@ struct SettingsView: View {
                 downloadProgress(whisperDownloader.progress)
             } else if whisperInstalled {
                 HStack {
-                    SettingsCaption("Downloaded to this Mac.")
+                    DownloadedMark()
                     Spacer()
                     Button("Re-download") { Task { await downloadWhisperModel() } }
                         .buttonStyle(.themed)
@@ -597,7 +597,7 @@ struct SettingsView: View {
                 }
             } else if installed {
                 HStack {
-                    SettingsCaption("Downloaded to this Mac.")
+                    DownloadedMark()
                     Spacer()
                     Button("Re-download") { Task { await downloadLlamaModel() } }
                         .buttonStyle(.themed)
@@ -745,7 +745,7 @@ struct SettingsView: View {
                 selection: $settings.summaryVerbosity
             )
             .accessibilityLabel("Summary length")
-            SettingsCaption(settings.summaryVerbosity.blurb + " Clarity comes first at every length.")
+            SettingsCaption(settings.summaryVerbosity.blurb)
         }
         SettingsHairline()
         SettingsSwitchRow(
@@ -1197,5 +1197,16 @@ struct SettingsView: View {
         )
         // Only touch the view when something changed.
         if latest != healthChecks { healthChecks = latest }
+    }
+}
+
+/// A downloaded model: a checkmark is enough (everything is on this Mac).
+private struct DownloadedMark: View {
+    var body: some View {
+        Image(systemName: "checkmark.circle.fill")
+            .font(.system(size: 14))
+            .foregroundStyle(Theme.accent.color)
+            .help("Downloaded")
+            .accessibilityLabel("Downloaded")
     }
 }
