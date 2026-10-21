@@ -56,7 +56,7 @@ final class GlobalSearchModelTests: XCTestCase {
                 GlobalSearchSection(kind: .patient, hits: [hit("p", .patient, session: false)], total: 1),
                 GlobalSearchSection(kind: .transcript, hits: [hit("t1", .transcript), hit("t2", .transcript)], total: 9),
             ],
-            coverage: .complete, unsearchedWords: [])
+            coverage: .complete)
         let rows = GlobalSearchRow.rows(for: results, limits: GlobalSearchLimits())
         XCTAssertEqual(rows.map(\.id), ["p", "t1", "t2", "more-transcript"])
         XCTAssertEqual(rows.last, .more(.transcript, hidden: 7))
@@ -84,29 +84,22 @@ final class GlobalSearchModelTests: XCTestCase {
     }
 
     func testEmptyMessagesSayWhy() {
-        let common = GlobalSearchResults(sections: [], coverage: .complete, unsearchedWords: ["the"])
-        XCTAssertEqual(
-            GlobalSearchRow.emptyMessage(query: "the", results: common),
-            "\u{201C}the\u{201D} is too common to search notes and transcripts for. Add another word.")
-        XCTAssertEqual(GlobalSearchRow.unsearchedReason(["you", "are"]), "too common")
-        XCTAssertEqual(GlobalSearchRow.unsearchedReason(["x"]), "too short")
-        XCTAssertEqual(GlobalSearchRow.unsearchedReason(["the", "x"]), "too common or too short")
         XCTAssertEqual(GlobalSearchRow.emptyMessage(query: " kayak ", results: .empty), "No results for \u{201C}kayak\u{201D}")
-        let indexing = GlobalSearchResults(sections: [], coverage: .indexing(sessions: 3), unsearchedWords: [])
+        let indexing = GlobalSearchResults(sections: [], coverage: .indexing(sessions: 3))
         XCTAssertEqual(GlobalSearchRow.emptyMessage(query: "kayak", results: indexing), "No results yet for \u{201C}kayak\u{201D}")
     }
 
     func testVoiceOverHearsTheCountAndWhetherItMayBeIncomplete() {
         XCTAssertEqual(GlobalSearchAnnouncement.text(for: .empty), "No results")
         let one = GlobalSearchResults(
-            sections: [GlobalSearchSection(kind: .note, hits: [hit("n", .note)], total: 1)], coverage: .complete, unsearchedWords: [])
+            sections: [GlobalSearchSection(kind: .note, hits: [hit("n", .note)], total: 1)], coverage: .complete)
         XCTAssertEqual(GlobalSearchAnnouncement.text(for: one), "1 result in 1 group")
         let many = GlobalSearchResults(
             sections: [
                 GlobalSearchSection(kind: .note, hits: [hit("n", .note)], total: 4),
                 GlobalSearchSection(kind: .transcript, hits: [hit("t", .transcript)], total: 8),
             ],
-            coverage: .indexing(sessions: 2), unsearchedWords: [])
+            coverage: .indexing(sessions: 2))
         XCTAssertEqual(GlobalSearchAnnouncement.text(for: many), "12 results in 2 groups. Indexing 2 sessions; results may be incomplete.")
     }
 

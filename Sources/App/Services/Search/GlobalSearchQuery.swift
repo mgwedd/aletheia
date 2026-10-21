@@ -1,27 +1,28 @@
 import Foundation
 
 /// One word of a global-search query, in the form the index stores words
-/// (see `SearchIndex.passages`): folded, stemmed, letters and digits only.
+/// (see `SearchIndex.stored`): folded, letters and digits only, stemmed
+/// unless it is a common word.
 struct GlobalSearchTerm: Equatable {
     /// The word as typed, folded: "Worries" → "worries".
     let word: String
-    /// Its stem: "worries" → "worry".
+    /// Its stored form: "worries" → "worry", "time" → "time".
     let stem: String
 
     /// `raw` is one token from `SessionSearch.tokenize`.
     init(raw: String) {
         word = SearchIndex.ftsToken(raw)
-        stem = SearchIndex.ftsToken(SessionSearch.stem(raw))
+        stem = SearchIndex.stored(raw)
     }
 
     var isNumber: Bool { GlobalSearchQuery.isNumber(word) }
 
     /// Whether a stored word that merely starts with this one matches, so
     /// results keep up with typing ("thera" finds "therapy"). Not for a single
-    /// letter or digit (it would match most of the index), and never for the
-    /// stand-in the index stores for common words.
+    /// letter or digit, which matches as a whole word ("I", "8"): as a prefix
+    /// it would match most of the index.
     var matchesPrefixes: Bool {
-        word.count >= 2 && !SearchIndex.stopToken.hasPrefix(word)
+        word.count >= 2
     }
 
     /// The FTS5 MATCH expression: the stem itself, or any stored word starting
@@ -43,16 +44,14 @@ struct GlobalSearchTerm: Equatable {
 /// A global-search query: the words typed, which of them must match, and
 /// which are looked up in notes, comments and transcripts. Pure.
 ///
-/// Every word that isn't a common word ("the", "about") must match somewhere
-/// for a place to be a result:
+/// Every word must match somewhere for a place to be a result. No word is
+/// left out, however common or short: ranking, not the query, keeps "the"
+/// from mattering.
 ///   - a patient: in the patient's name (anywhere in it, as typed);
 ///   - a session: in its date or its patient's name, at least one in the date;
 ///   - a note, comment or transcript: in its text, its patient's name, or its
 ///     session's date, at least one in the text. So "jane insomnia" finds
 ///     Jane's sessions that mention insomnia, and "insomnia march" those in March.
-/// One-letter words are not looked up in text (they would match nearly every
-/// line); they still narrow names. When every word is a common word, the words
-/// still match names and dates but nothing is looked up in text.
 struct GlobalSearchQuery: Equatable {
     /// More words than this are ignored (each is one index lookup).
     static let maximumWords = 8
@@ -60,38 +59,25 @@ struct GlobalSearchQuery: Equatable {
     let text: String
     /// The folded words, in order, without repeats.
     let words: [String]
-    /// What patients and sessions must match: `words` without common words,
-    /// or all of `words` when every one of them is common.
-    let required: [String]
-    /// What notes, comments and transcripts must match, one bit each.
+    /// What patients and sessions must match: every word.
+    var required: [String] { words }
+    /// What notes, comments and transcripts must match, one bit each: every word.
     let textTerms: [GlobalSearchTerm]
-    /// Words typed but not looked up in text (common words, single letters).
-    let unsearched: [String]
 
     init(_ text: String) {
         self.text = text
         var seen = Set<String>()
         var words: [String] = []
-        var uncommon: [String] = []
         var terms: [GlobalSearchTerm] = []
-        var unsearched: [String] = []
         for raw in SessionSearch.tokenize(text) {
             let word = SearchIndex.ftsToken(raw)
             guard !word.isEmpty, seen.insert(word).inserted else { continue }
             guard words.count < Self.maximumWords else { break }
             words.append(word)
-            let isCommon = SessionSearch.stopwords.contains(raw)
-            if !isCommon { uncommon.append(word) }
-            if !isCommon && (word.count >= 2 || Self.isNumber(word)) {
-                terms.append(GlobalSearchTerm(raw: raw))
-            } else {
-                unsearched.append(word)
-            }
+            terms.append(GlobalSearchTerm(raw: raw))
         }
         self.words = words
-        self.required = uncommon.isEmpty ? words : uncommon
         self.textTerms = terms
-        self.unsearched = unsearched
     }
 
     var isEmpty: Bool { words.isEmpty }
@@ -231,8 +217,8 @@ enum GlobalSearchText {
         guard !terms.isEmpty else { return 0 }
         let full = GlobalSearchQuery.mask(count: terms.count)
         var mask: UInt32 = 0
-        for token in SessionSearch.tokenize(text) where !SessionSearch.stopwords.contains(token) {
-            let stored = SearchIndex.ftsToken(SessionSearch.stem(token))
+        for token in SessionSearch.tokenize(text) {
+            let stored = SearchIndex.stored(token)
             for (i, term) in terms.enumerated() where term.matches(indexed: stored) {
                 mask |= UInt32(1) << UInt32(i)
             }
@@ -278,17 +264,26 @@ enum GlobalSearchText {
         return result
     }
 
-    /// Where each word of `text` is, with whether it matches one of `terms`.
+    /// A transcript line's time code and speaker ("[00:01] You: "), which the
+    /// index leaves out (`TranscriptTimeline.spokenText`).
+    private static let speakerLabel = try? NSRegularExpression(pattern: #"^\s*\[[0-9:]+\][^:\n]*:"#, options: .anchorsMatchLines)
+
+    /// Where each word of `text` that matches one of `terms` is. Words in a
+    /// transcript line's speaker label are skipped, as the index skips them, so
+    /// "you" or "patient" marks what was said, not who said it.
     static func wordRanges(in text: String, terms: [GlobalSearchTerm]) -> [Range<String.Index>] {
         var ranges: [Range<String.Index>] = []
+        let labels = speakerLabel?.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            .compactMap { Range($0.range, in: text) } ?? []
         var start: String.Index?
         var index = text.startIndex
         func close(at end: String.Index) {
             guard let begin = start else { return }
             start = nil
+            if labels.contains(where: { $0.contains(begin) }) { return }
             let word = String(text[begin..<end])
-            for token in SessionSearch.tokenize(word) where !SessionSearch.stopwords.contains(token) {
-                let stored = SearchIndex.ftsToken(SessionSearch.stem(token))
+            for token in SessionSearch.tokenize(word) {
+                let stored = SearchIndex.stored(token)
                 if terms.contains(where: { $0.matches(indexed: stored) }) {
                     ranges.append(begin..<end)
                     return

@@ -54,21 +54,8 @@ enum GlobalSearchRow: Equatable, Identifiable {
         return "Showing the first \(section.hits.count) of \(section.total). Add a word to narrow the search."
     }
 
-    /// Why words were left out: single letters are too short, the rest are on
-    /// the common-word list (`SessionSearch.stopwords`).
-    static func unsearchedReason(_ words: [String]) -> String {
-        let short = words.filter { $0.count < 2 }.count
-        if short == words.count { return "too short" }
-        return short == 0 ? "too common" : "too common or too short"
-    }
-
     /// What the results area says when nothing matched.
     static func emptyMessage(query: String, results: GlobalSearchResults) -> String {
-        if !results.unsearchedWords.isEmpty {
-            let words = results.unsearchedWords.map { "\u{201C}\($0)\u{201D}" }.joined(separator: ", ")
-            let verb = results.unsearchedWords.count == 1 ? "is" : "are"
-            return "\(words) \(verb) \(unsearchedReason(results.unsearchedWords)) to search notes and transcripts for. Add another word."
-        }
         let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return results.coverage.isComplete ? "No results for \u{201C}\(typed)\u{201D}" : "No results yet for \u{201C}\(typed)\u{201D}"
     }

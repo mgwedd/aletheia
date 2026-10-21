@@ -31,8 +31,8 @@ import SQLite3
 ///            `doc << 24 | line`, which maps a hit to its document and line and
 ///            makes deleting a document one rowid range. `text` holds the
 ///            passage already tokenized and stemmed by `SessionSearch` (so the
-///            old stemming, name and stopword behaviour is unchanged), with
-///            stopwords as `qzstop` so phrase positions line up.
+///            old stemming and name behaviour is unchanged). Every word is
+///            stored, common ones too, so any word can be searched for.
 ///   word     every distinct stored word, to expand fuzzy and sound-alike terms
 ///            (fts5vocab would have to walk every posting list to list them).
 ///            Words of deleted text stay; they just match nothing.
@@ -40,9 +40,11 @@ import SQLite3
 /// Thread-safe: every database use holds `lock`, and tokenizing happens outside
 /// it, so a search can run while another thread is indexing.
 final class SearchIndex {
-    static let stopToken = "qzstop"
-    private static let schemaVersion: Int32 = 3
+    /// 4: every word stored (3 stored common words as a stand-in, so they couldn't be found).
+    private static let schemaVersion: Int32 = 4
     private static let lineBits: Int64 = 24
+    /// Rows `matchLive` reads between asking whether to go on.
+    static let checkEvery = 1024
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     struct Passage {
@@ -179,6 +181,13 @@ final class SearchIndex {
         stem.replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "’", with: "")
     }
 
+    /// How the index stores a word from `SessionSearch.tokenize`: stemmed, except
+    /// a common word, kept whole so it never meets a name or another word on a
+    /// shared stem ("time" and "Tim" both stem to "tim", "does" and "Doe" to "doe").
+    static func stored(_ token: String) -> String {
+        ftsToken(SessionSearch.stopwords.contains(token) ? token : SessionSearch.stem(token))
+    }
+
     static func rowid(doc: Int64, line: Int) -> Int64 { (doc << lineBits) | Int64(line) }
 
     /// The document and line a passage rowid stands for (the inverse of `rowid(doc:line:)`).
@@ -191,8 +200,8 @@ final class SearchIndex {
         let lines = LineTable(text)
         func indexed(_ raw: String) -> String? {
             let tokens = SessionSearch.tokenize(raw)
-            let words = tokens.map { SessionSearch.stopwords.contains($0) ? stopToken : ftsToken(SessionSearch.stem($0)) }
-            return words.contains { $0 != stopToken && !$0.isEmpty } ? words.filter { !$0.isEmpty }.joined(separator: " ") : nil
+            let words = tokens.map { stored($0) }.filter { !$0.isEmpty }
+            return words.isEmpty ? nil : words.joined(separator: " ")
         }
         var result: [Passage] = []
         if kind == .transcript {
@@ -418,6 +427,9 @@ final class SearchIndex {
     /// patients), ranked by FTS5's own bm25(). One query per clause, so the
     /// caller can tell which terms a document matched. Only ids, line numbers
     /// and scores come back; the caller builds snippets from the original text.
+    /// `shouldContinue` is asked before each clause and every `checkEvery`
+    /// rows, so a search for a common word ("the") that typing has already
+    /// replaced stops part way and frees the index for the next one.
     func matchLive(clauses: [String], shouldContinue: () -> Bool = { true }) -> LiveMatch {
         lock.lock()
         defer { lock.unlock() }
@@ -440,7 +452,13 @@ final class SearchIndex {
             bind(stmt, [.text(clause)])
             var rows: [MatchedPassage] = []
             var code = sqlite3_step(stmt)
+            var read = 0
             while code == SQLITE_ROW {
+                read += 1
+                if read % Self.checkEvery == 0, !shouldContinue() {
+                    sqlite3_finalize(stmt)
+                    return .cancelled
+                }
                 let rowid = sqlite3_column_int64(stmt, 0)
                 let doc = rowid >> Self.lineBits
                 if documents[doc] != nil {
