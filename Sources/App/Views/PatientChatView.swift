@@ -82,7 +82,7 @@ struct PatientChatView: View {
                         onSend: send,
                         onStop: { chatRunner.stop() },
                         queuedStatus: chatRunner.queuedStatus,
-                        scopeNote: scopeNote,
+                        scopeTip: HelpTips.patientChatScope,
                         notices: notices,
                         busyNotice: searchingNotice,
                         busySteps: searchingNotice == nil ? nil : PatientAskSteps(effort: settings.patientChatEffort, layered: true).gathering,
@@ -133,10 +133,6 @@ struct PatientChatView: View {
 
     /// What the answers draw on, matching what `gatherCitedPatientContext`
     /// sends (see `PatientZoom`).
-    private var scopeNote: String {
-        Self.scopeNote
-    }
-
     static let scopeNote = "Answers come from the patient's background, your notes and comments, and each session's summary. When the history is too long to read whole, a search of every session finds the parts worth a closer look, and only those are read in detail. Each answer shows what it read. To ask about one session in full, open it and use its Ask tab."
 
     /// Caveats about the last question's context, shown above the composer.

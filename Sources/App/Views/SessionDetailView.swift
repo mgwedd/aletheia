@@ -1012,11 +1012,6 @@ struct SessionDetailView: View {
 
     private var myNotesView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Your own notes for this session — jot things down during or after the session. Kept separate from the transcript, and included when you ask about this session.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.muted.color)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 20)
             RichNoteEditor(
                 markdown: $sessionNote,
                 placeholder: "Jot things down during or after the session…",
@@ -1047,6 +1042,7 @@ struct SessionDetailView: View {
             .disabled(locked)
             .opacity(locked ? 0.55 : 1)
             .accessibilityLabel("Note")
+            .hoverTip(showingMyNotes ? HelpTips.myNotes : HelpTips.noteFormat(settings.progressNoteFormat))
             .padding([.horizontal, .top], 20)
 
             if showingMyNotes {
@@ -1077,10 +1073,7 @@ struct SessionDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 // Adapts to the pane's width instead of widening it.
                 AdaptiveActionRow {
-                    Text(settings.progressNoteFormat.blurb)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.muted.color)
-                        .fixedSize(horizontal: false, vertical: true)
+                    EmptyView()
                 } actions: {
                     if noteRunner.isStreaming {
                         Button(role: .destructive) { noteStopping = true; noteRunner.stop() } label: {

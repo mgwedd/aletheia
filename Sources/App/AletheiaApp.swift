@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Before any window is created, so a forced Light or Dark appearance
         // never flashes the system one first.
         AppSettings.shared.appearance.apply()
+        HelpTipsStore.configure()
     }
 
     #if DEBUG

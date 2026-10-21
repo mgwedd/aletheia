@@ -168,7 +168,7 @@ struct SettingsView: View {
         }
         SettingsSwitchRow(
             title: "Transcribe automatically when a recording ends",
-            detail: "Starts transcription as soon as you stop recording, so the transcript is ready when you come back. It keeps running while Aletheia is locked, and you get a notification when it's done.",
+            tip: HelpTips.autoTranscribe,
             isOn: $settings.autoTranscribeAfterRecording
         )
         SettingsRow(title: "Appearance") {
@@ -634,8 +634,8 @@ struct SettingsView: View {
     private var instructionsCard: some View {
         SettingsCard {
             SettingsCardHeader(title: "AI instructions") { EmptyView() }
-            SettingsCaption("The standing instructions sent with every AI request — the assistant's voice and rules. Editing this changes how summaries and chat behave.")
             EditorField(text: $settings.systemPrompt, minHeight: 140)
+                .hoverTip(HelpTips.aiInstructions)
             HStack {
                 Spacer()
                 Button("Reset to Default") { settings.systemPrompt = Prompts.defaultSystemPrompt }
@@ -735,8 +735,8 @@ struct SettingsView: View {
                 selection: $settings.progressNoteFormat
             )
             .accessibilityLabel("Default progress note format")
+            .hoverTip(HelpTips.defaultNoteFormat)
             SettingsCaption(settings.progressNoteFormat.blurb)
-            SettingsCaption("The format new session notes start in. You can still switch formats for any single session on its Note tab.")
         }
         SettingsHairline()
         VStack(alignment: .leading, spacing: 6) {
@@ -751,7 +751,7 @@ struct SettingsView: View {
         SettingsHairline()
         SettingsSwitchRow(
             title: "Include comments in drafts",
-            detail: "Margin comments on the transcript are folded into generated progress notes and summaries.",
+            tip: HelpTips.includeComments,
             isOn: $settings.includeCommentsInDrafts
         )
         SettingsSwitchRow(
@@ -761,7 +761,7 @@ struct SettingsView: View {
         )
         SettingsSwitchRow(
             title: "Prepare summaries on battery",
-            detail: "Summaries use the local model for a few minutes per hour of session, which drains battery. Low Power Mode still pauses them.",
+            tip: HelpTips.summariesOnBattery,
             isOn: $settings.prepareSummariesOnBattery
         )
     }
