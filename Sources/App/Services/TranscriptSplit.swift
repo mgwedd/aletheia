@@ -13,14 +13,15 @@ import Foundation
 enum TranscriptSplit {
     enum Side: Equatable { case transcript, comments }
 
-    static let minTranscript: CGFloat = 360
-    static let minComments: CGFloat = 220
+    static let minTranscript: CGFloat = 200
+    static let minComments: CGFloat = 180
     static let dividerWidth: CGFloat = 1
     /// The width of the strip a collapsed side leaves behind (it carries the arrow).
     static let stripWidth: CGFloat = 24
     /// How far past a minimum a drag may go before the side collapses, so a
     /// drag stops at the minimum first rather than snapping shut on contact.
-    static let collapseSlack: CGFloat = 48
+    /// A transcript collapses below 200 - 80 = 120 points, the comments below 100.
+    static let collapseSlack: CGFloat = 80
     static let defaultRatio: Double = 2.0 / 3.0
     static let ratioRange: ClosedRange<Double> = 0.1...0.9
 
@@ -78,6 +79,18 @@ enum TranscriptSplit {
         if usable - proposedTranscript < minComments - collapseSlack { return .collapse(.comments) }
         let clamped = min(max(proposedTranscript, minTranscript), usable - minComments)
         return .resize(ratio: sanitized(ratio: Double(clamped / usable)))
+    }
+
+    /// The transcript width a drag that starts on the divider or a collapsed
+    /// strip is measured from, so the divider follows the mouse from where it
+    /// was grabbed: the divider's own position when both show, the strip's inner
+    /// edge when one side is collapsed.
+    static func dragOrigin(_ layout: Layout, total: CGFloat) -> CGFloat {
+        switch layout.strip {
+        case .transcript?: return stripWidth
+        case .comments?: return max(0, total - stripWidth)
+        case nil: return layout.transcript
+        }
     }
 
     /// The collapse state after the arrow on the `side` strip is pressed. With
