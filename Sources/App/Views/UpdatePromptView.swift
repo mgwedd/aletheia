@@ -121,5 +121,6 @@ struct UpdatePromptView: View {
         .padding(UpdatePromptLayout.padding)
         .frame(width: UpdatePromptLayout.width)
         .background(Theme.panel.color)
+        .textSelection(.enabled)
     }
 }

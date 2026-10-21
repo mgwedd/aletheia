@@ -71,6 +71,7 @@ struct SettingsView: View {
         )
         .background(Theme.window.color)
         .tint(Theme.accent.color)
+        .textSelection(.enabled)
         .navigationTitle("Settings")
         .onAppear { showRequestedSection() }
         .onChange(of: navigator.pendingSettings) { _, _ in showRequestedSection() }

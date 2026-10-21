@@ -9,6 +9,27 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.58.0] - 2026-10-21
+
+### Added
+- shortcut hints from bindings, plus a Keyboard Shortcuts window (#352)
+- let text be selected and copied on read-only screens (#343)
+- segmented AI effort control and a scrollable input field (#337)
+- add an overall progress bar and plain stage wording (#339)
+- floating comment button, comments pane only when there are comments, draggable split (#349)
+
+### Fixed
+- stop a long note from growing the window past the screen (#341)
+- remove the AI draft banner above a note (#344)
+- say it stays on this Mac up front, not everywhere (#346)
+- omit what this build doesn't offer instead of showing it as unavailable (#340)
+- drop the Remembers line above the composer (#342)
+- drop Copy Details from the AI engine banner (#336)
+- show Save and Discard only when there are edits (#338)
+- stop truncating the update prompt's buttons (#333)
+- drop the "list updates itself" sentence from the checklist intro (#334)
+- make the Doctor's fix buttons do something (#335)
+
 ## [2.57.2] - 2026-10-20
 
 ### Fixed
