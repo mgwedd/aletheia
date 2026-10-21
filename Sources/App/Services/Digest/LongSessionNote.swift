@@ -75,7 +75,7 @@ enum LongSessionNote {
             Prompts.progressNote(
                 format: format, transcript: material, notes: notes, comments: commentLines,
                 patientBackground: patientBackground,
-                verbosity: verbosity, instructions: instructions)
+                verbosity: verbosity, instructions: instructions, clientName: service.clientName)
         }
         if service.fits(prompt: prompt(transcript)) {
             return service.streamProgressNote(
@@ -180,7 +180,7 @@ enum LongSessionNote {
         draft: String, material: String, format: ProgressNoteFormat, phrases: [String],
         service: AssistantService, builder: DigestBuilder, live: @escaping DigestBuilder.Live, accept: (String) -> Void
     ) async -> CheckOutcome {
-        let prompt = Prompts.noteCheck(draft: draft, material: material)
+        let prompt = Prompts.noteCheck(draft: draft, material: material, clientName: service.clientName)
         guard service.fits(prompt: prompt) else { return .tooLong }
         do {
             let corrected = try await builder.runStage(
@@ -555,7 +555,7 @@ extension Prompts {
     }
 
     /// Asks the model to correct a draft note against its source material.
-    static func noteCheck(draft: String, material: String) -> String {
+    static func noteCheck(draft: String, material: String, clientName: String = "") -> String {
         """
         Below are a draft clinical note and the material it was written from: a digest \
         of the whole session and passages from the original transcript. Check every \
@@ -568,7 +568,7 @@ extension Prompts {
         Return only the full corrected note, with no commentary. If nothing needs \
         changing, return the draft unchanged.
 
-        \(transcriptLegend)
+        \(legend(clientName: clientName))
 
         Source material:
         \(material)
