@@ -33,6 +33,8 @@ struct SettingsView: View {
     @State private var confirmClearRiskPhrases = false
     @State private var confirmResetRiskPhrases = false
     @State private var errorMessage: String?
+    /// How the last audit log export ended, shown until dismissed.
+    @State private var exportResult: SaveOutcome?
     @State private var showEncryptionSetup = false
     @State private var showConsentGuide = false
     @State private var confirmDisableEncryption = false
@@ -128,6 +130,7 @@ struct SettingsView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .exportResultAlert($exportResult)
     }
 
     /// Shows what another part of the app asked for (e.g. the Doctor's "Set
@@ -1043,11 +1046,13 @@ struct SettingsView: View {
 
     private func exportAuditLog() {
         let name = FileSaver.fileName("Aletheia Audit Log", Self.auditFileStamp())
-        if FileSaver.saveText(auditExportText(), suggestedName: "\(name).txt") {
+        let outcome = FileSaver.saveText(auditExportText(), suggestedName: "\(name).txt")
+        if case .saved = outcome {
             // The export itself is an ePHI-adjacent action worth recording.
             appModel.recordAudit(.auditLogExported)
             loadAuditEntries()
         }
+        exportResult = outcome.shown
     }
 
     private static let auditDateFormatter: DateFormatter = {

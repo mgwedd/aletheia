@@ -81,15 +81,11 @@ enum ExportRenderer {
         return parts.joined(separator: "\n\n")
     }
 
-    /// Makes the file and asks where to save it. False when it could not be
-    /// made (the caller says so) or the save was cancelled or failed.
+    /// Makes the file and asks where to save it.
     @MainActor
-    static func save(
-        _ document: ExportDocument, as format: ExportFormat, baseName: String, onFailure: (String) -> Void
-    ) -> Bool {
+    static func save(_ document: ExportDocument, as format: ExportFormat, baseName: String) -> SaveOutcome {
         guard let data = data(for: format, document: document) else {
-            onFailure("The \(format.title) file couldn't be made.")
-            return false
+            return .failed("The \(format.title) file couldn't be made.")
         }
         return FileSaver.saveData(data, suggestedName: format.fileName(baseName), type: format.contentType)
     }

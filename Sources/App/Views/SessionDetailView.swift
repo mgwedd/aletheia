@@ -238,6 +238,8 @@ struct SessionDetailView: View {
     @StateObject private var chatRunner = ChatStreamRunner()
     @StateObject private var noteRunner = ChatStreamRunner()
     @State private var errorMessage: String?
+    /// How the last export ended, shown until dismissed.
+    @State private var exportResult: SaveOutcome?
     /// Set when note generation or a chat answer failed because the local AI
     /// engine is down; `engineRetries` re-runs whatever failed after the fix.
     @State private var engineIncident: AIEngineIncident?
@@ -375,6 +377,7 @@ struct SessionDetailView: View {
             Text(confirmationMessage ?? "")
         }
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
+        .exportResultAlert($exportResult)
     }
 
     private var header: some View {
@@ -668,9 +671,11 @@ struct SessionDetailView: View {
         guard let store = appModel.store else { return }
         let document = ExportDocument(markdown: store.exportSessionMarkdown(patient: patient, session: session))
         let base = FileSaver.fileName(patient.name, String(session.folderName.prefix(10)))
-        if ExportRenderer.save(document, as: format, baseName: base, onFailure: { appModel.errorMessage = $0 }) {
+        let outcome = ExportRenderer.save(document, as: format, baseName: base)
+        if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
         }
+        exportResult = outcome.shown
     }
 
     /// Saves the note on screen in `format`, after the usual save panel.
@@ -683,9 +688,11 @@ struct SessionDetailView: View {
             markdown: summaryText
         )
         let base = FileSaver.fileName(patient.name, dateStr, noteFormat)
-        if ExportRenderer.save(document, as: format, baseName: base, onFailure: { appModel.errorMessage = $0 }) {
+        let outcome = ExportRenderer.save(document, as: format, baseName: base)
+        if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
         }
+        exportResult = outcome.shown
     }
 
     private var hasAnyRecording: Bool {
