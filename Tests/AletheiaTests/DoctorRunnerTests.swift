@@ -270,6 +270,7 @@ final class DoctorRunnerTests: XCTestCase {
         XCTAssertTrue(LiveDoctorProbes.isLoopback(URL(string: "http://[::1]:11434")!))
         XCTAssertFalse(LiveDoctorProbes.isLoopback(URL(string: "http://192.168.1.20:11434")!))
         XCTAssertFalse(LiveDoctorProbes.isLoopback(URL(string: "https://example.com")!))
+        XCTAssertFalse(LiveDoctorProbes.isLoopback(URL(string: "http://127.evil.example:11434")!))
     }
 
     // MARK: Time Machine Exclusion

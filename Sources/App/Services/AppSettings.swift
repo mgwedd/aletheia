@@ -122,7 +122,7 @@ final class AppSettings: ObservableObject {
     /// release publishes one, the check just finds nothing (no error shown).
     static let defaultUpdateFeedURL = URL(string: "https://github.com/mgwedd/aletheia/releases/latest/download/appcast.json")!
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
 
     @Published var dataRootURL: URL?
     @Published var whisperModel: WhisperModel {
@@ -148,8 +148,17 @@ final class AppSettings: ObservableObject {
     @Published var systemPrompt: String {
         didSet { defaults.set(systemPrompt, forKey: Keys.systemPrompt) }
     }
+    /// Always a loopback address (`LoopbackURL`); assigning anything else resets
+    /// it to the default.
     @Published var ollamaBaseURL: URL {
-        didSet { defaults.set(ollamaBaseURL.absoluteString, forKey: Keys.ollamaBaseURL) }
+        didSet {
+            if LoopbackURL.validate(ollamaBaseURL) == nil {
+                ollamaBaseURL = LoopbackURL.defaultOllama
+                defaults.removeObject(forKey: Keys.ollamaBaseURL)
+            } else {
+                defaults.set(ollamaBaseURL.absoluteString, forKey: Keys.ollamaBaseURL)
+            }
+        }
     }
     @Published var hasCompletedFirstRun: Bool {
         didSet { defaults.set(hasCompletedFirstRun, forKey: Keys.hasCompletedFirstRun) }
@@ -368,7 +377,11 @@ final class AppSettings: ObservableObject {
     let hardware: HardwareCapabilities
     let recommendation: ModelRecommendation
 
-    private init() {
+    private convenience init() { self.init(defaults: .standard) }
+
+    /// Test seam: the shared instance uses `UserDefaults.standard`.
+    init(defaults: UserDefaults) {
+        self.defaults = defaults
         let hardware = HardwareCapabilities.current()
         let recommendation = ModelAdvisor.recommend(for: hardware)
         self.hardware = hardware
@@ -394,10 +407,15 @@ final class AppSettings: ObservableObject {
         ollamaModelName = defaults.string(forKey: Keys.ollamaModelName) ?? recommendation.ollamaModel
         let savedPrompt = defaults.string(forKey: Keys.systemPrompt)
         systemPrompt = (savedPrompt?.isEmpty == false) ? savedPrompt! : Prompts.defaultSystemPrompt
-        if let raw = defaults.string(forKey: Keys.ollamaBaseURL), let url = URL(string: raw) {
-            ollamaBaseURL = url
+        if let raw = defaults.string(forKey: Keys.ollamaBaseURL) {
+            if let url = LoopbackURL.validate(raw) {
+                ollamaBaseURL = url
+            } else {
+                defaults.removeObject(forKey: Keys.ollamaBaseURL)
+                ollamaBaseURL = LoopbackURL.defaultOllama
+            }
         } else {
-            ollamaBaseURL = URL(string: "http://127.0.0.1:11434")!
+            ollamaBaseURL = LoopbackURL.defaultOllama
         }
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
         localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)

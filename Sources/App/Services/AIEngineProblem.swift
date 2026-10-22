@@ -57,7 +57,7 @@ enum AIEngineProblem: Equatable {
         switch ollama {
         case .notReachable: return ollamaInstalled ? .notRunning : .notInstalled
         case .modelNotFound(let name): return .modelMissing(name)
-        case .badResponse: return .erroring(ollama.localizedDescription)
+        case .badResponse, .nonLoopbackHost: return .erroring(ollama.localizedDescription)
         }
     }
 

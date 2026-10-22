@@ -155,4 +155,37 @@ final class OllamaRequestTests: XCTestCase {
         _ = try await service.answerAboutPatient(context: "c", history: [], question: "q")
         XCTAssertEqual(fake.tasks, [.note, .chat])
     }
+
+    func testRemoteServerAddressIssuesNoRequest() async throws {
+        RequestCountingProtocol.hits = 0
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RequestCountingProtocol.self]
+        let client = OllamaClient(baseURL: URL(string: "http://10.0.0.5:11434")!, session: URLSession(configuration: config))
+
+        func assertBlocked(_ work: () async throws -> Void) async {
+            do { try await work(); XCTFail("expected nonLoopbackHost") } catch OllamaError.nonLoopbackHost {} catch {
+                XCTFail("wrong error \(error)")
+            }
+        }
+        await assertBlocked { _ = try await client.listModels() }
+        await assertBlocked { _ = try await client.generate(model: "m", system: "", prompt: "p") }
+        await assertBlocked { try await client.pullModel("m") { _, _ in } }
+        await assertBlocked { for try await _ in client.stream(model: "m", system: "", prompt: "p") {} }
+        let reachable = await client.isReachable()
+        XCTAssertFalse(reachable)
+        client.warmUp(model: "m")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(RequestCountingProtocol.hits, 0)
+    }
+}
+
+private final class RequestCountingProtocol: URLProtocol {
+    nonisolated(unsafe) static var hits = 0
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.hits += 1
+        client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
+    }
+    override func stopLoading() {}
 }

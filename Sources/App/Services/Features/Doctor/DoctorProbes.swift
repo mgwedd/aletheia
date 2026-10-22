@@ -236,13 +236,10 @@ struct LiveDoctorProbes: DoctorProbing {
 
     // MARK: Building the live probes from app state
 
-    /// Whether `url` points at this Mac (`127.0.0.1`, `localhost`, `::1`). Doctor
+    /// Whether `url` is an acceptable local Ollama address (see `LoopbackURL`). Doctor
     /// only ever contacts Ollama when it does — the privacy rule is that nothing
     /// leaves the machine.
-    static func isLoopback(_ url: URL) -> Bool {
-        guard let host = url.host?.lowercased() else { return false }
-        return host == "localhost" || host == "::1" || host == "[::1]" || host == "127.0.0.1" || host.hasPrefix("127.")
-    }
+    static func isLoopback(_ url: URL) -> Bool { LoopbackURL.validate(url) != nil }
 
     /// The tool checks Doctor reuses from `ToolHealth`, minus the data-folder row
     /// (Doctor has its own, richer one) and with the Ollama probe held back unless

@@ -3,6 +3,7 @@ import Foundation
 enum OllamaError: LocalizedError {
     case notReachable
     case badResponse
+    case nonLoopbackHost
     case modelNotFound(String)
 
     var errorDescription: String? {
@@ -11,6 +12,8 @@ enum OllamaError: LocalizedError {
             return "Can't reach Ollama. Make sure the Ollama app is open (look for its icon in the menu bar)."
         case .badResponse:
             return "Ollama sent back something unexpected."
+        case .nonLoopbackHost:
+            return "Ollama must run on this Mac. Set the server address to http://127.0.0.1:11434."
         case .modelNotFound(let name):
             return "The \"\(name)\" model isn't downloaded yet. Open Settings to download it."
         }
@@ -202,10 +205,19 @@ private struct OllamaPullProgress: Decodable {
 /// executables).
 final class OllamaClient: Assistant {
     private let baseURL: URL
-    private let session = URLSession.shared
+    private let session: URLSession
 
-    init(baseURL: URL) {
+    /// A client for a non-loopback `baseURL` is inert: every request throws
+    /// `OllamaError.nonLoopbackHost` before touching the network.
+    init(baseURL: URL, session: URLSession = .shared) {
         self.baseURL = baseURL
+        self.session = session
+    }
+
+    private var isLoopback: Bool { LoopbackURL.validate(baseURL) != nil }
+
+    private func requireLoopback() throws {
+        guard isLoopback else { throw OllamaError.nonLoopbackHost }
     }
 
     func isReachable() async -> Bool {
@@ -239,6 +251,7 @@ final class OllamaClient: Assistant {
     }
 
     func listModels() async throws -> [String] {
+        try requireLoopback()
         let url = baseURL.appendingPathComponent("api/tags")
         let (data, response) = try await mappingConnectionErrors { try await session.data(from: url) }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -257,6 +270,7 @@ final class OllamaClient: Assistant {
     }
 
     func generate(model: String, system: String, prompt: String, task: AITask) async throws -> String {
+        try requireLoopback()
         OllamaResidency.shared.began(baseURL: baseURL, model: model)
         defer { OllamaResidency.shared.ended() }
         var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
@@ -305,6 +319,9 @@ final class OllamaClient: Assistant {
         let contextTokens = ContextBudget.current.tokens
         let onStats: (@Sendable (AIRunStats) -> Void)? = onStats.map { report in
             { @Sendable raw in var stats = raw; stats.task = task; stats.reusedPrefix = cached > 0; report(stats) }
+        }
+        guard isLoopback else {
+            return AsyncThrowingStream { $0.finish(throwing: OllamaError.nonLoopbackHost) }
         }
         return AsyncThrowingStream { continuation in
             OllamaResidency.shared.began(baseURL: baseURL, model: model)
@@ -394,6 +411,7 @@ final class OllamaClient: Assistant {
     }
 
     private static func fireAndForget(_ baseURL: URL, _ body: [String: Any], completion: (@Sendable (Bool) -> Void)? = nil) {
+        guard LoopbackURL.validate(baseURL) != nil else { completion?(false); return }
         var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -407,7 +425,7 @@ final class OllamaClient: Assistant {
     }
 
     func warmUp(model: String) {
-        guard !model.isEmpty,
+        guard isLoopback, !model.isEmpty,
               let claim = OllamaResidency.shared.claimWarmUp(baseURL: baseURL, model: model) else { return }
         Self.fireAndForget(baseURL, Self.warmUpBody(model: model)) { ok in
             if ok { OllamaResidency.shared.warmed(claim) } else { OllamaResidency.shared.warmFailed(claim) }
@@ -461,6 +479,7 @@ final class OllamaClient: Assistant {
     /// Settings screen can show a real progress bar instead of a spinner —
     /// no Terminal `ollama pull` command required.
     func pullModel(_ name: String, onProgress: @escaping (Double, String) -> Void) async throws {
+        try requireLoopback()
         var request = URLRequest(url: baseURL.appendingPathComponent("api/pull"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
