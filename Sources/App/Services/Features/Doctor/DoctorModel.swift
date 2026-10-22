@@ -266,7 +266,8 @@ struct DoctorReport: Equatable {
 ///
 /// - Anything at or below `<dataRoot>/` is collapsed to `<data folder>/…` — the
 ///   rest of that line is dropped, because a path below the root can contain a
-///   patient or session name (folder names are `Patients/<Patient-Slug>/…`).
+///   patient or session name (legacy patient folders may still have names,
+///   and session folders include dates of service).
 /// - The user's home directory becomes `~`, and so does any other `/Users/<name>`.
 struct DoctorRedactor: Equatable {
     var homeDirectory: String

@@ -7,7 +7,7 @@ import Foundation
 /// version that wrote it. On open, `Store` reconciles that stamp with the
 /// version this build understands:
 ///
-///   - older stamp → run migrations (none yet), then re-stamp: `.upgraded`
+///   - older stamp → run migrations, then re-stamp: `.upgraded`
 ///   - same stamp  → `.ok`
 ///   - newer stamp → `.needsNewerApp`: the data was written by a newer app,
 ///     so this (older) app must NOT silently rewrite it. The UI tells the
@@ -18,7 +18,7 @@ import Foundation
 /// ones. Bump `currentVersion` only for changes an older app couldn't safely
 /// read or would corrupt.
 enum DataSchema {
-    static let currentVersion = 1
+    static let currentVersion = 2
     static let metadataFileName = ".aletheia.json"
 }
 
@@ -31,4 +31,5 @@ enum SchemaCompatibility: Equatable {
     case ok
     case upgraded(fromVersion: Int)
     case needsNewerApp(dataVersion: Int, appVersion: Int)
+    case migrationFailed
 }

@@ -44,10 +44,19 @@ Legend: **✅ in place** · **◐ in progress** · **○ clinician responsibilit
 | **Access control (a)(1)** — unique user ID, limit access to authorized users | ✅ / ○ | Single-user app scoped to one macOS account. The macOS login (unique user, password/Touch ID) is the access boundary; the app adds its own lock below. |
 | **Automatic logoff (a)(2)(iii)** *(addressable)* | ◐ | App lock re-engages whenever the Mac locks or sleeps, so the Mac's screen-lock setting (System Settings › Lock Screen) provides the logoff; set a short interval there. An optional **in-app idle lock** (off by default) also re-locks after inactivity in Aletheia. |
 | **Encryption & decryption (a)(2)(iv)** *(addressable)* | ✅ | AES-256-GCM at rest for the database, transcripts, summaries, session digests, and audio (see [ENCRYPTION.md](ENCRYPTION.md)); FileVault recommended as the disk-level baseline. First-run recommends turning it on as an opt-out step (with a recovery passphrase and optional transparent unlock on this Mac), so a new install is guided to encrypt by default rather than leaving it a buried toggle. |
+
 | **Audit controls (b)** — record and examine activity involving ePHI | ✅ / ◐ | An on-device, append-only audit log (`audit.log`, one JSON line per event) records ePHI-affecting actions with timestamps and holds **no names or clinical content** — only action types and opaque record ids. It's viewable and exportable in Settings, stored only on the Mac. App-unlock and encryption enable/disable/unlock are wired now; export/delete/backup events attach as those flows land. |
 | **Integrity (c)(1)** — protect ePHI from improper alteration/destruction | ✅ / ○ | SQLite `PRAGMA secure_delete` zeroes freed pages; atomic writes for identity/metadata; encrypted backups are sealed snapshots. Source-of-truth transcript is editable by the clinician by design (right-to-amend), with edits under the clinician's control. |
 | **Person/entity authentication (d)** | ✅ | App lock via `LocalAuthentication` (Touch ID or Mac password) gates access to the app; macOS account auth gates the device. |
 | **Transmission security (e)(1)** — guard ePHI in transit | ✅ | PHI is not transmitted. The only outbound connections carry no PHI (update check, opt-in model downloads) or are local (`127.0.0.1` on-device AI). Optional iCloud backup is **end-to-end encrypted on-device before upload**, so only ciphertext leaves the Mac. The Settings security overview surfaces live network reachability and the iCloud-backup posture so the clinician can see, at a glance, that nothing but ciphertext ever leaves. |
+
+Patient folders use opaque UUID names after the v2 folder migration. Session
+folder names still carry dates of service. The FTS cache (`search.sqlite`)
+contains searchable plaintext terms; it is protected by the FileVault gate,
+excluded from Time Machine, deleted on lock, and rebuilt on unlock. The v2
+migration retains a structured JSON pre-image under `.backups/migrations/files/`.
+That backup and session folder names remain within the FileVault protected data
+folder.
 
 ## Administrative & physical safeguards — §164.308 / §164.310
 
