@@ -144,8 +144,7 @@ struct MarkdownMessageView: View {
                     .id(index)
             }
         }
-        .textSelection(.enabled)
-        .noWritingTools()
+        .selectablePatientText()
     }
 
     @ViewBuilder
@@ -279,8 +278,7 @@ private struct CodeCard: View {
                     .font(.system(.callout, design: .monospaced))
                     .lineSpacing(0)
                     .foregroundStyle(Theme.text.color)
-                    .textSelection(.enabled)
-                    .noWritingTools()
+                    .selectablePatientText()
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

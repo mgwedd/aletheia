@@ -28,11 +28,10 @@ struct GlobalSearchField: View {
                 .foregroundStyle(Theme.muted.color)
                 .accessibilityHidden(true)
 
-            TextField(placeholder, text: $model.query, prompt: Text(placeholder).foregroundStyle(Theme.muted.color))
+            TextField.patient(placeholder, text: $model.query, prompt: Text(placeholder).foregroundStyle(Theme.muted.color), focus: isFocused)
                 .textFieldStyle(.plain)
                 .font(large ? Theme.Typography.headline : Theme.Typography.body)
                 .foregroundStyle(Theme.text.color)
-                .focused(isFocused)
                 .accessibilityLabel("Search everything")
                 .accessibilityHint("Searches names, session dates, notes, comments and transcripts. Up and down arrows move through the results; Return opens one.")
                 .onKeyPress(.upArrow) { model.move(by: -1) ? .handled : .ignored }
@@ -40,7 +39,6 @@ struct GlobalSearchField: View {
                 .onKeyPress(.return) { activateSelection() }
                 .onKeyPress(.escape) { escape() }
                 .onSubmit { _ = activateSelection() }
-                .noWritingTools()
 
             trailing
         }
@@ -134,12 +132,14 @@ struct GlobalSearchHotkey: NSViewRepresentable {
                     self.focusSearch()
                     return nil
                 }
-                if GlobalSearchShortcut.isFindInText(event),
-                   let textView = GlobalSearchShortcut.findableTextView(window.firstResponder) {
+                // Local monitors run on the main thread.
+                let showedFindBar = MainActor.assumeIsolated {
+                    guard GlobalSearchShortcut.isFindInText(event),
+                          let textView = GlobalSearchShortcut.findableTextView(window.firstResponder) else { return false }
                     GlobalSearchShortcut.showFindBar(in: textView)
-                    return nil
+                    return true
                 }
-                return event
+                return showedFindBar ? nil : event
             }
         }
 

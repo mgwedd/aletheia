@@ -350,16 +350,14 @@ struct DeletePatientConfirmationView: View {
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.text.color)
 
-                TextField(patient.name, text: $typedName)
+                TextField.patient(patient.name, text: $typedName, focus: $isFieldFocused)
                     .textFieldStyle(.plain)
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.text.color)
-                    .focused($isFieldFocused)
                     .padding(.horizontal, 12)
                     .frame(height: 36)
                     .themeField(isFocused: isFieldFocused)
                     .accessibilityLabel("Type patient name to confirm deletion")
-                    .noWritingTools()
             }
 
             HStack {
@@ -397,16 +395,14 @@ private struct ProfileTextField: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        TextField(placeholder, text: $text)
+        TextField.patient(placeholder, text: $text, focus: $focused)
             .textFieldStyle(.plain)
             .font(Theme.Typography.body)
             .foregroundStyle(Theme.text.color)
-            .focused($focused)
             .autofocusAtEnd(autofocus, focus: $focused)
             .padding(.horizontal, 12)
             .frame(maxHeight: .infinity)
             .themeField(isFocused: focused)
             .accessibilityLabel(label)
-            .noWritingTools()
     }
 }

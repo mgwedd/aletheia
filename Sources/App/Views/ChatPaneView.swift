@@ -123,8 +123,7 @@ struct ChatPaneView: View {
             composer
         }
         .background(Theme.panel.color)
-        .textSelection(.enabled)
-        .noWritingTools()
+        .selectablePatientText()
         // Esc from anywhere else in the pane; idle, it is left alone.
         .onExitCommand(perform: ChatComposerLayout.escapeStops(isSending: isSending, canStop: onStop != nil) ? { _ = escapeStops() } : nil)
     }
@@ -395,8 +394,7 @@ private struct ChatBubble: View {
                 Text(message.text)
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.text.color)
-                    .textSelection(.enabled)
-                    .noWritingTools()
+                    .selectablePatientText()
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(Theme.bubble.color, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

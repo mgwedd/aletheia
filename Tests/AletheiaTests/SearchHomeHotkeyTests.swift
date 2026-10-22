@@ -103,7 +103,7 @@ final class SearchHomeHotkeyTests: XCTestCase {
         let home = try XCTUnwrap(field(GlobalSearchField.homePrompt))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
         settle()
-        XCTAssertTrue(isFocused(sidebar))
+        XCTAssertTrue(isFocused(sidebar), "first responder: \(String(describing: window.firstResponder)), home has it: \(isFocused(home))")
         pressCommandF()
         XCTAssertTrue(isFocused(home), "first responder: \(String(describing: window.firstResponder))")
         XCTAssertFalse(isFocused(sidebar))
