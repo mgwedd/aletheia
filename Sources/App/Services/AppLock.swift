@@ -34,17 +34,18 @@ extension AppLockPolicy {
 }
 
 /// What re-locks the app once it has been unlocked: the Mac itself being left.
-/// One unlock lasts the user's session on this Mac. Hiding Aletheia (⌘H),
-/// switching apps and the display dimming or sleeping on its own do not
-/// re-lock; the idle timer is a separate, opt-in setting.
+/// Hiding is controlled by the privacy setting. Display sleep always locks;
+/// switching apps alone does not. The idle timer is separate.
 enum RelockTrigger: CaseIterable, Equatable {
     case systemSleep
+    case displaySleep
     case screenLock
     case userSwitch
 
     var notificationName: Notification.Name {
         switch self {
         case .systemSleep: return NSWorkspace.willSleepNotification
+        case .displaySleep: return NSWorkspace.screensDidSleepNotification
         case .screenLock: return Notification.Name("com.apple.screenIsLocked")
         case .userSwitch: return NSWorkspace.sessionDidResignActiveNotification
         }
@@ -130,6 +131,8 @@ final class AppLock: ObservableObject {
     /// Called once on each successful unlock, so the composition root can record
     /// an audit entry (HIPAA §164.312(b)) without `AppLock` depending on the log.
     var onUnlock: (() -> Void)?
+    /// Drops the folder key when the presentation lock engages.
+    var onLock: (() -> Void)?
     /// Called when an unlock attempt fails (not user cancellation), to record
     /// failed authentication attempts in the audit log (HIPAA §164.312(b)).
     var onUnlockFailed: ((String) -> Void)?
@@ -151,6 +154,7 @@ final class AppLock: ObservableObject {
     private var distributedObservers: [NSObjectProtocol] = []
     private var didBecomeActiveObserver: NSObjectProtocol?
     private var didResignActiveObserver: NSObjectProtocol?
+    private var didHideObserver: NSObjectProtocol?
     private var promptGate = AutoPromptGate()
     private var settingsCancellable: AnyCancellable?
 
@@ -186,6 +190,14 @@ final class AppLock: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in self?.promptGate.appResigned() }
         }
+        didHideObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didHideNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.settings.lockWhenHidden else { return }
+                self.lockIfEnabled()
+            }
+        }
         observeActivity()
         observeRelockTriggers()
         // Re-evaluate whenever a relevant setting changes (app lock toggled,
@@ -202,6 +214,7 @@ final class AppLock: ObservableObject {
         idleTimer?.invalidate()
         if let didBecomeActiveObserver { NotificationCenter.default.removeObserver(didBecomeActiveObserver) }
         if let didResignActiveObserver { NotificationCenter.default.removeObserver(didResignActiveObserver) }
+        if let didHideObserver { NotificationCenter.default.removeObserver(didHideObserver) }
         settingsCancellable?.cancel()
         if let activityMonitor { NSEvent.removeMonitor(activityMonitor) }
         for observer in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
@@ -221,7 +234,9 @@ final class AppLock: ObservableObject {
     /// stepping away re-requires authentication. No-op when the lock is off.
     func lockIfEnabled() {
         if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: canAuthenticateProvider()) {
+            guard !isLocked else { return }
             isLocked = true
+            onLock?()
             SessionSearch.setAppLocked(true)
             // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
             SessionSearch.closeIndex()
@@ -309,7 +324,7 @@ final class AppLock: ObservableObject {
         lastActivity = Date()
     }
 
-    /// The Mac sleeping, its screen locking, or a switch to another user
+    /// The Mac or display sleeping, its screen locking, or a switch to another user
     /// re-lock immediately: those mean the user has left the Mac. See
     /// `RelockTrigger` for what deliberately does not.
     private func observeRelockTriggers() {

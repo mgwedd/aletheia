@@ -76,6 +76,7 @@ struct AletheiaApp: App {
         let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL })
         _encryption = StateObject(wrappedValue: encryption)
         let appLock = AppLock(settings: settings)
+        if appLock.isLocked { encryption.lock() }
         SessionSearch.setAppLocked(appLock.isLocked)   // before AppModel builds the index: it starts closed behind the lock
         let appModel = AppModel(settings: settings, encryption: encryption)
         _appModel = StateObject(wrappedValue: appModel)
@@ -118,6 +119,7 @@ struct AletheiaApp: App {
             encryption?.autoUnlockFromDevice()
             appModel?.recordAudit(.appUnlocked)
         }
+        appLock.onLock = { [weak encryption] in encryption?.lock() }
         appLock.onUnlockFailed = { [weak appModel] reason in
             appModel?.recordAudit(.appUnlockFailed, detail: reason)
         }
@@ -172,14 +174,14 @@ struct AletheiaApp: App {
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    // Switching apps doesn't re-lock: AppLock does that on
-                    // app hide (⌘H), idle timeout, sleep and screen lock.
+                    // AppLock observes hide (when enabled), idle, sleep and screen lock.
                     if phase == .active, settings.autoCheckForUpdates {
                         Task { await updateService.checkForUpdates() }
                     }
                 }
                 .spotlightContinuation(enabled: appModel.featureRegistry.contains(id: SpotlightFeatureModule.id))
                 .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
+                .modifier(WindowSharingCover(appLock: appLock, settings: settings))
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
@@ -226,6 +228,7 @@ struct AletheiaApp: App {
                 .environmentObject(integrations)
                 .environmentObject(recorder)
                 .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
+                .modifier(WindowSharingCover(appLock: appLock, settings: settings))
         }
         .defaultSize(width: 920, height: 720)
 
@@ -239,13 +242,16 @@ struct AletheiaApp: App {
                 .environmentObject(appModel)
                 .environmentObject(integrations)
                 .environmentObject(encryption)
+                .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
+                .modifier(WindowSharingCover(appLock: appLock, settings: settings))
         }
         .defaultSize(width: 620, height: 640)
 
-        // The Keyboard Shortcuts window, opened from the Help menu. It lists keys
-        // only, never patient data, so it carries no lock cover.
+        // The Keyboard Shortcuts window lists keys only, but follows the same
+        // lock presentation as every other app window.
         Window("Keyboard Shortcuts", id: ShortcutsWindow.id) {
             ShortcutsView()
+                .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
         }
         .defaultSize(width: 460, height: 560)
 
@@ -259,6 +265,8 @@ struct AletheiaApp: App {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(encryption)
+                .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
+                .modifier(WindowSharingCover(appLock: appLock, settings: settings))
         }
 
         MenuBarExtra("Aletheia Recording", systemImage: menuBarSymbol) {
@@ -268,6 +276,8 @@ struct AletheiaApp: App {
                 .environmentObject(appModel)
                 .environmentObject(settings)
                 .environmentObject(integrations)
+                .environmentObject(appLock)
+                .modifier(WindowSharingCover(appLock: appLock, settings: settings))
         }
         .menuBarExtraStyle(.window)
     }
