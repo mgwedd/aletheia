@@ -1525,6 +1525,7 @@ struct SessionDetailView: View {
             micURL: micURL,
             callURL: callURL,
             context: .init(
+                sessionID: session.id,
                 patientID: patient.id,
                 patientName: patient.name,
                 patientSlug: patient.slug,

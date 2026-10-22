@@ -528,6 +528,26 @@ final class Store {
         patientDir(for: patient).appendingPathComponent(session.folderName, isDirectory: true)
     }
 
+    /// The private staging root where live audio files are recorded before being
+    /// sealed into the patient session folder. Created with 0o700 permissions.
+    static var stagingDirectoryURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Aletheia", isDirectory: true)
+            .appendingPathComponent("Staging", isDirectory: true)
+    }
+
+    static func stagingDir(for sessionID: UUID, in stagingRoot: URL = stagingDirectoryURL) -> URL {
+        stagingRoot.appendingPathComponent(sessionID.uuidString, isDirectory: true)
+    }
+
+    func stagingMicURL(for session: SessionRecord, in stagingRoot: URL = stagingDirectoryURL) -> URL {
+        Store.stagingDir(for: session.id, in: stagingRoot).appendingPathComponent("mic.caf")
+    }
+
+    func stagingCallURL(for session: SessionRecord, in stagingRoot: URL = stagingDirectoryURL) -> URL {
+        Store.stagingDir(for: session.id, in: stagingRoot).appendingPathComponent("call.caf")
+    }
+
     func micRecordingURL(for patient: Patient, session: SessionRecord) -> URL {
         sessionDir(for: patient, session: session).appendingPathComponent("mic.caf")
     }
@@ -546,6 +566,7 @@ final class Store {
     func deleteRecordings(for patient: Patient, session: SessionRecord) {
         try? FileManager.default.removeItem(at: micRecordingURL(for: patient, session: session))
         try? FileManager.default.removeItem(at: callRecordingURL(for: patient, session: session))
+        try? FileManager.default.removeItem(at: Store.stagingDir(for: session.id))
     }
 
     func transcript(for patient: Patient, session: SessionRecord) -> String? {

@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import Aletheia
 
@@ -82,6 +83,75 @@ final class SessionRecorderTests: XCTestCase {
 
     func testIdleRecorderReportsNoElapsedTime() {
         XCTAssertEqual(SessionRecorder().elapsed(), 0)
+    }
+
+    func testStartWritesIntoStagingAndFinishLeavesNoStagingFile() async throws {
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent("RecorderStagingTest-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        let stagingRoot = tempRoot.appendingPathComponent("Staging", isDirectory: true)
+        let destFolder = tempRoot.appendingPathComponent("DestinationSession", isDirectory: true)
+        try FileManager.default.createDirectory(at: destFolder, withIntermediateDirectories: true)
+
+        let sessionID = UUID()
+        let destMic = destFolder.appendingPathComponent("mic.caf")
+        let destCall = destFolder.appendingPathComponent("call.caf")
+
+        let key = SymmetricKey(size: .bits256)
+        let protector = FileProtector(key: key)
+        let recorder = SessionRecorder(stagingDirectoryURL: stagingRoot)
+
+        let sampleAudio = Data("Audio buffer payload for staging test".utf8)
+        recorder.audioCaptureStartOverride = { stagedMic, stagedCall in
+            try sampleAudio.write(to: stagedMic)
+            try sampleAudio.write(to: stagedCall)
+        }
+
+        let context = SessionRecorder.ActiveRecording(
+            sessionID: sessionID,
+            patientID: UUID(),
+            patientName: "Jane Doe",
+            patientSlug: "jane-doe",
+            sessionFolder: "2026-10-21_Session"
+        )
+
+        let startError = await recorder.start(
+            micURL: destMic,
+            callURL: destCall,
+            context: context,
+            protector: protector
+        )
+        XCTAssertNil(startError)
+        XCTAssertTrue(recorder.isRecording)
+
+        let sessionStagingDir = stagingRoot.appendingPathComponent(sessionID.uuidString, isDirectory: true)
+        let stagedMic = sessionStagingDir.appendingPathComponent("mic.caf")
+        let stagedCall = sessionStagingDir.appendingPathComponent("call.caf")
+
+        // While recording: files exist in private staging, but not in destination session folder
+        XCTAssertTrue(FileManager.default.fileExists(atPath: stagedMic.path), "Mic audio must be written to staging")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: stagedCall.path), "Call audio must be written to staging")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destMic.path), "Mic audio must not exist in session folder during recording")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destCall.path), "Call audio must not exist in session folder during recording")
+
+        // Stop recording
+        await recorder.stop()
+        XCTAssertFalse(recorder.isRecording)
+
+        // After stopping: staging files and staging directory must be cleaned up
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagedMic.path), "Staging mic file must be removed after stop")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagedCall.path), "Staging call file must be removed after stop")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sessionStagingDir.path), "Session staging folder must be removed after stop")
+
+        // Destination files must now exist and be encrypted with ChunkedCipher
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destMic.path), "Sealed mic file must exist in session folder")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destCall.path), "Sealed call file must exist in session folder")
+        XCTAssertTrue(ChunkedCipher.isEnvelope(fileAt: destMic))
+        XCTAssertTrue(ChunkedCipher.isEnvelope(fileAt: destCall))
+
+        // Decrypted content matches original
+        let (decryptedMic, isTempMic) = try protector.decryptedCopyOfLargeFile(at: destMic)
+        defer { if isTempMic { try? FileManager.default.removeItem(at: decryptedMic) } }
+        XCTAssertEqual(try Data(contentsOf: decryptedMic), sampleAudio)
     }
 }
 

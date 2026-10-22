@@ -76,6 +76,7 @@ final class SearchSweepShutdownJob: ShutdownJob {
 @MainActor
 final class InterruptedWorkLauncher {
     private var watcher: AnyCancellable?
+    private var hasRunSweep = false
 
     func start(
         appModel: AppModel,
@@ -83,19 +84,34 @@ final class InterruptedWorkLauncher {
         transcribe: @escaping (InterruptedWorkResumer.Target) -> Void,
         summarize: @escaping (InterruptedWorkResumer.Target) -> Void
     ) {
-        guard let initial = ledger(), !initial.load().isEmpty else { return }
         // `patients` publishes before it changes; read the store once the change has landed.
         watcher = appModel.$patients.receive(on: DispatchQueue.main).sink { [weak self, weak appModel] _ in
-            guard let self, let appModel, let store = appModel.store, let ledger = ledger() else { return }
-            let left = InterruptedWorkResumer.resume(
-                ledger.load(),
-                patients: appModel.patients,
-                sessions: { try? store.listSessions(for: $0) },
-                transcribe: transcribe,
-                summarize: summarize
-            )
-            ledger.save(left)
-            if left.isEmpty { self.watcher = nil }
+            guard let self, let appModel, let store = appModel.store else { return }
+            let ledgerInstance = ledger()
+            if !self.hasRunSweep {
+                self.hasRunSweep = true
+                OrphanAudioSweep.sweep(
+                    store: store,
+                    protector: appModel.currentProtector,
+                    audit: appModel.audit,
+                    ledger: ledgerInstance
+                )
+            }
+            guard let ledger = ledgerInstance else { return }
+            let items = ledger.load()
+            if !items.isEmpty {
+                let left = InterruptedWorkResumer.resume(
+                    items,
+                    patients: appModel.patients,
+                    sessions: { try? store.listSessions(for: $0) },
+                    transcribe: transcribe,
+                    summarize: summarize
+                )
+                ledger.save(left)
+                if left.isEmpty && self.hasRunSweep { self.watcher = nil }
+            } else if self.hasRunSweep {
+                self.watcher = nil
+            }
         }
     }
 }
