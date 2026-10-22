@@ -260,6 +260,25 @@ final class StoreUnreadableRecordsTests: XCTestCase {
         XCTAssertTrue(listing.unreadable.isEmpty)
     }
 
+    func testBadDatabaseEnvelopeAppearsInUnreadableScan() throws {
+        let key = SymmetricKey(size: .bits256)
+        let comments = try XCTUnwrap(CommentStore(root: tempRoot, protector: FileProtector(key: key)))
+        let sessionID = UUID()
+        let comment = try XCTUnwrap(comments.addComment(sessionID: sessionID, quotedText: "quote", body: "private"))
+        let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
+        var record = try XCTUnwrap(core.record(kind: "comment", id: comment.id))
+        var envelope = try XCTUnwrap(Data(base64Encoded: String(decoding: record.payload, as: UTF8.self)))
+        envelope[envelope.count - 1] ^= 0xFF
+        record.payload = Data(envelope.base64EncodedString().utf8)
+        XCTAssertTrue(core.put(record))
+
+        let keyedStore = Store(root: tempRoot, protector: FileProtector(key: key), commentStore: comments)
+        let found = keyedStore.scanForUnreadableEntries()
+        XCTAssertEqual(found.map(\.kind), [.databaseRecord])
+        XCTAssertEqual(found.first?.reason, .notReadable)
+        XCTAssertEqual(found.first?.fileURL, CommentStore.databaseURL(root: tempRoot))
+    }
+
     // MARK: - Short descriptions and dismissed state
 
     func testUnreadableEntryShortDescriptions() {

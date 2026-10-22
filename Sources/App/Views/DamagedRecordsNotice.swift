@@ -63,7 +63,7 @@ struct DamagedRecordsNotice: View {
                     .font(Theme.Typography.body.weight(.semibold))
                     .foregroundStyle(Theme.text.color)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Their original files were left untouched in your data folder.")
+                Text("The original records were left untouched in your data folder.")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
                     .fixedSize(horizontal: false, vertical: true)
@@ -141,7 +141,8 @@ struct DamagedRecordReviewSheet: View {
                     .font(.system(size: 28))
                     .foregroundStyle(Theme.warn.color)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.kind == .patientRecord ? "Damaged Patient Record" : "Damaged Session Record")
+                    Text(entry.kind == .databaseRecord ? "Unreadable Database Record"
+                         : entry.kind == .patientRecord ? "Damaged Patient Record" : "Damaged Session Record")
                         .font(Theme.Typography.title)
                         .foregroundStyle(Theme.text.color)
                     Text(entry.shortDescription)
@@ -174,7 +175,7 @@ struct DamagedRecordReviewSheet: View {
                         .themeField()
                     #if canImport(AppKit)
                     Button("Show in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([entry.folder])
+                        NSWorkspace.shared.activateFileViewerSelecting([entry.fileURL])
                     }
                     .buttonStyle(.themed)
                     .controlSize(.small)

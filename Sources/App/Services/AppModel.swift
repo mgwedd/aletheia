@@ -10,6 +10,8 @@ final class AppModel: ObservableObject {
     /// shows them so they don't vanish silently. Session-level damage lives on
     /// `Store.unreadableEntries` / `Store.sessionListing(for:)`.
     @Published var unreadablePatients: [UnreadableEntry] = []
+    /// Encrypted database payloads that could not be opened at the last refresh.
+    @Published var unreadableDatabaseRecords: [UnreadableEntry] = []
     @Published var errorMessage: String?
     /// Set when the chosen data folder was written by a newer app version, so
     /// this build shouldn't modify it. Surfaced to the user as a warning.
@@ -101,6 +103,7 @@ final class AppModel: ObservableObject {
             databaseState = .noDataFolder
             patients = []
             unreadablePatients = []
+            unreadableDatabaseRecords = []
             schemaWarning = nil
             return
         }
@@ -274,6 +277,7 @@ final class AppModel: ObservableObject {
             let listing = try store.patientListing()
             patients = listing.patients
             unreadablePatients = listing.unreadable
+            unreadableDatabaseRecords = commentStore?.unreadableEntries ?? []
             reindexSpotlight()
         } catch {
             errorMessage = error.localizedDescription

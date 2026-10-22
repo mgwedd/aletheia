@@ -81,6 +81,24 @@ final class FileProtectorTests: XCTestCase {
         XCTAssertEqual(try p.open(sealed), Data("column value".utf8))
     }
 
+    func testFieldEncodeThrowsWhenSealFails() {
+        let invalidKey = SymmetricKey(data: Data([0x01]))
+        let protector = FileProtector(key: invalidKey)
+        XCTAssertThrowsError(try FieldCipher.encode("private note", using: protector)) { error in
+            XCTAssertEqual(error as? FileProtector.ProtectorError, .sealFailed)
+        }
+    }
+
+    func testFieldDecodeThrowsForBadEnvelopeButAcceptsLegacyPlaintext() throws {
+        let protector = FileProtector(key: key)
+        let sealed = try FieldCipher.encode("secret", using: protector)
+        XCTAssertEqual(try FieldCipher.decode("legacy", using: protector), "legacy")
+        XCTAssertEqual(try FieldCipher.decode(sealed, using: protector), "secret")
+        var envelope = try XCTUnwrap(Data(base64Encoded: sealed))
+        envelope[envelope.count - 1] ^= 0xFF
+        XCTAssertThrowsError(try FieldCipher.decode(envelope.base64EncodedString(), using: protector))
+    }
+
     /// Names of decrypted-audio temp copies currently in the temp folder.
     private static func tempAudioCopies() -> Set<String> {
         let names = (try? FileManager.default.contentsOfDirectory(

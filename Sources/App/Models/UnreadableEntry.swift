@@ -12,6 +12,7 @@ struct UnreadableEntry: Identifiable, Equatable {
     enum Kind: String, Equatable {
         case patientRecord   // `patient.json`
         case sessionRecord   // `session.json`
+        case databaseRecord  // payload in `Aletheia.sqlite`
     }
 
     enum Reason: String, Equatable {
@@ -29,21 +30,28 @@ struct UnreadableEntry: Identifiable, Equatable {
     let folder: URL
     /// The owning patient's id, for `.sessionRecord` entries.
     let patientId: UUID?
+    /// Non-PHI row identity for a database payload; distinguishes rows in one file.
+    let recordIdentifier: String?
 
-    init(kind: Kind, reason: Reason, folder: URL, patientId: UUID? = nil) {
+    init(kind: Kind, reason: Reason, folder: URL, patientId: UUID? = nil, recordIdentifier: String? = nil) {
         self.kind = kind
         self.reason = reason
         self.folder = folder
         self.patientId = patientId
+        self.recordIdentifier = recordIdentifier
     }
 
-    var id: String { "\(kind.rawValue)|\(folder.path)" }
+    var id: String {
+        let base = "\(kind.rawValue)|\(folder.path)"
+        return recordIdentifier.map { "\(base)|\($0)" } ?? base
+    }
 
     /// The file that couldn't be read.
     var fileName: String {
         switch kind {
         case .patientRecord: return "patient.json"
         case .sessionRecord: return "session.json"
+        case .databaseRecord: return "Aletheia.sqlite"
         }
     }
 
@@ -54,10 +62,12 @@ struct UnreadableEntry: Identifiable, Equatable {
     var shortDescription: String {
         switch reason {
         case .notReadable:
+            if kind == .databaseRecord { return "Database record couldn't be opened" }
             return kind == .patientRecord
                 ? "Patient record couldn't be opened"
                 : "Session record couldn't be opened"
         case .undecodable:
+            if kind == .databaseRecord { return "Database record is damaged" }
             return kind == .patientRecord
                 ? "Patient record file is damaged"
                 : "Session record file is damaged"
@@ -69,6 +79,9 @@ struct UnreadableEntry: Identifiable, Equatable {
     /// Plain-language, non-blocking explanation: what happened and what was (not)
     /// done to the file. The location is shown separately by the UI.
     var message: String {
+        if kind == .databaseRecord {
+            return "Aletheia couldn't open an encrypted database record. The original record was left untouched."
+        }
         let subject = kind == .patientRecord ? "a patient's record" : "a session's record"
         switch reason {
         case .notReadable, .undecodable:

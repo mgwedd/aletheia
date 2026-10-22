@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import Aletheia
 
@@ -111,5 +112,49 @@ final class CommentStoreTests: XCTestCase {
     func testMissingNoteIsEmpty() throws {
         let store = try XCTUnwrap(CommentStore(root: tempRoot))
         XCTAssertEqual(store.note(sessionID: UUID()), "")
+    }
+
+    func testFailedSealLeavesNoDatabaseRow() throws {
+        let invalidKey = SymmetricKey(data: Data([0x01]))
+        let store = try XCTUnwrap(CommentStore(root: tempRoot, protector: FileProtector(key: invalidKey)))
+        let sessionID = UUID()
+        XCTAssertNil(store.addComment(sessionID: sessionID, quotedText: "private", body: "private"))
+        XCTAssertFalse(store.saveNote(sessionID: sessionID, text: "private"))
+
+        let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
+        XCTAssertTrue(core.allRecords(kind: "comment").isEmpty)
+        XCTAssertTrue(core.allRecords(kind: "note").isEmpty)
+    }
+
+    func testBadEnvelopeIsReportedAndNeverShownAsCiphertext() throws {
+        let key = SymmetricKey(size: .bits256)
+        let sessionID = UUID()
+        let store = try XCTUnwrap(CommentStore(root: tempRoot, protector: FileProtector(key: key)))
+        let comment = try XCTUnwrap(store.addComment(sessionID: sessionID, quotedText: "private", body: "private"))
+        let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
+        var record = try XCTUnwrap(core.record(kind: "comment", id: comment.id))
+        var envelope = try XCTUnwrap(Data(base64Encoded: String(decoding: record.payload, as: UTF8.self)))
+        envelope[envelope.count - 1] ^= 0xFF
+        record.payload = Data(envelope.base64EncodedString().utf8)
+        XCTAssertTrue(core.put(record))
+
+        XCTAssertTrue(store.comments(sessionID: sessionID).isEmpty)
+        let entries = store.unreadableEntries
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.kind, .databaseRecord)
+        XCTAssertEqual(entries.first?.fileURL, CommentStore.databaseURL(root: tempRoot))
+        XCTAssertEqual(core.record(kind: "comment", id: comment.id)?.payload, record.payload)
+    }
+
+    func testFailedReencryptLeavesOriginalPayload() throws {
+        let store = try XCTUnwrap(CommentStore(root: tempRoot))
+        let sessionID = UUID()
+        XCTAssertTrue(store.saveNote(sessionID: sessionID, text: "private"))
+        let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
+        let before = try XCTUnwrap(core.record(kind: "note", id: sessionID.uuidString)?.payload)
+
+        let invalidKey = SymmetricKey(data: Data([0x01]))
+        XCTAssertFalse(store.reencrypt(to: FileProtector(key: invalidKey)))
+        XCTAssertEqual(core.record(kind: "note", id: sessionID.uuidString)?.payload, before)
     }
 }

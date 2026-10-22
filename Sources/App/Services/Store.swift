@@ -223,7 +223,7 @@ final class Store {
     var unreadableEntries: [UnreadableEntry] {
         unreadableLock.lock()
         defer { unreadableLock.unlock() }
-        return recordedUnreadable.sorted { $0.id < $1.id }
+        return (recordedUnreadable + (commentStore?.unreadableEntries ?? [])).sorted { $0.id < $1.id }
     }
 
     /// Lists every patient and every patient's sessions, and returns everything

@@ -107,7 +107,7 @@ final class ChatRepository {
                 updatedAt: record.updatedAt, messages: payload.messages
             )
         }
-        let garbled = RecordPayloadCodec.openedText(from: record.payload, using: protector)
+        guard let garbled = RecordPayloadCodec.openedText(from: record.payload, using: protector) else { return nil }
         return ChatThread(id: id, title: garbled, createdAt: record.createdAt, updatedAt: record.updatedAt, messages: [])
     }
 }
