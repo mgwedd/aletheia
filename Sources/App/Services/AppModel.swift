@@ -48,8 +48,7 @@ final class AppModel: ObservableObject {
     private var lastEncryptionUnlocked: Bool?
     private let settings: AppSettings
     /// Supplies the `FileProtector` the stores read/write through. When
-    /// encryption is off or locked it's a passthrough, so the stores behave as
-    /// they always have.
+    /// encryption is locked it rejects access, including writes.
     private let encryption: EncryptionManager
     private let spotlightIndexer: SpotlightIndexing
     /// The feature modules this build ships, composed once at launch from the
@@ -90,7 +89,7 @@ final class AppModel: ObservableObject {
     func rebuildStore() {
         // Recompute encryption state first (the data folder may have just
         // changed), then build the stores around the resulting protector.
-        encryption.refresh()
+        encryption.refreshState()
         let dataRoot = settings.dataRootURL
         audit = dataRoot.map(AuditLog.init)
         logEncryptionTransitionIfNeeded()

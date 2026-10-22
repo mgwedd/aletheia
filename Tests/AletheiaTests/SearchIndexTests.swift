@@ -187,7 +187,7 @@ final class SearchIndexTests: XCTestCase {
         XCTAssertTrue(index.isOpen)
     }
 
-    func testEncryptionLockDeletesTheIndexAndRememberedKeyReopensIt() throws {
+    func testEncryptionLockDeletesTheIndexEvenWithRememberedKey() throws {
         let dataRoot = root.appendingPathComponent("data")
         try FileManager.default.createDirectory(at: dataRoot, withIntermediateDirectories: true)
         let keys = FakeKeys()
@@ -206,10 +206,13 @@ final class SearchIndexTests: XCTestCase {
         try manager.unlock(passphrase: "pw")
         try manager.rememberOnDevice()
         populate()
-        manager.lock()   // refresh() re-reads the remembered key and ends unlocked
+        manager.lock()
+        XCTAssertEqual(manager.state, .lockedNeedsPassphrase)
+        XCTAssertTrue(index.isBlocked)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: indexFile.path))
+        manager.autoUnlockFromDevice()
         XCTAssertEqual(manager.state, .unlocked)
-        XCTAssertFalse(index.isBlocked, "an unlocked folder reopens the index")
-        XCTAssertEqual(index.counts().docs, 0, "rebuilt empty; the sweep refills it")
+        XCTAssertFalse(index.isBlocked)
     }
 
     func testDisablingEncryptionDeletesTheIndexAndAppLockAloneKeepsIt() throws {
