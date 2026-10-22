@@ -116,8 +116,6 @@ struct AletheiaApp: App {
         // §164.312(b)). AppLock stays decoupled from the log via this hook.
         appLock.onUnlock = { [weak appModel] in
             appModel?.recordAudit(.appUnlocked)
-            // Reload only what the lock unloaded; not ~5 GB on every unlock.
-            OllamaClient.warmUpResumed()
         }
         appLock.onUnlockFailed = { [weak appModel] reason in
             appModel?.recordAudit(.appUnlockFailed, detail: reason)

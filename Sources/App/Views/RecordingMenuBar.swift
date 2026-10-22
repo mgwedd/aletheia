@@ -85,7 +85,7 @@ struct RecordingMenuBar: View {
 
     // MARK: Engine status
 
-    /// Read-only line showing whether the local AI engine (Ollama, or the
+    /// Read-only line showing whether the local AI engine (the
     /// embedded llama.cpp runtime) is reachable and which model is active —
     /// reuses the same health-check seam as Settings/setup, just polled here
     /// on a slower cadence since the menu bar is glanced at, not stared at.

@@ -2,43 +2,18 @@ import XCTest
 @testable import Aletheia
 
 final class AIEngineProblemTests: XCTestCase {
-    func testUnreachableAndNotInstalledOffersGetOllama() {
-        let problem = AIEngineProblem.from(error: OllamaError.notReachable, ollamaInstalled: false)
-        XCTAssertEqual(problem, .notInstalled)
-        XCTAssertEqual(problem?.action, .getOllama)
-        XCTAssertEqual(problem?.actionTitle, "Get Ollama")
-        XCTAssertEqual(problem?.retriesAfterAction, false)
-    }
-
-    func testUnreachableButInstalledOffersStart() {
-        let problem = AIEngineProblem.from(error: OllamaError.notReachable, ollamaInstalled: true)
-        XCTAssertEqual(problem, .notRunning)
-        XCTAssertEqual(problem?.action, .startOllama)
-        XCTAssertEqual(problem?.retriesAfterAction, true)
-    }
-
-    func testMissingModelOffersDownloadOfThatModel() {
-        let problem = AIEngineProblem.from(error: OllamaError.modelNotFound("qwen2.5:7b"), ollamaInstalled: true)
-        XCTAssertEqual(problem, .modelMissing("qwen2.5:7b"))
-        XCTAssertEqual(problem?.action, .downloadModel("qwen2.5:7b"))
-        XCTAssertTrue(problem?.message.contains("qwen2.5:7b") ?? false)
-    }
-
-    func testServerErrorOffersRetry() {
-        let problem = AIEngineProblem.from(error: OllamaError.badResponse, ollamaInstalled: true)
-        XCTAssertEqual(problem?.action, .retry)
-        XCTAssertEqual(problem?.actionTitle, "Try Again")
-    }
-
     func testUnrelatedErrorsAreNotEngineProblems() {
-        XCTAssertNil(AIEngineProblem.from(error: URLError(.badURL), ollamaInstalled: true))
+        XCTAssertNil(AIEngineProblem.from(error: URLError(.badURL)))
+    }
+
+    func testTheUnavailableBuiltInEngineOffersRetryWithItsMessage() {
+        let problem = AIEngineProblem.from(error: BuiltInModelUnavailableError.unavailable)
+        XCTAssertEqual(problem, .erroring(BuiltInModelUnavailableError.unavailable.localizedDescription))
+        XCTAssertEqual(problem?.action, .retry)
     }
 
     func testEveryProblemHasTitleMessageAndAction() {
         let all: [AIEngineProblem] = [
-            .notInstalled,
-            .notRunning,
-            .modelMissing("m"),
             .erroring("x"),
             .builtInModelMissing,
             .builtInModelCorrupt,
@@ -50,56 +25,32 @@ final class AIEngineProblemTests: XCTestCase {
         }
     }
 
-    // MARK: - Health check mapping (the passive banner)
-
-    func testHealthStatesMapToProblems() {
-        XCTAssertEqual(AIEngineProblem.from(state: .notInstalled, modelName: "m"), .notInstalled)
-        XCTAssertEqual(AIEngineProblem.from(state: .installedNotRunning, modelName: "m"), .notRunning)
-        XCTAssertEqual(AIEngineProblem.from(state: .modelMissing, modelName: "qwen2.5:7b"), .modelMissing("qwen2.5:7b"))
-    }
-
-    func testHealthyOrSettlingStatesShowNoBanner() {
-        XCTAssertNil(AIEngineProblem.from(state: .ready, modelName: "m"))
-        XCTAssertNil(AIEngineProblem.from(state: .starting, modelName: "m"))
-        XCTAssertNil(AIEngineProblem.from(state: .running, modelName: "m"))
-    }
-
-    func testBannerAgreesWithTheSetupChecklistClassification() {
-        // Same inputs the banner feeds `OllamaEngineState.classify`.
-        let notRunning = OllamaEngineState.classify(installed: true, isLaunching: false, reachable: false, hasModel: nil)
-        XCTAssertEqual(AIEngineProblem.from(state: notRunning, modelName: "m"), .notRunning)
-        let missing = OllamaEngineState.classify(installed: true, isLaunching: false, reachable: true, hasModel: false)
-        XCTAssertEqual(AIEngineProblem.from(state: missing, modelName: "m"), .modelMissing("m"))
-        let ready = OllamaEngineState.classify(installed: true, isLaunching: false, reachable: true, hasModel: true)
-        XCTAssertNil(AIEngineProblem.from(state: ready, modelName: "m"))
-    }
-
     // MARK: - Copy Details
 
     func testIncidentCarriesTheUnderlyingError() throws {
-        let incident = try XCTUnwrap(AIEngineIncident.from(error: OllamaError.modelNotFound("qwen2.5:7b"), ollamaInstalled: true))
-        XCTAssertEqual(incident.problem, .modelMissing("qwen2.5:7b"))
-        XCTAssertTrue(incident.technical.contains("modelNotFound"))
-        XCTAssertTrue(incident.technical.contains("qwen2.5:7b"))
+        let incident = try XCTUnwrap(AIEngineIncident.from(error: LocalLLMEngineError.loadFailed("bad gguf")))
+        XCTAssertEqual(incident.problem, .builtInModelCorrupt)
+        XCTAssertTrue(incident.technical.contains("loadFailed"))
+        XCTAssertTrue(incident.technical.contains("bad gguf"))
     }
 
     func testIncidentIsNilForUnrelatedErrors() {
-        XCTAssertNil(AIEngineIncident.from(error: URLError(.badURL), ollamaInstalled: true))
+        XCTAssertNil(AIEngineIncident.from(error: URLError(.badURL)))
     }
 
     func testSupportReportListsTheFactsSupportNeeds() throws {
-        let incident = try XCTUnwrap(AIEngineIncident.from(error: OllamaError.notReachable, ollamaInstalled: true))
+        let incident = try XCTUnwrap(AIEngineIncident.from(error: LocalLLMEngineError.modelNotDownloaded))
         let text = AIEngineSupportReport.text(
-            incident: incident, appVersion: "2.35.0", macOS: "Version 14.5", backend: "Ollama", model: "qwen2.5:7b"
+            incident: incident, appVersion: "2.35.0", macOS: "Version 14.5", backend: "Built-in model", model: "Qwen"
         )
-        for expected in ["Problem: The local AI engine isn't running", "notReachable", "Backend: Ollama", "Model: qwen2.5:7b", "App version: 2.35.0", "macOS: Version 14.5"] {
+        for expected in ["Problem: The AI model isn't downloaded", "modelNotDownloaded", "Backend: Built-in model", "Model: Qwen", "App version: 2.35.0", "macOS: Version 14.5"] {
             XCTAssertTrue(text.contains(expected), "missing \(expected)")
         }
     }
 
     func testSupportReportHasOnlyTheEightExpectedLines() throws {
         // Guards against adding free-form content (questions, transcripts, names).
-        let incident = AIEngineIncident(problem: .notRunning, technical: "notReachable")
+        let incident = AIEngineIncident(problem: .builtInModelMissing, technical: "modelNotDownloaded")
         let text = AIEngineSupportReport.text(incident: incident, appVersion: "1", macOS: "m", backend: "b", model: "x")
         XCTAssertEqual(text.split(separator: "\n").count, 8)
     }
@@ -110,18 +61,16 @@ final class AIEngineProblemTests: XCTestCase {
         var calls: [String] = []
         var failure: Error?
         lazy var actions = AIEngineActions(
-            openDownloadPage: { [unowned self] in self.calls.append("open") },
-            startOllama: { [unowned self] in
-                self.calls.append("start")
-                if let error = self.failure { throw error }
-            },
-            pullModel: { [unowned self] name, onProgress in
-                self.calls.append("pull:\(name)")
+            downloadBuiltInModel: { [unowned self] onProgress in
+                self.calls.append("builtIn")
                 onProgress(0.5, "halfway")
                 if let error = self.failure { throw error }
-            },
-            downloadBuiltInModel: { [unowned self] _ in self.calls.append("builtIn") }
+            }
         )
+    }
+
+    private struct Boom: LocalizedError {
+        var errorDescription: String? { "boom" }
     }
 
     @MainActor
@@ -133,19 +82,16 @@ final class AIEngineProblemTests: XCTestCase {
         XCTAssertEqual(AIEngineRecoveryController.startingStatus(for: .builtInModelCorrupt), "Downloading the AI model…")
     }
 
-    func testEachProblemRoutesToItsOwnAction() async throws {
+    func testRetryDoesNothingButRetry() async throws {
         let log = ActionLog()
-        try await AIEngineRecovery.perform(.notInstalled, actions: log.actions)
-        try await AIEngineRecovery.perform(.notRunning, actions: log.actions)
-        try await AIEngineRecovery.perform(.modelMissing("qwen2.5:7b"), actions: log.actions)
         try await AIEngineRecovery.perform(.erroring("x"), actions: log.actions)
-        XCTAssertEqual(log.calls, ["open", "start", "pull:qwen2.5:7b"])
+        XCTAssertEqual(log.calls, [])
     }
 
     func testDownloadForwardsProgress() async throws {
         let log = ActionLog()
         var seen: [(Double, String)] = []
-        try await AIEngineRecovery.perform(.modelMissing("m"), actions: log.actions) { seen.append(($0, $1)) }
+        try await AIEngineRecovery.perform(.builtInModelMissing, actions: log.actions) { seen.append(($0, $1)) }
         XCTAssertEqual(seen.count, 1)
         XCTAssertEqual(seen.first?.0, 0.5)
         XCTAssertEqual(seen.first?.1, "halfway")
@@ -153,12 +99,12 @@ final class AIEngineProblemTests: XCTestCase {
 
     func testFailureFromAnActionPropagates() async {
         let log = ActionLog()
-        log.failure = OllamaLauncher.LaunchError.timedOut
+        log.failure = Boom()
         do {
-            try await AIEngineRecovery.perform(.notRunning, actions: log.actions)
+            try await AIEngineRecovery.perform(.builtInModelMissing, actions: log.actions)
             XCTFail("expected a throw")
         } catch {
-            XCTAssertEqual(error as? OllamaLauncher.LaunchError, .timedOut)
+            XCTAssertEqual(error.localizedDescription, "boom")
         }
     }
 
@@ -167,7 +113,7 @@ final class AIEngineProblemTests: XCTestCase {
     @MainActor
     func testControllerReportsSuccessAndClearsWorking() async {
         let controller = AIEngineRecoveryController()
-        let ok = await controller.run(.notRunning) { _, _ in }
+        let ok = await controller.run(.erroring("x")) { _, _ in }
         XCTAssertTrue(ok)
         XCTAssertFalse(controller.isWorking)
         XCTAssertNil(controller.failure)
@@ -176,10 +122,10 @@ final class AIEngineProblemTests: XCTestCase {
     @MainActor
     func testControllerCapturesFailureMessage() async {
         let controller = AIEngineRecoveryController()
-        let ok = await controller.run(.notRunning) { _, _ in throw OllamaLauncher.LaunchError.timedOut }
+        let ok = await controller.run(.erroring("x")) { _, _ in throw Boom() }
         XCTAssertFalse(ok)
         XCTAssertFalse(controller.isWorking)
-        XCTAssertEqual(controller.failure, OllamaLauncher.LaunchError.timedOut.errorDescription)
+        XCTAssertEqual(controller.failure, "boom")
     }
 
     @MainActor
@@ -188,21 +134,21 @@ final class AIEngineProblemTests: XCTestCase {
         var duringStatus = ""
         var duringProgress: Double?
         var duringWorking = false
-        _ = await controller.run(.modelMissing("qwen2.5:7b")) { _, _ in
+        _ = await controller.run(.builtInModelMissing) { _, _ in
             duringStatus = controller.status
             duringProgress = controller.progress
             duringWorking = controller.isWorking
         }
         XCTAssertTrue(duringWorking)
-        XCTAssertEqual(duringStatus, "Downloading qwen2.5:7b…")
+        XCTAssertEqual(duringStatus, "Downloading the AI model…")
         XCTAssertEqual(duringProgress, 0)
     }
 
     @MainActor
-    func testControllerHasNoProgressBarWhenStartingOllama() async {
+    func testControllerHasNoProgressBarWhenRetrying() async {
         let controller = AIEngineRecoveryController()
         var duringProgress: Double? = 1
-        _ = await controller.run(.notRunning) { _, _ in duringProgress = controller.progress }
+        _ = await controller.run(.erroring("x")) { _, _ in duringProgress = controller.progress }
         XCTAssertNil(duringProgress)
     }
 
@@ -221,8 +167,8 @@ final class AIEngineProblemTests: XCTestCase {
     func testControllerIgnoresASecondRunWhileOneIsActive() async {
         let controller = AIEngineRecoveryController()
         var secondResult: Bool?
-        _ = await controller.run(.notRunning) { _, _ in
-            secondResult = await controller.run(.notRunning) { _, _ in XCTFail("must not run") }
+        _ = await controller.run(.erroring("x")) { _, _ in
+            secondResult = await controller.run(.erroring("x")) { _, _ in XCTFail("must not run") }
         }
         XCTAssertEqual(secondResult, false)
     }
@@ -230,66 +176,16 @@ final class AIEngineProblemTests: XCTestCase {
     @MainActor
     func testControllerClearsAnOldFailureOnTheNextRun() async {
         let controller = AIEngineRecoveryController()
-        _ = await controller.run(.notRunning) { _, _ in throw OllamaError.badResponse }
+        _ = await controller.run(.erroring("x")) { _, _ in throw Boom() }
         XCTAssertNotNil(controller.failure)
-        _ = await controller.run(.notRunning) { _, _ in }
+        _ = await controller.run(.erroring("x")) { _, _ in }
         XCTAssertNil(controller.failure)
     }
 
     // MARK: - Health probe (the banner)
 
-    private func probe(
-        ollama: Bool = true, installed: Bool, reachable: Bool, hasModel: Bool = true
-    ) -> AIEngineProbe {
-        AIEngineProbe(
-            isOllamaBackend: ollama, modelName: "m",
-            isReachable: { reachable }, hasModel: { _ in hasModel }, isInstalled: { installed }
-        )
-    }
-
-    func testProbeReportsNotInstalled() async {
-        let problem = await probe(installed: false, reachable: false).problem()
-        XCTAssertEqual(problem, .notInstalled)
-    }
-
-    func testProbeReportsInstalledButNotRunning() async {
-        let problem = await probe(installed: true, reachable: false).problem()
-        XCTAssertEqual(problem, .notRunning)
-    }
-
-    func testProbeReportsMissingModel() async {
-        let problem = await probe(installed: true, reachable: true, hasModel: false).problem()
-        XCTAssertEqual(problem, .modelMissing("m"))
-    }
-
-    func testProbeIsQuietWhenReady() async {
-        let problem = await probe(installed: true, reachable: true).problem()
-        XCTAssertNil(problem)
-    }
-
-    func testRunningOllamaCountsAsInstalledEvenIfTheAppIsNotFound() async {
-        // e.g. started from the command line or Homebrew.
-        let problem = await probe(installed: false, reachable: true).problem()
-        XCTAssertNil(problem)
-    }
-
-    func testProbeIsQuietForOtherBackends() async {
-        let problem = await probe(ollama: false, installed: false, reachable: false).problem()
-        XCTAssertNil(problem)
-    }
-
-    func testProbeDoesNotCheckTheModelWhenUnreachable() async {
-        var asked = false
-        let p = AIEngineProbe(
-            isOllamaBackend: true, modelName: "m",
-            isReachable: { false }, hasModel: { _ in asked = true; return true }, isInstalled: { true }
-        )
-        _ = await p.problem()
-        XCTAssertFalse(asked)
-    }
-
     func testMissingBuiltInModelErrorBecomesADownloadThatRetries() {
-        let problem = AIEngineProblem.from(error: LocalLLMEngineError.modelNotDownloaded, ollamaInstalled: false)
+        let problem = AIEngineProblem.from(error: LocalLLMEngineError.modelNotDownloaded)
         XCTAssertEqual(problem, .builtInModelMissing)
         XCTAssertEqual(problem?.action, .downloadBuiltInModel)
         XCTAssertEqual(problem?.actionTitle, "Download Model")
@@ -297,7 +193,7 @@ final class AIEngineProblemTests: XCTestCase {
     }
 
     func testCorruptBuiltInModelOffersRedownloadAndRetries() {
-        let problem = AIEngineProblem.from(error: LocalLLMEngineError.loadFailed("bad gguf"), ollamaInstalled: false)
+        let problem = AIEngineProblem.from(error: LocalLLMEngineError.loadFailed("bad gguf"))
         XCTAssertEqual(problem, .builtInModelCorrupt)
         XCTAssertEqual(problem?.action, .downloadBuiltInModel)
         XCTAssertEqual(problem?.actionTitle, "Re-download Model")
@@ -305,31 +201,30 @@ final class AIEngineProblemTests: XCTestCase {
     }
 
     func testBuiltInOutOfMemoryAndGenerationFailuresOfferRetry() {
-        let oom = AIEngineProblem.from(error: LocalLLMEngineError.outOfMemory, ollamaInstalled: false)
+        let oom = AIEngineProblem.from(error: LocalLLMEngineError.outOfMemory)
         XCTAssertEqual(oom, .erroring(LocalLLMEngineError.outOfMemory.localizedDescription))
         XCTAssertEqual(oom?.action, .retry)
         XCTAssertEqual(oom?.actionTitle, "Try Again")
         XCTAssertEqual(oom?.retriesAfterAction, true)
 
-        let gen = AIEngineProblem.from(error: LocalLLMEngineError.generationFailed("decode failed"), ollamaInstalled: false)
+        let gen = AIEngineProblem.from(error: LocalLLMEngineError.generationFailed("decode failed"))
         XCTAssertEqual(gen, .erroring("decode failed"))
         XCTAssertEqual(gen?.action, .retry)
 
-        XCTAssertNil(AIEngineProblem.from(error: LocalLLMEngineError.unavailable("not built"), ollamaInstalled: false))
+        XCTAssertNil(AIEngineProblem.from(error: LocalLLMEngineError.unavailable("not built")))
     }
 
-    func testProbeOnBuiltInEngineReportsOnlyAMissingModel() async {
+    func testProbeOnBuiltInEngineReportsOnlyAMissingModel() {
         func builtIn(present: Bool) -> AIEngineProbe {
-            AIEngineProbe(
-                isOllamaBackend: false, modelName: "m",
-                isReachable: { false }, hasModel: { _ in false }, isInstalled: { false },
-                isBuiltInBackend: true, builtInModelPresent: { present }
-            )
+            AIEngineProbe(isBuiltInBackend: true, builtInModelPresent: { present })
         }
-        let missing = await builtIn(present: false).problem()
-        let present = await builtIn(present: true).problem()
-        XCTAssertEqual(missing, .builtInModelMissing)
-        XCTAssertNil(present)
+        XCTAssertEqual(builtIn(present: false).problem(), .builtInModelMissing)
+        XCTAssertNil(builtIn(present: true).problem())
+    }
+
+    func testProbeIsQuietWhenTheBuiltInEngineIsNotInUse() {
+        let probe = AIEngineProbe(isBuiltInBackend: false, builtInModelPresent: { false })
+        XCTAssertNil(probe.problem())
     }
 
     // MARK: - Retry once

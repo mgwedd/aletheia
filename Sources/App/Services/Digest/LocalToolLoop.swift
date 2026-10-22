@@ -192,7 +192,7 @@ struct LocalToolCall: Equatable, Codable {
     var to: String?
 }
 
-/// A model that is not held to the grammar (Ollama) often writes a time as a
+/// A model that is not held to the grammar (a freeform model) often writes a time as a
 /// bare number, `"start": 600`, where the grammar demands a string. Every field
 /// is read as text when it is a string or a number, so such a plan still decodes.
 extension LocalToolCall {

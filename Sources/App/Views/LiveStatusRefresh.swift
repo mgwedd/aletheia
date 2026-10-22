@@ -10,7 +10,7 @@ import AppKit
 ///  - runs once when the view appears,
 ///  - runs again every time the app is brought back to the front — which is the
 ///    moment the therapist returns from granting a permission in System
-///    Settings or from launching Ollama, and
+///    Settings or from downloading the model, and
 ///  - runs on a slow background tick while the view is on screen, so a change
 ///    that happened in place still lands within a couple of seconds.
 ///
