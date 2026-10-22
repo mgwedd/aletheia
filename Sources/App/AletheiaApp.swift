@@ -109,7 +109,7 @@ struct AletheiaApp: App {
             settings: settings, appModel: appModel, recorder: recorder,
             transcription: transcription, integrations: integrations, exports: exports)
         _updateService = StateObject(wrappedValue: UpdateService(
-            checker: AppcastUpdateChecker(feedURL: settings.updateFeedURL),
+            checker: AppcastUpdateChecker(),
             currentVersion: UpdateService.bundleVersion()
         ))
         // Record each successful unlock in the on-device audit log (HIPAA

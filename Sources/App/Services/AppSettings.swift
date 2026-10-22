@@ -86,7 +86,6 @@ final class AppSettings: ObservableObject {
         static let systemPrompt = "systemPrompt"
         static let ollamaBaseURL = "ollamaBaseURL"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
-        static let updateFeedURL = "updateFeedURL"
         static let autoCheckForUpdates = "autoCheckForUpdates"
         static let spotlightIndexingEnabled = "spotlightIndexingEnabled"
         static let appLockEnabled = "appLockEnabled"
@@ -116,11 +115,6 @@ final class AppSettings: ObservableObject {
         static let keepDataOutOfSystemBackups = BackupExclusion.defaultsKey
         static let dismissedDamagedRecordIDs = "dismissedDamagedRecordIDs"
     }
-
-    /// Where the app looks for its update manifest. Defaults to the
-    /// `appcast.json` asset of the repo's latest GitHub release; until a
-    /// release publishes one, the check just finds nothing (no error shown).
-    static let defaultUpdateFeedURL = URL(string: "https://github.com/mgwedd/aletheia/releases/latest/download/appcast.json")!
 
     private let defaults = UserDefaults.standard
 
@@ -153,9 +147,6 @@ final class AppSettings: ObservableObject {
     }
     @Published var hasCompletedFirstRun: Bool {
         didSet { defaults.set(hasCompletedFirstRun, forKey: Keys.hasCompletedFirstRun) }
-    }
-    @Published var updateFeedURL: URL {
-        didSet { defaults.set(updateFeedURL.absoluteString, forKey: Keys.updateFeedURL) }
     }
     /// Whether to check for software updates automatically on launch and when the app
     /// becomes active. On by default. When off, updates are only checked when the
@@ -442,11 +433,6 @@ final class AppSettings: ObservableObject {
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil
-        if let raw = defaults.string(forKey: Keys.updateFeedURL), let url = URL(string: raw) {
-            updateFeedURL = url
-        } else {
-            updateFeedURL = AppSettings.defaultUpdateFeedURL
-        }
         autoCheckForUpdates = defaults.object(forKey: Keys.autoCheckForUpdates) as? Bool ?? true
         if let savedDismissed = defaults.stringArray(forKey: Keys.dismissedDamagedRecordIDs) {
             dismissedDamagedRecordIDs = Set(savedDismissed)
