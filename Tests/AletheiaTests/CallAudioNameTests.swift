@@ -74,4 +74,25 @@ final class CallAudioNameTests: XCTestCase {
         for sub in view.subviews { if let found = find(in: sub) { return found } }
         return nil
     }
+
+    func testExportsNameCallAudio() {
+        let md = MarkdownExporter.session(date: Date(), patientName: "Jane Doe", transcript: stored, summary: nil)
+        XCTAssertTrue(md.contains("[00:20] Jane: I said call audio: twice."), md)
+        XCTAssertFalse(md.contains("Call audio"))
+        let session = ArchiveSession(date: Date(), transcript: stored, notes: [], summary: "", comments: [])
+        let files = PatientArchive.files(patientName: "Jane Doe", background: "", sessions: [session], exportedOn: Date())
+        let transcript = files.first { $0.path.hasSuffix("Transcript.txt") }?.text ?? ""
+        XCTAssertTrue(transcript.contains("[00:12] Jane: Long."), transcript)
+        XCTAssertFalse(transcript.contains("Call audio"))
+    }
+
+    func testVoiceOverReadsTheName() {
+        let textView = TranscriptTextView.ClickReportingTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 200))
+        textView.string = stored
+        textView.callAudioName = "Jane"
+        let value = textView.accessibilityValue() ?? ""
+        XCTAssertTrue(value.contains("[00:12] Jane: Long."), value)
+        let line = (stored as NSString).lineRange(for: NSRange(location: (stored as NSString).range(of: "[00:20]").location, length: 0))
+        XCTAssertEqual(textView.accessibilityString(for: line)?.hasPrefix("[00:20] Jane:"), true)
+    }
 }

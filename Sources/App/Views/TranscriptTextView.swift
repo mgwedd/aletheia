@@ -165,15 +165,28 @@ struct TranscriptTextView: NSViewRepresentable {
         /// See `TranscriptTextView.callAudioName`.
         var callAudioName = ""
 
-        /// Copy and drag take the text without the hidden " (overlapping)"
-        /// labels, so they match what is on screen.
+        /// Copy and drag take the text as it is on screen: call audio named,
+        /// no hidden " (overlapping)" labels. The view is plain text, so there is no RTF.
         override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
             let ok = super.writeSelection(to: pboard, types: types)
-            if ok, let text = pboard.string(forType: .string) {
-                let named = TranscriptStyler.namingCallAudio(text, as: callAudioName)
-                pboard.setString(TranscriptStyler.removingOverlapLabels(named), forType: .string)
+            guard ok else { return ok }
+            if let text = pboard.string(forType: .string) {
+                pboard.setString(TranscriptStyler.forReader(text, callAudioName: callAudioName), forType: .string)
             }
             return ok
+        }
+
+        // VoiceOver reads the transcript as it is on screen.
+        override func accessibilityValue() -> String? {
+            super.accessibilityValue().map { TranscriptStyler.forReader($0, callAudioName: callAudioName) }
+        }
+
+        override func accessibilityString(for range: NSRange) -> String? {
+            super.accessibilityString(for: range).map { TranscriptStyler.forReader($0, callAudioName: callAudioName) }
+        }
+
+        override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
+            super.accessibilityAttributedString(for: range).map { TranscriptStyler.forReader($0, callAudioName: callAudioName) }
         }
 
         override func mouseDown(with event: NSEvent) {
