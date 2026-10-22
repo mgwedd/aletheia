@@ -55,7 +55,7 @@ final class AskNarrationTests: XCTestCase {
         // The model starts at 0:05; its line keeps counting from the question.
         var progress = AIRunProgress(readTitle: "Reading what was gathered", startedAt: asked.addingTimeInterval(5))
         progress.runStartedAt = asked
-        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: asked.addingTimeInterval(9), readTokensPerSecond: nil),
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: asked.addingTimeInterval(9)),
                        "Reading what was gathered… · 0:09")
     }
 
@@ -111,7 +111,7 @@ final class AskNarrationTests: XCTestCase {
         let t0 = Date(timeIntervalSince1970: 1_000)
         let background = AIRunProgress(readTitle: "Reading part 2 of 5", startedAt: t0)
         XCTAssertEqual(
-            AIProgressFormat.statusLine(DigestBuilder.statusProgress(background), now: t0.addingTimeInterval(12), readTokensPerSecond: nil),
+            AIProgressFormat.statusLine(DigestBuilder.statusProgress(background), now: t0.addingTimeInterval(12)),
             "\(DigestBuilder.activityTitle). Reading part 2 of 5… · 0:12")
         // A stage that already names it is not led twice.
         let named = AIRunProgress(readTitle: "\(DigestBuilder.activityTitle) · Reading part 1 of 2", startedAt: t0)
@@ -123,11 +123,11 @@ final class AskNarrationTests: XCTestCase {
     func testTheNoteLineIsLedByItsTitle() {
         let t0 = Date(timeIntervalSince1970: 1_000)
         var progress = AIRunProgress(readTitle: "Reading the session", writeTitle: "Writing the note", startedAt: t0)
-        XCTAssertEqual(NoteProgress.statusLine(title: "Generating SOAP note", progress, now: t0.addingTimeInterval(12), speed: nil),
+        XCTAssertEqual(NoteProgress.statusLine(title: "Generating SOAP note", progress, now: t0.addingTimeInterval(12)),
                        "Generating SOAP note. Reading the session… · 0:12")
         progress.firstTokenAt = t0.addingTimeInterval(20)
         progress.tokensWritten = 64
-        XCTAssertEqual(NoteProgress.statusLine(title: "Generating SOAP note", progress, now: t0.addingTimeInterval(30), speed: nil),
-                       "Writing the note… · 64 tokens · 0:30")
+        XCTAssertEqual(NoteProgress.statusLine(title: "Generating SOAP note", progress, now: t0.addingTimeInterval(30)),
+                       "Writing the note… · 0:30")
     }
 }

@@ -78,6 +78,6 @@ final class TranscriptOverlapLabelTests: XCTestCase {
     func testMarkdownExportDropsTheLabel() {
         let md = MarkdownExporter.session(date: Date(), patientName: "Jane Doe", transcript: stored, summary: nil)
         XCTAssertFalse(md.contains("overlapping"))
-        XCTAssertTrue(md.contains("[00:12] Call audio: But I think so."))
+        XCTAssertTrue(md.contains("[00:12] Jane: But I think so."))
     }
 }

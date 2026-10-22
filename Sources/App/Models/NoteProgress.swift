@@ -17,12 +17,10 @@ enum NoteProgress {
 
     /// The line over the bar: the shared status line, led by the note's title
     /// while the model reads ("Generating SOAP note. Reading the session… · 0:12").
-    static func statusLine(title: String, _ progress: AIRunProgress, now: Date, speed: ModelSpeed?) -> String {
+    static func statusLine(title: String, _ progress: AIRunProgress, now: Date) -> String {
         var led = progress
         led.lead = title
-        return AIProgressFormat.statusLine(
-            led, now: now, readTokensPerSecond: speed?.read,
-            writeTokensPerSecond: speed?.write, expectedOutputTokens: speed?.expectedOutput(for: .note))
+        return AIProgressFormat.statusLine(led, now: now)
     }
 
     /// Where the bar ends for each phase. The draft starts at 0 when no digest

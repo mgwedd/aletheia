@@ -13,23 +13,6 @@ enum AIProgressFormat {
         count < 1000 ? "~\(count) tokens" : "~\(Int((Double(count) / 1000).rounded()))K tokens"
     }
 
-    /// "412 tokens" (a count of one reads "1 token").
-    static func tokens(_ count: Int) -> String {
-        "\(count) token\(count == 1 ? "" : "s")"
-    }
-
-    /// Seconds of reading still to go, or nil when the speed or size is unknown.
-    static func readingRemaining(estimatedTokens: Int?, tokensPerSecond: Double?, elapsed: TimeInterval) -> TimeInterval? {
-        guard let estimatedTokens, let tokensPerSecond, tokensPerSecond > 0 else { return nil }
-        return max(0, Double(estimatedTokens) / tokensPerSecond - elapsed)
-    }
-
-    static func remaining(_ seconds: TimeInterval) -> String {
-        if seconds < 1 { return "taking longer than estimated" }
-        if seconds < 45 { return "less than a minute left" }
-        return "about \(max(1, Int((seconds / 60).rounded()))) min left"
-    }
-
     /// 0...0.95: it never claims to be finished before the first token.
     static func readingFraction(estimatedTokens: Int?, tokensPerSecond: Double?, elapsed: TimeInterval) -> Double? {
         guard let estimatedTokens, let tokensPerSecond, tokensPerSecond > 0, estimatedTokens > 0 else { return nil }
@@ -43,39 +26,16 @@ enum AIProgressFormat {
         "\(notice) · \(elapsed(now.timeIntervalSince(since)))"
     }
 
-    /// The one status line for a run at `now`: what is happening, a present-tense
-    /// verb and its object, then the concrete detail, then the time since the
-    /// run began. It replaces itself as the run moves on.
+    /// The one status line for a run at `now`: the stage, then the time since
+    /// the run began. It replaces itself as the run moves on.
     ///
-    /// Reading: "1 mention, in the Oct 13 session. Reading what was gathered… · ~3K tokens · 0:12"
-    /// (the lead, when retrieval set one), with the time left once this Mac's
-    /// reading speed is known. Writing: "Writing the answer… · 412 tokens · 0:41".
-    static func statusLine(
-        _ progress: AIRunProgress, now: Date, readTokensPerSecond: Double?,
-        writeTokensPerSecond: Double? = nil, expectedOutputTokens: Int? = nil
-    ) -> String {
-        let started = progress.startedAt ?? now
-        let runElapsed = elapsed(now.timeIntervalSince(progress.runStartedAt ?? started))
-        func join(_ parts: [String?]) -> String { parts.compactMap { $0 }.joined(separator: " · ") }
-
-        guard progress.firstTokenAt != nil else {
-            let left = readingRemaining(
-                estimatedTokens: progress.estimatedPromptTokens, tokensPerSecond: readTokensPerSecond,
-                elapsed: now.timeIntervalSince(started))
-            let activity = [progress.lead, progress.readTitle + "…"].compactMap { $0 }.joined(separator: ". ")
-            return join([activity, progress.estimatedPromptTokens.map(estimatedTokens), left.map(remaining), runElapsed])
-        }
-        // Hidden once the reply passes its typical length: nothing honest to say.
-        let writeLeft = expectedOutputTokens.flatMap { expected in
-            writeTokensPerSecond.flatMap { $0 > 0 && progress.tokensWritten < expected
-                ? Double(expected - progress.tokensWritten) / $0 : nil }
-        }
-        return join([
-            progress.writeTitle + "…",
-            progress.tokensWritten > 0 ? tokens(progress.tokensWritten) : nil,
-            writeLeft.map(remaining),
-            runElapsed,
-        ])
+    /// Reading: "1 mention, in the Oct 13 session. Reading what was gathered… · 0:12"
+    /// (the lead, when retrieval set one). Writing: "Writing the answer… · 0:41".
+    static func statusLine(_ progress: AIRunProgress, now: Date) -> String {
+        let elapsed = elapsed(now.timeIntervalSince(progress.runStartedAt ?? progress.startedAt ?? now))
+        guard progress.firstTokenAt == nil else { return "\(progress.writeTitle)… · \(elapsed)" }
+        let activity = [progress.lead, progress.readTitle + "…"].compactMap { $0 }.joined(separator: ". ")
+        return "\(activity) · \(elapsed)"
     }
 }
 
@@ -85,15 +45,10 @@ enum AIProgressFormat {
 /// overall position adds its own bar.
 struct AIProgressView: View {
     let progress: AIRunProgress
-    /// Measured speeds for this model, when known.
-    var speed: ModelSpeed?
-    var task: AITask = .chat
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            AIStatusLineView(text: AIProgressFormat.statusLine(
-                progress, now: context.date, readTokensPerSecond: speed?.read,
-                writeTokensPerSecond: speed?.write, expectedOutputTokens: speed?.expectedOutput(for: task)))
+            AIStatusLineView(text: AIProgressFormat.statusLine(progress, now: context.date))
         }
     }
 }

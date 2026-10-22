@@ -73,7 +73,7 @@ private struct NoteProgressRow: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             VStack(alignment: .leading, spacing: 6) {
-                AIStatusLineView(text: NoteProgress.statusLine(title: title, progress, now: context.date, speed: speed))
+                AIStatusLineView(text: NoteProgress.statusLine(title: title, progress, now: context.date))
                 ThemeProgressBar(value: highWater.clamp(NoteProgress.fraction(progress, now: context.date, speed: speed)))
                     .frame(maxWidth: 240)
             }
@@ -238,6 +238,8 @@ struct SessionDetailView: View {
     @StateObject private var chatRunner = ChatStreamRunner()
     @StateObject private var noteRunner = ChatStreamRunner()
     @State private var errorMessage: String?
+    /// How the last export ended, shown until dismissed.
+    @State private var exportResult: SaveOutcome?
     /// Set when note generation or a chat answer failed because the local AI
     /// engine is down; `engineRetries` re-runs whatever failed after the fix.
     @State private var engineIncident: AIEngineIncident?
@@ -375,6 +377,7 @@ struct SessionDetailView: View {
             Text(confirmationMessage ?? "")
         }
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
+        .exportResultAlert($exportResult)
     }
 
     private var header: some View {
@@ -668,9 +671,11 @@ struct SessionDetailView: View {
         guard let store = appModel.store else { return }
         let document = ExportDocument(markdown: store.exportSessionMarkdown(patient: patient, session: session))
         let base = FileSaver.fileName(patient.name, String(session.folderName.prefix(10)))
-        if ExportRenderer.save(document, as: format, baseName: base, onFailure: { appModel.errorMessage = $0 }) {
+        let outcome = ExportRenderer.save(document, as: format, baseName: base)
+        if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
         }
+        exportResult = outcome.shown
     }
 
     /// Saves the note on screen in `format`, after the usual save panel.
@@ -683,9 +688,11 @@ struct SessionDetailView: View {
             markdown: summaryText
         )
         let base = FileSaver.fileName(patient.name, dateStr, noteFormat)
-        if ExportRenderer.save(document, as: format, baseName: base, onFailure: { appModel.errorMessage = $0 }) {
+        let outcome = ExportRenderer.save(document, as: format, baseName: base)
+        if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
         }
+        exportResult = outcome.shown
     }
 
     private var hasAnyRecording: Bool {
@@ -775,7 +782,8 @@ struct SessionDetailView: View {
                         focusToken: focusToken,
                         composingRange: composingRange,
                         onComposingRectChange: { composerAnchor = $0 },
-                        onSelectionRectChange: { transcriptSelectionRect = $0 }
+                        onSelectionRectChange: { transcriptSelectionRect = $0 },
+                        callAudioName: Prompts.clientFirstName(patient.name)
                     )
                     // The comment composer sits on the transcript, just under the
                     // passage being commented on; the comment button floats at
@@ -1430,7 +1438,6 @@ struct SessionDetailView: View {
             notices: sessionChatNotices,
             onCompact: { compactChat($0) },
             progress: chatRunner.progress,
-            speed: integrations.modelSpeed,
             effort: $settings.sessionChatEffort,
             isSessionRecording: recorder.isRecording
         )

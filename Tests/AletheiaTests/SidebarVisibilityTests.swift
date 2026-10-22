@@ -23,6 +23,7 @@ final class SidebarVisibilityTests: XCTestCase {
         @ObservedObject var state: Visibility
         @StateObject private var search = GlobalSearchModel()
         @FocusState private var focused: Bool
+        @FocusState private var homeFocused: Bool
         @State private var selected: Patient?
 
         var body: some View {
@@ -32,7 +33,7 @@ final class SidebarVisibilityTests: XCTestCase {
                     onOpenSearchResult: { _ in }, onOpenSettings: {}, onEditProfile: { _ in })
             } detail: {
                 SearchHomeView(
-                    model: search, onOpen: { _ in },
+                    model: search, onOpen: { _ in }, isFocused: $homeFocused,
                     sidebarHidden: state.visibility == .detailOnly, onShowSidebar: { state.visibility = .all })
             }
             .environmentObject(appModel)

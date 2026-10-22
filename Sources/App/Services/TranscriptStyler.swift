@@ -69,6 +69,45 @@ enum TranscriptStyler {
         return result
     }
 
+    /// The call track's label ranges, which the view shows as the patient's
+    /// first name. The stored text keeps "Call audio".
+    static func callAudioLabels(in text: String) -> [NSRange] {
+        spans(in: text).compactMap { span in
+            if case let .speaker(label) = span.role, tone(for: label) == .callAudio { return span.range }
+            return nil
+        }
+    }
+
+    /// `text` with each call-audio label replaced by `name`, for what the
+    /// reader takes away (copy). Unchanged when `name` is empty.
+    static func namingCallAudio(_ text: String, as name: String) -> String {
+        guard !name.isEmpty else { return text }
+        let ns = NSMutableString(string: text)
+        for range in callAudioLabels(in: text).reversed() {
+            ns.replaceCharacters(in: range, with: name)
+        }
+        return ns as String
+    }
+
+    /// What the reader sees of a stored transcript: call audio named after the
+    /// patient's first name and no " (overlapping)" suffixes. For exports,
+    /// copies, snippets and VoiceOver.
+    static func forReader(_ text: String, callAudioName: String) -> String {
+        removingOverlapLabels(namingCallAudio(text, as: callAudioName))
+    }
+
+    /// `forReader` for styled text (a rich-text copy): the same edits, each
+    /// keeping the attributes of the text it replaces.
+    static func forReader(_ text: NSAttributedString, callAudioName: String) -> NSAttributedString {
+        let out = NSMutableAttributedString(attributedString: text)
+        var edits: [(NSRange, String)] = spans(in: text.string).filter { $0.role == .overlapTag }.map { ($0.range, "") }
+        if !callAudioName.isEmpty { edits += callAudioLabels(in: text.string).map { ($0, callAudioName) } }
+        for (range, replacement) in edits.sorted(by: { $0.0.location > $1.0.location }) {
+            out.replaceCharacters(in: range, with: replacement)
+        }
+        return out
+    }
+
     /// `text` with every " (overlapping)" label suffix removed, for anything
     /// the reader sees or takes away (copy, exports) that needs no offsets
     /// into the stored text. The stored transcript itself keeps the suffix:

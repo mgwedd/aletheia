@@ -9,9 +9,10 @@ import SwiftUI
 struct SearchHomeView: View {
     @ObservedObject var model: GlobalSearchModel
     let onOpen: (SearchHit) -> Void
+    /// Owned by the root, so ⌘F lands here while this screen is showing.
+    var isFocused: FocusState<Bool>.Binding
     var sidebarHidden = false
     var onShowSidebar: () -> Void = {}
-    @FocusState private var focused: Bool
 
     static let hiddenHint = "or show the sidebar to choose a patient"
 
@@ -20,7 +21,7 @@ struct SearchHomeView: View {
             if !model.hasQuery { Spacer(minLength: 0) }
             // One field in every state, so typing the first letter keeps the cursor in it.
             GlobalSearchField(
-                model: model, isFocused: $focused, onOpen: onOpen,
+                model: model, isFocused: isFocused, onOpen: onOpen,
                 placeholder: GlobalSearchField.homePrompt, large: true
             )
             .frame(maxWidth: 560)
@@ -44,7 +45,7 @@ struct SearchHomeView: View {
         .onAppear {
             // Unless the cursor is already in another text field.
             if let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.isFieldEditor { return }
-            DispatchQueue.main.async { focused = true }
+            DispatchQueue.main.async { isFocused.wrappedValue = true }
         }
     }
 }

@@ -49,6 +49,7 @@ struct ExportStatusToast: View {
             Text(Self.summary(outcome))
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
+            ExportFileLink(url: url) { center.dismiss() }
             HStack {
                 Spacer(minLength: 0)
                 Button("Done") { center.dismiss() }

@@ -31,10 +31,10 @@ enum HelpTips {
         text: "Your own notes for this session — jot things down during or after the session. Kept separate from the transcript, and included when you ask about this session."
     )
 
-    static let patientChatScope = HelpTip(
-        id: "chat.patient.scope",
-        heading: "What answers come from",
-        text: PatientChatView.scopeNote
+    static let compact = HelpTip(
+        id: "chat.compact",
+        heading: "Compact this chat",
+        text: "Replaces the conversation so far with a short summary of it, so you can keep asking. The AI can only read so much at once: a long chat gets slower and starts to lose its earliest details. Compacting keeps the key points and frees room. To keep one topic in detail, type /compact followed by it."
     )
 
     // Settings. Safety and privacy lines (app lock, encryption, backups,

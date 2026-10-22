@@ -57,9 +57,6 @@ struct ChatPaneView: View {
     /// `InferenceQueue`). Replaces the "Thinking…" spinner with this calm
     /// status and a Cancel button (which calls `onStop`).
     var queuedStatus: String? = nil
-    /// What the answers are drawn from, as a tip on the question field. The
-    /// default describes the per-session chat.
-    var scopeTip: HelpTip?
     /// Caveats about the last answer, shown above the composer in muted type.
     var notices: [String] = []
     /// What is under way before the model starts (e.g. searching), shown as
@@ -72,10 +69,8 @@ struct ChatPaneView: View {
     /// Compacts the conversation, with an optional focus: the Compact button
     /// and the `/compact [focus]` command. Nil hides both.
     var onCompact: ((String) -> Void)? = nil
-    /// Live state of the running answer, and the model's measured read speed
-    /// (for the time estimate); drives the progress line under the conversation.
+    /// Live state of the running answer; drives the progress line under the conversation.
     var progress = AIRunProgress()
-    var speed: ModelSpeed? = nil
     /// Optional Fast / Normal / Focus selector shown above the field (#286 Step 5b).
     var effort: Binding<AnswerEffort>? = nil
     /// Which chat the selector applies to, for its description.
@@ -92,7 +87,6 @@ struct ChatPaneView: View {
     @State private var voiceResetToken = 0
     /// Whether the mic is drawn, reported by the mic itself.
     @State private var micShown = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
@@ -108,7 +102,7 @@ struct ChatPaneView: View {
                         .buttonStyle(.themed)
                         .controlSize(.small)
                         .disabled(isSending)
-                        .help("Summarize the conversation so far to make room for more. Type /compact followed by a topic to keep that topic in detail.")
+                        .hoverTip(HelpTips.compact, arrowEdge: .top)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
@@ -155,6 +149,7 @@ struct ChatPaneView: View {
                     Color.clear.frame(height: 0).id(Self.bottomID)
                 }
                 .padding(EdgeInsets(top: 20, leading: 20, bottom: 0, trailing: 20))
+                .background(ChatBottomFollower(followToken: messages.count))
             }
             // A thread opens at its latest message, not its first. The anchor
             // covers the first layout and later growth; the explicit jumps
@@ -163,15 +158,6 @@ struct ChatPaneView: View {
             .onAppear { jumpToLatest(proxy) }
             .onChange(of: messages.first?.id) { _, _ in
                 jumpToLatest(proxy)
-            }
-            .onChange(of: messages.count) { _, _ in
-                scrollToBottom(proxy)
-            }
-            .onChange(of: messages.last?.text) { _, _ in
-                scrollToBottom(proxy)
-            }
-            .onChange(of: isSending) { _, _ in
-                scrollToBottom(proxy)
             }
         }
     }
@@ -232,7 +218,7 @@ struct ChatPaneView: View {
                     ThemeProgressBar(value: steps.fraction)
                         .frame(maxWidth: 240)
                 }
-                AIProgressView(progress: progress, speed: speed)
+                AIProgressView(progress: progress)
             }
         }
     }
@@ -302,7 +288,6 @@ struct ChatPaneView: View {
             }
             .padding(.trailing, 6)
         }
-        .hoverTip(scopeTip, arrowEdge: .top)
     }
 
     /// Stop or the mic is drawn over the box's trailing edge.
@@ -342,12 +327,6 @@ struct ChatPaneView: View {
         guard !messages.isEmpty else { return }
         proxy.scrollTo(Self.bottomID, anchor: .bottom)
         DispatchQueue.main.async { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
-    }
-
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        withAnimation(reduceMotion ? nil : Animation.easeOut(duration: 0.15)) {
-            proxy.scrollTo(Self.bottomID, anchor: .bottom)
-        }
     }
 
     private func send() {
@@ -529,5 +508,107 @@ private struct SuggestionPill: View {
             .contentShape(Capsule())
             .onHover { isHovered = $0 }
             .animation(.easeOut(duration: 0.12), value: highlighted)
+    }
+}
+
+/// Keeps the conversation on its latest line while an answer streams in, the
+/// way chat apps do: while the reader is at the bottom, every growth of the
+/// content (a new chunk, a re-measured row, the progress line going away)
+/// keeps them there. Any scroll up by the reader stops it at once, and nothing
+/// moves while they are mid-gesture: the reader wins. Scrolling back to the
+/// bottom, or sending a message (`followToken` changes), resumes it. Done on the
+/// AppKit scroll view directly, unanimated, so no SwiftUI scroll fights it.
+private struct ChatBottomFollower: NSViewRepresentable {
+    let followToken: Int
+
+    func makeNSView(context: Context) -> ChatBottomFollowerView { ChatBottomFollowerView() }
+
+    func updateNSView(_ view: ChatBottomFollowerView, context: Context) {
+        if view.followToken != followToken {
+            view.followToken = followToken
+            view.follow()
+        }
+    }
+}
+
+final class ChatBottomFollowerView: NSView {
+    var followToken = 0
+    /// Within this of the bottom counts as at the bottom.
+    static let slack: CGFloat = 40
+    private(set) var isFollowing = true
+    private weak var scrollView: NSScrollView?
+    private var observers: [NSObjectProtocol] = []
+    /// Set while this view moves the scroll itself, so it isn't read as the reader scrolling.
+    private var pinning = false
+    /// A trackpad or scroll-bar drag in progress.
+    private var liveScrolling = false
+    private var lastDistance: CGFloat = 0
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        guard window != nil, let scroll = enclosingScrollView, let document = scroll.documentView else { return }
+        scrollView = scroll
+        scroll.contentView.postsBoundsChangedNotifications = true
+        document.postsFrameChangedNotifications = true
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(
+            forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.readerScrolled() } })
+        observers.append(center.addObserver(
+            forName: NSView.frameDidChangeNotification, object: document, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.contentChanged() } })
+        observers.append(center.addObserver(
+            forName: NSScrollView.willStartLiveScrollNotification, object: scroll, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.liveScrolling = true } })
+        observers.append(center.addObserver(
+            forName: NSScrollView.didEndLiveScrollNotification, object: scroll, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.liveScrolling = false
+                self?.readerScrolled()
+            }
+        })
+        follow()
+    }
+
+    deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+
+    func follow() {
+        isFollowing = true
+        pin()
+    }
+
+    private var distanceFromBottom: CGFloat {
+        guard let scroll = scrollView, let document = scroll.documentView else { return 0 }
+        let visible = scroll.contentView.documentVisibleRect
+        return document.isFlipped ? document.frame.height - visible.maxY : visible.minY
+    }
+
+    private func readerScrolled() {
+        guard !pinning else { return }
+        let distance = distanceFromBottom
+        // Moving up at all means the reader wants the history; otherwise follow
+        // again once they are back at the bottom.
+        isFollowing = distance <= lastDistance + 0.5 && distance <= Self.slack
+        lastDistance = distance
+    }
+
+    private func contentChanged() {
+        if isFollowing && !liveScrolling { pin() } else { lastDistance = distanceFromBottom }
+    }
+
+    private func pin() {
+        guard let scroll = scrollView, let document = scroll.documentView else { return }
+        let clip = scroll.contentView
+        let maxY = max(0, document.frame.height - clip.bounds.height)
+        let y = document.isFlipped ? maxY : 0
+        guard abs(clip.bounds.origin.y - y) > 0.5 else { return }
+        pinning = true
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+        scroll.reflectScrolledClipView(clip)
+        pinning = false
+        lastDistance = distanceFromBottom
     }
 }

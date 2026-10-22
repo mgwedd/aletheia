@@ -19,6 +19,8 @@ struct RootView: View {
     /// The search field at the foot of the sidebar and its results (see `GlobalSearchField`).
     @StateObject private var search = GlobalSearchModel()
     @FocusState private var searchFocused: Bool
+    /// The search home's large field, which ⌘F focuses while no patient is open.
+    @FocusState private var homeSearchFocused: Bool
     /// The patient whose profile is being edited; the sheet is shared by the
     /// detail view's Edit button and the sidebar's context menu.
     @State private var editingProfile: Patient?
@@ -49,7 +51,8 @@ struct RootView: View {
                 // field) pushed the system sidebar toggle into the » overflow menu,
                 // leaving a collapsed sidebar with no way back.
         }
-        .modifier(GlobalSearchRunning(search: search, appModel: appModel, isFocused: $searchFocused))
+        .modifier(GlobalSearchRunning(
+            search: search, appModel: appModel, isFocused: hasOpenPatient ? $searchFocused : $homeSearchFocused))
         // A records export keeps running while the therapist works; its progress and
         // the finished file are shown here whichever patient is open.
         .overlay(alignment: .bottomTrailing) {
@@ -145,7 +148,7 @@ struct RootView: View {
                 .background(Theme.window.color)
         } else {
             SearchHomeView(
-                model: search, onOpen: { openSearchResult($0) },
+                model: search, onOpen: { openSearchResult($0) }, isFocused: $homeSearchFocused,
                 sidebarHidden: columnVisibility == .detailOnly, onShowSidebar: { columnVisibility = .all }
             )
         }

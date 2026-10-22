@@ -19,7 +19,7 @@ enum MarkdownExporter {
         ]
 
         let summaryText = summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let transcriptText = transcript.map(TranscriptStyler.removingOverlapLabels)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let transcriptText = transcript.map { TranscriptStyler.forReader($0, callAudioName: Prompts.clientFirstName(patientName)) }?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         if !summaryText.isEmpty {
             lines += ["## Summary", "", summaryText, ""]
