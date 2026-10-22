@@ -134,16 +134,23 @@ final class EncryptionManager: ObservableObject {
     // MARK: - Transitions
 
     /// Turns encryption on for this folder: mints a new keystore around a fresh
-    /// DEK sealed under `passphrase`, holds the DEK unlocked, and seals the
-    /// folder's existing plaintext PHI. Migration is best-effort — a keyed
-    /// protector reads plaintext and sealed files alike, so a partially
-    /// converted folder still works and the pass can be re-run — so the result
-    /// is returned for the UI to surface rather than failing the enable.
+    /// DEK sealed under `passphrase` (and optionally an emergency `recoveryKey`),
+    /// holds the DEK unlocked, and seals the folder's existing plaintext PHI.
+    /// Migration is best-effort — a keyed protector reads plaintext and sealed
+    /// files alike, so a partially converted folder still works and the pass can
+    /// be re-run — so the result is returned for the UI to surface rather than
+    /// failing the enable.
     @discardableResult
-    func enable(passphrase: String, iterations: Int = PassphraseKDF.defaultIterations) throws -> DataMigrator.Result {
+    func enable(
+        passphrase: String,
+        recoveryKey: String? = nil,
+        iterations: Int = PassphraseKDF.defaultIterations
+    ) throws -> DataMigrator.Result {
         guard let root = dataRoot else { throw ManagerError.noDataFolder }
         guard !Keystore.exists(at: root) else { throw ManagerError.alreadyEnabled }
-        let (keystore, dek) = try Keystore.create(passphrase: passphrase, iterations: iterations)
+        let (keystore, dek) = try Keystore.create(
+            passphrase: passphrase, recoveryKey: recoveryKey, iterations: iterations
+        )
         try keystore.write(to: root)
         self.dek = dek
         state = .unlocked
@@ -179,6 +186,45 @@ final class EncryptionManager: ObservableObject {
         state = .unlocked
         onProtectionChanged?()
         SessionSearch.openIndex()   // after the stores are rebuilt, so the sweep it starts reads with the new key
+    }
+
+    /// Unlocks an already-enabled folder using the 24-word emergency recovery key.
+    func unlock(recoveryKey: String) throws {
+        guard let root = dataRoot, let keystore = Keystore.load(from: root) else {
+            throw ManagerError.notEnabled
+        }
+        dek = try keystore.unlock(recoveryKey: recoveryKey)
+        state = .unlocked
+        onProtectionChanged?()
+        SessionSearch.openIndex()
+    }
+
+    /// Whether the current folder's keystore contains an emergency recovery key slot.
+    var hasRecoveryKey: Bool {
+        guard let root = dataRoot, let keystore = Keystore.load(from: root) else { return false }
+        return keystore.hasRecoveryKey
+    }
+
+    /// Replaces the existing recovery key slot with a new 24-word emergency recovery key.
+    /// If no key is provided, a fresh random one is generated.
+    /// Requires the folder to be unlocked.
+    @discardableResult
+    func replaceRecoveryKey(
+        _ newKey: String? = nil,
+        iterations: Int = PassphraseKDF.defaultIterations
+    ) throws -> String {
+        guard let root = dataRoot, var keystore = Keystore.load(from: root) else {
+            throw ManagerError.notEnabled
+        }
+        guard let dek else { throw FileProtector.ProtectorError.locked }
+        let key = newKey ?? RecoveryKey.generate()
+        let oldSlots = keystore.wrappings.filter { $0.kind == .recoveryKey }
+        keystore = try keystore.addingRecoveryKeyWrapping(dek: dek, recoveryKey: key, iterations: iterations)
+        for old in oldSlots {
+            keystore = try keystore.removingWrapping(id: old.id)
+        }
+        try keystore.write(to: root)
+        return key
     }
 
     /// Drops the in-memory DEK; the folder stays encrypted and re-locks. Called

@@ -96,6 +96,35 @@ final class EncryptionManagerTests: XCTestCase {
         XCTAssertEqual(relaunched.state, .unlocked)
     }
 
+    func testEnableWithRecoveryKeyUnlocksWithBoth() throws {
+        let m = manager(root: tempRoot)
+        let key = RecoveryKey.generate()
+        try m.enable(passphrase: "my-passphrase", recoveryKey: key, iterations: fastIterations)
+        XCTAssertTrue(m.hasRecoveryKey)
+
+        m.lock()
+        try m.unlock(recoveryKey: key)
+        XCTAssertEqual(m.state, .unlocked)
+
+        m.lock()
+        try m.unlock(passphrase: "my-passphrase")
+        XCTAssertEqual(m.state, .unlocked)
+    }
+
+    func testReplaceRecoveryKeyUpdatesSlot() throws {
+        let m = manager(root: tempRoot)
+        let initialKey = RecoveryKey.generate()
+        try m.enable(passphrase: "passphrase", recoveryKey: initialKey, iterations: fastIterations)
+
+        let replacementKey = try m.replaceRecoveryKey(iterations: fastIterations)
+        XCTAssertNotEqual(replacementKey, initialKey)
+
+        m.lock()
+        XCTAssertThrowsError(try m.unlock(recoveryKey: initialKey))
+        try m.unlock(recoveryKey: replacementKey)
+        XCTAssertEqual(m.state, .unlocked)
+    }
+
     /// The non-negotiable constraint behind gating `AtRestEncryptionFeatureModule`
     /// to `.dev`: a folder encrypted by an earlier (preview/dev) build must still
     /// unlock and read on an MVP build. `EncryptionManager` takes no

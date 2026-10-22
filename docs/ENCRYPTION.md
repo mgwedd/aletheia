@@ -25,26 +25,28 @@ them ciphertext wherever they land.
 ## Key hierarchy
 
 ```
-  recovery passphrase
-        │  PBKDF2-HMAC-SHA256 (600k iters, per-keystore random salt)
-        ▼
-   KEK (key-encryption key, 256-bit, never written to disk)
-        │  AES-256-GCM unwrap
-        ▼
-   DEK (data-encryption key, 256-bit, random, one per folder)
-        │  AES-256-GCM seal, fresh 96-bit nonce per file
-        ▼
-   every PHI file: transcript / summary / chat / patient.json / audio / DB
+  passphrase                24-word recovery key
+      │ PBKDF2-HMAC-SHA256         │ PBKDF2-HMAC-SHA256
+      ▼                            ▼
+  KEK (passphrase slot)        KEK (recovery key slot)
+      │ AES-256-GCM unwrap         │ AES-256-GCM unwrap
+      └──────────────┬─────────────┘
+                     ▼
+  DEK (data-encryption key, 256-bit, random, one per folder)
+         │  AES-256-GCM seal, fresh 96-bit nonce per file
+         ▼
+  every PHI file: transcript / summary / chat / patient.json / audio / DB
 ```
 
 - One random **DEK** encrypts every file. The DEK is generated once per folder
   and **never stored in the clear** — only wrapped.
 - The DEK is wrapped in the **keystore** (`<dataRoot>/.aletheia-keystore.json`),
-  which can hold **several wrappings of the same DEK** (LUKS-keyslot style). v1
-  ships the recovery-passphrase wrapping; a Keychain wrapping (unlock without
-  typing the passphrase every launch, protected by the macOS login) drops into
-  the same array later without re-encrypting a single file.
-- Losing the keystore **and** every passphrase means the data is
+  which holds **several wrappings of the same DEK** (LUKS-keyslot style):
+  - `.passphrase`: the user's primary passphrase.
+  - `.recoveryKey`: a 24-word BIP-39 emergency recovery key (≥256 bits entropy)
+    shown once during setup to be printed or saved offline, and replaceable in Settings.
+  - Device Keychain: optional transparent auto-unlock on the same Mac.
+- Losing the keystore **or** losing both the passphrase and the recovery key means the data is
   unrecoverable. That is the point of encryption; the UI states it plainly
   before enabling.
 
