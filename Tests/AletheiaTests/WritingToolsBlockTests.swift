@@ -60,7 +60,7 @@ final class WritingToolsBlockTests: XCTestCase {
 
     /// Files that hold no patient data and may use the raw APIs.
     private let notPatientData: [String: String] = [
-        "Sources/App/Views/SettingsView.swift": "Ollama model tag, risk-phrase list and help text: app configuration, no patient data",
+        "Sources/App/Views/SettingsView.swift": "Risk-phrase list and help text: app configuration, no patient data",
         "Sources/App/Views/EncryptionSettingsView.swift": "Passphrase secure fields; Writing Tools never act on secure input",
         "Sources/App/Views/DoctorView.swift": "Diagnostics text, no patient data",
         "Sources/App/Views/FirstRunView.swift": "Onboarding copy",

@@ -13,13 +13,23 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/exPHAT/SwiftWhisper.git", from: "1.2.0")
+        .package(path: "Packages/WhisperCpp"),
+        .package(path: "Packages/LlamaCpp")
     ],
     targets: [
         .target(
+            name: "WhisperEngine",
+            dependencies: [
+                .product(name: "WhisperCpp", package: "WhisperCpp")
+            ],
+            path: "Sources/WhisperEngine",
+            resources: [.process("ggml-silero-v6.2.0.bin")]
+        ),
+        .target(
             name: "Aletheia",
             dependencies: [
-                .product(name: "SwiftWhisper", package: "SwiftWhisper")
+                "WhisperEngine",
+                .product(name: "LlamaCpp", package: "LlamaCpp")
             ],
             path: "Sources/App",
             exclude: [
@@ -36,7 +46,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AletheiaTests",
-            dependencies: ["Aletheia"],
+            dependencies: ["Aletheia", "WhisperEngine"],
             path: "Tests/AletheiaTests",
             swiftSettings: [
                 .define("DEBUG"),

@@ -141,6 +141,10 @@ enum ThemeTextAreaMetrics {
 /// An `NSTextView` that draws its placeholder where the text goes, sends Return
 /// to `onSubmit`, and reports focus.
 final class ThemeTextAreaTextView: PatientTextView {
+    override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
+        PHIPasteboard.writeSelection(to: pboard) { super.writeSelection(to: $0, types: types) }
+    }
+
     var placeholder = "" { didSet { if placeholder != oldValue { needsDisplay = true } } }
     var face: ThemeTextArea.Face = .body
     var onSubmit: (() -> Void)?

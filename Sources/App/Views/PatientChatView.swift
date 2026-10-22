@@ -420,7 +420,7 @@ struct PatientChatView: View {
             },
             onError: { error in
                 isSending = false
-                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                if let incident = AIEngineIncident.from(error: error) {
                     // The question stays in the thread (and nothing is lost if the
                     // alert is cancelled); a retry takes the unanswered turn out
                     // first so the question is asked once.

@@ -15,7 +15,6 @@ struct ToolHealthCheck: Identifiable, Equatable {
         case microphone
         case screenRecording
         case whisperModel
-        case ollama
         case builtInModel
         case appleIntelligence
         case calendar
@@ -30,18 +29,11 @@ struct ToolHealthCheck: Identifiable, Equatable {
     let title: String
     let status: Status
     let detail: String
-    /// Set only for `.kind == .ollama`: distinguishes "never installed" from
-    /// "installed but not running" so `Setup.action(for:)` can offer the
-    /// download page or a one-click launch, respectively. `nil` for every
-    /// other kind, and for an `.ollama` check built without this detail.
-    var ollamaState: OllamaEngineState?
-
-    init(kind: Kind, title: String, status: Status, detail: String, ollamaState: OllamaEngineState? = nil) {
+    init(kind: Kind, title: String, status: Status, detail: String) {
         self.kind = kind
         self.title = title
         self.status = status
         self.detail = detail
-        self.ollamaState = ollamaState
     }
 }
 
@@ -221,7 +213,7 @@ enum ToolHealth {
     /// Reports on whichever backend will actually run (see
     /// `Integrations.effectiveAssistantBackend`), so the guidance matches what
     /// the user needs to do — nothing at all on Apple Intelligence, or the
-    /// Ollama install/model steps otherwise.
+    /// built-in model download otherwise.
     static func assistantCheck(settings: AppSettings, backend: AssistantBackend, assistant: Assistant) async -> ToolHealthCheck {
         switch backend {
         case .appleIntelligence:
@@ -233,8 +225,8 @@ enum ToolHealth {
             return ToolHealthCheck(kind: .appleIntelligence, title: "AI summaries & chat", status: .failed, detail: "Turn on Apple Intelligence in System Settings › Apple Intelligence & Siri, then reload this screen.")
         case .localLlama:
             return builtInModelCheck(settings: settings)
-        case .ollama, .automatic:
-            return await ollamaCheck(settings: settings, assistant: assistant)
+        case .automatic:
+            return builtInModelCheck(settings: settings)
         }
     }
 
@@ -252,35 +244,5 @@ enum ToolHealth {
             return ToolHealthCheck(kind: .builtInModel, title: "AI summaries & chat", status: .ok, detail: "\(modelName) is ready, built into Aletheia.")
         }
         return ToolHealthCheck(kind: .builtInModel, title: "AI summaries & chat", status: .failed, detail: "Download the AI model (\(modelName), about \(sizeMB) MB). It runs inside Aletheia on this Mac; nothing else to install.")
-    }
-
-    static func ollamaCheck(settings: AppSettings, assistant: Assistant) async -> ToolHealthCheck {
-        let reachable = await assistant.isReachable()
-        var hasModel = false
-        if reachable {
-            hasModel = await assistant.hasModel(settings.ollamaModelName)
-        }
-        // Only bother probing for the installed app when we actually need to
-        // decide between "install" and "launch" — i.e. when it isn't reachable.
-        let installed = reachable ? true : OllamaAppLocator.isInstalled()
-        return classifyOllama(reachable: reachable, hasModel: hasModel, modelName: settings.ollamaModelName, installed: installed)
-    }
-
-    /// Pure mapping from Ollama reachability + model presence to a check row.
-    /// `installed` only matters when `reachable` is false — it decides whether
-    /// the checklist should offer to download Ollama or to launch it (see
-    /// `OllamaEngineState` and `Setup.action(for:)`).
-    static func classifyOllama(reachable: Bool, hasModel: Bool, modelName: String, installed: Bool = false) -> ToolHealthCheck {
-        guard reachable else {
-            let state = OllamaEngineState.classify(installed: installed, isLaunching: false, reachable: false, hasModel: nil)
-            let detail = installed
-                ? "Ollama is installed but isn't running. Click Launch to start it — this turns green on its own."
-                : "Can't reach Ollama, the free local AI engine Aletheia runs on. Install it (once) and keep it running, then this turns green on its own."
-            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .failed, detail: detail, ollamaState: state)
-        }
-        if hasModel {
-            return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .ok, detail: "\(modelName) is ready.", ollamaState: .ready)
-        }
-        return ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .warning, detail: "Ollama is running, but the \(modelName) model isn't downloaded yet. Use “Download” here — it downloads inside Aletheia.", ollamaState: .modelMissing)
     }
 }

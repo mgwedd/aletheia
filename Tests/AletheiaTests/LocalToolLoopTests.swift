@@ -230,7 +230,7 @@ final class LocalToolLoopTests: XCTestCase {
     }
 
     func testParseCallsAcceptsPlainNumbersWhereTheGrammarWantsStrings() {
-        // Ollama does not apply the grammar, so a model may write seconds as a number.
+        // A model not held to the grammar, so a model may write seconds as a number.
         let numeric = LocalToolLoop.parseCalls(
             #"{"calls":[{"tool":"read_section","session":"S1","start":600,"end":900}]}"#
         )

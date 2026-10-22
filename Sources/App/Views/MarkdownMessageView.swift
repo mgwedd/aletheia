@@ -293,8 +293,7 @@ private struct CodeCard: View {
 
     private func copy() {
         #if canImport(AppKit)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(code, forType: .string)
+        PHIPasteboard.writeString(code)
         #endif
         copied = true
         Task {

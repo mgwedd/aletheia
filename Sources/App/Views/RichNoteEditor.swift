@@ -205,6 +205,11 @@ private struct RichNoteTextView: NSViewRepresentable {
 /// this field is the one being typed in.
 final class NoteTextView: PatientTextView {
     weak var controller: RichNoteEditorController?
+
+    override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
+        PHIPasteboard.writeSelection(to: pboard) { super.writeSelection(to: $0, types: types) }
+    }
+
     override func paste(_ sender: Any?) {
         pasteAsPlainText(sender)
     }

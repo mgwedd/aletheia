@@ -29,8 +29,8 @@ Concise, non-obvious rules for this repo. (Obvious stuff omitted on purpose.)
 
 ## Privacy / architecture invariants (non-negotiable)
 - **PHI never leaves the Mac.** No analytics/telemetry/servers. Only outbound
-  calls: update appcast check, opt-in model downloads, local Ollama at
-  `127.0.0.1` — none carry PHI.
+  calls: update appcast check and opt-in model downloads — neither carries PHI.
+  The built-in llama.cpp engine is the only AI engine; there is no AI server.
 - **Apple Intelligence is intentionally disabled** via
   `Integrations.appleIntelligenceBlocked = true` (kept provably on-device). Don't
   re-enable without being asked.
