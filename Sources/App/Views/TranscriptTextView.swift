@@ -165,6 +165,21 @@ struct TranscriptTextView: NSViewRepresentable {
         /// See `TranscriptTextView.callAudioName`.
         var callAudioName = ""
 
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            disableWritingTools()
+        }
+
+        override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
+            super.init(frame: frameRect, textContainer: container)
+            disableWritingTools()
+        }
+
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+            disableWritingTools()
+        }
+
         /// Copy and drag take the text as it is on screen: call audio named,
         /// no hidden " (overlapping)" labels. The view is plain text, so there is no RTF.
         override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {

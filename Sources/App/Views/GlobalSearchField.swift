@@ -40,6 +40,7 @@ struct GlobalSearchField: View {
                 .onKeyPress(.return) { activateSelection() }
                 .onKeyPress(.escape) { escape() }
                 .onSubmit { _ = activateSelection() }
+                .noWritingTools()
 
             trailing
         }

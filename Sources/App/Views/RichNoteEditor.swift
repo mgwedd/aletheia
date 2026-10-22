@@ -206,6 +206,21 @@ private struct RichNoteTextView: NSViewRepresentable {
 final class NoteTextView: NSTextView {
     weak var controller: RichNoteEditorController?
 
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        disableWritingTools()
+    }
+
+    override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
+        super.init(frame: frameRect, textContainer: container)
+        disableWritingTools()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        disableWritingTools()
+    }
+
     override func paste(_ sender: Any?) {
         pasteAsPlainText(sender)
     }

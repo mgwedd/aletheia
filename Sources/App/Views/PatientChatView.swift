@@ -113,6 +113,7 @@ struct PatientChatView: View {
         }
         .alert("Rename Chat", isPresented: renamingBinding) {
             TextField("Title", text: $renameText)
+                .noWritingTools()
             Button("Cancel", role: .cancel) { renamingThread = nil }
             Button("Save") { commitRename() }
         }

@@ -145,6 +145,7 @@ struct MarkdownMessageView: View {
             }
         }
         .textSelection(.enabled)
+        .noWritingTools()
     }
 
     @ViewBuilder
@@ -279,6 +280,7 @@ private struct CodeCard: View {
                     .lineSpacing(0)
                     .foregroundStyle(Theme.text.color)
                     .textSelection(.enabled)
+                    .noWritingTools()
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

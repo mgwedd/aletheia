@@ -148,6 +148,22 @@ final class ThemeTextAreaTextView: NSTextView {
     var modifiedReturnSubmits = false
     var tabMovesFocus = false
     var onFocusChange: ((Bool) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        disableWritingTools()
+    }
+
+    override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
+        super.init(frame: frameRect, textContainer: container)
+        disableWritingTools()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        disableWritingTools()
+    }
+
     /// See `ThemeTextArea.trailingInset`. The container's width is managed here
     /// (it does not track the view) so the reservation survives resizing.
     var trailingInset: CGFloat = 0 {

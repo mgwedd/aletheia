@@ -254,6 +254,7 @@ private struct MermaidSourceText: View {
                 .lineSpacing(5)
                 .foregroundStyle(Theme.text.color)
                 .textSelection(.enabled)
+                .noWritingTools()
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .frame(maxWidth: .infinity, alignment: .leading)

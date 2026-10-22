@@ -359,6 +359,7 @@ struct DeletePatientConfirmationView: View {
                     .frame(height: 36)
                     .themeField(isFocused: isFieldFocused)
                     .accessibilityLabel("Type patient name to confirm deletion")
+                    .noWritingTools()
             }
 
             HStack {
@@ -406,5 +407,6 @@ private struct ProfileTextField: View {
             .frame(maxHeight: .infinity)
             .themeField(isFocused: focused)
             .accessibilityLabel(label)
+            .noWritingTools()
     }
 }

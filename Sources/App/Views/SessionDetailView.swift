@@ -309,6 +309,7 @@ struct SessionDetailView: View {
         .navigationTitle(Self.dateFormatter.string(from: session.date))
         .background(Theme.window.color)
         .textSelection(.enabled)
+        .noWritingTools()
         .onAppear {
             if initialShowingMyNotes {
                 showingMyNotes = true
