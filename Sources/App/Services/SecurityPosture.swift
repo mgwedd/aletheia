@@ -35,6 +35,7 @@ enum SecurityPosture {
         /// there is nothing to turn on, so the item is left out.
         encryptionOffered: Bool = true,
         auditLogActive: Bool,
+        auditLogVerifiable: Bool = true,
         localEncryptedBackup: Bool,
         localBackupActive: Bool,
         iCloudBackupEnabled: Bool,
@@ -80,11 +81,21 @@ enum SecurityPosture {
         }
 
         // Audit log.
+        let auditLevel: PostureLevel
+        let auditDetail: String
+        if !auditLogActive {
+            auditLevel = .informational
+            auditDetail = "Choose a data folder to begin recording the on-device audit log."
+        } else if auditLogVerifiable {
+            auditLevel = .secure
+            auditDetail = "Security-relevant actions are recorded on this Mac (no names or clinical content)."
+        } else {
+            auditLevel = .actionRecommended
+            auditDetail = "Security-relevant actions are recorded, but integrity is unverifiable because the signing key is unavailable."
+        }
         items.append(PostureItem(id: "auditLog", title: "Audit log",
-            level: auditLogActive ? .secure : .informational,
-            detail: auditLogActive
-                ? "Security-relevant actions are recorded on this Mac (no names or clinical content)."
-                : "Choose a data folder to begin recording the on-device audit log."))
+            level: auditLevel,
+            detail: auditDetail))
 
         // Backups Aletheia makes itself. Listed only once something actually
         // writes them: a row about a copy this build can't make would be advice

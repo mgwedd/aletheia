@@ -135,6 +135,8 @@ final class AppLock: ObservableObject {
     /// Called when an unlock attempt fails (not user cancellation), to record
     /// failed authentication attempts in the audit log (HIPAA §164.312(b)).
     var onUnlockFailed: ((String) -> Void)?
+    /// Called when the app locks, to record app locking in the audit log.
+    var onLock: (() -> Void)?
 
     private let settings: AppSettings
     private let canAuthenticateProvider: () -> Bool
@@ -230,6 +232,7 @@ final class AppLock: ObservableObject {
             SessionSearch.closeIndex()
             OllamaClient.unloadLoaded()
             LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript
+            onLock?()
         }
     }
 

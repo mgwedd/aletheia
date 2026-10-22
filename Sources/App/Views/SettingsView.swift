@@ -43,6 +43,7 @@ struct SettingsView: View {
     /// Audit-log entries for the viewer, newest first. Loaded on appear and after
     /// an export; a snapshot, not a live binding (the log is append-only on disk).
     @State private var auditEntries: [AuditEvent] = []
+    @State private var auditVerificationMessage: String?
     /// The pane last shown, so Settings reopens where it was left.
     @AppStorage("settings.selectedPane") private var selectedPaneRaw: String = SettingsPane.default.rawValue
     private let auditPreviewLimit = 15
@@ -1002,12 +1003,18 @@ struct SettingsView: View {
                 }
             }
             HStack(spacing: 8) {
+                Button("Verify integrity & export audit report", action: verifyIntegrityAndExportReport)
+                    .buttonStyle(.themed)
+                    .disabled(auditEntries.isEmpty)
                 Button("Refresh", action: loadAuditEntries)
                     .buttonStyle(.themed)
                 Button("Export…", action: exportAuditLog)
                     .buttonStyle(.themed)
                     .disabled(auditEntries.isEmpty)
                 Spacer()
+            }
+            if let auditVerificationMessage {
+                SettingsCaption(auditVerificationMessage)
             }
         }
     }
@@ -1042,6 +1049,30 @@ struct SettingsView: View {
             return parts.joined(separator: "  ·  ")
         }
         return header + lines.joined(separator: "\n") + "\n"
+    }
+
+    private func verifyIntegrityAndExportReport() {
+        guard let audit = appModel.audit else { return }
+        let result = audit.verifyIntegrity()
+        let statusString: String
+        switch result {
+        case .verified(let count):
+            statusString = "Integrity verified: all \(count) entries intact."
+        case .broken(let seq, let reason):
+            statusString = "Integrity check failed at entry #\(seq): \(reason)"
+        case .unverifiable(let reason):
+            statusString = "Audit log unverifiable: \(reason)"
+        }
+        auditVerificationMessage = statusString
+
+        let name = FileSaver.fileName("Aletheia Audit Report", Self.auditFileStamp())
+        let report = audit.generateReport(status: statusString)
+        let outcome = FileSaver.saveText(report, suggestedName: "\(name).txt")
+        if case .saved = outcome {
+            appModel.recordAudit(.auditLogExported)
+            loadAuditEntries()
+        }
+        exportResult = outcome.shown
     }
 
     private func exportAuditLog() {

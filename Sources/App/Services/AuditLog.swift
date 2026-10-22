@@ -1,4 +1,6 @@
+import CryptoKit
 import Foundation
+import Security
 
 /// The kind of ePHI-affecting action recorded in the audit log. Coarse, PHI-free
 /// categories — enough to answer "what touched patient data on this Mac, and
@@ -14,6 +16,20 @@ enum AuditAction: String, Codable, CaseIterable {
     case recordDeleted
     case backupRun
     case auditLogExported
+    case phiViewed
+    case phiCreated
+    case phiAmended
+    case phiDeleted
+    case aiInference
+    case phiCopied
+    case backupRestored
+    case appLocked
+    case recordingConsentAttested
+    case noteSigned
+    case aiNoteVerified
+    case recordingRecovered
+    case retentionWarningOverridden
+    case part2FlagChanged
 
     /// Human-readable label for the log viewer.
     var displayName: String {
@@ -27,95 +43,374 @@ enum AuditAction: String, Codable, CaseIterable {
         case .recordDeleted: return "Record deleted"
         case .backupRun: return "Backup run"
         case .auditLogExported: return "Audit log exported"
+        case .phiViewed: return "PHI viewed"
+        case .phiCreated: return "PHI created"
+        case .phiAmended: return "PHI amended"
+        case .phiDeleted: return "PHI deleted"
+        case .aiInference: return "AI inference"
+        case .phiCopied: return "PHI copied"
+        case .backupRestored: return "Backup restored"
+        case .appLocked: return "App locked"
+        case .recordingConsentAttested: return "Recording consent attested"
+        case .noteSigned: return "Note signed"
+        case .aiNoteVerified: return "AI note verified"
+        case .recordingRecovered: return "Recording recovered"
+        case .retentionWarningOverridden: return "Retention warning overridden"
+        case .part2FlagChanged: return "Part 2 flag changed"
         }
     }
 }
 
-/// One line of the audit log. Deliberately free of PHI: it records the action
-/// and the time, and at most an *opaque* record id (a patient/session UUID) and
-/// a short non-identifying note — never a patient name, a transcript, or any
-/// clinical text. The id is meaningful only alongside the data folder it already
-/// lives in, so the log reveals nothing the folder structure doesn't.
+/// One row of the audit ledger. Deliberately free of PHI: it records the action,
+/// actor ("username:uid"), timestamp, and at most an opaque record id (UUID)
+/// and non-identifying detail note.
 struct AuditEvent: Codable, Equatable {
-    /// ISO 8601, UTC — grep-friendly and unambiguous across time zones.
+    let seq: Int64?
+    /// ISO 8601, UTC — unambiguous across time zones.
     let at: String
+    /// The user and uid who performed the action: "\(NSUserName()):\(getuid())".
+    let actor: String
     let action: AuditAction
-    /// Opaque record UUID (patient or session), never a name. Optional: some
-    /// actions (app unlocked, encryption toggled) aren't about one record.
+    /// Opaque record UUID (patient or session), never a name.
     let subjectID: String?
-    /// Short, non-PHI qualifier, e.g. "Markdown" or "iCloud". Never clinical.
+    /// Short, non-PHI qualifier, e.g. "Markdown" or "imported". Never clinical.
     let detail: String?
     let appVersion: String
+    /// Previous row's HMAC authentication tag, forming a cryptographic chain.
+    let prevMac: Data?
+    /// HMAC-SHA256 authentication tag over this entry and `prevMac`.
+    let mac: Data?
 
-    /// The parsed timestamp, for display and sorting. `nil` if a hand-edited
-    /// line has an unparseable date.
+    /// The parsed timestamp, for display and sorting.
     var date: Date? { AuditLog.isoFormatter.date(from: at) }
-}
 
-/// An on-device, append-only audit log of ePHI-affecting actions, written into
-/// the user's own data folder as `audit.log` (one JSON object per line).
-///
-/// Honest scope, like `LegalReceipt`: a good-faith local record, not tamper-proof
-/// and not proof of *who* was at the keyboard — no local store can be either. Its
-/// value is that it's human-readable, durable, portable with a backup of the data
-/// folder, and — per HIPAA §164.312(b) — examinable and exportable. It never
-/// leaves the Mac.
-///
-/// It stays plaintext even when Tier-2 at-rest encryption is on, because by
-/// construction it holds no PHI (no names, no clinical text — only action types,
-/// timestamps, opaque record ids and short non-identifying notes). Writing is
-/// best-effort: a write failure means no line that time, never a blocked action.
-final class AuditLog {
-    static let fileName = "audit.log"
-
-    private let url: URL
-    // Serialises appends/reads so concurrent actions can't interleave a line.
-    private let queue = DispatchQueue(label: "com.aletheia.auditlog")
-
-    init(root: URL) {
-        url = root.appendingPathComponent(Self.fileName)
+    enum CodingKeys: String, CodingKey {
+        case seq, at, actor, action, subjectID, detail, appVersion, prevMac, mac
     }
 
-    /// Append one event. Never throws.
+    init(
+        seq: Int64? = nil,
+        at: String,
+        actor: String = AuditLog.currentActor,
+        action: AuditAction,
+        subjectID: String? = nil,
+        detail: String? = nil,
+        appVersion: String = AppSettings.appVersionString,
+        prevMac: Data? = nil,
+        mac: Data? = nil
+    ) {
+        self.seq = seq
+        self.at = at
+        self.actor = actor
+        self.action = action
+        self.subjectID = subjectID
+        self.detail = detail
+        self.appVersion = appVersion
+        self.prevMac = prevMac
+        self.mac = mac
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        seq = try container.decodeIfPresent(Int64.self, forKey: .seq)
+        at = try container.decode(String.self, forKey: .at)
+        actor = (try container.decodeIfPresent(String.self, forKey: .actor)) ?? AuditLog.currentActor
+        action = try container.decode(AuditAction.self, forKey: .action)
+        subjectID = try container.decodeIfPresent(String.self, forKey: .subjectID)
+        detail = try container.decodeIfPresent(String.self, forKey: .detail)
+        appVersion = (try container.decodeIfPresent(String.self, forKey: .appVersion)) ?? AppSettings.appVersionString
+        prevMac = try container.decodeIfPresent(Data.self, forKey: .prevMac)
+        mac = try container.decodeIfPresent(Data.self, forKey: .mac)
+    }
+}
+
+/// Result of checking the audit ledger's HMAC hash chain.
+enum IntegrityVerificationResult: Equatable {
+    case verified(count: Int)
+    case broken(seq: Int64, reason: String)
+    case unverifiable(reason: String)
+}
+
+/// Keychain and key derivation management for the HMAC ledger key.
+enum AuditKeyManager {
+    static let service = "Aletheia"
+    static let account = "com.aletheia.audit-hmac-key"
+
+    /// Load or create the HMAC key in Keychain.
+    static func loadOrCreateKeychainKey() -> SymmetricKey? {
+        if let existing = loadKeychainKey() {
+            return existing
+        }
+        let fresh = SymmetricKey(size: .bits256)
+        if saveKeychainKey(fresh) {
+            return fresh
+        }
+        return nil
+    }
+
+    static func loadKeychainKey() -> SymmetricKey? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              data.count == 32 else { return nil }
+        return SymmetricKey(data: data)
+    }
+
+    static func saveKeychainKey(_ key: SymmetricKey) -> Bool {
+        let data = key.withUnsafeBytes { Data($0) }
+        let base: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        SecItemDelete(base as CFDictionary)
+        var add = base
+        add[kSecValueData as String] = data
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
+    }
+
+    /// Derive K from the DEK via HKDF when Keychain is unavailable and encryption is on.
+    static func deriveKey(fromDEK dek: SymmetricKey) -> SymmetricKey {
+        HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: dek,
+            info: account.data(using: .utf8)!,
+            outputByteCount: 32
+        )
+    }
+}
+
+/// An on-device, append-only, tamper-evident audit ledger of ePHI-affecting actions,
+/// backed by SQLite (`audit_events` table) with HMAC-SHA256 hash chaining.
+///
+/// Each row records: `seq`, `at`, `actor`, `action`, `subject_id`, `detail`, `app_version`, `prev_mac`, `mac`.
+/// `mac_i = HMAC-SHA256(K, prev_mac || at || actor || action || subject_id || detail)`
+/// with length prefixing on each field to eliminate concatenation ambiguity.
+///
+/// Triggers `audit_no_update` and `audit_no_delete` prevent row modification or deletion.
+/// Rows are never purged, even when patient records are removed.
+final class AuditLog {
+    static let fileName = "audit.log"
+    static let legacyFileName = "audit.log"
+    static let legacyImportedFileName = "audit.log.imported"
+
+    let core: SQLitePersistenceCore?
+    private let keyProvider: (() -> SymmetricKey?)?
+    private let dekProvider: (() -> SymmetricKey?)?
+    private let queue = DispatchQueue(label: "com.aletheia.auditlog")
+
+    static var currentActor: String {
+        "\(NSUserName()):\(getuid())"
+    }
+
+    init(
+        root: URL,
+        core: SQLitePersistenceCore? = nil,
+        keyProvider: (() -> SymmetricKey?)? = nil,
+        dekProvider: (() -> SymmetricKey?)? = nil
+    ) {
+        self.keyProvider = keyProvider
+        self.dekProvider = dekProvider
+
+        if let core {
+            self.core = core
+        } else {
+            let dbURL = root.appendingPathComponent("Aletheia.sqlite")
+            self.core = try? SQLitePersistenceCore(opening: dbURL)
+        }
+
+        importLegacyLogIfNeeded(root: root)
+    }
+
+    /// Resolves the HMAC signing key:
+    /// 1. Custom keyProvider (if injected)
+    /// 2. Keychain (account: "com.aletheia.audit-hmac-key", service: "Aletheia")
+    /// 3. Derived from DEK via HKDF (if encrypted and DEK available)
+    /// 4. nil if unavailable (posture will show unverifiable, mac = NULL)
+    func resolveKey() -> SymmetricKey? {
+        if let keyProvider {
+            return keyProvider()
+        }
+        if let key = AuditKeyManager.loadOrCreateKeychainKey() {
+            return key
+        }
+        if let dek = dekProvider?() {
+            return AuditKeyManager.deriveKey(fromDEK: dek)
+        }
+        return nil
+    }
+
+    /// Whether the log has a key to compute and verify cryptographic HMAC tags.
+    var isVerifiable: Bool {
+        resolveKey() != nil
+    }
+
+    /// Append one event synchronously to the audit ledger.
+    @discardableResult
     func record(
         _ action: AuditAction,
         subjectID: String? = nil,
         detail: String? = nil,
         at date: Date = Date(),
         appVersion: String = AppSettings.appVersionString
-    ) {
-        let event = AuditEvent(
-            at: Self.isoFormatter.string(from: date),
-            action: action,
-            subjectID: subjectID,
-            detail: detail,
-            appVersion: appVersion
-        )
-        guard let line = Self.encodeLine(event) else { return }
-        queue.sync { Self.write(line, to: url) }
-    }
+    ) throws -> AuditEvent {
+        try queue.sync {
+            guard let core else {
+                throw DatabaseOpenFailure(kind: .cannotOpen, reason: "Audit database core is unavailable")
+            }
+            let atString = Self.isoFormatter.string(from: date)
+            let actor = Self.currentActor
+            let key = resolveKey()
+            let last = core.lastAuditEvent()
+            let prevMac = last?.mac
 
-    /// All recorded events, oldest first (file order). A line that won't parse
-    /// (e.g. hand-edited) is skipped rather than failing the whole read.
-    func entries() -> [AuditEvent] {
-        let data = queue.sync { (try? Data(contentsOf: url)) ?? Data() }
-        guard let text = String(data: data, encoding: .utf8) else { return [] }
-        let decoder = JSONDecoder()
-        return text.split(separator: "\n").compactMap { line in
-            try? decoder.decode(AuditEvent.self, from: Data(line.utf8))
+            let mac: Data?
+            if let key {
+                mac = Self.computeMAC(
+                    key: key,
+                    prevMac: prevMac,
+                    at: atString,
+                    actor: actor,
+                    action: action.rawValue,
+                    subjectID: subjectID,
+                    detail: detail
+                )
+            } else {
+                mac = nil
+            }
+
+            let seq = try core.insertAuditEvent(
+                at: atString,
+                actor: actor,
+                action: action.rawValue,
+                subjectID: subjectID,
+                detail: detail,
+                appVersion: appVersion,
+                prevMac: prevMac,
+                mac: mac
+            )
+
+            return AuditEvent(
+                seq: seq,
+                at: atString,
+                actor: actor,
+                action: action,
+                subjectID: subjectID,
+                detail: detail,
+                appVersion: appVersion,
+                prevMac: prevMac,
+                mac: mac
+            )
         }
     }
 
-    /// Write a copy of the log to `destination` for the user to keep or hand to a
-    /// compliance reviewer. Overwrites any existing file at that path. An empty
-    /// log writes an empty file rather than failing.
+    /// All recorded events, oldest first.
+    func entries() -> [AuditEvent] {
+        queue.sync {
+            guard let core else { return [] }
+            let rows = core.allAuditEvents()
+            return rows.map { row in
+                AuditEvent(
+                    seq: row.seq,
+                    at: row.at,
+                    actor: row.actor,
+                    action: AuditAction(rawValue: row.action) ?? .appUnlocked,
+                    subjectID: row.subjectID,
+                    detail: row.detail,
+                    appVersion: row.appVersion,
+                    prevMac: row.prevMac,
+                    mac: row.mac
+                )
+            }
+        }
+    }
+
+    /// Recomputes the hash chain over all entries and reports whether verified,
+    /// broken at a specific sequence number, or unverifiable.
+    func verifyIntegrity() -> IntegrityVerificationResult {
+        queue.sync {
+            guard let core else {
+                return .unverifiable(reason: "Database core unavailable")
+            }
+            guard let key = resolveKey() else {
+                return .unverifiable(reason: "Signing key is unavailable")
+            }
+            let rows = core.allAuditEvents()
+            var expectedPrevMac: Data? = nil
+            for row in rows {
+                guard let rowMac = row.mac else {
+                    return .unverifiable(reason: "Entry #\(row.seq) is missing cryptographic MAC")
+                }
+                if row.prevMac != expectedPrevMac {
+                    return .broken(seq: row.seq, reason: "prev_mac does not match preceding entry's MAC")
+                }
+                let computed = Self.computeMAC(
+                    key: key,
+                    prevMac: row.prevMac,
+                    at: row.at,
+                    actor: row.actor,
+                    action: row.action,
+                    subjectID: row.subjectID,
+                    detail: row.detail
+                )
+                if computed != rowMac {
+                    return .broken(seq: row.seq, reason: "MAC does not match row contents (tampered row)")
+                }
+                expectedPrevMac = rowMac
+            }
+            return .verified(count: rows.count)
+        }
+    }
+
+    /// Generate an audit report with header, verification status, and entries.
+    func generateReport(status: String? = nil) -> String {
+        let all = entries()
+        let verification = status ?? {
+            switch verifyIntegrity() {
+            case .verified(let count):
+                return "Integrity verified: all \(count) entries intact"
+            case .broken(let seq, let reason):
+                return "Integrity check failed at entry #\(seq): \(reason)"
+            case .unverifiable(let reason):
+                return "Audit log unverifiable: \(reason)"
+            }
+        }()
+
+        let header = """
+        Aletheia security audit log (HIPAA §164.312(b)) — an on-device record with no PHI.
+        Exported: \(Self.isoFormatter.string(from: Date()))
+        Status: \(verification)
+
+        """
+
+        let lines = all.map { entry -> String in
+            let seqStr = entry.seq.map { "#\($0)" } ?? "#?"
+            let macStr = entry.mac?.prefix(8).map { String(format: "%02x", $0) }.joined() ?? "none"
+            var parts = ["\(seqStr)  \(entry.at)  \(entry.actor)  \(entry.action.displayName)"]
+            if let subject = entry.subjectID { parts.append("record \(subject)") }
+            if let detail = entry.detail { parts.append(detail) }
+            parts.append("mac: \(macStr)")
+            return parts.joined(separator: "  ·  ")
+        }
+
+        return header + lines.joined(separator: "\n") + "\n"
+    }
+
+    /// Write an exported report to destination.
     func export(to destination: URL) throws {
-        let data = queue.sync { (try? Data(contentsOf: url)) ?? Data() }
+        let text = generateReport()
+        guard let data = text.data(using: .utf8) else { return }
         try data.write(to: destination, options: .atomic)
     }
 
-    /// Encodes an event to a single newline-terminated JSON line. Exposed for
-    /// tests; sorted keys keep the line stable and grep-friendly.
+    /// Encodes an event to JSON data. Exposed for tests.
     static func encodeLine(_ event: AuditEvent) -> Data? {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -123,15 +418,80 @@ final class AuditLog {
         return json + Data("\n".utf8)
     }
 
-    private static func write(_ data: Data, to url: URL) {
-        if let handle = try? FileHandle(forWritingTo: url) {
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: data)
-        } else {
-            // No file yet (or it couldn't be opened): create it with this line.
-            try? data.write(to: url, options: .atomic)
+    // MARK: - Legacy import
+
+    private func importLegacyLogIfNeeded(root: URL) {
+        let legacyURL = root.appendingPathComponent(Self.legacyFileName)
+        guard FileManager.default.fileExists(atPath: legacyURL.path) else { return }
+        let importedURL = root.appendingPathComponent(Self.legacyImportedFileName)
+
+        guard let data = try? Data(contentsOf: legacyURL), !data.isEmpty else {
+            // Empty or corrupt file: rename so we don't inspect it repeatedly
+            try? FileManager.default.removeItem(at: importedURL)
+            try? FileManager.default.moveItem(at: legacyURL, to: importedURL)
+            return
         }
+
+        guard let text = String(data: data, encoding: .utf8) else {
+            try? FileManager.default.removeItem(at: importedURL)
+            try? FileManager.default.moveItem(at: legacyURL, to: importedURL)
+            return
+        }
+
+        let decoder = JSONDecoder()
+        let legacyEvents: [AuditEvent] = text.split(separator: "\n").compactMap { line in
+            try? decoder.decode(AuditEvent.self, from: Data(line.utf8))
+        }
+
+        for event in legacyEvents {
+            _ = try? record(
+                event.action,
+                subjectID: event.subjectID,
+                detail: "imported",
+                at: event.date ?? Date(),
+                appVersion: event.appVersion
+            )
+        }
+
+        try? FileManager.default.removeItem(at: importedURL)
+        try? FileManager.default.moveItem(at: legacyURL, to: importedURL)
+    }
+
+    // MARK: - Length-prefixed HMAC
+
+    static func lengthPrefixed(_ data: Data?) -> Data {
+        guard let data else {
+            var marker = UInt32.max.bigEndian
+            return Data(bytes: &marker, count: 4)
+        }
+        var len = UInt32(data.count).bigEndian
+        var result = Data(bytes: &len, count: 4)
+        result.append(data)
+        return result
+    }
+
+    static func lengthPrefixed(_ string: String?) -> Data {
+        lengthPrefixed(string?.data(using: .utf8))
+    }
+
+    static func computeMAC(
+        key: SymmetricKey,
+        prevMac: Data?,
+        at: String,
+        actor: String,
+        action: String,
+        subjectID: String?,
+        detail: String?
+    ) -> Data {
+        var payload = Data()
+        payload.append(lengthPrefixed(prevMac))
+        payload.append(lengthPrefixed(at))
+        payload.append(lengthPrefixed(actor))
+        payload.append(lengthPrefixed(action))
+        payload.append(lengthPrefixed(subjectID))
+        payload.append(lengthPrefixed(detail))
+        let mac = HMAC<SHA256>.authenticationCode(for: payload, using: key)
+        return Data(mac)
     }
 
     static let isoFormatter: ISO8601DateFormatter = {

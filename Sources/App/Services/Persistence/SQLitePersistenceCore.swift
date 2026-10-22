@@ -55,6 +55,7 @@ final class SQLitePersistenceCore: PersistenceCore {
             throw DatabaseOpenFailure(sqliteCode: openCode)
         }
         db = handle
+        sqlite3_busy_timeout(handle, 5000)
         // PHI hygiene: zero freed pages so payload bytes from a removed or
         // replaced record can't survive in the file's free space. The bytes are
         // adapter-sealed when encryption is on, but a defence in depth for the
@@ -404,5 +405,105 @@ final class SQLitePersistenceCore: PersistenceCore {
         guard let bytes = sqlite3_column_blob(stmt, index) else { return Data() }
         let count = Int(sqlite3_column_bytes(stmt, index))
         return Data(bytes: bytes, count: count)
+    }
+
+    // MARK: - Audit ledger (Migration v2)
+
+    struct AuditRow: Equatable {
+        let seq: Int64
+        let at: String
+        let actor: String
+        let action: String
+        let subjectID: String?
+        let detail: String?
+        let appVersion: String
+        let prevMac: Data?
+        let mac: Data?
+    }
+
+    @discardableResult
+    func insertAuditEvent(
+        at: String,
+        actor: String,
+        action: String,
+        subjectID: String?,
+        detail: String?,
+        appVersion: String,
+        prevMac: Data?,
+        mac: Data?
+    ) throws -> Int64 {
+        let sql = """
+        INSERT INTO audit_events (at, actor, action, subject_id, detail, app_version, prev_mac, mac)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw currentFailure(fallback: .cannotOpen)
+        }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, at)
+        bindText(stmt, 2, actor)
+        bindText(stmt, 3, action)
+        bindOptionalText(stmt, 4, subjectID)
+        bindOptionalText(stmt, 5, detail)
+        bindText(stmt, 6, appVersion)
+        if let prevMac { bindBlob(stmt, 7, prevMac) } else { sqlite3_bind_null(stmt, 7) }
+        if let mac { bindBlob(stmt, 8, mac) } else { sqlite3_bind_null(stmt, 8) }
+
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            let code = sqlite3_extended_errcode(db)
+            let msg = String(cString: sqlite3_errmsg(db))
+            throw DatabaseOpenFailure(kind: .unknown, reason: msg, sqliteCode: code)
+        }
+        return sqlite3_last_insert_rowid(db)
+    }
+
+    func lastAuditEvent() -> AuditRow? {
+        let sql = """
+        SELECT seq, at, actor, action, subject_id, detail, app_version, prev_mac, mac
+        FROM audit_events ORDER BY seq DESC LIMIT 1;
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return auditRow(stmt)
+    }
+
+    func allAuditEvents() -> [AuditRow] {
+        let sql = """
+        SELECT seq, at, actor, action, subject_id, detail, app_version, prev_mac, mac
+        FROM audit_events ORDER BY seq ASC;
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        var rows: [AuditRow] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            rows.append(auditRow(stmt))
+        }
+        return rows
+    }
+
+    func executeRaw(_ sql: String) throws {
+        guard exec(sql) else {
+            let code = sqlite3_extended_errcode(db)
+            let msg = String(cString: sqlite3_errmsg(db))
+            throw DatabaseOpenFailure(kind: .unknown, reason: msg, sqliteCode: code)
+        }
+    }
+
+    private func auditRow(_ stmt: OpaquePointer?) -> AuditRow {
+        AuditRow(
+            seq: sqlite3_column_int64(stmt, 0),
+            at: columnText(stmt, 1),
+            actor: columnText(stmt, 2),
+            action: columnText(stmt, 3),
+            subjectID: sqlite3_column_type(stmt, 4) != SQLITE_NULL ? columnText(stmt, 4) : nil,
+            detail: sqlite3_column_type(stmt, 5) != SQLITE_NULL ? columnText(stmt, 5) : nil,
+            appVersion: columnText(stmt, 6),
+            prevMac: sqlite3_column_type(stmt, 7) != SQLITE_NULL ? columnBlob(stmt, 7) : nil,
+            mac: sqlite3_column_type(stmt, 8) != SQLITE_NULL ? columnBlob(stmt, 8) : nil
+        )
     }
 }

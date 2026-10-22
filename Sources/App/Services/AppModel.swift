@@ -92,7 +92,9 @@ final class AppModel: ObservableObject {
         // changed), then build the stores around the resulting protector.
         encryption.refresh()
         let dataRoot = settings.dataRootURL
-        audit = dataRoot.map(AuditLog.init)
+        audit = dataRoot.map { root in
+            AuditLog(root: root, dekProvider: { [weak self] in self?.encryption.protector.key })
+        }
         logEncryptionTransitionIfNeeded()
         saveFailureSubject = nil
         guard let root = dataRoot else {
@@ -241,7 +243,7 @@ final class AppModel: ObservableObject {
     /// Record an ePHI-affecting action, if a data folder (and thus a log) exists.
     /// The thin seam call sites use so they don't reach into `audit` directly.
     func recordAudit(_ action: AuditAction, subjectID: String? = nil, detail: String? = nil) {
-        audit?.record(action, subjectID: subjectID, detail: detail)
+        try? audit?.record(action, subjectID: subjectID, detail: detail)
     }
 
     /// Compares the current encryption on/unlocked state against the last build's
@@ -258,13 +260,13 @@ final class AppModel: ObservableObject {
         guard let wasEnabled = lastEncryptionEnabled,
               let wasUnlocked = lastEncryptionUnlocked else { return }
         if !wasEnabled, enabled {
-            audit?.record(.encryptionEnabled)
+            try? audit?.record(.encryptionEnabled)
         } else if wasEnabled, !enabled {
-            audit?.record(.encryptionDisabled)
+            try? audit?.record(.encryptionDisabled)
         } else if wasEnabled, enabled, !wasUnlocked, unlocked {
             // Unlocking an already-enabled folder (a fresh enable already logs
             // .encryptionEnabled, so it isn't double-counted as an unlock).
-            audit?.record(.encryptionUnlocked)
+            try? audit?.record(.encryptionUnlocked)
         }
     }
 

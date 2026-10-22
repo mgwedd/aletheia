@@ -93,6 +93,25 @@ final class SecurityPostureTests: XCTestCase {
         XCTAssertEqual(item("auditLog", in: evaluate(auditLogActive: false))?.level, .informational)
     }
 
+    func testAuditLogUnverifiableIsActionable() {
+        let items = SecurityPosture.evaluate(
+            appLockEnabled: true,
+            canAuthenticate: true,
+            idleAutoLockMinutes: 15,
+            encryptionEnabled: true,
+            encryptionUnlocked: true,
+            auditLogActive: true,
+            auditLogVerifiable: false,
+            localEncryptedBackup: true,
+            localBackupActive: true,
+            iCloudBackupEnabled: false,
+            iCloudBackupConfigured: false,
+            networkOnline: nil
+        )
+        XCTAssertEqual(item("auditLog", in: items)?.level, .actionRecommended)
+        XCTAssertTrue(item("auditLog", in: items)?.detail.contains("unverifiable") == true)
+    }
+
     func testInformationalItemsDoNotDowngradeOverall() {
         // Everything actionable is satisfied; only informational gaps remain
         // (no backup, encryption locked). Headline must stay secure.
