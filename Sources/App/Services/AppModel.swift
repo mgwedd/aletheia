@@ -88,6 +88,20 @@ final class AppModel: ObservableObject {
     var isEncryptionUnlocked: Bool { encryption.isUnlocked }
 
     func rebuildStore() {
+        searchSync?.cancel()
+        searchSync = nil
+        if let root = settings.dataRootURL, DataFolderPolicy.verdict(for: root) != .ok {
+            store = nil
+            commentStore = nil
+            audit = nil
+            searchIndex = nil
+            SessionSearch.index = SearchIndex()
+            databaseState = .noDataFolder
+            patients = []
+            unreadablePatients = []
+            schemaWarning = nil
+            return
+        }
         // Recompute encryption state first (the data folder may have just
         // changed), then build the stores around the resulting protector.
         encryption.refresh()

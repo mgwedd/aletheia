@@ -69,6 +69,7 @@ struct AletheiaApp: App {
     @StateObject private var exports: ExportJobCenter
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
+    @State private var showDataFolderMove = false
 
     init() {
         let settings = AppSettings.shared
@@ -166,7 +167,15 @@ struct AletheiaApp: App {
                         // presents) reads must be injected here explicitly.
                         .environmentObject(encryption)
                 }
+                .sheet(isPresented: $showDataFolderMove) {
+                    DataFolderMoveView()
+                        .environmentObject(settings)
+                        .environmentObject(appModel)
+                }
                 .frame(minWidth: 900, minHeight: 600)
+                .onAppear {
+                    showDataFolderMove = settings.dataRootURL != nil && settings.dataRootVerdict != .ok
+                }
                 .task {
                     if settings.autoCheckForUpdates {
                         await updateService.checkForUpdates()

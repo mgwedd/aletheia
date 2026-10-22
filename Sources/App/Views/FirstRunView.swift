@@ -10,6 +10,7 @@ struct FirstRunView: View {
     @State private var agreedToLegal = false
     @State private var showEncryptionSetup = false
     @State private var showConsentGuide = false
+    @State private var folderError: String?
 
     //   Set up Aletheia
     //   Recording, transcription and the AI all run on this Mac…
@@ -36,6 +37,24 @@ struct FirstRunView: View {
                             .frame(maxWidth: 600, alignment: .leading)
                     }
 
+                    if settings.dataRootURL == nil {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Data folder").font(Theme.Typography.headline)
+                            Text("Keep client records in a local folder. Time Machine can back up this folder to an encrypted disk.")
+                                .foregroundStyle(Theme.muted.color)
+                            HStack(spacing: 12) {
+                                Button("Use the standard location") {
+                                    do {
+                                        try settings.useStandardDataRoot()
+                                        appModel.rebuildStore()
+                                    } catch { folderError = error.localizedDescription }
+                                }
+                                .buttonStyle(.themePrimary)
+                                Button("Choose another folder…") { _ = appModel.chooseDataFolder() }
+                                    .buttonStyle(.themed)
+                            }
+                        }
+                    }
                     SetupChecklistView()
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -99,6 +118,9 @@ struct FirstRunView: View {
         .sheet(isPresented: $showConsentGuide) {
             ConsentGuideView()
         }
+        .alert("Data folder", isPresented: Binding(get: { folderError != nil }, set: { if !$0 { folderError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(folderError ?? "") }
         .onAppear {
             if Legal.isAccepted(settings.acceptedLegalVersion) {
                 agreedToLegal = true
