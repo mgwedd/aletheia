@@ -341,7 +341,7 @@ final class SessionRecorder: ObservableObject {
     /// failure the plaintext recording is kept — losing the session would be
     /// worse — and the error is surfaced so the user knows it wasn't encrypted.
     private func sealRecordingsIfNeeded() async -> String? {
-        guard protector.isEncrypting else { return nil }
+        guard protector.requiresProtection else { return nil }
         let protector = self.protector
         let urls = [micURL, callURL].compactMap { $0 }
         return await Task.detached(priority: .utility) { () -> String? in
