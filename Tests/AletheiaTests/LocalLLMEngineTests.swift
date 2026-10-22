@@ -199,11 +199,10 @@ final class LocalLLMEngineTests: XCTestCase {
         XCTAssertNil(spy.calls.last?.grammar)
     }
 
-    func testAutomaticBackendResolvesToBuiltInLlamaWhilePreservingExplicitOllama() {
-        let resolver = AssistantBackendResolver(appleIntelligenceAvailable: false, localLlamaAvailable: true)
+    func testAutomaticBackendResolvesToBuiltInLlama() {
+        let resolver = AssistantBackendResolver(appleIntelligenceAvailable: false)
         XCTAssertEqual(resolver.resolve(.automatic), .localLlama)
         XCTAssertEqual(resolver.resolve(.localLlama), .localLlama)
-        XCTAssertEqual(resolver.resolve(.ollama), .ollama)
     }
 
     @MainActor

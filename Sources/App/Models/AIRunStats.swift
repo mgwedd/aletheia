@@ -1,28 +1,27 @@
 import Foundation
 
-/// What a model run reported about itself, from Ollama's final chunk
-/// (`prompt_eval_count`, `prompt_eval_duration`, `eval_count`, `eval_duration`;
-/// durations in nanoseconds). Any field can be missing, so each is optional.
+/// What a model run reported about itself, from the engine's final report
+/// (prompt and reply token counts and durations; durations in nanoseconds). Any field can be missing, so each is optional.
 struct AIRunStats: Equatable {
     var promptTokens: Int?
     var promptNanos: Int?
     var outputTokens: Int?
     var outputNanos: Int?
-    /// Tokens Ollama should have had to read for this prompt (the shared
+    /// Tokens the engine should have had to read for this prompt (the shared
     /// `ContextBudget.estimatedTokens`, by script), minus any leading part of the prompt it already holds from the
-    /// previous request (see `PromptPrefixMemory`). 0 when unknown.
+    /// previous request. 0 when unknown.
     var expectedPromptTokens: Int = 0
-    /// What the run was for, and whether `PromptPrefixMemory` found a prefix
-    /// Ollama probably still held (it counts the whole prompt in
-    /// `prompt_eval_count` but spends almost no time on the cached part).
+    /// What the run was for, and whether a prefix
+    /// the engine probably still held (it counts the whole prompt
+    /// but spends almost no time on the cached part).
     var task: AITask?
     var reusedPrefix = false
-    /// The window the run was given (Ollama's `num_ctx`); 0 when unknown.
+    /// The window the run was given (the engine's context size); 0 when unknown.
     var contextTokens = 0
 
     /// Prompt tokens read per second. Needs enough tokens to be a real
     /// measurement; a short prompt's timing is mostly noise. Nil for a run that
-    /// hit Ollama's prompt cache (a shared prefix, read far less than we sent, or
+    /// hit the engine's prompt cache (a shared prefix, read far less than we sent, or
     /// implausibly fast), which says nothing about how fast this Mac reads.
     var readTokensPerSecond: Double? {
         if reusedPrefix { return nil }
@@ -40,15 +39,15 @@ struct AIRunStats: Equatable {
         Self.rate(tokens: outputTokens, nanos: outputNanos, minimumTokens: 20)
     }
 
-    /// The tripwire: the prompt may have been cut, because Ollama read well
+    /// The tripwire: the prompt may have been cut, because the engine read well
     /// under what we sent (`readLessThanSent`) or read up to the edge of its
     /// window (`nearContextLimit`).
     var possiblyTruncated: Bool { readLessThanSent || nearContextLimit }
 
-    /// Ollama read well under what we sent, so it may have cut
+    /// The engine read well under what we sent, so it may have cut
     /// the prompt. Only judged for prompts big enough that the estimate is
     /// reliable, and against `expectedPromptTokens` so a cached prefix (which
-    /// Ollama doesn't count in `prompt_eval_count`) isn't mistaken for a cut.
+    /// the engine doesn't count in its prompt token count) isn't mistaken for a cut.
     ///
     /// Threshold: 60% of the estimate. The estimate is deliberately high (3
     /// characters a token; ordinary English tokenizes at about 4, so a complete
@@ -60,10 +59,10 @@ struct AIRunStats: Equatable {
         return promptTokens * 10 < expectedPromptTokens * 6
     }
 
-    /// Ollama read as many tokens as the window holds less the reply room
+    /// The engine read as many tokens as the window holds less the reply room
     /// (`ContextBudget.replyHeadroomTokens`). The budget check only sends a
     /// prompt whose estimate is under that, so a real count at it means the
-    /// estimate ran low (a script that tokenizes densely) and Ollama has
+    /// estimate ran low (a script that tokenizes densely) and the engine has
     /// probably dropped the start to make it fit. Not judged when the window
     /// is unknown.
     var nearContextLimit: Bool {
@@ -100,7 +99,7 @@ struct AIRunProgress: Equatable {
     /// Set when the first text arrives: reading ends, writing starts.
     var firstTokenAt: Date?
     var estimatedPromptTokens: Int?
-    /// Streamed chunks (about one per token) until Ollama reports the real count.
+    /// Streamed chunks (about one per token) until the engine reports the real count.
     var tokensWritten = 0
     var stats: AIRunStats?
     /// Overall position in a multi-call run (a digest), kept across stages.
