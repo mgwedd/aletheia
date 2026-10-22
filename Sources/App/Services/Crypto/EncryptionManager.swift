@@ -181,8 +181,8 @@ final class EncryptionManager: ObservableObject {
         SessionSearch.openIndex()   // after the stores are rebuilt, so the sweep it starts reads with the new key
     }
 
-    /// Drops the in-memory DEK; the folder stays encrypted and re-locks. Called
-    /// on the same "app hidden" transition as the Tier-1 app lock.
+    /// Drops the in-memory DEK; the folder stays encrypted and re-locks.
+    /// This does not run automatically when the app is hidden.
     func lock() {
         guard dek != nil else { return }
         dek = nil

@@ -1,12 +1,13 @@
 # At-rest encryption (Tier 2)
 
-Opt-in AES-256-GCM encryption of the data folder's contents, available from
-Settings › Extra Encryption. This document is the design of record; it shipped
-in the stages below (see **Rollout**).
+Opt-in AES-256-GCM encryption of selected data-folder contents. This feature is
+currently available in developer builds only; production builds do not offer
+its setup or management UI. An already-encrypted folder can still be unlocked
+and read. This document describes the implemented design (see **Rollout**).
 
 Tier 1 (already shipped) is the Touch ID / password **app lock** — it gates
-_opening the running app_. Tier 2 protects the _files on disk_, so the notes
-stay unreadable even when someone has the folder but not the app.
+_opening the running app_. Tier 2 seals supported files and database fields
+when enabled, so their contents cannot be read from a copied folder without a key.
 
 ## Why, on top of FileVault
 
@@ -19,8 +20,9 @@ the cases FileVault doesn't:
 - a folder placed inside a **synced directory** (iCloud Drive, Dropbox),
 - a Mac **logged in and unlocked** but with FileVault never enabled.
 
-In all of these, the PHI files leave the protection of FileVault; Tier 2 keeps
-them ciphertext wherever they land.
+In these cases, selected PHI content can leave FileVault's protection. Tier 2
+seals supported files and fields; names, metadata, and the database file itself
+are not fully encrypted. A synced folder can still expose that information.
 
 ## Key hierarchy
 
@@ -34,16 +36,16 @@ them ciphertext wherever they land.
    DEK (data-encryption key, 256-bit, random, one per folder)
         │  AES-256-GCM seal, fresh 96-bit nonce per file
         ▼
-   every PHI file: transcript / summary / chat / patient.json / audio / DB
+   supported PHI files and selected database fields
 ```
 
-- One random **DEK** encrypts every file. The DEK is generated once per folder
-  and **never stored in the clear** — only wrapped.
+- One random **DEK** encrypts supported content. The DEK is generated once per
+  folder and is wrapped by the passphrase keystore. If "Remember on this Mac"
+  is enabled, a copy is also stored in the device-only login Keychain.
 - The DEK is wrapped in the **keystore** (`<dataRoot>/.aletheia-keystore.json`),
   which can hold **several wrappings of the same DEK** (LUKS-keyslot style). v1
-  ships the recovery-passphrase wrapping; a Keychain wrapping (unlock without
-  typing the passphrase every launch, protected by the macOS login) drops into
-  the same array later without re-encrypting a single file.
+  uses recovery-passphrase wrapping. Optional device-only Keychain storage of
+  the DEK permits unlock on this Mac without typing the passphrase each launch.
 - Losing the keystore **and** every passphrase means the data is
   unrecoverable. That is the point of encryption; the UI states it plainly
   before enabling.
@@ -79,16 +81,15 @@ Does **not** protect against:
   it. Strength is on the user.
 - **Live recording window** — audio is captured to disk first and sealed when
   the recording stops (see Rollout). A crash mid-session can leave that one
-  file plaintext until the next clean pass. Everything already saved stays
+  file plaintext until the next clean pass. Previously sealed content stays
   sealed.
 - **Metadata** — patient/session **folder names and the folder layout** are not
   encrypted (they're how the app finds things). Names are chosen by the user;
   keep identifying detail out of them if that matters.
 
-No custom cryptography: AES-256-GCM and PBKDF2 via Apple's **CryptoKit** and
-**CommonCrypto** only. No third-party crypto dependency (supply-chain
-constraint). No SQLCipher — the database is protected by the same envelope, not
-a third-party SQLite build.
+The encryption implementation uses Apple's **CryptoKit** and **CommonCrypto**.
+No SQLCipher is used; the database is an ordinary SQLite file with selected
+field values sealed when the feature is enabled.
 
 ## What's encrypted
 
@@ -104,7 +105,7 @@ keep identifying detail out of them if that matters.
 
 ## Turning it on / off
 
-Settings → **Extra Encryption**. Turning it on sets a recovery passphrase and
+In developer builds, Settings → **Extra Encryption**. Turning it on sets a recovery passphrase and
 runs `DataMigrator` to seal the folder's existing PHI; turning it off decrypts
 everything back to plain files first and only then removes the keystore, so a
 failure never leaves data unreadable. The DEK is held in memory for the running

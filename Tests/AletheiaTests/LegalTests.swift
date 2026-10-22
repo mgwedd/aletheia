@@ -20,4 +20,14 @@ final class LegalTests: XCTestCase {
         XCTAssertTrue(Legal.termsURL.absoluteString.hasSuffix("/TERMS.md"))
         XCTAssertTrue(Legal.privacyURL.absoluteString.hasSuffix("/PRIVACY.md"))
     }
+
+    func testPublishedPrivacyAndSafeguardDocsDescribeCurrentBackupState() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for path in ["PRIVACY.md", "docs/HIPAA-SAFEGUARDS.md"] {
+            let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("iCloud backup"), path)
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("end-to-end encrypted backup to your own iCloud"), path)
+        }
+    }
 }

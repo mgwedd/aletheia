@@ -173,8 +173,8 @@ struct AletheiaApp: App {
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    // Switching apps doesn't re-lock: AppLock does that on
-                    // app hide (⌘H), idle timeout, sleep and screen lock.
+                    // Activation can trigger another update check. AppLock
+                    // handles its own idle, sleep, and screen-lock events.
                     if phase == .active, settings.autoCheckForUpdates {
                         Task { await updateService.checkForUpdates() }
                     }
