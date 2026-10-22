@@ -14,7 +14,7 @@ Aletheia records a video-call therapy session, transcribes it, drafts a progress
 
 - No patient content leaves the Mac. Recording, transcription, notes and chat are all local.
 - The app makes a few requests that carry no patient data: a check for new versions (a plain download of a small file from GitHub), and downloads of the speech and AI models you choose to install.
-- The app runs in the macOS App Sandbox and spawns no subprocesses. Its only network entitlement is outbound client connections.
+- The app runs in the macOS App Sandbox and spawns no subprocesses. It has no network entitlement: the update check and model downloads run in a separate sandboxed helper that can reach only GitHub and Hugging Face. Settings > Security shows this from the app's own signature.
 - Raw audio is deleted after transcription unless you opt in to keeping it and encryption is on.
 - Apple Intelligence is deliberately disabled so every AI path is provably on-device.
 - The app has no backup feature of its own. Time Machine includes the data folder by default. See [docs/DATA-SAFETY.md](docs/DATA-SAFETY.md).
@@ -236,7 +236,7 @@ CI runs on macOS runners (the only place the Swift code compiles). To save macOS
 
 - **Conventional Commits** drive releases: `feat` → minor; `fix`, `perf`, `revert` → patch; `!` or `BREAKING CHANGE` → major; everything else → no release. Squash-merge with the PR title as the subject.
 - **`CHANGELOG.md` is generated.** Do not edit it by hand.
-- **Privacy invariants:** PHI never leaves the Mac; no analytics; the only outbound calls are the update check and opt-in model downloads. Apple Intelligence stays disabled.
+- **Privacy invariants:** PHI never leaves the Mac; no analytics; the app itself has no network access; only a bundled helper makes the update check and opt-in model downloads. Apple Intelligence stays disabled.
 - **Dependencies:** first-party and pinned. GitHub Actions are first-party only.
 - **Settings** follow the `AppSettings` pattern: UserDefaults-backed, `private enum Keys`, values loaded in `init`.
 - **Colors** come from `Theme` (`Sources/App/Views/Theme`); no color literals in screens.

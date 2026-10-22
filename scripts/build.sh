@@ -95,6 +95,16 @@ if [ "$IDENTITY" != "-" ]; then
         codesign --force --options runtime $EXTRA_CODE_SIGN_FLAGS \
             --sign "$IDENTITY" "$framework"
     done
+    # The network helper (an XPC service inside the app) is signed with its
+    # OWN entitlements (sandbox + network only), before the app that contains
+    # it. Signing the app afterwards seals the helper's signature into it.
+    for helper in dist/Aletheia.app/Contents/XPCServices/*.xpc; do
+        [ -e "$helper" ] || continue
+        # shellcheck disable=SC2086
+        codesign --force --options runtime $EXTRA_CODE_SIGN_FLAGS \
+            --entitlements Sources/NetworkHelper/NetworkHelper.entitlements \
+            --sign "$IDENTITY" "$helper"
+    done
     # Explicit entitlements, not --preserve-metadata: a plain `xcodebuild build`
     # injects get-task-allow, which Apple's notary service rejects.
     # shellcheck disable=SC2086

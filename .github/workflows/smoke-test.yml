@@ -37,6 +37,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check per-tier entitlements
         run: ./scripts/check-entitlements.sh
+      - name: Self-test the entitlements guard
+        run: ./scripts/check-entitlements.sh --self-test
       # Screens take every color from Theme (CLAUDE.md, Conventions).
       - name: Self-test the theme color guard
         run: ./scripts/check-theme-colors.sh --self-test
