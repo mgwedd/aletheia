@@ -57,8 +57,13 @@ public final class WhisperEngine {
     /// Silero VAD v6.2.0 (MIT), bundled in this framework. From
     /// huggingface.co/ggml-org/whisper-vad at 9ffd54a1, SHA-256
     /// 2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987.
+    #if SWIFT_PACKAGE
+    static let vadModelPath = Bundle.module
+        .path(forResource: "ggml-silero-v6.2.0", ofType: "bin")!
+    #else
     static let vadModelPath = Bundle(for: WhisperEngine.self)
         .path(forResource: "ggml-silero-v6.2.0", ofType: "bin")!
+    #endif
 
     private let context: OpaquePointer
 

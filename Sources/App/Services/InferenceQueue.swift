@@ -4,7 +4,7 @@ import Foundation
 /// chat) so only one runs at a time, first come first served (background
 /// digests yield to everything else).
 ///
-/// Why app-side: every request goes to the same local model. Ollama may queue
+/// Why app-side: every request goes to the same local model. The engine may queue
 /// or interleave concurrent requests on its own, but that is invisible to the
 /// user (a question just "thinks" forever behind a long note), and two
 /// generations compete for the same memory on small Macs. Serializing here keeps
@@ -13,7 +13,7 @@ import Foundation
 ///
 /// A job's `body` should return when its work is finished *or* when the task
 /// running it is cancelled; the next job starts only after the body returns.
-/// Free of SwiftUI/Ollama so it can be unit tested.
+/// Free of SwiftUI and the engine so it can be unit tested.
 @MainActor
 final class InferenceQueue: ObservableObject {
     enum Kind: String, Equatable, Sendable {

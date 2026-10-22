@@ -86,9 +86,9 @@ flowchart LR
 
 ### What a note or answer reads
 
-- **Context window.** Ollama is sent a fixed context window (`num_ctx`) equal to this Mac's context budget, so it never truncates silently. Each Mac has a prompt budget: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB or more (one tier lower on Intel). A prompt over budget fails with a clear message and nothing is sent.
+- **Context window.** The prompt is never truncated silently. Each Mac has a prompt budget: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB or more (one tier lower on Intel). A prompt over budget fails with a clear message and nothing is sent.
 - **Token estimate.** The budget check counts by script: about 3 Latin characters a token, but about a token per character for Japanese, Chinese, Korean and similar scripts.
-- **Tripwire.** If Ollama reports reading well under what was sent, or reading right up to its window's limit, the answer shows a notice that the model may not have read everything.
+- **Tripwire.** If the engine reports reading well under what was sent, or reading right up to its window's limit, the answer shows a notice that the model may not have read everything.
 - **Progress.** A note shows one line and a progress bar while it is generated; chat shows the stage, elapsed time and token counts.
 - **Chat memory.** Past about 12,000 characters, older messages are replaced by a summary (also `/compact [focus]`). Source material is always sent fresh.
 - **One session** chat sends the session's transcript.
@@ -144,7 +144,6 @@ The only third-party dependencies are the official whisper.cpp and llama.cpp XCF
 ### AI backends and recommended models
 
 - **Built-in llama.cpp** is the default runtime, in-process. See [Embedded llama.cpp](#embedded-llamacpp).
-- **Ollama** is an optional engine chosen in Settings. The app talks to it on `127.0.0.1` only.
 - **Apple Intelligence** is disabled via `Integrations.appleIntelligenceBlocked = true`.
 
 `ModelAdvisor` picks defaults from your hardware:
@@ -237,7 +236,7 @@ CI runs on macOS runners (the only place the Swift code compiles). To save macOS
 
 - **Conventional Commits** drive releases: `feat` → minor; `fix`, `perf`, `revert` → patch; `!` or `BREAKING CHANGE` → major; everything else → no release. Squash-merge with the PR title as the subject.
 - **`CHANGELOG.md` is generated.** Do not edit it by hand.
-- **Privacy invariants:** PHI never leaves the Mac; no analytics; the only outbound calls are the update check, opt-in model downloads, and loopback Ollama. Apple Intelligence stays disabled.
+- **Privacy invariants:** PHI never leaves the Mac; no analytics; the only outbound calls are the update check and opt-in model downloads. Apple Intelligence stays disabled.
 - **Dependencies:** first-party and pinned. GitHub Actions are first-party only.
 - **Settings** follow the `AppSettings` pattern: UserDefaults-backed, `private enum Keys`, values loaded in `init`.
 - **Colors** come from `Theme` (`Sources/App/Views/Theme`); no color literals in screens.
@@ -245,7 +244,7 @@ CI runs on macOS runners (the only place the Swift code compiles). To save macOS
 
 ### Embedded llama.cpp
 
-The official llama.cpp XCFramework (`Packages/LlamaCpp`, pinned by URL and checksum) is linked into every build. The built-in model is the default AI engine in every build: setup downloads it inside Aletheia, with nothing else to install. Ollama remains an optional engine you can choose in Settings.
+The official llama.cpp XCFramework (`Packages/LlamaCpp`, pinned by URL and checksum) is linked into every build. The built-in model is the default AI engine in every build: setup downloads it inside Aletheia, with nothing else to install.
 
 Models come from ggml-org on Hugging Face, pinned to a revision and verified by SHA-256 before install:
 
