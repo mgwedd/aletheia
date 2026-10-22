@@ -69,6 +69,26 @@ enum TranscriptStyler {
         return result
     }
 
+    /// The call track's label ranges, which the view shows as the patient's
+    /// first name. The stored text keeps "Call audio".
+    static func callAudioLabels(in text: String) -> [NSRange] {
+        spans(in: text).compactMap { span in
+            if case let .speaker(label) = span.role, tone(for: label) == .callAudio { return span.range }
+            return nil
+        }
+    }
+
+    /// `text` with each call-audio label replaced by `name`, for what the
+    /// reader takes away (copy). Unchanged when `name` is empty.
+    static func namingCallAudio(_ text: String, as name: String) -> String {
+        guard !name.isEmpty else { return text }
+        let ns = NSMutableString(string: text)
+        for range in callAudioLabels(in: text).reversed() {
+            ns.replaceCharacters(in: range, with: name)
+        }
+        return ns as String
+    }
+
     /// `text` with every " (overlapping)" label suffix removed, for anything
     /// the reader sees or takes away (copy, exports) that needs no offsets
     /// into the stored text. The stored transcript itself keeps the suffix:

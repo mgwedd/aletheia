@@ -782,7 +782,8 @@ struct SessionDetailView: View {
                         focusToken: focusToken,
                         composingRange: composingRange,
                         onComposingRectChange: { composerAnchor = $0 },
-                        onSelectionRectChange: { transcriptSelectionRect = $0 }
+                        onSelectionRectChange: { transcriptSelectionRect = $0 },
+                        callAudioName: Prompts.clientFirstName(patient.name)
                     )
                     // The comment composer sits on the transcript, just under the
                     // passage being commented on; the comment button floats at
