@@ -10,6 +10,11 @@ final class AppModelPatientUpdateTests: XCTestCase {
         func clear() {}
     }
 
+    /// Reports the data volume as encrypted, so the FileVault gate lets new patients in on any Mac.
+    private struct EncryptedDisk: DiskEncryptionProbing {
+        func isDataVolumeEncrypted(_ url: URL) -> Bool? { true }
+    }
+
     private var tempRoot: URL!
     private var originalDataRoot: URL?
     private var appModel: AppModel!
@@ -25,6 +30,7 @@ final class AppModelPatientUpdateTests: XCTestCase {
         let root = tempRoot!
         let encryption = EncryptionManager(dataRootProvider: { root })
         appModel = AppModel(settings: settings, encryption: encryption, spotlightIndexer: NoopSpotlightIndexer())
+        appModel.diskProbe = EncryptedDisk()
     }
 
     override func tearDownWithError() throws {
