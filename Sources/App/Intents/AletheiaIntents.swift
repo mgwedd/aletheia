@@ -58,6 +58,10 @@ struct NewSessionIntent: AppIntent {
         guard let match = patients.first(where: { $0.id == patient.id }) else {
             return .result(dialog: "I couldn't find that patient.")
         }
+        if let root = AppSettings.shared.dataRootURL,
+           !PHIEntryGate.allowsNewPHI(diskEncrypted: DiskEncryptionProbe().isDataVolumeEncrypted(root)) {
+            return .result(dialog: "\(PHIEntryGate.blockedMessage)")
+        }
         _ = try store.createSession(for: match)
         AppNavigator.shared.requestOpen(patientID: match.id)
         return .result(dialog: "Started a new session for \(match.name).")

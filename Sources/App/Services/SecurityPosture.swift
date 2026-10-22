@@ -39,7 +39,9 @@ enum SecurityPosture {
         localBackupActive: Bool,
         iCloudBackupEnabled: Bool,
         iCloudBackupConfigured: Bool,
-        networkOnline: Bool?
+        networkOnline: Bool?,
+        /// Whether the data folder's volume reports as encrypted; nil = unknown.
+        diskEncrypted: Bool? = nil
     ) -> [PostureItem] {
         var items: [PostureItem] = []
 
@@ -106,10 +108,19 @@ enum SecurityPosture {
                 detail: "An end-to-end-encrypted copy syncs to your private iCloud. It's sealed with your key first, so only ciphertext ever leaves this Mac."))
         }
 
-        // FileVault: the app can't read its state under the sandbox, so this is a
-        // standing recommendation with a link elsewhere in Settings.
-        items.append(PostureItem(id: "fileVault", title: "FileVault", level: .informational,
-            detail: "Full-disk encryption is recommended as the baseline. Manage it in System Settings."))
+        // FileVault: read in-process from the data folder's volume
+        // (`DiskEncryptionProbe`). Unknown stays a standing recommendation.
+        switch diskEncrypted {
+        case .some(true):
+            items.append(PostureItem(id: "fileVault", title: "FileVault", level: .secure,
+                detail: "The disk holding your data folder is encrypted."))
+        case .some(false):
+            items.append(PostureItem(id: "fileVault", title: "FileVault", level: .actionRecommended,
+                detail: "The disk holding your data folder isn't encrypted. Turn on FileVault in System Settings; until then Aletheia won't add new patients, sessions or recordings."))
+        case .none:
+            items.append(PostureItem(id: "fileVault", title: "FileVault", level: .informational,
+                detail: "Aletheia couldn't confirm whether the disk is encrypted. Check that FileVault is on in System Settings."))
+        }
 
         // Network activity: connectivity itself is never a problem to fix here —
         // PHI never traverses the network whatever the state — so this stays

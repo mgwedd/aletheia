@@ -26,7 +26,8 @@ struct SecurityPostureView: View {
             localBackupActive: LocalEncryptedBackupService.isWired,
             iCloudBackupEnabled: settings.iCloudEncryptedBackupEnabled,
             iCloudBackupConfigured: ICloudEncryptedBackupService.isProvisioned,
-            networkOnline: reachability.isOnline
+            networkOnline: reachability.isOnline,
+            diskEncrypted: appModel.diskEncrypted
         )
     }
 

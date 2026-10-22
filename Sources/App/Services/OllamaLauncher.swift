@@ -45,7 +45,7 @@ enum OllamaAppLocator {
 ///
 /// Launching a local, user-installed app via `NSWorkspace` needs no extra
 /// entitlement under App Sandbox (it's mediated by Launch Services, not a
-/// direct `Process`/`posix_spawn`), so this doesn't touch `Aletheia.entitlements`.
+/// direct child-process launch), so this doesn't touch `Aletheia.entitlements`.
 enum OllamaLauncher {
     enum LaunchError: LocalizedError, Equatable {
         case notInstalled
