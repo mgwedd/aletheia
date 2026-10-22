@@ -78,7 +78,7 @@ enum WhisperDigestProbe: Equatable {
 // MARK: - The probing seam
 
 /// Everything Doctor needs to know about the outside world, behind one seam so
-/// `DoctorRunner` can be unit-tested with stubs (no real disk, SQLite or Ollama).
+/// `DoctorRunner` can be unit-tested with stubs (no real disk, SQLite or a model).
 protocol DoctorProbing {
     func environment() -> DoctorEnvironment
     func now() -> Date
@@ -112,8 +112,7 @@ extension DoctorProbing {
 
 /// The real probes. Every read here is non-destructive: the database is opened
 /// read-only, the data folder is only stat'ed, nothing is created or written,
-/// and nothing touches the network except the existing Ollama check — which is
-/// skipped unless Ollama's address is loopback.
+/// and nothing touches the network.
 struct LiveDoctorProbes: DoctorProbing {
     var dataRoot: URL?
     /// `AppModel.databaseState.failure` at the time Doctor runs.
@@ -236,14 +235,8 @@ struct LiveDoctorProbes: DoctorProbing {
 
     // MARK: Building the live probes from app state
 
-    /// Whether `url` is an acceptable local Ollama address (see `LoopbackURL`). Doctor
-    /// only ever contacts Ollama when it does — the privacy rule is that nothing
-    /// leaves the machine.
-    static func isLoopback(_ url: URL) -> Bool { LoopbackURL.validate(url) != nil }
-
     /// The tool checks Doctor reuses from `ToolHealth`, minus the data-folder row
-    /// (Doctor has its own, richer one) and with the Ollama probe held back unless
-    /// its address is loopback. Never prompts: Screen Recording uses the
+    /// (Doctor has its own, richer one). Never prompts: Screen Recording uses the
     /// non-authoritative preflight.
     @MainActor
     static func reusedToolHealthChecks(
@@ -256,18 +249,9 @@ struct LiveDoctorProbes: DoctorProbing {
             await ToolHealth.screenRecordingCheck(authoritative: false),
             ToolHealth.whisperModelCheck(settings: settings)
         ]
-        let backend = integrations.effectiveAssistantBackend
-        if backend == .ollama && !isLoopback(settings.ollamaBaseURL) {
-            checks.append(ToolHealthCheck(
-                kind: .ollama,
-                title: "AI summaries & chat",
-                status: .warning,
-                detail: "Ollama's address isn't on this Mac, so Doctor didn't contact it. Aletheia is designed to talk only to Ollama running on this Mac (127.0.0.1)."
-            ))
-        } else {
-            checks.append(await ToolHealth.assistantCheck(
-                settings: settings, backend: backend, assistant: integrations.makeAssistant()))
-        }
+        checks.append(await ToolHealth.assistantCheck(
+            settings: settings, backend: integrations.effectiveAssistantBackend,
+            assistant: integrations.makeAssistant()))
         if includeScheduling {
             checks.append(ToolHealth.calendarCheck())
             checks.append(ToolHealth.remindersCheck())

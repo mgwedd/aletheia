@@ -82,9 +82,7 @@ final class AppSettings: ObservableObject {
         static let whisperModel = "whisperModel"
         static let assistantBackend = "assistantBackend"
         static let llamaModel = "llamaModel"
-        static let ollamaModelName = "ollamaModelName"
         static let systemPrompt = "systemPrompt"
-        static let ollamaBaseURL = "ollamaBaseURL"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
         static let updateFeedURL = "updateFeedURL"
         static let autoCheckForUpdates = "autoCheckForUpdates"
@@ -140,25 +138,10 @@ final class AppSettings: ObservableObject {
             if llamaModel != oldValue { LlamaRuntime.unloadAll() }
         }
     }
-    @Published var ollamaModelName: String {
-        didSet { defaults.set(ollamaModelName, forKey: Keys.ollamaModelName) }
-    }
     /// The system prompt prepended to every LLM request. Defaults to
     /// `Prompts.defaultSystemPrompt`; fully editable (and resettable) in Settings.
     @Published var systemPrompt: String {
         didSet { defaults.set(systemPrompt, forKey: Keys.systemPrompt) }
-    }
-    /// Always a loopback address (`LoopbackURL`); assigning anything else resets
-    /// it to the default.
-    @Published var ollamaBaseURL: URL {
-        didSet {
-            if LoopbackURL.validate(ollamaBaseURL) == nil {
-                ollamaBaseURL = LoopbackURL.defaultOllama
-                defaults.removeObject(forKey: Keys.ollamaBaseURL)
-            } else {
-                defaults.set(ollamaBaseURL.absoluteString, forKey: Keys.ollamaBaseURL)
-            }
-        }
     }
     @Published var hasCompletedFirstRun: Bool {
         didSet { defaults.set(hasCompletedFirstRun, forKey: Keys.hasCompletedFirstRun) }
@@ -377,6 +360,16 @@ final class AppSettings: ObservableObject {
     let hardware: HardwareCapabilities
     let recommendation: ModelRecommendation
 
+    /// Settings from an older version that no longer exist; cleared on load.
+    static let retiredKeys = [
+        "ollamaModelName", // legacy-key
+        "ollamaBaseURL", // legacy-key
+    ]
+
+    private static func removeRetiredKeys(from defaults: UserDefaults) {
+        for key in retiredKeys { defaults.removeObject(forKey: key) }
+    }
+
     private convenience init() { self.init(defaults: .standard) }
 
     /// Test seam: the shared instance uses `UserDefaults.standard`.
@@ -394,29 +387,22 @@ final class AppSettings: ObservableObject {
         } else {
             whisperModel = recommendation.whisperModel
         }
-        if let raw = defaults.string(forKey: Keys.assistantBackend), let backend = AssistantBackend(rawValue: raw) {
-            assistantBackend = backend
-        } else {
-            assistantBackend = .automatic
+        // An unrecognised stored value (including one from an older version that
+        // offered another engine) means the built-in engine.
+        let storedBackend = defaults.string(forKey: Keys.assistantBackend)
+        let backend = AssistantBackendResolver.preference(fromStored: storedBackend)
+        if let storedBackend, storedBackend != backend.rawValue {
+            defaults.set(backend.rawValue, forKey: Keys.assistantBackend)
         }
+        assistantBackend = backend
+        Self.removeRetiredKeys(from: defaults)
         if let raw = defaults.string(forKey: Keys.llamaModel), let model = LlamaModel(rawValue: raw) {
             llamaModel = model
         } else {
             llamaModel = .recommended(for: hardware)
         }
-        ollamaModelName = defaults.string(forKey: Keys.ollamaModelName) ?? recommendation.ollamaModel
         let savedPrompt = defaults.string(forKey: Keys.systemPrompt)
         systemPrompt = (savedPrompt?.isEmpty == false) ? savedPrompt! : Prompts.defaultSystemPrompt
-        if let raw = defaults.string(forKey: Keys.ollamaBaseURL) {
-            if let url = LoopbackURL.validate(raw) {
-                ollamaBaseURL = url
-            } else {
-                defaults.removeObject(forKey: Keys.ollamaBaseURL)
-                ollamaBaseURL = LoopbackURL.defaultOllama
-            }
-        } else {
-            ollamaBaseURL = LoopbackURL.defaultOllama
-        }
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
         localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)
         iCloudEncryptedBackupEnabled = defaults.bool(forKey: Keys.iCloudEncryptedBackupEnabled)

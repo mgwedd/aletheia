@@ -94,7 +94,7 @@ final class LlamaEngineLongContextTests: XCTestCase {
         try XCTSkipIf(gguf.isEmpty || dir.isEmpty, "Set ALETHEIA_TEST_GGUF and ALETHEIA_TEST_LONG_PROMPTS")
 
         let engine = LlamaEngine(modelURL: URL(fileURLWithPath: gguf), sampling: LocalLLMSampling(maxTokens: 256),
-                                 // Past this Mac's own budget, to compare with the Ollama runs of the same files.
+                                 // Past this Mac's own budget, to exercise the overflow path.
                                  budget: ContextBudget(tokens: 131_072))
         try await engine.load()
         let files = try FileManager.default.contentsOfDirectory(atPath: dir)

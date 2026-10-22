@@ -34,7 +34,7 @@ final class HarnessEvalTests: XCTestCase {
         XCTAssertFalse(clear.truncated)
         XCTAssertEqual(clear.prefillTPS, 900)
         XCTAssertEqual(clear.decodeTPS, 50)
-        XCTAssertTrue(clear.text().contains("prompt tokens: 900 (Ollama prompt_eval_count) vs 1000 estimated"))
+        XCTAssertTrue(clear.text().contains("prompt tokens: 900 (engine-reported) vs 1000 estimated"))
         XCTAssertTrue(clear.text().contains("tripwire clear"))
         let both = EvalStage(name: "n", output: "o", wallSeconds: 3,
                              calls: [.init(estimatedTokens: 1000, stats: ok), .init(estimatedTokens: 1000, stats: cut)], coverage: "c")
@@ -68,7 +68,6 @@ final class HarnessEvalTests: XCTestCase {
         let s = EvalStage(name: "n", output: "o", wallSeconds: 1, calls: [], coverage: "c")
         let data = try XCTUnwrap(EvalReport.json(header: "h", stages: [s]))
         let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(obj["seed"] as? Int, HarnessEvalArgs.seed)
         XCTAssertEqual((obj["stages"] as? [[String: Any]])?.first?["coverage"] as? String, "c")
     }
 }

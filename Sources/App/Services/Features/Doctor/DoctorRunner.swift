@@ -4,7 +4,7 @@ import Foundation
 /// `DoctorReport`. All the *judgement* (what counts as ok, a warning or a
 /// problem, and what to tell the therapist) lives here as pure functions of probe
 /// values; all the I/O lives behind `DoctorProbing`. So the whole thing is unit
-/// tested with stub probes — no real disk, SQLite database or Ollama needed.
+/// tested with stub probes — no real disk, SQLite database needed.
 ///
 /// ```
 ///   probes ─▶ dataFolderChecks ─┐
@@ -500,7 +500,7 @@ struct DoctorRunner {
                 action = .openSystemSettings
             case .whisperModel, .dataFolder, .termsAndPrivacy:
                 action = .openSettings
-            case .ollama, .builtInModel:
+            case .builtInModel:
                 action = .setupAssistant
             }
         }
