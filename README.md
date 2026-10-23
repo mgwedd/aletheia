@@ -81,7 +81,7 @@ flowchart LR
     UI <--> DB
   end
   NET(["Internet"])
-  Mac -. "update check · model downloads<br/>(no patient data)" .-> NET
+  Mac -. "update check · revocation list · model downloads<br/>(no patient data)" .-> NET
 ```
 
 ### What a note or answer reads
@@ -236,7 +236,7 @@ CI runs on macOS runners (the only place the Swift code compiles). To save macOS
 
 - **Conventional Commits** drive releases: `feat` → minor; `fix`, `perf`, `revert` → patch; `!` or `BREAKING CHANGE` → major; everything else → no release. Squash-merge with the PR title as the subject.
 - **`CHANGELOG.md` is generated.** Do not edit it by hand.
-- **Privacy invariants:** PHI never leaves the Mac; no analytics; the app itself has no network access; only a bundled helper makes the update check and opt-in model downloads. Apple Intelligence stays disabled.
+- **Privacy invariants:** PHI never leaves the Mac; no analytics; the app itself has no network access; only a bundled helper makes the update check, the license revocation-list fetch and opt-in model downloads. Apple Intelligence stays disabled.
 - **Dependencies:** first-party and pinned. GitHub Actions are first-party only.
 - **Settings** follow the `AppSettings` pattern: UserDefaults-backed, `private enum Keys`, values loaded in `init`.
 - **Colors** come from `Theme` (`Sources/App/Views/Theme`); no color literals in screens.
