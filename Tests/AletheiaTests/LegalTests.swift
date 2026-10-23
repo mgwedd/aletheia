@@ -59,7 +59,7 @@ final class LegalTests: XCTestCase {
             XCTAssertFalse(text.contains("Backup also offers"), path)
         }
         // Ollama support was removed; the built-in engine is the only AI path.
-        for path in ["PRIVACY.md", "SECURITY.md", "README.md", "docs/ENCRYPTION.md",
+        for path in ["PRIVACY.md", "TERMS.md", "SECURITY.md", "README.md", "docs/ENCRYPTION.md",
                      "docs/HIPAA-SAFEGUARDS.md", "docs/DESIGN-DECISIONS.md"] {
             let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
             XCTAssertFalse(text.localizedCaseInsensitiveContains("ollama"), path)

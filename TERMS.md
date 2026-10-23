@@ -1,6 +1,6 @@
 # Terms of Service
 
-_Last updated: 2026-09-17_
+_Last updated: 2026-10-22_
 
 > This document is a template provided for transparency. It is **not legal
 > advice**. Aletheia is used with protected health information (PHI); have your
@@ -55,8 +55,8 @@ You are solely responsible for:
   Touch ID / password lock, account security, and physical access. See
   [SECURITY.md](SECURITY.md).
 - **Backups.** Backing up your data folder. The App does not back up your data.
-- **Third-party software.** Any tools you install to use with the App (for
-  example Ollama or model files), under their own licenses and terms.
+- **Third-party software.** Any model files you download to use with the App,
+  under their own licenses and terms.
 
 ## 5. Acceptable use
 
