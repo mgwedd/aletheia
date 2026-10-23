@@ -104,13 +104,35 @@ final class DeviceKeyStoreTests: XCTestCase {
         XCTAssertEqual(relaunched.state, .lockedNeedsPassphrase)
     }
 
+    func testTestsDoNotUseTheRealKeychainByDefault() throws {
+        try XCTSkipIf(TestHost.usesLiveKeychain(), "Live Keychain opted in.")
+        XCTAssertTrue(KeychainDeviceKeyStore.makeDefault() is ProcessMemoryDeviceKeyStore)
+        let a = AuditKeyManager.loadOrCreateKeychainKey()
+        let b = AuditKeyManager.loadOrCreateKeychainKey()
+        XCTAssertNotNil(a)
+        XCTAssertEqual(a.map { $0.withUnsafeBytes { Data($0) } }, b.map { $0.withUnsafeBytes { Data($0) } })
+    }
+
+    func testProcessMemoryStoreRoundTrips() throws {
+        let store = ProcessMemoryDeviceKeyStore()
+        let key = SymmetricKey(size: .bits256)
+        try store.save(key, for: "x")
+        XCTAssertNotNil(store.load(for: "x"))
+        store.delete(for: "x")
+        XCTAssertNil(store.load(for: "x"))
+    }
+
     func testKeychainErrorDescription() {
         let err = KeychainDeviceKeyStore.KeychainError.unexpectedStatus(-50)
         XCTAssertNotNil(err.errorDescription)
         XCTAssertTrue(err.errorDescription?.contains("keychain") == true)
     }
 
-    func testKeychainDeviceKeyStoreOperations() {
+    func testKeychainDeviceKeyStoreOperations() throws {
+        try XCTSkipUnless(
+            TestHost.usesLiveKeychain(),
+            "Touches the real Keychain; run with TEST_RUNNER_ALETHEIA_LIVE_KEYCHAIN=1 (CI does)."
+        )
         let store = KeychainDeviceKeyStore()
         let testID = "test-key-\(UUID().uuidString)"
         let key = SymmetricKey(size: .bits256)

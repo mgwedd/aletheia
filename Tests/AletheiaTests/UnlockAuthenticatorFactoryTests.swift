@@ -50,6 +50,16 @@ final class UnlockAuthenticatorFactoryTests: XCTestCase {
 }
 
 final class TestHostTests: XCTestCase {
+    func testLiveKeychainDecision() {
+        let xctest = ["XCTestConfigurationFilePath": "/x"]
+        XCTAssertFalse(TestHost.usesLiveKeychain(environment: xctest))
+        XCTAssertFalse(TestHost.usesLiveKeychain(environment: xctest.merging(["CI": "false"]) { $1 }))
+        XCTAssertFalse(TestHost.usesLiveKeychain(environment: xctest.merging(["ALETHEIA_LIVE_KEYCHAIN": "0"]) { $1 }))
+        XCTAssertTrue(TestHost.usesLiveKeychain(environment: xctest.merging(["CI": "true"]) { $1 }))
+        XCTAssertTrue(TestHost.usesLiveKeychain(environment: xctest.merging(["ALETHEIA_LIVE_KEYCHAIN": "1"]) { $1 }))
+        XCTAssertTrue(TestHost.usesLiveKeychain(environment: [:]))
+    }
+
     func testDetectsXCTestOnlyFromItsConfigurationVariable() {
         XCTAssertFalse(TestHost.isHostingTests(environment: [:]))
         XCTAssertFalse(TestHost.isHostingTests(environment: ["CI": "true"]))
