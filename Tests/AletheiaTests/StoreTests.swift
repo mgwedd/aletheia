@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import Aletheia
 
@@ -298,5 +299,86 @@ final class StoreTests: XCTestCase {
         let meta2 = store.fastSessionMeta(for: patient)
         XCTAssertEqual(meta2.count, 2)
         XCTAssertEqual(meta2.newestDate, date2)
+    }
+
+    // MARK: - Unreadable notes and traversal
+
+    /// A store over the same folder whose key can't open what `store` sealed.
+    private func sealedNote(_ text: String) throws -> (Store, Patient, SessionRecord, URL) {
+        let writer = Store(root: tempRoot, protector: FileProtector(key: SymmetricKey(size: .bits256)))
+        let patient = try writer.createPatient(name: "Sealed Case")
+        let session = try writer.createSession(for: patient)
+        try writer.saveNote(text, for: patient, session: session, format: .soap)
+        let reader = Store(root: tempRoot, protector: FileProtector(key: SymmetricKey(size: .bits256)))
+        let url = reader.sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: .soap))
+        return (reader, patient, session, url)
+    }
+
+    func testNoteEditStateReportsUnreadable() throws {
+        let (reader, patient, session, _) = try sealedNote("edited by hand")
+        XCTAssertEqual(reader.noteEditState(for: patient, session: session, format: .soap), .unreadable)
+    }
+
+    func testSaveGeneratedNoteThrowsWhenExistingNoteUnreadable() throws {
+        let (reader, patient, session, url) = try sealedNote("edited by hand")
+        let before = try Data(contentsOf: url)
+        XCTAssertThrowsError(try reader.saveGeneratedNote("new text", for: patient, session: session, format: .soap))
+        XCTAssertEqual(try Data(contentsOf: url), before, "the unreadable note is byte-identical")
+        let previous = reader.sessionDir(for: patient, session: session)
+            .appendingPathComponent(Store.noteSidecarFileName(for: .soap, .previous))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: previous.path))
+    }
+
+    func testRestorePreviousNoteDoesNotOverwriteUnreadable() throws {
+        let keyed = Store(root: tempRoot, protector: FileProtector(key: SymmetricKey(size: .bits256)))
+        let patient = try keyed.createPatient(name: "Sealed Case")
+        let session = try keyed.createSession(for: patient)
+        try keyed.saveGeneratedNote("v1", for: patient, session: session, format: .soap)
+        try keyed.saveEditedNote("hand edit", for: patient, session: session, format: .soap)
+        try keyed.saveGeneratedNote("v2", for: patient, session: session, format: .soap)
+        XCTAssertEqual(keyed.previousNote(for: patient, session: session, format: .soap), "hand edit")
+        // The note file is replaced by one sealed under another key, so `keyed` can't read it.
+        let foreign = Store(root: tempRoot, protector: FileProtector(key: SymmetricKey(size: .bits256)))
+        try foreign.saveNote("foreign", for: patient, session: session, format: .soap)
+        let url = keyed.sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: .soap))
+        let before = try Data(contentsOf: url)
+
+        XCTAssertThrowsError(try keyed.restorePreviousNote(for: patient, session: session, format: .soap))
+        XCTAssertEqual(try Data(contentsOf: url), before)
+        XCTAssertEqual(keyed.previousNote(for: patient, session: session, format: .soap), "hand edit")
+    }
+
+    func testUndecodableRecordIsReportedNotDropped() throws {
+        let comments = try XCTUnwrap(CommentStore(root: tempRoot))
+        let sessionID = UUID()
+        let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
+        XCTAssertTrue(core.put(PersistedRecord(
+            id: sessionID.uuidString, kind: "note", itemID: sessionID,
+            payload: Data("not json".utf8), createdAt: Date(), updatedAt: Date())))
+        let reporting = Store(root: tempRoot, commentStore: comments)
+        XCTAssertTrue(reporting.unreadableEntries.isEmpty)
+
+        XCTAssertEqual(comments.note(sessionID: sessionID), "")
+        XCTAssertEqual(reporting.unreadableEntries.map(\.kind), [.storedRecord])
+        XCTAssertNotNil(core.record(kind: "note", id: sessionID.uuidString), "the record is left in place")
+    }
+
+    func testUndecodableLegacyChatIsReportedAndKept() throws {
+        let patient = try store.createPatient(name: "Chat Case")
+        let session = try store.createSession(for: patient)
+        let file = store.sessionDir(for: patient, session: session).appendingPathComponent("chat.json")
+        try Data("{ broken".utf8).write(to: file)
+        _ = store.loadSessionChat(for: patient, session: session)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), "an unreadable chat file isn't retired")
+        XCTAssertEqual(store.unreadableEntries.map(\.kind), [.storedRecord])
+    }
+
+    func testLoadSessionRejectsTraversal() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let other = try store.createPatient(name: "John Roe")
+        let otherSession = try store.createSession(for: other)
+        for name in ["../\(other.slug)/\(otherSession.folderName)", "..", ".", "", "a/b", "/etc"] {
+            XCTAssertThrowsError(try store.loadSession(for: patient, folderName: name), name)
+        }
     }
 }

@@ -15,7 +15,7 @@ name: CD (build artifact)
 # fork as on main; first launch still needs a right-click > Open (see the job
 # summary and docs/SETUP-GUIDE.md).
 #
-# Supply-chain note: only first-party actions (checkout, cache, upload-artifact)
+# Supply-chain note: only first-party actions (checkout, upload-artifact)
 # and Homebrew/Apple built-in CLIs — no third-party marketplace actions.
 
 on:
@@ -29,6 +29,9 @@ on:
       - '**/*.md'
       - 'docs/**'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: cd-${{ github.ref }}
@@ -49,6 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Did packaging inputs change?
         id: diff
@@ -65,19 +69,15 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Show selected Xcode
         run: xcodebuild -version
 
-      # Same SPM cache key as smoke-test so the two workflows share the
-      # resolved whisper.cpp and llama.cpp XCFrameworks.
-      - name: Cache Swift packages
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/SourcePackages
-          key: spm-macos-15-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
-          restore-keys: spm-macos-15-
-
+      # No Swift-package cache here: this job produces downloadable DMGs, so the
+      # whisper.cpp and llama.cpp XCFrameworks are fetched fresh and checked
+      # against the checksums in their Package.swift on every run.
       - name: Build Release app (ad-hoc signed)
         run: ./scripts/build.sh
 

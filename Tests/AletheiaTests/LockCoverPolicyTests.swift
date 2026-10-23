@@ -59,4 +59,10 @@ final class PatientChatWindowTests: XCTestCase {
         renamed.name = "Alice B."
         XCTAssertEqual(PatientChatWindow.patient(id: alice.id, in: [renamed])?.name, "Alice B.")
     }
+
+    func testMissingKeystoreIsCoveredBelowTheAppLock() {
+        XCTAssertEqual(LockCoverPolicy.cover(appLocked: false, hasDataFolder: true, encryption: .keystoreMissing), [.keystoreMissing])
+        XCTAssertEqual(LockCoverPolicy.cover(appLocked: true, hasDataFolder: true, encryption: .keystoreMissing), [.appLock, .keystoreMissing])
+        XCTAssertEqual(LockCoverPolicy.cover(appLocked: false, hasDataFolder: false, encryption: .keystoreMissing), [])
+    }
 }

@@ -75,6 +75,10 @@ targets:
         # Xcode's default of YES, which expands the $(...) build-setting
         # placeholders in Info.plist (e.g. CFBundleIdentifier) at build time.
         INFOPLIST_FILE: Sources/App/Resources/Info.plist
+        # Info.plist is preprocessed so the dev tier alone can carry the
+        # Calendar and Reminders purpose strings (under #ifdef ALETHEIA_DEV;
+        # only Debug defines it).
+        INFOPLIST_PREPROCESS: YES
       # Least privilege: entitlements are chosen per config, mirroring the build
       # tiers. Release (production) omits the calendars entitlement because
       # EventKit scheduling is a `.dev`-tier feature (EventKitSchedulingFeatureModule);
@@ -85,6 +89,7 @@ targets:
       configs:
         Debug:
           CODE_SIGN_ENTITLEMENTS: Sources/App/Resources/AletheiaDev.entitlements
+          INFOPLIST_PREPROCESSOR_DEFINITIONS: ALETHEIA_DEV=1
         Release:
           CODE_SIGN_ENTITLEMENTS: Sources/App/Resources/Aletheia.entitlements
     dependencies:

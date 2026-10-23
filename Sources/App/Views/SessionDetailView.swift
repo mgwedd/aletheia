@@ -1389,7 +1389,9 @@ struct SessionDetailView: View {
     private func requestGenerateNote() {
         guard let store = appModel.store else { return }
         let state = store.noteEditState(for: patient, session: session, format: settings.progressNoteFormat)
-        if NoteEditing.shouldArchiveBeforeReplacing(state) {
+        if state == .unreadable {
+            errorMessage = StoreError.noteUnreadable.localizedDescription
+        } else if NoteEditing.shouldArchiveBeforeReplacing(state) {
             confirmRegenerate = true
         } else {
             generateNote()
@@ -1596,6 +1598,11 @@ struct SessionDetailView: View {
             onSessionUpdated()
         case .blank(let notice):
             // Nothing was transcribed; any existing transcript is untouched.
+            noSpeechNotice = notice
+            onSessionUpdated()
+        case .completedAudioKept(let notice):
+            reloadTranscript()
+            transcriptDraft = transcriptText
             noSpeechNotice = notice
             onSessionUpdated()
         case .cancelled:

@@ -110,6 +110,13 @@ final class TranscriptionCoordinator: ObservableObject {
                         showsName: self.settings.notificationsShowPatientNames
                     )
                 )
+            case .completedAudioKept:
+                await self.integrations.makeNotifier().post(
+                    SessionNotifications.recordingNotDeleted(
+                        patientName: patient.name, date: session.date,
+                        showsName: self.settings.notificationsShowPatientNames
+                    )
+                )
             case .completed, .cancelled:
                 break
             }
@@ -234,8 +241,14 @@ final class TranscriptionCoordinator: ObservableObject {
             // retained on disk is ciphertext, never plaintext PHI. The gate is
             // enforced here on behavior, not just in the UI, so stale settings or
             // encryption being turned off can't leave audio in the clear.
+            var audioNotice: String?
             if decision == .discard {
-                store.deleteRecordings(for: patient, session: session)
+                do {
+                    try store.deleteRecordings(for: patient, session: session)
+                } catch {
+                    audioNotice = "The transcript is saved, but the recording couldn't be deleted and is still in "
+                        + "your data folder. Delete it from the session folder to remove it."
+                }
             }
             appModel.refreshPatients()
             await integrations.makeNotifier().post(
@@ -244,6 +257,7 @@ final class TranscriptionCoordinator: ObservableObject {
                     showsName: settings.notificationsShowPatientNames
                 )
             )
+            if let audioNotice { return .completedAudioKept(notice: audioNotice) }
             return .completed
         } catch is CancellationError {
             return .cancelled
