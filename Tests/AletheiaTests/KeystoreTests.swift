@@ -5,7 +5,7 @@ import XCTest
 final class KeystoreTests: XCTestCase {
     // Real keystores use 600k PBKDF2 iterations; tests use a tiny count so the
     // suite stays fast. The count travels with each slot, so this is faithful.
-    private let fastIterations = 1_000
+    private let fastIterations = 100_000
 
     private func raw(_ key: SymmetricKey) -> Data { key.withUnsafeBytes { Data($0) } }
 
@@ -78,6 +78,66 @@ final class KeystoreTests: XCTestCase {
     func testLoadMissingReturnsNil() {
         XCTAssertFalse(Keystore.exists(at: tempRoot))
         XCTAssertNil(Keystore.load(from: tempRoot))
+    }
+
+    // MARK: - Parsing bounds
+
+    func testTamperedIterationsThrowsMalformedNotTrap() throws {
+        let (keystore, _) = try Keystore.create(passphrase: "pw", iterations: fastIterations)
+        for bad in [Int.max, 5_000_000_000, 0, -1, 99_999, 10_000_001] {
+            var tampered = keystore
+            tampered.wrappings[0].iterations = bad
+            XCTAssertThrowsError(try tampered.unlock(passphrase: "pw")) { error in
+                XCTAssertEqual(error as? Keystore.KeystoreError, .malformed, "iterations \(bad)")
+            }
+        }
+    }
+
+    func testUnknownVersionRejected() throws {
+        let (keystore, _) = try Keystore.create(passphrase: "pw", iterations: fastIterations)
+        var future = keystore
+        future.version = Keystore.currentVersion + 1
+        XCTAssertThrowsError(try future.unlock(passphrase: "pw")) { error in
+            XCTAssertEqual(error as? Keystore.KeystoreError, .malformed)
+        }
+    }
+
+    func testUnknownKdfRejected() throws {
+        let (keystore, _) = try Keystore.create(passphrase: "pw", iterations: fastIterations)
+        var tampered = keystore
+        tampered.wrappings[0].kdf = "scrypt"
+        XCTAssertThrowsError(try tampered.unlock(passphrase: "pw")) { error in
+            XCTAssertEqual(error as? Keystore.KeystoreError, .malformed)
+        }
+    }
+
+    func testNFCandNFDDeriveSameKey() throws {
+        let nfc = "caf\u{E9}"
+        let nfd = "cafe\u{301}"
+        XCTAssertNotEqual(Array(nfc.utf8), Array(nfd.utf8))
+        let salt = PassphraseKDF.randomSalt()
+        let a = try PassphraseKDF.deriveKey(passphrase: nfc, salt: salt, iterations: fastIterations)
+        let b = try PassphraseKDF.deriveKey(passphrase: nfd, salt: salt, iterations: fastIterations)
+        XCTAssertEqual(raw(a), raw(b))
+
+        let (keystore, dek) = try Keystore.create(passphrase: nfc, iterations: fastIterations)
+        XCTAssertEqual(raw(try keystore.unlock(passphrase: nfd)), raw(dek))
+    }
+
+    func testLegacyRawPassphraseSlotStillUnlocks() throws {
+        // A slot wrapped the old way: KEK derived from the raw, un-normalized bytes.
+        let nfd = "cafe\u{301}"
+        let dek = SymmetricKey(size: .bits256)
+        let salt = PassphraseKDF.randomSalt()
+        let kek = try PassphraseKDF.deriveKey(passphrase: nfd, salt: salt, iterations: fastIterations, normalize: false)
+        let wrapped = try DataCipher.seal(raw(dek), using: kek)
+        let slot = Keystore.Wrapping(
+            id: UUID().uuidString, kind: .passphrase, kdf: PassphraseKDF.identifier,
+            salt: salt.base64EncodedString(), iterations: fastIterations,
+            wrappedKey: wrapped.base64EncodedString(), label: nil, createdAt: "2024-01-01T00:00:00Z"
+        )
+        let legacy = Keystore(version: Keystore.currentVersion, wrappings: [slot])
+        XCTAssertEqual(raw(try legacy.unlock(passphrase: nfd)), raw(dek))
     }
 
     // MARK: - KDF

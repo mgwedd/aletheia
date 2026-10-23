@@ -86,17 +86,23 @@ struct Keystore: Codable, Equatable {
     // MARK: - Unlock
 
     /// Tries every passphrase wrapping and returns the DEK if one opens.
-    /// A wrong passphrase (or a tampered slot) fails GCM authentication on all
-    /// of them and surfaces as `wrongPassphrase`.
+    /// A wrong passphrase fails GCM authentication on all of them and surfaces
+    /// as `wrongPassphrase`. A keystore with an unknown version, or whose slots
+    /// are all unreadable (bad KDF, out-of-range iterations, bad encoding),
+    /// surfaces as `malformed`.
     func unlock(passphrase: String) throws -> SymmetricKey {
+        guard version == Self.currentVersion else { throw KeystoreError.malformed }
         let passphraseSlots = wrappings.filter { $0.kind == .passphrase }
         guard !passphraseSlots.isEmpty else { throw KeystoreError.noPassphraseWrapping }
+        var readableSlots = 0
         for slot in passphraseSlots {
-            if let dek = try? Self.openPassphraseWrapping(slot, passphrase: passphrase) {
+            guard let params = try? Self.parameters(of: slot) else { continue }
+            readableSlots += 1
+            if let dek = Self.openPassphraseWrapping(params, passphrase: passphrase) {
                 return dek
             }
         }
-        throw KeystoreError.wrongPassphrase
+        throw readableSlots == 0 ? KeystoreError.malformed : KeystoreError.wrongPassphrase
     }
 
     // MARK: - Managing wrappings
@@ -165,7 +171,7 @@ struct Keystore: Codable, Equatable {
         return Wrapping(
             id: UUID().uuidString,
             kind: .passphrase,
-            kdf: "pbkdf2-hmac-sha256",
+            kdf: PassphraseKDF.identifier,
             salt: salt.base64EncodedString(),
             iterations: iterations,
             wrappedKey: wrapped.base64EncodedString(),
@@ -174,15 +180,40 @@ struct Keystore: Codable, Equatable {
         )
     }
 
-    private static func openPassphraseWrapping(_ slot: Wrapping, passphrase: String) throws -> SymmetricKey {
+    private struct SlotParameters {
+        let salt: Data
+        let wrapped: Data
+        let iterations: Int
+    }
+
+    /// Validates a slot's stored fields before any key derivation.
+    private static func parameters(of slot: Wrapping) throws -> SlotParameters {
         guard
+            slot.kdf == nil || slot.kdf == PassphraseKDF.identifier,
             let saltB64 = slot.salt, let salt = Data(base64Encoded: saltB64),
             let wrapped = Data(base64Encoded: slot.wrappedKey)
         else { throw KeystoreError.malformed }
         let iterations = slot.iterations ?? PassphraseKDF.defaultIterations
-        let kek = try PassphraseKDF.deriveKey(passphrase: passphrase, salt: salt, iterations: iterations)
-        let dekData = try DataCipher.open(wrapped, using: kek)
-        return SymmetricKey(data: dekData)
+        guard PassphraseKDF.iterationRange.contains(iterations) else { throw KeystoreError.malformed }
+        return SlotParameters(salt: salt, wrapped: wrapped, iterations: iterations)
+    }
+
+    /// Opens a slot with the normalized passphrase first, then the raw one, so
+    /// slots wrapped before normalization was added keep unlocking.
+    private static func openPassphraseWrapping(_ slot: SlotParameters, passphrase: String) -> SymmetricKey? {
+        var candidates = [true]
+        // Swift String equality is canonical, so compare the bytes.
+        if !passphrase.precomposedStringWithCanonicalMapping.utf8.elementsEqual(passphrase.utf8) { candidates.append(false) }
+        for normalize in candidates {
+            guard
+                let kek = try? PassphraseKDF.deriveKey(
+                    passphrase: passphrase, salt: slot.salt, iterations: slot.iterations, normalize: normalize
+                ),
+                let dekData = try? DataCipher.open(slot.wrapped, using: kek)
+            else { continue }
+            return SymmetricKey(data: dekData)
+        }
+        return nil
     }
 
     private static let iso8601: ISO8601DateFormatter = {

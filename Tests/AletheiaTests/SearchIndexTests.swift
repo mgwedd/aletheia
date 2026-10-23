@@ -100,7 +100,7 @@ final class SearchIndexTests: XCTestCase {
         let dataRoot = root.appendingPathComponent("data")
         try FileManager.default.createDirectory(at: dataRoot, withIntermediateDirectories: true)
         let manager = EncryptionManager(dataRootProvider: { dataRoot })
-        try manager.enable(passphrase: "pw", iterations: 1_000)
+        try manager.enable(passphrase: "pw", iterations: 100_000)
         let store = Store(root: dataRoot, protector: manager.protector, searchIndex: index)
         let patient = try store.createPatient(name: "Test Person")
         let session = try store.createSession(for: patient)
@@ -192,7 +192,7 @@ final class SearchIndexTests: XCTestCase {
         try FileManager.default.createDirectory(at: dataRoot, withIntermediateDirectories: true)
         let keys = FakeKeys()
         let manager = EncryptionManager(dataRootProvider: { dataRoot }, deviceKeys: keys)
-        try manager.enable(passphrase: "pw", iterations: 1_000)
+        try manager.enable(passphrase: "pw", iterations: 100_000)
         populate()
         XCTAssertTrue(FileManager.default.fileExists(atPath: indexFile.path))
 
@@ -219,7 +219,7 @@ final class SearchIndexTests: XCTestCase {
         let dataRoot = root.appendingPathComponent("data")
         try FileManager.default.createDirectory(at: dataRoot, withIntermediateDirectories: true)
         let manager = EncryptionManager(dataRootProvider: { dataRoot }, deviceKeys: FakeKeys())
-        try manager.enable(passphrase: "pw", iterations: 1_000)
+        try manager.enable(passphrase: "pw", iterations: 100_000)
         populate()
         SessionSearch.closeIndex()   // the app lock
         XCTAssertTrue(FileManager.default.fileExists(atPath: indexFile.path), "the app lock alone doesn't delete")

@@ -13,7 +13,7 @@ private final class InMemoryDeviceKeyStore: DeviceKeyStoring {
 }
 
 final class DeviceKeyStoreTests: XCTestCase {
-    private let fastIterations = 1_000
+    private let fastIterations = 100_000
     private var root: URL!
 
     override func setUpWithError() throws {
