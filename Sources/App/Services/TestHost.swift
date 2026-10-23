@@ -1,0 +1,49 @@
+import AppKit
+
+/// When XCTest launches this app to host the unit tests, the app must not
+/// prompt for Touch ID, take focus, or draw over whatever the developer is
+/// using. CI opts back into a normal foreground app with
+/// `TEST_RUNNER_ALETHEIA_FOREGROUND_TESTS=1` (xcodebuild strips the prefix),
+/// so the tests that need a key window still run there.
+enum TestHost {
+    static func isHostingTests(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        environment["XCTestConfigurationFilePath"] != nil
+    }
+
+    /// Hosting tests in the background: no focus, no Dock icon, no visible windows.
+    static func runsInBackground(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        isHostingTests(environment: environment) && environment["ALETHEIA_FOREGROUND_TESTS"] != "1"
+    }
+
+    /// `.prohibited` while hosting tests in the background: the app can't
+    /// become frontmost. Nil in normal use.
+    static func activationPolicy(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> NSApplication.ActivationPolicy? {
+        runsInBackground(environment: environment) ? .prohibited : nil
+    }
+
+    /// Makes a window transparent and click-through while hosting tests in
+    /// the background. It still lays out and draws, so tests can inspect it.
+    @MainActor static func conceal(_ window: NSWindow, environment: [String: String] = ProcessInfo.processInfo.environment) {
+        guard runsInBackground(environment: environment) else { return }
+        window.alphaValue = 0
+        window.ignoresMouseEvents = true
+    }
+
+    /// Conceals the app's own windows (the main window, sheets, alerts) as they appear.
+    @MainActor static func concealWindowsWhenHostingTests() {
+        guard runsInBackground() else { return }
+        NSApp.windows.forEach { conceal($0) }
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main
+        ) { note in
+            guard let window = note.object as? NSWindow else { return }
+            MainActor.assumeIsolated { conceal(window) }
+        }
+    }
+}

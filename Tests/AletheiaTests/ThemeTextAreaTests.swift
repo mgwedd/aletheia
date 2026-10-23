@@ -62,7 +62,7 @@ final class ThemeTextAreaTests: XCTestCase {
         textView.applyStyle()
         textView.string = text
         textView.applyStyle()
-        let window = NSWindow(contentRect: scroll.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        let window = TestWindow(contentRect: scroll.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = scroll
         return (textView, scroll, window)
     }
@@ -212,7 +212,7 @@ final class ThemeTextAreaTests: XCTestCase {
 
     private func hostedWindow() -> (NSHostingView<Host>, NSWindow) {
         let hosting = NSHostingView(rootView: Host())
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = TestWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = hosting
         hosting.layoutSubtreeIfNeeded()
         return (hosting, window)

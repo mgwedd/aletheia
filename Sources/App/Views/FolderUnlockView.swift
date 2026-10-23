@@ -160,23 +160,32 @@ struct FolderUnlockView: View {
     private func unlockWithPassphrase() {
         do {
             try encryption.unlock(passphrase: passphrase)
-            if rememberOnDevice { try? encryption.rememberOnDevice() }
+            if rememberOnDevice { try? encryption.rememberOnDevice() } // a failure is kept in `encryption.rememberError` and shown in Settings
             passphrase = ""
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = failureMessage(for: error)
         }
     }
 
     private func unlockWithRecoveryKey() {
         do {
             try encryption.unlock(recoveryKey: recoveryKey)
-            if rememberOnDevice { try? encryption.rememberOnDevice() }
+            if rememberOnDevice { try? encryption.rememberOnDevice() } // a failure is kept in `encryption.rememberError` and shown in Settings
             recoveryKey = ""
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = failureMessage(for: error)
         }
+    }
+
+    private func failureMessage(for error: Error) -> String {
+        var message = error.localizedDescription
+        let wait = Int(encryption.unlockRetryDelay.rounded(.up))
+        if wait > 0, !(error is EncryptionManager.ManagerError) {
+            message += " Wait \(wait) seconds before trying again."
+        }
+        return message
     }
 
     private func chooseDifferentFolder() {

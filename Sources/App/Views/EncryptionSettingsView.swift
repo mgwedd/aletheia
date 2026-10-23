@@ -38,7 +38,8 @@ struct EncryptionSetupSheet: View {
     @State private var errorMessage: String?
 
     private var passphrasesMatch: Bool { !passphrase.isEmpty && passphrase == confirm }
-    private var canEnable: Bool { passphrasesMatch && storedKeyAcknowledged && acknowledged }
+    private var passphraseLongEnough: Bool { PassphraseStrength.meetsRequirement(passphrase) }
+    private var canEnable: Bool { passphrasesMatch && passphraseLongEnough && storedKeyAcknowledged && acknowledged }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -152,7 +153,7 @@ struct EncryptionSetupSheet: View {
                     }
                     .buttonStyle(.themePrimary)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!passphrasesMatch)
+                    .disabled(!passphrasesMatch || !passphraseLongEnough)
 
                 case .recoveryKey:
                     Button("Continue") { step = .encrypt }
@@ -191,6 +192,12 @@ struct EncryptionSetupSheet: View {
         ThemeSecureField(label: "Confirm passphrase", text: $confirm)
         if !confirm.isEmpty && confirm != passphrase {
             Text("The passphrases don't match.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.recording.color)
+        }
+
+        if !passphrase.isEmpty && !passphraseLongEnough {
+            Text("Use at least \(PassphraseStrength.requiredLength) characters.")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.recording.color)
         }
@@ -309,13 +316,21 @@ struct EncryptionSetupSheet: View {
             await Task.yield()
             do {
                 let result = try encryption.enable(passphrase: passphrase, recoveryKey: recoveryKey)
-                if rememberOnDevice { try? encryption.rememberOnDevice() }
+                var notes: [String] = []
+                if rememberOnDevice {
+                    do { try encryption.rememberOnDevice() } catch {
+                        notes.append("Encryption is on, but this Mac's keychain couldn't keep the key, so you'll be asked for your passphrase on each launch. \(error.localizedDescription)")
+                    }
+                }
                 working = false
                 didEnable = true
                 if !result.isComplete {
-                    warning = "Encryption is on, but \(result.failures.count) existing item(s) couldn't be converted yet. They'll be encrypted the next time they're saved."
-                } else {
+                    notes.append("Encryption is on, but \(result.failures.count) existing item(s) couldn't be converted yet. They'll be encrypted the next time they're saved.")
+                }
+                if notes.isEmpty {
                     dismiss()
+                } else {
+                    warning = notes.joined(separator: "\n\n")
                 }
             } catch {
                 working = false
@@ -531,5 +546,61 @@ struct NewRecoveryKeySheet: View {
             errorMessage = error.localizedDescription
         }
     }
+}
 
+/// Full-window gate shown when a folder was encrypted but its keystore file is
+/// gone. Nothing is readable or writable until the file is back.
+struct EncryptionKeystoreMissingView: View {
+    @EnvironmentObject private var encryption: EncryptionManager
+    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var appModel: AppModel
+
+    @State private var errorMessage: String?
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(Theme.window.color).ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.lock.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Theme.recording.color)
+                        .accessibilityHidden(true)
+                    Text("The encryption keystore is missing")
+                        .font(Theme.Typography.title)
+                        .foregroundStyle(Theme.text.color)
+                        .accessibilityAddTraits(.isHeader)
+                }
+                Text(EncryptionManager.ManagerError.keystoreMissing.localizedDescription)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.muted.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.recording.color)
+                }
+                HStack(spacing: 8) {
+                    Button("Use a different data folder…") {
+                        guard let url = FolderPicker.choose() else { return }
+                        do {
+                            try settings.setDataRoot(url)
+                            appModel.rebuildStore()
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
+                    }
+                    .buttonStyle(.themed)
+                    Spacer(minLength: 8)
+                    Button("Check again") { appModel.rebuildStore() }
+                        .buttonStyle(.themePrimary)
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: 480)
+            .themeCard()
+            .padding(32)
+        }
+    }
 }

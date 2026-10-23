@@ -58,7 +58,7 @@ final class SidebarVisibilityTests: XCTestCase {
             spotlightIndexer: NoopSpotlightIndexer())
         state = Visibility()
         let controller = NSHostingController(rootView: Host(appModel: appModel, settings: settings, state: state))
-        window = NSWindow(contentViewController: controller)
+        window = TestWindow(contentViewController: controller)
         window.styleMask = [.titled, .closable, .resizable]
         window.setContentSize(NSSize(width: 700, height: 500))
         window.makeKeyAndOrderFront(nil)

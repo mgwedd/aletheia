@@ -4,9 +4,15 @@ import WhisperEngine
 
 enum WhisperTranscriberError: LocalizedError {
     case modelNotDownloaded
+    case modelSizeMismatch
 
     var errorDescription: String? {
-        "The speech-to-text model hasn't been downloaded yet. Open Settings and download it first."
+        switch self {
+        case .modelNotDownloaded:
+            return "The speech-to-text model hasn't been downloaded yet. Open Settings and download it first."
+        case .modelSizeMismatch:
+            return "The speech-to-text model file is damaged or incomplete. Open Settings and download it again."
+        }
     }
 }
 
@@ -22,9 +28,11 @@ enum WhisperTranscriberError: LocalizedError {
 /// touching UI state.
 final class WhisperTranscriber: Transcribing {
     private let modelPath: URL
+    private let expectedBytes: Int64?
 
-    init(modelPath: URL) {
+    init(modelPath: URL, expectedBytes: Int64? = nil) {
         self.modelPath = modelPath
+        self.expectedBytes = expectedBytes
     }
 
     var isReady: Bool {
@@ -41,6 +49,9 @@ final class WhisperTranscriber: Transcribing {
     ) async throws -> String {
         guard FileManager.default.fileExists(atPath: modelPath.path) else {
             throw WhisperTranscriberError.modelNotDownloaded
+        }
+        if let expectedBytes {
+            try WhisperModelFile.verifySize(at: modelPath, expectedBytes: expectedBytes)
         }
 
         var tracks: [(url: URL, source: String, stage: TranscriptionStage)] = []

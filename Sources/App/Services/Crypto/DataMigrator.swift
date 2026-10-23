@@ -74,6 +74,7 @@ enum DataMigrator {
                     if let preImage, !from.isEncrypting, to.isEncrypting {
                         try? fm.removeItem(at: preImage)
                     }
+                    if !from.isEncrypting, to.isEncrypting { removeOlderPlaintextDatabaseCopies(root: root) }
                 } else {
                     result.failures.append("Aletheia.sqlite")
                 }
@@ -83,6 +84,20 @@ enum DataMigrator {
         }
 
         return result
+    }
+
+    /// Deletes the rolling snapshots and schema-migration pre-images. Each is a
+    /// full copy of the database made before encryption was on, so the field
+    /// values in it are plaintext and it would sit beside the keystore for good.
+    /// Only the `.sqlite` copies go; the JSON bundles are resealed above.
+    private static func removeOlderPlaintextDatabaseCopies(root: URL) {
+        let fm = FileManager.default
+        BackupLayout.adoptLegacy(dataRoot: root, fileManager: fm)
+        for kind in [BackupLayout.Kind.snapshots, .migrations] {
+            let dir = BackupLayout.directory(kind, dataRoot: root)
+            let entries = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+            for url in entries where url.pathExtension == "sqlite" { try? fm.removeItem(at: url) }
+        }
     }
 
     /// Whether `url` is a session folder whose files must be converted. Mirrors

@@ -1,9 +1,9 @@
 import Foundation
 
 /// A rough, offline read on how hard a passphrase is to guess, for the meter
-/// in the encryption setup sheet. It is guidance only: the key is always
-/// stretched with PBKDF2 (see `PassphraseKDF`) whatever the rating, and no
-/// rating blocks a passphrase.
+/// in the encryption setup sheet. The rating is guidance only: the key is always
+/// stretched with PBKDF2 (see `PassphraseKDF`) whatever the rating. The one hard
+/// rule is `requiredLength`.
 ///
 ///   passphrase ──▶ characters used ──▶ pool size ─────────────┐
 ///              └─▶ effective length (repeats count ¼) ─────────┴─▶ bits ──▶ weak / fair / strong
@@ -17,6 +17,10 @@ enum PassphraseStrength: Equatable {
     /// can be at most "fair", however varied its characters.
     static let minimumLength = 8
     static let strongMinimumLength = 12
+    /// A new passphrase must be at least this many characters.
+    static let requiredLength = 12
+
+    static func meetsRequirement(_ passphrase: String) -> Bool { passphrase.count >= requiredLength }
     /// The meter is full at this many estimated bits.
     static let meterBits = 80.0
 
