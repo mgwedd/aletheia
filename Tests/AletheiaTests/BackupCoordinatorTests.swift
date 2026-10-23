@@ -62,7 +62,7 @@ final class BackupCoordinatorTests: XCTestCase {
             return XCTFail("backup should succeed")
         }
         let strays = (try? FileManager.default.contentsOfDirectory(
-            at: FileManager.default.temporaryDirectory, includingPropertiesForKeys: nil))?
+            at: PrivateStaging.root, includingPropertiesForKeys: nil))?
             .filter { $0.lastPathComponent.hasPrefix("aletheia-backup-") } ?? []
         XCTAssertTrue(strays.isEmpty, "the temp snapshot must be cleaned up: \(strays)")
     }

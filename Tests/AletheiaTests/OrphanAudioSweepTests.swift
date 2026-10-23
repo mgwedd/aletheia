@@ -229,6 +229,22 @@ final class OrphanAudioSweepTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: keep2.path))
     }
 
+    func testPurgesScratchLeftoversFromEarlierRuns() throws {
+        let scratch = tempDir.appendingPathComponent("Scratch", isDirectory: true)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        let leftover = scratch.appendingPathComponent("restore-1.sqlite")
+        try Data("db".utf8).write(to: leftover)
+        let past = Date(timeIntervalSinceNow: -3600)
+        try FileManager.default.setAttributes([.creationDate: past, .modificationDate: past], ofItemAtPath: leftover.path)
+
+        let result = OrphanAudioSweep.sweep(
+            store: store, protector: protector, audit: auditLog,
+            stagingRoot: stagingRoot, scratchRoot: scratch, temporaryDirectory: tempCafDir)
+
+        XCTAssertEqual(result.temporaryFilesPurged, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: leftover.path))
+    }
+
     // MARK: - Live recordings, locked folders and failures
 
     private func stage(_ data: Data, for id: UUID, in root: URL? = nil) throws -> URL {

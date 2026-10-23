@@ -37,10 +37,14 @@ enum EncryptedBackupArchive {
         guard FileManager.default.fileExists(atPath: source.path) else { throw ArchiveError.sourceMissing }
         // Seal to a temp file first, then move into place, so a crash mid-write
         // never leaves a truncated "backup" that looks valid.
-        let temp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("backup-\(UUID().uuidString).\(fileExtension)")
-        try ChunkedCipher.seal(fileAt: source, to: temp, using: key)
-        try replaceItem(at: destination, with: temp)
+        let temp = try PrivateStaging.scratchFile(prefix: "backup", ext: fileExtension)
+        do {
+            try ChunkedCipher.seal(fileAt: source, to: temp, using: key)
+            try replaceItem(at: destination, with: temp)
+        } catch {
+            PrivateStaging.remove(temp)
+            throw error
+        }
     }
 
     /// Opens an encrypted archive at `source`, writing the recovered database to
@@ -49,15 +53,14 @@ enum EncryptedBackupArchive {
     static func restore(from source: URL, to destination: URL, using key: SymmetricKey) throws {
         guard FileManager.default.fileExists(atPath: source.path) else { throw ArchiveError.sourceMissing }
         guard ChunkedCipher.isEnvelope(fileAt: source) else { throw ArchiveError.notAnArchive }
-        let temp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("restore-\(UUID().uuidString).sqlite")
+        let temp = try PrivateStaging.scratchFile(prefix: "restore", ext: "sqlite")
         do {
             try ChunkedCipher.open(fileAt: source, to: temp, using: key)
             try replaceItem(at: destination, with: temp)
         } catch {
             // A wrong key or damaged archive can fail after part of the database
             // has been written to `temp`; don't leave that plaintext copy behind.
-            try? FileManager.default.removeItem(at: temp)
+            PrivateStaging.remove(temp)
             throw error
         }
     }
