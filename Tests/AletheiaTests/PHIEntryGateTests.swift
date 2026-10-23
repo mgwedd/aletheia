@@ -20,4 +20,11 @@ final class PHIEntryGateTests: XCTestCase {
         XCTAssertEqual(PHIEntryGate.blockedTitle, "Turn on FileVault")
         XCTAssertTrue(PHIEntryGate.blockedMessage.contains("System Settings"))
     }
+
+    /// FileVault only covers the internal disk, so a data folder on an
+    /// unencrypted external drive needs its own way out of the block.
+    func testBlockedMessageCoversADataFolderOnAnExternalDrive() {
+        XCTAssertTrue(PHIEntryGate.blockedMessage.contains("external drive"))
+        XCTAssertTrue(PHIEntryGate.blockedMessage.contains("data folder"))
+    }
 }

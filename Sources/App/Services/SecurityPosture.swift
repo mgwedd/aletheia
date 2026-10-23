@@ -116,7 +116,7 @@ enum SecurityPosture {
                 detail: "The disk holding your data folder is encrypted."))
         case .some(false):
             items.append(PostureItem(id: "fileVault", title: "FileVault", level: .actionRecommended,
-                detail: "The disk holding your data folder isn't encrypted. Turn on FileVault in System Settings; until then Aletheia won't add new patients, sessions or recordings."))
+                detail: "The disk holding your data folder isn't encrypted. Turn on FileVault in System Settings, or encrypt the external drive the folder is on; until then Aletheia won't add new patients, sessions or recordings."))
         case .none:
             items.append(PostureItem(id: "fileVault", title: "FileVault", level: .informational,
                 detail: "Aletheia couldn't confirm whether the disk is encrypted. Check that FileVault is on in System Settings."))

@@ -45,7 +45,7 @@ enum PHIEntryGate {
     }
 
     static let blockedTitle = "Turn on FileVault"
-    static let blockedMessage = "FileVault is off for this Mac's disk, so Aletheia can't add new patients, sessions or recordings yet. Turn on FileVault in System Settings, then come back. Your existing records stay readable and can be exported."
+    static let blockedMessage = "The disk holding your data folder isn't encrypted, so Aletheia can't add new patients, sessions or recordings yet. Turn on FileVault in System Settings, or, if the data folder is on an external drive, encrypt that drive or move the folder to this Mac. Your existing records stay readable and can be exported."
     static let unknownTitle = "Couldn't confirm disk encryption"
-    static let unknownMessage = "Aletheia couldn't tell whether this Mac's disk is encrypted. You can continue, but check that FileVault is on in System Settings."
+    static let unknownMessage = "Aletheia couldn't tell whether the disk holding your data folder is encrypted. You can continue, but check that FileVault is on in System Settings."
 }

@@ -48,6 +48,7 @@ final class SecurityPostureTests: XCTestCase {
         XCTAssertEqual(item("fileVault", in: evaluate(diskEncrypted: false))?.level, .actionRecommended)
         XCTAssertEqual(item("fileVault", in: evaluate(diskEncrypted: nil))?.level, .informational)
         XCTAssertEqual(SecurityPosture.overall(evaluate(diskEncrypted: false)), .actionRecommended)
+        XCTAssertTrue(item("fileVault", in: evaluate(diskEncrypted: false))?.detail.contains("external drive") ?? false)
     }
 
     func testEncryptionItemIsOmittedWhenTheBuildDoesNotOfferIt() {
