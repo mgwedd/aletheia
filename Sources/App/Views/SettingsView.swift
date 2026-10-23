@@ -911,7 +911,7 @@ struct SettingsView: View {
         )
         SettingsRow(
             title: "Encrypt this Mac's disk with FileVault",
-            detail: "Recommended. FileVault encrypts everything on this Mac at rest so patient data can't be read if the computer is lost or stolen. macOS manages it; it doesn't affect your backups."
+            detail: "Required before adding new patients, sessions or recordings. FileVault encrypts everything on this Mac at rest so patient data can't be read if the computer is lost or stolen. macOS manages it; it doesn't affect your backups. Existing records stay readable either way."
         ) {
             Button("Open Settings") { SystemSettingsLinks.openFileVaultSettings() }
                 .buttonStyle(.themed)

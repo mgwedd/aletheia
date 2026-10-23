@@ -49,6 +49,14 @@ Legend: **✅ in place** · **◐ in progress** · **○ clinician responsibilit
 | **Person/entity authentication (d)** | ✅ | App lock via `LocalAuthentication` (Touch ID or Mac password) gates access to the app; macOS account auth gates the device. |
 | **Transmission security (e)(1)** — guard ePHI in transit | ✅ | PHI is not transmitted. The only outbound connections carry no PHI (update check, opt-in model downloads) or are local (`127.0.0.1` on-device AI). Optional iCloud backup is **end-to-end encrypted on-device before upload**, so only ciphertext leaves the Mac. The Settings security overview surfaces live network reachability and the iCloud-backup posture so the clinician can see, at a glance, that nothing but ciphertext ever leaves. |
 
+Patient folders use opaque UUID names after the v2 folder migration. Session
+folder names still carry dates of service. The FTS cache (`search.sqlite`)
+contains searchable plaintext terms; it is protected by the FileVault gate,
+excluded from Time Machine, deleted on lock, and rebuilt on unlock. The v2
+migration retains a structured JSON pre-image under `.backups/migrations/files/`.
+That backup and session folder names remain within the FileVault protected data
+folder.
+
 ## Administrative & physical safeguards — §164.308 / §164.310
 
 These belong to the practice. Aletheia supports, but cannot satisfy, them:
