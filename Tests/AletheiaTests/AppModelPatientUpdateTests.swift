@@ -10,6 +10,13 @@ final class AppModelPatientUpdateTests: XCTestCase {
         func clear() {}
     }
 
+    /// Reports a fixed disk state (encrypted by default), so the FileVault gate
+    /// behaves the same on any Mac.
+    private struct FixedDisk: DiskEncryptionProbing {
+        var value: Bool? = true
+        func isDataVolumeEncrypted(_ url: URL) -> Bool? { value }
+    }
+
     private var tempRoot: URL!
     private var originalDataRoot: URL?
     private var appModel: AppModel!
@@ -25,6 +32,7 @@ final class AppModelPatientUpdateTests: XCTestCase {
         let root = tempRoot!
         let encryption = EncryptionManager(dataRootProvider: { root })
         appModel = AppModel(settings: settings, encryption: encryption, spotlightIndexer: NoopSpotlightIndexer())
+        appModel.diskProbe = FixedDisk()
     }
 
     override func tearDownWithError() throws {
@@ -36,6 +44,33 @@ final class AppModelPatientUpdateTests: XCTestCase {
     private func storedPatient(_ id: UUID) throws -> Patient {
         let store = try XCTUnwrap(appModel.store)
         return try XCTUnwrap(try store.listPatients().first { $0.id == id })
+    }
+
+    func testUnencryptedDiskBlocksNewPatientsAndSessionsButKeepsExistingOnes() throws {
+        let existing = try XCTUnwrap(appModel.addPatient(name: "Jane Doe"))
+        appModel.diskProbe = FixedDisk(value: false)
+
+        XCTAssertNil(appModel.addPatient(name: "John Roe"))
+        XCTAssertEqual(appModel.fileVaultNotice, .blocked)
+        appModel.fileVaultNotice = nil
+        XCTAssertNil(appModel.startNewSession(for: existing))
+        XCTAssertEqual(appModel.fileVaultNotice, .blocked)
+
+        let store = try XCTUnwrap(appModel.store)
+        XCTAssertEqual(try store.listPatients().map(\.id), [existing.id], "nothing new written, existing record still listed")
+        // Editing what's already there isn't gated.
+        appModel.updatePatient(id: existing.id) { $0.notes = "X" }
+        XCTAssertEqual(try storedPatient(existing.id).notes, "X")
+    }
+
+    func testUnknownDiskStateAllowsEntryAndWarnsOnce() throws {
+        appModel.diskProbe = FixedDisk(value: nil)
+
+        let patient = try XCTUnwrap(appModel.addPatient(name: "Jane Doe"))
+        XCTAssertEqual(appModel.fileVaultNotice, .unknown)
+        appModel.fileVaultNotice = nil
+        XCTAssertNotNil(appModel.startNewSession(for: patient))
+        XCTAssertNil(appModel.fileVaultNotice, "the unknown-state warning shows once per launch")
     }
 
     func testSavingNotesThenClinicalHistoryKeepsBoth() throws {

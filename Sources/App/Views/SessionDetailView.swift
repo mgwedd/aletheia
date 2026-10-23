@@ -1691,7 +1691,7 @@ struct SessionDetailView: View {
     }
 
     private func startRecording() async {
-        guard let store = appModel.store else { return }
+        guard appModel.authorizeNewPHI(), let store = appModel.store else { return }
         let micURL = store.micRecordingURL(for: patient, session: session)
         let callURL = store.callRecordingURL(for: patient, session: session)
         // Refused (another recording is in the way) or failed to start: say why.

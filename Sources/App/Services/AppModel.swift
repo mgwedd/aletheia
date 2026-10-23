@@ -11,6 +11,14 @@ final class AppModel: ObservableObject {
     /// `Store.unreadableEntries` / `Store.sessionListing(for:)`.
     @Published var unreadablePatients: [UnreadableEntry] = []
     @Published var errorMessage: String?
+    /// Whether the data folder's volume is encrypted (nil = unknown). Refreshed
+    /// when the folder changes and before each new-record action.
+    @Published private(set) var diskEncrypted: Bool?
+    /// Set when a new-record action was blocked, or went ahead with an unconfirmed
+    /// disk state; the main window shows it with a link to System Settings.
+    @Published var fileVaultNotice: FileVaultNotice?
+    var diskProbe: DiskEncryptionProbing = DiskEncryptionProbe()
+    private var warnedUnknownDisk = false
     /// Set when the chosen data folder was written by a newer app version, so
     /// this build shouldn't modify it. Surfaced to the user as a warning.
     @Published var schemaWarning: String?
@@ -90,6 +98,7 @@ final class AppModel: ObservableObject {
         // Recompute encryption state first (the data folder may have just
         // changed), then build the stores around the resulting protector.
         encryption.refreshState()
+        refreshDiskEncryption()
         let dataRoot = settings.dataRootURL
         audit = dataRoot.map(AuditLog.init)
         logEncryptionTransitionIfNeeded()
@@ -145,6 +154,8 @@ final class AppModel: ObservableObject {
             Please update Aletheia before adding or changing anything here, \
             so none of your notes are lost.
             """
+        } else if case .migrationFailed = newStore.schemaCompatibility {
+            schemaWarning = "The patient folder upgrade could not finish. The original records and migration backup were kept. Resolve the folder issue and reopen Aletheia before editing records."
         } else {
             schemaWarning = nil
         }
@@ -307,8 +318,30 @@ final class AppModel: ObservableObject {
         spotlightIndexer.replaceIndex(with: entries)
     }
 
+    /// Re-reads the disk state for the data folder.
+    func refreshDiskEncryption() {
+        diskEncrypted = settings.dataRootURL.flatMap { diskProbe.isDataVolumeEncrypted($0) }
+    }
+
+    /// The gate for creating a patient, starting a session or starting a
+    /// recording. False (with `fileVaultNotice` set) only when the disk is known
+    /// to be unencrypted; an unknown state proceeds, warning once per launch.
+    func authorizeNewPHI() -> Bool {
+        refreshDiskEncryption()
+        if !PHIEntryGate.allowsNewPHI(diskEncrypted: diskEncrypted) {
+            fileVaultNotice = .blocked
+            return false
+        }
+        if PHIEntryGate.warnsUnknown(diskEncrypted: diskEncrypted), !warnedUnknownDisk {
+            warnedUnknownDisk = true
+            fileVaultNotice = .unknown
+        }
+        return true
+    }
+
     @discardableResult
     func addPatient(name: String) -> Patient? {
+        guard authorizeNewPHI() else { return nil }
         guard let store else { return nil }
         do {
             let patient = try store.createPatient(name: name)
@@ -325,6 +358,7 @@ final class AppModel: ObservableObject {
     /// Returns the created session, or nil on error (surfaced via errorMessage).
     @discardableResult
     func startNewSession(for patient: Patient) -> SessionRecord? {
+        guard authorizeNewPHI() else { return nil }
         guard let store else { return nil }
         do {
             let session = try store.createSession(for: patient)
@@ -367,5 +401,19 @@ final class AppModel: ObservableObject {
         recordAudit(.recordDeleted, subjectID: patient.id.uuidString, detail: "patient")
         refreshPatients()
         reindexSpotlight()
+    }
+}
+
+
+/// A FileVault message shown from the main window.
+enum FileVaultNotice {
+    case blocked, unknown
+
+    var title: String {
+        self == .blocked ? PHIEntryGate.blockedTitle : PHIEntryGate.unknownTitle
+    }
+
+    var message: String {
+        self == .blocked ? PHIEntryGate.blockedMessage : PHIEntryGate.unknownMessage
     }
 }
