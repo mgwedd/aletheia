@@ -568,13 +568,15 @@ extension Prompts {
         Return only the full corrected note, with no commentary. If nothing needs \
         changing, return the draft unchanged.
 
+        \(untrustedDataRule)
+
         \(legend(clientName: clientName))
 
         Source material:
-        \(material)
+        \(UntrustedText(.material, material).rendered)
 
         Draft note:
-        \(draft)
+        \(UntrustedText(.draft, draft).rendered)
         """
     }
 }

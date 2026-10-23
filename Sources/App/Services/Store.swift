@@ -1851,8 +1851,8 @@ final class Store {
         let notes = commentStore?.note(sessionID: session.id) ?? ""
         let comments = AssistantService.formatComments(commentStore?.comments(sessionID: session.id) ?? [])
         let therapistSections: [(SessionSearch.Kind, String)] = [
-            (.sessionNotes, Prompts.therapistMaterial(notes: notes, comments: [])),
-            (.comment, Prompts.therapistMaterial(notes: "", comments: comments)),
+            (.sessionNotes, Prompts.therapistMaterial(notes: notes, comments: [], fenced: false)),
+            (.comment, Prompts.therapistMaterial(notes: "", comments: comments, fenced: false)),
         ]
         for (kind, section) in therapistSections {
             let trimmed = section.trimmingCharacters(in: .whitespacesAndNewlines)

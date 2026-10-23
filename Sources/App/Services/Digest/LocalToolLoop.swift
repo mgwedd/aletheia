@@ -752,7 +752,7 @@ enum LocalToolLoop {
         let historyBlock = conversation.isEmpty ? "" : "\n\n" + conversation
         let priorBlock = priorToolOutputs.isEmpty
             ? ""
-            : "\n\nResults from earlier tool lookups:\n" + priorToolOutputs.joined(separator: "\n\n")
+            : "\n\nResults from earlier tool lookups:\n" + UntrustedText(.material, priorToolOutputs.joined(separator: "\n\n")).rendered
         return """
         You are preparing to answer a clinician's question from recorded therapy sessions. \
         Not every transcript fit in the initial material below. You may request up to \
@@ -771,10 +771,12 @@ enum LocalToolLoop {
 
         Respond ONLY with a JSON object of the form {"calls":[...]}. Do not write the final answer yet.
 
-        Initial material:
-        \(initialContext)\(priorBlock)\(historyBlock)
+        \(Prompts.untrustedDataRule)
 
-        Therapist's question: \(question)
+        Initial material:
+        \(UntrustedText(.material, initialContext).rendered)\(priorBlock)\(historyBlock)
+
+        Therapist's question: \(UntrustedText(.question, question).rendered)
         """
     }
 

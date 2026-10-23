@@ -31,7 +31,7 @@ final class ChatMemoryTests: XCTestCase {
     func testPromptsCarryTheSummaryAndEveryLaterMessageOnce() {
         let history = (1...10).map { ChatMessage(role: .user, text: "message \($0)") } + [summary, q2]
         let prompt = Prompts.sessionChat(transcript: "T.", history: history + [ChatMessage(role: .user, text: "Now?")], question: "Now?")
-        XCTAssertTrue(prompt.contains("Summary of the earlier conversation:\n\(summary.text)"))
+        XCTAssertTrue(prompt.contains("Summary of the earlier conversation:\n<conversation>\n\(summary.text)"))
         XCTAssertTrue(prompt.contains("Therapist: Second question"))
         XCTAssertFalse(prompt.contains("message 1"))
         XCTAssertEqual(prompt.components(separatedBy: "Now?").count - 1, 1)
@@ -42,7 +42,7 @@ final class ChatMemoryTests: XCTestCase {
 
     func testCompactionPromptCarriesTheFocus() {
         let prompt = Prompts.compactChat(history: [q1, a1], focus: "sleep")
-        XCTAssertTrue(prompt.contains("in full detail: sleep"))
+        XCTAssertTrue(prompt.contains("in full detail: <conversation>\nsleep\n</conversation>"))
         XCTAssertTrue(prompt.contains("Therapist: First question"))
         XCTAssertFalse(Prompts.compactChat(history: [q1], focus: "").contains("in full detail"))
     }

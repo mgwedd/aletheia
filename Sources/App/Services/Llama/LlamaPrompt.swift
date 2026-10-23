@@ -51,31 +51,91 @@ enum LlamaPrompt {
         return sys.isEmpty ? prompt : "System: \(sys)\n\n\(prompt)"
     }
 
+    /// A run of prompt text and whether the tokenizer may read control-token
+    /// spellings (`<|eot_id|>`, `<start_of_turn>`) in it as the real tokens.
+    struct Segment: Equatable {
+        let text: String
+        let parseSpecial: Bool
+    }
+
+    /// Stand-ins for the system text and the prompt while the chat template
+    /// renders the turn markers around them.
+    static let systemSlot = "ALETHEIA-SYSTEM-SLOT-7F3A"
+    static let promptSlot = "ALETHEIA-PROMPT-SLOT-7F3A"
+
+    /// Splits a template rendered with the slot markers into segments: the
+    /// template's own text may carry control tokens; `system` and `prompt`
+    /// (transcripts, notes, chat input, all of it) never do. Nil when a marker
+    /// is missing or repeated, so the caller falls back to the raw prompt.
+    static func segments(skeleton: String, system: String, prompt: String) -> [Segment]? {
+        let sys = system.trimmingCharacters(in: .whitespacesAndNewlines)
+        var slots: [(range: Range<String.Index>, content: String)] = []
+        for (marker, content) in [(systemSlot, sys), (promptSlot, prompt)] {
+            let found = skeleton.ranges(of: marker)
+            if marker == systemSlot && sys.isEmpty {
+                guard found.isEmpty else { return nil }
+                continue
+            }
+            guard found.count == 1 else { return nil }
+            slots.append((found[0], content))
+        }
+        slots.sort { $0.range.lowerBound < $1.range.lowerBound }
+        var out: [Segment] = []
+        var cursor = skeleton.startIndex
+        for slot in slots {
+            out.append(Segment(text: String(skeleton[cursor..<slot.range.lowerBound]), parseSpecial: true))
+            out.append(Segment(text: slot.content, parseSpecial: false))
+            cursor = slot.range.upperBound
+        }
+        out.append(Segment(text: String(skeleton[cursor...]), parseSpecial: true))
+        return out.filter { !$0.text.isEmpty }
+    }
+
+    /// The segments for the model's reply to `system`/`prompt`: templated with
+    /// `tmpl` when llama.cpp supports it, otherwise the raw prompt as plain text.
+    static func segments(template tmpl: String?, system: String, prompt: String) -> [Segment] {
+        if let tmpl,
+           let skeleton = applyTemplate(tmpl, system: system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : systemSlot,
+                                     prompt: promptSlot),
+           let split = segments(skeleton: skeleton, system: system, prompt: prompt) {
+            return split
+        }
+        return [Segment(text: rawPrompt(system: system, prompt: prompt), parseSpecial: false)]
+    }
+
     /// Tokens for the model's reply to `system`/`prompt`: templated with the
     /// model's own embedded template when it has a usable one, otherwise the
-    /// raw prompt. Returns nil if tokenization fails.
+    /// raw prompt. Only the template's own markers are parsed as control
+    /// tokens. Returns nil if tokenization fails.
     static func tokens(model: OpaquePointer, vocab: OpaquePointer, system: String, prompt: String) -> [llama_token]? {
-        var text = rawPrompt(system: system, prompt: prompt)
-        var addSpecial = true
         let tmplPtr = llama_model_chat_template(model, nil)
         if tmplPtr == nil { log.notice("Model has no chat template; using the raw prompt") }
-        if let tmplPtr,
-           let templated = applyTemplate(String(cString: tmplPtr), system: system, prompt: prompt) {
-            text = templated
-            // Many templates already begin with the literal BOS token, which
-            // parse_special tokenizes to BOS; don't add a second one.
-            let bos = llama_vocab_bos(vocab)
-            if bos >= 0, let bosText = llama_vocab_get_text(vocab, bos), text.hasPrefix(String(cString: bosText)) {
-                addSpecial = false
-            }
+        let parts = segments(template: tmplPtr.map { String(cString: $0) }, system: system, prompt: prompt)
+        var addSpecial = true
+        // Many templates already begin with the literal BOS token, which
+        // parse_special tokenizes to BOS; don't add a second one.
+        let bos = llama_vocab_bos(vocab)
+        if bos >= 0, let bosText = llama_vocab_get_text(vocab, bos),
+           let first = parts.first, first.parseSpecial, first.text.hasPrefix(String(cString: bosText)) {
+            addSpecial = false
         }
 
-        let length = Int32(text.utf8.count)
+        var tokens: [llama_token] = []
+        for (index, part) in parts.enumerated() {
+            guard let piece = tokenize(part, vocab: vocab, addSpecial: addSpecial && index == 0) else { return nil }
+            tokens += piece
+        }
+        return tokens.isEmpty ? nil : tokens
+    }
+
+    /// The one tokenizer call: a segment's own flag decides control-token parsing.
+    private static func tokenize(_ segment: Segment, vocab: OpaquePointer, addSpecial: Bool) -> [llama_token]? {
+        let length = Int32(segment.text.utf8.count)
         // llama_tokenize returns the negated token count when the buffer is too small.
-        let needed = -llama_tokenize(vocab, text, length, nil, 0, addSpecial, true)
-        guard needed > 0 else { return nil }
+        let needed = -llama_tokenize(vocab, segment.text, length, nil, 0, addSpecial, segment.parseSpecial)
+        guard needed > 0 else { return addSpecial || length > 0 ? nil : [] }
         var tokens = [llama_token](repeating: 0, count: Int(needed))
-        guard llama_tokenize(vocab, text, length, &tokens, needed, addSpecial, true) >= 0 else { return nil }
+        guard llama_tokenize(vocab, segment.text, length, &tokens, needed, addSpecial, segment.parseSpecial) >= 0 else { return nil }
         return tokens
     }
 }
