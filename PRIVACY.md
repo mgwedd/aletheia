@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-10-22_
+_Last updated: 2026-10-23_
 
 **Plain-language summary:** Aletheia keeps clinical data in a folder you choose.
 A cloud-synced folder may be copied by its provider. The app does not currently
@@ -80,4 +80,8 @@ Updates to this policy will be posted here with a new "Last updated" date.
 
 ## 9. Contact
 
-Questions about this policy: open an issue on the project's repository.
+Questions about this policy: email support@astrealabs.com.
+Never include patient information, recordings, transcripts, notes, or
+screenshots that show client details. Use the App's redacted Doctor report
+instead. If we receive patient information by mistake, we delete it as far as
+we are able.

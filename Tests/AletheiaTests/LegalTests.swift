@@ -74,4 +74,20 @@ final class LegalTests: XCTestCase {
             XCTAssertTrue(text.contains("search.sqlite"), path)
         }
     }
+
+    /// Support questions go to a private address, never a public issue tracker,
+    /// and the Terms name a governing law.
+    func testSupportIsPrivateAndTermsNameAGoverningLaw() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for path in ["TERMS.md", "PRIVACY.md", "docs/SETUP-GUIDE.md"] {
+            let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("open an issue"), path)
+            XCTAssertFalse(text.contains("github.com/mgwedd/aletheia/issues"), path)
+            XCTAssertTrue(text.contains("support@astrealabs.com"), path)
+        }
+        let terms = try String(contentsOf: root.appendingPathComponent("TERMS.md"), encoding: .utf8)
+        XCTAssertTrue(terms.contains("laws of the State of Wyoming"))
+        XCTAssertFalse(terms.contains("Specify the governing jurisdiction"))
+    }
 }

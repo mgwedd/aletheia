@@ -1,6 +1,6 @@
 # Terms of Service
 
-_Last updated: 2026-10-22_
+_Last updated: 2026-10-23_
 
 > This document is a template provided for transparency. It is **not legal
 > advice**. Aletheia is used with protected health information (PHI); have your
@@ -114,10 +114,13 @@ after an update requires accepting the updated Terms in the App.
 
 ## 12. Governing law
 
-These Terms are governed by the laws of the developer's jurisdiction, without
-regard to conflict-of-laws rules. _(Specify the governing jurisdiction with your
-counsel before distribution.)_
+These Terms are governed by the laws of the State of Wyoming, United States,
+without regard to conflict-of-laws rules.
 
 ## 13. Contact
 
-Questions about these Terms: open an issue on the project's repository.
+Questions about these Terms: email support@astrealabs.com.
+Never include patient information, recordings, transcripts, notes, or
+screenshots that show client details. Use the App's redacted Doctor report
+instead. If we receive patient information by mistake, we delete it as far as
+we are able.

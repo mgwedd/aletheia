@@ -108,9 +108,8 @@ To update, download the new `.dmg` from the Releases page and replace the app in
 
 1. Run **Aletheia Doctor** and keep the report.
 2. Note your macOS version and Mac model (**Apple menu → About This Mac**).
-3. Open an issue at
-   [github.com/mgwedd/aletheia/issues](https://github.com/mgwedd/aletheia/issues)
-   with the Doctor report. Do not include client names, transcripts, or audio.
+3. Email support@astrealabs.com with the Doctor report. Do not include client
+   names, transcripts, notes, audio, or screenshots that show client details.
 
 ## Related
 
