@@ -387,8 +387,9 @@ final class EncryptionManager: ObservableObject {
         onPassphraseChanged?()
     }
 
-    /// Drops the in-memory DEK; the folder stays encrypted and re-locks. Called
-    /// on the same "app hidden" transition as the Tier-1 app lock.
+    /// Drops the in-memory DEK; the folder stays encrypted and re-locks.
+    /// Runs whenever the app lock engages, including on hide only when
+    /// "Lock when hidden" is on.
     func lock() {
         guard dek != nil else { return }
         dek = nil
