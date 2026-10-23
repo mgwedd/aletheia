@@ -42,6 +42,13 @@ final class HelperFetcher {
         return data
     }
 
+    /// The license revocation list's bytes (at most `maxDataBytes`). Makes no
+    /// request when no endpoint is configured. `endpoint` is injectable for tests.
+    func fetchRevocations(from endpoint: URL? = HelperEndpoints.revocations) async throws -> Data {
+        guard let endpoint else { throw HelperError.notConfigured }
+        return try await fetchData(from: endpoint, maxBytes: Self.maxDataBytes)
+    }
+
     /// The release archive's URL, read from the appcast this helper fetched.
     func resolveUpdateArchiveURL() async throws -> URL {
         let data = try await fetchAppcast()

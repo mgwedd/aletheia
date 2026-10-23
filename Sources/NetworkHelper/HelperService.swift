@@ -18,6 +18,17 @@ final class HelperService: NSObject, NetworkHelperProtocol {
         }
     }
 
+    func fetchRevocations(reply: @escaping (Data?, NSError?) -> Void) {
+        let fetcher = fetcher
+        tasks.run {
+            do {
+                reply(try await fetcher.fetchRevocations(), nil)
+            } catch {
+                reply(nil, Self.nsError(error))
+            }
+        }
+    }
+
     func download(asset: Int, into file: FileHandle, progress: NetworkHelperProgress, reply: @escaping (NSError?) -> Void) {
         guard let asset = HelperAsset(rawValue: asset) else {
             try? file.close()
