@@ -159,17 +159,39 @@ final class AppSettings: ObservableObject {
     /// Off by default: putting patient names into system-wide Spotlight is a
     /// privacy trade-off (anyone at the Mac can see them), so the user opts in.
     @Published var spotlightIndexingEnabled: Bool {
-        didSet { defaults.set(spotlightIndexingEnabled, forKey: Keys.spotlightIndexingEnabled) }
+        didSet {
+            defaults.set(spotlightIndexingEnabled, forKey: Keys.spotlightIndexingEnabled)
+            audited(AuditedSettings.spotlight, from: oldValue, to: spotlightIndexingEnabled)
+        }
     }
+    /// Receives the note for each change to a security-relevant setting; set by
+    /// the composition root to write it to the activity log.
+    var onAuditedChange: ((String) -> Void)?
+
+    /// The one route a security-relevant setting's `didSet` takes to the log.
+    func audited<Value: Equatable>(_ setting: AuditedSetting<Value>, from old: Value, to new: Value) {
+        guard old != new else { return }
+        onAuditedChange?(setting.detail(for: new))
+    }
+
     /// Require Touch ID / the login password to open the app (see `AppLock`).
     @Published var appLockEnabled: Bool {
-        didSet { defaults.set(appLockEnabled, forKey: Keys.appLockEnabled) }
+        didSet {
+            defaults.set(appLockEnabled, forKey: Keys.appLockEnabled)
+            audited(AuditedSettings.appLock, from: oldValue, to: appLockEnabled)
+        }
     }
     @Published var lockWhenHidden: Bool {
-        didSet { defaults.set(lockWhenHidden, forKey: Keys.lockWhenHidden) }
+        didSet {
+            defaults.set(lockWhenHidden, forKey: Keys.lockWhenHidden)
+            audited(AuditedSettings.lockWhenHidden, from: oldValue, to: lockWhenHidden)
+        }
     }
     @Published var hideFromScreenSharing: Bool {
-        didSet { defaults.set(hideFromScreenSharing, forKey: Keys.hideFromScreenSharing) }
+        didSet {
+            defaults.set(hideFromScreenSharing, forKey: Keys.hideFromScreenSharing)
+            audited(AuditedSettings.hideFromScreenSharing, from: oldValue, to: hideFromScreenSharing)
+        }
     }
     /// Temporary exception; always resets at launch.
     @Published var allowScreenSharingThisSession = false
@@ -179,7 +201,10 @@ final class AppSettings: ObservableObject {
     /// effect while `appLockEnabled` is on — locking requires the Touch ID /
     /// password gate to exist in the first place.
     @Published var idleAutoLockMinutes: Int {
-        didSet { defaults.set(idleAutoLockMinutes, forKey: Keys.idleAutoLockMinutes) }
+        didSet {
+            defaults.set(idleAutoLockMinutes, forKey: Keys.idleAutoLockMinutes)
+            audited(AuditedSettings.idleTimeout, from: oldValue, to: idleAutoLockMinutes)
+        }
     }
     /// The clinical documentation format the "Generate note" action defaults to.
     /// A plain summary out of the box (`ProgressNoteFormat.default`); a therapist who

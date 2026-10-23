@@ -190,6 +190,37 @@ struct SaveFailureStrip: View {
     }
 }
 
+/// A security condition the user should notice: the activity log can't be
+/// written, repeated failed unlocks, or a broken log. No names or content.
+struct SecurityAlertStrip: View {
+    let message: String
+    var onDismiss: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.shield.fill")
+                .foregroundStyle(Theme.callAudio.color)
+            Text(message)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.text.color)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.borderless)
+                .help("Dismiss")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.callout.color)
+        .themeDivider(.bottom)
+    }
+}
+
 /// Stays above the window while recordings are set aside (their session
 /// couldn't be found, so they're unencrypted). No dismiss button: it goes away
 /// once nothing is set aside. Counts only, never a name.

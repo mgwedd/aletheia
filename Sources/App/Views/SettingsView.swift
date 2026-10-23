@@ -931,6 +931,8 @@ struct SettingsView: View {
                 .recordExported,
                 detail: "All records, folder of \(outcome.patientCount ?? 0) patients, \(outcome.sessionCount) sessions"
             )
+        }, onFailed: {
+            model.recordAudit(.exportFailed, detail: "All records, folder")
         }) { progress, isCancelled in
             progress(0, "Listing patients")
             let source = try StoreAllRecordsSource(store: store)
