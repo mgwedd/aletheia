@@ -2,9 +2,6 @@ import Foundation
 
 struct ModelRecommendation: Equatable {
     let whisperModel: WhisperModel
-    /// Ollama model tag recommended for this Mac (used when the LLM backend is
-    /// Ollama; the size tier also guides any other local backend).
-    let ollamaModel: String
     let summary: String
 }
 
@@ -15,36 +12,30 @@ struct ModelRecommendation: Equatable {
 enum ModelAdvisor {
     static func recommend(for hardware: HardwareCapabilities) -> ModelRecommendation {
         let whisper: WhisperModel
-        let ollama: String
 
         switch (hardware.isAppleSilicon, hardware.physicalMemoryGB) {
         case (true, 16...):
             whisper = .mediumEn
-            ollama = "llama3.1:8b"
         case (true, 8...):
             whisper = .smallEn
-            ollama = "llama3.2:3b"
         case (false, 16...):
             // Capable Intel Mac, but no Neural Engine — keep transcription
             // lighter so it stays responsive.
             whisper = .smallEn
-            ollama = "llama3.1:8b"
         case (_, 8...):
             whisper = .baseEn
-            ollama = "llama3.2:3b"
         default:
             // 4–6 GB or unknown: smallest everything.
             whisper = .baseEn
-            ollama = "llama3.2:1b"
         }
 
-        let summary = "\(hardware.shortDescription) → \(whisper.shortName) transcription and \(ollama) for summaries."
-        return ModelRecommendation(whisperModel: whisper, ollamaModel: ollama, summary: summary)
+        let summary = "\(hardware.shortDescription) → \(whisper.shortName) transcription and \(LlamaModel.recommended(for: hardware).shortName) for summaries."
+        return ModelRecommendation(whisperModel: whisper, summary: summary)
     }
 
     /// Tokens of prompt this Mac can have the model read at once: 16K on 8 GB,
     /// 32K on 16 GB, 64K on 32 GB or more. An Intel Mac, which runs the model
-    /// far slower, gets one tier lower. Never below Ollama's 8K floor.
+    /// far slower, gets one tier lower. Never below 8K.
     static func contextBudgetTokens(for hardware: HardwareCapabilities) -> Int {
         let tokens: Int
         switch hardware.physicalMemoryGB {

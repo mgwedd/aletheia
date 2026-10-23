@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let log = Logger(subsystem: "com.aletheia", category: "Bookmark")
 
 /// Persists sandbox access to a user-chosen folder across launches.
 ///
@@ -23,22 +26,44 @@ enum SecurityScopedBookmark {
         accessedURL = url
     }
 
-    static func resolve(key: String) -> URL? {
-        guard let bookmark = UserDefaults.standard.data(forKey: key) else { return nil }
-        var isStale = false
-        guard let url = try? URL(
-            resolvingBookmarkData: bookmark,
-            options: .withSecurityScope,
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        ) else { return nil }
+    /// True when the last `resolve` found a stale bookmark and couldn't refresh
+    /// it. The folder is still returned and usable now, but access may not
+    /// survive the next launch, so the folder should be chosen again.
+    private(set) static var lastRefreshFailed = false
+
+    /// The system calls `resolve` makes, replaceable in tests.
+    struct Operations {
+        var resolveData: (Data) throws -> (url: URL, isStale: Bool)
+        var startAccessing: (URL) -> Bool
+        var makeBookmark: (URL) throws -> Data
+
+        static let system = Operations(
+            resolveData: { data in
+                var isStale = false
+                let url = try URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
+                return (url, isStale)
+            },
+            startAccessing: { $0.startAccessingSecurityScopedResource() },
+            makeBookmark: { try $0.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) }
+        )
+    }
+
+    static func resolve(key: String, defaults: UserDefaults = .standard, operations: Operations = .system) -> URL? {
+        lastRefreshFailed = false
+        guard let bookmark = defaults.data(forKey: key) else { return nil }
+        guard let (url, isStale) = try? operations.resolveData(bookmark) else { return nil }
 
         stopAccessing()
-        guard url.startAccessingSecurityScopedResource() else { return nil }
+        guard operations.startAccessing(url) else { return nil }
         accessedURL = url
 
-        if isStale, let refreshed = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
-            UserDefaults.standard.set(refreshed, forKey: key)
+        if isStale {
+            do {
+                defaults.set(try operations.makeBookmark(url), forKey: key)
+            } catch {
+                lastRefreshFailed = true
+                log.error("Couldn't refresh a stale folder bookmark: \(error.localizedDescription, privacy: .public)")
+            }
         }
         return url
     }

@@ -42,8 +42,12 @@ final class SQLitePersistenceCore: PersistenceCore {
     /// failed migration, a corrupt file, or a locked/full/unreadable one.
     init(opening url: URL) throws {
         self.url = url
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        } catch {
+            throw DatabaseOpenFailure(kind: .cannotOpen, reason: "The data folder couldn't be created.")
+        }
         var handle: OpaquePointer?
         let openCode = sqlite3_open_v2(url.path, &handle,
                                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,

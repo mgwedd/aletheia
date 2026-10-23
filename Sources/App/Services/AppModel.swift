@@ -48,8 +48,7 @@ final class AppModel: ObservableObject {
     private var lastEncryptionUnlocked: Bool?
     private let settings: AppSettings
     /// Supplies the `FileProtector` the stores read/write through. When
-    /// encryption is off or locked it's a passthrough, so the stores behave as
-    /// they always have.
+    /// encryption is locked it rejects access, including writes.
     private let encryption: EncryptionManager
     private let spotlightIndexer: SpotlightIndexing
     /// The feature modules this build ships, composed once at launch from the
@@ -90,10 +89,10 @@ final class AppModel: ObservableObject {
     func rebuildStore() {
         // Recompute encryption state first (the data folder may have just
         // changed), then build the stores around the resulting protector.
-        encryption.refresh()
+        encryption.refreshState()
         let dataRoot = settings.dataRootURL
         audit = dataRoot.map { root in
-            AuditLog(root: root, dekProvider: { [weak self] in self?.encryption.protector.key })
+            AuditLog(root: root, dekProvider: { [weak self] in self?.encryption.protector.heldKey })
         }
         logEncryptionTransitionIfNeeded()
         saveFailureSubject = nil
@@ -176,7 +175,12 @@ final class AppModel: ObservableObject {
         searchSync?.cancel()
         searchSync = nil
         guard let index = searchIndex else { return }
-        await Task.detached(priority: .userInitiated) { index.close() }.value
+        // The index file holds transcript text in the clear: when the folder is
+        // encrypted, don't leave it behind. The next launch's sweep rebuilds it.
+        let destroy = encryption.isEnabled
+        await Task.detached(priority: .userInitiated) {
+            if destroy { index.destroy() } else { index.close() }
+        }.value
     }
 
     /// Runs a save that goes to the database and, if it throws, raises the
@@ -275,7 +279,7 @@ final class AppModel: ObservableObject {
         do {
             let listing = try store.patientListing()
             patients = listing.patients
-            unreadablePatients = listing.unreadable
+            unreadablePatients = listing.unreadable + store.unreadableEntries.filter { $0.kind == .storedRecord }
             reindexSpotlight()
         } catch {
             errorMessage = error.localizedDescription

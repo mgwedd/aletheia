@@ -19,6 +19,9 @@ on:
   # Manual run (Actions tab): all three tiers, e.g. to check preview on a branch.
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   # The event is part of the group so a manual run on main can't cancel the
   # push run that Auto Release waits for.
@@ -35,6 +38,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Check per-tier entitlements
         run: ./scripts/check-entitlements.sh
       # Screens take every color from Theme (CLAUDE.md, Conventions).
@@ -64,6 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Does this change more than docs?
         id: check
@@ -119,6 +125,9 @@ jobs:
       # Stream xcodebuild output line-by-line so the xcbeautify pipe renders in
       # real time instead of buffering until the step ends.
       NSUnbufferedIO: "YES"
+      # Run the test-host app in the foreground, so the tests that need a key
+      # window run here (locally they skip; the app stays in the background).
+      TEST_RUNNER_ALETHEIA_FOREGROUND_TESTS: "1"
       # The Swift active compilation conditions for this job's tier. The tiers
       # nest (production ⊂ preview ⊂ dev); DEBUG is kept so the tier is built in
       # the test-friendly Debug configuration.
@@ -132,6 +141,8 @@ jobs:
         run: echo "Only documentation changed; skipping the build and tests."
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
         if: env.RUN_BUILD == 'true'
 
       - name: Show selected Xcode

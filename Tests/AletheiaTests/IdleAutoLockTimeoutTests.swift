@@ -6,9 +6,9 @@ final class IdleAutoLockTimeoutTests: XCTestCase {
         XCTAssertEqual(IdleAutoLockTimeout.allCases.map(\.rawValue), [0, 1, 5, 15, 30, 60])
     }
 
-    func testDefaultTimeoutIsOff() {
-        XCTAssertEqual(IdleAutoLockTimeout.defaultTimeout, .off)
-        XCTAssertEqual(IdleAutoLockTimeout.defaultTimeout.rawValue, 0)
+    func testDefaultTimeoutIsFifteenMinutes() {
+        XCTAssertEqual(IdleAutoLockTimeout.defaultTimeout, .fifteenMinutes)
+        XCTAssertEqual(IdleAutoLockTimeout.defaultTimeout.rawValue, 15)
     }
 
     func testOffDisplaysAsNever() {

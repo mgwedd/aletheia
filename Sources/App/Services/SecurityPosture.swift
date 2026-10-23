@@ -31,6 +31,8 @@ enum SecurityPosture {
         idleAutoLockMinutes: Int,
         encryptionEnabled: Bool,
         encryptionUnlocked: Bool,
+        /// Encryption was turned on but the keystore file is gone.
+        encryptionKeystoreMissing: Bool = false,
         /// False in a build without at-rest encryption (and no folder encrypted):
         /// there is nothing to turn on, so the item is left out.
         encryptionOffered: Bool = true,
@@ -69,7 +71,10 @@ enum SecurityPosture {
         }
 
         // At-rest encryption (Tier 2).
-        if encryptionEnabled && encryptionUnlocked {
+        if encryptionKeystoreMissing {
+            items.append(PostureItem(id: "encryption", title: "At-rest encryption", level: .actionRecommended,
+                detail: "This folder was encrypted but its keystore is missing, so its data can't be read or saved. Restore the keystore file or choose another folder."))
+        } else if encryptionEnabled && encryptionUnlocked {
             items.append(PostureItem(id: "encryption", title: "At-rest encryption", level: .secure,
                 detail: "Notes, transcripts, and any kept audio are encrypted on disk."))
         } else if encryptionEnabled {

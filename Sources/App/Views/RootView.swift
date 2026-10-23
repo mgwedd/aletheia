@@ -10,6 +10,7 @@ struct RootView: View {
     @EnvironmentObject private var transcription: TranscriptionCoordinator
     @EnvironmentObject private var exports: ExportJobCenter
     @ObservedObject private var navigator = AppNavigator.shared
+    @ObservedObject private var setAside = SetAsideRecordings.shared
     @Environment(\.openWindow) private var openWindow
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
@@ -204,6 +205,12 @@ struct RootView: View {
                     onOpenDoctor: { openWindow(id: DoctorFeatureModule.windowID) },
                     onDismiss: { appModel.dismissSaveFailure() }
                 )
+            }
+            if !setAside.items.isEmpty {
+                SetAsideRecordingsStrip(count: setAside.items.count) {
+                    navigator.requestSettings(.setAsideRecordings)
+                    showSettings = true
+                }
             }
         }
     }

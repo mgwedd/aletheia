@@ -33,7 +33,7 @@ final class DeviceKeyStoreTests: XCTestCase {
     func testRememberedFolderAutoUnlocksOnNextLaunch() throws {
         let device = InMemoryDeviceKeyStore()
         let first = manager(device)
-        _ = try first.enable(passphrase: "pw", iterations: fastIterations)
+        _ = try first.enable(passphrase: "test-passphrase-1", iterations: fastIterations)
         XCTAssertFalse(first.isRememberedOnDevice)
 
         try first.rememberOnDevice()
@@ -46,10 +46,26 @@ final class DeviceKeyStoreTests: XCTestCase {
         XCTAssertTrue(relaunched.protector.isEncrypting)
     }
 
+    func testLockDropsRememberedKeyUntilExplicitUnlock() throws {
+        let device = InMemoryDeviceKeyStore()
+        let m = manager(device)
+        try m.enable(passphrase: "test-passphrase-1", iterations: fastIterations)
+        try m.rememberOnDevice()
+        m.lock()
+        XCTAssertEqual(m.state, .lockedNeedsPassphrase)
+        m.refreshState()
+        XCTAssertEqual(m.state, .lockedNeedsPassphrase)
+        XCTAssertFalse(m.protector.isEncrypting)
+
+        m.autoUnlockFromDevice()
+        XCTAssertEqual(m.state, .unlocked)
+        XCTAssertTrue(m.protector.isEncrypting)
+    }
+
     func testForgetOnDeviceRestoresPassphrasePromptNextLaunch() throws {
         let device = InMemoryDeviceKeyStore()
         let first = manager(device)
-        _ = try first.enable(passphrase: "pw", iterations: fastIterations)
+        _ = try first.enable(passphrase: "test-passphrase-1", iterations: fastIterations)
         try first.rememberOnDevice()
         first.forgetOnDevice()
         XCTAssertFalse(first.isRememberedOnDevice)
@@ -61,7 +77,7 @@ final class DeviceKeyStoreTests: XCTestCase {
     func testRememberWhileLockedThrows() throws {
         let device = InMemoryDeviceKeyStore()
         let m = manager(device)
-        _ = try m.enable(passphrase: "pw", iterations: fastIterations)
+        _ = try m.enable(passphrase: "test-passphrase-1", iterations: fastIterations)
         m.lock()
         XCTAssertThrowsError(try m.rememberOnDevice())
         XCTAssertTrue(device.storage.isEmpty)
@@ -70,7 +86,7 @@ final class DeviceKeyStoreTests: XCTestCase {
     func testDisableClearsRememberedKey() throws {
         let device = InMemoryDeviceKeyStore()
         let m = manager(device)
-        _ = try m.enable(passphrase: "pw", iterations: fastIterations)
+        _ = try m.enable(passphrase: "test-passphrase-1", iterations: fastIterations)
         try m.rememberOnDevice()
         XCTAssertEqual(device.storage.count, 1)
 
@@ -83,7 +99,7 @@ final class DeviceKeyStoreTests: XCTestCase {
         // No id assigned (never remembered) → refresh must not consult the device
         // store, so a fresh manager stays locked. Uses the real default store.
         let first = EncryptionManager(dataRootProvider: { [root] in root })
-        _ = try first.enable(passphrase: "pw", iterations: fastIterations)
+        _ = try first.enable(passphrase: "test-passphrase-1", iterations: fastIterations)
         let relaunched = EncryptionManager(dataRootProvider: { [root] in root })
         XCTAssertEqual(relaunched.state, .lockedNeedsPassphrase)
     }
@@ -108,5 +124,62 @@ final class DeviceKeyStoreTests: XCTestCase {
         // Delete key
         store.delete(for: testID)
         XCTAssertNil(store.load(for: testID))
+    }
+
+    // MARK: - Keychain calls
+
+    /// Records the Keychain calls instead of making them.
+    private final class FakeKeychain {
+        var calls: [String] = []
+        var updateStatus: OSStatus = errSecSuccess
+        var addStatus: OSStatus = errSecSuccess
+        var stored: Data?
+
+        var client: KeychainDeviceKeyStore.Client {
+            .init(
+                add: { [self] _ in calls.append("add"); return addStatus },
+                update: { [self] _, _ in calls.append("update"); return updateStatus },
+                copy: { [self] _ in calls.append("copy"); return (stored == nil ? errSecItemNotFound : errSecSuccess, stored) },
+                delete: { [self] _ in calls.append("delete"); return errSecSuccess }
+            )
+        }
+    }
+
+    func testSaveReplacesInPlace() throws {
+        let keychain = FakeKeychain()
+        let store = KeychainDeviceKeyStore(client: keychain.client)
+        try store.save(SymmetricKey(size: .bits256), for: "id")
+        XCTAssertEqual(keychain.calls, ["update"], "an existing entry is updated; no delete leaves a gap")
+
+        keychain.calls = []
+        keychain.updateStatus = errSecItemNotFound
+        try store.save(SymmetricKey(size: .bits256), for: "id")
+        XCTAssertEqual(keychain.calls, ["update", "add"], "added only when there was nothing to update")
+        XCTAssertFalse(keychain.calls.contains("delete"))
+    }
+
+    func testSaveSurfacesAKeychainFailure() {
+        let keychain = FakeKeychain()
+        keychain.updateStatus = errSecInteractionNotAllowed
+        let store = KeychainDeviceKeyStore(client: keychain.client)
+        XCTAssertThrowsError(try store.save(SymmetricKey(size: .bits256), for: "id")) {
+            XCTAssertEqual($0 as? KeychainDeviceKeyStore.KeychainError, .unexpectedStatus(errSecInteractionNotAllowed))
+        }
+        XCTAssertEqual(keychain.calls, ["update"])
+    }
+
+    func testLoadRejectsWrongLengthKey() {
+        let keychain = FakeKeychain()
+        let store = KeychainDeviceKeyStore(client: keychain.client)
+        keychain.stored = Data(repeating: 7, count: 16)
+        XCTAssertNil(store.load(for: "id"))
+        keychain.stored = Data(repeating: 7, count: 32)
+        XCTAssertNotNil(store.load(for: "id"))
+    }
+
+    func testErrorDescriptionIsReadable() throws {
+        let text = try XCTUnwrap(KeychainDeviceKeyStore.KeychainError.unexpectedStatus(-25300).errorDescription)
+        XCTAssertTrue(text.contains("-25300"))
+        XCTAssertFalse(text.contains("unexpectedStatus"), "no raw enum dump")
     }
 }

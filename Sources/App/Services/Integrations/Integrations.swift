@@ -3,12 +3,12 @@ import Foundation
 /// The single place the app decides which concrete integration backs each
 /// adapter. Views ask this registry for a `Transcribing` engine or an
 /// `AssistantService`; they never construct `WhisperTranscriber` or
-/// `OllamaClient` directly. Swapping an integration — a different LLM
+/// `LlamaAssistant` directly. Swapping an integration — a different LLM
 /// backend, a different transcription engine — means changing one factory
 /// method here, not hunting through the UI.
 ///
 /// It reads current configuration from `AppSettings` at call time, so a
-/// changed model name or server URL takes effect on the next request without
+/// changed model choice takes effect on the next request without
 /// rebuilding anything.
 @MainActor
 final class Integrations: ObservableObject {
@@ -29,35 +29,33 @@ final class Integrations: ObservableObject {
 
     /// Speech-to-text: whisper.cpp with Metal (see `WhisperTranscriber`).
     func makeTranscriber() -> Transcribing {
-        WhisperTranscriber(modelPath: settings.whisperModelPath)
+        WhisperTranscriber(modelPath: settings.whisperModelPath, expectedBytes: settings.whisperModel.expectedBytes)
     }
 
     /// Low-level LLM adapter, chosen by the resolved backend (see
-    /// `effectiveAssistantBackend`): the built-in llama.cpp engine by default,
-    /// Ollama only when the user picks it.
+    /// `effectiveAssistantBackend`): the built-in llama.cpp engine, or, in a
+    /// build without it, an assistant that reports the model as unavailable.
     func makeAssistant() -> Assistant {
         switch effectiveAssistantBackend {
         case .appleIntelligence:
             #if canImport(FoundationModels)
             if #available(macOS 26.0, *) { return FoundationModelsAssistant() }
             #endif
-            return OllamaClient(baseURL: settings.ollamaBaseURL)
-        case .localLlama:
-            #if canImport(llama)
-            return LlamaAssistant(modelURL: llamaModelURL)
-            #else
-            // Unreachable: the resolver only picks `.localLlama` when it's linked.
-            return OllamaClient(baseURL: settings.ollamaBaseURL)
-            #endif
-        case .ollama, .automatic:
-            return OllamaClient(baseURL: settings.ollamaBaseURL)
+            return builtInAssistant()
+        case .localLlama, .automatic:
+            return builtInAssistant()
         }
     }
 
-    /// The configured Ollama model tag, for status and support text.
-    var ollamaModelName: String { settings.ollamaModelName }
+    private func builtInAssistant() -> Assistant {
+        #if canImport(llama)
+        return LlamaAssistant(modelURL: llamaModelURL)
+        #else
+        return UnavailableAssistant()
+        #endif
+    }
 
-    /// The active backend's model name: the built-in model or the Ollama tag.
+    /// The active backend's model name.
     /// Keys measured speeds and names the model in status and support text.
     var activeModelName: String { EngineStatusProbe.modelName(for: effectiveAssistantBackend, settings: settings) }
 
@@ -78,18 +76,14 @@ final class Integrations: ObservableObject {
     /// screens read this so they describe (and troubleshoot) the real backend.
     var effectiveAssistantBackend: AssistantBackend {
         AssistantBackendResolver(
-            appleIntelligenceAvailable: Self.appleIntelligenceAvailable,
-            // The built-in engine is first-class: chosen whenever it's linked, model
-            // downloaded or not. A missing model is a setup step, never a silent
-            // switch to Ollama.
-            localLlamaAvailable: LlamaRuntime.isBuilt
+            appleIntelligenceAvailable: Self.appleIntelligenceAvailable
         ).resolve(settings.assistantBackend)
     }
 
     /// Apple Intelligence is intentionally disabled for now. Apple is moving Siri
     /// / system intelligence toward a Google Gemini backhaul, and for PHI this app
-    /// only uses backends it can prove stay on this Mac (Ollama, built-in
-    /// llama.cpp). The on-device Foundation Models API doesn't itself use that
+    /// only uses a backend it can prove stays on this Mac (the built-in
+    /// llama.cpp engine). The on-device Foundation Models API doesn't itself use that
     /// cloud path, but we keep the guarantee simple and provable by not depending
     /// on Apple's stack. Set this to `false` to re-enable the on-device path.
     static let appleIntelligenceBlocked = true

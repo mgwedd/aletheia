@@ -15,7 +15,7 @@ final class OnDeviceCopyTests: XCTestCase {
             ("Views/PatientProfileEditor.swift", ["It stays on this Mac", "local AI model"]),
             ("Views/PatientProfileCard.swift", ["local AI model"]),
             ("Views/SessionDetailView.swift", ["on-device\"", "Recording on this Mac"]),
-            ("Views/SettingsView.swift", ["recorded only on this Mac", "every AI path is on-device", "Talks to Ollama on this Mac only"]),
+            ("Views/SettingsView.swift", ["recorded only on this Mac", "every AI path is on-device"]),
             ("Views/DoctorView.swift", ["Everything is checked on this Mac"]),
             ("Views/GlobalSearchResultsView.swift", ["Searched on this Mac"]),
             ("Views/EncryptionSettingsView.swift", ["recordings on this Mac"]),
