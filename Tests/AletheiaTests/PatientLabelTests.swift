@@ -37,6 +37,12 @@ final class PatientLabelTests: XCTestCase {
         XCTAssertEqual(SystemSurfaceAccess.isLocked, !SessionSearch.mayOpenIndex)
     }
 
+    func testDefaultIndexerIsANoOpUnderTheTestHost() {
+        XCTAssertTrue(TestHost.isHostingTests())
+        XCTAssertTrue(SpotlightIndexerFactory.make() is NoOpSpotlightIndexer)
+        XCTAssertTrue(SpotlightIndexerFactory.make(environment: [:]) is SpotlightIndexer)
+    }
+
     // MARK: - Source scan
 
     private func source(_ relative: String) throws -> String {

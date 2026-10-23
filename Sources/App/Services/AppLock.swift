@@ -199,7 +199,7 @@ final class AppLock: ObservableObject {
         canAuthenticate: @escaping () -> Bool = AppLock.canAuthenticate,
         authenticator: UnlockAuthenticator = UnlockAuthenticatorFactory.make(),
         isAppActive: @escaping () -> Bool = { NSApp.isActive },
-        spotlight: SpotlightIndexing = SpotlightIndexer.shared
+        spotlight: SpotlightIndexing = SpotlightIndexerFactory.make()
     ) {
         self.settings = settings
         self.authenticator = authenticator

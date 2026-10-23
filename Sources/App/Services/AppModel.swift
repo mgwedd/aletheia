@@ -68,7 +68,7 @@ final class AppModel: ObservableObject {
     init(
         settings: AppSettings,
         encryption: EncryptionManager,
-        spotlightIndexer: SpotlightIndexing = SpotlightIndexer.shared,
+        spotlightIndexer: SpotlightIndexing = SpotlightIndexerFactory.make(),
         featureRegistry: FeatureRegistry = .compose(tier: .current, from: FeatureRegistry.allModules)
     ) {
         self.settings = settings
