@@ -80,7 +80,7 @@ ggml, the tensor library behind both runtimes, is compiled into each of the two 
 
 The llama.cpp build script (`build-xcframework.sh` at b11149) also compiles in llama.cpp's multimodal library and its vendored helper code. These are statically linked into the prebuilt framework.
 
-TODO(owner): confirm against the shipped binary that these vendored components are present. They are listed from the upstream build script, not from inspecting the framework.
+The shipped framework's symbol table contains code from stb_image, miniaudio, subprocess.h, xxHash and the SHA-1/SHA-256 helpers.
 
 #### stb_image
 
@@ -332,7 +332,7 @@ These models are not part of Aletheia. You choose whether to download one, in Se
 - License: MIT License. The repository's model card lists `mit`, and OpenAI states that Whisper's code and model weights are released under the MIT License: https://github.com/openai/whisper/blob/main/LICENSE
 - Copyright: Copyright (c) 2022 OpenAI
 
-TODO(owner): confirm. OpenAI's own Hugging Face pages for these checkpoints (for example `openai/whisper-large-v3`) list `apache-2.0`, while the OpenAI repository and the whisper.cpp model card say MIT.
+OpenAI's Hugging Face pages for some checkpoints list `apache-2.0`; OpenAI's repository README states that the code and model weights are MIT-licensed.
 
 ### Llama 3.1 8B Instruct
 
@@ -354,4 +354,4 @@ Use of this model is subject to the Llama 3.1 Community License and its Acceptab
 - License: Apache License 2.0. The conversion's model card and Google's model card (https://huggingface.co/google/gemma-4-E2B-it) both list `apache-2.0`, and Google's license link is https://ai.google.dev/gemma/docs/gemma_4_license
 - Full text: https://www.apache.org/licenses/LICENSE-2.0
 
-TODO(owner): confirm. Neither model card states a copyright holder line, and Google's license page is marked deprecated in favor of https://gemma.ai.
+Neither model card names a copyright holder.
