@@ -22,8 +22,8 @@ access any of that data.
 ```mermaid
 flowchart LR
     C["Clinician's Mac<br/>(chosen data folder)"]
-    C -->|update check: version file only| U["appcast host"]
-    C -->|opt-in model download| M["model host"]
+    C -->|"update check and download, via the sandboxed helper"| U["GitHub"]
+    C -->|"opt-in model download, via the helper"| M["Hugging Face"]
     C -.->|in-process, no network| O["built-in AI"]
     D["Developer"]:::none
     classDef none fill:#f6f6f6,stroke:#bbb,color:#888;
@@ -47,15 +47,21 @@ the destination and encryption of any system backup.
 | Asset | Location and handling |
 | --- | --- |
 | Patient and session files | `Patients/<patient folder>/<session folder>/` contains `patient.json`, `session.json`, audio (`mic.caf`, `call.caf`), transcripts, summaries, generated notes, digests, and chats. Patient folder names and session folder names can reveal identifying information. These files are plaintext unless optional at-rest encryption was enabled in a developer build or an earlier build. |
-| Clinical database | `Aletheia.sqlite` holds records and metadata. The optional encryption feature seals selected fields, not the SQLite file, schema, or all metadata. |
+| Clinical database | `Aletheia.sqlite` holds records, metadata, and the audit ledger. The optional encryption feature seals selected fields, not the SQLite file, schema, or all metadata. |
 | Search index | `search.sqlite` is a local full-text index of transcript, note, and comment text. It is plaintext even when optional encryption is on, and it stays on disk between launches; the app lock closes it but does not delete it. It is deleted when encryption is turned off and rebuilt when missing. |
-| Audit log | `audit.log` is local JSON lines with actions, times, and optional opaque identifiers. It is plaintext, best effort, and has no tamper-evident seal. |
+| Audit log | The `audit_events` table in `Aletheia.sqlite` is an append-only, HMAC-chained ledger of actions, times, the macOS account name and user ID, and optional opaque identifiers. It is not encrypted by the optional encryption feature. An old `audit.log` text file is imported once and renamed `audit.log.imported`. |
 | Recovery material and copies | `.aletheia-keystore.json` stores a wrapped data key if optional encryption is enabled. `.backups/snapshots/` and `.backups/migrations/` hold local safety copies; the encrypted archive service is not wired into the app. |
-| Other local storage | App settings and the selected-folder bookmark live in the macOS app container. Downloaded models live under the app's Application Support directory. Optional remembered data keys use the device-only login Keychain service `com.aletheia.datakey`. |
+| Other local storage | App settings and the selected-folder bookmark live in the macOS app container. Downloaded models live under the app's Application Support directory. While a recording is in progress its audio is staged in a private (`0700`) `Staging/` folder in the same Application Support directory, then moved into the session folder when it stops (sealed if encryption is on); a crash leaves it there until the next launch recovers it. Optional remembered data keys use the device-only login Keychain service `com.aletheia.datakey`; the audit ledger's signing key is a separate login Keychain item. |
+| Exports | Settings › Backups › Export All Records writes a folder of ordinary, unencrypted files (a `Read me.txt` plus one folder per patient) to a location the user picks, and records the export in the audit ledger. The app warns when the destination is on an unencrypted disk or a synced folder. The practice owns that copy. |
 
-The app checks the GitHub release appcast when update checks are enabled and
-downloads models from Hugging Face when requested. The built-in AI runs
-in-process and makes no network requests. These network
+The app itself has no network entitlement. Its bundled, sandboxed network helper
+(which has no file access) checks the GitHub release appcast when update checks
+are enabled, downloads the release disk image when the user chooses to install
+an update, and downloads models from Hugging Face when requested. The app names
+each download by a fixed number, never a web address. The built-in AI runs
+in-process and makes no network requests. The Report a Bug and Request a Feature
+commands open a form on astrealabs.com in the browser, with only the project,
+report type, and the app, macOS and chip versions in the link. These network
 requests are separate from the data folder. A synced data folder can transmit
 its contents through the user's cloud provider outside the app's own network
 requests. The app does not upload backups of its own.
@@ -68,17 +74,18 @@ Legend: **✅ in place** · **◐ in progress** · **○ clinician responsibilit
 | --- | --- | --- |
 | **Access control (a)(1)** — unique user ID, limit access to authorized users | ✅ / ○ | Single-user app scoped to one macOS account. The macOS login (unique user, password/Touch ID) is the access boundary; the app adds its own lock below. |
 | **Emergency access procedure (a)(2)(ii)** *(addressable)* | ✅ | A 24-word BIP-39 emergency recovery key (≥256 bits entropy) is generated when at-rest encryption is enabled and can be replaced at any time in Settings › Encryption. It wraps the data encryption key (DEK) in an independent keyslot. Clinicians are guided to print or export the key as a PDF during setup and store it in an offline, physically secured location (e.g. a locked safe or deposit box). Emergency access is executed by clicking "Use recovery key…" on the folder unlock screen. The recovery key is never written to disk in the data folder. |
-| **Automatic logoff (a)(2)(iii)** *(addressable)* | ◐ | App lock re-engages whenever the Mac locks or sleeps, so the Mac's screen-lock setting (System Settings › Lock Screen) provides the logoff; set a short interval there. An optional **in-app idle lock** (off by default) also re-locks after inactivity in Aletheia. |
-| **Encryption & decryption (a)(2)(iv)** *(addressable)* | ◐ / ○ | FileVault is the recommended disk-level baseline. The optional AES-256-GCM at-rest feature is currently available in developer builds only, not production; see [ENCRYPTION.md](ENCRYPTION.md). Production users should use FileVault and encrypted backup media. |
-| **Audit controls (b)** — record and examine activity involving ePHI | ◐ | A local JSON-lines `audit.log` records app unlocks and failed unlocks, encryption changes, exports, and patient deletions, with timestamps and no patient names or clinical text. It is viewable and exportable in Settings. Writes are best effort, and the file has no integrity seal or actor identity; some actions, including backups, recording deletion, and chat deletion, are not yet recorded. |
+| **Automatic logoff (a)(2)(iii)** *(addressable)* | ✅ / ○ | App lock (on by default) re-engages whenever the Mac locks or sleeps, its display sleeps, or the user switches, and the in-app idle lock re-locks after 15 minutes of inactivity by default (adjustable or Never; hiding the app with ⌘H can also lock, off by default). Every window that shows patient data is covered while locked. The Mac's own screen-lock setting (System Settings › Lock Screen) remains the practice's control. |
+| **Encryption & decryption (a)(2)(iv)** *(addressable)* | ◐ / ○ | FileVault is the disk-level baseline: the app reads whether the data folder's disk is encrypted and will not add new patients, sessions or recordings while it is known to be unencrypted (existing records stay readable and exportable). The optional AES-256-GCM at-rest feature is currently available in developer builds only, not production; see [ENCRYPTION.md](ENCRYPTION.md). Production users should use FileVault and encrypted backup media. |
+| **Audit controls (b)** — record and examine activity involving ePHI | ◐ | An append-only, tamper-evident ledger in `Aletheia.sqlite` records app unlocks, failed unlocks and locks; encryption turned on, off or unlocked; exports of a session, a note, a patient, or all records; patient and set-aside-recording deletions; recordings recovered after an unexpected quit; and audit-log exports. Each entry carries a time, the macOS account name and user ID, and at most an opaque record ID, with no patient names or clinical text. Rows are HMAC-SHA256 chained under a Keychain key, the database refuses edits and deletes, and Settings › Security verifies the chain and exports a report. Writes are best effort, and actions such as viewing or amending a note, deleting a recording or chat, and AI use are not recorded. |
 | **Integrity (c)(1)** — protect ePHI from improper alteration/destruction | ◐ / ○ | SQLite `PRAGMA secure_delete` zeroes freed pages and identity/metadata writes are atomic. The clinician can edit transcripts and draft notes; the app does not yet retain an immutable original or amendment history. Local database snapshots assist recovery, but a complete backup of the data folder remains a practice responsibility. |
 | **Person/entity authentication (d)** | ✅ | App lock via `LocalAuthentication` (Touch ID or Mac password) gates access to the app; macOS account auth gates the device. |
-| **Transmission security (e)(1)** — guard ePHI in transit | ◐ | Update checks and opt-in model downloads use external hosts; the built-in AI runs in-process. The app has no working cloud-backup upload. A clinician-chosen data folder may itself be in a synced location, so select a local folder when PHI must stay on the Mac. |
+| **Transmission security (e)(1)** — guard ePHI in transit | ◐ | The app has no network entitlement. Update checks, update downloads and opt-in model downloads run in a sandboxed helper over HTTPS to GitHub and Hugging Face and carry no ePHI; the built-in AI runs in-process. The app has no working cloud-backup upload. A clinician-chosen data folder may itself be in a synced location, so select a local folder when PHI must stay on the Mac. |
 
 Patient folders use opaque UUID names after the v2 folder migration. Session
 folder names still carry dates of service. The FTS cache (`search.sqlite`)
-contains searchable plaintext terms; it is protected by the FileVault gate,
-excluded from Time Machine, deleted on lock, and rebuilt on unlock. The v2
+contains searchable plaintext terms; it is protected by the FileVault gate and
+excluded from Time Machine. The app lock closes it, and it is deleted when an
+encrypted folder locks or encryption is turned off and rebuilt on unlock. The v2
 migration retains a structured JSON pre-image under `.backups/migrations/files/`.
 That backup and session folder names remain within the FileVault protected data
 folder.
@@ -127,11 +134,13 @@ the app keeps records until the clinician removes them.
 
 ## Where these controls live in the app
 
-- Settings › Security — app lock, optional idle lock, FileVault guidance.
+- Settings › Security — app lock, idle lock, FileVault status, security posture,
+  network access, and the audit log.
 - Settings › Encryption — optional at-rest encryption in developer builds, and
   in any build for a folder that is already encrypted; see
   [ENCRYPTION.md](ENCRYPTION.md).
-- Settings › Backups — optional system-backup exclusion (off by default).
+- Settings › Backups — optional system-backup exclusion (off by default) and
+  Export All Records.
 - Settings › Legal — locally recorded acceptance of the current Terms/Privacy.
 
 See also [SECURITY.md](../SECURITY.md) for the threat model and the

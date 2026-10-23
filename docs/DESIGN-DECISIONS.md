@@ -132,7 +132,7 @@ flowchart TD
   DEC -->|keep: opt-in + encryption| SAVE["saveTranscript, audio stays"]
   DEL --> TX[("transcript.txt<br/>one file, sealed by FileProtector")]
   SAVE --> TX
-  TX --> ED["Hand edit: saveEditedTranscript()<br/>same file, no history"]
+  TX --> ED["Hand edit: transcript editor save<br/>same file, no history"]
   ED --> TX
   TX -.derives.-> N["note.format.txt, summary.txt<br/>(files)"]
   TX -.derives.-> SC["session chat, patient chat threads<br/>(SQLite records)"]
@@ -165,7 +165,7 @@ first.
 | Patient-chat search | persistent FTS5 index `search.sqlite` (`SearchIndex`), keyed by session, kind and a fingerprint of the text | the text each search reads | not stale: a search stores any text it hasn't seen and drops older versions of that session; `saveTranscript` and a launch/unlock sweep (by mtime and size) also refresh it. It holds a plaintext (stemmed) copy of searchable text, accepted because FileVault covers it at rest; it is excluded from Time Machine and rebuilt if missing or corrupt |
 | Session search, export | read from files at query time (`searchSessions`) | live | not stale |
 | Spotlight | names and dates only | none | unaffected |
-| Encryption sealing | `FileProtector.write` seals each write | `saveTranscript` seals correctly | a **new** file kind (such as a prior revision) is not covered: `DataMigrator` converts only a fixed list (`transcript.txt`, `summary.txt`, `chat.json`, `note.*.txt`). A revision file left out of that list is skipped on enable (stays plaintext) and, worse, stays sealed when encryption is turned off after the keystore is removed (unreadable) |
+| Encryption sealing | `FileProtector.write` seals each write | `saveTranscript` seals correctly | a **new** file kind (such as a prior revision) is not covered: `DataMigrator` converts only a fixed list (`transcript.txt`, `summary.txt`, `chat.json`, the digest files, `note.*.txt`). A revision file left out of that list is skipped on enable (stays plaintext) and, worse, stays sealed when encryption is turned off after the keystore is removed (unreadable) |
 | DB snapshots and backups | `.backups/snapshots` cover SQLite only | `transcript.txt` is a file | a replaced transcript is not recoverable from DB snapshots; only Time Machine or a manual copy |
 | Whisper model | `WhisperModel` pinned by SHA | a different model gives different text and timing | every item above changes more, not less |
 | Audio retention | `AudioRetentionPolicy` | audio is deleted after the first non-blank transcript by default | in the default case there is nothing to retranscribe |
@@ -232,7 +232,7 @@ Steps and constraints:
    when its file modification date precedes `replacedAt`; chat messages carry
    `ChatMessage.date` and compare directly. Show a one-line badge on the note
    and in chat; do not rewrite or delete them.
-7. **Audit.** Optional: add an `AuditEvent` case for "transcript replaced".
+7. **Audit.** Optional: add an `AuditAction` case for "transcript replaced".
 8. **Tests** (XCTest, run in CI): archive-then-write ordering and failure
    abort; blank result leaves transcript untouched; migrator round trip for the
    new file; comment re-match count; staleness comparison as a pure function.

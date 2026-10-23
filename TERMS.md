@@ -54,7 +54,10 @@ You are solely responsible for:
 - **Device security.** Protecting the Mac the App runs on — FileVault, the App's
   Touch ID / password lock, account security, and physical access. See
   [SECURITY.md](SECURITY.md).
-- **Backups.** Backing up your data folder. The App does not back up your data.
+- **Backups.** Backing up your data folder. The App does not back up your data
+  on its own. Settings › Backups › Export All Records can export every record to a folder you choose;
+  that export is not encrypted by the App, so protecting and eventually deleting
+  it is also your responsibility.
 - **Third-party software.** Any model files you download to use with the App,
   under their own licenses and terms.
 
@@ -98,7 +101,9 @@ patients, or your violation of these Terms or applicable law.
 ## 9. Third-party components
 
 The App may use open-source and third-party components, each under its own
-license. Those licenses govern those components; these Terms govern the App.
+license. Those licenses govern those components; these Terms govern the App. The
+notices are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and in the App
+under Settings › Licenses.
 
 ## 10. Termination
 
