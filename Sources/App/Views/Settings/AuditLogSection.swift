@@ -9,6 +9,7 @@ enum AuditLogCopy {
         ("encryption changes", [.encryptionEnabled, .encryptionDisabled, .encryptionUnlocked]),
         ("exports", [.recordExported, .auditLogExported]),
         ("deletions", [.recordDeleted]),
+        ("passphrase changes", [.encryptionPassphraseChanged]),
         ("recovered recordings", [.recordingRecovered]),
     ]
 
