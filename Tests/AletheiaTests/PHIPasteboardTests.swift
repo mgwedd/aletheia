@@ -30,6 +30,19 @@ final class PHIPasteboardTests: XCTestCase {
         XCTAssertNotNil(pasteboard.data(forType: PHIPasteboard.transient))
     }
 
+    func testNoteReaderSelectionIsConcealedAndTransient() {
+        let pasteboard = NSPasteboard(name: .init("test-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        let textView = NoteReaderView.ClickReportingTextView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        textView.string = "drafted note"
+        textView.setSelectedRange(NSRange(location: 0, length: textView.string.utf16.count))
+
+        XCTAssertTrue(textView.writeSelection(to: pasteboard, types: textView.writablePasteboardTypes))
+        XCTAssertEqual(pasteboard.string(forType: .string), "drafted note")
+        XCTAssertNotNil(pasteboard.data(forType: PHIPasteboard.concealed))
+        XCTAssertNotNil(pasteboard.data(forType: PHIPasteboard.transient))
+    }
+
     func testGeneralPasteboardIsLimitedToHelperAndDiagnostics() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()

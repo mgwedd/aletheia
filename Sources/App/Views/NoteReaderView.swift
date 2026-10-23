@@ -107,6 +107,11 @@ struct NoteReaderView: NSViewRepresentable {
     final class ClickReportingTextView: NSTextView {
         var onPlainClick: ((Int) -> Void)?
 
+        /// Copy and drag of the note stay on this Mac and out of clipboard history.
+        override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
+            PHIPasteboard.writeSelection(to: pboard) { super.writeSelection(to: $0, types: types) }
+        }
+
         override func mouseDown(with event: NSEvent) {
             super.mouseDown(with: event)
             guard event.clickCount == 1, selectedRange().length == 0 else { return }

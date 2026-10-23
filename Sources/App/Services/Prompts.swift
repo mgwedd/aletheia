@@ -259,6 +259,16 @@ enum Prompts {
         return trimmed.isEmpty ? "" : "\n" + trimmed + "\n"
     }
 
+    /// Heads the margin comments. A comment can quote the transcript or a
+    /// drafted note (one marked "[On SOAP note …]"); only the words after the
+    /// colon are the therapist's, so a quoted passage is never taken as her
+    /// judgment.
+    static let commentsHeading = """
+    Therapist's margin comments on the transcript and drafted notes (a quoted \
+    passage is the text she commented on, not her words; only what follows the \
+    colon is hers):
+    """
+
     /// Renders the therapist's own notes/comments as a clearly-labeled block,
     /// or nothing when she hasn't written any. Kept distinct from the
     /// transcript so the model never confuses her words with the session's.
@@ -269,7 +279,7 @@ enum Prompts {
             sections.append("Therapist's session notes:\n\(trimmedNotes)")
         }
         if !comments.isEmpty {
-            sections.append("Therapist's margin comments on the transcript:\n" + comments.joined(separator: "\n"))
+            sections.append(commentsHeading + "\n" + comments.joined(separator: "\n"))
         }
         return sections.isEmpty ? "" : "\n" + sections.joined(separator: "\n\n") + "\n"
     }

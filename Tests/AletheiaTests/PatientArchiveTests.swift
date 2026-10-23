@@ -232,6 +232,13 @@ final class PatientArchiveTests: XCTestCase {
         XCTAssertNil(PatientArchive.commentsText([]))
     }
 
+    func testNoteCommentsNameTheirNote() throws {
+        let text = try XCTUnwrap(PatientArchive.commentsText([
+            ArchiveComment(anchorSeconds: nil, quotedText: "Client reported", body: "Too vague.", resolved: false, noteLabel: "SOAP"),
+        ]))
+        XCTAssertEqual(text, "[SOAP note] \u{201C}Client reported\u{201D}\nToo vague.\n")
+    }
+
     func testSessionsWithNothingAreLeftOutAndCounted() throws {
         let result = files([
             session(date(2026, 1, 5), transcript: "Talk."),
@@ -361,7 +368,8 @@ final class PatientArchiveWriterTests: XCTestCase {
         let record = try store.createSession(for: patient, on: date(2026, 1, 5))
         try store.saveTranscript("[00:05] Therapist: How was the week?", for: patient, session: record)
         try store.saveNote("## Subjective\n\nSlept **poorly**.", for: patient, session: record, format: .soap)
-        commentStore.addComment(sessionID: record.id, quotedText: "How was the week?", body: "Open question.", anchorSeconds: 5)
+        commentStore.addComment(sessionID: record.id, quotedText: "How was the week?", body: "Open question.", anchorSeconds: 5, now: date(2026, 1, 5))
+        commentStore.addComment(sessionID: record.id, quotedText: "Slept poorly.", body: "Ask how long.", format: .soap, now: date(2026, 1, 6))
 
         let loaded = try ArchiveLoader.load(store: store, patient: patient, session: record)
         XCTAssertEqual(loaded.date, record.date)
@@ -369,8 +377,9 @@ final class PatientArchiveWriterTests: XCTestCase {
         XCTAssertEqual(loaded.notes.map(\.formatName), ["SOAP"])
         XCTAssertTrue(loaded.notes[0].text.contains("Slept poorly."))
         XCTAssertFalse(loaded.notes[0].text.contains("**"))
-        XCTAssertEqual(loaded.comments.map(\.body), ["Open question."])
+        XCTAssertEqual(loaded.comments.map(\.body), ["Open question.", "Ask how long."])
         XCTAssertEqual(loaded.comments.first?.anchorSeconds, 5)
+        XCTAssertEqual(loaded.comments.map(\.noteLabel), [nil, "SOAP"])
     }
 }
 
