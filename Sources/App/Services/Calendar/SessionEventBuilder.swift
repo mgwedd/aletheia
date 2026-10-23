@@ -53,8 +53,8 @@ enum SessionEventBuilder {
         return calendar.date(bySettingHour: 9, minute: 0, second: 0, of: nextWeek) ?? nextWeek
     }
 
+    /// The title names no one: calendars sync to iCloud and show on lock screens.
     static func draft(
-        patientName: String,
         start: Date,
         durationMinutes: Int = defaultDurationMinutes,
         recurrence: EventRecurrence = .never,
@@ -62,7 +62,7 @@ enum SessionEventBuilder {
     ) -> EventDraft {
         let end = calendar.date(byAdding: .minute, value: durationMinutes, to: start) ?? start
         return EventDraft(
-            title: "Session with \(patientName)",
+            title: "Therapy session",
             notes: "Therapy session.",
             startDate: start,
             endDate: end,
