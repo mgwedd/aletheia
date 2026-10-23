@@ -95,7 +95,7 @@ final class LicenseStateTests: XCTestCase {
     func testExpiryBlocksNewWorkButKeepsTheLicenseeVisible() throws {
         let state = makeState()
         state.install(try token(exp: now.addingTimeInterval(2 * day)))
-        clock = now.addingTimeInterval(3 * day)
+        clock = now.addingTimeInterval(17 * day)   // past the 14-day grace period
         state.refresh()
         guard case .expired(let token) = state.status else { return XCTFail("expected expired") }
         XCTAssertEqual(token.sub, "a@example.com")
@@ -124,7 +124,7 @@ final class LicenseStateTests: XCTestCase {
         let state = makeState()
         state.install(try token(exp: now.addingTimeInterval(80 * day)))
         XCTAssertNil(state.newWorkRefusal)
-        clock = now.addingTimeInterval(81 * day)   // no refresh(), no app activation
+        clock = now.addingTimeInterval(95 * day)   // past grace; no refresh(), no app activation
         XCTAssertNotNil(state.newWorkRefusal)
         guard case .expired = state.status else { return XCTFail("expected expired") }
     }
@@ -133,9 +133,62 @@ final class LicenseStateTests: XCTestCase {
         let state = makeState()
         state.install(try token(exp: now.addingTimeInterval(day)))
         clock = now.addingTimeInterval(day - 1)
-        XCTAssertNil(state.newWorkRefusal)
+        guard case .expiringSoon = state.status else { return XCTFail("status is \(state.status)") }
         clock = now.addingTimeInterval(day)
+        XCTAssertNil(state.newWorkRefusal, "expiry starts the grace period, not a block")
+        guard case .gracePeriod = state.status else { return XCTFail("status is \(state.status)") }
+    }
+
+    // MARK: - Grace period
+
+    func testTheGracePeriodKeepsWorkGoingForFourteenDaysWithABanner() throws {
+        let state = makeState()
+        state.install(try token(exp: now.addingTimeInterval(day)))
+        clock = now.addingTimeInterval(day + 3600)   // just expired
+        guard case .gracePeriod(let token, let days) = { state.refresh(); return state.status }() else {
+            return XCTFail("status is \(state.status)")
+        }
+        XCTAssertEqual(days, 14)
+        XCTAssertEqual(token.sub, "a@example.com")
+        XCTAssertTrue(state.status.isActive)
+        XCTAssertNil(state.newWorkRefusal)
+        XCTAssertNoThrow(try state.authorizeNewWork())
+        let banner = try XCTUnwrap(LicenseBanner.text(for: state.status))
+        XCTAssertTrue(banner.contains("14 more days"), banner)
+
+        clock = now.addingTimeInterval(14 * day + 3600)   // one day of grace left
+        state.refresh()
+        guard case .gracePeriod(_, 1) = state.status else { return XCTFail("status is \(state.status)") }
+        XCTAssertTrue(LicenseBanner.text(for: state.status)?.contains("1 more day") ?? false)
+    }
+
+    func testNewWorkStopsAtExactlyTheEndOfTheGracePeriod() throws {
+        let state = makeState()
+        state.install(try token(exp: now.addingTimeInterval(day)))
+        let graceEnds = now.addingTimeInterval(day + 14 * day)
+        clock = graceEnds.addingTimeInterval(-1)
+        XCTAssertNil(state.newWorkRefusal)
+        clock = graceEnds
+        let refusal = try XCTUnwrap(state.newWorkRefusal)
+        XCTAssertTrue(refusal.contains("grace period has ended"), refusal)
+        guard case .expired = state.status else { return XCTFail("status is \(state.status)") }
+        XCTAssertFalse(state.status.isActive)
+    }
+
+    func testRevocationHasNoGracePeriod() throws {
+        let state = makeState()
+        state.install(try token(exp: now.addingTimeInterval(day), lid: "bad-lid"))
+        clock = now.addingTimeInterval(2 * day)   // inside grace
+        try state.applyRevocationList(try list(iat: now, revoked: ["bad-lid"]))
+        guard case .revoked = state.status else { return XCTFail("status is \(state.status)") }
         XCTAssertNotNil(state.newWorkRefusal)
+    }
+
+    func testATokenInItsGracePeriodCannotBeInstalled() throws {
+        let state = makeState()
+        let lapsed = try token(exp: now.addingTimeInterval(-day))
+        guard case .failure(.expired) = state.install(lapsed) else { return XCTFail("a lapsed key was installed") }
+        XCTAssertEqual(state.status, .unlicensed)
     }
 
     // MARK: - Installs set up before license keys
@@ -173,7 +226,7 @@ final class LicenseStateTests: XCTestCase {
         let old = upgradedInstall()
         let state = LicenseState(settings: old, keyring: ring, now: { [unowned self] in self.clock })
         state.install(try token(exp: now.addingTimeInterval(80 * day), lid: "old-lid"))
-        clock = now.addingTimeInterval(81 * day)
+        clock = now.addingTimeInterval(95 * day)
         XCTAssertNotNil(state.newWorkRefusal)
         guard case .expired = state.status else { return XCTFail("expected expired") }
     }

@@ -23,9 +23,9 @@ to download — those are covered by their own providers' terms and policies.
 
 ## 2. What the developer collects
 
-**Nothing.** The App has no analytics, no crash reporting, no usage tracking,
-no accounts, and no developer backend. The developer cannot see who uses the
-App or what it is used for.
+The App has no analytics, crash reporting, usage tracking, or accounts, and
+sends nothing about you or your records to the developer. The developer cannot
+see how the App is used or what it holds.
 
 If you applied for a license key, the developer keeps the application you
 submitted (your name, contact and professional details, and a record of the key

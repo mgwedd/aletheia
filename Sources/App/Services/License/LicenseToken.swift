@@ -28,6 +28,22 @@ struct LicenseToken: Equatable {
     func isExpiringSoon(at now: Date) -> Bool {
         !isExpired(at: now) && expiresAt.timeIntervalSince(now) <= Self.warningWindow
     }
+
+    /// After `expiresAt`, recording and the AI keep working this long so a late
+    /// renewal never interrupts a practice mid-week.
+    static let gracePeriod: TimeInterval = 14 * 86_400
+
+    /// When new work stops: `gracePeriod` after `expiresAt`.
+    var graceEndsAt: Date { expiresAt.addingTimeInterval(Self.gracePeriod) }
+
+    /// Expired, but still inside the grace period.
+    func isInGracePeriod(at now: Date) -> Bool { isExpired(at: now) && now < graceEndsAt }
+
+    /// Whole days of grace left (rounded up), or nil outside the grace period.
+    func graceDaysRemaining(at now: Date) -> Int? {
+        guard isInGracePeriod(at: now) else { return nil }
+        return Int((graceEndsAt.timeIntervalSince(now) / 86_400).rounded(.up))
+    }
 }
 
 /// Why a token was refused. The messages are shown to the user as they are.

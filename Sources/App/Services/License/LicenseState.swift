@@ -11,6 +11,9 @@ enum LicenseStatus: Equatable {
     case valid(LicenseToken)
     /// A good token inside its last 14 days.
     case expiringSoon(LicenseToken, daysLeft: Int)
+    /// Past its expiry but inside the 14-day grace period: work is still allowed.
+    case gracePeriod(LicenseToken, daysLeft: Int)
+    /// Past the grace period.
     case expired(LicenseToken)
     /// Named by a revocation list; treated like expired.
     case revoked(LicenseToken)
@@ -20,7 +23,7 @@ enum LicenseStatus: Equatable {
     /// The license, when there is a usable or lapsed one to describe.
     var token: LicenseToken? {
         switch self {
-        case .valid(let t), .expiringSoon(let t, _), .expired(let t), .revoked(let t): return t
+        case .valid(let t), .expiringSoon(let t, _), .gracePeriod(let t, _), .expired(let t), .revoked(let t): return t
         case .unlicensed, .grandfathered, .invalid: return nil
         }
     }
@@ -28,7 +31,7 @@ enum LicenseStatus: Equatable {
     /// A current license: new recording and AI are allowed.
     var isActive: Bool {
         switch self {
-        case .valid, .expiringSoon, .grandfathered: return true
+        case .valid, .expiringSoon, .gracePeriod, .grandfathered: return true
         case .unlicensed, .expired, .revoked, .invalid: return false
         }
     }
@@ -87,6 +90,7 @@ final class LicenseState: ObservableObject {
         }
         if token.issuedAt.timeIntervalSince(now) > LicenseVerifier.allowedClockSkew { return .invalid(.issuedInFuture) }
         if revoked.contains(token.lid) { return .revoked(token) }
+        if let days = token.graceDaysRemaining(at: now) { return .gracePeriod(token, daysLeft: days) }
         if token.isExpired(at: now) { return .expired(token) }
         if token.isExpiringSoon(at: now), let days = token.daysRemaining(at: now) {
             return .expiringSoon(token, daysLeft: days)
@@ -143,14 +147,14 @@ final class LicenseState: ObservableObject {
     var newWorkRefusal: String? {
         refresh()
         switch status {
-        case .valid, .expiringSoon, .grandfathered:
+        case .valid, .expiringSoon, .gracePeriod, .grandfathered:
             return nil
         case .unlicensed:
             return "Aletheia needs a license key to record or run the AI. Add yours in Settings > License key. Your existing records are untouched."
         case .invalid(let error):
             return "\(error.errorDescription ?? "The license key could not be verified.") Add a valid key in Settings > License key. Your existing records are untouched."
         case .expired(let token):
-            return "Your license expired on \(token.expiresAt.licenseText), so new recordings and the AI are paused. Add a new key in Settings > License key. Your existing records are untouched."
+            return "Your license expired on \(token.expiresAt.licenseText) and its 14-day grace period has ended, so new recordings and the AI are paused. Add a new key in Settings > License key. Your existing records are untouched."
         case .revoked:
             return "This license is no longer valid, so new recordings and the AI are paused. Add a new key in Settings > License key. Your existing records are untouched."
         }

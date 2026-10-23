@@ -35,5 +35,10 @@ final class LegalTests: XCTestCase {
         XCTAssertTrue(privacy.contains("License revocation list"))
         XCTAssertTrue(privacy.contains("`astrealabs.com`"))
         XCTAssertTrue(privacy.contains("contains no license key or other identifier"))
+        XCTAssertTrue(terms.contains("14-day grace period"))
+        // The license backend exists, so the policy must not deny having one.
+        XCTAssertFalse(privacy.contains("developer backend"))
+        XCTAssertFalse(privacy.contains("developer\nbackend"))
+        XCTAssertFalse(privacy.contains("cannot see who uses"))
     }
 }

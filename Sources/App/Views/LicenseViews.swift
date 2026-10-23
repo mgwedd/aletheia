@@ -80,6 +80,9 @@ struct LicenseBanner: View {
         case .expiringSoon(let token, let days):
             let when = days == 1 ? "tomorrow" : "in \(days) days"
             return "Your license expires \(when) (\(token.expiresAt.licenseText)). Request a new key before then to keep recording and using the AI."
+        case .gracePeriod(let token, let days):
+            let left = days == 1 ? "1 more day" : "\(days) more days"
+            return "Your license expired on \(token.expiresAt.licenseText). Recording and the AI keep working for \(left) (until \(token.graceEndsAt.licenseText)); add a new key in Settings > License key before then."
         case .expired(let token):
             return "Your license expired on \(token.expiresAt.licenseText). New recordings and the AI are paused; everything you have already recorded stays open, searchable and exportable."
         case .revoked:
@@ -144,7 +147,7 @@ struct LicensePane: View {
 
     private var expiryTitle: String {
         switch license.status {
-        case .expired, .revoked: return "Ended"
+        case .gracePeriod, .expired, .revoked: return "Ended"
         default: return "Expires"
         }
     }
@@ -154,6 +157,7 @@ struct LicensePane: View {
         switch license.status {
         case .valid: Chip("Active", tone: .ok)
         case .expiringSoon: Chip("Expiring soon", tone: .warn)
+        case .gracePeriod: Chip("Grace period", tone: .warn)
         case .expired: Chip("Expired", tone: .recording)
         case .revoked: Chip("Not valid", tone: .recording)
         case .invalid: Chip("Not valid", tone: .recording)

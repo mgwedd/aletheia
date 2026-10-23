@@ -36,8 +36,9 @@ developer. The key is personal to you: do not share, transfer, or publish it. A
 key may have an expiry date, shown in Settings → License key, and can be
 renewed. The developer may revoke a key that is shared or used in breach of
 these Terms; the App learns of revocations from a signed list it downloads while
-update checks are on. When a key expires or is revoked, the App stops starting
-new recordings and AI work. You can always open, read, search, export, and
+update checks are on. When a key expires, recording and AI work continue for a
+14-day grace period and then stop; when a key is revoked, they stop at once.
+Either way you can always open, read, search, export, and
 delete your existing records.
 
 **Pre-release versions.** Beta and other pre-release versions are provided for
