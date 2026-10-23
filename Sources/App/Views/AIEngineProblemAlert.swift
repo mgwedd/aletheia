@@ -120,6 +120,13 @@ private struct AIEngineAlert: ViewModifier {
     @EnvironmentObject private var integrations: Integrations
     @StateObject private var controller = AIEngineRecoveryController()
 
+    /// The problem's message, with the model's license when the fix downloads it.
+    private func alertMessage(for incident: AIEngineIncident?) -> String {
+        guard let problem = incident?.problem else { return "" }
+        guard problem.action == .downloadBuiltInModel else { return problem.message }
+        return "\(problem.message)\n\n\(integrations.llamaModel.licenseSummary)"
+    }
+
     func body(content: Content) -> some View {
         content
             .alert(incident?.problem.title ?? "", isPresented: Binding(get: { incident != nil }, set: { if !$0 { incident = nil } })) {
@@ -129,7 +136,7 @@ private struct AIEngineAlert: ViewModifier {
                     Button("Cancel", role: .cancel) { discard() }
                 }
             } message: {
-                Text(incident?.problem.message ?? "")
+                Text(alertMessage(for: incident))
             }
             .alert("Couldn't fix the AI engine", isPresented: Binding(get: { controller.failure != nil }, set: { if !$0 { controller.failure = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -206,6 +213,9 @@ struct AIEngineBanner: View {
                                 .font(Theme.Typography.caption)
                                 .foregroundStyle(Theme.muted.color)
                                 .fixedSize(horizontal: false, vertical: true)
+                            if problem.action == .downloadBuiltInModel {
+                                ModelLicenseLink(integrations.llamaModel)
+                            }
                         }
                         Spacer(minLength: 8)
                         Button(problem.actionTitle) { fix(problem) }

@@ -39,6 +39,12 @@ enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
         case .largeV3: return "Large v3"
         }
     }
+
+    /// Whisper's weights are released by OpenAI under the MIT License.
+    var licenseName: String { "MIT License" }
+
+    /// Where that license can be read (opened in the user's browser).
+    var licenseURL: URL { URL(string: "https://github.com/openai/whisper/blob/main/LICENSE")! }
 }
 
 /// Idle auto-lock choices offered in Settings (HIPAA §164.312(a)(2)(iii)

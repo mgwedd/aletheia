@@ -81,4 +81,36 @@ enum LlamaModel: String, CaseIterable, Identifiable, Codable, Hashable {
     var downloadURL: URL {
         URL(string: "https://huggingface.co/ggml-org/\(repo)/resolve/\(revision)/\(fileName)")!
     }
+
+    /// The license the weights are offered under, shown before the download.
+    var licenseName: String {
+        switch self {
+        case .llama31_8b: return "Llama 3.1 Community License"
+        case .gemma4_e2b: return "Apache License 2.0"
+        }
+    }
+
+    /// Where that license can be read (opened in the user's browser).
+    var licenseURL: URL {
+        switch self {
+        case .llama31_8b: return URL(string: "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/LICENSE")!
+        case .gemma4_e2b: return URL(string: "https://ai.google.dev/gemma/docs/gemma_4_license")!
+        }
+    }
+
+    /// Acceptable-use terms the license incorporates, if any.
+    var acceptableUseURL: URL? {
+        switch self {
+        case .llama31_8b: return URL(string: "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/USE_POLICY.md")!
+        case .gemma4_e2b: return nil
+        }
+    }
+
+    /// Attribution the license asks for wherever the model is named.
+    var attribution: String? {
+        switch self {
+        case .llama31_8b: return "Built with Llama"
+        case .gemma4_e2b: return nil
+        }
+    }
 }
