@@ -92,11 +92,10 @@ final class AuditLogTests: XCTestCase {
 
         // Write legacy audit.log
         let legacyURL = legacyDir.appendingPathComponent(AuditLog.legacyFileName)
-        let legacyEvent1 = AuditEvent(at: "2026-01-01T00:00:00Z", action: .appUnlocked, subjectID: nil, detail: "old1", appVersion: "1.0")
-        let legacyEvent2 = AuditEvent(at: "2026-01-02T00:00:00Z", action: .recordExported, subjectID: "pat-1", detail: "old2", appVersion: "1.0")
-        let line1 = AuditLog.encodeLine(legacyEvent1)!
-        let line2 = AuditLog.encodeLine(legacyEvent2)!
-        try (line1 + line2).write(to: legacyURL)
+        // Lines exactly as the old text log wrote them (no actor, no seq/mac).
+        let line1 = #"{"action":"appUnlocked","appVersion":"1.0","at":"2026-01-01T00:00:00Z","detail":"old1"}"# + "\n"
+        let line2 = #"{"action":"recordExported","appVersion":"1.0","at":"2026-01-02T00:00:00Z","detail":"old2","subjectID":"pat-1"}"# + "\n"
+        try Data((line1 + line2).utf8).write(to: legacyURL)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
 
@@ -105,9 +104,13 @@ final class AuditLogTests: XCTestCase {
         let entries = legacyLog1.entries()
         XCTAssertEqual(entries.count, 2)
         XCTAssertEqual(entries[0].action, .appUnlocked)
-        XCTAssertEqual(entries[0].detail, "imported")
+        XCTAssertEqual(entries[0].detail, "imported · old1")
+        XCTAssertEqual(entries[0].at, "2026-01-01T00:00:00Z")
+        XCTAssertEqual(entries[0].actor, AuditLog.unknownActor)
         XCTAssertEqual(entries[1].action, .recordExported)
-        XCTAssertEqual(entries[1].detail, "imported")
+        XCTAssertEqual(entries[1].detail, "imported · old2")
+        XCTAssertEqual(entries[1].subjectID, "pat-1")
+        XCTAssertEqual(legacyLog1.verifyIntegrity(), .verified(count: 2))
 
         // File renamed to audit.log.imported
         let importedURL = legacyDir.appendingPathComponent(AuditLog.legacyImportedFileName)
@@ -186,5 +189,122 @@ final class AuditLogTests: XCTestCase {
         XCTAssertTrue(report.contains("Aletheia security audit log"))
         XCTAssertTrue(report.contains("App unlocked"))
         XCTAssertTrue(report.contains("Encryption enabled"))
+    }
+
+    // MARK: - Chain integrity under concurrency, key changes and failures
+
+    func testConcurrentAppendsFromTwoConnectionsKeepOneChain() throws {
+        // A second AuditLog on the same folder has its own SQLite connection;
+        // interleaved appends must still form one unbroken chain.
+        let other = AuditLog(root: root, keyProvider: { [weak self] in self?.testKey })
+        let logs: [AuditLog] = [log, other]
+        DispatchQueue.concurrentPerform(iterations: 60) { i in
+            _ = try? logs[i % 2].record(.appUnlocked, detail: "n\(i)")
+        }
+        XCTAssertEqual(log.entries().count, 60)
+        XCTAssertEqual(log.verifyIntegrity(), .verified(count: 60))
+    }
+
+    func testRowsSignedWithDEKFallbackStillVerify() throws {
+        let dek = SymmetricKey(size: .bits256)
+        var keychainAvailable = false
+        let mixed = AuditLog(
+            root: root,
+            keyProvider: { [weak self] in keychainAvailable ? self?.testKey : nil },
+            dekProvider: { dek })
+        let first = try mixed.record(.appUnlocked)   // Keychain unreachable: DEK-derived key
+        keychainAvailable = true
+        let second = try mixed.record(.appLocked)    // Keychain key
+        XCTAssertNotNil(first.mac)
+        XCTAssertNotEqual(
+            AuditLog.computeMAC(key: testKey, prevMac: nil, row: .init(
+                at: first.at, actor: first.actor, action: first.action.rawValue,
+                subjectID: nil, detail: nil, appVersion: first.appVersion)),
+            first.mac, "first row should be signed with the DEK-derived key")
+        XCTAssertEqual(second.prevMac, first.mac)
+        XCTAssertEqual(mixed.verifyIntegrity(), .verified(count: 2))
+    }
+
+    func testAppVersionIsCoveredByTheMAC() throws {
+        try log.record(.appUnlocked, appVersion: "1.0")
+        try log.core?.executeRaw("DROP TRIGGER IF EXISTS audit_no_update;")
+        try log.core?.executeRaw("UPDATE audit_events SET app_version = '9.9' WHERE seq = 1;")
+        guard case .broken(let seq, _) = log.verifyIntegrity() else {
+            return XCTFail("Editing app_version must break verification")
+        }
+        XCTAssertEqual(seq, 1)
+    }
+
+    func testLegacyLogIsKeptWhenTheDatabaseCannotOpen() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        // A directory where the database file should be: SQLite can't open it.
+        try FileManager.default.createDirectory(
+            at: dir.appendingPathComponent("Aletheia.sqlite"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let legacyURL = dir.appendingPathComponent(AuditLog.legacyFileName)
+        try Data(#"{"action":"appUnlocked","appVersion":"1.0","at":"2026-01-01T00:00:00Z"}"#.utf8).write(to: legacyURL)
+
+        let broken = AuditLog(root: dir, keyProvider: { [weak self] in self?.testKey })
+        XCTAssertNil(broken.core)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path),
+                      "the old log must stay in place to be imported once the database opens")
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent(AuditLog.legacyImportedFileName).path))
+    }
+
+    func testLegacyImportNeverOverwritesAnEarlierImportedCopy() throws {
+        let earlier = root.appendingPathComponent(AuditLog.legacyImportedFileName)
+        try Data("earlier".utf8).write(to: earlier)
+        try Data(#"{"action":"appUnlocked","appVersion":"1.0","at":"2026-01-01T00:00:00Z"}"#.utf8)
+            .write(to: root.appendingPathComponent(AuditLog.legacyFileName))
+
+        let again = AuditLog(root: root, keyProvider: { [weak self] in self?.testKey })
+        XCTAssertEqual(again.entries().count, 1)
+        XCTAssertEqual(try String(contentsOf: earlier, encoding: .utf8), "earlier")
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: root.appendingPathComponent(AuditLog.legacyImportedFileName + "-2").path))
+    }
+
+    // MARK: - Keychain key creation
+
+    func testKeyIsNotReplacedWhenTheKeychainReadFails() {
+        var adds = 0
+        let key = AuditKeyManager.loadOrCreate(
+            load: { (errSecInteractionNotAllowed, nil) },
+            add: { _ in adds += 1; return errSecSuccess })
+        XCTAssertNil(key)
+        XCTAssertEqual(adds, 0, "a locked or refused keychain must not get a new key")
+    }
+
+    func testKeyIsCreatedOnlyWhenAbsent() {
+        let stored = SymmetricKey(size: .bits256)
+        var adds = 0
+        XCTAssertEqual(bytes(AuditKeyManager.loadOrCreate(
+            load: { (errSecSuccess, stored) },
+            add: { _ in adds += 1; return errSecSuccess })), bytes(stored))
+        XCTAssertEqual(adds, 0)
+
+        var added: SymmetricKey?
+        let made = AuditKeyManager.loadOrCreate(
+            load: { (errSecItemNotFound, nil) },
+            add: { added = $0; return errSecSuccess })
+        XCTAssertNotNil(made)
+        XCTAssertEqual(bytes(made), bytes(added))
+    }
+
+    func testRacingKeyCreationAdoptsTheStoredKey() {
+        let winner = SymmetricKey(size: .bits256)
+        var loads = 0
+        let key = AuditKeyManager.loadOrCreate(
+            load: {
+                loads += 1
+                return loads == 1 ? (errSecItemNotFound, nil) : (errSecSuccess, winner)
+            },
+            add: { _ in errSecDuplicateItem })
+        XCTAssertEqual(bytes(key), bytes(winner))
+    }
+
+    private func bytes(_ key: SymmetricKey?) -> Data? {
+        key?.withUnsafeBytes { Data($0) }
     }
 }

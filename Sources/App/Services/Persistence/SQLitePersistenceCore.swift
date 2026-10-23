@@ -421,8 +421,53 @@ final class SQLitePersistenceCore: PersistenceCore {
         let mac: Data?
     }
 
+    /// An audit row to append; `seq`, `prev_mac` and `mac` are assigned on insert.
+    struct NewAuditRow: Equatable {
+        let at: String
+        let actor: String
+        let action: String
+        let subjectID: String?
+        let detail: String?
+        let appVersion: String
+    }
+
+    /// Appends `rows` in order, chaining each to the row before it. Reading the
+    /// current tail and inserting happen inside one `BEGIN IMMEDIATE`
+    /// transaction, so a second connection (or another `AuditLog` on the same
+    /// file) can't read the same tail and fork the chain, and a failure part-way
+    /// leaves none of `rows` written. `mac` computes a row's tag from the
+    /// previous row's tag (nil means "record without a tag").
+    func appendAuditEvents(
+        _ rows: [NewAuditRow],
+        mac: (_ prevMac: Data?, _ row: NewAuditRow) -> Data?
+    ) throws -> [AuditRow] {
+        guard !rows.isEmpty else { return [] }
+        guard exec("BEGIN IMMEDIATE;") else { throw currentFailure(fallback: .unknown) }
+        do {
+            var prevMac = lastAuditEvent()?.mac
+            var written: [AuditRow] = []
+            for row in rows {
+                let tag = mac(prevMac, row)
+                let seq = try insertAuditEvent(
+                    at: row.at, actor: row.actor, action: row.action,
+                    subjectID: row.subjectID, detail: row.detail, appVersion: row.appVersion,
+                    prevMac: prevMac, mac: tag)
+                written.append(AuditRow(
+                    seq: seq, at: row.at, actor: row.actor, action: row.action,
+                    subjectID: row.subjectID, detail: row.detail, appVersion: row.appVersion,
+                    prevMac: prevMac, mac: tag))
+                prevMac = tag
+            }
+            guard exec("COMMIT;") else { throw currentFailure(fallback: .unknown) }
+            return written
+        } catch {
+            _ = exec("ROLLBACK;")
+            throw error
+        }
+    }
+
     @discardableResult
-    func insertAuditEvent(
+    private func insertAuditEvent(
         at: String,
         actor: String,
         action: String,

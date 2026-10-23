@@ -114,7 +114,9 @@ struct AuditEvent: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         seq = try container.decodeIfPresent(Int64.self, forKey: .seq)
         at = try container.decode(String.self, forKey: .at)
-        actor = (try container.decodeIfPresent(String.self, forKey: .actor)) ?? AuditLog.currentActor
+        // Lines from the old text log carry no actor; don't attribute them to
+        // whoever happens to be running the app now.
+        actor = (try container.decodeIfPresent(String.self, forKey: .actor)) ?? AuditLog.unknownActor
         action = try container.decode(AuditAction.self, forKey: .action)
         subjectID = try container.decodeIfPresent(String.self, forKey: .subjectID)
         detail = try container.decodeIfPresent(String.self, forKey: .detail)
@@ -138,17 +140,34 @@ enum AuditKeyManager {
 
     /// Load or create the HMAC key in Keychain.
     static func loadOrCreateKeychainKey() -> SymmetricKey? {
-        if let existing = loadKeychainKey() {
-            return existing
-        }
+        loadOrCreate(load: readKeychainKey, add: addKeychainKey)
+    }
+
+    /// A new key is made only when the keychain says there is none. Any other
+    /// read failure (keychain locked, access refused) returns nil and leaves the
+    /// stored key alone: replacing it would make every row already signed with
+    /// it fail verification for good. An add that races another writer re-reads
+    /// the winner's key rather than overwriting it.
+    static func loadOrCreate(
+        load: () -> (status: OSStatus, key: SymmetricKey?),
+        add: (SymmetricKey) -> OSStatus
+    ) -> SymmetricKey? {
+        let existing = load()
+        if existing.status == errSecSuccess { return existing.key }
+        guard existing.status == errSecItemNotFound else { return nil }
         let fresh = SymmetricKey(size: .bits256)
-        if saveKeychainKey(fresh) {
-            return fresh
+        switch add(fresh) {
+        case errSecSuccess: return fresh
+        case errSecDuplicateItem: return load().key
+        default: return nil
         }
-        return nil
     }
 
     static func loadKeychainKey() -> SymmetricKey? {
+        readKeychainKey().key
+    }
+
+    private static func readKeychainKey() -> (status: OSStatus, key: SymmetricKey?) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -157,24 +176,23 @@ enum AuditKeyManager {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data,
-              data.count == 32 else { return nil }
-        return SymmetricKey(data: data)
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess else { return (status, nil) }
+        // An item that isn't a 256-bit key is treated as unreadable, not absent,
+        // so it is never silently replaced.
+        guard let data = result as? Data, data.count == 32 else { return (errSecDecode, nil) }
+        return (status, SymmetricKey(data: data))
     }
 
-    static func saveKeychainKey(_ key: SymmetricKey) -> Bool {
-        let data = key.withUnsafeBytes { Data($0) }
-        let base: [String: Any] = [
+    private static func addKeychainKey(_ key: SymmetricKey) -> OSStatus {
+        let add: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            kSecValueData as String: key.withUnsafeBytes { Data($0) },
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
-        SecItemDelete(base as CFDictionary)
-        var add = base
-        add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
+        return SecItemAdd(add as CFDictionary, nil)
     }
 
     /// Derive K from the DEK via HKDF when Keychain is unavailable and encryption is on.
@@ -191,7 +209,7 @@ enum AuditKeyManager {
 /// backed by SQLite (`audit_events` table) with HMAC-SHA256 hash chaining.
 ///
 /// Each row records: `seq`, `at`, `actor`, `action`, `subject_id`, `detail`, `app_version`, `prev_mac`, `mac`.
-/// `mac_i = HMAC-SHA256(K, prev_mac || at || actor || action || subject_id || detail)`
+/// `mac_i = HMAC-SHA256(K, prev_mac || at || actor || action || subject_id || detail || app_version)`
 /// with length prefixing on each field to eliminate concatenation ambiguity.
 ///
 /// Triggers `audit_no_update` and `audit_no_delete` prevent row modification or deletion.
@@ -202,7 +220,7 @@ final class AuditLog {
     static let legacyImportedFileName = "audit.log.imported"
 
     let core: SQLitePersistenceCore?
-    private let keyProvider: (() -> SymmetricKey?)?
+    private let keyProvider: () -> SymmetricKey?
     private let dekProvider: (() -> SymmetricKey?)?
     private let queue = DispatchQueue(label: "com.aletheia.auditlog")
 
@@ -210,10 +228,13 @@ final class AuditLog {
         "\(NSUserName()):\(getuid())"
     }
 
+    /// Actor for rows imported from the old text log, which never recorded one.
+    static let unknownActor = "unknown"
+
     init(
         root: URL,
         core: SQLitePersistenceCore? = nil,
-        keyProvider: (() -> SymmetricKey?)? = nil,
+        keyProvider: @escaping () -> SymmetricKey? = AuditKeyManager.loadOrCreateKeychainKey,
         dekProvider: (() -> SymmetricKey?)? = nil
     ) {
         self.keyProvider = keyProvider
@@ -230,21 +251,23 @@ final class AuditLog {
     }
 
     /// Resolves the HMAC signing key:
-    /// 1. Custom keyProvider (if injected)
-    /// 2. Keychain (account: "com.aletheia.audit-hmac-key", service: "Aletheia")
-    /// 3. Derived from DEK via HKDF (if encrypted and DEK available)
-    /// 4. nil if unavailable (posture will show unverifiable, mac = NULL)
+    /// 1. `keyProvider` — the Keychain key (account "com.aletheia.audit-hmac-key",
+    ///    service "Aletheia") unless a test injects another
+    /// 2. Derived from the DEK via HKDF (if encrypted and the DEK is available)
+    /// 3. nil if neither is available (posture shows unverifiable, mac = NULL)
     func resolveKey() -> SymmetricKey? {
-        if let keyProvider {
-            return keyProvider()
-        }
-        if let key = AuditKeyManager.loadOrCreateKeychainKey() {
-            return key
-        }
-        if let dek = dekProvider?() {
-            return AuditKeyManager.deriveKey(fromDEK: dek)
-        }
-        return nil
+        candidateKeys().first
+    }
+
+    /// Every key a row may have been signed with, in signing preference order.
+    /// Verification accepts a row tagged under any of them, so rows written
+    /// during a spell when the Keychain was unreachable (signed with the
+    /// DEK-derived key) don't read as tampered once it's back.
+    private func candidateKeys() -> [SymmetricKey] {
+        var keys: [SymmetricKey] = []
+        if let key = keyProvider() { keys.append(key) }
+        if let dek = dekProvider?() { keys.append(AuditKeyManager.deriveKey(fromDEK: dek)) }
+        return keys
     }
 
     /// Whether the log has a key to compute and verify cryptographic HMAC tags.
@@ -261,74 +284,51 @@ final class AuditLog {
         at date: Date = Date(),
         appVersion: String = AppSettings.appVersionString
     ) throws -> AuditEvent {
+        let row = SQLitePersistenceCore.NewAuditRow(
+            at: Self.isoFormatter.string(from: date),
+            actor: Self.currentActor,
+            action: action.rawValue,
+            subjectID: subjectID,
+            detail: detail,
+            appVersion: appVersion
+        )
+        let written = try append([row])
+        return Self.event(from: written[0])
+    }
+
+    /// Appends rows atomically, chained to the current tail (see
+    /// `SQLitePersistenceCore.appendAuditEvents`).
+    private func append(_ rows: [SQLitePersistenceCore.NewAuditRow]) throws -> [SQLitePersistenceCore.AuditRow] {
         try queue.sync {
             guard let core else {
                 throw DatabaseOpenFailure(kind: .cannotOpen, reason: "Audit database core is unavailable")
             }
-            let atString = Self.isoFormatter.string(from: date)
-            let actor = Self.currentActor
             let key = resolveKey()
-            let last = core.lastAuditEvent()
-            let prevMac = last?.mac
-
-            let mac: Data?
-            if let key {
-                mac = Self.computeMAC(
-                    key: key,
-                    prevMac: prevMac,
-                    at: atString,
-                    actor: actor,
-                    action: action.rawValue,
-                    subjectID: subjectID,
-                    detail: detail
-                )
-            } else {
-                mac = nil
+            return try core.appendAuditEvents(rows) { prevMac, row in
+                key.map { Self.computeMAC(key: $0, prevMac: prevMac, row: row) }
             }
-
-            let seq = try core.insertAuditEvent(
-                at: atString,
-                actor: actor,
-                action: action.rawValue,
-                subjectID: subjectID,
-                detail: detail,
-                appVersion: appVersion,
-                prevMac: prevMac,
-                mac: mac
-            )
-
-            return AuditEvent(
-                seq: seq,
-                at: atString,
-                actor: actor,
-                action: action,
-                subjectID: subjectID,
-                detail: detail,
-                appVersion: appVersion,
-                prevMac: prevMac,
-                mac: mac
-            )
         }
+    }
+
+    private static func event(from row: SQLitePersistenceCore.AuditRow) -> AuditEvent {
+        AuditEvent(
+            seq: row.seq,
+            at: row.at,
+            actor: row.actor,
+            action: AuditAction(rawValue: row.action) ?? .appUnlocked,
+            subjectID: row.subjectID,
+            detail: row.detail,
+            appVersion: row.appVersion,
+            prevMac: row.prevMac,
+            mac: row.mac
+        )
     }
 
     /// All recorded events, oldest first.
     func entries() -> [AuditEvent] {
         queue.sync {
             guard let core else { return [] }
-            let rows = core.allAuditEvents()
-            return rows.map { row in
-                AuditEvent(
-                    seq: row.seq,
-                    at: row.at,
-                    actor: row.actor,
-                    action: AuditAction(rawValue: row.action) ?? .appUnlocked,
-                    subjectID: row.subjectID,
-                    detail: row.detail,
-                    appVersion: row.appVersion,
-                    prevMac: row.prevMac,
-                    mac: row.mac
-                )
-            }
+            return core.allAuditEvents().map(Self.event(from:))
         }
     }
 
@@ -339,7 +339,8 @@ final class AuditLog {
             guard let core else {
                 return .unverifiable(reason: "Database core unavailable")
             }
-            guard let key = resolveKey() else {
+            let keys = candidateKeys()
+            guard !keys.isEmpty else {
                 return .unverifiable(reason: "Signing key is unavailable")
             }
             let rows = core.allAuditEvents()
@@ -351,16 +352,13 @@ final class AuditLog {
                 if row.prevMac != expectedPrevMac {
                     return .broken(seq: row.seq, reason: "prev_mac does not match preceding entry's MAC")
                 }
-                let computed = Self.computeMAC(
-                    key: key,
-                    prevMac: row.prevMac,
-                    at: row.at,
-                    actor: row.actor,
-                    action: row.action,
-                    subjectID: row.subjectID,
-                    detail: row.detail
-                )
-                if computed != rowMac {
+                let fields = SQLitePersistenceCore.NewAuditRow(
+                    at: row.at, actor: row.actor, action: row.action,
+                    subjectID: row.subjectID, detail: row.detail, appVersion: row.appVersion)
+                let matches = keys.contains { key in
+                    Self.computeMAC(key: key, prevMac: row.prevMac, row: fields) == rowMac
+                }
+                if !matches {
                     return .broken(seq: row.seq, reason: "MAC does not match row contents (tampered row)")
                 }
                 expectedPrevMac = rowMac
@@ -420,41 +418,43 @@ final class AuditLog {
 
     // MARK: - Legacy import
 
+    /// Moves the old text log's lines into the ledger, once. They go in as one
+    /// transaction, and the file is set aside only after that succeeds: if the
+    /// database can't be opened or written, the file stays put and the import is
+    /// retried next launch rather than the lines being dropped. Each row keeps its
+    /// original note, prefixed "imported", and an unknown actor.
     private func importLegacyLogIfNeeded(root: URL) {
+        let fm = FileManager.default
         let legacyURL = root.appendingPathComponent(Self.legacyFileName)
-        guard FileManager.default.fileExists(atPath: legacyURL.path) else { return }
-        let importedURL = root.appendingPathComponent(Self.legacyImportedFileName)
+        guard core != nil, fm.fileExists(atPath: legacyURL.path),
+              let data = try? Data(contentsOf: legacyURL) else { return }
 
-        guard let data = try? Data(contentsOf: legacyURL), !data.isEmpty else {
-            // Empty or corrupt file: rename so we don't inspect it repeatedly
-            try? FileManager.default.removeItem(at: importedURL)
-            try? FileManager.default.moveItem(at: legacyURL, to: importedURL)
-            return
-        }
-
-        guard let text = String(data: data, encoding: .utf8) else {
-            try? FileManager.default.removeItem(at: importedURL)
-            try? FileManager.default.moveItem(at: legacyURL, to: importedURL)
-            return
-        }
-
+        let text = String(data: data, encoding: .utf8) ?? ""
         let decoder = JSONDecoder()
-        let legacyEvents: [AuditEvent] = text.split(separator: "\n").compactMap { line in
-            try? decoder.decode(AuditEvent.self, from: Data(line.utf8))
-        }
-
-        for event in legacyEvents {
-            _ = try? record(
-                event.action,
+        let rows: [SQLitePersistenceCore.NewAuditRow] = text.split(separator: "\n").compactMap { line in
+            guard let event = try? decoder.decode(AuditEvent.self, from: Data(line.utf8)) else { return nil }
+            return SQLitePersistenceCore.NewAuditRow(
+                at: event.at,
+                actor: event.actor,
+                action: event.action.rawValue,
                 subjectID: event.subjectID,
-                detail: "imported",
-                at: event.date ?? Date(),
+                detail: event.detail.map { "imported · \($0)" } ?? "imported",
                 appVersion: event.appVersion
             )
         }
-
-        try? FileManager.default.removeItem(at: importedURL)
-        try? FileManager.default.moveItem(at: legacyURL, to: importedURL)
+        do {
+            _ = try append(rows)
+        } catch {
+            return
+        }
+        // Never overwrite an earlier imported copy.
+        var importedURL = root.appendingPathComponent(Self.legacyImportedFileName)
+        var n = 2
+        while fm.fileExists(atPath: importedURL.path) {
+            importedURL = root.appendingPathComponent("\(Self.legacyImportedFileName)-\(n)")
+            n += 1
+        }
+        try? fm.moveItem(at: legacyURL, to: importedURL)
     }
 
     // MARK: - Length-prefixed HMAC
@@ -477,19 +477,16 @@ final class AuditLog {
     static func computeMAC(
         key: SymmetricKey,
         prevMac: Data?,
-        at: String,
-        actor: String,
-        action: String,
-        subjectID: String?,
-        detail: String?
+        row: SQLitePersistenceCore.NewAuditRow
     ) -> Data {
         var payload = Data()
         payload.append(lengthPrefixed(prevMac))
-        payload.append(lengthPrefixed(at))
-        payload.append(lengthPrefixed(actor))
-        payload.append(lengthPrefixed(action))
-        payload.append(lengthPrefixed(subjectID))
-        payload.append(lengthPrefixed(detail))
+        payload.append(lengthPrefixed(row.at))
+        payload.append(lengthPrefixed(row.actor))
+        payload.append(lengthPrefixed(row.action))
+        payload.append(lengthPrefixed(row.subjectID))
+        payload.append(lengthPrefixed(row.detail))
+        payload.append(lengthPrefixed(row.appVersion))
         let mac = HMAC<SHA256>.authenticationCode(for: payload, using: key)
         return Data(mac)
     }
