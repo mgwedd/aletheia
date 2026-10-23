@@ -43,10 +43,12 @@ final class HelperFetcher {
         return data
     }
 
-    /// The revocation list's bytes, checked only for its prefix; the app verifies
-    /// the signature.
-    func fetchRevocations() async throws -> Data {
-        let data = try await fetchData(from: HelperEndpoints.revocations, maxBytes: Self.maxDataBytes)
+    /// The license revocation list's bytes (at most `maxDataBytes`), checked only
+    /// for its prefix; the app verifies the signature. Makes no request when no
+    /// endpoint is configured. `endpoint` is injectable for tests.
+    func fetchRevocations(from endpoint: URL? = HelperEndpoints.revocations) async throws -> Data {
+        guard let endpoint else { throw HelperError.notConfigured }
+        let data = try await fetchData(from: endpoint, maxBytes: Self.maxDataBytes)
         guard data.starts(with: Data("ALETR1.".utf8)) else { throw HelperError.badRevocationList }
         return data
     }

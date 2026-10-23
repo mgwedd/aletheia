@@ -103,8 +103,8 @@ final class NetworkHelperCatalogTests: XCTestCase {
         XCTAssertTrue(HelperAllowlist.allows(HelperEndpoints.appcast))
     }
 
-    func testRevocationEndpointIsAFixedHTTPSURLWithNoQuery() {
-        let url = HelperEndpoints.revocations
+    func testRevocationEndpointIsAFixedHTTPSURLWithNoQuery() throws {
+        let url = try XCTUnwrap(HelperEndpoints.revocations)
         XCTAssertTrue(HelperAllowlist.allows(url))
         XCTAssertEqual(url.absoluteString, "https://astrealabs.com/api/licenses/revocations")
         XCTAssertNil(url.query)

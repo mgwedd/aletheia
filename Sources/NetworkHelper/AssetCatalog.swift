@@ -54,7 +54,9 @@ enum HelperEndpoints {
 
     /// The signed license revocation list. The same bytes for everyone: no
     /// query, cookie or credential, so the request says nothing about who asks.
-    static let revocations = URL(string: "https://astrealabs.com/api/licenses/revocations")!
+    /// While nil the helper refuses the command and makes no request; the host
+    /// must be in `HelperAllowlist.hosts`.
+    static let revocations: URL? = URL(string: "https://astrealabs.com/api/licenses/revocations")
 
     /// The appcast's `downloadURL` is only followed when it is a release asset
     /// of this repository.

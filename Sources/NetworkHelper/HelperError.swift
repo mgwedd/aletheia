@@ -10,6 +10,7 @@ enum HelperError: Error, Equatable {
     case badFeed
     case tooLarge
     case transport(String)
+    case notConfigured
     case badRevocationList
 
     var code: Int {
@@ -21,7 +22,8 @@ enum HelperError: Error, Equatable {
         case .badFeed: return 5
         case .tooLarge: return 6
         case .transport: return 7
-        case .badRevocationList: return 8
+        case .notConfigured: return 8
+        case .badRevocationList: return 9
         }
     }
 
@@ -34,6 +36,7 @@ enum HelperError: Error, Equatable {
         case .badFeed: return "The update feed wasn't in the expected format."
         case .tooLarge: return "The response was larger than the helper allows."
         case .transport(let detail): return detail
+        case .notConfigured: return "The license revocation list isn't configured yet."
         case .badRevocationList: return "The license revocation list wasn't in the expected format."
         }
     }

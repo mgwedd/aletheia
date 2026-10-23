@@ -49,6 +49,21 @@ final class NetworkHelperSourceTests: XCTestCase {
             }
         }
         XCTAssertTrue(declaration.contains("asset: Int"))
+        // The two fetch commands take nothing from the app at all.
+        for name in ["checkForUpdates", "fetchRevocations"] {
+            XCTAssertTrue(
+                declaration.contains("func \(name)(reply:"),
+                "\(name) must be argument-free: only a reply closure")
+        }
+    }
+
+    /// The revocation list adds only our own hosts, matched exactly.
+    func testRevocationEndpointAddsOnlyOurOwnExactHosts() {
+        XCTAssertEqual(HelperAllowlist.hosts, [
+            "github.com", "githubusercontent.com", "huggingface.co", "hf.co",
+            "astrealabs.com", "aletheia.astrealabs.com",
+        ])
+        XCTAssertEqual(HelperAllowlist.exactOnly, ["astrealabs.com", "aletheia.astrealabs.com"])
     }
 
     /// Only the helper (and the shared protocol file, which names no network

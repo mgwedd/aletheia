@@ -9,6 +9,7 @@ protocol NetworkHelping: Sendable {
     func fetchAppcast() async throws -> Data
 
     /// The signed license revocation list's bytes (unverified; see `RevocationVerifier`).
+    /// Which address it comes from is the helper's business; the app can't name one.
     func fetchRevocations() async throws -> Data
 
     /// Downloads `asset` to `destination`, reporting `0...1` progress, and

@@ -12,6 +12,27 @@ protocol DeviceKeyStoring {
     func delete(for id: String)
 }
 
+/// Process-lifetime store used instead of the Keychain while tests run
+/// (see `TestHost.usesLiveKeychain`).
+final class ProcessMemoryDeviceKeyStore: DeviceKeyStoring {
+    private let lock = NSLock()
+    private var keys: [String: SymmetricKey] = [:]
+    func save(_ key: SymmetricKey, for id: String) throws { lock.withLock { keys[id] = key } }
+    func load(for id: String) -> SymmetricKey? { lock.withLock { keys[id] } }
+    func delete(for id: String) { lock.withLock { _ = keys.removeValue(forKey: id) } }
+}
+
+extension KeychainDeviceKeyStore {
+    private static let testStore = ProcessMemoryDeviceKeyStore()
+
+    /// The Keychain store, or a shared in-memory one under XCTest without opt-in.
+    static func makeDefault(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> DeviceKeyStoring {
+        TestHost.usesLiveKeychain(environment: environment) ? KeychainDeviceKeyStore() : testStore
+    }
+}
+
 /// Keychain-backed `DeviceKeyStoring`: the DEK lives in the login keychain as a
 /// generic password, `WhenUnlockedThisDeviceOnly` (never synced to iCloud, never
 /// readable while the Mac is locked). Keyed by the keystore's random id, so it's
