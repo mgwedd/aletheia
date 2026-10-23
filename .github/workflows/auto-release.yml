@@ -113,7 +113,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           ./scripts/apply-release.sh "$NEXT"
-          git add Sources/App/Resources/Info.plist CHANGELOG.md
+          git add Sources/App/Resources/Info.plist Sources/NetworkHelper/Info.plist CHANGELOG.md
           # [skip ci] keeps this commit from starting push workflows: a push
           # made with the deploy key starts them (a GITHUB_TOKEN push doesn't).
           git commit -m "chore(release): v${NEXT} [skip ci]"

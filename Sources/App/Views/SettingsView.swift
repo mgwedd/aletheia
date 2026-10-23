@@ -937,6 +937,7 @@ struct SettingsView: View {
             Text("Security posture").eyebrowStyle()
             SecurityPostureView()
         }
+        NetworkAccessView()
         auditLogSection
     }
 

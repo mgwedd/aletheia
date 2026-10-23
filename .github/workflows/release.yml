@@ -169,6 +169,29 @@ jobs:
             exit 1
           fi
 
+          # The app has no network entitlement; the network helper inside it
+          # is signed with its own (sandbox + network only), hardened and
+          # timestamped like the app.
+          HELPER="$APP/Contents/XPCServices/NetworkHelper.xpc"
+          test -d "$HELPER" || { echo "::error::The network helper is missing from the app"; exit 1; }
+          codesign --verify --strict --verbose=2 "$HELPER"
+          if codesign -d --entitlements :- "$APP" 2>&1 | grep -q 'com.apple.security.network.client'; then
+            echo "::error::The app itself has the network entitlement; it belongs only to the helper"
+            exit 1
+          fi
+          HELPER_ENT="$(codesign -d --entitlements :- "$HELPER" 2>&1)"
+          echo "$HELPER_ENT" | grep -q 'com.apple.security.network.client' \
+            || { echo "::error::The helper lacks the network entitlement"; exit 1; }
+          echo "$HELPER_ENT" | grep -q 'com.apple.security.app-sandbox' \
+            || { echo "::error::The helper is not sandboxed"; exit 1; }
+          echo "$HELPER_ENT" | grep -q 'get-task-allow' \
+            && { echo "::error::get-task-allow is set on the helper"; exit 1; }
+          HELPER_INFO="$(codesign -dvv "$HELPER" 2>&1)"
+          echo "$HELPER_INFO" | grep -Eq 'flags=0x[0-9a-f]+\([^)]*runtime' \
+            || { echo "::error::Hardened Runtime is not enabled on the helper"; exit 1; }
+          echo "$HELPER_INFO" | grep -q 'Timestamp=' \
+            || { echo "::error::No secure timestamp on the helper's signature"; exit 1; }
+
       # The signed app's entitlement keys must equal the production file's, with
       # no Calendar/Reminders strings in its Info.plist and no debug-only
       # --harness flags in the executable.
@@ -285,6 +308,18 @@ jobs:
           hdiutil detach "$MOUNT" >/dev/null
 
           echo "NOTARIZED=true" >> "$GITHUB_ENV"
+
+      # The in-app updater downloads the DMG through the network helper and
+      # checks it against this digest before opening it. It is computed from
+      # the final file (signed, notarized and stapled), so it is added only now.
+      - name: Record the DMG digest in the appcast
+        run: |
+          set -euo pipefail
+          DMG="${{ steps.package.outputs.dmg }}"
+          DIGEST="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+          jq --arg sha "$DIGEST" '. + {sha256: $sha}' dist/appcast.json > dist/appcast.json.tmp
+          mv dist/appcast.json.tmp dist/appcast.json
+          cat dist/appcast.json
 
       # The unit tests run a Debug build without Hardened Runtime. This starts
       # the build users get, copied out of the DMG, and fails if it doesn't
