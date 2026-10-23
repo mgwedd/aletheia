@@ -119,6 +119,9 @@ jobs:
       # Stream xcodebuild output line-by-line so the xcbeautify pipe renders in
       # real time instead of buffering until the step ends.
       NSUnbufferedIO: "YES"
+      # Run the test-host app in the foreground, so the tests that need a key
+      # window run here (locally they skip; the app stays in the background).
+      TEST_RUNNER_ALETHEIA_FOREGROUND_TESTS: "1"
       # The Swift active compilation conditions for this job's tier. The tiers
       # nest (production ⊂ preview ⊂ dev); DEBUG is kept so the tier is built in
       # the test-friendly Debug configuration.

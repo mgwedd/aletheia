@@ -127,7 +127,7 @@ enum UnlockAuthenticatorFactory {
     static func make(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> UnlockAuthenticator {
-        if environment["XCTestConfigurationFilePath"] != nil {
+        if TestHost.isHostingTests(environment: environment) {
             return NonPromptingUnlockAuthenticator()
         }
         return SystemUnlockAuthenticator()
