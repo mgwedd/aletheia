@@ -58,6 +58,9 @@ enum HelperEndpoints {
         HelperAllowlist.allows(url)
             && url.host?.lowercased() == "github.com"
             && url.path.hasPrefix("/mgwedd/aletheia/releases/download/")
+            // No "." / ".." segments (decoded, so %2e%2e counts) that would
+            // climb out of this repository's release assets.
+            && !url.pathComponents.contains { $0 == "." || $0 == ".." }
     }
 }
 

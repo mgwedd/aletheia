@@ -60,6 +60,14 @@ final class NetworkHelperCatalogTests: XCTestCase {
         XCTAssertFalse(HelperEndpoints.isUpdateArchive(try XCTUnwrap(URL(string: "https://github.com/other/repo/releases/download/v1/x.dmg"))))
         XCTAssertFalse(HelperEndpoints.isUpdateArchive(try XCTUnwrap(URL(string: "https://huggingface.co/mgwedd/aletheia/releases/download/v1/x.dmg"))))
         XCTAssertFalse(HelperEndpoints.isUpdateArchive(try XCTUnwrap(URL(string: "http://github.com/mgwedd/aletheia/releases/download/v1/x.dmg"))))
+        // Dot segments, plain or percent-encoded, can't climb out of this repo.
+        for raw in [
+            "https://github.com/mgwedd/aletheia/releases/download/../../../other/repo/releases/download/v1/x.dmg",
+            "https://github.com/mgwedd/aletheia/releases/download/%2e%2e/%2E%2E/x.dmg",
+            "https://github.com/mgwedd/aletheia/releases/download/./v1/x.dmg",
+        ] {
+            XCTAssertFalse(HelperEndpoints.isUpdateArchive(try XCTUnwrap(URL(string: raw))), raw)
+        }
     }
 
     func testAppcastEndpointIsAllowed() {

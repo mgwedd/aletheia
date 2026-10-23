@@ -150,6 +150,7 @@ targets:
       - path: Sources/NetworkHelper/AssetCatalog.swift
       - path: Sources/NetworkHelper/HelperError.swift
       - path: Sources/NetworkHelper/HelperFetcher.swift
+      - path: Sources/NetworkHelper/HelperTasks.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.appTests

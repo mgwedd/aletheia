@@ -134,4 +134,17 @@ private final class Box: @unchecked Sendable {
     private var stored: [Double] = []
     func add(_ value: Double) { lock.lock(); stored.append(value); lock.unlock() }
     var values: [Double] { lock.lock(); defer { lock.unlock() }; return stored }
+
+    /// A helper that can't be reached is reported as a failure, never as a
+    /// silent cancellation.
+    func testMissingServiceIsAFailureNotACancellation() async {
+        let connection = XPCNetworkHelperConnection(serviceName: "com.aletheia.no-such-service-\(UUID().uuidString)")
+        do {
+            _ = try await connection.checkForUpdates()
+            XCTFail("expected a failure")
+        } catch {
+            XCTAssertFalse(error is CancellationError, "got \(error)")
+            XCTAssertTrue(error is ModelDownloadError, "got \(error)")
+        }
+    }
 }

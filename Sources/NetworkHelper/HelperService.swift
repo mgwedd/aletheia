@@ -1,12 +1,15 @@
 import Foundation
 
-/// The XPC service's implementation of the command set. It holds no state and
-/// never sees anything but an asset number and an open, write-only file.
+/// The XPC service's implementation of the command set. It holds no state beyond
+/// the requests it is running, and never sees anything but an asset number and an open, write-only file.
 final class HelperService: NSObject, NetworkHelperProtocol {
     private let fetcher = HelperFetcher()
+    /// Cancelled when the app's connection goes away.
+    let tasks = HelperTasks()
 
     func checkForUpdates(reply: @escaping (Data?, NSError?) -> Void) {
-        Task {
+        let fetcher = fetcher
+        tasks.run {
             do {
                 reply(try await fetcher.fetchAppcast(), nil)
             } catch {
@@ -21,7 +24,8 @@ final class HelperService: NSObject, NetworkHelperProtocol {
             reply(Self.nsError(HelperError.unknownAsset))
             return
         }
-        Task {
+        let fetcher = fetcher
+        tasks.run {
             defer { try? file.close() }
             do {
                 try await fetcher.download(asset, into: file) { written, expected in
@@ -46,7 +50,10 @@ final class HelperService: NSObject, NetworkHelperProtocol {
 final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
         connection.exportedInterface = NetworkHelperInterface.make()
-        connection.exportedObject = HelperService()
+        let service = HelperService()
+        connection.exportedObject = service
+        // The app cancelled, quit or crashed: stop whatever it asked for.
+        connection.invalidationHandler = { service.tasks.cancelAll() }
         connection.resume()
         return true
     }

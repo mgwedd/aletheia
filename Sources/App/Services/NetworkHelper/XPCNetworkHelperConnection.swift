@@ -3,6 +3,13 @@ import Foundation
 /// Talks to the bundled XPC service (`Contents/XPCServices`). Each command uses
 /// its own short-lived connection, which launchd starts on demand.
 final class XPCNetworkHelperConnection: NetworkHelperConnection, @unchecked Sendable {
+    private let serviceName: String
+
+    /// `serviceName` is injectable so tests can name a service that doesn't exist.
+    init(serviceName: String = NetworkHelperConstants.serviceName) {
+        self.serviceName = serviceName
+    }
+
     func checkForUpdates() async throws -> Data {
         try await run { connection, finish in
             let proxy = try Self.proxy(connection, finish)
@@ -54,7 +61,7 @@ final class XPCNetworkHelperConnection: NetworkHelperConnection, @unchecked Send
     private func run<T>(
         _ body: @escaping (NSXPCConnection, @escaping (Result<T, Error>) -> Void) throws -> Void
     ) async throws -> T {
-        let connection = NSXPCConnection(serviceName: NetworkHelperConstants.serviceName)
+        let connection = NSXPCConnection(serviceName: serviceName)
         connection.remoteObjectInterface = NetworkHelperInterface.make()
         let once = Once<T>()
         return try await withTaskCancellationHandler {
@@ -63,8 +70,11 @@ final class XPCNetworkHelperConnection: NetworkHelperConnection, @unchecked Send
                 connection.interruptionHandler = {
                     once.finish(.failure(ModelDownloadError.downloadFailed("The network helper stopped unexpectedly. Try again.")))
                 }
+                // Invalidated before any reply (our own invalidate only runs
+                // after a result): the service couldn't be found or started.
+                // A real error, not a cancellation, so callers report it.
                 connection.invalidationHandler = {
-                    once.finish(.failure(CancellationError()))
+                    once.finish(.failure(ModelDownloadError.downloadFailed("The network helper isn't available.")))
                 }
                 connection.resume()
                 do {
