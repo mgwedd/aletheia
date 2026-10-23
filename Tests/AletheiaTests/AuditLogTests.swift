@@ -169,6 +169,12 @@ final class AuditLogTests: XCTestCase {
         }
     }
 
+    func testPassphraseChangeIsRecorded() throws {
+        try log.record(.encryptionPassphraseChanged)
+        XCTAssertEqual(log.entries().first?.action, .encryptionPassphraseChanged)
+        XCTAssertEqual(AuditAction.encryptionPassphraseChanged.rawValue, "encryptionPassphraseChanged")
+    }
+
     func testSubjectAndDetailRoundTrip() throws {
         let id = UUID().uuidString
         try log.record(.recordExported, subjectID: id, detail: "Markdown", appVersion: "1.2")
