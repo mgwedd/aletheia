@@ -35,6 +35,7 @@ struct SettingsView: View {
     @State private var exportResult: SaveOutcome?
     @State private var showEncryptionSetup = false
     @State private var showNewRecoveryKeySheet = false
+    @State private var showChangePassphraseSheet = false
     @State private var showConsentGuide = false
     @State private var confirmDisableEncryption = false
     @State private var isDisablingEncryption = false
@@ -107,6 +108,10 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showEncryptionSetup) {
             EncryptionSetupSheet()
+                .environmentObject(encryption)
+        }
+        .sheet(isPresented: $showChangePassphraseSheet) {
+            ChangePassphraseSheet()
                 .environmentObject(encryption)
         }
         .sheet(isPresented: $showNewRecoveryKeySheet) {
@@ -208,7 +213,7 @@ struct SettingsView: View {
         if appModel.featureRegistry.contains(id: SpotlightFeatureModule.id) {
             SettingsSwitchRow(
                 title: "Find patients in Spotlight",
-                detail: "Lets you open a patient or session straight from macOS Spotlight. Only names and dates are indexed — never transcripts or summaries. Anyone using this Mac can see indexed names, so leave this off on a shared computer.",
+                detail: "Lets you open a patient or session straight from macOS Spotlight. Only initials and dates are indexed — never names, transcripts or summaries. Results are removed while Aletheia is locked.",
                 isOn: $settings.spotlightIndexingEnabled
             )
             .onChange(of: settings.spotlightIndexingEnabled) { _, _ in appModel.reindexSpotlight() }
@@ -805,6 +810,17 @@ struct SettingsView: View {
                                 rememberOnDevice = false
                             }
                         }
+                }
+                .padding(.vertical, 12)
+                SettingsHairline()
+                SettingsRow(
+                    title: "Passphrase",
+                    detail: "Change the passphrase that unlocks your data folder. Your files aren't re-encrypted, and your recovery key keeps working."
+                ) {
+                    Button("Change Passphrase…") {
+                        showChangePassphraseSheet = true
+                    }
+                    .buttonStyle(.themed)
                 }
                 .padding(.vertical, 12)
                 SettingsHairline()

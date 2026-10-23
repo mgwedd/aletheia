@@ -53,3 +53,19 @@ final class SpotlightIndexer: SpotlightIndexing {
     func clear() {}
 }
 #endif
+
+/// Stands in for the real index while XCTest hosts the app, so a test run never
+/// touches the developer's Spotlight index.
+struct NoOpSpotlightIndexer: SpotlightIndexing {
+    func replaceIndex(with entries: [SpotlightEntry]) {}
+    func clear() {}
+}
+
+enum SpotlightIndexerFactory {
+    /// The shared indexer, except under the test host.
+    static func make(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> SpotlightIndexing {
+        TestHost.isHostingTests(environment: environment) ? NoOpSpotlightIndexer() : SpotlightIndexer.shared
+    }
+}
