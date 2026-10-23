@@ -9,10 +9,14 @@ final class ContextBudgetTests: XCTestCase {
         XCTAssertLessThan(cap, budget.availableCharacters(reserving: 0))
 
         let huge = String(repeating: "a", count: cap * 10)
-        for kind in [UntrustedText.Kind.notes, .comments, .background, .conversation, .digest, .draft, .question] {
+        for kind in [UntrustedText.Kind.notes, .comments, .background, .question] {
             let text = UntrustedText(kind, huge, budget: budget).text
             XCTAssertLessThanOrEqual(ContextBudget.weightedLength(of: text), cap + UntrustedText.cutMarker.count, "\(kind)")
             XCTAssertTrue(text.hasSuffix(UntrustedText.cutMarker), "\(kind)")
+        }
+        // Sized by their callers: never cut here, so the newest chat turns survive.
+        for kind in [UntrustedText.Kind.conversation, .digest, .draft, .transcript, .material] {
+            XCTAssertEqual(UntrustedText(kind, huge, budget: budget).text, huge, "\(kind)")
         }
         let small = UntrustedText(.notes, "short note", budget: budget).text
         XCTAssertEqual(small, "short note")

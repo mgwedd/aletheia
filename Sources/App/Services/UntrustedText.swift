@@ -4,9 +4,8 @@ import Foundation
 /// answers. The only way such text gets into a prompt. It is fenced in fixed
 /// tags (`Prompts.untrustedDataRule` tells the model to ignore instructions
 /// inside them), any copy of those tags inside the text is defused, and
-/// segments other than whole transcripts and session material (sized by the
-/// context budget itself) are capped so one huge paste can't crowd out the
-/// instructions.
+/// free-standing pastes (background, notes, comments, the question) are
+/// capped so one huge paste can't crowd out the instructions.
 struct UntrustedText: Equatable {
     enum Kind: String, CaseIterable {
         case transcript, background, notes, comments, conversation, digest, draft, material
@@ -14,10 +13,11 @@ struct UntrustedText: Equatable {
         case question
 
         var isFenced: Bool { self != .question }
-        /// Whole transcripts and session material are measured by the budget's
-        /// fit check, which refuses a prompt that is too long; cutting them here
-        /// would be a silent truncation.
-        var isCapped: Bool { self != .transcript && self != .material }
+        /// Only free-standing pastes are capped. Transcripts, material, the
+        /// conversation, digests and drafts are sized by their callers (the fit
+        /// check, compaction, the digest budget); cutting them here would
+        /// silently drop text, such as the newest chat turns.
+        var isCapped: Bool { [.background, .notes, .comments, .question].contains(self) }
     }
 
     static let cutMarker = "\n[… cut: too long]"
