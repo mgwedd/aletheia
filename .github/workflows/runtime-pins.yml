@@ -21,6 +21,7 @@ on:
       - scripts/verify-bundled-assets.sh
       - scripts/check-runtime-pins.sh
       - scripts/sbom.sh
+      - scripts/verify-model-pins.sh
       - .github/workflows/**
   push:
     branches: [main]
@@ -33,6 +34,7 @@ on:
       - scripts/verify-bundled-assets.sh
       - scripts/check-runtime-pins.sh
       - scripts/sbom.sh
+      - scripts/verify-model-pins.sh
       - .github/workflows/**
   schedule:
     - cron: "41 6 * * 1"
