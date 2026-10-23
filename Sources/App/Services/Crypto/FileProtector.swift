@@ -208,15 +208,14 @@ struct FileProtector: Sendable {
     func decryptedCopyOfLargeFile(at url: URL) throws -> (url: URL, isTemporary: Bool) {
         if requiresKey && key == nil { throw ProtectorError.locked }
         guard let key, ChunkedCipher.isEnvelope(fileAt: url) else { return (url, false) }
-        let temp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("aletheia-\(UUID().uuidString).caf")
+        let temp = try PrivateStaging.scratchFile(prefix: "aletheia", ext: "caf")
         do {
             try ChunkedCipher.open(fileAt: url, to: temp, using: key)
         } catch {
             // `open` creates `temp` before it authenticates the first chunk, and
             // may already have written earlier chunks when a later one fails. Don't
-            // leave that partial plaintext recording behind in the temp folder.
-            try? FileManager.default.removeItem(at: temp)
+            // leave that partial plaintext recording behind in the scratch folder.
+            PrivateStaging.remove(temp)
             throw error
         }
         return (temp, true)
