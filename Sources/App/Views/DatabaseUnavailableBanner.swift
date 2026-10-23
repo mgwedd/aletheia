@@ -189,3 +189,32 @@ struct SaveFailureStrip: View {
         .themeDivider(.bottom)
     }
 }
+
+/// Stays above the window while recordings are set aside (their session
+/// couldn't be found, so they're unencrypted). No dismiss button: it goes away
+/// once nothing is set aside. Counts only, never a name.
+struct SetAsideRecordingsStrip: View {
+    let count: Int
+    let onReview: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Theme.warn.color)
+            Text(SetAsideRecordings.warningText(count: count))
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.text.color)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button("Review in Settings…", action: onReview)
+                .buttonStyle(.themed)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.callout.color)
+        .themeDivider(.bottom)
+        .accessibilityElement(children: .combine)
+    }
+}
