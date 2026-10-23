@@ -1,6 +1,6 @@
 # Terms of Service
 
-_Last updated: 2026-09-17_
+_Last updated: 2026-10-23_
 
 > This document is a template provided for transparency. It is **not legal
 > advice**. Aletheia is used with protected health information (PHI); have your
@@ -30,6 +30,19 @@ independent legal evidence.
 The App is proprietary and source-available. Your use is governed by the
 [LICENSE](LICENSE). These Terms do not grant any ownership or rights beyond
 what that license allows.
+
+**License key.** Using the App requires a license key issued to you by the
+developer. The key is personal to you: do not share, transfer, or publish it. A
+key may have an expiry date, shown in Settings → License key, and can be
+renewed. The developer may revoke a key that is shared or used in breach of
+these Terms; the App learns of revocations from a signed list it downloads while
+update checks are on. When a key expires or is revoked, the App stops starting
+new recordings and AI work. You can always open, read, search, export, and
+delete your existing records.
+
+**Pre-release versions.** Beta and other pre-release versions are provided for
+evaluation, may contain more errors than a final release, and may change
+without notice.
 
 ## 3. Not medical advice; not a medical device
 
@@ -103,7 +116,8 @@ license. Those licenses govern those components; these Terms govern the App.
 ## 10. Termination
 
 These Terms apply for as long as you use the App. You may stop using the App at
-any time. The disclaimers, limitation of liability, and indemnification survive
+any time. The developer may end your use of the App by revoking your license
+key. The disclaimers, limitation of liability, and indemnification survive
 termination.
 
 ## 11. Changes

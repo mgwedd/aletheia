@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-19_
+_Last updated: 2026-10-23_
 
 **Plain-language summary:** By default, Aletheia runs entirely offline on your
 Mac. You can optionally turn on end-to-end encrypted backup to your own
@@ -27,6 +27,11 @@ to download — those are covered by their own providers' terms and policies.
 no accounts, and no developer backend. The developer cannot see who uses the
 App or what it is used for.
 
+If you applied for a license key, the developer keeps the application you
+submitted (your name, contact and professional details, and a record of the key
+issued to you), as described on the application form. The App itself never
+sends the developer anything, including your key.
+
 ## 3. Your data stays on your device by default
 
 Recordings, transcripts, summaries, notes, comments, medications, clinical
@@ -49,6 +54,10 @@ outbound connections, and **none of them send data to the developer**:
 - **Update check** — the App fetches a small version file (an "appcast") to see
   whether a newer release exists. This is an ordinary web request (your IP
   address and the App version are visible to the host); no patient data is sent.
+- **License revocation list** — while update checks are on, the App downloads a
+  signed list of revoked license keys from `astrealabs.com`, at most once a
+  day. The request contains no license key or other identifier; your IP address
+  and the App version are visible to the host.
 - **Model downloads (only when you ask)** — when you choose to download a
   speech-to-text or language model, the App downloads that model file from its
   host (for example a model registry or `ollama.com`). Files are downloaded to

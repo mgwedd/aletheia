@@ -20,4 +20,20 @@ final class LegalTests: XCTestCase {
         XCTAssertTrue(Legal.termsURL.absoluteString.hasSuffix("/TERMS.md"))
         XCTAssertTrue(Legal.privacyURL.absoluteString.hasSuffix("/PRIVACY.md"))
     }
+
+    /// The Terms cover the license key and what expiry or revocation blocks,
+    /// and the Privacy Policy discloses the revocation-list download.
+    func testPoliciesDescribeTheLicenseKeyAndRevocationList() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let terms = try String(contentsOf: root.appendingPathComponent("TERMS.md"), encoding: .utf8)
+        for phrase in ["License key", "do not share, transfer, or publish", "revoke", "Pre-release versions",
+                       "open, read, search, export, and\ndelete"] {
+            XCTAssertTrue(terms.contains(phrase), phrase)
+        }
+        let privacy = try String(contentsOf: root.appendingPathComponent("PRIVACY.md"), encoding: .utf8)
+        XCTAssertTrue(privacy.contains("License revocation list"))
+        XCTAssertTrue(privacy.contains("`astrealabs.com`"))
+        XCTAssertTrue(privacy.contains("contains no license key or other identifier"))
+    }
 }
