@@ -10,6 +10,8 @@ final class AppModel: ObservableObject {
     /// shows them so they don't vanish silently. Session-level damage lives on
     /// `Store.unreadableEntries` / `Store.sessionListing(for:)`.
     @Published var unreadablePatients: [UnreadableEntry] = []
+    /// Encrypted database payloads that could not be opened at the last refresh.
+    @Published var unreadableDatabaseRecords: [UnreadableEntry] = []
     @Published var errorMessage: String?
     /// Whether the data folder's volume is encrypted (nil = unknown). Refreshed
     /// when the folder changes and before each new-record action.
@@ -109,6 +111,7 @@ final class AppModel: ObservableObject {
             databaseState = .noDataFolder
             patients = []
             unreadablePatients = []
+            unreadableDatabaseRecords = []
             schemaWarning = nil
             return
         }
@@ -216,6 +219,38 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Adds an inline comment, surfacing a failure (see `attemptSave`).
+    func addComment(sessionID: UUID, quotedText: String, body: String, anchorSeconds: Double?, quoteStart: Int?) -> SessionComment? {
+        var added: SessionComment?
+        attemptSave("comment") {
+            guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
+            added = commentStore.addComment(
+                sessionID: sessionID, quotedText: quotedText, body: body,
+                anchorSeconds: anchorSeconds, quoteStart: quoteStart
+            )
+            guard added != nil else { throw DatabaseWriteError.writeFailed }
+        }
+        return added
+    }
+
+    /// Edits a comment's body, surfacing a failure (see `attemptSave`).
+    @discardableResult
+    func updateComment(id: String, body: String) -> Bool {
+        attemptSave("comment") {
+            guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
+            guard commentStore.updateComment(id: id, body: body) else { throw DatabaseWriteError.writeFailed }
+        }
+    }
+
+    /// Resolves or reopens a comment, surfacing a failure (see `attemptSave`).
+    @discardableResult
+    func setCommentResolved(id: String, resolved: Bool) -> Bool {
+        attemptSave("comment") {
+            guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
+            guard commentStore.setCommentResolved(id: id, resolved: resolved) else { throw DatabaseWriteError.writeFailed }
+        }
+    }
+
     /// Records that saving `subject` failed. See `attemptSave`.
     func reportSaveFailure(_ subject: String) {
         saveFailureSubject = subject
@@ -289,6 +324,7 @@ final class AppModel: ObservableObject {
             let listing = try store.patientListing()
             patients = listing.patients
             unreadablePatients = listing.unreadable + store.unreadableEntries.filter { $0.kind == .storedRecord }
+            unreadableDatabaseRecords = commentStore?.unreadableEntries ?? []
             reindexSpotlight()
         } catch {
             errorMessage = error.localizedDescription
