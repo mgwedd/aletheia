@@ -94,6 +94,7 @@ struct FolderUnlockView: View {
             TextEditor(text: $recoveryKey)
                 .font(.system(.body, design: .monospaced))
                 .foregroundStyle(Theme.text.color)
+                .autocorrectionDisabled()
                 .focused($recoveryKeyFocused)
                 .scrollContentBackground(.hidden)
                 .padding(8)
@@ -188,6 +189,3 @@ struct FolderUnlockView: View {
         }
     }
 }
-
-/// Backwards compatibility alias for the unlock view overlay.
-typealias EncryptionUnlockView = FolderUnlockView

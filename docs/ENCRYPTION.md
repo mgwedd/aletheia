@@ -111,7 +111,7 @@ runs `DataMigrator` to seal the folder's existing PHI; turning it off decrypts
 everything back to plain files first and only then removes the keystore, so a
 failure never leaves data unreadable. The DEK is held in memory for the running
 session; a fresh launch of an encrypted folder prompts for the passphrase once
-(`EncryptionUnlockView`). Migration is safe to re-run — a keyed protector reads
+(`FolderUnlockView`). Migration is safe to re-run — a keyed protector reads
 plaintext and sealed files alike, so a half-converted folder still works.
 
 **Remember on this Mac (optional).** From the unlock gate or Settings the user

@@ -1,4 +1,3 @@
-import PDFKit
 import SwiftUI
 
 /// Sheet for turning on Tier-2 encryption, in three steps:
@@ -28,7 +27,6 @@ struct EncryptionSetupSheet: View {
     @State private var confirm = ""
     @State private var recoveryKey = ""
     @State private var storedKeyAcknowledged = false
-    @State private var copiedKey = false
     @State private var acknowledged = false
     /// Default on: store the key in this Mac's keychain so, after this one-time
     /// setup, encryption is transparent on every later launch. The passphrase
@@ -245,30 +243,7 @@ struct EncryptionSetupSheet: View {
 
         RecoveryKeyDisplay(words: RecoveryKey.words(from: recoveryKey))
 
-        HStack(spacing: 8) {
-            Button("Copy Words") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(recoveryKey, forType: .string)
-                copiedKey = true
-            }
-            .buttonStyle(.themed)
-
-            Button("Save as PDF…") {
-                saveRecoveryKeyPDF()
-            }
-            .buttonStyle(.themed)
-
-            Button("Print…") {
-                printRecoveryKey()
-            }
-            .buttonStyle(.themed)
-
-            if copiedKey {
-                Text("Copied to clipboard")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.ok.color)
-            }
-        }
+        RecoveryKeyActions(key: recoveryKey, dataRoot: encryption.dataRoot, replacesPrevious: false)
 
         Toggle("I have saved or printed my emergency recovery key and stored it safely.", isOn: $storedKeyAcknowledged)
             .toggleStyle(.checkbox)
@@ -349,61 +324,6 @@ struct EncryptionSetupSheet: View {
         }
     }
 
-    private func recoveryKeyMarkdown() -> String {
-        let folderName = encryption.dataRoot?.lastPathComponent ?? "Aletheia Data"
-        let dateStr = DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .short)
-        let words = RecoveryKey.words(from: recoveryKey)
-        var lines: [String] = []
-        for (i, w) in words.enumerated() {
-            lines.append("\(i + 1). \(w)")
-        }
-        let wordList = lines.joined(separator: "\n")
-        return """
-        # Emergency Recovery Key
-
-        Keep this document in a safe, offline place (such as a locked fireproof safe or safety deposit box).
-
-        - **Data folder:** \(folderName)
-        - **Created:** \(dateStr)
-
-        ### 24-Word Recovery Key
-
-        \(wordList)
-
-        ---
-
-        ### Important Safeguards
-        - This recovery key provides emergency access to your encrypted patient records.
-        - If you forget your passphrase, these 24 words are the only way to regain access.
-        - Aletheia never stores this recovery key in the data folder or on any server.
-        - Store this document in a secure location separate from your Mac.
-        """
-    }
-
-    private func saveRecoveryKeyPDF() {
-        guard let data = NotePDF.render(
-            markdown: recoveryKeyMarkdown(),
-            title: "Aletheia — Emergency Recovery Key",
-            subtitle: "Confidential • Store Securely"
-        ) else { return }
-        _ = FileSaver.saveData(data, suggestedName: "Aletheia - Recovery Key.pdf", type: .pdf)
-    }
-
-    private func printRecoveryKey() {
-        guard let data = NotePDF.render(
-            markdown: recoveryKeyMarkdown(),
-            title: "Aletheia — Emergency Recovery Key",
-            subtitle: "Confidential • Store Securely"
-        ),
-        let pdf = PDFDocument(data: data) else { return }
-        let printInfo = NSPrintInfo.shared
-        printInfo.horizontalPagination = .fit
-        printInfo.verticalPagination = .automatic
-        if let op = pdf.printOperation(for: printInfo, scalingMode: .pageScaleToFit, autoRotate: true) {
-            op.showsPrintPanel = true
-            op.run()
-        }
-    }
 }
 
 /// A labelled password field in the design's field box.
@@ -463,6 +383,48 @@ struct RecoveryKeyDisplay: View {
     }
 }
 
+/// Copy / Save as PDF / Print for a recovery key, with the last outcome shown
+/// beside the buttons so a failed or refused save isn't silent.
+struct RecoveryKeyActions: View {
+    let key: String
+    let dataRoot: URL?
+    let replacesPrevious: Bool
+
+    @State private var status: (text: String, ok: Bool)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Button("Copy Words") {
+                    RecoveryKeyDocument.copy(key)
+                    status = ("Copied to clipboard", true)
+                }
+                .buttonStyle(.themed)
+
+                Button("Save as PDF…") {
+                    switch RecoveryKeyDocument.save(key: key, dataRoot: dataRoot, replacesPrevious: replacesPrevious) {
+                    case .saved: status = ("Saved", true)
+                    case .cancelled: break
+                    case let .failed(message): status = (message, false)
+                    }
+                }
+                .buttonStyle(.themed)
+
+                Button("Print…") {
+                    RecoveryKeyDocument.print(key: key, dataRoot: dataRoot, replacesPrevious: replacesPrevious)
+                }
+                .buttonStyle(.themed)
+            }
+            if let status {
+                Text(status.text)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(status.ok ? Theme.ok.color : Theme.recording.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 /// Sheet for creating a fresh 24-word recovery key and replacing the existing slot in Settings.
 struct NewRecoveryKeySheet: View {
     @EnvironmentObject private var encryption: EncryptionManager
@@ -470,45 +432,26 @@ struct NewRecoveryKeySheet: View {
 
     @State private var newKey = RecoveryKey.generate()
     @State private var acknowledged = false
-    @State private var copiedKey = false
     @State private var working = false
     @State private var errorMessage: String?
+
+    /// Folders encrypted before recovery keys existed have no slot to replace.
+    private var replacesExisting: Bool { encryption.hasRecoveryKey }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             VStack(alignment: .leading, spacing: 14) {
-                Text("Creating a new recovery key replaces the existing one in your data folder's keystore. Any previously printed or saved recovery key will stop working immediately.")
+                Text(replacesExisting
+                    ? "Creating a new recovery key replaces the existing one in your data folder's keystore. Any previously printed or saved recovery key will stop working immediately."
+                    : "This folder doesn't have an emergency recovery key yet. Save or print this one and keep it in a secure offline location.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.muted.color)
                     .fixedSize(horizontal: false, vertical: true)
 
                 RecoveryKeyDisplay(words: RecoveryKey.words(from: newKey))
 
-                HStack(spacing: 8) {
-                    Button("Copy Words") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(newKey, forType: .string)
-                        copiedKey = true
-                    }
-                    .buttonStyle(.themed)
-
-                    Button("Save as PDF…") {
-                        saveRecoveryKeyPDF()
-                    }
-                    .buttonStyle(.themed)
-
-                    Button("Print…") {
-                        printRecoveryKey()
-                    }
-                    .buttonStyle(.themed)
-
-                    if copiedKey {
-                        Text("Copied to clipboard")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.ok.color)
-                    }
-                }
+                RecoveryKeyActions(key: newKey, dataRoot: encryption.dataRoot, replacesPrevious: replacesExisting)
 
                 Toggle("I have saved or printed this new emergency recovery key.", isOn: $acknowledged)
                     .toggleStyle(.checkbox)
@@ -589,59 +532,4 @@ struct NewRecoveryKeySheet: View {
         }
     }
 
-    private func recoveryKeyMarkdown() -> String {
-        let folderName = encryption.dataRoot?.lastPathComponent ?? "Aletheia Data"
-        let dateStr = DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .short)
-        let words = RecoveryKey.words(from: newKey)
-        var lines: [String] = []
-        for (i, w) in words.enumerated() {
-            lines.append("\(i + 1). \(w)")
-        }
-        let wordList = lines.joined(separator: "\n")
-        return """
-        # Emergency Recovery Key
-
-        Keep this document in a safe, offline place (such as a locked fireproof safe or safety deposit box).
-
-        - **Data folder:** \(folderName)
-        - **Created:** \(dateStr)
-
-        ### 24-Word Recovery Key
-
-        \(wordList)
-
-        ---
-
-        ### Important Safeguards
-        - This recovery key replaces any previously issued recovery key.
-        - If you forget your passphrase, these 24 words are the only way to regain access.
-        - Aletheia never stores this recovery key in the data folder or on any server.
-        - Store this document in a secure location separate from your Mac.
-        """
-    }
-
-    private func saveRecoveryKeyPDF() {
-        guard let data = NotePDF.render(
-            markdown: recoveryKeyMarkdown(),
-            title: "Aletheia — Emergency Recovery Key",
-            subtitle: "Confidential • Store Securely"
-        ) else { return }
-        _ = FileSaver.saveData(data, suggestedName: "Aletheia - Recovery Key.pdf", type: .pdf)
-    }
-
-    private func printRecoveryKey() {
-        guard let data = NotePDF.render(
-            markdown: recoveryKeyMarkdown(),
-            title: "Aletheia — Emergency Recovery Key",
-            subtitle: "Confidential • Store Securely"
-        ),
-        let pdf = PDFDocument(data: data) else { return }
-        let printInfo = NSPrintInfo.shared
-        printInfo.horizontalPagination = .fit
-        printInfo.verticalPagination = .automatic
-        if let op = pdf.printOperation(for: printInfo, scalingMode: .pageScaleToFit, autoRotate: true) {
-            op.showsPrintPanel = true
-            op.run()
-        }
-    }
 }

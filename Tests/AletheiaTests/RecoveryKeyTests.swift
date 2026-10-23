@@ -216,4 +216,22 @@ final class RecoveryKeyTests: XCTestCase {
         try manager.unlock(recoveryKey: brandNewKey)
         XCTAssertEqual(manager.state, .unlocked)
     }
+
+    /// A folder encrypted before recovery keys existed has only a passphrase
+    /// slot; creating a recovery key adds one without touching the passphrase.
+    func testCreatingRecoveryKeyForFolderWithoutOne() throws {
+        let manager = EncryptionManager(dataRootProvider: { self.tempRoot })
+        try manager.enable(passphrase: "legacy-passphrase", iterations: fastIterations)
+        XCTAssertFalse(manager.hasRecoveryKey)
+
+        let key = try manager.replaceRecoveryKey(iterations: fastIterations)
+        XCTAssertTrue(manager.hasRecoveryKey)
+
+        manager.lock()
+        try manager.unlock(recoveryKey: key)
+        XCTAssertEqual(manager.state, .unlocked)
+        manager.lock()
+        try manager.unlock(passphrase: "legacy-passphrase")
+        XCTAssertEqual(manager.state, .unlocked)
+    }
 }
