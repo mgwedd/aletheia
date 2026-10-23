@@ -79,6 +79,7 @@ final class AppSettings: ObservableObject {
 
     private enum Keys {
         static let dataRootBookmark = "dataRootBookmark"
+        static let usesStandardDataRoot = "usesStandardDataRoot"
         static let whisperModel = "whisperModel"
         static let assistantBackend = "assistantBackend"
         static let llamaModel = "llamaModel"
@@ -460,7 +461,7 @@ final class AppSettings: ObservableObject {
         }
         if let bookmarked = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark) {
             dataRootURL = bookmarked
-        } else if defaults.bool(forKey: "usesStandardDataRoot") {
+        } else if defaults.bool(forKey: Keys.usesStandardDataRoot) {
             dataRootURL = Self.standardDataRoot
         }
         if let root = dataRootURL {
@@ -489,7 +490,7 @@ final class AppSettings: ObservableObject {
         let verdict = DataFolderPolicy.verdict(for: url)
         guard verdict == .ok else { throw DataFolderSelectionError.rejected(verdict.explanation) }
         try SecurityScopedBookmark.save(url: url, key: Keys.dataRootBookmark)
-        defaults.set(false, forKey: "usesStandardDataRoot")
+        defaults.set(false, forKey: Keys.usesStandardDataRoot)
         dataRootURL = url
         dataRootVerdict = .ok
         applyBackupExclusion()
@@ -506,7 +507,7 @@ final class AppSettings: ObservableObject {
         guard verdict == .ok else { throw DataFolderSelectionError.rejected(verdict.explanation) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defaults.removeObject(forKey: Keys.dataRootBookmark)
-        defaults.set(true, forKey: "usesStandardDataRoot")
+        defaults.set(true, forKey: Keys.usesStandardDataRoot)
         dataRootURL = root
         dataRootVerdict = .ok
         applyBackupExclusion()

@@ -47,4 +47,43 @@ final class DataFolderPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("CloudDocs"))
         XCTAssertFalse(source.contains("iCloud Drive"))
     }
+
+    func testHomeSyncFoldersOutsideCloudStorageAreRejected() {
+        let cases: [(String, String)] = [
+            ("Dropbox/records", "Dropbox"),
+            ("Dropbox (Personal)/records", "Dropbox"),
+            ("OneDrive - Clinic/records", "OneDrive"),
+            ("Google Drive/records", "Google Drive"),
+            ("Box/records", "Box"),
+            ("Box Sync/records", "Box"),
+        ]
+        for (relative, provider) in cases {
+            XCTAssertEqual(DataFolderPolicy.verdict(for: home.appendingPathComponent(relative), realHome: home, resourceValues: { _ in nil }, fileExists: { _ in false }), .thirdPartyCloud(provider), relative)
+        }
+        for relative in ["Boxes/records", "Dropboxed/records", "Documents/Dropbox/records"] {
+            XCTAssertEqual(DataFolderPolicy.verdict(for: home.appendingPathComponent(relative), realHome: home, resourceValues: { _ in nil }, fileExists: { _ in false }), .ok, relative)
+        }
+    }
+
+    func testSyncVolumeIsRejected() {
+        XCTAssertEqual(DataFolderPolicy.verdict(for: URL(fileURLWithPath: "/Volumes/GoogleDrive/My Drive/records"), realHome: home, resourceValues: { _ in nil }, fileExists: { _ in false }), .thirdPartyCloud("Google Drive"))
+    }
+
+    func testCloudPathsMatchRegardlessOfCase() {
+        XCTAssertEqual(DataFolderPolicy.verdict(for: home.appendingPathComponent("library/mobile documents/records"), realHome: home, resourceValues: { _ in nil }, fileExists: { _ in false }), .iCloudDrive)
+        XCTAssertEqual(DataFolderPolicy.verdict(for: home.appendingPathComponent("library/cloudstorage/Dropbox/records"), realHome: home, resourceValues: { _ in nil }, fileExists: { _ in false }), .thirdPartyCloud("Dropbox"))
+    }
+
+    func testDropboxMarkerInAncestorIsRejected() {
+        let folder = URL(fileURLWithPath: "/Volumes/External/Shared/records")
+        let verdict = DataFolderPolicy.verdict(for: folder, realHome: home, resourceValues: { _ in nil }, fileExists: { $0.path == "/Volumes/External/Shared/.dropbox" })
+        XCTAssertEqual(verdict, .thirdPartyCloud("Dropbox"))
+        XCTAssertEqual(DataFolderPolicy.verdict(for: folder, realHome: home, resourceValues: { _ in nil }, fileExists: { _ in false }), .ok)
+    }
+
+    func testMoveSheetStaysHiddenWhileAppIsLocked() {
+        XCTAssertFalse(DataFolderPolicy.presentsMoveSheet(requested: true, appLocked: true))
+        XCTAssertTrue(DataFolderPolicy.presentsMoveSheet(requested: true, appLocked: false))
+        XCTAssertFalse(DataFolderPolicy.presentsMoveSheet(requested: false, appLocked: false))
+    }
 }

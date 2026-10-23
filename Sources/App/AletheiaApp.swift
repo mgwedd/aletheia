@@ -166,7 +166,11 @@ struct AletheiaApp: App {
                         // presents) reads must be injected here explicitly.
                         .environmentObject(encryption)
                 }
-                .sheet(isPresented: $showDataFolderMove) {
+                .sheet(isPresented: Binding(
+                    get: { DataFolderPolicy.presentsMoveSheet(requested: showDataFolderMove, appLocked: appLock.isLocked) },
+                    // Hidden by the app lock: keep the request so it shows again after unlock.
+                    set: { if !$0 && !appLock.isLocked { showDataFolderMove = false } }
+                )) {
                     DataFolderMoveView()
                         .environmentObject(settings)
                         .environmentObject(appModel)

@@ -29,7 +29,7 @@ struct DataFolderMoveView: View {
                 Text(settings.dataRootURL?.path ?? "")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
-                Text("Destination: \((alternateDestination ?? AppSettings.standardDataRoot).path)")
+                Text("Destination: \(destination.path)")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
                 Button("Choose another local destination…") {
@@ -63,20 +63,24 @@ struct DataFolderMoveView: View {
         }
     }
 
+    private var destination: URL {
+        alternateDestination.map(DataFolderMove.destination(inChosenFolder:)) ?? AppSettings.standardDataRoot
+    }
+
     private func move() {
         guard let source = settings.dataRootURL else { return }
-        let destination = alternateDestination ?? AppSettings.standardDataRoot
+        let target = self.destination
         let usesStandard = alternateDestination == nil
         holdsOriginalAccess = source.startAccessingSecurityScopedResource()
         isMoving = true
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                try DataFolderMove.copyAndRebind(source: source, destination: destination) { _ in
+                try DataFolderMove.copyAndRebind(source: source, destination: target) { _ in
                     try DispatchQueue.main.sync {
                         if usesStandard {
                             try settings.useStandardDataRoot()
                         } else {
-                            try settings.setDataRoot(destination)
+                            try settings.setDataRoot(target)
                         }
                     }
                 }
@@ -84,7 +88,7 @@ struct DataFolderMoveView: View {
                     original = source
                     moved = true
                     isMoving = false
-                    appModel.rebuildStore()
+                    appModel.dataFolderMoved()
                 }
             } catch {
                 DispatchQueue.main.async {

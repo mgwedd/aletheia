@@ -10,12 +10,19 @@ enum DataFolderMove {
 
         var errorDescription: String? {
             switch self {
-            case .destinationNotEmpty: return "The standard data folder already contains files. Choose another empty local folder."
+            case .destinationNotEmpty: return "The destination data folder already contains files. Choose another local folder."
             case .symbolicLink: return "The data folder contains a symbolic link. Remove it before moving the folder."
             case .verificationFailed: return "The copied files did not verify. The original folder remains unchanged."
             case .overlappingFolders: return "Choose a destination outside the original folder."
             }
         }
+    }
+
+    /// Where a move into a folder the clinician picked puts the data: a new
+    /// subfolder, so the copy is staged inside the picked folder (the only place
+    /// the sandbox lets the app write) instead of next to it.
+    static func destination(inChosenFolder folder: URL) -> URL {
+        folder.appendingPathComponent("Aletheia Data", isDirectory: true)
     }
 
     static func copyAndRebind(

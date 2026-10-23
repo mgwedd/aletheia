@@ -236,6 +236,15 @@ final class AppModel: ObservableObject {
     /// Prompts the user with a folder chooser panel to pick another data folder,
     /// sets it as the active data root, and rebuilds the store.
     @discardableResult
+    /// The data folder was copied to a new location. The held key belongs to the
+    /// old location, so it's dropped on rebuild; a key remembered on this Mac
+    /// unlocks the copy again (it carries the same keystore) instead of asking
+    /// for the passphrase.
+    func dataFolderMoved() {
+        rebuildStore()
+        encryption.autoUnlockFromDevice()
+    }
+
     func chooseDataFolder() -> Bool {
         guard let url = FolderPicker.choose() else { return false }
         do {
