@@ -36,6 +36,8 @@ final class LegalTests: XCTestCase {
         XCTAssertTrue(privacy.contains("`astrealabs.com`"))
         XCTAssertTrue(privacy.contains("contains no license key or other identifier"))
         XCTAssertTrue(terms.contains("14-day grace period"))
+        XCTAssertTrue(terms.contains("never require a license key, with no time limit"))
+        XCTAssertFalse(terms.contains("end your use of the App"))
         // The license backend exists, so the policy must not deny having one.
         XCTAssertFalse(privacy.contains("developer backend"))
         XCTAssertFalse(privacy.contains("developer\nbackend"))

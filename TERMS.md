@@ -38,7 +38,12 @@ renewed. The developer may revoke a key that is shared or used in breach of
 these Terms; the App learns of revocations from a signed list it downloads while
 update checks are on. When a key expires, recording and AI work continue for a
 14-day grace period and then stop; when a key is revoked, they stop at once.
-Either way you can always open, read, search, export, and
+
+**Your records stay yours.** Opening, reading, searching, exporting and deleting
+your existing records never require a license key, with no time limit. After a
+key expires or is revoked you can keep using the App for these, and you can
+export all of your records at once (Settings → Backups → Export All Records), so
+you can always open, read, search, export, and
 delete your existing records.
 
 **Pre-release versions.** Beta and other pre-release versions are provided for
@@ -117,8 +122,9 @@ license. Those licenses govern those components; these Terms govern the App.
 ## 10. Termination
 
 These Terms apply for as long as you use the App. You may stop using the App at
-any time. The developer may end your use of the App by revoking your license
-key. The disclaimers, limitation of liability, and indemnification survive
+any time. The developer may end your right to record and use the AI by revoking
+your license key; your access to your existing records continues as described
+in section 2. The disclaimers, limitation of liability, and indemnification survive
 termination.
 
 ## 11. Changes
