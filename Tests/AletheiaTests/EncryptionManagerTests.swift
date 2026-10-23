@@ -374,4 +374,103 @@ final class EncryptionManagerTests: XCTestCase {
         XCTAssertThrowsError(try m.rememberOnDevice())
         XCTAssertTrue(try XCTUnwrap(m.rememberError).contains("-25293"))
     }
+
+    // MARK: - Change passphrase
+
+    func testChangePassphraseSwitchesPassphraseAndKeepsRecoveryKey() throws {
+        let m = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: isolatedDefaults())
+        let key = RecoveryKey.generate()
+        try m.enable(passphrase: "old-passphrase-1", recoveryKey: key, iterations: fastIterations)
+        let sealed = try m.protector.seal(Data("note".utf8))
+
+        try m.changePassphrase(current: "old-passphrase-1", new: "new-passphrase-2", iterations: fastIterations)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: tempRoot.appendingPathComponent(Keystore.stagingFileName).path))
+
+        m.lock()
+        XCTAssertThrowsError(try m.unlock(passphrase: "old-passphrase-1"))
+        try m.unlock(passphrase: "new-passphrase-2")
+        XCTAssertEqual(try m.protector.open(sealed), Data("note".utf8), "files are not re-encrypted; the same data key opens them")
+
+        m.lock()
+        try m.unlock(recoveryKey: key)
+        XCTAssertEqual(m.state, .unlocked)
+    }
+
+    func testChangePassphraseRefusesWrongCurrentAndThrottles() throws {
+        var now = Date(timeIntervalSince1970: 1_000)
+        let throttle = UnlockThrottle(freeAttempts: 1, baseDelay: 10, maxDelay: 100, now: { now })
+        let m = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: isolatedDefaults(), throttle: throttle)
+        try m.enable(passphrase: "old-passphrase-1", iterations: fastIterations)
+
+        XCTAssertThrowsError(try m.changePassphrase(current: "wrong one", new: "new-passphrase-2", iterations: fastIterations)) {
+            XCTAssertEqual($0 as? Keystore.KeystoreError, .wrongPassphrase)
+        }
+        XCTAssertThrowsError(try m.changePassphrase(current: "wrong two", new: "new-passphrase-2", iterations: fastIterations))
+        XCTAssertEqual(m.unlockRetryDelay, 10)
+        XCTAssertThrowsError(try m.changePassphrase(current: "old-passphrase-1", new: "new-passphrase-2", iterations: fastIterations)) {
+            XCTAssertEqual($0 as? EncryptionManager.ManagerError, .throttled(retryAfter: 10))
+        }
+        now.addTimeInterval(11)
+        XCTAssertNoThrow(try m.changePassphrase(current: "old-passphrase-1", new: "new-passphrase-2", iterations: fastIterations))
+        XCTAssertEqual(m.unlockRetryDelay, 0)
+    }
+
+    func testChangePassphraseNotifiesOnlyOnSuccess() throws {
+        let m = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: isolatedDefaults())
+        try m.enable(passphrase: "old-passphrase-1", iterations: fastIterations)
+        var changes = 0
+        m.onPassphraseChanged = { changes += 1 }
+
+        XCTAssertThrowsError(try m.changePassphrase(current: "wrong one", new: "new-passphrase-2", iterations: fastIterations))
+        XCTAssertThrowsError(try m.changePassphrase(current: "old-passphrase-1", new: "short", iterations: fastIterations))
+        struct Interrupted: Error {}
+        XCTAssertThrowsError(try m.changePassphrase(current: "old-passphrase-1", new: "new-passphrase-2", iterations: fastIterations, beforeSwap: { throw Interrupted() }))
+        XCTAssertEqual(changes, 0)
+
+        try m.changePassphrase(current: "old-passphrase-1", new: "new-passphrase-2", iterations: fastIterations)
+        XCTAssertEqual(changes, 1)
+    }
+
+    func testChangePassphraseRefusesShortNewPassphrase() throws {
+        let m = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: isolatedDefaults())
+        try m.enable(passphrase: "old-passphrase-1", iterations: fastIterations)
+        let before = Keystore.load(from: tempRoot)
+        XCTAssertThrowsError(try m.changePassphrase(current: "old-passphrase-1", new: "short", iterations: fastIterations)) {
+            XCTAssertEqual($0 as? EncryptionManager.ManagerError, .passphraseTooShort)
+        }
+        XCTAssertEqual(Keystore.load(from: tempRoot), before)
+        XCTAssertEqual(m.unlockRetryDelay, 0)
+    }
+
+    func testInterruptedChangeLeavesTheOldKeystoreUsable() throws {
+        struct Interrupted: Error {}
+        let m = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: isolatedDefaults())
+        let key = RecoveryKey.generate()
+        try m.enable(passphrase: "old-passphrase-1", recoveryKey: key, iterations: fastIterations)
+        let before = Keystore.load(from: tempRoot)
+
+        XCTAssertThrowsError(try m.changePassphrase(
+            current: "old-passphrase-1", new: "new-passphrase-2", iterations: fastIterations,
+            beforeSwap: {
+                // The new keystore is staged next to the old one by now.
+                XCTAssertTrue(FileManager.default.fileExists(atPath: self.tempRoot.appendingPathComponent(Keystore.stagingFileName).path))
+                throw Interrupted()
+            }
+        ))
+        XCTAssertEqual(Keystore.load(from: tempRoot), before)
+        m.lock()
+        XCTAssertNoThrow(try m.unlock(passphrase: "old-passphrase-1"))
+        XCTAssertThrowsError(try m.unlock(passphrase: "new-passphrase-2"))
+        m.lock()
+        XCTAssertNoThrow(try m.unlock(recoveryKey: key))
+    }
+
+    func testChangePassphraseRequiresUnlockedFolder() throws {
+        let m = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: isolatedDefaults())
+        try m.enable(passphrase: "old-passphrase-1", iterations: fastIterations)
+        m.lock()
+        XCTAssertThrowsError(try m.changePassphrase(current: "old-passphrase-1", new: "new-passphrase-2", iterations: fastIterations)) {
+            XCTAssertEqual($0 as? EncryptionManager.ManagerError, .locked)
+        }
+    }
 }

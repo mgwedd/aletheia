@@ -11,7 +11,7 @@ enum AuditLogCopy {
         ("deletions", [.recordDeleted]),
         ("changes to security settings", [.securitySettingChanged]),
         ("changes to the data folder", [.dataFolderChanged]),
-        ("recovery key and passphrase changes", [.encryptionKeyChanged]),
+        ("recovery key and passphrase changes", [.encryptionKeyChanged, .encryptionPassphraseChanged]),
         ("repeated failed unlocks", [.repeatedUnlockFailures]),
         ("failed exports", [.exportFailed]),
         ("failed integrity checks", [.integrityCheckFailed]),

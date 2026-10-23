@@ -12,6 +12,7 @@ enum AuditAction: String, Codable, CaseIterable {
     case encryptionEnabled
     case encryptionDisabled
     case encryptionUnlocked
+    case encryptionPassphraseChanged
     case recordExported
     case recordDeleted
     case backupRun
@@ -45,6 +46,7 @@ enum AuditAction: String, Codable, CaseIterable {
         case .encryptionEnabled: return "Encryption enabled"
         case .encryptionDisabled: return "Encryption disabled"
         case .encryptionUnlocked: return "Encryption unlocked"
+        case .encryptionPassphraseChanged: return "Encryption passphrase changed"
         case .recordExported: return "Record exported"
         case .recordDeleted: return "Record deleted"
         case .backupRun: return "Backup run"
