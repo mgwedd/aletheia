@@ -872,12 +872,17 @@ struct SettingsView: View {
     private var securityPane: some View {
         SettingsSwitchRow(
             title: "App lock",
-            detail: "Require Touch ID or your Mac password to open. You unlock once when it opens. It locks again when your Mac sleeps, its screen locks or you switch user, so your patients' notes stay behind it.",
+            detail: "Require Touch ID or your Mac password to open. Aletheia locks after 15 minutes of inactivity by default, when the display sleeps, or when your Mac locks or switches user.",
             isOn: $settings.appLockEnabled
+        )
+        SettingsSwitchRow(
+            title: "Lock when Aletheia is hidden",
+            detail: "Require another unlock after hiding the app with ⌘H.",
+            isOn: $settings.lockWhenHidden
         )
         SettingsRow(
             title: "Lock after inactivity",
-            detail: "Optional. Aletheia already locks when your Mac locks or sleeps (set that in System Settings > Lock Screen). Choose a time to also lock after this long with no activity in Aletheia. Needs App lock turned on."
+            detail: "Choose how long Aletheia can sit unused before it locks. Needs App lock turned on."
         ) {
             Picker("Auto-lock after", selection: idleAutoLockSelection) {
                 ForEach(IdleAutoLockTimeout.allCases) { timeout in
@@ -889,6 +894,16 @@ struct SettingsView: View {
             .frame(width: 180)
             .disabled(!settings.appLockEnabled)
         }
+        SettingsSwitchRow(
+            title: "Hide Aletheia from screen sharing",
+            detail: "Protect patient windows from capture. A locked window is always hidden from capture.",
+            isOn: $settings.hideFromScreenSharing
+        )
+        SettingsSwitchRow(
+            title: "Allow screen sharing this session",
+            detail: "Temporary exception for a clinical screen share. Resets when Aletheia quits.",
+            isOn: $settings.allowScreenSharingThisSession
+        )
         SettingsSwitchRow(
             title: "Show patient names in notifications",
             detail: "Off by default. Notifications appear on the lock screen and stay in Notification Center, so they just say that a session is ready. Turn this on to include the patient's name and the session date.",
