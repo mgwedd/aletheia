@@ -3,6 +3,7 @@ import Foundation
 enum StoreError: LocalizedError {
     case noDataRoot
     case patientNotFound
+    case patientFolderMigrationIncomplete
     case sessionNotFound
     /// A session folder's `session.json` is present but couldn't be read or
     /// decoded. The file is **never** rewritten and no replacement identity is
@@ -26,6 +27,7 @@ enum StoreError: LocalizedError {
         switch self {
         case .noDataRoot: return "No data folder has been chosen yet. Open Settings to pick one."
         case .patientNotFound: return "That patient couldn't be found on disk."
+        case .patientFolderMigrationIncomplete: return "The patient folder upgrade must finish before records can be changed. Reopen Aletheia after resolving the folder issue."
         case .sessionNotFound: return "That session couldn't be found on disk."
         // No patient names, note text or paths here: the folder is available
         // as a structured value on the case for callers that want to show it.
@@ -47,8 +49,8 @@ enum StoreError: LocalizedError {
 
 /// All disk I/O lives here. Layout, on purpose, is plain and Finder-browsable:
 ///
-///   <dataRoot>/Patients/<Patient-Slug>/patient.json
-///   <dataRoot>/Patients/<Patient-Slug>/YYYY-MM-DD_Session/
+///   <dataRoot>/Patients/<Patient-UUID>/patient.json
+///   <dataRoot>/Patients/<Patient-UUID>/YYYY-MM-DD_Session/
 ///       session.json       (the session's stable id + date)
 ///       mic.caf            (therapist's microphone)
 ///       call.caf            (the other side of the call, captured system audio)
@@ -60,8 +62,8 @@ enum StoreError: LocalizedError {
 ///
 /// Identity is a persisted `UUID`, never the path. A patient's id lives in
 /// `patient.json`, a session's in `session.json` — both assigned once at
-/// creation. The folder names (`<Patient-Slug>/`, `YYYY-MM-DD_Session/`) are a
-/// human-friendly *organization* detail, freely renamable: the SQLite store
+/// creation. Patient folder names are opaque UUIDs; session folder names are
+/// dates. Both can be renamed: the SQLite store
 /// (`CommentStore`) keys comments/notes/chats on those ids, so annotations
 /// follow a session or patient across a rename or move. A folder that turns up
 /// without a `session.json` (created before this scheme, or dropped in by hand)
@@ -136,7 +138,7 @@ final class Store {
         self.searchIndex = searchIndex
         self.protector = protector
         self.commentStore = commentStore ?? (openDatabaseIfMissing ? CommentStore(root: root, protector: protector) : nil)
-        self.schemaCompatibility = Store.reconcileSchema(at: root)
+        self.schemaCompatibility = Store.reconcileSchema(at: root, protector: protector)
         self.commentStore?.onRecordDecodeFailure = { [weak self] in
             guard let self else { return }
             self.recordStoredDamage(folder: root, file: "Aletheia.sqlite", reason: .undecodable)
@@ -152,7 +154,14 @@ final class Store {
 
     // MARK: - Schema
 
-    private static func reconcileSchema(at root: URL) -> SchemaCompatibility {
+    /// Serializes opening a folder within the process: the app and an App
+    /// Intent can each build a `Store` at the same moment, and two folder
+    /// migrations racing over the same directories could undo each other.
+    private static let reconcileLock = NSLock()
+
+    private static func reconcileSchema(at root: URL, protector: FileProtector) -> SchemaCompatibility {
+        reconcileLock.lock()
+        defer { reconcileLock.unlock() }
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         let metaURL = root.appendingPathComponent(DataSchema.metadataFileName)
@@ -165,15 +174,35 @@ final class Store {
                 return .needsNewerApp(dataVersion: meta.schemaVersion, appVersion: current)
             }
             if meta.schemaVersion < current {
-                // (Migrations from meta.schemaVersion → current would run here.)
+                if meta.schemaVersion < 2 {
+                    do {
+                        let outcome = try PatientFolderMigration.run(root: root, protector: protector)
+                        // Damaged records were left as they are: keep the old
+                        // stamp so the next open tries them again.
+                        if outcome.skippedUnreadable > 0 { return .ok }
+                    } catch {
+                        return .migrationFailed
+                    }
+                }
                 writeMetadata(StoreMetadata(schemaVersion: current, lastWrittenBy: appVersion), to: metaURL)
                 return .upgraded(fromVersion: meta.schemaVersion)
             }
             return .ok
         }
 
-        // No stamp yet (fresh folder, or one from before versioning existed):
-        // claim it at the current version.
+        // An unstamped legacy folder can contain named patient directories.
+        // Treat it as v1 and migrate before claiming the current version.
+        if fileManager.fileExists(atPath: root.appendingPathComponent("Patients").path) {
+            do {
+                let outcome = try PatientFolderMigration.run(root: root, protector: protector)
+                if outcome.skippedUnreadable > 0 {
+                    writeMetadata(StoreMetadata(schemaVersion: 1, lastWrittenBy: appVersion), to: metaURL)
+                    return .ok
+                }
+            } catch {
+                return .migrationFailed
+            }
+        }
         writeMetadata(StoreMetadata(schemaVersion: current, lastWrittenBy: appVersion), to: metaURL)
         return .ok
     }
@@ -220,7 +249,7 @@ final class Store {
                 continue
             }
             do {
-                patients.append(try JSONDecoder.aletheia.decode(Patient.self, from: data))
+                patients.append(Store.locatedIn(dir, try JSONDecoder.aletheia.decode(Patient.self, from: data)))
             } catch {
                 unreadable.append(UnreadableEntry(kind: .patientRecord, reason: .undecodable, folder: dir))
             }
@@ -240,7 +269,7 @@ final class Store {
     var unreadableEntries: [UnreadableEntry] {
         unreadableLock.lock()
         defer { unreadableLock.unlock() }
-        return recordedUnreadable.sorted { $0.id < $1.id }
+        return (recordedUnreadable + (commentStore?.unreadableEntries ?? [])).sorted { $0.id < $1.id }
     }
 
     /// Lists every patient and every patient's sessions, and returns everything
@@ -280,43 +309,40 @@ final class Store {
     }
 
     func createPatient(name: String) throws -> Patient {
+        guard schemaCompatibility != .migrationFailed else { throw StoreError.patientFolderMigrationIncomplete }
         try fileManager.createDirectory(at: patientsDir, withIntermediateDirectories: true)
-        let slug = try uniqueSlug(for: name)
-        let patient = Patient(name: name, slug: slug)
+        var id = UUID()
+        while fileManager.fileExists(atPath: patientsDir.appendingPathComponent(id.uuidString).path) {
+            id = UUID()
+        }
+        let patient = Patient(id: id, name: name, slug: id.uuidString)
         try fileManager.createDirectory(at: patientDir(for: patient), withIntermediateDirectories: true)
         try save(patient)
         return patient
     }
 
     func save(_ patient: Patient) throws {
+        guard schemaCompatibility != .migrationFailed else { throw StoreError.patientFolderMigrationIncomplete }
         let data = try JSONEncoder.aletheia.encode(patient)
         try fileManager.createDirectory(at: patientDir(for: patient), withIntermediateDirectories: true)
         try protector.write(data, to: patientDir(for: patient).appendingPathComponent("patient.json"))
     }
 
+    /// The folder a `patient.json` was found in is where that patient's
+    /// sessions are. A recorded `slug` can disagree with it: a folder upgrade
+    /// interrupted between moving a folder and rewriting its record, or a
+    /// folder renamed by hand. Trusting the slug there would hide the sessions
+    /// and send new ones to a folder with no patient record.
+    static func locatedIn(_ folder: URL, _ patient: Patient) -> Patient {
+        let name = folder.lastPathComponent
+        guard patient.slug != name else { return patient }
+        return Patient(
+            id: patient.id, name: patient.name, notes: patient.notes, createdAt: patient.createdAt,
+            slug: name, clinicalHistory: patient.clinicalHistory, medications: patient.medications)
+    }
+
     func patientDir(for patient: Patient) -> URL {
         patientsDir.appendingPathComponent(patient.slug, isDirectory: true)
-    }
-
-    private func uniqueSlug(for name: String) throws -> String {
-        let base = slugify(name)
-        var candidate = base
-        var suffix = 2
-        let existing = Set(try fileManager.contentsOfDirectory(at: patientsDir, includingPropertiesForKeys: nil).map { $0.lastPathComponent })
-        while existing.contains(candidate) {
-            candidate = "\(base)-\(suffix)"
-            suffix += 1
-        }
-        return candidate
-    }
-
-    private func slugify(_ name: String) -> String {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let allowed = trimmed.map { char -> Character in
-            char.isLetter || char.isNumber ? char : "-"
-        }
-        let collapsed = String(allowed).split(separator: "-").joined(separator: "-")
-        return collapsed.isEmpty ? "Patient" : collapsed
     }
 
     /// Deletes a patient and all associated clinical data:
@@ -562,6 +588,26 @@ final class Store {
         patientDir(for: patient).appendingPathComponent(session.folderName, isDirectory: true)
     }
 
+    /// The private staging root where live audio files are recorded before being
+    /// sealed into the patient session folder. Created with 0o700 permissions.
+    static var stagingDirectoryURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Aletheia", isDirectory: true)
+            .appendingPathComponent("Staging", isDirectory: true)
+    }
+
+    static func stagingDir(for sessionID: UUID, in stagingRoot: URL = stagingDirectoryURL) -> URL {
+        stagingRoot.appendingPathComponent(sessionID.uuidString, isDirectory: true)
+    }
+
+    func stagingMicURL(for session: SessionRecord, in stagingRoot: URL = stagingDirectoryURL) -> URL {
+        Store.stagingDir(for: session.id, in: stagingRoot).appendingPathComponent("mic.caf")
+    }
+
+    func stagingCallURL(for session: SessionRecord, in stagingRoot: URL = stagingDirectoryURL) -> URL {
+        Store.stagingDir(for: session.id, in: stagingRoot).appendingPathComponent("call.caf")
+    }
+
     func micRecordingURL(for patient: Patient, session: SessionRecord) -> URL {
         sessionDir(for: patient, session: session).appendingPathComponent("mic.caf")
     }
@@ -583,6 +629,7 @@ final class Store {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
             do { try FileManager.default.removeItem(at: url) } catch { failed = true }
         }
+        try? FileManager.default.removeItem(at: Store.stagingDir(for: session.id))
         if failed { throw StoreError.recordingNotDeleted }
     }
 
@@ -1506,6 +1553,11 @@ final class Store {
     /// `AssistantService.patientContextCharacters`): background, search block,
     /// notes and comments (newest sessions first, up to a third of what is
     /// left) and the rest all come out of it.
+    ///
+    /// The background and the question are the therapist's own text: over
+    /// `TherapistInput.characterLimit` the context carries `inputError` (and
+    /// nothing is gathered); a background over a quarter of `characterBudget`
+    /// goes in as the parts that match the question, and the coverage says so.
     func gatherCitedPatientContext(
         for patient: Patient,
         relevantTo question: String,
@@ -1515,7 +1567,25 @@ final class Store {
         // Prepend the patient's background (clinical history + meds) when enabled
         // so the assistant can draw on it whenever it's relevant, without it having
         // to be requested. Empty when nothing has been entered or when disabled.
-        let background = includeBackground ? patient.aiBackgroundBlock : ""
+        let rawBackground = includeBackground ? patient.aiBackgroundBlock : ""
+        do {
+            try TherapistInput.check([(question, .question), (rawBackground, .background)])
+        } catch let error as TherapistInput.TooLong {
+            return PatientContext(text: "", sources: [], inputError: error)
+        } catch {}
+        let fitted = TherapistInput.fit(rawBackground, room: characterBudget / 4, query: question)
+        var context = gatherPatientContext(
+            for: patient, relevantTo: question, characterBudget: characterBudget, background: fitted.text)
+        if fitted.excerpted { context.coverage.excerptedFields = [.background] }
+        return context
+    }
+
+    private func gatherPatientContext(
+        for patient: Patient,
+        relevantTo question: String,
+        characterBudget: Int,
+        background: String
+    ) -> PatientContext {
         let room = max(0, characterBudget - background.count)
         var extrasRemaining = room / 3
         var extrasUsed = 0
@@ -1537,7 +1607,13 @@ final class Store {
         for session in sessions {
             let parts = sessionMaterialParts(for: patient, session: session)
             let limit = min(Store.patientChatSessionExtrasLimit, extrasRemaining)
-            var material = limit > 0 ? Store.capped(parts.map(\.text), limit: limit) : []
+            // Generated notes are the model's writing: tagged as material once
+            // capped, so a cut can't drop the closing tag.
+            var material = (limit > 0 ? Store.capped(parts.map(\.text), limit: limit) : [])
+                .enumerated().map { index, block in
+                    index < parts.count && parts[index].kind == .note && block != Store.omittedNotesMarker
+                        ? UntrustedText(.material, block).rendered : block
+                }
             if parts.reduce(0, { $0 + $1.text.count }) > limit { notesCut += 1 }
             let materialSize = material.reduce(0) { $0 + $1.count }
             extrasRemaining -= materialSize
@@ -1621,7 +1697,7 @@ final class Store {
         var sources: [CitationSource] = []
         for date in dates {
             var parts: [String] = []
-            parts.append(contentsOf: (excerptsByDate[date] ?? []).map { $0.text })
+            parts.append(contentsOf: (excerptsByDate[date] ?? []).map { UntrustedText(.transcript, $0.text).rendered })
             parts.append(contentsOf: extras[date] ?? [])
             // Nothing from this session made it into the context: don't cite it.
             guard !parts.isEmpty, let tag = labels[date], let folderName = firstFolder[date] else { continue }
@@ -1781,7 +1857,7 @@ final class Store {
             if let digestBlock = digestPlan.individualByDate[date] { parts.append(digestBlock) }
             parts.append(contentsOf: (openingsByDate[date] ?? []).map(\.block))
             parts.append(contentsOf: sectionsByDate[date] ?? [])
-            parts.append(contentsOf: (excerptsByDate[date] ?? []).map { $0.text })
+            parts.append(contentsOf: (excerptsByDate[date] ?? []).map { UntrustedText(.transcript, $0.text).rendered })
             parts.append(contentsOf: input.extras[date] ?? [])
             guard !parts.isEmpty, let tag = input.labels[date], let folderName = input.firstFolder[date] else { continue }
             blocks.append("\(PatientContextRetriever.header(date, labels: input.labels))\n\(parts.joined(separator: "\n\n"))")
@@ -1968,12 +2044,14 @@ final class Store {
 
     /// Keeps as many of `blocks` as fit in `limit` characters, cutting the block
     /// that crosses the limit with a marker and noting if later ones were left out.
+    static let omittedNotesMarker = "[further notes omitted]"
+
     static func capped(_ blocks: [String], limit: Int) -> [String] {
         var remaining = limit
         var kept: [String] = []
         for block in blocks {
             if remaining <= 0 {
-                kept.append("[further notes omitted]")
+                kept.append(omittedNotesMarker)
                 break
             }
             if block.count > remaining {

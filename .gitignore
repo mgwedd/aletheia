@@ -235,3 +235,7 @@ xcuserdata/
 
 # LLM eval output (PHI) must never be committed
 aletheia-eval/
+
+# Private local notes, never committed
+*.local.md
+*.local.md.bak

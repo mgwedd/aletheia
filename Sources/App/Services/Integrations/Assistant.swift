@@ -63,6 +63,25 @@ protocol Assistant {
         onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error>
 
+    /// Like `generate(model:system:prompt:task:grammar:)`, after earlier chat
+    /// turns. A backend with a chat template sends them as its own turns; the
+    /// default writes them out before the prompt.
+    func generate(
+        model: String, system: String, turns: [PromptTurn], prompt: String, task: AITask, grammar: LocalLLMGrammar?
+    ) async throws -> String
+
+    /// Like `stream(model:system:prompt:task:grammar:onStats:)`, after earlier
+    /// chat turns (see the `generate` with turns).
+    func stream(
+        model: String,
+        system: String,
+        turns: [PromptTurn],
+        prompt: String,
+        task: AITask,
+        grammar: LocalLLMGrammar?,
+        onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error>
+
     /// Load the model ahead of the first real request. Default does nothing.
     func warmUp(model: String)
 
@@ -96,6 +115,27 @@ extension Assistant {
         onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {
         stream(model: model, system: system, prompt: prompt, task: task, onStats: onStats)
+    }
+
+    func generate(
+        model: String, system: String, turns: [PromptTurn], prompt: String, task: AITask, grammar: LocalLLMGrammar?
+    ) async throws -> String {
+        try await generate(
+            model: model, system: system, prompt: PromptTurn.flattened(turns, then: prompt), task: task, grammar: grammar)
+    }
+
+    func stream(
+        model: String,
+        system: String,
+        turns: [PromptTurn],
+        prompt: String,
+        task: AITask,
+        grammar: LocalLLMGrammar?,
+        onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        stream(
+            model: model, system: system, prompt: PromptTurn.flattened(turns, then: prompt), task: task,
+            grammar: grammar, onStats: onStats)
     }
 
     func warmUp(model: String) {}

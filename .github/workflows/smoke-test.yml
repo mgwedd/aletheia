@@ -42,6 +42,8 @@ jobs:
           persist-credentials: false
       - name: Check per-tier entitlements
         run: ./scripts/check-entitlements.sh
+      - name: Self-test the entitlements guard
+        run: ./scripts/check-entitlements.sh --self-test
       # Screens take every color from Theme (CLAUDE.md, Conventions).
       - name: Self-test the theme color guard
         run: ./scripts/check-theme-colors.sh --self-test

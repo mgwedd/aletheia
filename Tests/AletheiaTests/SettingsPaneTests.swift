@@ -6,7 +6,7 @@ final class SettingsPaneTests: XCTestCase {
     func testSidebarOrder() {
         XCTAssertEqual(
             SettingsPane.allCases.map(\.title),
-            ["General", "AI and models", "Note format", "Encryption", "Backups", "Security"]
+            ["General", "AI and models", "Note format", "Encryption", "Backups", "Security", "Licenses", "Set-aside recordings"]
         )
     }
 
@@ -14,7 +14,7 @@ final class SettingsPaneTests: XCTestCase {
         XCTAssertEqual(SettingsPane.general.moved(by: 1), .ai)
         XCTAssertEqual(SettingsPane.ai.moved(by: -1), .general)
         XCTAssertEqual(SettingsPane.general.moved(by: -1), .general)
-        XCTAssertEqual(SettingsPane.security.moved(by: 1), .security)
+        XCTAssertEqual(SettingsPane.setAsideRecordings.moved(by: 1), .setAsideRecordings)
     }
 
     // MARK: - Panes a build does not offer
@@ -22,8 +22,8 @@ final class SettingsPaneTests: XCTestCase {
     func testEncryptionPaneIsOmittedWhenNotOffered() {
         let panes = SettingsPane.available(encryptionOffered: false)
         XCTAssertFalse(panes.contains(.encryption))
-        XCTAssertEqual(panes.map(\.title), ["General", "AI and models", "Note format", "Backups", "Security"])
-        XCTAssertEqual(SettingsPane.available(encryptionOffered: true), SettingsPane.allCases)
+        XCTAssertEqual(panes.map(\.title), ["General", "AI and models", "Note format", "Backups", "Security", "Licenses"])
+        XCTAssertEqual(SettingsPane.available(encryptionOffered: true, hasSetAsideRecordings: true), SettingsPane.allCases)
     }
 
     func testSteppingSkipsAnOmittedPane() {

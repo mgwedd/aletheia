@@ -185,7 +185,7 @@ struct FirstRunView: View {
                         Label("Set Up Encryption", systemImage: "lock.shield")
                     }
                     .buttonStyle(.themePrimary)
-                    Text("Or turn it on later in Settings. FileVault is recommended either way.")
+                    Text("Or turn it on later in Settings. FileVault needs to be on before you add patients.")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.muted.color)
                 }

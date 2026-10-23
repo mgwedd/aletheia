@@ -16,8 +16,9 @@ struct PatientsListView: View {
     @State private var showAddPatient = false
     @State private var newPatientName = ""
 
-    private var visibleUnreadablePatients: [UnreadableEntry] {
-        appModel.unreadablePatients.filter { !settings.isDamagedRecordDismissed(id: $0.id) }
+    private var visibleUnreadableRecords: [UnreadableEntry] {
+        (appModel.unreadablePatients + appModel.unreadableDatabaseRecords)
+            .filter { !settings.isDamagedRecordDismissed(id: $0.id) }
     }
 
     var body: some View {
@@ -84,12 +85,12 @@ struct PatientsListView: View {
         VStack(alignment: .leading, spacing: 12) {
             GlobalSearchField(model: search, isFocused: searchFocused, onOpen: onOpenSearchResult)
 
-            if !visibleUnreadablePatients.isEmpty {
+            if !visibleUnreadableRecords.isEmpty {
                 DamagedRecordsNotice(
-                    title: visibleUnreadablePatients.count == 1
-                        ? "1 patient couldn't be read"
-                        : "\(visibleUnreadablePatients.count) patients couldn't be read",
-                    entries: visibleUnreadablePatients,
+                    title: visibleUnreadableRecords.count == 1
+                        ? "1 record couldn't be read"
+                        : "\(visibleUnreadableRecords.count) records couldn't be read",
+                    entries: visibleUnreadableRecords,
                     onDismiss: { entry in
                         settings.dismissDamagedRecord(id: entry.id)
                     }

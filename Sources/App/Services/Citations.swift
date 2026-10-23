@@ -20,18 +20,23 @@ struct PatientContext {
     let text: String
     let sources: [CitationSource]
     let unreadableSessions: Int
-    let coverage: TranscriptCoverage
+    var coverage: TranscriptCoverage
+    /// The background or question is over `TherapistInput.characterLimit`:
+    /// the answer fails with this, and nothing was gathered.
+    let inputError: TherapistInput.TooLong?
 
     init(
         text: String,
         sources: [CitationSource],
         unreadableSessions: Int = 0,
-        coverage: TranscriptCoverage = TranscriptCoverage()
+        coverage: TranscriptCoverage = TranscriptCoverage(),
+        inputError: TherapistInput.TooLong? = nil
     ) {
         self.text = text
         self.sources = sources
         self.unreadableSessions = unreadableSessions
         self.coverage = coverage
+        self.inputError = inputError
     }
 }
 
@@ -98,6 +103,9 @@ struct TranscriptCoverage: Equatable {
     var sessionsWithMentions: Int = 0
     /// The session's date when every match is in one session.
     var mentionDate: Date?
+    /// The therapist's fields that went in only as the parts matching the
+    /// question (`TherapistInput.fit`).
+    var excerptedFields: [TherapistInput.Field] = []
 
     /// Records what search found, for the status line (`PatientAskSteps.finding`).
     mutating func noteSearch(_ search: SessionSearch.Result) {
@@ -178,9 +186,10 @@ struct TranscriptCoverage: Equatable {
             parts.append("follow-up lookups in the transcripts of \(lookupTags.count) more session\(lookupTags.count == 1 ? "" : "s")")
         }
         if unreadableSessions > 0 { parts.append("\(sessions(unreadableSessions)) could not be read, so answers may be incomplete") }
-        guard !parts.isEmpty else { return nil }
+        let note = TherapistInput.coverageNote(excerptedFields)
+        guard !parts.isEmpty else { return note }
         let suffix = effort.map { " · \($0.displayName)" } ?? ""
-        return "Read: " + parts.joined(separator: " · ") + suffix
+        return "Read: " + parts.joined(separator: " · ") + suffix + (note.map { ". " + $0 } ?? "")
     }
 }
 

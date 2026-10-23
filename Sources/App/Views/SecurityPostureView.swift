@@ -23,11 +23,13 @@ struct SecurityPostureView: View {
                 moduleInBuild: appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
             ),
             auditLogActive: appModel.audit != nil,
+            auditLogVerifiable: appModel.audit?.isVerifiable ?? true,
             localEncryptedBackup: settings.localEncryptedBackupEnabled,
             localBackupActive: LocalEncryptedBackupService.isWired,
             iCloudBackupEnabled: settings.iCloudEncryptedBackupEnabled,
             iCloudBackupConfigured: ICloudEncryptedBackupService.isProvisioned,
-            networkOnline: reachability.isOnline
+            networkOnline: reachability.isOnline,
+            diskEncrypted: appModel.diskEncrypted
         )
     }
 

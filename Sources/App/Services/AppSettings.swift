@@ -39,6 +39,12 @@ enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
         case .largeV3: return "Large v3"
         }
     }
+
+    /// Whisper's weights are released by OpenAI under the MIT License.
+    var licenseName: String { "MIT License" }
+
+    /// Where that license can be read (opened in the user's browser).
+    var licenseURL: URL { URL(string: "https://github.com/openai/whisper/blob/main/LICENSE")! }
 }
 
 /// Idle auto-lock choices offered in Settings (HIPAA §164.312(a)(2)(iii)
@@ -54,9 +60,9 @@ enum IdleAutoLockTimeout: Int, CaseIterable, Identifiable, Codable, Hashable {
 
     var id: Int { rawValue }
 
-    /// Off: by default the app locks only when the Mac locks or sleeps, so the
-    /// Mac's own Lock Screen setting decides. The in-app idle lock is opt-in.
-    static let defaultTimeout: IdleAutoLockTimeout = .off
+    /// New installs lock after 15 minutes of inactivity. An explicit Never
+    /// choice remains available and persists.
+    static let defaultTimeout: IdleAutoLockTimeout = .fifteenMinutes
 
     var displayName: String {
         switch self {
@@ -85,11 +91,12 @@ final class AppSettings: ObservableObject {
         static let llamaModel = "llamaModel"
         static let systemPrompt = "systemPrompt"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
-        static let updateFeedURL = "updateFeedURL"
         static let autoCheckForUpdates = "autoCheckForUpdates"
         static let spotlightIndexingEnabled = "spotlightIndexingEnabled"
         static let appLockEnabled = "appLockEnabled"
         static let idleAutoLockMinutes = "idleAutoLockMinutes"
+        static let lockWhenHidden = "lockWhenHidden"
+        static let hideFromScreenSharing = "hideFromScreenSharing"
         static let acceptedLegalVersion = "acceptedLegalVersion"
         static let acceptedLegalDate = "acceptedLegalDate"
         static let progressNoteFormat = "progressNoteFormat"
@@ -115,11 +122,6 @@ final class AppSettings: ObservableObject {
         static let keepDataOutOfSystemBackups = BackupExclusion.defaultsKey
         static let dismissedDamagedRecordIDs = "dismissedDamagedRecordIDs"
     }
-
-    /// Where the app looks for its update manifest. Defaults to the
-    /// `appcast.json` asset of the repo's latest GitHub release; until a
-    /// release publishes one, the check just finds nothing (no error shown).
-    static let defaultUpdateFeedURL = URL(string: "https://github.com/mgwedd/aletheia/releases/latest/download/appcast.json")!
 
     private let defaults: UserDefaults
 
@@ -148,9 +150,6 @@ final class AppSettings: ObservableObject {
     @Published var hasCompletedFirstRun: Bool {
         didSet { defaults.set(hasCompletedFirstRun, forKey: Keys.hasCompletedFirstRun) }
     }
-    @Published var updateFeedURL: URL {
-        didSet { defaults.set(updateFeedURL.absoluteString, forKey: Keys.updateFeedURL) }
-    }
     /// Whether to check for software updates automatically on launch and when the app
     /// becomes active. On by default. When off, updates are only checked when the
     /// user clicks "Check for Updates" in Settings.
@@ -166,6 +165,14 @@ final class AppSettings: ObservableObject {
     @Published var appLockEnabled: Bool {
         didSet { defaults.set(appLockEnabled, forKey: Keys.appLockEnabled) }
     }
+    @Published var lockWhenHidden: Bool {
+        didSet { defaults.set(lockWhenHidden, forKey: Keys.lockWhenHidden) }
+    }
+    @Published var hideFromScreenSharing: Bool {
+        didSet { defaults.set(hideFromScreenSharing, forKey: Keys.hideFromScreenSharing) }
+    }
+    /// Temporary exception; always resets at launch.
+    @Published var allowScreenSharingThisSession = false
     /// HIPAA §164.312(a)(2)(iii) "automatic logoff": how many minutes of
     /// inactivity before `AppLock` re-engages, one of `IdleAutoLockTimeout`'s
     /// `allCases` values. `0` means "Never" (idle auto-lock off). Only takes
@@ -417,7 +424,9 @@ final class AppSettings: ObservableObject {
         keepDataOutOfSystemBackups = BackupExclusion.resolvedExclusion(in: defaults)
         debugDiagnosticsEnabled = defaults.bool(forKey: Keys.debugDiagnosticsEnabled)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
-        appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
+        appLockEnabled = defaults.object(forKey: Keys.appLockEnabled) as? Bool ?? true
+        lockWhenHidden = defaults.object(forKey: Keys.lockWhenHidden) as? Bool ?? false
+        hideFromScreenSharing = defaults.object(forKey: Keys.hideFromScreenSharing) as? Bool ?? true
         if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,
            IdleAutoLockTimeout.allCases.map(\.rawValue).contains(stored) {
             idleAutoLockMinutes = stored
@@ -448,11 +457,6 @@ final class AppSettings: ObservableObject {
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil
-        if let raw = defaults.string(forKey: Keys.updateFeedURL), let url = URL(string: raw) {
-            updateFeedURL = url
-        } else {
-            updateFeedURL = AppSettings.defaultUpdateFeedURL
-        }
         autoCheckForUpdates = defaults.object(forKey: Keys.autoCheckForUpdates) as? Bool ?? true
         if let savedDismissed = defaults.stringArray(forKey: Keys.dismissedDamagedRecordIDs) {
             dismissedDamagedRecordIDs = Set(savedDismissed)
