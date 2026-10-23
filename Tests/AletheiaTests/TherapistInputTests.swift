@@ -2,6 +2,10 @@ import XCTest
 @testable import Aletheia
 
 final class TherapistInputTests: XCTestCase {
+    override func setUp() {
+        SessionSearch.index = SearchIndex()   // earlier tests may have left a locked file index behind
+    }
+
     func testLimitIsAboutOneHundredPages() {
         XCTAssertEqual(TherapistInput.pageLimit, 100)
         XCTAssertEqual(TherapistInput.characterLimit, 300_000)
