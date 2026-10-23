@@ -70,6 +70,8 @@ struct AletheiaApp: App {
     @StateObject private var transcription: TranscriptionCoordinator
     /// Patient-records exports run in the background and report through this.
     @StateObject private var exports: ExportJobCenter
+    /// The offline license check. Gates only new recording and AI.
+    @StateObject private var license: LicenseState
     /// Keeps every app window out of screen sharing per the setting, and hides
     /// sheets, alerts and popovers while the app is locked.
     private let windowShield: WindowShield
@@ -88,6 +90,9 @@ struct AletheiaApp: App {
         _appModel = StateObject(wrappedValue: appModel)
         let integrations = Integrations(settings: settings)
         _integrations = StateObject(wrappedValue: integrations)
+        let license = LicenseState(settings: settings)
+        _license = StateObject(wrappedValue: license)
+        integrations.inferenceQueue.licenseRefusal = { [weak license] in license?.newWorkRefusal }
         let transcription = TranscriptionCoordinator(
             appModel: appModel,
             integrations: integrations,
@@ -95,6 +100,7 @@ struct AletheiaApp: App {
         )
         _transcription = StateObject(wrappedValue: transcription)
         let recorder = SessionRecorder()
+        recorder.licenseRefusal = { [weak license] in license?.newWorkRefusal }
         recorder.onStopped = { [weak transcription] in transcription?.startAfterRecording($0) }
         // Also a system notification, so it's noticed when the app isn't
         // focused (the therapist has likely switched to the call window).
@@ -178,6 +184,7 @@ struct AletheiaApp: App {
                 .environmentObject(transcription)
                 .environmentObject(encryption)
                 .environmentObject(exports)
+                .environmentObject(license)
                 .sheet(isPresented: showFirstRun) {
                     FirstRunView()
                         .noWritingTools()
@@ -188,6 +195,7 @@ struct AletheiaApp: App {
                         // objects FirstRunView (and the encryption setup sheet it
                         // presents) reads must be injected here explicitly.
                         .environmentObject(encryption)
+                        .environmentObject(license)
                 }
                 .frame(minWidth: 900, minHeight: 600)
                 .task {
@@ -196,6 +204,8 @@ struct AletheiaApp: App {
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in
+                    // An expiry that passed while the app was open takes effect now.
+                    if phase == .active { license.refresh() }
                     // AppLock observes hide (when enabled), idle, sleep and screen lock.
                     if phase == .active, settings.autoCheckForUpdates {
                         Task { await updateService.checkForUpdates() }
@@ -288,6 +298,7 @@ struct AletheiaApp: App {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(encryption)
+                .environmentObject(license)
                 .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
         }
 

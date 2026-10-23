@@ -92,6 +92,9 @@ final class AppSettings: ObservableObject {
         static let hideFromScreenSharing = "hideFromScreenSharing"
         static let acceptedLegalVersion = "acceptedLegalVersion"
         static let acceptedLegalDate = "acceptedLegalDate"
+        static let licenseToken = "licenseToken"
+        static let revokedLicenseIDs = "revokedLicenseIDs"
+        static let lastRevocationIssuedAt = "lastRevocationIssuedAt"
         static let progressNoteFormat = "progressNoteFormat"
         static let summaryVerbosity = "summaryVerbosity"
         static let includeCommentsInDrafts = "includeCommentsInDrafts"
@@ -349,6 +352,22 @@ final class AppSettings: ObservableObject {
     @Published private(set) var acceptedLegalVersion: String {
         didSet { defaults.set(acceptedLegalVersion, forKey: Keys.acceptedLegalVersion) }
     }
+    /// The pasted license token (`ALET1.…`). It is signed, not secret, so it
+    /// lives in preferences like any other setting. Empty until entered. Checked
+    /// offline by `LicenseState`.
+    @Published var licenseToken: String {
+        didSet { defaults.set(licenseToken, forKey: Keys.licenseToken) }
+    }
+    /// License ids named by the newest accepted revocation list (see
+    /// `RevocationList`); kept so a revocation still holds after a relaunch.
+    @Published var revokedLicenseIDs: [String] {
+        didSet { defaults.set(revokedLicenseIDs, forKey: Keys.revokedLicenseIDs) }
+    }
+    /// The `iat` (Unix seconds) of the newest accepted revocation list; an older
+    /// list is ignored so a stale one cannot be replayed. 0 = none accepted yet.
+    @Published var lastRevocationIssuedAt: Int {
+        didSet { defaults.set(lastRevocationIssuedAt, forKey: Keys.lastRevocationIssuedAt) }
+    }
     /// When the current terms were accepted, recorded locally alongside the
     /// version. `nil` until accepted. Never leaves this Mac.
     @Published private(set) var acceptedLegalDate: Date? {
@@ -446,6 +465,9 @@ final class AppSettings: ObservableObject {
         patientChatEffort = defaults.string(forKey: Keys.patientChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
         summariesPaused = defaults.bool(forKey: Keys.summariesPaused)
         prepareSummariesOnBattery = defaults.bool(forKey: Keys.prepareSummariesOnBattery)
+        licenseToken = defaults.string(forKey: Keys.licenseToken) ?? ""
+        revokedLicenseIDs = defaults.stringArray(forKey: Keys.revokedLicenseIDs) ?? []
+        lastRevocationIssuedAt = defaults.integer(forKey: Keys.lastRevocationIssuedAt)
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil
@@ -507,10 +529,14 @@ final class AppSettings: ObservableObject {
     /// append-only receipt in the data folder (`LegalReceipt`). This is a
     /// good-faith on-device record, not tamper-proof proof and not tied to a
     /// person's identity. Defaults are injectable for tests.
-    func recordLegalAcceptance(version: String = Legal.currentVersion, at date: Date = Date()) {
+    func recordLegalAcceptance(
+        version: String = Legal.currentVersion, at date: Date = Date(), license: LicenseToken? = nil
+    ) {
         acceptedLegalVersion = version
         acceptedLegalDate = date
-        LegalReceipt.append(version: version, at: date, root: dataRootURL, appVersion: Self.appVersionString)
+        LegalReceipt.append(
+            version: version, at: date, root: dataRootURL, appVersion: Self.appVersionString,
+            licenseID: license?.lid, licensee: license?.sub)
     }
 
     /// The app's marketing version (CFBundleShortVersionString), for stamping

@@ -9,6 +9,7 @@ struct RootView: View {
     @EnvironmentObject private var recorder: SessionRecorder
     @EnvironmentObject private var transcription: TranscriptionCoordinator
     @EnvironmentObject private var exports: ExportJobCenter
+    @EnvironmentObject private var license: LicenseState
     @ObservedObject private var navigator = AppNavigator.shared
     @ObservedObject private var setAside = SetAsideRecordings.shared
     @Environment(\.openWindow) private var openWindow
@@ -70,6 +71,7 @@ struct RootView: View {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(encryption)
+                .environmentObject(license)
         }
         .sheet(item: $editingProfile) { patient in
             PatientProfileEditor(
@@ -211,6 +213,10 @@ struct RootView: View {
                     onOpenDoctor: { openWindow(id: DoctorFeatureModule.windowID) },
                     onDismiss: { appModel.dismissSaveFailure() }
                 )
+            }
+            LicenseBanner(status: license.status) {
+                navigator.requestSettings(.license)
+                showSettings = true
             }
             if !setAside.items.isEmpty {
                 SetAsideRecordingsStrip(count: setAside.items.count) {

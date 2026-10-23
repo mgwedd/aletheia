@@ -129,6 +129,11 @@ final class ChatStreamRunner: ObservableObject {
         onCancelledWhileQueued: @escaping () -> Void = {}
     ) {
         stop()
+        // A lapsed license stops the run before anything is queued or sent to the model.
+        do { try queue.authorize() } catch {
+            onError(error)
+            return
+        }
         titles = (readTitle, writeTitle)
         self.runStartedAt = runStartedAt
         self.queue = queue

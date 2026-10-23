@@ -4,6 +4,7 @@ struct FirstRunView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var encryption: EncryptionManager
+    @EnvironmentObject private var license: LicenseState
 
     /// Set once the user ticks the acceptance box. Not persisted until they
     /// press "Finish setup" — that's the moment acceptance is recorded on disk.
@@ -35,6 +36,10 @@ struct FirstRunView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: 600, alignment: .leading)
                     }
+
+                    licenseSection
+
+                    hairline
 
                     SetupChecklistView()
 
@@ -127,7 +132,7 @@ struct FirstRunView: View {
     private func finish() {
         // Record acceptance locally (version + timestamp) at the exact moment
         // the user proceeds, then unlock the app.
-        settings.recordLegalAcceptance()
+        settings.recordLegalAcceptance(license: license.status.token)
         settings.hasCompletedFirstRun = true
     }
 
@@ -180,6 +185,35 @@ struct FirstRunView: View {
         }
     }
 
+    /// Step 1: the license key, checked on this Mac. It comes before the terms, so
+    /// the acceptance below is recorded against a named licensee. Once setup has
+    /// been completed, re-accepting updated terms never needs a license: a lapsed
+    /// one must not stand between a clinician and their records.
+    private var licenseSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("License")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
+            if license.status.isActive, let token = license.status.token {
+                Label("Licensed to \(token.sub), valid until \(token.expiresAt.licenseText).", systemImage: "checkmark.seal.fill")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.accent.color)
+            } else {
+                Text("Paste the license key from your email. It is checked on this Mac and never sent anywhere.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.muted.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                LicenseEntryView()
+            }
+        }
+    }
+
+    /// The license step is done: a current license, or setup was completed before
+    /// (terms re-acceptance only).
+    private var licenseStepDone: Bool {
+        license.status.isActive || settings.hasCompletedFirstRun
+    }
+
     private var legalSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Terms & Privacy")
@@ -195,7 +229,7 @@ struct FirstRunView: View {
             }
             .font(Theme.Typography.body)
             .tint(Theme.accent.color)
-            Toggle(isOn: $agreedToLegal) {
+            Toggle(isOn: licenseGatedAgreement) {
                 Text("I have read and agree to the Terms of Service and Privacy Policy.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.text.color)
@@ -204,17 +238,25 @@ struct FirstRunView: View {
             .toggleStyle(.checkbox)
             .onChange(of: agreedToLegal) { _, agreed in
                 if agreed {
-                    settings.recordLegalAcceptance()
+                    settings.recordLegalAcceptance(license: license.status.token)
                 }
             }
         }
     }
 
+    /// The acceptance box does nothing until the license step is done.
+    private var licenseGatedAgreement: Binding<Bool> {
+        Binding(get: { agreedToLegal && licenseStepDone }, set: { if licenseStepDone { agreedToLegal = $0 } })
+    }
+
     private var canContinue: Bool {
-        settings.dataRootURL != nil && agreedToLegal
+        settings.dataRootURL != nil && agreedToLegal && licenseStepDone
     }
 
     private var footerHint: String {
+        if !licenseStepDone {
+            return "Paste your license key above to continue."
+        }
         if settings.dataRootURL == nil {
             return "Choose a data folder above to continue."
         }

@@ -109,12 +109,15 @@ enum SettingsRequest: Equatable {
     case setupAssistant
     /// The recordings set aside because their session couldn't be found.
     case setAsideRecordings
+    /// The License pane.
+    case license
 
     /// The pane that holds what is being asked for.
     var pane: SettingsPane {
         switch self {
         case .setupAssistant: return .general
         case .setAsideRecordings: return .setAsideRecordings
+        case .license: return .license
         }
     }
 }
