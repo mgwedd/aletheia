@@ -58,6 +58,11 @@ Concise, non-obvious rules for this repo. (Obvious stuff omitted on purpose.)
   literals or system colors in screens; add a colorset + `Theme` token +
   `Theme.all` entry (and a `pairings` entry if text sits on it). Controls use
   the kit in `ThemeComponents.swift`. Light/Dark/System is `NSApp.appearance`.
+- **Text goes through the Theme text kit** (`ThemeTextField`, `ThemeTextArea`,
+  `TextField.patient`, `PatientTextView`, `.selectablePatientText()`), which keeps
+  macOS Writing Tools off. `WritingToolsBlockTests` rejects raw `TextField`,
+  `TextEditor`, `SecureField`, `.textSelection` and `NSTextView` subclasses outside
+  `Views/Theme`, except in its allowlist of files with no patient data.
 - `AppSettings` pattern: UserDefaults-backed, `private enum Keys`,
   `@Published var x { didSet { defaults.set(...) } }`, all loaded in `init`.
 - Repo **auto-deletes head branches on merge**; merging a base branch closes its

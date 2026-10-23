@@ -165,6 +165,7 @@ struct AletheiaApp: App {
     var body: some Scene {
         WindowGroup(id: MainWindow.id) {
             RootView()
+                .noWritingTools()
                 .background(MainWindowCapture())
                 .environmentObject(settings)
                 .environmentObject(appModel)
@@ -176,6 +177,7 @@ struct AletheiaApp: App {
                 .environmentObject(exports)
                 .sheet(isPresented: showFirstRun) {
                     FirstRunView()
+                        .noWritingTools()
                         .environmentObject(settings)
                         .environmentObject(appModel)
                         .environmentObject(integrations)
@@ -239,6 +241,7 @@ struct AletheiaApp: App {
         // window, since it shows patient data.
         WindowGroup("Ask About This Patient", id: PatientChatWindow.windowID, for: UUID.self) { $patientID in
             PatientChatWindow(patientID: patientID)
+                .noWritingTools()
                 .environmentObject(settings)
                 .environmentObject(appModel)
                 .environmentObject(integrations)
@@ -251,6 +254,7 @@ struct AletheiaApp: App {
         // it stays reachable when the main window is busy or showing an error.
         Window("Aletheia Doctor", id: DoctorFeatureModule.windowID) {
             DoctorView()
+                .noWritingTools()
                 .environmentObject(settings)
                 .environmentObject(updateService)
                 .environmentObject(recorder)
@@ -265,6 +269,7 @@ struct AletheiaApp: App {
         // lock presentation as every other app window.
         Window("Keyboard Shortcuts", id: ShortcutsWindow.id) {
             ShortcutsView()
+                .noWritingTools()
                 .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
         }
         .defaultSize(width: 460, height: 560)
@@ -274,6 +279,7 @@ struct AletheiaApp: App {
         // in-window Settings sheet uses.
         Settings {
             SettingsView()
+                .noWritingTools()
                 .environmentObject(settings)
                 .environmentObject(appModel)
                 .environmentObject(integrations)
@@ -284,6 +290,7 @@ struct AletheiaApp: App {
 
         MenuBarExtra("Aletheia Recording", systemImage: menuBarSymbol) {
             RecordingMenuBar()
+                .noWritingTools()
                 .environmentObject(recorder)
                 .environmentObject(transcription)
                 .environmentObject(appModel)

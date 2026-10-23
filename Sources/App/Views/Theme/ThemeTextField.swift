@@ -28,5 +28,6 @@ struct ThemeTextField: View {
             .themeField(isFocused: focused)
             .accessibilityLabel(accessibilityLabel ?? placeholder)
             .onSubmit { onSubmit?() }
+            .noWritingTools()
     }
 }
