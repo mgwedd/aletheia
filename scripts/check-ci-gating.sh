@@ -85,6 +85,9 @@ self_test() {
     expect package true  Sources/App/Resources/Aletheia.entitlements
     expect package true  Sources/App/Resources/Info.plist
     expect package true  Packages/WhisperCpp/Package.swift
+    expect package true  Sources/NetworkHelper/NetworkHelper.entitlements
+    expect package true  Sources/NetworkHelper/HelperFetcher.swift
+    expect package true  Sources/NetworkHelperShared/NetworkHelperProtocol.swift
     expect package true  .github/workflows/release.yml
     expect package true  .github/workflows/cd.yml
     expect package true  scripts/build.sh

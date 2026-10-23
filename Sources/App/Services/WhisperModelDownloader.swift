@@ -19,26 +19,22 @@ enum ModelDownloadError: LocalizedError, Equatable {
     }
 }
 
-/// Downloads a whisper.cpp ggml model file straight from Hugging Face, with
-/// progress, so getting a working transcription model never requires a
-/// Terminal or Homebrew.
+/// Downloads a whisper.cpp ggml model file from Hugging Face, with progress, so
+/// getting a working transcription model never requires a Terminal or Homebrew.
 ///
-/// Note on concurrency: this downloader only ever runs one transfer at a
-/// time (the Settings UI disables the button while a download is in
-/// flight), so `destinationURL`/`continuation` are safe to touch from the
-/// delegate's background queue without extra locking.
-final class WhisperModelDownloader: NSObject, ObservableObject {
+/// The transfer is made by the bundled network helper (the app has no network
+/// access); this class asks it for the model by `AssetID`, then the client
+/// verifies the pinned SHA-256 and swaps the file in.
+final class WhisperModelDownloader: ObservableObject {
     @Published var progress: Double = 0
     @Published var isDownloading = false
     @Published var lastError: String?
 
-    private var continuation: CheckedContinuation<Void, Error>?
-    private var destinationURL: URL?
-    /// Digest the finished download must match, captured at download start
-    /// (`WhisperModel.expectedSHA256`, which every model has). Optional only
-    /// because it's unset while no transfer is in flight.
-    private var expectedSHA256: String?
-    private lazy var session: URLSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+    private let helper: NetworkHelping
+
+    init(helper: NetworkHelping = NetworkHelperClient.shared) {
+        self.helper = helper
+    }
 
     @MainActor
     func download(_ model: WhisperModel, to destinationURL: URL) async throws {
@@ -47,61 +43,18 @@ final class WhisperModelDownloader: NSObject, ObservableObject {
         lastError = nil
         defer { isDownloading = false }
 
-        try FileManager.default.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        self.destinationURL = destinationURL
-        self.expectedSHA256 = model.expectedSHA256
-
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            self.continuation = continuation
-            session.downloadTask(with: model.downloadURL).resume()
-        }
-    }
-}
-
-extension WhisperModelDownloader: URLSessionDownloadDelegate {
-    func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didWriteData bytesWritten: Int64,
-        totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64
-    ) {
-        guard totalBytesExpectedToWrite > 0 else { return }
-        let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        DispatchQueue.main.async { self.progress = fraction }
-    }
-
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        guard let destinationURL, let expectedSHA256 else {
-            continuation?.resume(throwing: ModelDownloadError.noDestination)
-            continuation = nil
-            return
-        }
         do {
-            // Verify the temp file BEFORE touching the destination: on mismatch
-            // the bad download is discarded and any existing (good) model is
-            // left as-is. This runs on the URLSession delegate queue (never the
-            // main thread) and must be synchronous, since `location` is deleted
-            // as soon as this method returns. Hashing streams in 1 MiB chunks.
-            do {
-                try ModelDigest.verify(fileAt: location, expectedSHA256: expectedSHA256)
-            } catch {
-                try? FileManager.default.removeItem(at: location)
-                throw error
+            try await helper.download(
+                AssetID(model),
+                expectedSHA256: model.expectedSHA256,
+                to: destinationURL
+            ) { [weak self] fraction in
+                DispatchQueue.main.async { self?.progress = fraction }
             }
-            try WhisperModelFile.replace(destinationURL, with: location)
-            continuation?.resume()
         } catch {
-            continuation?.resume(throwing: error)
+            lastError = error.localizedDescription
+            throw error
         }
-        continuation = nil
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        guard let error else { return }
-        DispatchQueue.main.async { self.lastError = error.localizedDescription }
-        continuation?.resume(throwing: error)
-        continuation = nil
     }
 }
 

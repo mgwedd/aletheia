@@ -114,7 +114,7 @@ final class SearchHomeHotkeyTests: XCTestCase {
         XCTAssertTrue(isFocused(home))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
         settle()
-        XCTAssertTrue(isFocused(sidebar))
+        XCTAssertTrue(isFocused(sidebar), "first responder: \(String(describing: window.firstResponder)), home has it: \(isFocused(home))")
         pressCommandF()
         XCTAssertTrue(isFocused(home), "first responder: \(String(describing: window.firstResponder))")
         XCTAssertFalse(isFocused(sidebar))

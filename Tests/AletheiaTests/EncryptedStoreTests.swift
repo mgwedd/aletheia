@@ -42,9 +42,9 @@ final class EncryptedStoreTests: XCTestCase {
 
     func testPatientJSONIsSealedButListsBack() throws {
         let store = Store(root: tempRoot, protector: keyed)
-        _ = try store.createPatient(name: "Jordan Rivera")
+        let patient = try store.createPatient(name: "Jordan Rivera")
 
-        let file = tempRoot.appendingPathComponent("Patients/Jordan-Rivera/patient.json")
+        let file = store.patientDir(for: patient).appendingPathComponent("patient.json")
         let onDisk = try Data(contentsOf: file)
         XCTAssertTrue(DataCipher.isEnvelope(onDisk))
         XCTAssertNil(onDisk.range(of: Data("Jordan".utf8)), "the patient name must not be readable on disk")
@@ -92,11 +92,11 @@ final class EncryptedStoreTests: XCTestCase {
         XCTAssertEqual(comment.body, "explore triggers next time")
         XCTAssertEqual(store.note(sessionID: session), "private note body")
 
-        // A passthrough reader over the same DB cannot recover the plaintext.
+        // A passthrough reader over the same DB cannot recover the plaintext,
+        // and never shows the ciphertext in its place.
         let locked = try XCTUnwrap(CommentStore(root: tempRoot, protector: .passthrough))
-        let lockedComment = try XCTUnwrap(locked.comments(sessionID: session).first)
-        XCTAssertNotEqual(lockedComment.body, "explore triggers next time")
-        XCTAssertNotEqual(locked.note(sessionID: session), "private note body")
+        XCTAssertTrue(locked.comments(sessionID: session).isEmpty)
+        XCTAssertEqual(locked.note(sessionID: session), "")
     }
 
     func testLegacyPlaintextCommentsStayReadableUnderKey() throws {

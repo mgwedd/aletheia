@@ -253,7 +253,7 @@ private struct MermaidSourceText: View {
                 .font(.system(size: 12.5, design: .monospaced))
                 .lineSpacing(5)
                 .foregroundStyle(Theme.text.color)
-                .textSelection(.enabled)
+                .selectablePatientText()
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .frame(maxWidth: .infinity, alignment: .leading)

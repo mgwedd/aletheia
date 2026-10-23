@@ -7,7 +7,8 @@ final class SpotlightItemBuilderTests: XCTestCase {
     }
 
     private func patient() -> Patient {
-        Patient(id: UUID(), name: "Jane Doe", slug: "Jane-Doe")
+        let id = UUID()
+        return Patient(id: id, name: "Jane Doe", slug: id.uuidString)
     }
 
     func testEntriesIncludeAPatientCardAndOnePerSession() {
@@ -20,6 +21,7 @@ final class SpotlightItemBuilderTests: XCTestCase {
 
         XCTAssertEqual(entries.count, 3)
         XCTAssertEqual(entries.first?.uniqueIdentifier, SpotlightItemBuilder.patientIdentifier(p.id))
+        XCTAssertFalse(entries.first!.uniqueIdentifier.contains(p.slug + "/"))
         XCTAssertNil(entries.first?.contentModificationDate, "patient card has no modification date")
 
         let sessionEntry = entries[1]

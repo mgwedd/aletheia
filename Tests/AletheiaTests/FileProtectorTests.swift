@@ -81,6 +81,33 @@ final class FileProtectorTests: XCTestCase {
         XCTAssertEqual(try p.open(sealed), Data("column value".utf8))
     }
 
+    func testFieldEncodeThrowsWhenSealFails() {
+        let invalidKey = SymmetricKey(data: Data([0x01]))
+        let protector = FileProtector(key: invalidKey)
+        XCTAssertThrowsError(try FieldCipher.encode("private note", using: protector)) { error in
+            XCTAssertEqual(error as? FileProtector.ProtectorError, .sealFailed)
+        }
+    }
+
+    func testFieldEncodeThrowsLockedForRevokedKey() {
+        let reference = ProtectionKey(key)
+        let protector = FileProtector(keyReference: reference, requiresKey: true)
+        reference.revoke()
+        XCTAssertThrowsError(try FieldCipher.encode("private note", using: protector)) { error in
+            XCTAssertEqual(error as? FileProtector.ProtectorError, .locked)
+        }
+    }
+
+    func testFieldDecodeThrowsForBadEnvelopeButAcceptsLegacyPlaintext() throws {
+        let protector = FileProtector(key: key)
+        let sealed = try FieldCipher.encode("secret", using: protector)
+        XCTAssertEqual(try FieldCipher.decode("legacy", using: protector), "legacy")
+        XCTAssertEqual(try FieldCipher.decode(sealed, using: protector), "secret")
+        var envelope = try XCTUnwrap(Data(base64Encoded: sealed))
+        envelope[envelope.count - 1] ^= 0xFF
+        XCTAssertThrowsError(try FieldCipher.decode(envelope.base64EncodedString(), using: protector))
+    }
+
     /// Names of decrypted-audio temp copies currently in the temp folder.
     private static func tempAudioCopies() -> Set<String> {
         let names = (try? FileManager.default.contentsOfDirectory(
@@ -95,7 +122,7 @@ final class FileProtectorTests: XCTestCase {
         let plain = url("plain.caf")
         try Data((0..<3000).map { _ in UInt8.random(in: 0...255) }).write(to: plain)
         let sealed = url("mic.caf")
-        try ChunkedCipher.seal(fileAt: plain, to: sealed, using: key, chunkSize: 1000)
+        try ChunkedCipher.seal(fileAt: plain, to: sealed, using: key, chunkSize: 1024 * 4)
         var bytes = try Data(contentsOf: sealed)
         bytes[bytes.count - 1] ^= 0xFF // corrupt the final chunk's GCM tag
         try bytes.write(to: sealed)
@@ -111,7 +138,7 @@ final class FileProtectorTests: XCTestCase {
         let plain = url("plain.caf")
         try original.write(to: plain)
         let sealed = url("call.caf")
-        try ChunkedCipher.seal(fileAt: plain, to: sealed, using: key, chunkSize: 1000)
+        try ChunkedCipher.seal(fileAt: plain, to: sealed, using: key, chunkSize: 1024 * 4)
 
         let (copy, isTemp) = try FileProtector(key: key).decryptedCopyOfLargeFile(at: sealed)
         defer { try? FileManager.default.removeItem(at: copy) }

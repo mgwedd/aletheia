@@ -253,6 +253,12 @@ struct RecordingMenuBar: View {
         let panel = MainWindow.menuBarPanel()
         // Before creating a session, so a refused start leaves no empty one behind.
         guard !recorder.isBusy else { return }
+        // The menu has no alert of its own, so a refusal reads in its problem line.
+        appModel.refreshDiskEncryption()
+        guard PHIEntryGate.allowsNewPHI(diskEncrypted: appModel.diskEncrypted) else {
+            startProblem = PHIEntryGate.blockedMessage
+            return
+        }
         guard let store = appModel.store,
               let session = appModel.startNewSession(for: patient) else {
             startProblem = "Couldn't create a session. Check the data folder in Settings."

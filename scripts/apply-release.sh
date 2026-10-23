@@ -21,25 +21,29 @@ VERSION="${VERSION#v}"
 cd "$(dirname "$0")/.."
 
 INFO_PLIST="Sources/App/Resources/Info.plist"
+HELPER_INFO_PLIST="Sources/NetworkHelper/Info.plist"
 CHANGELOG="CHANGELOG.md"
 BUILD_NUMBER="$(git rev-list --count HEAD)"
 TODAY="$(date -u +%Y-%m-%d)"
 
 # --- Info.plist: set the <string> on the line following each version key. ---
 set_plist_string() {
-    local key="$1" value="$2" tmp
+    local key="$1" value="$2" plist="${3:-$INFO_PLIST}" tmp
     tmp="$(mktemp)"
     awk -v key="$key" -v value="$value" '
         prev ~ "<key>" key "</key>" {
             sub(/<string>[^<]*<\/string>/, "<string>" value "</string>")
         }
         { print; prev = $0 }
-    ' "$INFO_PLIST" > "$tmp"
-    mv "$tmp" "$INFO_PLIST"
+    ' "$plist" > "$tmp"
+    mv "$tmp" "$plist"
 }
 
 set_plist_string "CFBundleShortVersionString" "$VERSION"
 set_plist_string "CFBundleVersion" "$BUILD_NUMBER"
+# The bundled network helper reports the same version as the app.
+set_plist_string "CFBundleShortVersionString" "$VERSION" "$HELPER_INFO_PLIST"
+set_plist_string "CFBundleVersion" "$BUILD_NUMBER" "$HELPER_INFO_PLIST"
 
 # --- CHANGELOG: generate this version's section from commits and insert it above
 # the most recent existing version (right after the header block). ---
@@ -56,4 +60,4 @@ SECTION="$SECTION" awk '
 ' "$CHANGELOG" > "$tmp"
 mv "$tmp" "$CHANGELOG"
 
-echo "Applied version $VERSION (build $BUILD_NUMBER) to Info.plist and CHANGELOG.md."
+echo "Applied version $VERSION (build $BUILD_NUMBER) to the Info.plists and CHANGELOG.md."

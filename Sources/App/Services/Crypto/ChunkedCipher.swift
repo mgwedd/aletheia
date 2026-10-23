@@ -21,18 +21,28 @@ enum ChunkedCipher {
     static let version: UInt8 = 1
     static let defaultChunkSize = 1 << 20 // 1 MiB
 
+    /// Per-chunk GCM overhead: 12-byte nonce + 16-byte tag.
+    static let gcmOverhead = 28
+    /// Accepted range for the header's `chunkSize`.
+    static let chunkSizeRange = 4096...(16 << 20)
+
     private static var headerCount: Int { magic.count + 1 + 4 + 8 }
 
     enum ChunkedError: LocalizedError, Equatable {
         case notAnEnvelope
         case unsupportedVersion(UInt8)
         case truncated
+        case malformed
+        case trailingData
+        case sourceChanged
 
         var errorDescription: String? {
             switch self {
             case .notAnEnvelope: return "This file isn't an Aletheia encrypted recording."
             case let .unsupportedVersion(v): return "This recording uses a newer encryption format (v\(v)). Please update Aletheia."
             case .truncated: return "This encrypted recording is incomplete or damaged."
+            case .malformed, .trailingData: return "This encrypted recording is damaged."
+            case .sourceChanged: return "The file changed while it was being encrypted."
             }
         }
     }
@@ -46,13 +56,21 @@ enum ChunkedCipher {
     }
 
     /// Seals `src` into `dst`, reading and encrypting one chunk at a time.
+    /// Throws `sourceChanged` if `src` grows or shrinks while it's being read,
+    /// so the result never declares a chunk count it doesn't hold.
     static func seal(fileAt src: URL, to dst: URL, using key: SymmetricKey, chunkSize: Int = defaultChunkSize) throws {
         let fileSize = ((try FileManager.default.attributesOfItem(atPath: src.path))[.size] as? Int) ?? 0
-        let chunkCount = fileSize == 0 ? 0 : (fileSize + chunkSize - 1) / chunkSize
-
-        FileManager.default.createFile(atPath: dst.path, contents: nil)
         let input = try FileHandle(forReadingFrom: src)
         defer { try? input.close() }
+        try seal(input, size: fileSize, to: dst, using: key, chunkSize: chunkSize)
+    }
+
+    /// Seals exactly `size` bytes read from `input` into `dst`.
+    static func seal(_ input: FileHandle, size: Int, to dst: URL, using key: SymmetricKey, chunkSize: Int = defaultChunkSize) throws {
+        guard chunkSizeRange.contains(chunkSize) else { throw ChunkedError.malformed }
+        let chunkCount = size == 0 ? 0 : (size + chunkSize - 1) / chunkSize
+
+        FileManager.default.createFile(atPath: dst.path, contents: nil)
         let output = try FileHandle(forWritingTo: dst)
         defer { try? output.close() }
 
@@ -63,19 +81,18 @@ enum ChunkedCipher {
         header.appendBigEndian(UInt64(chunkCount))
         try output.write(contentsOf: header)
 
-        var index: UInt64 = 0
-        while true {
+        for index in 0..<chunkCount {
             let chunk = readFully(input, chunkSize)
-            if chunk.isEmpty { break }
-            let box = try AES.GCM.seal(chunk, using: key, authenticating: header + index.bigEndianBytes)
+            guard chunk.count == min(chunkSize, size - index * chunkSize) else { throw ChunkedError.sourceChanged }
+            let aad = header + UInt64(index).bigEndianBytes
+            let box = try AES.GCM.seal(chunk, using: key, authenticating: aad)
             guard let combined = box.combined else { throw ChunkedError.truncated }
             var framed = Data()
             framed.appendBigEndian(UInt32(combined.count))
             framed.append(combined)
             try output.write(contentsOf: framed)
-            index += 1
-            if chunk.count < chunkSize { break } // reached EOF
         }
+        guard readFully(input, 1).isEmpty else { throw ChunkedError.sourceChanged }
     }
 
     /// Opens a file produced by `seal` into `dst`. Throws on a wrong key, a
@@ -90,7 +107,20 @@ enum ChunkedCipher {
         }
         let version = header[header.startIndex + magic.count]
         guard version == Self.version else { throw ChunkedError.unsupportedVersion(version) }
+        let chunkSize = Int(header.readBigEndianUInt32(at: magic.count + 1))
         let chunkCount = header.readBigEndianUInt64(at: magic.count + 1 + 4)
+        guard chunkSizeRange.contains(chunkSize) else { throw ChunkedError.malformed }
+
+        // The body must hold exactly `chunkCount` framed chunks, each between
+        // the minimum (length prefix + empty box) and the maximum (full chunk).
+        let fileSize = UInt64(max(0, ((try FileManager.default.attributesOfItem(atPath: src.path))[.size] as? Int) ?? 0))
+        let bodySize = fileSize >= UInt64(headerCount) ? fileSize - UInt64(headerCount) : 0
+        let minFrame = UInt64(4 + gcmOverhead)
+        let maxFrame = UInt64(4 + chunkSize + gcmOverhead)
+        let (minBody, minOverflow) = chunkCount.multipliedReportingOverflow(by: minFrame)
+        let (maxBody, maxOverflow) = chunkCount.multipliedReportingOverflow(by: maxFrame)
+        guard !minOverflow, minBody <= bodySize else { throw ChunkedError.truncated }
+        guard !maxOverflow, bodySize <= maxBody else { throw ChunkedError.trailingData }
 
         FileManager.default.createFile(atPath: dst.path, contents: nil)
         let output = try FileHandle(forWritingTo: dst)
@@ -100,12 +130,14 @@ enum ChunkedCipher {
             let lenData = readFully(input, 4)
             guard lenData.count == 4 else { throw ChunkedError.truncated }
             let len = Int(lenData.readBigEndianUInt32(at: 0))
+            guard len >= gcmOverhead, len <= chunkSize + gcmOverhead else { throw ChunkedError.malformed }
             let combined = readFully(input, len)
             guard combined.count == len else { throw ChunkedError.truncated }
             let box = try AES.GCM.SealedBox(combined: combined)
             let opened = try AES.GCM.open(box, using: key, authenticating: header + index.bigEndianBytes)
             try output.write(contentsOf: opened)
         }
+        if !readFully(input, 1).isEmpty { throw ChunkedError.trailingData }
     }
 
     /// Reads exactly `count` bytes, looping until satisfied or EOF (a single

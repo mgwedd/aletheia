@@ -20,7 +20,8 @@ final class SecurityPostureTests: XCTestCase {
         localBackupActive: Bool = true,
         iCloudBackupEnabled: Bool = false,
         iCloudBackupConfigured: Bool = false,
-        networkOnline: Bool? = nil
+        networkOnline: Bool? = nil,
+        diskEncrypted: Bool? = nil
     ) -> [PostureItem] {
         SecurityPosture.evaluate(
             appLockEnabled: appLockEnabled,
@@ -35,12 +36,21 @@ final class SecurityPostureTests: XCTestCase {
             localBackupActive: localBackupActive,
             iCloudBackupEnabled: iCloudBackupEnabled,
             iCloudBackupConfigured: iCloudBackupConfigured,
-            networkOnline: networkOnline
+            networkOnline: networkOnline,
+            diskEncrypted: diskEncrypted
         )
     }
 
     private func item(_ id: String, in items: [PostureItem]) -> PostureItem? {
         items.first { $0.id == id }
+    }
+
+    func testFileVaultItemFollowsTheProbe() {
+        XCTAssertEqual(item("fileVault", in: evaluate(diskEncrypted: true))?.level, .secure)
+        XCTAssertEqual(item("fileVault", in: evaluate(diskEncrypted: false))?.level, .actionRecommended)
+        XCTAssertEqual(item("fileVault", in: evaluate(diskEncrypted: nil))?.level, .informational)
+        XCTAssertEqual(SecurityPosture.overall(evaluate(diskEncrypted: false)), .actionRecommended)
+        XCTAssertTrue(item("fileVault", in: evaluate(diskEncrypted: false))?.detail.contains("external drive") ?? false)
     }
 
     func testEncryptionItemIsOmittedWhenTheBuildDoesNotOfferIt() {
@@ -93,6 +103,25 @@ final class SecurityPostureTests: XCTestCase {
     func testAuditLogReflectsActivation() {
         XCTAssertEqual(item("auditLog", in: evaluate(auditLogActive: true))?.level, .secure)
         XCTAssertEqual(item("auditLog", in: evaluate(auditLogActive: false))?.level, .informational)
+    }
+
+    func testAuditLogUnverifiableIsActionable() {
+        let items = SecurityPosture.evaluate(
+            appLockEnabled: true,
+            canAuthenticate: true,
+            idleAutoLockMinutes: 15,
+            encryptionEnabled: true,
+            encryptionUnlocked: true,
+            auditLogActive: true,
+            auditLogVerifiable: false,
+            localEncryptedBackup: true,
+            localBackupActive: true,
+            iCloudBackupEnabled: false,
+            iCloudBackupConfigured: false,
+            networkOnline: nil
+        )
+        XCTAssertEqual(item("auditLog", in: items)?.level, .actionRecommended)
+        XCTAssertTrue(item("auditLog", in: items)?.detail.contains("unverifiable") == true)
     }
 
     func testInformationalItemsDoNotDowngradeOverall() {
