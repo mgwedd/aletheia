@@ -95,6 +95,7 @@ struct FolderUnlockView: View {
                 .font(.system(.body, design: .monospaced))
                 .foregroundStyle(Theme.text.color)
                 .autocorrectionDisabled()
+                .noWritingTools()
                 .focused($recoveryKeyFocused)
                 .scrollContentBackground(.hidden)
                 .padding(8)

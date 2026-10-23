@@ -122,6 +122,7 @@ final class WritingToolsBlockTests: XCTestCase {
         "Sources/App/Views/DamagedRecordsNotice.swift": "Error and file-path text for the user to copy, no record contents",
         "Sources/App/Views/UpdatePromptView.swift": "Release notes",
         "Sources/App/Views/DatabaseUnavailableBanner.swift": "Error and file-path text for the user to copy",
+        "Sources/App/Views/FolderUnlockView.swift": "Recovery-key entry: needs autocorrection off, which the kit's text area lacks; Writing Tools are off with .noWritingTools()",
     ]
 
     /// Raw text APIs, each with the kit replacement named in the failure.
@@ -148,6 +149,15 @@ final class WritingToolsBlockTests: XCTestCase {
             }
         }
         XCTAssertTrue(violations.isEmpty, "Patient text must go through the Theme kit:\n" + violations.joined(separator: "\n"))
+    }
+
+    /// The recovery-key editor is allowlisted only because it needs autocorrection
+    /// off; it must still turn Writing Tools off itself.
+    func testRecoveryKeyEditorTurnsWritingToolsOff() throws {
+        let text = try source("Sources/App/Views/FolderUnlockView.swift")
+        XCTAssertTrue(text.contains("TextEditor(text: $recoveryKey)"))
+        XCTAssertTrue(text.contains(".noWritingTools()"))
+        XCTAssertTrue(text.contains(".autocorrectionDisabled()"))
     }
 
     func testRawAPIPatternsCatchTheirTargets() {
