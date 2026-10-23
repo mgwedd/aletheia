@@ -137,7 +137,14 @@ final class Store {
 
     // MARK: - Schema
 
+    /// Serializes opening a folder within the process: the app and an App
+    /// Intent can each build a `Store` at the same moment, and two folder
+    /// migrations racing over the same directories could undo each other.
+    private static let reconcileLock = NSLock()
+
     private static func reconcileSchema(at root: URL, protector: FileProtector) -> SchemaCompatibility {
+        reconcileLock.lock()
+        defer { reconcileLock.unlock() }
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         let metaURL = root.appendingPathComponent(DataSchema.metadataFileName)
@@ -152,7 +159,10 @@ final class Store {
             if meta.schemaVersion < current {
                 if meta.schemaVersion < 2 {
                     do {
-                        try PatientFolderMigration.run(root: root, protector: protector)
+                        let outcome = try PatientFolderMigration.run(root: root, protector: protector)
+                        // Damaged records were left as they are: keep the old
+                        // stamp so the next open tries them again.
+                        if outcome.skippedUnreadable > 0 { return .ok }
                     } catch {
                         return .migrationFailed
                     }
@@ -167,7 +177,11 @@ final class Store {
         // Treat it as v1 and migrate before claiming the current version.
         if fileManager.fileExists(atPath: root.appendingPathComponent("Patients").path) {
             do {
-                try PatientFolderMigration.run(root: root, protector: protector)
+                let outcome = try PatientFolderMigration.run(root: root, protector: protector)
+                if outcome.skippedUnreadable > 0 {
+                    writeMetadata(StoreMetadata(schemaVersion: 1, lastWrittenBy: appVersion), to: metaURL)
+                    return .ok
+                }
             } catch {
                 return .migrationFailed
             }
@@ -218,7 +232,7 @@ final class Store {
                 continue
             }
             do {
-                patients.append(try JSONDecoder.aletheia.decode(Patient.self, from: data))
+                patients.append(Store.locatedIn(dir, try JSONDecoder.aletheia.decode(Patient.self, from: data)))
             } catch {
                 unreadable.append(UnreadableEntry(kind: .patientRecord, reason: .undecodable, folder: dir))
             }
@@ -284,6 +298,19 @@ final class Store {
         let data = try JSONEncoder.aletheia.encode(patient)
         try fileManager.createDirectory(at: patientDir(for: patient), withIntermediateDirectories: true)
         try protector.write(data, to: patientDir(for: patient).appendingPathComponent("patient.json"))
+    }
+
+    /// The folder a `patient.json` was found in is where that patient's
+    /// sessions are. A recorded `slug` can disagree with it: a folder upgrade
+    /// interrupted between moving a folder and rewriting its record, or a
+    /// folder renamed by hand. Trusting the slug there would hide the sessions
+    /// and send new ones to a folder with no patient record.
+    static func locatedIn(_ folder: URL, _ patient: Patient) -> Patient {
+        let name = folder.lastPathComponent
+        guard patient.slug != name else { return patient }
+        return Patient(
+            id: patient.id, name: patient.name, notes: patient.notes, createdAt: patient.createdAt,
+            slug: name, clinicalHistory: patient.clinicalHistory, medications: patient.medications)
     }
 
     func patientDir(for patient: Patient) -> URL {
