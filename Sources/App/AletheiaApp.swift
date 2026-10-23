@@ -322,6 +322,13 @@ private struct LockCover: ViewModifier {
                         .environmentObject(appModel)
                         .transition(.opacity)
                 }
+                if covers.contains(.keystoreMissing) {
+                    EncryptionKeystoreMissingView()
+                        .environmentObject(encryption)
+                        .environmentObject(settings)
+                        .environmentObject(appModel)
+                        .transition(.opacity)
+                }
             }
             // Tier-1 protection: applied last so LockView always sits on top of
             // everything, including the passphrase sheet.
