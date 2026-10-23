@@ -16,8 +16,7 @@ telemetry, or developer-operated servers that receive clinical data.
 ## 1. Who this covers
 
 This policy describes the Aletheia macOS application ("the App"). It does not
-govern software you separately install (e.g., Ollama) or model files you choose
-to download; those are covered by their providers' terms and policies.
+govern model files you choose to download; those are covered by their providers' terms and policies.
 
 ## 2. What the developer collects
 
@@ -48,12 +47,10 @@ The App works offline for its core features. Its network paths are:
   from GitHub. Your IP address and App version may be visible to the host; no
   patient data is sent.
 - **Model downloads** — when you ask to download a speech-to-text or language
-  model, the App downloads the file from Hugging Face. If you ask the App to
-  download an Ollama model, Ollama fetches it from its own registry
-  (`ollama.com`). No patient data is uploaded by these requests.
-- **Local AI** — the default Ollama endpoint is `127.0.0.1:11434`. Its address
-  is configurable, so verify that it points to this Mac before sending clinical
-  content to Ollama.
+  model, the App downloads the file from Hugging Face. No patient data is
+  uploaded by these requests.
+- **Local AI** — the built-in AI runs inside the App on this Mac and makes no
+  network requests.
 
 A cloud-synced data folder may also be transferred by the provider's sync
 software, outside the App's own network requests.

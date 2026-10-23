@@ -45,6 +45,13 @@ final class LegalTests: XCTestCase {
             XCTAssertFalse(text.localizedCaseInsensitiveContains("re-locks when it's hidden"), path)
             XCTAssertFalse(text.contains("Backup also offers"), path)
         }
+        // Ollama support was removed; the built-in engine is the only AI path.
+        for path in ["PRIVACY.md", "SECURITY.md", "README.md", "docs/ENCRYPTION.md",
+                     "docs/HIPAA-SAFEGUARDS.md", "docs/DESIGN-DECISIONS.md"] {
+            let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("ollama"), path)
+            XCTAssertFalse(text.contains("11434"), path)
+        }
         XCTAssertEqual(SettingsPane.encryption.title, "Encryption")
         XCTAssertEqual(SettingsPane.backups.title, "Backups")
         XCTAssertFalse(LocalEncryptedBackupService.isWired)
