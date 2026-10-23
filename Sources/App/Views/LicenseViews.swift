@@ -84,6 +84,8 @@ struct LicenseBanner: View {
             return "Your license expired on \(token.expiresAt.licenseText). New recordings and the AI are paused; everything you have already recorded stays open, searchable and exportable."
         case .revoked:
             return "Your license is no longer valid. New recordings and the AI are paused; everything you have already recorded stays open, searchable and exportable."
+        case .grandfathered:
+            return "Add your license key in Settings > License. Recording and the AI keep working meanwhile."
         case .unlicensed:
             return "Add a license key to record or use the AI. Everything you have already recorded stays open, searchable and exportable."
         case .invalid(let error):
@@ -155,7 +157,7 @@ struct LicensePane: View {
         case .expired: Chip("Expired", tone: .recording)
         case .revoked: Chip("Not valid", tone: .recording)
         case .invalid: Chip("Not valid", tone: .recording)
-        case .unlicensed: Chip("No license", tone: .warn)
+        case .unlicensed, .grandfathered: Chip("No license", tone: .warn)
         }
     }
 }

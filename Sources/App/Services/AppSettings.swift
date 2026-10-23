@@ -95,6 +95,7 @@ final class AppSettings: ObservableObject {
         static let licenseToken = "licenseToken"
         static let revokedLicenseIDs = "revokedLicenseIDs"
         static let lastRevocationIssuedAt = "lastRevocationIssuedAt"
+        static let licenseGrandfathered = "licenseGrandfathered"
         static let progressNoteFormat = "progressNoteFormat"
         static let summaryVerbosity = "summaryVerbosity"
         static let includeCommentsInDrafts = "includeCommentsInDrafts"
@@ -365,6 +366,11 @@ final class AppSettings: ObservableObject {
     }
     /// The `iat` (Unix seconds) of the newest accepted revocation list; an older
     /// list is ignored so a stale one cannot be replayed. 0 = none accepted yet.
+    /// True for an install that finished setup before license keys existed. Decided
+    /// once, on the first launch of a build that knows about licenses, and never
+    /// changed: such an install keeps recording and AI without a key.
+    let licenseGrandfathered: Bool
+
     @Published var lastRevocationIssuedAt: Int {
         didSet { defaults.set(lastRevocationIssuedAt, forKey: Keys.lastRevocationIssuedAt) }
     }
@@ -468,6 +474,12 @@ final class AppSettings: ObservableObject {
         licenseToken = defaults.string(forKey: Keys.licenseToken) ?? ""
         revokedLicenseIDs = defaults.stringArray(forKey: Keys.revokedLicenseIDs) ?? []
         lastRevocationIssuedAt = defaults.integer(forKey: Keys.lastRevocationIssuedAt)
+        if defaults.object(forKey: Keys.licenseGrandfathered) == nil {
+            let finishedSetup = defaults.bool(forKey: Keys.hasCompletedFirstRun)
+            let hasKey = !(defaults.string(forKey: Keys.licenseToken) ?? "").isEmpty
+            defaults.set(finishedSetup && !hasKey, forKey: Keys.licenseGrandfathered)
+        }
+        licenseGrandfathered = defaults.bool(forKey: Keys.licenseGrandfathered)
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil

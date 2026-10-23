@@ -138,6 +138,46 @@ final class LicenseStateTests: XCTestCase {
         XCTAssertNotNil(state.newWorkRefusal)
     }
 
+    // MARK: - Installs set up before license keys
+
+    /// Settings for an install that finished setup on a build with no license step.
+    private func upgradedInstall() -> AppSettings {
+        let fresh = UserDefaults(suiteName: suite + "-upgraded")!
+        fresh.removePersistentDomain(forName: suite + "-upgraded")
+        fresh.set(true, forKey: "hasCompletedFirstRun")
+        addTeardownBlock { fresh.removePersistentDomain(forName: self.suite + "-upgraded") }
+        return AppSettings(defaults: fresh)
+    }
+
+    func testAnUpgradedInstallWithoutAKeyKeepsWorking() {
+        let old = upgradedInstall()
+        XCTAssertTrue(old.licenseGrandfathered)
+        let state = LicenseState(settings: old, keyring: ring, now: { [unowned self] in self.clock })
+        XCTAssertEqual(state.status, .grandfathered)
+        XCTAssertNil(state.newWorkRefusal)
+        XCTAssertNoThrow(try state.authorizeNewWork())
+        XCTAssertNotNil(LicenseBanner.text(for: state.status), "it is still asked for a key")
+    }
+
+    func testAFreshInstallIsNeverGrandfathered() {
+        XCTAssertFalse(settings.licenseGrandfathered)
+        settings.hasCompletedFirstRun = true
+        let relaunched = AppSettings(defaults: defaults)
+        XCTAssertFalse(relaunched.licenseGrandfathered, "decided once, on the first launch")
+        let state = LicenseState(settings: relaunched, keyring: ring, now: { [unowned self] in self.clock })
+        XCTAssertEqual(state.status, .unlicensed)
+        XCTAssertNotNil(state.newWorkRefusal)
+    }
+
+    func testGrandfatheringNeverCoversAnExpiredKey() throws {
+        let old = upgradedInstall()
+        let state = LicenseState(settings: old, keyring: ring, now: { [unowned self] in self.clock })
+        state.install(try token(exp: now.addingTimeInterval(80 * day), lid: "old-lid"))
+        clock = now.addingTimeInterval(81 * day)
+        XCTAssertNotNil(state.newWorkRefusal)
+        guard case .expired = state.status else { return XCTFail("expected expired") }
+    }
+
     // MARK: - Revocation
 
     func testRevokedLicenseIsTreatedLikeExpired() throws {

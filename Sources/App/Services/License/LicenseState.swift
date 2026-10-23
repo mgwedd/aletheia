@@ -5,6 +5,8 @@ import Foundation
 enum LicenseStatus: Equatable {
     /// No token has been entered.
     case unlicensed
+    /// No token, on an install set up before license keys existed: work is allowed.
+    case grandfathered
     /// A good token with more than 14 days left.
     case valid(LicenseToken)
     /// A good token inside its last 14 days.
@@ -19,14 +21,14 @@ enum LicenseStatus: Equatable {
     var token: LicenseToken? {
         switch self {
         case .valid(let t), .expiringSoon(let t, _), .expired(let t), .revoked(let t): return t
-        case .unlicensed, .invalid: return nil
+        case .unlicensed, .grandfathered, .invalid: return nil
         }
     }
 
     /// A current license: new recording and AI are allowed.
     var isActive: Bool {
         switch self {
-        case .valid, .expiringSoon: return true
+        case .valid, .expiringSoon, .grandfathered: return true
         case .unlicensed, .expired, .revoked, .invalid: return false
         }
     }
@@ -68,13 +70,13 @@ final class LicenseState: ObservableObject {
     func refresh() {
         let next = LicenseState.evaluate(
             token: settings.licenseToken, keyring: keyring, now: now(),
-            revoked: Set(settings.revokedLicenseIDs))
+            revoked: Set(settings.revokedLicenseIDs), grandfathered: settings.licenseGrandfathered)
         if next != status { status = next }
     }
 
     /// The status for a token string. Pure.
-    nonisolated static func evaluate(token text: String, keyring: LicenseKeyring, now: Date, revoked: Set<String>) -> LicenseStatus {
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .unlicensed }
+    nonisolated static func evaluate(token text: String, keyring: LicenseKeyring, now: Date, revoked: Set<String>, grandfathered: Bool = false) -> LicenseStatus {
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return grandfathered ? .grandfathered : .unlicensed }
         let token: LicenseToken
         do {
             token = try LicenseVerifier.verifySignature(text, keyring: keyring)
@@ -141,7 +143,7 @@ final class LicenseState: ObservableObject {
     var newWorkRefusal: String? {
         refresh()
         switch status {
-        case .valid, .expiringSoon:
+        case .valid, .expiringSoon, .grandfathered:
             return nil
         case .unlicensed:
             return "Aletheia needs a license key to record or run the AI. Add yours in Settings > License. Your existing records are untouched."
