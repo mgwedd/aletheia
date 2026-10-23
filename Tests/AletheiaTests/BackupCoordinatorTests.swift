@@ -7,14 +7,18 @@ import XCTest
 /// working store with its records intact.
 final class BackupCoordinatorTests: XCTestCase {
     private var tempRoot: URL!
+    private var originalScratchRoot: URL!
 
     override func setUpWithError() throws {
         tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("BackupCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        originalScratchRoot = PrivateStaging.root
+        PrivateStaging.root = tempRoot.appendingPathComponent("Scratch", isDirectory: true)
     }
 
     override func tearDownWithError() throws {
+        PrivateStaging.root = originalScratchRoot
         try? FileManager.default.removeItem(at: tempRoot)
     }
 
@@ -62,7 +66,7 @@ final class BackupCoordinatorTests: XCTestCase {
             return XCTFail("backup should succeed")
         }
         let strays = (try? FileManager.default.contentsOfDirectory(
-            at: FileManager.default.temporaryDirectory, includingPropertiesForKeys: nil))?
+            at: PrivateStaging.root, includingPropertiesForKeys: nil))?
             .filter { $0.lastPathComponent.hasPrefix("aletheia-backup-") } ?? []
         XCTAssertTrue(strays.isEmpty, "the temp snapshot must be cleaned up: \(strays)")
     }

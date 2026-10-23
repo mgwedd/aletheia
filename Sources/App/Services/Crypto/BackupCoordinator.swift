@@ -28,12 +28,15 @@ struct BackupCoordinator {
     /// failure — it's a plaintext-structured copy and shouldn't linger.
     func backUpNow(reason: String) async -> BackupOutcome {
         guard destination.isConfigured else { return .notConfigured }
-        let temp = fileManager.temporaryDirectory
-            .appendingPathComponent("aletheia-backup-\(UUID().uuidString).sqlite")
+        guard let temp = try? PrivateStaging.scratchFile(prefix: "aletheia-backup", ext: "sqlite") else {
+            return .failed("Couldn't prepare a private folder for the snapshot.")
+        }
+        defer { PrivateStaging.remove(temp) }
+        // The snapshot writer needs the path free; it creates the file itself.
+        PrivateStaging.remove(temp)
         guard store.snapshot(to: temp) else {
             return .failed("Couldn't take a consistent snapshot of the database.")
         }
-        defer { try? fileManager.removeItem(at: temp) }
         return await destination.backUp(databaseURL: temp, reason: reason)
     }
 

@@ -14,7 +14,9 @@ private let log = Logger(subsystem: "com.aletheia", category: "OrphanAudioSweep"
 ///    Skips the session being recorded, and doesn't run at all while an encrypted folder is locked.
 /// 2. Scans encrypted session folders for any legacy plaintext `.caf` files and seals them in place,
 ///    recording `.recordingRecovered`.
-/// 3. Purges any leftover decrypted `aletheia-*.caf` files in the temporary directory.
+/// 3. Empties the private scratch folder (`PrivateStaging`) of decrypted or patient-derived temporary
+///    files a crash left behind, and removes `aletheia-*.caf` copies older builds left in the shared
+///    temporary directory.
 enum OrphanAudioSweep {
     /// Result metrics for tests and diagnostic logging.
     struct Result: Equatable {
@@ -47,7 +49,8 @@ enum OrphanAudioSweep {
         activeSessionID: UUID? = nil,
         queuesTranscription: Bool = true,
         stagingRoot: URL = Store.stagingDirectoryURL,
-        temporaryDirectory: URL = FileManager.default.temporaryDirectory
+        scratchRoot: URL = PrivateStaging.root,
+        temporaryDirectory: URL = PrivateStaging.legacyTemporaryDirectory
     ) -> Result {
         var result = Result()
         guard canRun(with: protector) else {
@@ -129,16 +132,8 @@ enum OrphanAudioSweep {
             }
         }
 
-        // 3. Purge temporaryDirectory/aletheia-*.caf leftovers
-        if let tempFiles = try? fm.contentsOfDirectory(at: temporaryDirectory, includingPropertiesForKeys: nil) {
-            for file in tempFiles {
-                let name = file.lastPathComponent
-                if name.hasPrefix("aletheia-") && name.hasSuffix(".caf") {
-                    try? fm.removeItem(at: file)
-                    result.temporaryFilesPurged += 1
-                }
-            }
-        }
+        // 3. Purge scratch-space and legacy shared-temp leftovers.
+        result.temporaryFilesPurged = PrivateStaging.sweep(root: scratchRoot, legacyTemporaryDirectory: temporaryDirectory)
 
         return result
     }
