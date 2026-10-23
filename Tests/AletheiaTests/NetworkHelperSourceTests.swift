@@ -34,7 +34,7 @@ final class NetworkHelperSourceTests: XCTestCase {
         let declaration = String(body[..<end.lowerBound])
 
         let funcs = declaration.split(separator: "\n").filter { $0.contains("func ") }
-        XCTAssertEqual(funcs.count, 2, "the helper's command set is exactly two calls")
+        XCTAssertEqual(funcs.count, 3, "the helper's command set is exactly three calls")
         for line in funcs {
             // Drop the reply closure: what comes back may carry Data.
             let request = line.components(separatedBy: "reply:")[0]
@@ -45,6 +45,19 @@ final class NetworkHelperSourceTests: XCTestCase {
             }
         }
         XCTAssertTrue(declaration.contains("asset: Int"))
+        // The two fetch commands take nothing from the app at all.
+        for name in ["checkForUpdates", "fetchRevocations"] {
+            XCTAssertTrue(
+                declaration.contains("func \(name)(reply:"),
+                "\(name) must be argument-free: only a reply closure")
+        }
+    }
+
+    /// The revocation endpoint is unconfigured and adds no host to the allowlist.
+    func testRevocationEndpointIsUnsetAndNoHostWasAdded() throws {
+        let catalog = try source("Sources/NetworkHelper/AssetCatalog.swift")
+        XCTAssertTrue(catalog.contains("static let revocations: URL? = nil"))
+        XCTAssertEqual(HelperAllowlist.hosts, ["github.com", "githubusercontent.com", "huggingface.co", "hf.co"])
     }
 
     /// Only the helper (and the shared protocol file, which names no network
