@@ -164,7 +164,7 @@ final class HelpTipsTests: XCTestCase {
             XCTAssertTrue(settings.contains("HelpTips.\(tip.id.dropFirst("settings.".count))"), tip.id)
         }
         for kept in ["Require Touch ID or your Mac password to open.",
-                     "Aletheia already locks when your Mac locks or sleeps",
+                     "Aletheia locks after 15 minutes of inactivity by default",
                      "current medications are provided to the assistant",
                      "Off by default, so Time Machine includes your data folder",
                      "FileVault encrypts everything on this Mac at rest"] {

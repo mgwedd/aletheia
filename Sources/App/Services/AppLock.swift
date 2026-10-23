@@ -131,7 +131,9 @@ final class AppLock: ObservableObject {
     /// Called once on each successful unlock, so the composition root can record
     /// an audit entry (HIPAA §164.312(b)) without `AppLock` depending on the log.
     var onUnlock: (() -> Void)?
-    /// Drops the folder key when the presentation lock engages.
+    /// Drops the folder key when the presentation lock engages. Deferred while
+    /// a recording or transcription is still writing to the folder (see
+    /// `observeBackgroundWork`), so locking never leaves that work without a key.
     var onLock: (() -> Void)?
     /// Called when an unlock attempt fails (not user cancellation), to record
     /// failed authentication attempts in the audit log (HIPAA §164.312(b)).
@@ -157,6 +159,10 @@ final class AppLock: ObservableObject {
     private var didHideObserver: NSObjectProtocol?
     private var promptGate = AutoPromptGate()
     private var settingsCancellable: AnyCancellable?
+    private var isWritingInBackground: () -> Bool = { false }
+    private var backgroundWorkCancellable: AnyCancellable?
+    /// The lock engaged while background work was writing; `onLock` runs once it ends.
+    private(set) var keyDropPending = false
 
     /// How often the idle timer checks elapsed time against the configured
     /// timeout. Coarse on purpose: auto-lock only needs to notice idleness
@@ -236,7 +242,7 @@ final class AppLock: ObservableObject {
         if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: canAuthenticateProvider()) {
             guard !isLocked else { return }
             isLocked = true
-            onLock?()
+            dropKeyUnlessWriting()
             SessionSearch.setAppLocked(true)
             // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
             SessionSearch.closeIndex()
@@ -244,9 +250,32 @@ final class AppLock: ObservableObject {
         }
     }
 
+    /// Lets a recording or transcription finish with the folder key it started
+    /// with: while `busy` answers true the lock covers the windows but keeps the
+    /// key, and drops it when `changes` next fires with the work finished.
+    func observeBackgroundWork(busy: @escaping () -> Bool, changes: AnyPublisher<Void, Never>) {
+        isWritingInBackground = busy
+        backgroundWorkCancellable = changes
+            .receive(on: DispatchQueue.main)   // objectWillChange fires before the new value is stored
+            .sink { [weak self] in
+                MainActor.assumeIsolated { self?.backgroundWorkChanged() }
+            }
+    }
+
+    private func backgroundWorkChanged() {
+        guard keyDropPending, isLocked else { return }
+        dropKeyUnlessWriting()
+    }
+
+    private func dropKeyUnlessWriting() {
+        keyDropPending = isWritingInBackground()
+        if !keyDropPending { onLock?() }
+    }
+
     /// Test seam: puts the lock into the unlocked state without prompting Touch ID.
     func simulateUnlockedForTesting() {
         isLocked = false
+        keyDropPending = false
         SessionSearch.setAppLocked(false)
     }
 
@@ -279,6 +308,7 @@ final class AppLock: ObservableObject {
             let ok = try await authenticator.authenticate(reason: LockScreenCopy.authenticationReason)
             if ok {
                 isLocked = false
+                keyDropPending = false
                 SessionSearch.setAppLocked(false)
                 SessionSearch.openIndex()
                 lastError = nil
