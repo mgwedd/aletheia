@@ -1,11 +1,8 @@
 import AppKit
 
-/// Deep links into the System Settings privacy panes and the Ollama download,
-/// so the setup flow can send the user straight to the right place instead of
+/// Deep links into the System Settings privacy panes, so the setup flow can send the user straight to the right place instead of
 /// describing a menu path.
 enum SystemSettingsLinks {
-    static let ollamaDownload = URL(string: "https://ollama.com/download")!
-
     static func openMicrophoneSettings() {
         open("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
     }
@@ -24,10 +21,6 @@ enum SystemSettingsLinks {
 
     static func openFileVaultSettings() {
         open("x-apple.systempreferences:com.apple.preference.security?FileVault")
-    }
-
-    static func openOllamaDownload() {
-        NSWorkspace.shared.open(ollamaDownload)
     }
 
     /// Best-effort deep link to the Apple Intelligence & Siri pane. The pane

@@ -114,10 +114,9 @@ struct AletheiaApp: App {
         ))
         // Record each successful unlock in the on-device audit log (HIPAA
         // §164.312(b)). AppLock stays decoupled from the log via this hook.
-        appLock.onUnlock = { [weak appModel] in
+        appLock.onUnlock = { [weak appModel, weak encryption] in
+            encryption?.autoUnlockFromDevice()
             appModel?.recordAudit(.appUnlocked)
-            // Reload only what the lock unloaded; not ~5 GB on every unlock.
-            OllamaClient.warmUpResumed()
         }
         appLock.onUnlockFailed = { [weak appModel] reason in
             appModel?.recordAudit(.appUnlockFailed, detail: reason)

@@ -1713,7 +1713,7 @@ struct SessionDetailView: View {
                 if settings.progressNoteFormat == format { summaryText = text }
             },
             onError: { error in
-                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                if let incident = AIEngineIncident.from(error: error) {
                     engineRetries.set({ generateNote() }, for: .note)
                     engineIncident = incident
                 } else {
@@ -1832,7 +1832,7 @@ struct SessionDetailView: View {
             onReveal: { text in chatMessages.upsert(id: assistantID, role: .assistant, text: text) },
             onError: { error in
                 isChatSending = false
-                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                if let incident = AIEngineIncident.from(error: error) {
                     // The question stays in the conversation (nothing is lost if the
                     // alert is cancelled); a retry takes the unanswered turn out
                     // first so the question is asked once.

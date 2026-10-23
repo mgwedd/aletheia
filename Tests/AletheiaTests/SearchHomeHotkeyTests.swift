@@ -53,6 +53,7 @@ final class SearchHomeHotkeyTests: XCTestCase {
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_000, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: Host(appModel: appModel, settings: settings))
+        NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         settle()
     }
@@ -95,6 +96,9 @@ final class SearchHomeHotkeyTests: XCTestCase {
     }
 
     func testCommandFMovesTheCursorFromTheSidebarToTheHomeField() throws {
+        // SwiftUI only moves focus in the key window, and a window is only key
+        // while the app is frontmost, which a full run in the background isn't.
+        try XCTSkipUnless(window.isKeyWindow, "the test window can't become key while another app is frontmost")
         let sidebar = try XCTUnwrap(field(GlobalSearchField.prompt))
         let home = try XCTUnwrap(field(GlobalSearchField.homePrompt))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
