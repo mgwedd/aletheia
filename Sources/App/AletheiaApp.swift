@@ -338,7 +338,7 @@ private struct LockCover: ViewModifier {
             // (added last) draws above it when both covers apply.
             .overlay {
                 if covers.contains(.passphrase) {
-                    EncryptionUnlockView()
+                    FolderUnlockView()
                         .environmentObject(encryption)
                         .environmentObject(settings)
                         .environmentObject(appModel)

@@ -33,6 +33,7 @@ struct SettingsView: View {
     /// How the last audit log export ended, shown until dismissed.
     @State private var exportResult: SaveOutcome?
     @State private var showEncryptionSetup = false
+    @State private var showNewRecoveryKeySheet = false
     @State private var showConsentGuide = false
     @State private var confirmDisableEncryption = false
     @State private var isDisablingEncryption = false
@@ -102,6 +103,10 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showEncryptionSetup) {
             EncryptionSetupSheet()
+                .environmentObject(encryption)
+        }
+        .sheet(isPresented: $showNewRecoveryKeySheet) {
+            NewRecoveryKeySheet()
                 .environmentObject(encryption)
         }
         .sheet(isPresented: $showConsentGuide) {
@@ -782,6 +787,17 @@ struct SettingsView: View {
                         }
                 }
                 .padding(.vertical, 12)
+                SettingsHairline()
+                SettingsRow(
+                    title: "Emergency recovery key",
+                    detail: "A 24-word key allows unlocking your data folder if you forget your passphrase. If you misplace your printed key, create a new one to invalidate the old one."
+                ) {
+                    Button("Create New Recovery Key…") {
+                        showNewRecoveryKeySheet = true
+                    }
+                    .buttonStyle(.themed)
+                }
+                .padding(.vertical, 12)
             }
             if let failure = encryption.rememberError {
                 SettingsCaption("This Mac's keychain couldn't keep the key: \(failure)")
@@ -794,7 +810,7 @@ struct SettingsView: View {
     private var encryptionSchemeDescription: String {
         let chunkMiB = ChunkedCipher.defaultChunkSize / (1 << 20)
         let iterations = PassphraseKDF.defaultIterations.formatted()
-        return "A random data key seals each file with AES-256-GCM; long recordings are sealed in \(chunkMiB) MiB chunks. Your passphrase wraps that key (PBKDF2-HMAC-SHA256, \(iterations) iterations). If you forget the passphrase, your data cannot be recovered."
+        return "A random data key seals each file with AES-256-GCM; long recordings are sealed in \(chunkMiB) MiB chunks. Your passphrase wraps that key (PBKDF2-HMAC-SHA256, \(iterations) iterations). A 24-word emergency recovery key provides a fallback if you lose your passphrase."
     }
 
     @ViewBuilder
