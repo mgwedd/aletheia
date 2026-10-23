@@ -122,7 +122,8 @@ enum ChunkedCipher {
         guard !minOverflow, minBody <= bodySize else { throw ChunkedError.truncated }
         guard !maxOverflow, bodySize <= maxBody else { throw ChunkedError.trailingData }
 
-        FileManager.default.createFile(atPath: dst.path, contents: nil)
+        // Plaintext output: owner-only regardless of umask.
+        FileManager.default.createFile(atPath: dst.path, contents: nil, attributes: [.posixPermissions: 0o600])
         let output = try FileHandle(forWritingTo: dst)
         defer { try? output.close() }
 

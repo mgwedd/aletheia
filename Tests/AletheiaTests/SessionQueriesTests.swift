@@ -23,7 +23,7 @@ final class SessionQueriesTests: XCTestCase {
 
         let items = SessionQueries.todaysSessions(now: Date(), store: store)
         XCTAssertEqual(items.count, 1)
-        XCTAssertEqual(items.first?.patientName, "Jane Doe")
+        XCTAssertEqual(items.first?.label.text, "J.D.")
     }
 
     func testTodaysSessionsSpansPatients() throws {
@@ -32,8 +32,8 @@ final class SessionQueriesTests: XCTestCase {
         _ = try store.createSession(for: jane)
         _ = try store.createSession(for: john)
 
-        let names = Set(SessionQueries.todaysSessions(now: Date(), store: store).map(\.patientName))
-        XCTAssertEqual(names, ["Jane", "John"])
+        let names = (SessionQueries.todaysSessions(now: Date(), store: store).map(\.label.text))
+        XCTAssertEqual(names, ["J.", "J."])
     }
 
     func testNilStoreYieldsNothing() {
