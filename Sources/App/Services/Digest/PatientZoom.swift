@@ -243,7 +243,8 @@ enum PatientZoom {
         let why = area.transcriptHits > 0
             ? " (\(area.transcriptHits) matching transcript line\(area.transcriptHits == 1 ? "" : "s"))"
             : ""
-        return "Summary of the part search points at \(area.anchor)\(why):\n" + (area.summary ?? "")
+        return "Summary of the part search points at \(area.anchor)\(why):\n"
+            + UntrustedText(.digest, area.summary ?? "").rendered
     }
 
     /// The part summaries (100 ft) to show, best first, while they fit `budget`;
@@ -320,14 +321,15 @@ enum PatientZoom {
     static func openings(_ sessions: [OpeningInput], budget: Int) -> [Opening] {
         guard !sessions.isEmpty, budget > 0 else { return [] }
         let slot = budget / min(sessions.count, openingSlots)
-        // Header, the blank line before the block, and the label with its line break.
-        let overhead = headerAllowance + 2 + openingLabel.count + 1
+        // Header, the blank line before the block, the label with its line
+        // break, and the excerpt's tags.
+        let overhead = headerAllowance + 2 + openingLabel.count + 1 + UntrustedText.tagOverhead(.transcript)
         var remaining = budget
         var out: [Opening] = []
         for session in sessions {
             let room = min(slot, remaining) - overhead
             guard let excerpt = openingExcerpt(of: session.transcript, limit: room) else { continue }
-            let block = openingLabel + "\n" + excerpt
+            let block = openingLabel + "\n" + UntrustedText(.transcript, excerpt).rendered
             let cost = block.count + 2 + headerAllowance
             remaining -= cost
             out.append(Opening(tag: session.tag, date: session.date, block: block, cost: cost))

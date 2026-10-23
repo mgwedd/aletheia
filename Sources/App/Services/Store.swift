@@ -1553,6 +1553,11 @@ final class Store {
     /// `AssistantService.patientContextCharacters`): background, search block,
     /// notes and comments (newest sessions first, up to a third of what is
     /// left) and the rest all come out of it.
+    ///
+    /// The background and the question are the therapist's own text: over
+    /// `TherapistInput.characterLimit` the context carries `inputError` (and
+    /// nothing is gathered); a background over a quarter of `characterBudget`
+    /// goes in as the parts that match the question, and the coverage says so.
     func gatherCitedPatientContext(
         for patient: Patient,
         relevantTo question: String,
@@ -1562,7 +1567,25 @@ final class Store {
         // Prepend the patient's background (clinical history + meds) when enabled
         // so the assistant can draw on it whenever it's relevant, without it having
         // to be requested. Empty when nothing has been entered or when disabled.
-        let background = includeBackground ? patient.aiBackgroundBlock : ""
+        let rawBackground = includeBackground ? patient.aiBackgroundBlock : ""
+        do {
+            try TherapistInput.check([(question, .question), (rawBackground, .background)])
+        } catch let error as TherapistInput.TooLong {
+            return PatientContext(text: "", sources: [], inputError: error)
+        } catch {}
+        let fitted = TherapistInput.fit(rawBackground, room: characterBudget / 4, query: question)
+        var context = gatherPatientContext(
+            for: patient, relevantTo: question, characterBudget: characterBudget, background: fitted.text)
+        if fitted.excerpted { context.coverage.excerptedFields = [.background] }
+        return context
+    }
+
+    private func gatherPatientContext(
+        for patient: Patient,
+        relevantTo question: String,
+        characterBudget: Int,
+        background: String
+    ) -> PatientContext {
         let room = max(0, characterBudget - background.count)
         var extrasRemaining = room / 3
         var extrasUsed = 0
@@ -1584,7 +1607,13 @@ final class Store {
         for session in sessions {
             let parts = sessionMaterialParts(for: patient, session: session)
             let limit = min(Store.patientChatSessionExtrasLimit, extrasRemaining)
-            var material = limit > 0 ? Store.capped(parts.map(\.text), limit: limit) : []
+            // Generated notes are the model's writing: tagged as material once
+            // capped, so a cut can't drop the closing tag.
+            var material = (limit > 0 ? Store.capped(parts.map(\.text), limit: limit) : [])
+                .enumerated().map { index, block in
+                    index < parts.count && parts[index].kind == .note && block != Store.omittedNotesMarker
+                        ? UntrustedText(.material, block).rendered : block
+                }
             if parts.reduce(0, { $0 + $1.text.count }) > limit { notesCut += 1 }
             let materialSize = material.reduce(0) { $0 + $1.count }
             extrasRemaining -= materialSize
@@ -1668,7 +1697,7 @@ final class Store {
         var sources: [CitationSource] = []
         for date in dates {
             var parts: [String] = []
-            parts.append(contentsOf: (excerptsByDate[date] ?? []).map { $0.text })
+            parts.append(contentsOf: (excerptsByDate[date] ?? []).map { UntrustedText(.transcript, $0.text).rendered })
             parts.append(contentsOf: extras[date] ?? [])
             // Nothing from this session made it into the context: don't cite it.
             guard !parts.isEmpty, let tag = labels[date], let folderName = firstFolder[date] else { continue }
@@ -1828,7 +1857,7 @@ final class Store {
             if let digestBlock = digestPlan.individualByDate[date] { parts.append(digestBlock) }
             parts.append(contentsOf: (openingsByDate[date] ?? []).map(\.block))
             parts.append(contentsOf: sectionsByDate[date] ?? [])
-            parts.append(contentsOf: (excerptsByDate[date] ?? []).map { $0.text })
+            parts.append(contentsOf: (excerptsByDate[date] ?? []).map { UntrustedText(.transcript, $0.text).rendered })
             parts.append(contentsOf: input.extras[date] ?? [])
             guard !parts.isEmpty, let tag = input.labels[date], let folderName = input.firstFolder[date] else { continue }
             blocks.append("\(PatientContextRetriever.header(date, labels: input.labels))\n\(parts.joined(separator: "\n\n"))")
@@ -2015,12 +2044,14 @@ final class Store {
 
     /// Keeps as many of `blocks` as fit in `limit` characters, cutting the block
     /// that crosses the limit with a marker and noting if later ones were left out.
+    static let omittedNotesMarker = "[further notes omitted]"
+
     static func capped(_ blocks: [String], limit: Int) -> [String] {
         var remaining = limit
         var kept: [String] = []
         for block in blocks {
             if remaining <= 0 {
-                kept.append("[further notes omitted]")
+                kept.append(omittedNotesMarker)
                 break
             }
             if block.count > remaining {

@@ -282,7 +282,7 @@ final class DigestBuilder: ObservableObject {
     /// Runs one prompt now, streamed so its stage (`read` while the model reads,
     /// `write` once text arrives), elapsed time and token count reach `live`.
     func runStage(
-        _ prompt: String, read: String, write: String, task: AITask = .digest,
+        _ prompt: String, turns: [PromptTurn] = [], read: String, write: String, task: AITask = .digest,
         grammar: LocalLLMGrammar? = nil,
         service: AssistantService, live: @escaping Live, onSnapshot: ((String) -> Void)? = nil
     ) async throws -> String {
@@ -305,7 +305,7 @@ final class DigestBuilder: ObservableObject {
         }
         var text = ""
         var chunks = 0
-        for try await snapshot in run.streamDigest(prompt: prompt, task: task, grammar: grammar) {
+        for try await snapshot in run.streamDigest(prompt: prompt, turns: turns, task: task, grammar: grammar) {
             text = snapshot
             chunks += 1
             onSnapshot?(snapshot)

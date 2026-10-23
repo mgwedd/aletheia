@@ -339,8 +339,13 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(focusResult.readDigestTags, ["S1"])
     }
 
-    func testPlanningPromptCarriesTheChatHistory() {
+    /// The planning step sees the conversation like the answer does: the
+    /// turns since the last summary as chat turns (`refine`), and before that
+    /// the therapist's own messages and the summary.
+    func testPlanningPromptCarriesTheEarlierConversation() {
         let history = [
+            ChatMessage(role: .user, text: "Keep answers short."),
+            ChatMessage(role: .summary, text: "Asked about Dana's loan [S1]."),
             ChatMessage(role: .user, text: "What did Dana ask for?"),
             ChatMessage(role: .assistant, text: "She asked to borrow money [S1]."),
             ChatMessage(role: .user, text: "And what did the client say back?"),
@@ -352,13 +357,14 @@ final class LocalToolLoopTests: XCTestCase {
             remainingCalls: 2,
             history: history
         )
-        XCTAssertTrue(prompt.contains("Recent conversation:"))
-        XCTAssertTrue(prompt.contains("Therapist: What did Dana ask for?"))
-        XCTAssertTrue(prompt.contains("Assistant: She asked to borrow money [S1]."))
+        XCTAssertTrue(prompt.contains("- Keep answers short."))
+        XCTAssertTrue(prompt.contains("<summary>\nAsked about Dana's loan [S1].\n</summary>"))
+        XCTAssertFalse(prompt.contains("She asked to borrow money"), "recent turns go in as chat turns")
         XCTAssertEqual(
             prompt.components(separatedBy: "And what did the client say back?").count - 1, 1,
             "the question appears once, on its own line"
         )
+        XCTAssertEqual(PromptTurn.recent(history, question: "And what did the client say back?").count, 2)
 
         let first = LocalToolLoop.planningPrompt(
             question: "What did Dana ask for?",
@@ -366,7 +372,7 @@ final class LocalToolLoopTests: XCTestCase {
             priorToolOutputs: [],
             remainingCalls: 2
         )
-        XCTAssertFalse(first.contains("Recent conversation:"))
+        XCTAssertFalse(first.contains("Summary of the earlier conversation"))
     }
 
     func testRefineShowsThePlanningCallTheEarlierTurns() async throws {
@@ -606,6 +612,62 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(scope.sessions.count, 1)
         XCTAssertEqual(scope.sessions.first?.tag, "S1")
         XCTAssertEqual(scope.sessions.first?.digest?.sessionDigest, "Discussed sister boundary.")
+    }
+
+    /// The tools read one patient's sessions and nothing else: another
+    /// patient's sessions are not in the scope, and no tool name reaches them.
+    func testToolScopeIsThisPatientsOnly() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("ToolScope-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = Store(root: root)
+        let dana = try store.createPatient(name: "Dana Cole")
+        let other = try store.createPatient(name: "Robin Hale")
+        let mine = try store.createSession(for: dana, on: date(2026, 3, 15))
+        try store.saveTranscript("[00:10] Client: My sister called.", for: dana, session: mine)
+        let theirs = try store.createSession(for: other, on: date(2026, 3, 16))
+        try store.saveTranscript("[00:10] Client: OTHER-PATIENT-SECRET about my sister.", for: other, session: theirs)
+
+        let scope = store.localToolScope(for: dana)
+        XCTAssertEqual(scope.sessions.map(\.tag), ["S1"])
+        for call in [
+            LocalToolCall(tool: "search", query: "sister"),
+            LocalToolCall(tool: "list_sessions"),
+            LocalToolCall(tool: "read_section", session: "S2", start: "0:00"),
+            LocalToolCall(tool: "get_digest", session: "S2"),
+        ] {
+            XCTAssertFalse(scope.execute(call).output.contains("OTHER-PATIENT-SECRET"), call.tool)
+        }
+    }
+
+    /// The model's tools only read: the tool loop and everything that builds
+    /// prompts hold no store, delete nothing and make no network call, so a
+    /// model can't change a record or send anything. (The one write nearby is
+    /// the app caching a digest it built, through a closure the caller passes.)
+    func testModelPathsCannotWriteOrReachTheNetwork() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let files = [
+            "Sources/App/Services/Digest/LocalToolLoop.swift",
+            "Sources/App/Services/Digest/LongSessionNote.swift",
+            "Sources/App/Services/Digest/PatientZoom.swift",
+            "Sources/App/Services/Integrations/AssistantService.swift",
+            "Sources/App/Services/Prompts.swift",
+            "Sources/App/Services/Prompts+Digest.swift",
+            "Sources/App/Services/Prompts+Search.swift",
+            "Sources/App/Services/PromptTurn.swift",
+            "Sources/App/Services/TherapistInput.swift",
+            "Sources/App/Services/UntrustedText.swift",
+            "Sources/App/Services/Llama/LlamaAssistant.swift",
+            "Sources/App/Services/Llama/LlamaEngine.swift",
+            "Sources/App/Services/Llama/LlamaPrompt.swift",
+        ]
+        for path in files {
+            let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+            for banned in ["URLSession", "URLRequest", "NWConnection", "Store(", ": Store", "removeItem(", ".write(to:",
+                           "delete("] {
+                XCTAssertFalse(source.contains(banned), "\(banned) in \(path)")
+            }
+        }
     }
 
     // MARK: - Pressure tests

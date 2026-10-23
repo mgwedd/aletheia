@@ -398,7 +398,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         }
 
         guard let tokens = LlamaPrompt.tokens(
-            model: model, vocab: vocab, system: request.system, prompt: request.prompt
+            model: model, vocab: vocab, system: request.system, turns: request.turns, prompt: request.prompt
         ), !tokens.isEmpty else {
             throw LocalLLMEngineError.generationFailed("Couldn't tokenize the prompt.")
         }

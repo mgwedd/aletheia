@@ -25,10 +25,12 @@ extension Prompts {
         speakers did not say. Leave out a heading if the section has nothing for it. \
         Keep it under 1,200 characters.
 
+        \(materialRule)
+
         \(legend(clientName: clientName))
 
         Transcript section \(anchor):
-        \(TranscriptCompactor.compact(text))
+        \(UntrustedText(.transcript, TranscriptCompactor.compact(text)).rendered)
         """
     }
 
@@ -50,8 +52,10 @@ extension Prompts {
         Use only what is in the notes. Do not infer, diagnose or add anything \
         they do not say. Do not drop a risk flag to save space.
 
+        \(materialRule)
+
         Section digests:
-        \(body)
+        \(UntrustedText(.digest, body).rendered)
         """
     }
 }
