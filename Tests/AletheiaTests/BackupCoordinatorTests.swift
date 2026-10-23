@@ -7,14 +7,18 @@ import XCTest
 /// working store with its records intact.
 final class BackupCoordinatorTests: XCTestCase {
     private var tempRoot: URL!
+    private var originalScratchRoot: URL!
 
     override func setUpWithError() throws {
         tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("BackupCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        originalScratchRoot = PrivateStaging.root
+        PrivateStaging.root = tempRoot.appendingPathComponent("Scratch", isDirectory: true)
     }
 
     override func tearDownWithError() throws {
+        PrivateStaging.root = originalScratchRoot
         try? FileManager.default.removeItem(at: tempRoot)
     }
 

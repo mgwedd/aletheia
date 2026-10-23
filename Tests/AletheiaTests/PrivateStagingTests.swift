@@ -25,6 +25,15 @@ final class PrivateStagingTests: XCTestCase {
         return (attrs[.posixPermissions] as? NSNumber)?.intValue ?? -1
     }
 
+    func testDefaultRootIsSeparateWhileHostingTests() {
+        let real = PrivateStaging.defaultRoot(environment: [:])
+        let test = PrivateStaging.defaultRoot(environment: ["XCTestConfigurationFilePath": "/x"])
+        XCTAssertEqual(real.lastPathComponent, "Scratch")
+        XCTAssertEqual(test.lastPathComponent, "ScratchTests")
+        XCTAssertEqual(test.deletingLastPathComponent(), real.deletingLastPathComponent())
+        XCTAssertEqual(originalRoot.lastPathComponent, "ScratchTests", "this process is hosting tests")
+    }
+
     func testScratchFileIsOwnerOnlyInAnOwnerOnlyFolder() throws {
         let file = try PrivateStaging.scratchFile(prefix: "t", ext: "bin")
         XCTAssertEqual(file.deletingLastPathComponent().path, PrivateStaging.root.path)

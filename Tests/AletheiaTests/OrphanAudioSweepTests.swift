@@ -11,6 +11,7 @@ final class OrphanAudioSweepTests: XCTestCase {
     private var protector: FileProtector!
     private var store: Store!
     private var auditLog: AuditLog!
+    private var originalScratchRoot: URL!
 
     override func setUpWithError() throws {
         super.setUp()
@@ -23,6 +24,9 @@ final class OrphanAudioSweepTests: XCTestCase {
         try FileManager.default.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: tempCafDir, withIntermediateDirectories: true)
 
+        originalScratchRoot = PrivateStaging.root
+        PrivateStaging.root = tempDir.appendingPathComponent("DefaultScratch", isDirectory: true)
+
         key = SymmetricKey(size: .bits256)
         protector = FileProtector(key: key)
         store = Store(root: storeRoot, protector: protector)
@@ -30,6 +34,7 @@ final class OrphanAudioSweepTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        PrivateStaging.root = originalScratchRoot
         try? FileManager.default.removeItem(at: tempDir)
         super.tearDown()
     }

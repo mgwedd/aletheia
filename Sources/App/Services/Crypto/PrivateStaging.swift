@@ -14,10 +14,18 @@ enum PrivateStaging {
     /// The scratch folder. Deliberately not under `Store.stagingDirectoryURL`:
     /// the crash-recovery sweep treats every folder there as a recording.
     /// Tests point it at a throwaway folder.
-    nonisolated(unsafe) static var root: URL = FileManager.default
-        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("Aletheia", isDirectory: true)
-        .appendingPathComponent("Scratch", isDirectory: true)
+    nonisolated(unsafe) static var root: URL = defaultRoot()
+
+    /// The default scratch folder. A process hosting unit tests runs in the same
+    /// container as the real app, so it gets its own folder: a sweep run by a
+    /// test can never remove a file the real app is using.
+    static func defaultRoot(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Aletheia", isDirectory: true)
+            .appendingPathComponent(TestHost.isHostingTests(environment: environment) ? "ScratchTests" : "Scratch", isDirectory: true)
+    }
 
     /// When this process first used the scratch space. The launch sweep only
     /// removes older files, so it can never take one that is in use now.
