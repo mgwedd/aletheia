@@ -13,6 +13,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case encryption
     case backups
     case security
+    case setAsideRecordings
 
     static let `default`: SettingsPane = .general
 
@@ -26,13 +27,21 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .encryption: return "Encryption"
         case .backups: return "Backups"
         case .security: return "Security"
+        case .setAsideRecordings: return "Set-aside recordings"
         }
     }
 
     /// The panes this build shows. Encryption is left out when there is nothing
     /// to manage (see `SettingsAvailability`) rather than shown as unavailable.
-    static func available(encryptionOffered: Bool) -> [SettingsPane] {
-        allCases.filter { $0 != .encryption || encryptionOffered }
+    /// Set-aside recordings shows only while there are some.
+    static func available(encryptionOffered: Bool, hasSetAsideRecordings: Bool = false) -> [SettingsPane] {
+        allCases.filter {
+            switch $0 {
+            case .encryption: return encryptionOffered
+            case .setAsideRecordings: return hasSetAsideRecordings
+            default: return true
+            }
+        }
     }
 
     /// The pane for a remembered raw value: the default when it is unknown or

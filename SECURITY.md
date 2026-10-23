@@ -68,3 +68,10 @@ The repo must never contain credentials or patient data. Two layers enforce it:
 Also enable **GitHub's native secret scanning + push protection** (Settings →
 Code security) for a third layer that blocks known-provider tokens at push time.
 Signing/Apple credentials belong in **GitHub Secrets**, never in the tree.
+
+## Reporting a vulnerability
+
+Please report security problems privately, not in a public issue or pull
+request. On the repository page open the **Security** tab, choose **Report a
+vulnerability**, and describe what you found and how to reproduce it. Do not
+include real patient data in a report.

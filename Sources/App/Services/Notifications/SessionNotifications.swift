@@ -37,6 +37,18 @@ enum SessionNotifications {
         )
     }
 
+    /// The transcript was saved, but the recording that should have been
+    /// deleted afterwards is still on disk.
+    static func recordingNotDeleted(patientName: String, date: Date, showsName: Bool) -> AppNotificationContent {
+        AppNotificationContent(
+            identifier: "recording-kept-\(date.timeIntervalSince1970)",
+            title: "Recording still on disk",
+            body: showsName
+                ? "\(patientName)'s session from \(dateFormatter.string(from: date)) was transcribed, but its recording couldn't be deleted. Open the session to see why."
+                : "A session was transcribed, but its recording couldn't be deleted. Open Aletheia to see why."
+        )
+    }
+
     static func summaryReady(patientName: String, date: Date, showsName: Bool) -> AppNotificationContent {
         AppNotificationContent(
             identifier: "summary-\(date.timeIntervalSince1970)",

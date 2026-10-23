@@ -21,6 +21,9 @@ final class AnnotationRepository {
 
     private let core: PersistenceCore
     private let protector: FileProtector
+    /// Called when a stored note can't be decoded, so the caller can report it
+    /// instead of the note reading as empty.
+    var onDecodeFailure: (() -> Void)?
 
     init(core: PersistenceCore, protector: FileProtector) {
         self.core = core
@@ -137,14 +140,23 @@ final class AnnotationRepository {
 
     func note(sessionID: UUID) -> String {
         guard let record = core.record(kind: Self.noteKind, id: sessionID.uuidString) else { return "" }
-        return RecordPayloadCodec.decode(String.self, from: record.payload, using: protector) ?? ""
+        if let text = RecordPayloadCodec.decode(String.self, from: record.payload, using: protector) {
+            return text
+        }
+        if !protector.isLocked { onDecodeFailure?() }
+        return ""
     }
 
+    /// Refuses (returns false) to replace a stored note that can't be decoded,
+    /// so a damaged note that reads as empty is never overwritten.
     @discardableResult
     func saveNote(sessionID: UUID, text: String, now: Date = Date()) -> Bool {
         let existing = core.record(kind: Self.noteKind, id: sessionID.uuidString)
-        guard RecordPayloadCodec.mayOverwrite(existing, using: protector),
-              let data = RecordPayloadCodec.encode(text, using: protector) else { return false }
+        guard RecordPayloadCodec.mayOverwrite(existing, using: protector) else { return false }
+        if let existing, RecordPayloadCodec.isDamaged(String.self, payload: existing.payload, using: protector) {
+            return false
+        }
+        guard let data = RecordPayloadCodec.encode(text, using: protector) else { return false }
         let createdAt = existing?.createdAt ?? now
         let record = PersistedRecord(
             id: sessionID.uuidString, kind: Self.noteKind, itemID: sessionID,

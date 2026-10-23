@@ -142,6 +142,7 @@ struct DamagedRecordReviewSheet: View {
                     .foregroundStyle(Theme.warn.color)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(entry.kind == .databaseRecord ? "Unreadable Database Record"
+                         : entry.kind == .storedRecord ? "Damaged Record"
                          : entry.kind == .patientRecord ? "Damaged Patient Record" : "Damaged Session Record")
                         .font(Theme.Typography.title)
                         .foregroundStyle(Theme.text.color)

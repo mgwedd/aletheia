@@ -23,6 +23,13 @@ enum RecordPayloadCodec {
         return try? JSONDecoder.aletheia.decode(T.self, from: data)
     }
 
+    /// Whether `payload` is a stored value that can't be decoded as `type` even
+    /// though the key is held. A locked protector proves nothing, so it never
+    /// counts as damage.
+    static func isDamaged<T: Decodable>(_ type: T.Type, payload: Data, using protector: FileProtector) -> Bool {
+        !protector.isLocked && decode(type, from: payload, using: protector) == nil
+    }
+
     /// Opens just the field-cipher layer, without assuming what's underneath is
     /// valid JSON for any particular type — the building block `decode` uses,
     /// and the fallback for legacy plaintext that is not valid domain JSON.
