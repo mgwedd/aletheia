@@ -24,7 +24,7 @@ flowchart LR
     C["Clinician's Mac<br/>(chosen data folder)"]
     C -->|update check: version file only| U["appcast host"]
     C -->|opt-in model download| M["model host"]
-    C -.->|default: 127.0.0.1| O["Ollama / built-in AI"]
+    C -.->|in-process, no network| O["built-in AI"]
     D["Developer"]:::none
     classDef none fill:#f6f6f6,stroke:#bbb,color:#888;
     D -. "no server, no PHI, no access" .-> C
@@ -54,9 +54,8 @@ the destination and encryption of any system backup.
 | Other local storage | App settings and the selected-folder bookmark live in the macOS app container. Downloaded models live under the app's Application Support directory. Optional remembered data keys use the device-only login Keychain service `com.aletheia.datakey`. |
 
 The app checks the GitHub release appcast when update checks are enabled and
-downloads models from Hugging Face when requested; an Ollama model download is
-fetched by Ollama from its own registry. The default Ollama endpoint
-is `http://127.0.0.1:11434`; its address is configurable. These network
+downloads models from Hugging Face when requested. The built-in AI runs
+in-process and makes no network requests. These network
 requests are separate from the data folder. A synced data folder can transmit
 its contents through the user's cloud provider outside the app's own network
 requests. The app does not upload backups of its own.
@@ -74,7 +73,7 @@ Legend: **✅ in place** · **◐ in progress** · **○ clinician responsibilit
 | **Audit controls (b)** — record and examine activity involving ePHI | ◐ | A local JSON-lines `audit.log` records app unlocks and failed unlocks, encryption changes, exports, and patient deletions, with timestamps and no patient names or clinical text. It is viewable and exportable in Settings. Writes are best effort, and the file has no integrity seal or actor identity; some actions, including backups, recording deletion, and chat deletion, are not yet recorded. |
 | **Integrity (c)(1)** — protect ePHI from improper alteration/destruction | ◐ / ○ | SQLite `PRAGMA secure_delete` zeroes freed pages and identity/metadata writes are atomic. The clinician can edit transcripts and draft notes; the app does not yet retain an immutable original or amendment history. Local database snapshots assist recovery, but a complete backup of the data folder remains a practice responsibility. |
 | **Person/entity authentication (d)** | ✅ | App lock via `LocalAuthentication` (Touch ID or Mac password) gates access to the app; macOS account auth gates the device. |
-| **Transmission security (e)(1)** — guard ePHI in transit | ◐ | Update checks and opt-in model downloads use external hosts; the default Ollama endpoint is local (`127.0.0.1:11434`). The app has no working cloud-backup upload. A clinician-chosen data folder may itself be in a synced location, so select a local folder when PHI must stay on the Mac. |
+| **Transmission security (e)(1)** — guard ePHI in transit | ◐ | Update checks and opt-in model downloads use external hosts; the built-in AI runs in-process. The app has no working cloud-backup upload. A clinician-chosen data folder may itself be in a synced location, so select a local folder when PHI must stay on the Mac. |
 
 Patient folders use opaque UUID names after the v2 folder migration. Session
 folder names still carry dates of service. The FTS cache (`search.sqlite`)

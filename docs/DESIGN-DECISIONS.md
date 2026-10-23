@@ -53,9 +53,10 @@ vague question matches weakly and ranks poorly.
 
 **Prompt is sized to the Mac.** The budget covers transcript text only. Extras
 add up to 3,000 chars for each session, so 20 sessions can add about 60,000
-chars (about 20,000 tokens), which exceeds the smallest Mac's budget. The app
-sets `num_ctx` at runtime from the Mac's memory and refuses over-budget prompts
-with a clear message, so Ollama never truncates silently.
+chars (about 20,000 tokens), which exceeds the smallest Mac's budget. The built-in
+engine sizes its context (`n_ctx`) from the tokenized prompt, capped by the Mac's
+memory and the model's trained window, and refuses over-budget prompts with a
+clear message, so nothing is truncated silently.
 
 ### Implementation notes
 
@@ -74,8 +75,8 @@ with a clear message, so Ollama never truncates silently.
 | Option | Recall | Latency and memory | Risk | Effort |
 |---|---|---|---|---|
 | **A. Per-Mac dynamic budget** (current) | unchanged | none | user still gets partial-evidence answers, now with coverage labels | done |
-| **B. Larger fixed budget** (e.g., 24,000 tokens) | up to 4x | KV cache and time-to-first-token grow with prompt; an 8 GB Mac can swap | needs `num_ctx` set to match or Ollama truncates the front of the prompt; changing `num_ctx` reloads the model (cold start) | small, but needs measurement |
-| **C. Per-model dynamic budget** | scales with hardware | same as B, bounded by tier | needs a table of context sizes per model tag and per `ModelAdvisor` tier; table goes stale as models change; Ollama's reported window may differ from what fits in RAM | medium |
+| **B. Larger fixed budget** (e.g., 24,000 tokens) | up to 4x | KV cache and time-to-first-token grow with prompt; an 8 GB Mac can swap | the engine's cap must rise to match, and a bigger `n_ctx` rebuilds the context and its KV cache | small, but needs measurement |
+| **C. Per-model dynamic budget** | scales with hardware | same as B, bounded by tier | needs a table of context sizes per model tag and per `ModelAdvisor` tier; table goes stale as models change; a model's trained window may differ from what fits in RAM | medium |
 | **D. Map-reduce summaries** (summarise per session, answer over summaries) | every session represented | one model call per session, slow on 3B models; cache per session keyed on transcript hash to amortise | compounding error; a summary drops the detail a clinician asks about; a wrong "not discussed" is plausible | large |
 | **E. Embeddings** (NaturalLanguage, on-device) | best for vague questions | index build once per session; query is cheap | index is PHI: must be sealed (`FileProtector`), migrated by `DataMigrator`, excluded from export and covered by backup rules | large |
 | **F. Lexical fixes** (stopwords, whole-word match) | small gain | none | low | small |
