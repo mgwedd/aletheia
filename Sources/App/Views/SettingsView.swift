@@ -25,6 +25,7 @@ struct SettingsView: View {
     @State private var isCheckingHealth = false
     @State private var showSetup = false
     @ObservedObject private var navigator = AppNavigator.shared
+    @ObservedObject private var setAside = SetAsideRecordings.shared
     @State private var newRiskPhrase = ""
     @State private var confirmClearRiskPhrases = false
     @State private var confirmResetRiskPhrases = false
@@ -45,7 +46,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
 
-    private var panes: [SettingsPane] { SettingsPane.available(encryptionOffered: encryptionOffered) }
+    private var panes: [SettingsPane] { SettingsPane.available(encryptionOffered: encryptionOffered, hasSetAsideRecordings: !setAside.items.isEmpty) }
 
     private var pane: SettingsPane { SettingsPane.restored(rawValue: selectedPaneRaw, in: panes) }
 
@@ -136,6 +137,7 @@ struct SettingsView: View {
         selectedPaneRaw = request.pane.rawValue
         switch request {
         case .setupAssistant: showSetup = true
+        case .setAsideRecordings: break
         }
     }
 
@@ -148,6 +150,8 @@ struct SettingsView: View {
         case .encryption: encryptionPane
         case .backups: backupsPane
         case .security: securityPane
+        case .setAsideRecordings:
+            SetAsideRecordingsPane(model: setAside) { selectedPaneRaw = SettingsPane.general.rawValue }
         }
     }
 

@@ -58,13 +58,14 @@ enum OrphanAudioSweep {
 
         // 1. Sweep the staging directory, and the quarantine for sessions that can now be found.
         if fm.fileExists(atPath: stagingRoot.path) {
-            let quarantineDir = stagingRoot.appendingPathComponent("quarantine", isDirectory: true)
+            let quarantineDir = quarantineDirectory(stagingRoot: stagingRoot)
             let staged = directories(in: stagingRoot).filter { $0.lastPathComponent != "quarantine" }
             let quarantined = directories(in: quarantineDir)
 
             for (item, isQuarantined) in staged.map({ ($0, false) }) + quarantined.map({ ($0, true) }) {
                 let name = item.lastPathComponent
-                let sessionUUID = UUID(uuidString: name)
+                // A folder set aside twice is named "<session id>-<random id>".
+                let sessionUUID = UUID(uuidString: isQuarantined ? String(name.prefix(36)) : name)
                 if let sessionUUID, sessionUUID == activeSessionID { continue }
 
                 guard let sessionUUID, let found = store.locateSession(id: sessionUUID) else {
@@ -83,34 +84,17 @@ enum OrphanAudioSweep {
 
                 // Known session: recover the staged audio into its folder.
                 let (patient, session) = found
-                var recovered = false
-                var kept = false
-                for (file, dst) in [
-                    ("mic.caf", store.micRecordingURL(for: patient, session: session)),
-                    ("call.caf", store.callRecordingURL(for: patient, session: session)),
-                ] {
-                    let src = item.appendingPathComponent(file)
-                    guard fm.fileExists(atPath: src.path) else { continue }
-                    do {
-                        try protector.sealLargeFile(from: src, to: dst)
-                        try? fm.removeItem(at: src)
-                        recovered = true
-                    } catch {
-                        // Keep the recording where it is; the next launch tries again.
-                        kept = true
-                        log.error("Couldn't recover a staged recording for session \(session.id.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                    }
-                }
-
-                if !kept { try? fm.removeItem(at: item) }
-
-                if recovered {
+                // A set-aside take never replaces a recording the session has since gained.
+                if recover(item, into: patient, session: session, store: store, protector: protector, overwrites: !isQuarantined) {
                     result.stagedSessionsRecovered += 1
                     audit?.record(.recordingRecovered, subjectID: session.id.uuidString, detail: "staged")
                     if let ledger, queuesTranscription, !session.hasTranscript {
                         ledger.record([InterruptedWork(kind: .transcription, patientID: patient.id, sessionFolder: session.folderName)])
                     }
                 }
+            }
+            if result.stagedSessionsRecovered > 0 || result.quarantinedUnknownDirs > 0 {
+                NotificationCenter.default.post(name: .setAsideRecordingsMayHaveChanged, object: nil)
             }
         }
 
@@ -159,11 +143,124 @@ enum OrphanAudioSweep {
         return result
     }
 
-    private static func directories(in dir: URL) -> [URL] {
+    /// Seals the recordings in `item` into `session`'s folder and removes them
+    /// from `item`. A file that can't be sealed stays where it is (and so does
+    /// `item`); the next try picks it up. Unless `overwrites`, a file whose
+    /// destination already exists stays too. Returns whether anything was recovered.
+    @discardableResult
+    static func recover(
+        _ item: URL,
+        into patient: Patient,
+        session: SessionRecord,
+        store: Store,
+        protector: FileProtector,
+        overwrites: Bool = true
+    ) -> Bool {
+        let fm = FileManager.default
+        var recovered = false
+        var kept = false
+        for (file, dst) in [
+            ("mic.caf", store.micRecordingURL(for: patient, session: session)),
+            ("call.caf", store.callRecordingURL(for: patient, session: session)),
+        ] {
+            let src = item.appendingPathComponent(file)
+            guard fm.fileExists(atPath: src.path) else { continue }
+            if !overwrites && fm.fileExists(atPath: dst.path) {
+                kept = true
+                continue
+            }
+            do {
+                try protector.sealLargeFile(from: src, to: dst)
+                try? fm.removeItem(at: src)
+                recovered = true
+            } catch {
+                kept = true
+                log.error("Couldn't recover a staged recording for session \(session.id.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        if !kept { try? fm.removeItem(at: item) }
+        return recovered
+    }
+
+    /// Tries the set-aside recordings again (after switching data folder, or
+    /// once a session is back): recovers each one whose session can now be
+    /// found. Never touches the staging folders of recordings in progress.
+    /// Returns how many were recovered.
+    @discardableResult
+    static func retrySetAside(
+        store: Store,
+        protector: FileProtector,
+        audit: AuditLog? = nil,
+        stagingRoot: URL = Store.stagingDirectoryURL
+    ) -> Int {
+        guard canRun(with: protector) else { return 0 }
+        var count = 0
+        for item in directories(in: quarantineDirectory(stagingRoot: stagingRoot)) {
+            guard let id = UUID(uuidString: String(item.lastPathComponent.prefix(36))),
+                  let (patient, session) = store.locateSession(id: id),
+                  // Being recorded, or a take still waiting to be saved: leave it for later.
+                  !FileManager.default.fileExists(atPath: Store.stagingDir(for: session.id, in: stagingRoot).path)
+            else { continue }
+            if recover(item, into: patient, session: session, store: store, protector: protector, overwrites: false) {
+                count += 1
+                audit?.record(.recordingRecovered, subjectID: session.id.uuidString, detail: "set aside")
+            }
+        }
+        NotificationCenter.default.post(name: .setAsideRecordingsMayHaveChanged, object: nil)
+        return count
+    }
+
+    enum ManualRecoveryError: LocalizedError {
+        case sessionHasRecording
+        case nothingRecovered
+
+        var errorDescription: String? {
+            switch self {
+            case .sessionHasRecording: return "That session already has a recording, or one is being saved. Choose another session."
+            case .nothingRecovered: return "The recording couldn't be encrypted into that session. It's still set aside."
+            }
+        }
+    }
+
+    /// Puts a set-aside recording into a session the user picked. Refuses a
+    /// session that already has a recording (or one still being saved), so
+    /// nothing is overwritten.
+    static func recoverSetAside(
+        _ item: URL,
+        into patient: Patient,
+        session: SessionRecord,
+        store: Store,
+        protector: FileProtector,
+        audit: AuditLog? = nil,
+        stagingRoot: URL = Store.stagingDirectoryURL
+    ) throws {
+        let fm = FileManager.default
+        let busy = [store.micRecordingURL(for: patient, session: session), store.callRecordingURL(for: patient, session: session)]
+            .contains { fm.fileExists(atPath: $0.path) }
+            || fm.fileExists(atPath: Store.stagingDir(for: session.id, in: stagingRoot).path)
+        guard !busy else { throw ManualRecoveryError.sessionHasRecording }
+        let recovered = recover(item, into: patient, session: session, store: store, protector: protector)
+        NotificationCenter.default.post(name: .setAsideRecordingsMayHaveChanged, object: nil)
+        guard recovered else { throw ManualRecoveryError.nothingRecovered }
+        audit?.record(.recordingRecovered, subjectID: session.id.uuidString, detail: "set aside, chosen session")
+    }
+
+    /// Where recordings whose session can't be found are kept.
+    static func quarantineDirectory(stagingRoot: URL = Store.stagingDirectoryURL) -> URL {
+        stagingRoot.appendingPathComponent("quarantine", isDirectory: true)
+    }
+
+    static func directories(in dir: URL) -> [URL] {
         let entries = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         return entries.filter {
             !$0.lastPathComponent.hasPrefix(".")
                 && ((try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false)
         }
     }
+}
+
+extension Notification.Name {
+    /// Posted when recordings may have been set aside or recovered, so the
+    /// set-aside warning re-checks.
+    static let setAsideRecordingsMayHaveChanged = Notification.Name("com.aletheia.setAsideRecordingsMayHaveChanged")
 }

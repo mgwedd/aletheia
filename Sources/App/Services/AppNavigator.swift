@@ -107,11 +107,14 @@ final class AppNavigator: ObservableObject {
 enum SettingsRequest: Equatable {
     /// The Setup Assistant sheet (opened from the General pane).
     case setupAssistant
+    /// The recordings set aside because their session couldn't be found.
+    case setAsideRecordings
 
     /// The pane that holds what is being asked for.
     var pane: SettingsPane {
         switch self {
         case .setupAssistant: return .general
+        case .setAsideRecordings: return .setAsideRecordings
         }
     }
 }
