@@ -124,6 +124,7 @@ struct AletheiaApp: App {
         appLock.onUnlock = { [weak appModel, weak encryption] in
             encryption?.autoUnlockFromDevice()
             appModel?.recordAudit(.appUnlocked)
+            appModel?.reindexSpotlight()
         }
         appLock.onLock = { [weak encryption] in encryption?.lock() }
         // A recording or transcription keeps the key it started with until it
