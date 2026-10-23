@@ -166,6 +166,7 @@ final class AppLock: ObservableObject {
     private let canAuthenticateProvider: () -> Bool
     private let authenticator: UnlockAuthenticator
     private let isAppActive: () -> Bool
+    private let spotlight: SpotlightIndexing
     private var unlockFlight = SingleFlight()
 
     /// The last time the user interacted with the app (mouse/keyboard event
@@ -197,11 +198,13 @@ final class AppLock: ObservableObject {
         settings: AppSettings,
         canAuthenticate: @escaping () -> Bool = AppLock.canAuthenticate,
         authenticator: UnlockAuthenticator = UnlockAuthenticatorFactory.make(),
-        isAppActive: @escaping () -> Bool = { NSApp.isActive }
+        isAppActive: @escaping () -> Bool = { NSApp.isActive },
+        spotlight: SpotlightIndexing = SpotlightIndexer.shared
     ) {
         self.settings = settings
         self.authenticator = authenticator
         self.isAppActive = isAppActive
+        self.spotlight = spotlight
         self.canAuthenticateProvider = canAuthenticate
         self.isLocked = AppLockPolicy.shouldLock(
             enabled: settings.appLockEnabled,
@@ -269,6 +272,8 @@ final class AppLock: ObservableObject {
             SessionSearch.setAppLocked(true)
             // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
             SessionSearch.closeIndex()
+            // Names must not stay findable behind the lock; unlock re-indexes.
+            spotlight.clear()
             LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript
             onLocked?()
         }
@@ -408,9 +413,12 @@ final class AppLock: ObservableObject {
         }
         guard idleTimer == nil else { return }
         lastActivity = Date()
-        idleTimer = Timer.scheduledTimer(withTimeInterval: Self.idleCheckInterval, repeats: true) { [weak self] _ in
+        // `.common` modes, so the check still fires during menu tracking and scrolling.
+        let timer = Timer(timeInterval: Self.idleCheckInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.checkIdleTimeout() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        idleTimer = timer
     }
 
     private func checkIdleTimeout() {

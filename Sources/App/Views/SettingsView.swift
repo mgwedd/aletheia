@@ -208,7 +208,7 @@ struct SettingsView: View {
         if appModel.featureRegistry.contains(id: SpotlightFeatureModule.id) {
             SettingsSwitchRow(
                 title: "Find patients in Spotlight",
-                detail: "Lets you open a patient or session straight from macOS Spotlight. Only names and dates are indexed — never transcripts or summaries. Anyone using this Mac can see indexed names, so leave this off on a shared computer.",
+                detail: "Lets you open a patient or session straight from macOS Spotlight. Only initials and dates are indexed — never names, transcripts or summaries. Results are removed while Aletheia is locked.",
                 isOn: $settings.spotlightIndexingEnabled
             )
             .onChange(of: settings.spotlightIndexingEnabled) { _, _ in appModel.reindexSpotlight() }
