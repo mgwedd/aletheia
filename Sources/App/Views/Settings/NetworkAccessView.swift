@@ -58,7 +58,7 @@ struct NetworkAccessView: View {
                         Text(command)
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundStyle(Theme.text.color)
-                            .textSelection(.enabled)
+                            .selectablePatientText()
                             .lineLimit(2)
                             .truncationMode(.middle)
                             .padding(.horizontal, 10)
