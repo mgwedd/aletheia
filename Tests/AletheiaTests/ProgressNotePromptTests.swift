@@ -115,7 +115,7 @@ final class ProgressNotePromptTests: XCTestCase {
         XCTAssertTrue(prompt.contains("- [On SOAP note “Treatment goals”]: Focus on sleep hygiene"))
         // The quoted passage is drafted-note text, so the heading says it isn't hers.
         XCTAssertTrue(prompt.contains("drafted notes"))
-        XCTAssertTrue(prompt.contains("not her words"))
+        XCTAssertTrue(prompt.contains("not the therapist's words"))
     }
 
     func testSessionChatAndSummarizeIncludePatientBackground() {

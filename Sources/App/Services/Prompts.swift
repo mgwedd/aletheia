@@ -265,8 +265,8 @@ enum Prompts {
     /// judgment.
     static let commentsHeading = """
     Therapist's margin comments on the transcript and drafted notes (a quoted \
-    passage is the text she commented on, not her words; only what follows the \
-    colon is hers):
+    passage is the text the therapist commented on, not the therapist's words; \
+    only what follows the colon is theirs):
     """
 
     /// Renders the therapist's own notes/comments as a clearly-labeled block,
