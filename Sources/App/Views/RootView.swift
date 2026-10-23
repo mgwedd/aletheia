@@ -70,6 +70,7 @@ struct RootView: View {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(encryption)
+                .environmentObject(exports)
         }
         .sheet(item: $editingProfile) { patient in
             PatientProfileEditor(
