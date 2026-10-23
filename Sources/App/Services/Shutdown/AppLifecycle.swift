@@ -31,6 +31,8 @@ enum AppLifecycle {
         resume.start(
             appModel: appModel,
             ledger: { settings.dataRootURL.map(InterruptedWorkLedger.init) },
+            stagingSessionID: { [weak recorder] in recorder?.stagingSessionID },
+            transcribesAfterRecording: { settings.autoTranscribeAfterRecording },
             transcribe: { [weak transcription] in transcription?.start(patient: $0.patient, session: $0.session) },
             summarize: { [weak integrations] in
                 integrations?.digestScheduler.sessionOpened(patient: $0.patient, session: $0.session)
@@ -81,6 +83,8 @@ final class InterruptedWorkLauncher {
     func start(
         appModel: AppModel,
         ledger: @escaping () -> InterruptedWorkLedger?,
+        stagingSessionID: @escaping () -> UUID? = { nil },
+        transcribesAfterRecording: @escaping () -> Bool = { true },
         transcribe: @escaping (InterruptedWorkResumer.Target) -> Void,
         summarize: @escaping (InterruptedWorkResumer.Target) -> Void
     ) {
@@ -88,13 +92,16 @@ final class InterruptedWorkLauncher {
         watcher = appModel.$patients.receive(on: DispatchQueue.main).sink { [weak self, weak appModel] _ in
             guard let self, let appModel, let store = appModel.store else { return }
             let ledgerInstance = ledger()
-            if !self.hasRunSweep {
+            // Not while an encrypted folder is locked: it runs once the unlock reloads the patients.
+            if !self.hasRunSweep, OrphanAudioSweep.canRun(with: appModel.currentProtector) {
                 self.hasRunSweep = true
                 OrphanAudioSweep.sweep(
                     store: store,
                     protector: appModel.currentProtector,
                     audit: appModel.audit,
-                    ledger: ledgerInstance
+                    ledger: ledgerInstance,
+                    activeSessionID: stagingSessionID(),
+                    queuesTranscription: transcribesAfterRecording()
                 )
             }
             guard let ledger = ledgerInstance else { return }

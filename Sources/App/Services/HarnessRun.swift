@@ -216,7 +216,7 @@ enum HarnessRun {
         let recorder = SessionRecorder()
         await recorder.start(
             micURL: micURL, callURL: callURL,
-            context: .init(patientID: UUID(), patientName: "Harness", patientSlug: "harness", sessionFolder: "harness")
+            context: .init(sessionID: UUID(), patientID: UUID(), patientName: "Harness", patientSlug: "harness", sessionFolder: "harness")
         )
         guard recorder.isRecording else {
             if case .error(let message) = recorder.state { return finish(message) }

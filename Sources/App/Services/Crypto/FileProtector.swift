@@ -152,10 +152,12 @@ struct FileProtector: Sendable {
     }
 
     /// Seals a large file from `src` to `dst` using the streaming `ChunkedCipher`.
-    /// When encryption is off (key == nil) or `src` is already an envelope, moves
+    /// Throws `.locked` (leaving `src` untouched) when the folder is encrypted but
+    /// locked. When encryption is off or `src` is already an envelope, moves
     /// `src` to `dst`. When encrypted, seals `src` to a temporary file in `dst`'s
     /// directory and replaces or moves to `dst`.
     func sealLargeFile(from src: URL, to dst: URL) throws {
+        if requiresKey && key == nil { throw ProtectorError.locked }
         guard FileManager.default.fileExists(atPath: src.path) else { return }
         let parent = dst.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
@@ -177,11 +179,16 @@ struct FileProtector: Sendable {
         }
 
         let temp = parent.appendingPathComponent(".\(UUID().uuidString).tmp")
-        try ChunkedCipher.seal(fileAt: src, to: temp, using: key)
-        if FileManager.default.fileExists(atPath: dst.path) {
-            _ = try FileManager.default.replaceItemAt(dst, withItemAt: temp)
-        } else {
-            try FileManager.default.moveItem(at: temp, to: dst)
+        do {
+            try ChunkedCipher.seal(fileAt: src, to: temp, using: key)
+            if FileManager.default.fileExists(atPath: dst.path) {
+                _ = try FileManager.default.replaceItemAt(dst, withItemAt: temp)
+            } else {
+                try FileManager.default.moveItem(at: temp, to: dst)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: temp)
+            throw error
         }
     }
 

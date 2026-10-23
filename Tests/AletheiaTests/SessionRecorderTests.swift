@@ -153,6 +153,71 @@ final class SessionRecorderTests: XCTestCase {
         defer { if isTempMic { try? FileManager.default.removeItem(at: decryptedMic) } }
         XCTAssertEqual(try Data(contentsOf: decryptedMic), sampleAudio)
     }
+
+    private func makeStagingRecorder() -> (SessionRecorder, URL, URL, URL) {
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent("RecorderKeep-\(UUID().uuidString)", isDirectory: true)
+        let stagingRoot = tempRoot.appendingPathComponent("Staging", isDirectory: true)
+        let dest = tempRoot.appendingPathComponent("Session", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
+        let recorder = SessionRecorder(stagingDirectoryURL: stagingRoot)
+        recorder.audioCaptureStartOverride = { mic, _ in try Data("live audio".utf8).write(to: mic) }
+        return (recorder, tempRoot, stagingRoot, dest)
+    }
+
+    private func context(_ id: UUID) -> SessionRecorder.ActiveRecording {
+        .init(sessionID: id, patientID: UUID(), patientName: "P", patientSlug: "p", sessionFolder: "s")
+    }
+
+    func testTheStagingSessionIsClaimedWhileRecordingAndReleasedAfterStop() async {
+        let (recorder, tempRoot, _, dest) = makeStagingRecorder()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        let id = UUID()
+        XCTAssertNil(recorder.stagingSessionID)
+        let error = await recorder.start(
+            micURL: dest.appendingPathComponent("mic.caf"), callURL: dest.appendingPathComponent("call.caf"),
+            context: context(id))
+        XCTAssertNil(error)
+        XCTAssertEqual(recorder.stagingSessionID, id)
+        await recorder.stop()
+        XCTAssertNil(recorder.stagingSessionID)
+    }
+
+    func testAStopThatCannotSealKeepsTheRecordingStagedNotAsPlaintextInTheSession() async {
+        let (recorder, tempRoot, stagingRoot, dest) = makeStagingRecorder()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        let id = UUID()
+        let destMic = dest.appendingPathComponent("mic.caf")
+        // A protector whose key is gone by the time of the stop (the folder locked meanwhile).
+        let key = ProtectionKey(SymmetricKey(size: .bits256))
+        let protector = FileProtector(keyReference: key, requiresKey: true)
+        _ = await recorder.start(
+            micURL: destMic, callURL: dest.appendingPathComponent("call.caf"), context: context(id), protector: protector)
+        key.revoke()
+
+        await recorder.stop()
+
+        let staged = stagingRoot.appendingPathComponent(id.uuidString).appendingPathComponent("mic.caf")
+        XCTAssertEqual(try? Data(contentsOf: staged), Data("live audio".utf8))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destMic.path))
+        guard case .error = recorder.state else { return XCTFail("The failure must be surfaced") }
+        XCTAssertNil(recorder.stagingSessionID)
+    }
+
+    func testStartingAgainPutsAnEarlierStagedRecordingInPlaceFirst() async throws {
+        let (recorder, tempRoot, stagingRoot, dest) = makeStagingRecorder()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        let id = UUID()
+        let destMic = dest.appendingPathComponent("mic.caf")
+        let leftover = stagingRoot.appendingPathComponent(id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: leftover, withIntermediateDirectories: true)
+        try Data("earlier take".utf8).write(to: leftover.appendingPathComponent("mic.caf"))
+        recorder.audioCaptureStartOverride = { _, _ in throw CancellationError() }
+
+        let error = await recorder.start(micURL: destMic, callURL: dest.appendingPathComponent("call.caf"), context: context(id))
+
+        XCTAssertNotNil(error)
+        XCTAssertEqual(try Data(contentsOf: destMic), Data("earlier take".utf8), "A failed start must not clear an earlier recording")
+    }
 }
 
 final class CallAudioWatchTests: XCTestCase {

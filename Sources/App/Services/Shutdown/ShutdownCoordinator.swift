@@ -187,11 +187,9 @@ enum InterruptedWorkResumer {
         _ items: [InterruptedWork],
         patients: [Patient],
         sessions: (Patient) -> [SessionRecord]?,
-        sweep: (() -> Void)? = nil,
         transcribe: (Target) -> Void,
         summarize: (Target) -> Void
     ) -> [InterruptedWork] {
-        sweep?()
         var unresolved: [InterruptedWork] = []
         for item in items {
             guard let patient = patients.first(where: { $0.id == item.patientID }) else {
