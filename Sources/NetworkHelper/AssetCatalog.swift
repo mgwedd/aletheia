@@ -52,6 +52,10 @@ enum HelperEndpoints {
     /// The update feed: the `appcast.json` of the latest GitHub release.
     static let appcast = URL(string: "https://github.com/mgwedd/aletheia/releases/latest/download/appcast.json")!
 
+    /// The signed license revocation list. The same bytes for everyone: no
+    /// query, cookie or credential, so the request says nothing about who asks.
+    static let revocations = URL(string: "https://astrealabs.com/api/licenses/revocations")!
+
     /// The appcast's `downloadURL` is only followed when it is a release asset
     /// of this repository.
     static func isUpdateArchive(_ url: URL) -> Bool {
@@ -65,15 +69,23 @@ enum HelperEndpoints {
 }
 
 /// The only hosts the helper contacts, including the CDNs that GitHub and
-/// Hugging Face redirect to. https only.
+/// Hugging Face redirect to, and the license revocation list's host. https only.
 enum HelperAllowlist {
-    /// A host matches when it equals an entry or is a subdomain of one.
+    /// A host matches when it equals an entry or is a subdomain of one, except
+    /// the entries in `exactOnly`, which match only themselves.
     static let hosts = [
         "github.com",
         "githubusercontent.com",
         "huggingface.co",
         "hf.co",
+        // TODO: drop the apex once the revocation list is served from aletheia.astrealabs.com.
+        "astrealabs.com",
+        "aletheia.astrealabs.com",
     ]
+
+    /// Hosts we run ourselves match only exactly: no other subdomain is trusted,
+    /// so one someone else takes over (a stale DNS record, say) can't serve the helper.
+    static let exactOnly: Set<String> = ["astrealabs.com", "aletheia.astrealabs.com"]
 
     static func allows(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https",
@@ -81,6 +93,6 @@ enum HelperAllowlist {
               url.port == nil || url.port == 443,
               let host = url.host?.lowercased(), !host.isEmpty
         else { return false }
-        return hosts.contains { host == $0 || host.hasSuffix("." + $0) }
+        return hosts.contains { host == $0 || (!exactOnly.contains($0) && host.hasSuffix("." + $0)) }
     }
 }

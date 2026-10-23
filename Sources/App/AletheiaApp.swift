@@ -72,6 +72,8 @@ struct AletheiaApp: App {
     @StateObject private var exports: ExportJobCenter
     /// The offline license check. Gates only new recording and AI.
     @StateObject private var license: LicenseState
+    /// Fetches the signed revocation list once a day while update checks are on.
+    private let revocations: RevocationRefresher
     /// Keeps every app window out of screen sharing per the setting, and hides
     /// sheets, alerts and popovers while the app is locked.
     private let windowShield: WindowShield
@@ -92,6 +94,7 @@ struct AletheiaApp: App {
         _integrations = StateObject(wrappedValue: integrations)
         let license = LicenseState(settings: settings)
         _license = StateObject(wrappedValue: license)
+        revocations = RevocationRefresher(settings: settings, license: license)
         integrations.inferenceQueue.licenseRefusal = { [weak license] in license?.newWorkRefusal }
         let transcription = TranscriptionCoordinator(
             appModel: appModel,
@@ -199,6 +202,8 @@ struct AletheiaApp: App {
                 }
                 .frame(minWidth: 900, minHeight: 600)
                 .task {
+                    // Separate from the update check, so a slow one doesn't hold it up.
+                    Task { await revocations.refreshIfDue() }
                     if settings.autoCheckForUpdates {
                         await updateService.checkForUpdates()
                     }
@@ -209,6 +214,9 @@ struct AletheiaApp: App {
                     // AppLock observes hide (when enabled), idle, sleep and screen lock.
                     if phase == .active, settings.autoCheckForUpdates {
                         Task { await updateService.checkForUpdates() }
+                    }
+                    if phase == .active {
+                        Task { await revocations.refreshIfDue() }
                     }
                 }
                 .spotlightContinuation(enabled: appModel.featureRegistry.contains(id: SpotlightFeatureModule.id))

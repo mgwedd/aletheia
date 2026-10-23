@@ -8,9 +8,11 @@ private final class FakeConnection: NetworkHelperConnection, @unchecked Sendable
     var payload = Data()
     var failure: Error?
     var feed = Data()
+    var revocations = Data()
     private(set) var requested: [AssetID] = []
 
     func checkForUpdates() async throws -> Data { feed }
+    func fetchRevocations() async throws -> Data { revocations }
 
     func download(
         asset: AssetID,
@@ -118,6 +120,13 @@ final class NetworkHelperClientTests: XCTestCase {
         fake.feed = Data(#"{"version":"9"}"#.utf8)
         let data = try await NetworkHelperClient(connection: fake).fetchAppcast()
         XCTAssertEqual(data, fake.feed)
+    }
+
+    func testRevocationListPassesThrough() async throws {
+        let fake = FakeConnection()
+        fake.revocations = Data("ALETR1.e30.AAAA".utf8)
+        let data = try await NetworkHelperClient(connection: fake).fetchRevocations()
+        XCTAssertEqual(data, fake.revocations)
     }
 
     func testHelperErrorsAreMappedToDownloadFailures() {

@@ -175,6 +175,36 @@ final class HelperFetcherTests: XCTestCase {
         }
     }
 
+    func testRevocationListIsFetchedFromItsFixedURL() async throws {
+        let body = Data("ALETR1.e30.AAAA".utf8)
+        StubProtocol.reset { _ in .ok(body) }
+        let data = try await makeFetcher().fetchRevocations()
+        XCTAssertEqual(data, body)
+        XCTAssertEqual(StubProtocol.seen.map(\.url), [HelperEndpoints.revocations])
+    }
+
+    func testRevocationListMustCarryItsPrefix() async throws {
+        StubProtocol.reset { _ in .ok(Data("<html>404</html>".utf8)) }
+        do {
+            _ = try await makeFetcher().fetchRevocations()
+            XCTFail("a page that is not a revocation list must fail")
+        } catch let error as HelperError {
+            XCTAssertEqual(error, .badRevocationList)
+        }
+    }
+
+    func testRevocationListOverTheSizeCapIsRejected() async throws {
+        var body = Data("ALETR1.".utf8)
+        body.append(Data(repeating: 0x41, count: HelperFetcher.maxDataBytes))
+        StubProtocol.reset { _ in .ok(body) }
+        do {
+            _ = try await makeFetcher().fetchRevocations()
+            XCTFail("an oversized list must fail")
+        } catch let error as HelperError {
+            XCTAssertEqual(error, .tooLarge)
+        }
+    }
+
     func testUpdateArchiveURLComesFromTheAppcastAndMustBeThisRepo() async throws {
         let good = #"{"downloadURL":"https://github.com/mgwedd/aletheia/releases/download/v9/Aletheia.dmg"}"#
         StubProtocol.reset { _ in .ok(Data(good.utf8)) }

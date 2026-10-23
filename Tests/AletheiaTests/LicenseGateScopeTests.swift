@@ -36,6 +36,7 @@ final class LicenseGateScopeTests: XCTestCase {
         "Sources/App/Views/RootView.swift",                    // banner
         "Sources/App/Views/FirstRunView.swift",                // first-run license step
         "Sources/App/Views/LicenseViews.swift",                // entry field, banner, pane
+        "Sources/App/Services/License/RevocationRefresher.swift", // feeds revocation lists in; gates nothing
     ]
 
     func testOnlyRecordingAndAIAskTheLicense() throws {

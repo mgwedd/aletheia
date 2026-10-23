@@ -101,6 +101,7 @@ final class AppSettings: ObservableObject {
         static let licenseToken = "licenseToken"
         static let revokedLicenseIDs = "revokedLicenseIDs"
         static let lastRevocationIssuedAt = "lastRevocationIssuedAt"
+        static let lastRevocationCheck = "lastRevocationCheck"
         static let licenseGrandfathered = "licenseGrandfathered"
         static let progressNoteFormat = "progressNoteFormat"
         static let summaryVerbosity = "summaryVerbosity"
@@ -370,15 +371,20 @@ final class AppSettings: ObservableObject {
     @Published var revokedLicenseIDs: [String] {
         didSet { defaults.set(revokedLicenseIDs, forKey: Keys.revokedLicenseIDs) }
     }
-    /// The `iat` (Unix seconds) of the newest accepted revocation list; an older
-    /// list is ignored so a stale one cannot be replayed. 0 = none accepted yet.
     /// True for an install that finished setup before license keys existed. Decided
     /// once, on the first launch of a build that knows about licenses, and never
     /// changed: such an install keeps recording and AI without a key.
     let licenseGrandfathered: Bool
 
+    /// The `iat` (Unix seconds) of the newest accepted revocation list; an older
+    /// list is ignored so a stale one cannot be replayed. 0 = none accepted yet.
     @Published var lastRevocationIssuedAt: Int {
         didSet { defaults.set(lastRevocationIssuedAt, forKey: Keys.lastRevocationIssuedAt) }
+    }
+    /// When the revocation list was last asked for (whatever the outcome), so it
+    /// is fetched at most once a day across launches. nil = never.
+    @Published var lastRevocationCheck: Date? {
+        didSet { defaults.set(lastRevocationCheck, forKey: Keys.lastRevocationCheck) }
     }
     /// When the current terms were accepted, recorded locally alongside the
     /// version. `nil` until accepted. Never leaves this Mac.
@@ -480,6 +486,7 @@ final class AppSettings: ObservableObject {
         licenseToken = defaults.string(forKey: Keys.licenseToken) ?? ""
         revokedLicenseIDs = defaults.stringArray(forKey: Keys.revokedLicenseIDs) ?? []
         lastRevocationIssuedAt = defaults.integer(forKey: Keys.lastRevocationIssuedAt)
+        lastRevocationCheck = defaults.object(forKey: Keys.lastRevocationCheck) as? Date
         if defaults.object(forKey: Keys.licenseGrandfathered) == nil {
             let finishedSetup = defaults.bool(forKey: Keys.hasCompletedFirstRun)
             let hasKey = !(defaults.string(forKey: Keys.licenseToken) ?? "").isEmpty

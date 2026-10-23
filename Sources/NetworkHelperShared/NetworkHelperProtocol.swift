@@ -28,6 +28,10 @@ enum NetworkHelperConstants {
     /// Fetches the update feed (appcast) and replies with its bytes.
     func checkForUpdates(reply: @escaping (Data?, NSError?) -> Void)
 
+    /// Fetches the signed license revocation list and replies with its bytes.
+    /// The app verifies the signature; the helper only fetches.
+    func fetchRevocations(reply: @escaping (Data?, NSError?) -> Void)
+
     /// Streams the asset named by `asset` (an `AssetID` raw value) into `file`,
     /// which the app opened write-only in its own container.
     func download(asset: Int, into file: FileHandle, progress: NetworkHelperProgress, reply: @escaping (NSError?) -> Void)

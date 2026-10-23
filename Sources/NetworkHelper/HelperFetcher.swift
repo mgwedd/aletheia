@@ -7,7 +7,8 @@ import Foundation
 /// to an https URL on `HelperAllowlist`, and a redirect is followed only when
 /// it stays on that list.
 final class HelperFetcher {
-    /// The largest response `fetchData` accepts (the appcast is a few KB).
+    /// The largest response `fetchData` accepts (the appcast is a few KB; the
+    /// revocation list is capped at 256 KB by its contract).
     static let maxDataBytes = 256 * 1024
 
     private let configuration: URLSessionConfiguration
@@ -39,6 +40,14 @@ final class HelperFetcher {
     func fetchAppcast() async throws -> Data {
         let data = try await fetchData(from: HelperEndpoints.appcast, maxBytes: Self.maxDataBytes)
         guard (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else { throw HelperError.badFeed }
+        return data
+    }
+
+    /// The revocation list's bytes, checked only for its prefix; the app verifies
+    /// the signature.
+    func fetchRevocations() async throws -> Data {
+        let data = try await fetchData(from: HelperEndpoints.revocations, maxBytes: Self.maxDataBytes)
+        guard data.starts(with: Data("ALETR1.".utf8)) else { throw HelperError.badRevocationList }
         return data
     }
 

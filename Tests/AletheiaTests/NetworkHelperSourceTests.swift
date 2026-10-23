@@ -34,7 +34,11 @@ final class NetworkHelperSourceTests: XCTestCase {
         let declaration = String(body[..<end.lowerBound])
 
         let funcs = declaration.split(separator: "\n").filter { $0.contains("func ") }
-        XCTAssertEqual(funcs.count, 2, "the helper's command set is exactly two calls")
+        XCTAssertEqual(funcs.count, 3, "the helper's command set is exactly three calls")
+        // The two fetches take nothing but their reply.
+        for name in ["checkForUpdates", "fetchRevocations"] {
+            XCTAssertTrue(declaration.contains("func \(name)(reply: @escaping (Data?, NSError?) -> Void)"), name)
+        }
         for line in funcs {
             // Drop the reply closure: what comes back may carry Data.
             let request = line.components(separatedBy: "reply:")[0]

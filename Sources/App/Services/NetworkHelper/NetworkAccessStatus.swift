@@ -86,11 +86,12 @@ struct NetworkAccessStatus: Equatable {
 /// What the helper may fetch, for display. The helper's own table is the
 /// authority; `NetworkHelperCatalogTests` keeps this list identical to it.
 enum NetworkHelperDisclosure {
-    static let hosts = ["github.com", "githubusercontent.com", "huggingface.co", "hf.co"]
+    static let hosts = ["github.com", "githubusercontent.com", "huggingface.co", "hf.co", "astrealabs.com", "aletheia.astrealabs.com"]
 
     /// One line per kind of download.
     static var downloads: [String] {
         var lines = ["Update check and update download (github.com, this app's releases only)"]
+        lines.append("Daily signed license revocation list (astrealabs.com, only while update checks are on)")
         lines += WhisperModel.allCases.map { "Whisper \($0.shortName) transcription model" }
         lines += LlamaModel.allCases.map { "\($0.shortName) language model" }
         return lines

@@ -1,11 +1,15 @@
 import Foundation
 
-/// What callers need from the network: the update feed, and pinned downloads.
+/// What callers need from the network: the update feed, the license revocation
+/// list, and pinned downloads.
 /// Everything goes through the bundled helper; the app itself has no network
 /// access. Callers and tests use this protocol, so a fake can stand in.
 protocol NetworkHelping: Sendable {
     /// The update feed's bytes.
     func fetchAppcast() async throws -> Data
+
+    /// The signed license revocation list's bytes (unverified; see `RevocationVerifier`).
+    func fetchRevocations() async throws -> Data
 
     /// Downloads `asset` to `destination`, reporting `0...1` progress, and
     /// keeps it only if its SHA-256 equals `expectedSHA256`.
@@ -21,6 +25,7 @@ protocol NetworkHelping: Sendable {
 /// one is `XPCNetworkHelperConnection`; tests substitute a fake.
 protocol NetworkHelperConnection: Sendable {
     func checkForUpdates() async throws -> Data
+    func fetchRevocations() async throws -> Data
     func download(
         asset: AssetID,
         into file: FileHandle,
@@ -43,6 +48,10 @@ struct NetworkHelperClient: NetworkHelping {
 
     func fetchAppcast() async throws -> Data {
         try await connection.checkForUpdates()
+    }
+
+    func fetchRevocations() async throws -> Data {
+        try await connection.fetchRevocations()
     }
 
     func download(
