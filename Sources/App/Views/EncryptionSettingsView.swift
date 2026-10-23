@@ -548,6 +548,118 @@ struct NewRecoveryKeySheet: View {
     }
 }
 
+/// Sheet for changing the passphrase from Settings. Asks for the current
+/// passphrase and a new one; only the key wrapping changes, not the files.
+struct ChangePassphraseSheet: View {
+    @EnvironmentObject private var encryption: EncryptionManager
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var current = ""
+    @State private var newPassphrase = ""
+    @State private var confirm = ""
+    @State private var working = false
+    @State private var errorMessage: String?
+
+    private var newLongEnough: Bool { PassphraseStrength.meetsRequirement(newPassphrase) }
+    private var canChange: Bool {
+        !current.isEmpty && newLongEnough && newPassphrase == confirm && !working
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Change Passphrase")
+                    .font(Theme.Typography.title)
+                    .foregroundStyle(Theme.text.color)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button { dismiss() } label: {
+                    Label("Close", systemImage: "xmark")
+                }
+                .buttonStyle(.themeIcon)
+                .keyboardShortcut(.cancelAction)
+                .disabled(working)
+            }
+            .padding(.horizontal, 28)
+            .padding(.top, 22)
+            .padding(.bottom, 12)
+
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Your files aren't re-encrypted and your emergency recovery key keeps working. Only the passphrase that protects the data key changes.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.muted.color)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ThemeSecureField(label: "Current passphrase", text: $current)
+                ThemeSecureField(label: "New passphrase", text: $newPassphrase)
+                ThemeSecureField(label: "Confirm new passphrase", text: $confirm, submit: { if canChange { change() } })
+
+                if !newPassphrase.isEmpty && !newLongEnough {
+                    Text("Use at least \(PassphraseStrength.requiredLength) characters.")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.recording.color)
+                }
+                if !confirm.isEmpty && confirm != newPassphrase {
+                    Text("The passphrases don't match.")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.recording.color)
+                }
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.recording.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.top, 8)
+            .padding(.bottom, 20)
+
+            HStack(spacing: 8) {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.themed)
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(working)
+                Button {
+                    change()
+                } label: {
+                    if working { ProgressView().controlSize(.small) } else { Text("Change Passphrase") }
+                }
+                .buttonStyle(.themePrimary)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canChange)
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 14)
+            .background(Theme.sidebar.color)
+            .themeDivider(.top)
+        }
+        .frame(width: 520)
+        .background(Theme.panel.color)
+        .tint(Theme.accent.color)
+        .interactiveDismissDisabled(working)
+    }
+
+    private func change() {
+        working = true
+        errorMessage = nil
+        Task { @MainActor in
+            // Let the progress state draw before the key derivation runs.
+            await Task.yield()
+            do {
+                try encryption.changePassphrase(current: current, new: newPassphrase)
+                working = false
+                dismiss()
+            } catch {
+                working = false
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
 /// Full-window gate shown when a folder was encrypted but its keystore file is
 /// gone. Nothing is readable or writable until the file is back.
 struct EncryptionKeystoreMissingView: View {

@@ -79,6 +79,7 @@ final class AppModel: ObservableObject {
         // Rebuild the stores with a fresh protector whenever encryption is
         // enabled, unlocked, or locked, so reads/writes pick up the key change.
         encryption.onProtectionChanged = { [weak self] in self?.rebuildStore() }
+        encryption.onPassphraseChanged = { [weak self] in self?.recordAudit(.encryptionPassphraseChanged) }
     }
 
     /// The protector the stores are currently using — for callers that seal or
