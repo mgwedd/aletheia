@@ -10,7 +10,11 @@ final class SafeMarkdownTests: XCTestCase {
             "see [x](javascript:alert(1))",
             "see [x](custom-scheme://open?p=1)",
         ]
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         for input in inputs {
+            // Each input really is a link to the plain parser, so the check below is not vacuous.
+            let raw = try AttributedString(markdown: input, options: options)
+            XCTAssertTrue(raw.runs.contains { $0.link != nil }, input)
             let out = try XCTUnwrap(SafeMarkdown.attributed(from: input), input)
             XCTAssertTrue(out.runs.allSatisfy { $0.link == nil }, input)
         }
