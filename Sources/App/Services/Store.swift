@@ -616,6 +616,16 @@ final class Store {
         sessionDir(for: patient, session: session).appendingPathComponent("call.caf")
     }
 
+    /// A readable copy of a recording that may be sealed. When it had to be
+    /// decrypted, the copy is a temporary file the caller must move or delete
+    /// (`isTemporary == true`); otherwise it's `url` itself.
+    func readableRecording(at url: URL) throws -> (url: URL, isTemporary: Bool) {
+        try protector.decryptedCopyOfLargeFile(at: url)
+    }
+
+    /// Encryption is on but the folder key isn't held, so sealed records can't be read.
+    var isLocked: Bool { protector.isLocked }
+
     /// Removes a session's raw audio (`mic.caf` / `call.caf`) from disk. Called
     /// after transcription when `AudioRetentionPolicy` says the audio should not
     /// be kept (the transcript-only default), so the recording — the most

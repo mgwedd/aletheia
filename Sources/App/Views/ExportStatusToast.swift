@@ -95,7 +95,9 @@ struct ExportStatusToast: View {
     static func summary(_ outcome: PatientArchiveWriter.Outcome) -> String {
         let sessions = outcome.sessionCount == 1 ? "1 session" : "\(outcome.sessionCount) sessions"
         let files = outcome.fileCount == 1 ? "1 file" : "\(outcome.fileCount) files"
-        return "\(sessions), \(files) in a zip of text files."
+        guard let patientCount = outcome.patientCount else { return "\(sessions), \(files) in a zip of text files." }
+        let patients = patientCount == 1 ? "1 patient" : "\(patientCount) patients"
+        return "\(patients), \(sessions), \(files) in a folder."
     }
 
     private static func announce(_ text: String) {
