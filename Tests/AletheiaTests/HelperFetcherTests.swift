@@ -8,15 +8,21 @@ private final class StubProtocol: URLProtocol {
         case ok(Data)
         case status(Int)
         case redirect(to: String)
+        /// Sends `count` chunks of `size` bytes, a few ms apart, until the task is cancelled.
+        case chunks(count: Int, size: Int)
     }
 
     nonisolated(unsafe) static var responder: Responder = { _ in .ok(Data()) }
     nonisolated(unsafe) static var seen: [URLRequest] = []
+    nonisolated(unsafe) static var chunksSent = 0
+    private let stopped = NSLock()
+    nonisolated(unsafe) private var isStopped = false
     private static let lock = NSLock()
 
     static func reset(_ responder: @escaping Responder) {
         lock.lock(); defer { lock.unlock() }
         seen = []
+        chunksSent = 0
         self.responder = responder
     }
 
@@ -44,10 +50,25 @@ private final class StubProtocol: URLProtocol {
             let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: nil,
                                            headerFields: ["Location": target])!
             client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: URL(string: target)!), redirectResponse: response)
+        case .chunks(let count, let size):
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            DispatchQueue.global().async {
+                for _ in 0..<count {
+                    self.stopped.lock(); let done = self.isStopped; self.stopped.unlock()
+                    if done { return }
+                    Self.lock.lock(); Self.chunksSent += 1; Self.lock.unlock()
+                    self.client?.urlProtocol(self, didLoad: Data(repeating: 0x20, count: size))
+                    usleep(5_000)
+                }
+                self.client?.urlProtocolDidFinishLoading(self)
+            }
         }
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        stopped.lock(); isStopped = true; stopped.unlock()
+    }
 }
 
 final class HelperFetcherTests: XCTestCase {
@@ -224,6 +245,21 @@ final class HelperFetcherTests: XCTestCase {
         } catch let error as HelperError {
             XCTAssertEqual(error, .tooLarge)
         }
+    }
+
+    /// The cap holds while bytes arrive: the transfer is cancelled soon after
+    /// the cap, not read to the end and then checked.
+    func testRevocationsOverTheCapStopTheTransferPartway() async throws {
+        let size = 16 * 1024, count = 128  // 2 MB offered, cap is 256 KB
+        StubProtocol.reset { _ in .chunks(count: count, size: size) }
+        do {
+            _ = try await makeFetcher().fetchRevocations(from: URL(string: "https://github.com/r/revocations.json")!)
+            XCTFail("over 256 KB must fail")
+        } catch let error as HelperError {
+            XCTAssertEqual(error, .tooLarge)
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertLessThan(StubProtocol.chunksSent, count / 2, "the transfer kept going after the cap")
     }
 
     func testRevocationsAtExactlyTheCapAreAccepted() async throws {
