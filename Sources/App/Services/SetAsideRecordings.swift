@@ -70,7 +70,7 @@ final class SetAsideRecordings: ObservableObject {
     /// Deletes a set-aside recording for good (after the user confirmed).
     func delete(_ item: Item, audit: AuditLog?) throws {
         try FileManager.default.removeItem(at: item.folder)
-        audit?.record(.recordDeleted, subjectID: item.sessionID?.uuidString, detail: "set-aside recording")
+        _ = try? audit?.record(.recordDeleted, subjectID: item.sessionID?.uuidString, detail: "set-aside recording")
         refresh()
     }
 }

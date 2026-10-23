@@ -51,4 +51,22 @@ final class SchemaMigratorTests: XCTestCase {
     func testEmptyMigrationListIsUpToDateAtZero() {
         XCTAssertEqual(SchemaMigrator.plan(current: 0, migrations: []), .upToDate)
     }
+
+    func testMigrationV2DefinesAuditLedger() {
+        XCTAssertEqual(SchemaMigrator.latestVersion, 2)
+        guard let v2 = SchemaMigrator.migrations.first(where: { $0.version == 2 }) else {
+            return XCTFail("Migration v2 missing")
+        }
+        XCTAssertTrue(v2.sql.contains("audit_events"))
+        XCTAssertTrue(v2.sql.contains("audit_no_update"))
+        XCTAssertTrue(v2.sql.contains("audit_no_delete"))
+    }
+
+    func testPlanFromV1ToLatestIncludesV2() {
+        guard case let .migrate(steps, target) = SchemaMigrator.plan(current: 1) else {
+            return XCTFail("Expected .migrate from v1")
+        }
+        XCTAssertEqual(steps.map(\.version), [2])
+        XCTAssertEqual(target, 2)
+    }
 }

@@ -140,6 +140,9 @@ struct AletheiaApp: App {
         appLock.onUnlockFailed = { [weak appModel] reason in
             appModel?.recordAudit(.appUnlockFailed, detail: reason)
         }
+        appLock.onLocked = { [weak appModel] in
+            appModel?.recordAudit(.appLocked)
+        }
         _appLock = StateObject(wrappedValue: appLock)
 
         // Background summaries: only when nothing else is using the model, no

@@ -51,6 +51,9 @@ struct FileProtector: Sendable {
     }
 
     private var key: SymmetricKey? { keyReference?.key }
+    /// The folder key while it is held, nil once revoked by a lock. For the audit
+    /// ledger, which derives its signing key from it.
+    var heldKey: SymmetricKey? { key }
 
     /// Reject all access, including plaintext writes in a partially migrated folder.
     static let locked = FileProtector(keyReference: nil, requiresKey: true)
