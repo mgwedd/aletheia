@@ -53,13 +53,15 @@ check_app() {
     [ -d "$app" ] || { err "no app at $app"; return; }
     [ -f "$PROD" ] || { err "missing $PROD"; return; }
     tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' RETURN
+    # Clear the trap as it fires: a RETURN trap outlives the function otherwise.
+    trap 'rm -rf "$tmp"; trap - RETURN' RETURN
 
     # Signed entitlement keys must equal the production file's, exactly.
     "${CODESIGN:-codesign}" -d --entitlements :- "$app" > "$tmp/ent.plist" 2>/dev/null || true
     local want got
     want="$(keys "$PROD")"
-    got="$(keys "$tmp/ent.plist")"
+    # An unsigned app prints no entitlements: no keys, so the diff below fails it.
+    got="$(keys "$tmp/ent.plist" || true)"
     if [ "$got" != "$want" ]; then
         err "$app: signed entitlements differ from $PROD (< expected, > built):"
         diff <(echo "$want") <(echo "$got") >&2 || true
@@ -105,7 +107,7 @@ fi
 self_test() {
     local d bad=0 script="$ROOT/scripts/check-entitlements.sh"
     d="$(mktemp -d)"
-    trap 'rm -rf "$d"' RETURN
+    trap 'rm -rf "$d"; trap - RETURN' RETURN
     ent() { # ent <file> <key>...
         local f="$1"; shift
         { echo '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>'
@@ -146,6 +148,11 @@ self_test() {
     run_app "$d/extra.ent" && { echo "check-entitlements: self-test: an extra entitlement key was accepted" >&2; bad=1; }
     ent "$d/missing.ent" a.sandbox
     run_app "$d/missing.ent" && { echo "check-entitlements: self-test: a missing entitlement key was accepted" >&2; bad=1; }
+    printf '#!/bin/sh\nexit 1\n' > "$d/unsigned"; chmod +x "$d/unsigned"
+    if CODESIGN="$d/unsigned" PROD="$d/prod.ent" "$script" --app "$d/App.app" 2>"$d/err" >/dev/null \
+        || ! grep -q 'signed entitlements differ' "$d/err"; then
+        echo "check-entitlements: self-test: an unsigned app was not refused with a message" >&2; bad=1
+    fi
     ent "$d/tka.ent" a.sandbox a.audio com.apple.security.get-task-allow
     run_app "$d/tka.ent" && { echo "check-entitlements: self-test: get-task-allow was accepted" >&2; bad=1; }
     printf '%s\n' '<dict><key>NSCalendarsFullAccessUsageDescription</key><string>x</string></dict>' > "$d/App.app/Contents/Info.plist"

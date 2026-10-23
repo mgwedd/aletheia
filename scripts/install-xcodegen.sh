@@ -13,31 +13,34 @@ cd "$(dirname "$0")/.."
 
 sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
 
-install_tool() { # install_tool <dest> [zip]
-    local dest="$1" zip="${2:-}" lock="${TOOLS_LOCK:-scripts/tools.lock}" want url tmp
-    read -r want url < <(awk '$1 == "xcodegen" {print $3, $4}' "$lock")
-    [ -n "${want:-}" ] && [ -n "${url:-}" ] || { echo "install-xcodegen: no xcodegen entry in $lock" >&2; return 1; }
+# Both functions run in a subshell so their EXIT trap cleans up on every path.
+# (A RETURN trap set inside a function outlives it and fires again, out of
+# scope, when the caller returns.)
+install_tool() ( # install_tool <dest> [zip]
+    dest="$1" zip="${2:-}" lock="${TOOLS_LOCK:-scripts/tools.lock}" want="" url=""
+    read -r want url < <(awk '$1 == "xcodegen" {print $3, $4}' "$lock") || true
+    [ -n "$want" ] && [ -n "$url" ] || { echo "install-xcodegen: no xcodegen entry in $lock" >&2; exit 1; }
     tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' RETURN
+    trap 'rm -rf "$tmp"' EXIT
     if [ -z "$zip" ]; then
         curl -fsSL --retry 3 -o "$tmp/xcodegen.zip" "$url"
         zip="$tmp/xcodegen.zip"
     fi
     if [ "$(sha256 "$zip")" != "$want" ]; then
         echo "install-xcodegen: SHA-256 of the XcodeGen download does not match $lock" >&2
-        return 1
+        exit 1
     fi
     mkdir -p "$dest"
     rm -rf "$dest/xcodegen"
     unzip -q "$zip" -d "$dest"
-    [ -x "$dest/xcodegen/bin/xcodegen" ] || { echo "install-xcodegen: xcodegen binary missing from the archive" >&2; return 1; }
+    [ -x "$dest/xcodegen/bin/xcodegen" ] || { echo "install-xcodegen: xcodegen binary missing from the archive" >&2; exit 1; }
     echo "$dest/xcodegen/bin"
-}
+)
 
-self_test() {
-    local d fail=0
+self_test() (
+    fail=0
     d="$(mktemp -d)"
-    trap 'rm -rf "$d"' RETURN
+    trap 'rm -rf "$d"' EXIT
     mkdir -p "$d/z/xcodegen/bin"
     printf '#!/bin/sh\necho ok\n' > "$d/z/xcodegen/bin/xcodegen"
     chmod +x "$d/z/xcodegen/bin/xcodegen"
@@ -51,9 +54,14 @@ self_test() {
         echo "install-xcodegen: self-test: a mismatched archive was accepted" >&2; fail=1
     fi
     [ ! -e "$d/out2" ] || { echo "install-xcodegen: self-test: mismatched archive was unpacked" >&2; fail=1; }
-    [ "$fail" -eq 0 ] || return 1
+    printf '# no entry\n' > "$d/empty.lock"
+    if TOOLS_LOCK="$d/empty.lock" install_tool "$d/out3" "$d/good.zip" 2>"$d/err" >/dev/null \
+        || ! grep -q 'no xcodegen entry' "$d/err"; then
+        echo "install-xcodegen: self-test: a lock without an xcodegen entry was not refused with a message" >&2; fail=1
+    fi
+    [ "$fail" -eq 0 ] || exit 1
     echo "install-xcodegen: self-test OK"
-}
+)
 
 DEST=""; FROM=""
 while [ $# -gt 0 ]; do
