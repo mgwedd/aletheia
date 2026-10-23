@@ -1,0 +1,80 @@
+name: Runtime Pins
+
+# Supply-chain checks for what the app bundles:
+#   - assets: the bundled binary assets match their pinned SHA-256, and the
+#     pin/inventory scripts pass their offline self-tests. Runs on pull
+#     requests and pushes that touch those files.
+#   - upstream: weekly (or by hand), compares the llama.cpp / whisper.cpp
+#     XCFramework pins with the newest upstream builds and fails if a
+#     published security advisory affects a pinned build. Drift only warns.
+#
+# First-party only: actions/checkout + repo scripts. Nothing touches PHI.
+
+on:
+  pull_request:
+    paths:
+      - Package.swift
+      - Packages/**
+      - Sources/WhisperEngine/**
+      - Sources/App/Services/WhisperModelPins.swift
+      - Sources/App/Services/Llama/LlamaModel.swift
+      - scripts/verify-bundled-assets.sh
+      - scripts/check-runtime-pins.sh
+      - scripts/sbom.sh
+      - .github/workflows/**
+  push:
+    branches: [main]
+    paths:
+      - Package.swift
+      - Packages/**
+      - Sources/WhisperEngine/**
+      - Sources/App/Services/WhisperModelPins.swift
+      - Sources/App/Services/Llama/LlamaModel.swift
+      - scripts/verify-bundled-assets.sh
+      - scripts/check-runtime-pins.sh
+      - scripts/sbom.sh
+      - .github/workflows/**
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-pins-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  assets:
+    name: Bundled assets and pin scripts
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify bundled assets
+        run: |
+          bash scripts/verify-bundled-assets.sh --self-test
+          bash scripts/verify-bundled-assets.sh
+      - name: Self-test pin scripts and SBOM
+        run: |
+          bash scripts/check-runtime-pins.sh --self-test
+          bash scripts/verify-model-pins.sh --self-test
+          bash scripts/sbom.sh --self-test
+
+  upstream:
+    name: Upstream runtime pins
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check llama.cpp and whisper.cpp pins
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/check-runtime-pins.sh
