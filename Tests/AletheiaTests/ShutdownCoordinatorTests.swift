@@ -292,7 +292,7 @@ final class ShutdownCoordinatorTests: XCTestCase {
         let defaults = UserDefaults(suiteName: defaultsName)!
         defer { defaults.removePersistentDomain(forName: defaultsName) }
         let encryption = EncryptionManager(dataRootProvider: { root }, defaults: defaults)
-        if encrypted { try encryption.enable(passphrase: "test-passphrase-1", iterations: 1_000) }
+        if encrypted { try encryption.enable(passphrase: "test-passphrase-1", iterations: 100_000) }
         let appModel = AppModel(settings: settings, encryption: encryption, spotlightIndexer: NoopSpotlightIndexer())
 
         let indexFile = root.appendingPathComponent("search.sqlite")

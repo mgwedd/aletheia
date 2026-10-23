@@ -122,7 +122,7 @@ final class FileProtectorTests: XCTestCase {
         let plain = url("plain.caf")
         try Data((0..<3000).map { _ in UInt8.random(in: 0...255) }).write(to: plain)
         let sealed = url("mic.caf")
-        try ChunkedCipher.seal(fileAt: plain, to: sealed, using: key, chunkSize: 1000)
+        try ChunkedCipher.seal(fileAt: plain, to: sealed, using: key, chunkSize: 1024 * 4)
         var bytes = try Data(contentsOf: sealed)
         bytes[bytes.count - 1] ^= 0xFF // corrupt the final chunk's GCM tag
         try bytes.write(to: sealed)
@@ -138,7 +138,7 @@ final class FileProtectorTests: XCTestCase {
         let plain = url("plain.caf")
         try original.write(to: plain)
         let sealed = url("call.caf")
-        try ChunkedCipher.seal(fileAt: plain, to: sealed, using: key, chunkSize: 1000)
+        try ChunkedCipher.seal(fileAt: plain, to: sealed, using: key, chunkSize: 1024 * 4)
 
         let (copy, isTemp) = try FileProtector(key: key).decryptedCopyOfLargeFile(at: sealed)
         defer { try? FileManager.default.removeItem(at: copy) }

@@ -143,7 +143,7 @@ final class DataMigratorTests: XCTestCase {
         let transcriptURL = store.sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
 
         let manager = EncryptionManager(dataRootProvider: { [root] in root })
-        let result = try manager.enable(passphrase: "recovery phrase", iterations: 1_000)
+        let result = try manager.enable(passphrase: "recovery phrase", iterations: 100_000)
         XCTAssertTrue(result.isComplete)
         XCTAssertEqual(manager.state, .unlocked)
         XCTAssertTrue(DataCipher.isEnvelope(try Data(contentsOf: transcriptURL)), "existing transcript is sealed on enable")
@@ -157,7 +157,7 @@ final class DataMigratorTests: XCTestCase {
     func testDisableWhileLockedThrows() throws {
         _ = try seedPlaintextFolder()
         let manager = EncryptionManager(dataRootProvider: { [root] in root })
-        _ = try manager.enable(passphrase: "test-passphrase-1", iterations: 1_000)
+        _ = try manager.enable(passphrase: "test-passphrase-1", iterations: 100_000)
         manager.lock()
         XCTAssertThrowsError(try manager.disable()) { error in
             XCTAssertEqual(error as? EncryptionManager.ManagerError, .locked)
@@ -232,7 +232,7 @@ final class DataMigratorTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: snapshot.path))
 
         let manager = EncryptionManager(dataRootProvider: { [root] in root }, defaults: UserDefaults(suiteName: "DataMigratorTests-\(UUID().uuidString)")!)
-        let result = try manager.enable(passphrase: "test-passphrase-1", iterations: 1_000)
+        let result = try manager.enable(passphrase: "test-passphrase-1", iterations: 100_000)
 
         XCTAssertTrue(result.isComplete)
         XCTAssertFalse(FileManager.default.fileExists(atPath: snapshot.path))
