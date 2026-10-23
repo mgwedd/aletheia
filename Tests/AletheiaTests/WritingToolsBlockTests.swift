@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import SwiftUI
 @testable import Aletheia
 
 /// System Writing Tools stay off on every text surface that shows or edits
@@ -53,6 +54,58 @@ final class WritingToolsBlockTests: XCTestCase {
         XCTAssertEqual(Probe(frame: .zero, textContainer: nil).writingToolsBehavior, .none)
     }
 
+    /// SwiftUI text fields edit through the window's shared field editor; the
+    /// block has to reach it while the field is being edited.
+    private func fieldEditorBehavior<V: View>(editing content: V, placeholder: String) throws -> NSTextView {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = NSHostingView(rootView: content.frame(width: 400, height: 120))
+        window.orderFront(nil)
+        defer { window.orderOut(nil) }
+        window.contentView?.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        func descendants(_ view: NSView) -> [NSView] { view.subviews + view.subviews.flatMap(descendants) }
+        let field = try XCTUnwrap(descendants(window.contentView!).compactMap { $0 as? NSTextField }.first {
+            $0.placeholderString == placeholder || $0.placeholderAttributedString?.string == placeholder
+        }, "no field with placeholder \(placeholder)")
+        XCTAssertTrue(window.makeFirstResponder(field))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        let editor = try XCTUnwrap(window.firstResponder as? NSTextView)
+        XCTAssertTrue(editor.isFieldEditor)
+        return editor
+    }
+
+    func testPatientFieldsEditWithWritingToolsOff() throws {
+        guard #available(macOS 15, *) else { throw XCTSkip("writingToolsBehavior needs macOS 15") }
+        struct Patient: View {
+            @State var text = ""
+            var body: some View { TextField.patient("Patient field", text: $text) }
+        }
+        struct Focused: View {
+            @State var text = ""
+            @FocusState var focused: Bool
+            var body: some View { TextField.patient("Focused field", text: $text, focus: $focused) }
+        }
+        struct Themed: View {
+            @State var text = ""
+            var body: some View { ThemeTextField(placeholder: "Themed field", text: $text) }
+        }
+        XCTAssertEqual(try fieldEditorBehavior(editing: Patient(), placeholder: "Patient field").writingToolsBehavior, .none)
+        XCTAssertEqual(try fieldEditorBehavior(editing: Focused(), placeholder: "Focused field").writingToolsBehavior, .none)
+        XCTAssertEqual(try fieldEditorBehavior(editing: Themed(), placeholder: "Themed field").writingToolsBehavior, .none)
+    }
+
+    /// Control: without the block the field editor keeps Writing Tools, so the
+    /// test above is measuring the block and not a default.
+    func testAPlainFieldEditsWithWritingToolsOn() throws {
+        guard #available(macOS 15, *) else { throw XCTSkip("writingToolsBehavior needs macOS 15") }
+        struct Plain: View {
+            @State var text = ""
+            var body: some View { TextField("Plain field", text: $text) }
+        }
+        XCTAssertNotEqual(try fieldEditorBehavior(editing: Plain(), placeholder: "Plain field").writingToolsBehavior, .none)
+    }
+
     // MARK: Source assertions
 
     /// The Theme kit is the only place raw text APIs may appear.
@@ -78,8 +131,10 @@ final class WritingToolsBlockTests: XCTestCase {
         (#"(?<![A-Za-z])SecureField\("#, "a Theme secure field"),
         (#"\.textSelection\(\.enabled"#, ".selectablePatientText()"),
         (#"class\s+\w+\s*:\s*NSTextView\b"#, "a PatientTextView subclass"),
-        (#"(?<![A-Za-z])NSTextView\((frame|usingTextLayoutManager)"#, "a PatientTextView subclass"),
+        (#"(?<![A-Za-z])NSTextView(\.init)?\((frame|usingTextLayoutManager|\))"#, "a PatientTextView subclass"),
         (#"scrollableTextView\(|scrollablePlainDocumentContentTextView\("#, "a PatientTextView subclass"),
+        (#"(?<![A-Za-z])(NS(Secure)?TextField|NSSearchField)(\.init)?\("#, "ThemeTextField or TextField.patient"),
+        (#"\.searchable\("#, "GlobalSearchField"),
     ]
 
     func testRawTextAPIsOnlyAppearInTheThemeKit() throws {
@@ -99,8 +154,11 @@ final class WritingToolsBlockTests: XCTestCase {
         let samples = [
             #"TextField("Name", text: $name)"#, #"TextEditor(text: $t)"#, #"SecureField("", text: $p)"#,
             ".textSelection(.enabled)", "final class Foo: NSTextView {", "let v = NSTextView(frame: .zero)",
-            "NSTextView.scrollableTextView()",
+            "NSTextView.scrollableTextView()", #"let f = NSTextField(string: "")"#, ".searchable(text: $q)",
         ]
+        for sample in ["NSTextView()", "NSTextView.init(frame: r)", "NSSearchField(frame: r)", "NSSecureTextField()"] {
+            XCTAssertTrue(rawAPIs.contains { sample.range(of: $0.pattern, options: .regularExpression) != nil }, sample)
+        }
         for (sample, api) in zip(samples, rawAPIs) {
             XCTAssertNotNil(sample.range(of: api.pattern, options: .regularExpression), sample)
         }
