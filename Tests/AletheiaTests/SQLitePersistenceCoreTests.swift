@@ -251,4 +251,14 @@ final class SQLitePersistenceCoreTests: XCTestCase {
         XCTAssertEqual(copy.record(kind: "comment", id: "c1").map { String(decoding: $0.payload, as: UTF8.self) },
                        "snapshot me")
     }
+
+    func testUncreatableFolderIsReportedAsSuch() throws {
+        let file = root.appendingPathComponent("not-a-folder")
+        try Data("x".utf8).write(to: file)
+        XCTAssertThrowsError(try SQLitePersistenceCore(opening: file.appendingPathComponent("db.sqlite"))) { error in
+            let failure = error as? DatabaseOpenFailure
+            XCTAssertEqual(failure?.kind, .cannotOpen)
+            XCTAssertEqual(failure?.reason, "The data folder couldn't be created.")
+        }
+    }
 }
