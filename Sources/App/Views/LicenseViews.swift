@@ -1,4 +1,11 @@
+import AppKit
 import SwiftUI
+
+/// Web pages the license screens link to. They open in the browser; the app sends nothing.
+enum LicenseLinks {
+    /// Where a lost, expired or missing key is emailed again.
+    static let requestKey = URL(string: "https://astrealabs.com/aletheia/beta")!
+}
 
 /// Paste field for a license key, with a clear message for each way it can be refused.
 /// Used by first-run and Settings > License key. Checks entirely on this Mac.
@@ -48,6 +55,7 @@ struct LicenseEntryView: View {
 struct LicenseBanner: View {
     let status: LicenseStatus
     let onOpenSettings: () -> Void
+    var onExportRecords: () -> Void = {}
 
     var body: some View {
         if let text = Self.text(for: status) {
@@ -59,6 +67,16 @@ struct LicenseBanner: View {
                     .foregroundStyle(Theme.text.color)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
+                if Self.offersExport(for: status) {
+                    Button("Export All Records…", action: onExportRecords)
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
+                }
+                if Self.offersNewKey(for: status) {
+                    Button("Get a Key…") { NSWorkspace.shared.open(LicenseLinks.requestKey) }
+                        .buttonStyle(.themed)
+                        .controlSize(.small)
+                }
                 Button("License…", action: onOpenSettings)
                     .buttonStyle(.themed)
                     .controlSize(.small)
@@ -72,6 +90,20 @@ struct LicenseBanner: View {
         }
     }
 
+    /// Recording and the AI are paused: offer to export the records, which always works.
+    static func offersExport(for status: LicenseStatus) -> Bool {
+        switch status {
+        case .expired, .revoked, .unlicensed, .invalid: return true
+        case .valid, .expiringSoon, .gracePeriod, .grandfathered: return false
+        }
+    }
+
+    /// Whenever a key is missing, ending or no good: link to the page that sends one.
+    static func offersNewKey(for status: LicenseStatus) -> Bool {
+        if case .valid = status { return false }
+        return true
+    }
+
     /// The strip's words for a status, or nil when there is nothing to say.
     static func text(for status: LicenseStatus) -> String? {
         switch status {
@@ -79,7 +111,7 @@ struct LicenseBanner: View {
             return nil
         case .expiringSoon(let token, let days):
             let when = days == 1 ? "tomorrow" : "in \(days) days"
-            return "Your license expires \(when) (\(token.expiresAt.licenseText)). Request a new key before then to keep recording and using the AI."
+            return "Your license expires \(when) (\(token.expiresAt.licenseText)). A renewed key is emailed to you before then: paste it in Settings > License key."
         case .gracePeriod(let token, let days):
             let left = days == 1 ? "1 more day" : "\(days) more days"
             return "Your license expired on \(token.expiresAt.licenseText). Recording and the AI keep working for \(left) (until \(token.graceEndsAt.licenseText)); add a new key in Settings > License key before then."
@@ -141,6 +173,9 @@ struct LicensePane: View {
             SettingsCard {
                 LicenseEntryView(buttonTitle: "Replace")
                 SettingsCaption("The key is checked on this Mac. It is never sent anywhere, and nothing about it leaves the app.")
+                Button("Get a Key…") { NSWorkspace.shared.open(LicenseLinks.requestKey) }
+                    .buttonStyle(.themed)
+                SettingsCaption("Opens astrealabs.com in your browser, where you can have a new key emailed to you.")
             }
         }
     }

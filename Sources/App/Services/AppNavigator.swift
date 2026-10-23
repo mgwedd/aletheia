@@ -111,6 +111,8 @@ enum SettingsRequest: Equatable {
     case setAsideRecordings
     /// The License pane.
     case license
+    /// Export All Records, in the Backups pane.
+    case exportAllRecords
 
     /// The pane that holds what is being asked for.
     var pane: SettingsPane {
@@ -118,6 +120,7 @@ enum SettingsRequest: Equatable {
         case .setupAssistant: return .general
         case .setAsideRecordings: return .setAsideRecordings
         case .license: return .license
+        case .exportAllRecords: return .backups
         }
     }
 }

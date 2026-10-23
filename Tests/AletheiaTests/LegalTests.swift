@@ -36,6 +36,9 @@ final class LegalTests: XCTestCase {
         XCTAssertTrue(privacy.contains("`astrealabs.com`"))
         XCTAssertTrue(privacy.contains("contains no license key or other identifier"))
         XCTAssertTrue(terms.contains("14-day grace period"))
+        // Revocation is not instant: it waits for the next daily list.
+        XCTAssertTrue(terms.contains("when the\nApp next receives the list") || terms.contains("when the App next receives the list"))
+        XCTAssertTrue(terms.contains("a revoked key has no grace period"))
         XCTAssertTrue(terms.contains("never require a license key, with no time limit"))
         XCTAssertFalse(terms.contains("end your use of the App"))
         // The license backend exists, so the policy must not deny having one.
