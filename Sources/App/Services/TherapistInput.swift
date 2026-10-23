@@ -63,7 +63,9 @@ enum TherapistInput {
         let lead = "(About \(pages) page\(pages == 1 ? "" : "s"), too long to include whole: only the parts "
             + "that match the question are below; [\u{2026}] marks what is skipped.)"
         let limit = max(0, room - lead.count - 1)
-        let document = SessionSearch.Document(date: Date(), tag: "", kind: .sessionNotes, text: trimmed)
+        // Searched line by line (the transcript kind): the other kinds index whole
+        // paragraphs, and a long single-spaced text is one paragraph.
+        let document = SessionSearch.Document(date: Date(), tag: "", kind: .transcript, text: trimmed)
         let lines = trimmed.components(separatedBy: "\n")
         var blocks: [String] = []
         var taken = Set<Int>()
