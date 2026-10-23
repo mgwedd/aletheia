@@ -204,4 +204,34 @@ final class DeviceKeyStoreTests: XCTestCase {
         XCTAssertTrue(text.contains("-25300"))
         XCTAssertFalse(text.contains("unexpectedStatus"), "no raw enum dump")
     }
+
+    func testEveryKeychainCallIsNonSynchronizable() {
+        var queries: [[String: Any]] = []
+        let client = KeychainDeviceKeyStore.Client(
+            add: { queries.append($0 as! [String: Any]); return errSecSuccess },
+            update: { q, _ in queries.append(q as! [String: Any]); return errSecItemNotFound },
+            copy: { queries.append($0 as! [String: Any]); return (errSecItemNotFound, nil) },
+            delete: { queries.append($0 as! [String: Any]); return errSecSuccess }
+        )
+        let store = KeychainDeviceKeyStore(client: client)
+        try? store.save(SymmetricKey(size: .bits256), for: "id")
+        _ = store.load(for: "id")
+        store.delete(for: "id")
+        XCTAssertEqual(queries.count, 4, "update, add, copy, delete")
+        for query in queries {
+            XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, false)
+        }
+    }
+
+    func testAuditKeyQueryIsNonSynchronizable() {
+        XCTAssertEqual(AuditKeyManager.keyQuery[kSecAttrSynchronizable as String] as? Bool, false)
+        XCTAssertEqual(AuditKeyManager.keyQuery[kSecAttrAccount as String] as? String, "com.aletheia.audit-hmac-key")
+    }
+
+    func testCommonStatusesGetPlainReasons() throws {
+        let locked = try XCTUnwrap(KeychainDeviceKeyStore.KeychainError.unexpectedStatus(errSecInteractionNotAllowed).errorDescription)
+        XCTAssertTrue(locked.contains("locked"))
+        let refused = try XCTUnwrap(KeychainDeviceKeyStore.KeychainError.unexpectedStatus(errSecAuthFailed).errorDescription)
+        XCTAssertTrue(refused.contains("refused"))
+    }
 }
