@@ -102,11 +102,18 @@ final class LicenseState: ObservableObject {
     /// stores it. A token that fails never replaces the one in use.
     @discardableResult
     func install(_ text: String) -> Result<LicenseToken, LicenseError> {
+        check(text).map { token in
+            settings.licenseToken = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            refresh()
+            return token
+        }
+    }
+
+    /// The same check as `install`, without storing anything.
+    func check(_ text: String) -> Result<LicenseToken, LicenseError> {
         do {
             let token = try LicenseVerifier.verify(text, keyring: keyring, now: now())
             if settings.revokedLicenseIDs.contains(token.lid) { throw LicenseError.revoked }
-            settings.licenseToken = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            refresh()
             return .success(token)
         } catch let error as LicenseError {
             return .failure(error)

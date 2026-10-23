@@ -146,6 +146,8 @@ struct RootView: View {
         }
         .onChange(of: navigator.pendingPatientID) { _, _ in navigateToPendingPatient() }
         .onAppear { navigateToPendingPatient() }
+        .onChange(of: navigator.offeredLicenseKey) { _, _ in showOfferedLicenseKey() }
+        .onAppear { showOfferedLicenseKey() }
         .modifier(SearchActivityReporting(
             appModel: appModel, recorder: recorder, transcription: transcription, inferenceQueue: integrations.inferenceQueue))
     }
@@ -233,6 +235,14 @@ struct RootView: View {
                 }
             }
         }
+    }
+
+    /// A key from a license link: Settings > License key shows it. During first run
+    /// the license step does instead.
+    private func showOfferedLicenseKey() {
+        guard navigator.offeredLicenseKey != nil, settings.hasCompletedFirstRun else { return }
+        navigator.requestSettings(.license)
+        showSettings = true
     }
 
     /// Honors a navigation request from an App Intent (Siri/Shortcuts).

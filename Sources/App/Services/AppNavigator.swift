@@ -49,7 +49,26 @@ final class AppNavigator: ObservableObject {
     /// Doctor's fix buttons). `SettingsView` consumes it.
     @Published var pendingSettings: SettingsRequest?
 
+    /// A key from an `aletheia://license` link, waiting in the license key field
+    /// for the user to check and install. `LicenseEntryView` takes it.
+    @Published var offeredLicenseKey: String?
+
     private init() {}
+
+    /// Puts the key from a license link in the license key field. False (and
+    /// nothing changes) for any other link.
+    @discardableResult
+    func offerLicenseKey(from url: URL) -> Bool {
+        guard let key = LicenseLink.keyText(from: url) else { return false }
+        offeredLicenseKey = key
+        return true
+    }
+
+    /// Takes (and clears) the offered key, so only one field shows it.
+    func takeOfferedLicenseKey() -> String? {
+        defer { offeredLicenseKey = nil }
+        return offeredLicenseKey
+    }
 
     func requestSettings(_ request: SettingsRequest) {
         pendingSettings = request

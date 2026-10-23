@@ -11,11 +11,15 @@ enum LicenseLinks {
 /// Used by first-run and Settings > License key. Checks entirely on this Mac.
 struct LicenseEntryView: View {
     @EnvironmentObject private var license: LicenseState
+    @ObservedObject private var navigator = AppNavigator.shared
     var buttonTitle = "Check license"
     var onInstalled: (LicenseToken) -> Void = { _ in }
 
     @State private var text = ""
     @State private var error: LicenseError?
+    /// What the key from an "Open in Aletheia" link turned out to be, until it is
+    /// installed or the field changes.
+    @State private var offered: (text: String, result: Result<LicenseToken, LicenseError>)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -29,6 +33,12 @@ struct LicenseEntryView: View {
                     .buttonStyle(.themePrimary)
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            if let offered, offered.text == text {
+                Text(Self.offerText(offered.result, buttonTitle: buttonTitle))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let error {
                 Label(error.errorDescription ?? "The license key was not accepted.", systemImage: "exclamationmark.triangle.fill")
                     .font(Theme.Typography.caption)
@@ -36,12 +46,34 @@ struct LicenseEntryView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .onAppear { takeOfferedKey() }
+        .onChange(of: navigator.offeredLicenseKey) { _, _ in takeOfferedKey() }
+    }
+
+    /// Fills the field from an "Open in Aletheia" link. Nothing is installed until
+    /// the user clicks the button.
+    private func takeOfferedKey() {
+        guard let key = navigator.takeOfferedLicenseKey() else { return }
+        text = key
+        error = nil
+        offered = (key, license.check(key))
+    }
+
+    /// The line under a key that came from a link: whose it is, or why it won't do.
+    static func offerText(_ result: Result<LicenseToken, LicenseError>, buttonTitle: String) -> String {
+        switch result {
+        case .success(let token):
+            return "Key from your browser, licensed to \(token.sub) until \(token.expiresAt.licenseText). Click \u{201C}\(buttonTitle)\u{201D} to use it."
+        case .failure(let error):
+            return "Key from your browser: \(error.errorDescription ?? "it was not accepted.")"
+        }
     }
 
     private func submit() {
         switch license.install(text) {
         case .success(let token):
             error = nil
+            offered = nil
             text = ""
             onInstalled(token)
         case .failure(let failure):

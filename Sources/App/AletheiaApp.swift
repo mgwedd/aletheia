@@ -27,6 +27,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // never flashes the system one first.
         AppSettings.shared.appearance.apply()
         HelpTipsStore.configure()
+        // `aletheia://` links (the key page's "Open in Aletheia"). Handled here, not
+        // by SwiftUI, so a link never opens a second main window.
+        NSAppleEventManager.shared().setEventHandler(
+            self, andSelector: #selector(handleGetURL(_:withReply:)),
+            forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
+    }
+
+    @MainActor @objc func handleGetURL(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        guard let text = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+              let url = URL(string: text),
+              AppNavigator.shared.offerLicenseKey(from: url)
+        else { return }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Quitting (⌘Q, the menu-bar Quit, logout or restart) waits for the
