@@ -156,6 +156,7 @@ struct SettingsView: View {
         case .encryption: encryptionPane
         case .backups: backupsPane
         case .security: securityPane
+        case .licenses: LicensesPane()
         case .setAsideRecordings:
             SetAsideRecordingsPane(model: setAside) { selectedPaneRaw = SettingsPane.general.rawValue }
         }
@@ -429,6 +430,7 @@ struct SettingsView: View {
                 .pickerStyle(.menu)
                 .frame(width: 280)
             }
+            ModelLicenseLink(settings.whisperModel)
             if whisperDownloader.isDownloading {
                 downloadProgress(whisperDownloader.progress)
             } else if whisperInstalled {
@@ -521,6 +523,7 @@ struct SettingsView: View {
                 .pickerStyle(.menu)
                 .frame(width: 280)
             }
+            ModelLicenseLink(settings.llamaModel)
             if llamaDownloader.isDownloading {
                 downloadProgress(llamaDownloader.progress)
                 if !llamaDownloader.statusText.isEmpty {
