@@ -110,6 +110,8 @@ struct DoctorView: View {
                 Button("Run checks again") { Task { await run() } }
                     .buttonStyle(.themed)
                     .disabled(isRunning)
+                Button("Report a Bug…") { NSWorkspace.shared.open(FeedbackLink.url(.bug)) }
+                    .buttonStyle(.themed)
                 Button(justCopied ? "Copied" : "Copy report") { copyReport() }
                     .buttonStyle(.themePrimary)
                     .disabled(report == nil)
@@ -150,7 +152,7 @@ struct DoctorView: View {
             Image(systemName: "lock")
                 .font(.system(size: 12))
                 .accessibilityHidden(true)
-            Text("This report contains check names, statuses, counts and versions only — never patient names, session names or note text.")
+            Text("This report contains check names, statuses, counts and versions only — never patient names, session names or note text. Bug reports become public issues on GitHub: paste this report, never client details.")
                 .fixedSize(horizontal: false, vertical: true)
         }
         .font(Theme.Typography.caption)

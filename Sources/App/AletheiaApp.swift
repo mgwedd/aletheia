@@ -267,6 +267,10 @@ struct AletheiaApp: App {
                         openWindow(id: DoctorFeatureModule.windowID)
                     }
                 }
+                Divider()
+                // The feedback form on astrealabs.com, in the browser.
+                Button("Report a Bug…") { NSWorkspace.shared.open(FeedbackLink.url(.bug)) }
+                Button("Request a Feature…") { NSWorkspace.shared.open(FeedbackLink.url(.feature)) }
             }
         }
 
