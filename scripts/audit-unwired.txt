@@ -11,6 +11,5 @@ backupRestored
 recordingConsentAttested
 noteSigned
 aiNoteVerified
-recordingRecovered
 retentionWarningOverridden
 part2FlagChanged
