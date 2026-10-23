@@ -3,7 +3,7 @@ import Foundation
 /// How much text this Mac can have the model read in one go. Set from the
 /// Mac's memory (`ModelAdvisor.contextBudgetTokens`): a bigger window costs
 /// memory for the model's working state, so a prompt past the budget is not
-/// sent. The app never lets Ollama cut a prompt silently.
+/// sent. The app never lets the engine cut a prompt silently.
 struct ContextBudget: Equatable {
     var tokens: Int
 

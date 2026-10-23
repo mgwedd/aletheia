@@ -118,8 +118,6 @@ struct AletheiaApp: App {
         appLock.onUnlock = { [weak appModel, weak encryption] in
             encryption?.autoUnlockFromDevice()
             appModel?.recordAudit(.appUnlocked)
-            // Reload only what the lock unloaded; not ~5 GB on every unlock.
-            OllamaClient.warmUpResumed()
         }
         appLock.onUnlockFailed = { [weak appModel] reason in
             appModel?.recordAudit(.appUnlockFailed, detail: reason)

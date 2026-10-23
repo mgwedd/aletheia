@@ -14,40 +14,36 @@ final class EngineStatusTests: XCTestCase {
 
     func testReachableWithModelIsGreenAndNamesEngineAndModel() {
         let presentation = EngineStatusPresentation.present(
-            .reachable(engineName: "Ollama", modelName: "llama3.1:8b")
+            .reachable(engineName: "Built-in engine", modelName: "Qwen")
         )
         XCTAssertEqual(presentation.tint, .green)
         XCTAssertEqual(presentation.symbolName, "checkmark.circle.fill")
-        XCTAssertTrue(presentation.label.contains("Ollama"))
-        XCTAssertTrue(presentation.label.contains("llama3.1:8b"))
+        XCTAssertTrue(presentation.label.contains("Built-in engine"))
+        XCTAssertTrue(presentation.label.contains("Qwen"))
     }
 
     func testReachableWithoutModelIsYellowAndSaysNotDownloaded() {
         let presentation = EngineStatusPresentation.present(
-            .reachableNoModel(engineName: "Ollama", modelName: "llama3.1:8b")
+            .reachableNoModel(engineName: "Built-in engine", modelName: "Qwen")
         )
         XCTAssertEqual(presentation.tint, .yellow)
         XCTAssertEqual(presentation.symbolName, "exclamationmark.triangle.fill")
-        XCTAssertTrue(presentation.label.contains("llama3.1:8b"))
+        XCTAssertTrue(presentation.label.contains("Qwen"))
         XCTAssertTrue(presentation.label.lowercased().contains("not downloaded"))
     }
 
     func testUnreachableIsRedAndNamesEngine() {
-        let presentation = EngineStatusPresentation.present(.unreachable(engineName: "Ollama"))
+        let presentation = EngineStatusPresentation.present(.unreachable(engineName: "Built-in engine"))
         XCTAssertEqual(presentation.tint, .red)
         XCTAssertEqual(presentation.symbolName, "xmark.circle.fill")
-        XCTAssertTrue(presentation.label.contains("Ollama"))
+        XCTAssertTrue(presentation.label.contains("Built-in engine"))
     }
 
     // MARK: Engine/model naming per backend
 
-    func testEngineNameNamesOllamaForOllamaAndAutomatic() {
-        XCTAssertEqual(EngineStatusProbe.engineName(for: .ollama), "Ollama")
-        XCTAssertEqual(EngineStatusProbe.engineName(for: .automatic), "Ollama")
-    }
-
-    func testEngineNameNamesBuiltInEngineForLocalLlama() {
+    func testEngineNameNamesBuiltInEngineForLocalLlamaAndAutomatic() {
         XCTAssertEqual(EngineStatusProbe.engineName(for: .localLlama), "Built-in engine")
+        XCTAssertEqual(EngineStatusProbe.engineName(for: .automatic), "Built-in engine")
     }
 
     func testEngineNameNamesAppleIntelligence() {

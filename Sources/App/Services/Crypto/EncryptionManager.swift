@@ -208,7 +208,6 @@ final class EncryptionManager: ObservableObject {
         dek = nil
         state = .lockedNeedsPassphrase
         SessionSearch.deleteIndex()   // plaintext transcript text: gone while locked, rebuilt on unlock
-        OllamaClient.unloadLoaded()
         LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript
         onProtectionChanged?()
     }
