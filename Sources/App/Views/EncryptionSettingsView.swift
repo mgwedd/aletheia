@@ -1,20 +1,19 @@
 import SwiftUI
 
-/// Sheet for turning on Tier-2 encryption, in two steps:
+/// Sheet for turning on Tier-2 encryption, in three steps:
 ///
-///   Passphrase ──▶ Encrypt
-///   choose + confirm,   understand the risk, choose whether to remember it
-///   strength meter      on this Mac, then encrypt (progress, then done)
-///
-/// There is no recovery key: the passphrase is the only way back in, and the
-/// sheet says so plainly.
+///   Passphrase ──▶ Recovery Key ──▶ Encrypt
+///   choose + confirm,   24-word emergency key,       understand the risk, choose
+///   strength meter      print or save as PDF,        whether to remember on this
+///                       acknowledge stored safely    Mac, then encrypt
 struct EncryptionSetupSheet: View {
     private enum Step: Int, CaseIterable {
-        case passphrase, encrypt
+        case passphrase, recoveryKey, encrypt
 
         var label: String {
             switch self {
             case .passphrase: return "Passphrase"
+            case .recoveryKey: return "Recovery Key"
             case .encrypt: return "Encrypt"
             }
         }
@@ -26,10 +25,12 @@ struct EncryptionSetupSheet: View {
     @State private var step: Step = .passphrase
     @State private var passphrase = ""
     @State private var confirm = ""
+    @State private var recoveryKey = ""
+    @State private var storedKeyAcknowledged = false
     @State private var acknowledged = false
     /// Default on: store the key in this Mac's keychain so, after this one-time
     /// setup, encryption is transparent on every later launch. The passphrase
-    /// stays the recovery path if the keychain is ever lost.
+    /// and emergency recovery key stay the recovery path if the keychain is ever lost.
     @State private var rememberOnDevice = true
     @State private var working = false
     @State private var didEnable = false
@@ -38,7 +39,7 @@ struct EncryptionSetupSheet: View {
 
     private var passphrasesMatch: Bool { !passphrase.isEmpty && passphrase == confirm }
     private var passphraseLongEnough: Bool { PassphraseStrength.meetsRequirement(passphrase) }
-    private var canEnable: Bool { passphrasesMatch && passphraseLongEnough && acknowledged }
+    private var canEnable: Bool { passphrasesMatch && passphraseLongEnough && storedKeyAcknowledged && acknowledged }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,6 +48,7 @@ struct EncryptionSetupSheet: View {
             VStack(alignment: .leading, spacing: 16) {
                 switch step {
                 case .passphrase: passphraseStep
+                case .recoveryKey: recoveryKeyStep
                 case .encrypt: encryptStep
                 }
             }
@@ -57,10 +59,15 @@ struct EncryptionSetupSheet: View {
 
             footer
         }
-        .frame(width: 560)
+        .frame(width: 580)
         .background(Theme.panel.color)
         .tint(Theme.accent.color)
         .interactiveDismissDisabled(working)
+        .onAppear {
+            if recoveryKey.isEmpty {
+                recoveryKey = RecoveryKey.generate()
+            }
+        }
         .alert("Couldn't turn on encryption", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -68,7 +75,7 @@ struct EncryptionSetupSheet: View {
         }
     }
 
-    // MARK: Chrome
+    // MARK: - Chrome
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -124,8 +131,12 @@ struct EncryptionSetupSheet: View {
                     .buttonStyle(.themePrimary)
                     .keyboardShortcut(.defaultAction)
             } else {
-                if step == .encrypt {
+                if step == .recoveryKey {
                     Button("Back") { step = .passphrase }
+                        .buttonStyle(.themed)
+                        .disabled(working)
+                } else if step == .encrypt {
+                    Button("Back") { step = .recoveryKey }
                         .buttonStyle(.themed)
                         .disabled(working)
                 }
@@ -133,12 +144,23 @@ struct EncryptionSetupSheet: View {
                     .buttonStyle(.themed)
                     .keyboardShortcut(.cancelAction)
                     .disabled(working)
+
                 switch step {
                 case .passphrase:
+                    Button("Continue") {
+                        if recoveryKey.isEmpty { recoveryKey = RecoveryKey.generate() }
+                        step = .recoveryKey
+                    }
+                    .buttonStyle(.themePrimary)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!passphrasesMatch || !passphraseLongEnough)
+
+                case .recoveryKey:
                     Button("Continue") { step = .encrypt }
                         .buttonStyle(.themePrimary)
                         .keyboardShortcut(.defaultAction)
-                        .disabled(!passphrasesMatch || !passphraseLongEnough)
+                        .disabled(!storedKeyAcknowledged)
+
                 case .encrypt:
                     Button {
                         enable()
@@ -157,7 +179,7 @@ struct EncryptionSetupSheet: View {
         .themeDivider(.top)
     }
 
-    // MARK: Steps
+    // MARK: - Steps
 
     @ViewBuilder
     private var passphraseStep: some View {
@@ -182,7 +204,7 @@ struct EncryptionSetupSheet: View {
 
         strengthMeter
 
-        Text("Aletheia cannot reset this passphrase. If you lose it, your data cannot be recovered. There is no reset, no backdoor and no recovery key, so keep it somewhere safe.")
+        Text("Aletheia cannot reset your passphrase. If you lose both your passphrase and your emergency recovery key, your data cannot be recovered. In the next step you'll receive a 24-word recovery key to store safely.")
             .font(Theme.Typography.caption)
             .foregroundStyle(Theme.text.color)
             .fixedSize(horizontal: false, vertical: true)
@@ -220,6 +242,22 @@ struct EncryptionSetupSheet: View {
     }
 
     @ViewBuilder
+    private var recoveryKeyStep: some View {
+        Text("If you lose your passphrase, this 24-word emergency recovery key is the only way to recover your data. Save or print it and keep it in a secure offline location.")
+            .font(Theme.Typography.body)
+            .foregroundStyle(Theme.muted.color)
+            .fixedSize(horizontal: false, vertical: true)
+
+        RecoveryKeyDisplay(words: RecoveryKey.words(from: recoveryKey))
+
+        RecoveryKeyActions(key: recoveryKey, dataRoot: encryption.dataRoot, replacesPrevious: false)
+
+        Toggle("I have saved or printed my emergency recovery key and stored it safely.", isOn: $storedKeyAcknowledged)
+            .toggleStyle(.checkbox)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
     private var encryptStep: some View {
         if working {
             Text("Encrypting existing files in your data folder. Keep Aletheia open until this finishes.")
@@ -245,7 +283,7 @@ struct EncryptionSetupSheet: View {
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Toggle("I understand my data can't be recovered if I lose this passphrase.", isOn: $acknowledged)
+            Toggle("I understand my data can't be recovered if I lose my passphrase and emergency recovery key.", isOn: $acknowledged)
                 .toggleStyle(.checkbox)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -269,7 +307,7 @@ struct EncryptionSetupSheet: View {
         }
     }
 
-    // MARK: Action
+    // MARK: - Actions
 
     private func enable() {
         working = true
@@ -277,7 +315,7 @@ struct EncryptionSetupSheet: View {
             // Let the progress state draw before the (synchronous) migration runs.
             await Task.yield()
             do {
-                let result = try encryption.enable(passphrase: passphrase)
+                let result = try encryption.enable(passphrase: passphrase, recoveryKey: recoveryKey)
                 var notes: [String] = []
                 if rememberOnDevice {
                     do { try encryption.rememberOnDevice() } catch {
@@ -300,10 +338,11 @@ struct EncryptionSetupSheet: View {
             }
         }
     }
+
 }
 
 /// A labelled password field in the design's field box.
-private struct ThemeSecureField: View {
+struct ThemeSecureField: View {
     let label: String
     @Binding var text: String
     var submit: (() -> Void)?
@@ -326,114 +365,184 @@ private struct ThemeSecureField: View {
     }
 }
 
-/// Full-window gate shown when an encrypted data folder hasn't been unlocked
-/// this launch. Mirrors the Tier-1 `LockView` but asks for the recovery
-/// passphrase (which yields the data key) rather than Touch ID.
-struct EncryptionUnlockView: View {
-    @EnvironmentObject private var encryption: EncryptionManager
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var appModel: AppModel
+/// Clean 3-column display of 24 recovery key words.
+struct RecoveryKeyDisplay: View {
+    let words: [String]
 
-    @State private var passphrase = ""
-    @State private var rememberOnDevice = false
-    @State private var errorMessage: String?
+    private let columns = [
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8)
+    ]
 
     var body: some View {
-        ZStack {
-            Rectangle().fill(Theme.window.color).ignoresSafeArea()
-            VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "lock.doc.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(Theme.accent.color)
-                            .accessibilityHidden(true)
-                        Text("This data folder is encrypted")
-                            .font(Theme.Typography.title)
-                            .foregroundStyle(Theme.text.color)
-                            .accessibilityAddTraits(.isHeader)
-                    }
-
-                    Text("Enter your recovery passphrase to unlock your notes for this session.")
-                        .font(Theme.Typography.body)
+        LazyVGrid(columns: columns, spacing: 6) {
+            ForEach(Array(words.enumerated()), id: \.offset) { index, word in
+                HStack(spacing: 6) {
+                    Text("\(index + 1).")
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
                         .foregroundStyle(Theme.muted.color)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 24, alignment: .trailing)
+                    Text(word)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Theme.text.color)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Theme.field.color, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+            }
+        }
+        .padding(10)
+        .background(Theme.panel.color, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+    }
+}
 
-                    ThemeSecureField(label: "Recovery passphrase", text: $passphrase, submit: unlock)
+/// Copy / Save as PDF / Print for a recovery key, with the last outcome shown
+/// beside the buttons so a failed or refused save isn't silent.
+struct RecoveryKeyActions: View {
+    let key: String
+    let dataRoot: URL?
+    let replacesPrevious: Bool
 
-                    HStack(spacing: 12) {
-                        Text("Remember on this Mac")
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.text.color)
-                        Spacer(minLength: 0)
-                        Toggle("Remember on this Mac", isOn: $rememberOnDevice)
-                            .labelsHidden()
-                            .toggleStyle(.switch)
-                            .tint(Theme.accent.color)
-                    }
-                    .help("Stores the key in this Mac's login keychain so you won't be asked next launch. Leave off for maximum security.")
+    @State private var status: (text: String, ok: Bool)?
 
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.recording.color)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Theme.recordingTint.color, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Button("Copy Words") {
+                    RecoveryKeyDocument.copy(key)
+                    status = ("Copied to clipboard", true)
+                }
+                .buttonStyle(.themed)
+
+                Button("Save as PDF…") {
+                    switch RecoveryKeyDocument.save(key: key, dataRoot: dataRoot, replacesPrevious: replacesPrevious) {
+                    case .saved: status = ("Saved", true)
+                    case .cancelled: break
+                    case let .failed(message): status = (message, false)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 28)
-                .padding(.top, 24)
-                .padding(.bottom, 20)
+                .buttonStyle(.themed)
 
-                HStack(spacing: 8) {
-                    Button("Use a different data folder…", action: chooseDifferentFolder)
-                        .buttonStyle(.plain)
-                        .font(Theme.Typography.control)
-                        .foregroundStyle(Theme.muted.color)
-                    Spacer(minLength: 8)
-                    Button("Unlock", action: unlock)
-                        .buttonStyle(.themePrimary)
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(passphrase.isEmpty)
+                Button("Print…") {
+                    RecoveryKeyDocument.print(key: key, dataRoot: dataRoot, replacesPrevious: replacesPrevious)
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 14)
-                .background(Theme.sidebar.color)
-                .themeDivider(.top)
+                .buttonStyle(.themed)
             }
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-            .themeCard()
-            .frame(maxWidth: 480)
-            .padding(32)
-            .tint(Theme.accent.color)
+            if let status {
+                Text(status.text)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(status.ok ? Theme.ok.color : Theme.recording.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
+}
 
-    private func unlock() {
-        do {
-            try encryption.unlock(passphrase: passphrase)
-            if rememberOnDevice { try? encryption.rememberOnDevice() } // a failure is kept in `encryption.rememberError` and shown in Settings
-            passphrase = ""
-            errorMessage = nil
-        } catch {
-            var message = error.localizedDescription
-            let wait = Int(encryption.unlockRetryDelay.rounded(.up))
-            if wait > 0, !(error is EncryptionManager.ManagerError) {
-                message += " Wait \(wait) seconds before trying again."
+/// Sheet for creating a fresh 24-word recovery key and replacing the existing slot in Settings.
+struct NewRecoveryKeySheet: View {
+    @EnvironmentObject private var encryption: EncryptionManager
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var newKey = RecoveryKey.generate()
+    @State private var acknowledged = false
+    @State private var working = false
+    @State private var errorMessage: String?
+
+    /// Folders encrypted before recovery keys existed have no slot to replace.
+    private var replacesExisting: Bool { encryption.hasRecoveryKey }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            VStack(alignment: .leading, spacing: 14) {
+                Text(replacesExisting
+                    ? "Creating a new recovery key replaces the existing one in your data folder's keystore. Any previously printed or saved recovery key will stop working immediately."
+                    : "This folder doesn't have an emergency recovery key yet. Save or print this one and keep it in a secure offline location.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.muted.color)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                RecoveryKeyDisplay(words: RecoveryKey.words(from: newKey))
+
+                RecoveryKeyActions(key: newKey, dataRoot: encryption.dataRoot, replacesPrevious: replacesExisting)
+
+                Toggle("I have saved or printed this new emergency recovery key.", isOn: $acknowledged)
+                    .toggleStyle(.checkbox)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.recording.color)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Theme.recordingTint.color, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                }
             }
-            errorMessage = message
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.top, 8)
+            .padding(.bottom, 20)
+
+            footer
         }
+        .frame(width: 580)
+        .background(Theme.panel.color)
+        .tint(Theme.accent.color)
     }
 
-    private func chooseDifferentFolder() {
-        guard let url = FolderPicker.choose() else { return }
+    private var header: some View {
+        HStack {
+            Text("Create New Recovery Key")
+                .font(Theme.Typography.title)
+                .foregroundStyle(Theme.text.color)
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            Button { dismiss() } label: {
+                Label("Close", systemImage: "xmark")
+            }
+            .buttonStyle(.themeIcon)
+            .keyboardShortcut(.cancelAction)
+            .disabled(working)
+        }
+        .padding(.horizontal, 28)
+        .padding(.top, 22)
+        .padding(.bottom, 12)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 8) {
+            Spacer()
+            Button("Cancel") { dismiss() }
+                .buttonStyle(.themed)
+                .keyboardShortcut(.cancelAction)
+                .disabled(working)
+
+            Button {
+                replaceKey()
+            } label: {
+                if working { ProgressView().controlSize(.small) } else { Text("Replace Recovery Key") }
+            }
+            .buttonStyle(.themePrimary)
+            .keyboardShortcut(.defaultAction)
+            .disabled(!acknowledged || working)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 14)
+        .background(Theme.sidebar.color)
+        .themeDivider(.top)
+    }
+
+    private func replaceKey() {
+        working = true
         do {
-            try settings.setDataRoot(url)
-            appModel.rebuildStore()
+            try encryption.replaceRecoveryKey(newKey)
+            working = false
+            dismiss()
         } catch {
+            working = false
             errorMessage = error.localizedDescription
         }
     }

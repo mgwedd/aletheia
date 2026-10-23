@@ -19,19 +19,19 @@ final class StoreTests: XCTestCase {
     func testCreatePatientPersistsToDisk() throws {
         let patient = try store.createPatient(name: "Jane Doe")
         XCTAssertEqual(patient.name, "Jane Doe")
-        XCTAssertEqual(patient.slug, "Jane-Doe")
+        XCTAssertEqual(patient.slug, patient.id.uuidString)
 
         let reloaded = try store.listPatients()
         XCTAssertEqual(reloaded.map(\.id), [patient.id])
         XCTAssertEqual(reloaded.first?.name, "Jane Doe")
     }
 
-    func testDuplicatePatientNameGetsUniqueSlug() throws {
+    func testDuplicatePatientNameGetsDistinctUUIDFolders() throws {
         let first = try store.createPatient(name: "Jane Doe")
         let second = try store.createPatient(name: "Jane Doe")
 
-        XCTAssertEqual(first.slug, "Jane-Doe")
-        XCTAssertEqual(second.slug, "Jane-Doe-2")
+        XCTAssertEqual(first.slug, first.id.uuidString)
+        XCTAssertEqual(second.slug, second.id.uuidString)
         XCTAssertNotEqual(first.id, second.id)
 
         let all = try store.listPatients()
@@ -94,14 +94,15 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(reloaded?.hasSummary, true)
     }
 
-    func testSlugStripsPunctuationAndCollapsesSeparators() throws {
+    func testPatientNameDoesNotAppearInFolder() throws {
         let patient = try store.createPatient(name: "O'Brien,  Mary-Kate")
-        XCTAssertEqual(patient.slug, "O-Brien-Mary-Kate")
+        XCTAssertEqual(patient.slug, patient.id.uuidString)
+        XCTAssertFalse(patient.slug.contains("Mary"))
     }
 
-    func testBlankPatientNameStillGetsAUsableSlug() throws {
+    func testBlankPatientNameStillGetsAUsableFolder() throws {
         let patient = try store.createPatient(name: "   ")
-        XCTAssertEqual(patient.slug, "Patient")
+        XCTAssertEqual(patient.slug, patient.id.uuidString)
     }
 
     func testHasRecordingReflectsEitherAudioFile() throws {

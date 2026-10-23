@@ -358,7 +358,7 @@ struct PatientDetailView: View {
     }
 
     private func newSession() {
-        guard let store = appModel.store else { return }
+        guard appModel.authorizeNewPHI(), let store = appModel.store else { return }
         do {
             let session = try store.createSession(for: patient)
             refresh()

@@ -42,12 +42,21 @@ Legend: **✅ in place** · **◐ in progress** · **○ clinician responsibilit
 | Safeguard (§164.312) | Status | How Aletheia addresses it |
 | --- | --- | --- |
 | **Access control (a)(1)** — unique user ID, limit access to authorized users | ✅ / ○ | Single-user app scoped to one macOS account. The macOS login (unique user, password/Touch ID) is the access boundary; the app adds its own lock below. |
+| **Emergency access procedure (a)(2)(ii)** *(addressable)* | ✅ | A 24-word BIP-39 emergency recovery key (≥256 bits entropy) is generated when at-rest encryption is enabled and can be replaced at any time in Settings › Encryption. It wraps the data encryption key (DEK) in an independent keyslot. Clinicians are guided to print or export the key as a PDF during setup and store it in an offline, physically secured location (e.g. a locked safe or deposit box). Emergency access is executed by clicking "Use recovery key…" on the folder unlock screen. The recovery key is never written to disk in the data folder. |
 | **Automatic logoff (a)(2)(iii)** *(addressable)* | ◐ | App lock re-engages whenever the Mac locks or sleeps, so the Mac's screen-lock setting (System Settings › Lock Screen) provides the logoff; set a short interval there. An optional **in-app idle lock** (off by default) also re-locks after inactivity in Aletheia. |
-| **Encryption & decryption (a)(2)(iv)** *(addressable)* | ✅ | AES-256-GCM at rest for the database, transcripts, summaries, session digests, and audio (see [ENCRYPTION.md](ENCRYPTION.md)); FileVault recommended as the disk-level baseline. First-run recommends turning it on as an opt-out step (with a recovery passphrase and optional transparent unlock on this Mac), so a new install is guided to encrypt by default rather than leaving it a buried toggle. |
+| **Encryption & decryption (a)(2)(iv)** *(addressable)* | ✅ | AES-256-GCM at rest for the database, transcripts, summaries, session digests, and audio (see [ENCRYPTION.md](ENCRYPTION.md)); FileVault recommended as the disk-level baseline. First-run recommends turning it on as an opt-out step (with a passphrase, a 24-word emergency recovery key, and optional transparent unlock on this Mac), so a new install is guided to encrypt by default rather than leaving it a buried toggle. |
 | **Audit controls (b)** — record and examine activity involving ePHI | ✅ / ◐ | An on-device, append-only audit log (`audit.log`, one JSON line per event) records ePHI-affecting actions with timestamps and holds **no names or clinical content** — only action types and opaque record ids. It's viewable and exportable in Settings, stored only on the Mac. App-unlock and encryption enable/disable/unlock are wired now; export/delete/backup events attach as those flows land. |
 | **Integrity (c)(1)** — protect ePHI from improper alteration/destruction | ✅ / ○ | SQLite `PRAGMA secure_delete` zeroes freed pages; atomic writes for identity/metadata; encrypted backups are sealed snapshots. Source-of-truth transcript is editable by the clinician by design (right-to-amend), with edits under the clinician's control. |
 | **Person/entity authentication (d)** | ✅ | App lock via `LocalAuthentication` (Touch ID or Mac password) gates access to the app; macOS account auth gates the device. |
 | **Transmission security (e)(1)** — guard ePHI in transit | ✅ | PHI is not transmitted. The only outbound connections carry no PHI (update check, opt-in model downloads) or are local (`127.0.0.1` on-device AI). Optional iCloud backup is **end-to-end encrypted on-device before upload**, so only ciphertext leaves the Mac. The Settings security overview surfaces live network reachability and the iCloud-backup posture so the clinician can see, at a glance, that nothing but ciphertext ever leaves. |
+
+Patient folders use opaque UUID names after the v2 folder migration. Session
+folder names still carry dates of service. The FTS cache (`search.sqlite`)
+contains searchable plaintext terms; it is protected by the FileVault gate,
+excluded from Time Machine, deleted on lock, and rebuilt on unlock. The v2
+migration retains a structured JSON pre-image under `.backups/migrations/files/`.
+That backup and session folder names remain within the FileVault protected data
+folder.
 
 ## Administrative & physical safeguards — §164.308 / §164.310
 
@@ -73,6 +82,16 @@ These belong to the practice. Aletheia supports, but cannot satisfy, them:
   lost or left unattended.
 - **Media disposal (§164.310(d))** — the app's secure-delete and at-rest
   encryption support defensible disposal of ePHI on the device.
+
+## Emergency access procedure (§164.312(a)(2)(ii))
+
+If a clinician forgets their primary encryption passphrase, or during an emergency when authorized personnel require access to critical clinical records:
+
+1. **Obtain the physical recovery key:** Retrieve the printed or exported 24-word emergency recovery key from the practice's physical security storage (e.g., locked fireproof safe or safety deposit box).
+2. **Launch Aletheia:** Ensure the target encrypted data folder is selected.
+3. **Open the recovery interface:** On the folder unlock screen, click **"Use recovery key…"**.
+4. **Enter the 24 words:** Enter the 24 BIP-39 words separated by spaces. Aletheia verifies the 8-bit checksum and unseals the data encryption key (DEK).
+5. **Post-recovery security:** Once unlocked, navigate to **Settings › Encryption** and click **"Create New Recovery Key…"** to invalidate the old recovery key and mint a fresh one for physical archiving.
 
 ## Retention note
 

@@ -94,6 +94,12 @@ struct RootView: View {
         } message: {
             Text(appModel.errorMessage ?? "")
         }
+        .alert(appModel.fileVaultNotice?.title ?? "", isPresented: fileVaultBinding) {
+            Button("Open System Settings") { SystemSettingsLinks.openFileVaultSettings() }
+            Button(appModel.fileVaultNotice == .blocked ? "Cancel" : "Continue", role: .cancel) {}
+        } message: {
+            Text(appModel.fileVaultNotice?.message ?? "")
+        }
         .alert("Update Aletheia", isPresented: schemaWarningBinding) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -236,6 +242,13 @@ struct RootView: View {
         Binding(
             get: { updateService.available != nil },
             set: { if !$0 { updateService.dismiss() } }
+        )
+    }
+
+    private var fileVaultBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.fileVaultNotice != nil },
+            set: { if !$0 { appModel.fileVaultNotice = nil } }
         )
     }
 
