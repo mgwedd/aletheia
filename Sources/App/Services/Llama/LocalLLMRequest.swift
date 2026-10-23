@@ -62,25 +62,29 @@ struct LocalLLMGrammar: Equatable {
     let gbnf: String
 }
 
-/// One local-LLM generation request: the standing system prompt, the turn
-/// prompt, sampling parameters, and an optional grammar.
+/// One local-LLM generation request: the standing system prompt, earlier chat
+/// turns, the turn prompt, sampling parameters, and an optional grammar.
 ///
 /// This is the stable contract the engine is built around, and the seam that
 /// GBNF-constrained decoding and fine-tuned / LoRA models plug into later —
 /// adding a grammar or swapping the model never changes call sites.
 struct LocalLLMRequest {
     var system: String
+    /// Earlier chat turns, sent as the template's own turns before `prompt`.
+    var turns: [PromptTurn]
     var prompt: String
     var sampling: LocalLLMSampling
     var grammar: LocalLLMGrammar?
 
     init(
         system: String = "",
+        turns: [PromptTurn] = [],
         prompt: String,
         sampling: LocalLLMSampling = .deterministic,
         grammar: LocalLLMGrammar? = nil
     ) {
         self.system = system
+        self.turns = turns
         self.prompt = prompt
         self.sampling = sampling
         self.grammar = grammar

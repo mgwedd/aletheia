@@ -19,49 +19,56 @@ struct AssistantService {
     /// call the call-audio speaker by its first word. Empty means "the client".
     var clientName: String = ""
 
-    private func checkBudget(system: String, prompt: String) throws {
-        guard budget.fits(system: system, prompt: prompt) else {
+    private func checkBudget(system: String, turns: [PromptTurn], prompt: String) throws {
+        guard budget.fits(system: system, prompt: PromptTurn.flattened(turns, then: prompt)) else {
             throw ContextBudgetError(minutes: budget.approximateMinutes)
         }
     }
 
     private func generate(
-        task: AITask, system: String, prompt: String, grammar: LocalLLMGrammar? = nil
+        task: AITask, system: String, turns: [PromptTurn] = [], prompt: String, grammar: LocalLLMGrammar? = nil
     ) async throws -> String {
-        try checkBudget(system: system, prompt: prompt)
+        try checkBudget(system: system, turns: turns, prompt: prompt)
         return try await assistant.generate(
-            model: model, system: system, prompt: prompt, task: task, grammar: grammar)
+            model: model, system: system, turns: turns, prompt: prompt, task: task, grammar: grammar)
     }
 
     /// Streams `prompt` after the budget check; an over-budget prompt fails the
     /// stream with `ContextBudgetError` and nothing is sent.
     private func run(
-        task: AITask, system: String, prompt: String, grammar: LocalLLMGrammar? = nil
+        task: AITask, system: String, turns: [PromptTurn] = [], prompt: String, grammar: LocalLLMGrammar? = nil
     ) -> AsyncThrowingStream<String, Error> {
         do {
-            try checkBudget(system: system, prompt: prompt)
+            try checkBudget(system: system, turns: turns, prompt: prompt)
         } catch {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
-        report?(.reading(estimatedTokens: ContextBudget.estimatedTokens(system: system, prompt: prompt)))
+        report?(.reading(estimatedTokens: ContextBudget.estimatedTokens(
+            system: system, prompt: PromptTurn.flattened(turns, then: prompt))))
         let report = report
         return assistant.stream(
-            model: model, system: system, prompt: prompt, task: task, grammar: grammar,
+            model: model, system: system, turns: turns, prompt: prompt, task: task, grammar: grammar,
             onStats: report.map { report in { @Sendable stats in report(.finished(stats)) } })
     }
 
     /// Whether `prompt` (with the standing instructions) is within the budget.
-    func fits(prompt: String) -> Bool {
-        budget.fits(system: systemPrompt, prompt: prompt)
+    func fits(prompt: String, turns: [PromptTurn] = []) -> Bool {
+        budget.fits(system: systemPrompt, prompt: PromptTurn.flattened(turns, then: prompt))
     }
 
     /// Streams a digest prompt: the same budget check, progress report and
     /// truncation tripwire as a note or an answer. `task` picks the sampling
     /// settings (a long-session note's draft and check are `.note`).
     func streamDigest(
-        prompt: String, task: AITask = .digest, grammar: LocalLLMGrammar? = nil
+        prompt: String, turns: [PromptTurn] = [], task: AITask = .digest, grammar: LocalLLMGrammar? = nil
     ) -> AsyncThrowingStream<String, Error> {
-        run(task: task, system: systemPrompt, prompt: prompt, grammar: grammar)
+        run(task: task, system: systemPrompt, turns: turns, prompt: prompt, grammar: grammar)
+    }
+
+    /// Streams a chat answer: `turns` are the conversation since its latest
+    /// summary, sent as real chat turns, and `prompt` is the final user turn.
+    func streamAnswer(system: String, turns: [PromptTurn], prompt: String) -> AsyncThrowingStream<String, Error> {
+        run(task: .chat, system: system, turns: turns, prompt: prompt)
     }
 
     func summarize(transcript: String, patientBackground: String = "") async throws -> String {
@@ -133,6 +140,7 @@ struct AssistantService {
     ) async throws -> String {
         return try await generate(task: .chat,
             system: Prompts.chatSystemPrompt(systemPrompt, question: question),
+            turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
                 notes: notes,
@@ -148,6 +156,7 @@ struct AssistantService {
     func answerAboutPatient(context: String, history: [ChatMessage], question: String) async throws -> String {
         try await generate(task: .chat,
             system: Prompts.chatSystemPrompt(systemPrompt, question: question),
+            turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.patientChat(context: context, history: history, question: question, clientName: clientName)
         )
     }
@@ -167,6 +176,7 @@ struct AssistantService {
     ) -> AsyncThrowingStream<String, Error> {
         run(task: .chat,
             system: Prompts.chatSystemPrompt(systemPrompt, question: question),
+            turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
                 notes: notes,
@@ -185,7 +195,9 @@ struct AssistantService {
     /// (measured by script, so a conversation in Japanese takes its real share).
     func patientContextCharacters(history: [ChatMessage], question: String) -> Int {
         let system = Prompts.chatSystemPrompt(systemPrompt, question: question)
-        let wrapper = Prompts.patientChat(context: "", history: history, question: question, clientName: clientName)
+        let wrapper = PromptTurn.flattened(
+            PromptTurn.recent(history, question: question),
+            then: Prompts.patientChat(context: "", history: history, question: question, clientName: clientName))
         return budget.availableCharacters(
             reserving: ContextBudget.weightedLength(of: system) + ContextBudget.weightedLength(of: wrapper))
     }
@@ -197,13 +209,15 @@ struct AssistantService {
     ) -> AsyncThrowingStream<String, Error> {
         run(task: .chat,
             system: Prompts.chatSystemPrompt(systemPrompt, question: question),
+            turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.patientChat(context: context, history: history, question: question, clientName: clientName)
         )
     }
 
     /// Streams a summary that replaces the conversation so far (`/compact`).
     func streamCompaction(history: [ChatMessage], focus: String) -> AsyncThrowingStream<String, Error> {
-        run(task: .compaction, system: systemPrompt, prompt: Prompts.compactChat(history: history, focus: focus))
+        run(task: .compaction, system: systemPrompt, turns: PromptTurn.recent(history),
+            prompt: Prompts.compactChat(history: history, focus: focus))
     }
 
     /// Renders stored margin comments into the plain lines the prompt expects.
