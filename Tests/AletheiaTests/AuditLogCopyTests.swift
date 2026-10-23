@@ -36,6 +36,7 @@ final class AuditLogCopyTests: XCTestCase {
         XCTAssertTrue(caption.contains("deletions"))
         XCTAssertTrue(caption.contains("Backups and viewing records are not recorded yet"))
         XCTAssertFalse(caption.contains("Deletions and backups are not recorded"))
+        XCTAssertTrue(caption.contains("§164.312(b)"), "keeps the audit-control note")
         XCTAssertTrue(AuditLogCopy.notRecordedActions.contains(.backupRun))
         XCTAssertFalse(AuditLogCopy.notRecordedActions.contains(.recordDeleted))
     }

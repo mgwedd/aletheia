@@ -24,7 +24,7 @@ enum AuditLogCopy {
     static var caption: String {
         let phrases = recorded.map(\.phrase)
         let list = phrases.dropLast().joined(separator: ", ") + ", and " + phrases[phrases.count - 1]
-        return "An on-device record of \(list). Backups and viewing records are not recorded yet. It holds no names or clinical content and never leaves this Mac."
+        return "An on-device record of \(list). Backups and viewing records are not recorded yet. It holds no names or clinical content and never leaves this Mac. It supports, but does not by itself satisfy, HIPAA's audit-control requirement (§164.312(b))."
     }
 }
 
@@ -151,7 +151,7 @@ struct AuditLogSection: View {
     private func exportText() -> String {
         let all = appModel.audit?.entries() ?? []
         let header = """
-        Aletheia security audit log — an on-device record with no PHI.
+        Aletheia security audit log (HIPAA §164.312(b)) — an on-device record with no PHI.
         Exported \(Self.dateFormatter.string(from: Date()))
 
         """
