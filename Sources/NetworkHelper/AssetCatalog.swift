@@ -52,6 +52,12 @@ enum HelperEndpoints {
     /// The update feed: the `appcast.json` of the latest GitHub release.
     static let appcast = URL(string: "https://github.com/mgwedd/aletheia/releases/latest/download/appcast.json")!
 
+    /// The signed license revocation list. Nil until the domain is decided;
+    /// while nil the helper refuses the command and makes no request. The host
+    /// must also be added to `HelperAllowlist.hosts` when this is set.
+    // TODO(owner): revocation list URL on our own domain
+    static let revocations: URL? = nil
+
     /// The appcast's `downloadURL` is only followed when it is a release asset
     /// of this repository.
     static func isUpdateArchive(_ url: URL) -> Bool {

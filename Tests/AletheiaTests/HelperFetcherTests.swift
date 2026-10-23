@@ -8,15 +8,21 @@ private final class StubProtocol: URLProtocol {
         case ok(Data)
         case status(Int)
         case redirect(to: String)
+        /// Sends `count` chunks of `size` bytes, a few ms apart, until the task is cancelled.
+        case chunks(count: Int, size: Int)
     }
 
     nonisolated(unsafe) static var responder: Responder = { _ in .ok(Data()) }
     nonisolated(unsafe) static var seen: [URLRequest] = []
+    nonisolated(unsafe) static var chunksSent = 0
+    private let stopped = NSLock()
+    nonisolated(unsafe) private var isStopped = false
     private static let lock = NSLock()
 
     static func reset(_ responder: @escaping Responder) {
         lock.lock(); defer { lock.unlock() }
         seen = []
+        chunksSent = 0
         self.responder = responder
     }
 
@@ -44,10 +50,25 @@ private final class StubProtocol: URLProtocol {
             let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: nil,
                                            headerFields: ["Location": target])!
             client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: URL(string: target)!), redirectResponse: response)
+        case .chunks(let count, let size):
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            DispatchQueue.global().async {
+                for _ in 0..<count {
+                    self.stopped.lock(); let done = self.isStopped; self.stopped.unlock()
+                    if done { return }
+                    Self.lock.lock(); Self.chunksSent += 1; Self.lock.unlock()
+                    self.client?.urlProtocol(self, didLoad: Data(repeating: 0x20, count: size))
+                    usleep(5_000)
+                }
+                self.client?.urlProtocolDidFinishLoading(self)
+            }
         }
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        stopped.lock(); isStopped = true; stopped.unlock()
+    }
 }
 
 final class HelperFetcherTests: XCTestCase {
@@ -190,6 +211,85 @@ final class HelperFetcherTests: XCTestCase {
         } catch let error as HelperError {
             guard case .notAllowed = error else { return XCTFail("\(error)") }
         }
+    }
+
+    func testRevocationsWithNoEndpointFailsNotConfiguredAndMakesNoRequest() async throws {
+        StubProtocol.reset { _ in .ok(Data("x".utf8)) }
+        XCTAssertNil(HelperEndpoints.revocations, "the shipped endpoint is unset until the domain is decided")
+        do {
+            _ = try await makeFetcher().fetchRevocations()
+            XCTFail("must not succeed without an endpoint")
+        } catch let error as HelperError {
+            XCTAssertEqual(error, .notConfigured)
+            XCTAssertFalse(error.message.isEmpty)
+        }
+        XCTAssertTrue(StubProtocol.seen.isEmpty)
+    }
+
+    func testRevocationsFetchIsAPlainGETAndReturnsTheBytes() async throws {
+        StubProtocol.reset { _ in .ok(Data("list".utf8)) }
+        let data = try await makeFetcher().fetchRevocations(from: URL(string: "https://github.com/r/revocations.json")!)
+        XCTAssertEqual(data, Data("list".utf8))
+        let request = try XCTUnwrap(StubProtocol.seen.first)
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertNil(request.httpBody)
+        XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
+        XCTAssertNil(request.url?.query)
+    }
+
+    func testRevocationsOverTheCapAreRejected() async throws {
+        StubProtocol.reset { _ in .ok(Data(repeating: 0x20, count: HelperFetcher.maxDataBytes + 1)) }
+        do {
+            _ = try await makeFetcher().fetchRevocations(from: URL(string: "https://github.com/r/revocations.json")!)
+            XCTFail("over 256 KB must fail")
+        } catch let error as HelperError {
+            XCTAssertEqual(error, .tooLarge)
+        }
+    }
+
+    /// The cap holds while bytes arrive: the transfer is cancelled soon after
+    /// the cap, not read to the end and then checked.
+    func testRevocationsOverTheCapStopTheTransferPartway() async throws {
+        let size = 16 * 1024, count = 128  // 2 MB offered, cap is 256 KB
+        StubProtocol.reset { _ in .chunks(count: count, size: size) }
+        do {
+            _ = try await makeFetcher().fetchRevocations(from: URL(string: "https://github.com/r/revocations.json")!)
+            XCTFail("over 256 KB must fail")
+        } catch let error as HelperError {
+            XCTAssertEqual(error, .tooLarge)
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertLessThan(StubProtocol.chunksSent, count / 2, "the transfer kept going after the cap")
+    }
+
+    func testRevocationsAtExactlyTheCapAreAccepted() async throws {
+        StubProtocol.reset { _ in .ok(Data(repeating: 0x20, count: HelperFetcher.maxDataBytes)) }
+        let data = try await makeFetcher().fetchRevocations(from: URL(string: "https://github.com/r/revocations.json")!)
+        XCTAssertEqual(data.count, 256 * 1024)
+    }
+
+    func testRevocationsRefuseHttpAndOffAllowlistEndpoints() async throws {
+        StubProtocol.reset { _ in .ok(Data()) }
+        for raw in ["http://github.com/r", "https://example.com/r"] {
+            do {
+                _ = try await makeFetcher().fetchRevocations(from: URL(string: raw)!)
+                XCTFail("\(raw) should be refused")
+            } catch let error as HelperError {
+                guard case .notAllowed = error else { return XCTFail("\(error)") }
+            }
+        }
+        XCTAssertTrue(StubProtocol.seen.isEmpty)
+    }
+
+    func testRevocationsRedirectOffTheAllowlistIsRejected() async throws {
+        StubProtocol.reset { _ in .redirect(to: "https://evil.example.com/x") }
+        do {
+            _ = try await makeFetcher().fetchRevocations(from: URL(string: "https://github.com/r")!)
+            XCTFail("redirect off the allowlist must fail")
+        } catch let error as HelperError {
+            guard case .redirectRejected = error else { return XCTFail("\(error)") }
+        }
+        XCTAssertEqual(StubProtocol.seen.count, 1)
     }
 
     func testOversizeDataIsRejected() async throws {

@@ -59,6 +59,19 @@ enum FileSaver {
         return panel.runModal() == .OK ? panel.url : nil
     }
 
+    /// Asks for a folder to export into. Under App Sandbox the chosen folder
+    /// stays writable for the rest of the session.
+    static func chooseFolder(prompt: String, message: String) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = prompt
+        panel.message = message
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
     /// Saves an iCalendar (.ics) file to a user-chosen location via NSSavePanel.
     @discardableResult
     static func saveICS(_ text: String, suggestedName: String) -> Bool {

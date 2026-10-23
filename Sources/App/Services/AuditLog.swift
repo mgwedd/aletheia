@@ -140,7 +140,8 @@ enum AuditKeyManager {
 
     /// Load or create the HMAC key in Keychain.
     static func loadOrCreateKeychainKey() -> SymmetricKey? {
-        loadOrCreate(load: readKeychainKey, add: addKeychainKey)
+        guard TestHost.usesLiveKeychain() else { return testProcessKey }
+        return loadOrCreate(load: readKeychainKey, add: addKeychainKey)
     }
 
     /// A new key is made only when the keychain says there is none. Any other
@@ -163,8 +164,12 @@ enum AuditKeyManager {
         }
     }
 
+    /// Stands in for the Keychain key while tests run (see `TestHost.usesLiveKeychain`).
+    private static let testProcessKey = SymmetricKey(size: .bits256)
+
     static func loadKeychainKey() -> SymmetricKey? {
-        readKeychainKey().key
+        guard TestHost.usesLiveKeychain() else { return testProcessKey }
+        return readKeychainKey().key
     }
 
     private static func readKeychainKey() -> (status: OSStatus, key: SymmetricKey?) {
