@@ -144,14 +144,20 @@ final class AnnotationRepository {
         if let text = RecordPayloadCodec.decode(String.self, from: record.payload, using: protector) {
             return text
         }
-        onDecodeFailure?()
+        if !protector.isLocked { onDecodeFailure?() }
         return ""
     }
 
+    /// Refuses (returns false) to replace a stored note that can't be decoded,
+    /// so a damaged note that reads as empty is never overwritten.
     @discardableResult
     func saveNote(sessionID: UUID, text: String, now: Date = Date()) -> Bool {
+        let existing = core.record(kind: Self.noteKind, id: sessionID.uuidString)
+        if let existing, RecordPayloadCodec.isDamaged(String.self, payload: existing.payload, using: protector) {
+            return false
+        }
         guard let data = RecordPayloadCodec.encode(text, using: protector) else { return false }
-        let createdAt = core.record(kind: Self.noteKind, id: sessionID.uuidString)?.createdAt ?? now
+        let createdAt = existing?.createdAt ?? now
         let record = PersistedRecord(
             id: sessionID.uuidString, kind: Self.noteKind, itemID: sessionID,
             payload: data, createdAt: createdAt, updatedAt: now

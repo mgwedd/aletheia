@@ -103,9 +103,16 @@ final class TranscriptionCoordinator: ObservableObject {
             let outcome = await self.run(patient: patient, session: session, store: store, protector: protector)
             // Tell someone who stepped away that no transcript is coming.
             switch outcome {
-            case .failed, .blank, .completedAudioKept:
+            case .failed, .blank:
                 await self.integrations.makeNotifier().post(
                     SessionNotifications.transcriptionProblem(
+                        patientName: patient.name, date: session.date,
+                        showsName: self.settings.notificationsShowPatientNames
+                    )
+                )
+            case .completedAudioKept:
+                await self.integrations.makeNotifier().post(
+                    SessionNotifications.recordingNotDeleted(
                         patientName: patient.name, date: session.date,
                         showsName: self.settings.notificationsShowPatientNames
                     )
