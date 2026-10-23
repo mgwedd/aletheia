@@ -40,6 +40,27 @@ final class ExportJobCenter: ObservableObject {
         destination: URL,
         onFinished: @escaping @MainActor (PatientArchiveWriter.Outcome) -> Void = { _ in }
     ) -> Bool {
+        start(destination: destination, onFinished: onFinished) { progress, isCancelled in
+            try PatientArchiveWriter.write(
+                patientName: patientName,
+                background: background,
+                sessionCount: sessionCount,
+                loadSession: load,
+                to: destination,
+                progress: progress,
+                isCancelled: isCancelled
+            )
+        }
+    }
+
+    /// Runs any export `work` on a background thread, reporting progress and
+    /// honouring cancel. False when another export is still running.
+    @discardableResult
+    func start(
+        destination: URL,
+        onFinished: @escaping @MainActor (PatientArchiveWriter.Outcome) -> Void = { _ in },
+        work: @escaping (_ progress: (Double, String) -> Void, _ isCancelled: () -> Bool) throws -> PatientArchiveWriter.Outcome
+    ) -> Bool {
         guard !isRunning else { return false }
         generation += 1
         isCancelling = false
@@ -48,20 +69,15 @@ final class ExportJobCenter: ObservableObject {
         let notifier = self.notifier
         Task { await notifier.requestAuthorization() }
 
-        let loader = UncheckedSendable(load)
+        let job = UncheckedSendable(work)
         task = Task.detached(priority: .utility) { [weak self] in
             let result: Result<PatientArchiveWriter.Outcome, Error>
             do {
-                result = .success(try PatientArchiveWriter.write(
-                    patientName: patientName,
-                    background: background,
-                    sessionCount: sessionCount,
-                    loadSession: loader.value,
-                    to: destination,
-                    progress: { fraction, label in
+                result = .success(try job.value(
+                    { fraction, label in
                         Task { @MainActor in self?.apply(fraction: fraction, label: label, generation: mine) }
                     },
-                    isCancelled: { Task.isCancelled }
+                    { Task.isCancelled }
                 ))
             } catch {
                 result = .failure(error)

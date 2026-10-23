@@ -19,6 +19,7 @@ struct SettingsView: View {
     @EnvironmentObject private var integrations: Integrations
     @EnvironmentObject private var updateService: UpdateService
     @EnvironmentObject private var encryption: EncryptionManager
+    @EnvironmentObject private var exports: ExportJobCenter
     @StateObject private var whisperDownloader = WhisperModelDownloader()
     @ObservedObject private var llamaDownloader = LlamaModelDownloader.shared
     @State private var healthChecks: [ToolHealthCheck] = []
@@ -42,6 +43,8 @@ struct SettingsView: View {
     /// an export; a snapshot, not a live binding (the log is append-only on disk).
     @State private var auditEntries: [AuditEvent] = []
     @State private var auditVerificationMessage: String?
+    /// A folder chosen for Export All Records that needs a warning before writing.
+    @State private var riskyExportFolder: RiskyExportFolder?
     /// The pane last shown, so Settings reopens where it was left.
     @AppStorage("settings.selectedPane") private var selectedPaneRaw: String = SettingsPane.default.rawValue
     private let auditPreviewLimit = 15
@@ -134,6 +137,19 @@ struct SettingsView: View {
             Text(errorMessage ?? "")
         }
         .exportResultAlert($exportResult)
+        .confirmationDialog(
+            riskyExportFolder?.warnings.first?.title ?? "",
+            isPresented: Binding(get: { riskyExportFolder != nil }, set: { if !$0 { riskyExportFolder = nil } }),
+            titleVisibility: .visible,
+            presenting: riskyExportFolder
+        ) { risky in
+            Button("Export Anyway") { startExportAll(into: risky.folder) }
+            // After the dialog has closed, so a second warning isn't cleared by its dismissal.
+            Button("Choose Another Folder…") { DispatchQueue.main.async { chooseExportAllFolder() } }
+            Button("Cancel", role: .cancel) {}
+        } message: { risky in
+            Text(risky.warnings.map(\.message).joined(separator: "\n\n"))
+        }
     }
 
     /// Shows what another part of the app asked for (e.g. the Doctor's "Set
@@ -876,6 +892,57 @@ struct SettingsView: View {
         Button("Show backups folder in Finder", action: showBackupsFolder)
             .buttonStyle(.themed)
             .disabled(settings.dataRootURL == nil)
+        SettingsHairline()
+        exportAllSection
+    }
+
+    private var exportAllSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Export all records").eyebrowStyle()
+            SettingsCaption("Copies every patient's notes, transcripts, comments and kept recordings into a folder of ordinary files that open without Aletheia. This never needs a license key. The copy isn't encrypted by Aletheia, so save it to this Mac with FileVault on or to an encrypted external drive.")
+            HStack(spacing: 8) {
+                Button("Export All Records…", action: chooseExportAllFolder)
+                    .buttonStyle(.themed)
+                    .disabled(appModel.store == nil || exports.isRunning)
+                if case let .running(_, label) = exports.state {
+                    SettingsCaption(label)
+                }
+                Spacer()
+            }
+        }
+    }
+
+    /// Asks for a folder, then checks it before writing anything.
+    private func chooseExportAllFolder() {
+        guard appModel.store != nil, !exports.isRunning else { return }
+        guard let folder = FileSaver.chooseFolder(
+            prompt: "Export Here",
+            message: "Choose where to put a folder with all your records. Pick an encrypted disk that doesn't sync to the cloud."
+        ) else { return }
+        let warnings = ExportDestinationInspector().warnings(for: folder)
+        if warnings.isEmpty {
+            startExportAll(into: folder)
+        } else {
+            riskyExportFolder = RiskyExportFolder(folder: folder, warnings: warnings)
+        }
+    }
+
+    private func startExportAll(into folder: URL) {
+        guard let store = appModel.store, !exports.isRunning else { return }
+        let existing = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+        let destination = folder.appendingPathComponent(
+            AllRecordsExport.folderName(exportedOn: Date(), existing: existing), isDirectory: true)
+        let model = appModel
+        exports.start(destination: destination, onFinished: { outcome in
+            model.recordAudit(
+                .recordExported,
+                detail: "All records, folder of \(outcome.patientCount ?? 0) patients, \(outcome.sessionCount) sessions"
+            )
+        }) { progress, isCancelled in
+            progress(0, "Listing patients")
+            let source = try StoreAllRecordsSource(store: store)
+            return try AllRecordsExport.write(from: source, to: destination, progress: progress, isCancelled: isCancelled)
+        }
     }
 
     /// Reveals `.backups` in Finder, or the data folder itself when no backup
@@ -1170,4 +1237,10 @@ private struct DownloadedMark: View {
             .help("Downloaded")
             .accessibilityLabel("Downloaded")
     }
+}
+
+/// A folder chosen for Export All Records and why it needs a second look.
+private struct RiskyExportFolder {
+    let folder: URL
+    let warnings: [ExportDestinationCheck.Warning]
 }

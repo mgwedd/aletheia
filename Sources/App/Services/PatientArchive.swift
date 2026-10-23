@@ -45,11 +45,11 @@ struct ArchiveFile: Equatable {
 ///           Comments.txt
 enum PatientArchive {
     static func files(
-        patientName: String, background: String, sessions: [ArchiveSession], exportedOn: Date
+        patientName: String, background: String, sessions: [ArchiveSession], exportedOn: Date,
+        rootName: String? = nil, hasRecording: (Int) -> Bool = { _ in false }
     ) -> [ArchiveFile] {
-        let root = fileSafe(patientName.isEmpty ? "Patient" : patientName) + " records"
+        let root = rootName ?? defaultRootName(patientName: patientName)
         var files: [ArchiveFile] = []
-        var taken = Set<String>()
         var empty = 0
 
         let backgroundText = background.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -57,10 +57,10 @@ enum PatientArchive {
             files.append(ArchiveFile(path: "\(root)/Patient notes.txt", text: backgroundText + "\n", modified: exportedOn))
         }
 
-        // Stable for equal dates: the caller's order breaks ties.
-        let ordered = sessions.enumerated().sorted { ($0.element.date, $0.offset) < ($1.element.date, $1.offset) }.map(\.element)
-        for session in ordered {
-            let folder = "\(root)/Sessions/\(uniqueFolder(for: session.date, taken: &taken))"
+        let folders = sessionFolders(for: sessions.map(\.date))
+        for index in chronologicalOrder(sessions.map(\.date)) {
+            let session = sessions[index]
+            let folder = "\(root)/Sessions/\(folders[index])"
             let before = files.count
 
             let transcript = TranscriptStyler.forReader(session.transcript, callAudioName: Prompts.clientFirstName(patientName)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -81,7 +81,7 @@ enum PatientArchive {
             if let comments = commentsText(session.comments) {
                 files.append(ArchiveFile(path: "\(folder)/Comments.txt", text: comments, modified: session.date))
             }
-            if files.count == before { empty += 1 }
+            if files.count == before, !hasRecording(index) { empty += 1 }
         }
 
         let readMe = readMeText(
@@ -89,6 +89,28 @@ enum PatientArchive {
         )
         files.insert(ArchiveFile(path: "\(root)/Read me.txt", text: readMe, modified: exportedOn), at: 0)
         return files
+    }
+
+    /// "<Name> records", the archive's top folder.
+    static func defaultRootName(patientName: String) -> String {
+        fileSafe(patientName.isEmpty ? "Patient" : patientName) + " records"
+    }
+
+    /// Each session's folder name under Sessions/, in the order the dates are
+    /// given. Folders are assigned oldest first, so same-minute sessions get
+    /// " (2)", " (3)" in date order, with the given order breaking ties.
+    static func sessionFolders(for dates: [Date]) -> [String] {
+        var taken = Set<String>()
+        var folders = Array(repeating: "", count: dates.count)
+        for index in chronologicalOrder(dates) {
+            folders[index] = uniqueFolder(for: dates[index], taken: &taken)
+        }
+        return folders
+    }
+
+    /// Indices of `dates`, oldest first; stable for equal dates.
+    static func chronologicalOrder(_ dates: [Date]) -> [Int] {
+        dates.indices.sorted { (dates[$0], $0) < (dates[$1], $1) }
     }
 
     /// `2026-09-16 14.30`, in the Mac's time zone (the one the session list shows), so Finder sorts
@@ -127,7 +149,7 @@ enum PatientArchive {
 
     // MARK: - Pieces
 
-    private static func uniqueName(_ base: String, taken: inout Set<String>) -> String {
+    static func uniqueName(_ base: String, taken: inout Set<String>) -> String {
         var candidate = base
         var number = 2
         while taken.contains(candidate.lowercased()) {
@@ -207,6 +229,8 @@ enum PatientArchiveWriter {
         let sessionCount: Int
         let fileCount: Int
         let byteCount: Int
+        /// Set for an all-records folder export; nil for one patient's zip.
+        var patientCount: Int? = nil
     }
 
     static func write(

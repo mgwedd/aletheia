@@ -247,7 +247,7 @@ final class LongSessionNoteTests: XCTestCase {
         let focus = try await run(transcript: text, effort: .focus) { $0.checkResponse = String(repeating: "CHECKED NOTE ", count: 3) }
         XCTAssertEqual(focus.prompts.count, normal.prompts.count + 1)
         let check = try XCTUnwrap(focus.prompts.last)
-        XCTAssertTrue(check.contains("Draft note:\nDRAFT NOTE"))
+        XCTAssertTrue(check.contains("Draft note:\n<draft>\nDRAFT NOTE"))
         XCTAssertTrue(check.contains("I would never do it"))
         XCTAssertEqual(focus.snapshots.count, 2)
         XCTAssertTrue(try XCTUnwrap(focus.snapshots.last).hasPrefix("CHECKED NOTE"))

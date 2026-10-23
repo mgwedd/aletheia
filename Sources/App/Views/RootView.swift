@@ -72,6 +72,7 @@ struct RootView: View {
                 .environmentObject(updateService)
                 .environmentObject(encryption)
                 .environmentObject(license)
+                .environmentObject(exports)
         }
         .sheet(item: $editingProfile) { patient in
             PatientProfileEditor(
@@ -214,10 +215,17 @@ struct RootView: View {
                     onDismiss: { appModel.dismissSaveFailure() }
                 )
             }
-            LicenseBanner(status: license.status) {
-                navigator.requestSettings(.license)
-                showSettings = true
-            }
+            LicenseBanner(
+                status: license.status,
+                onOpenSettings: {
+                    navigator.requestSettings(.license)
+                    showSettings = true
+                },
+                onExportRecords: {
+                    navigator.requestSettings(.exportAllRecords)
+                    showSettings = true
+                }
+            )
             if !setAside.items.isEmpty {
                 SetAsideRecordingsStrip(count: setAside.items.count) {
                     navigator.requestSettings(.setAsideRecordings)

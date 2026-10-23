@@ -307,6 +307,7 @@ struct AletheiaApp: App {
                 .environmentObject(updateService)
                 .environmentObject(encryption)
                 .environmentObject(license)
+                .environmentObject(exports)
                 .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
         }
 
