@@ -14,6 +14,9 @@ struct UnlockThrottle {
 
     private(set) var failures = 0
     private var blockedUntil: Date?
+    /// The wait imposed by the last failure. The remaining time never exceeds
+    /// it, so setting the clock back can't stretch a wait past what was set.
+    private var currentDelay: TimeInterval = 0
 
     init(freeAttempts: Int = 3, baseDelay: TimeInterval = 2, maxDelay: TimeInterval = 15 * 60, now: @escaping () -> Date = Date.init) {
         self.freeAttempts = freeAttempts
@@ -25,7 +28,7 @@ struct UnlockThrottle {
     /// Seconds left before another attempt is allowed; 0 when one is.
     var remainingDelay: TimeInterval {
         guard let blockedUntil else { return 0 }
-        return max(0, blockedUntil.timeIntervalSince(now()))
+        return min(currentDelay, max(0, blockedUntil.timeIntervalSince(now())))
     }
 
     mutating func recordFailure() {
@@ -33,11 +36,13 @@ struct UnlockThrottle {
         let over = failures - freeAttempts
         guard over > 0 else { return }
         let delay = min(maxDelay, baseDelay * pow(2, Double(min(over - 1, 30))))
+        currentDelay = delay
         blockedUntil = now().addingTimeInterval(delay)
     }
 
     mutating func recordSuccess() {
         failures = 0
         blockedUntil = nil
+        currentDelay = 0
     }
 }

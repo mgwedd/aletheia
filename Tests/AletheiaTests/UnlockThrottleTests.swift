@@ -30,4 +30,13 @@ final class UnlockThrottleTests: XCTestCase {
         throttle.recordFailure()
         XCTAssertEqual(throttle.remainingDelay, 0, "the free attempts are back")
     }
+
+    func testSettingTheClockBackDoesNotStretchTheWait() {
+        var now = Date(timeIntervalSince1970: 1_000_000)
+        var throttle = UnlockThrottle(freeAttempts: 0, baseDelay: 5, maxDelay: 60, now: { now })
+        throttle.recordFailure()
+        XCTAssertEqual(throttle.remainingDelay, 5)
+        now.addTimeInterval(-86_400)
+        XCTAssertEqual(throttle.remainingDelay, 5, "never more than the wait that was imposed")
+    }
 }
