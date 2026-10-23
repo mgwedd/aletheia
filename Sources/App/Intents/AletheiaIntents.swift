@@ -7,17 +7,26 @@
 #if ALETHEIA_DEV
 import AppIntents
 
+/// Thrown by an intent that was asked to open a record while the app is locked.
+enum LockedError: Error, CustomLocalizedStringResourceConvertible {
+    case locked
+    var localizedStringResource: LocalizedStringResource { "Aletheia is locked. Unlock it first." }
+}
+
 /// "Show today's sessions" — read-only, returns spoken/displayed dialog.
 struct ShowTodaysSessionsIntent: AppIntent {
     static var title: LocalizedStringResource = "Show Today's Sessions"
     static var description = IntentDescription("Lists the therapy sessions recorded today.")
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard !SystemSurfaceAccess.isLocked else {
+            return .result(dialog: "Aletheia is locked. Unlock it first.")
+        }
         let items = SessionQueries.todaysSessions(store: SessionQueries.currentStore())
         guard !items.isEmpty else {
             return .result(dialog: "You have no sessions recorded today.")
         }
-        let names = items.map(\.patientName).joined(separator: ", ")
+        let names = items.map(\.label.text).joined(separator: ", ")
         let count = items.count
         return .result(dialog: "You have \(count) session\(count == 1 ? "" : "s") today: \(names).")
     }
@@ -34,6 +43,7 @@ struct OpenPatientIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        guard !SystemSurfaceAccess.isLocked else { throw LockedError.locked }
         AppNavigator.shared.requestOpen(patientID: patient.id)
         return .result()
     }
@@ -51,6 +61,9 @@ struct NewSessionIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard !SystemSurfaceAccess.isLocked else {
+            return .result(dialog: "Aletheia is locked. Unlock it first.")
+        }
         guard let store = SessionQueries.currentStore() else {
             return .result(dialog: "Open Aletheia and choose a data folder first.")
         }
@@ -64,7 +77,7 @@ struct NewSessionIntent: AppIntent {
         }
         _ = try store.createSession(for: match)
         AppNavigator.shared.requestOpen(patientID: match.id)
-        return .result(dialog: "Started a new session for \(match.name).")
+        return .result(dialog: "Started a new session.")
     }
 }
 

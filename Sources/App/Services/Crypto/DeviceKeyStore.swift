@@ -72,10 +72,33 @@ struct KeychainDeviceKeyStore: DeviceKeyStoring {
         var errorDescription: String? {
             switch self {
             case let .unexpectedStatus(status):
-                let reason = SecCopyErrorMessageString(status, nil) as String? ?? "unknown error"
-                return "Couldn't save the key to this Mac's keychain: \(reason) (OSStatus \(status))."
+                return "Couldn't save the key to this Mac's keychain: \(Self.reason(for: status)) (OSStatus \(status))."
             }
         }
+
+        /// A plain-language reason for the statuses a user can actually hit, else the system's text.
+        static func reason(for status: OSStatus) -> String {
+            switch status {
+            case errSecInteractionNotAllowed: return "the keychain is locked"
+            case errSecAuthFailed: return "access to the keychain was refused"
+            case errSecUserCanceled: return "the keychain request was cancelled"
+            case errSecNotAvailable: return "no keychain is available"
+            case errSecDuplicateItem: return "an entry for this folder already exists"
+            case errSecMissingEntitlement: return "the app isn't allowed to use the keychain"
+            default: return SecCopyErrorMessageString(status, nil) as String? ?? "unknown error"
+            }
+        }
+    }
+
+    /// Every query and add names the entry as non-synchronizable, so the key can
+    /// never reach iCloud Keychain.
+    static func baseQuery(service: String, id: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: id,
+            kSecAttrSynchronizable as String: false,
+        ]
     }
 
     private let client: Client
@@ -84,11 +107,7 @@ struct KeychainDeviceKeyStore: DeviceKeyStoring {
 
     func save(_ key: SymmetricKey, for id: String) throws {
         let data = key.withUnsafeBytes { Data($0) }
-        let base: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: id,
-        ]
+        let base = Self.baseQuery(service: service, id: id)
         // Update in place so there is never a moment with no entry; add only when none exists.
         let updated = client.update(base as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if updated == errSecSuccess { return }
@@ -101,24 +120,15 @@ struct KeychainDeviceKeyStore: DeviceKeyStoring {
     }
 
     func load(for id: String) -> SymmetricKey? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: id,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+        var query = Self.baseQuery(service: service, id: id)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         let (status, data) = client.copy(query as CFDictionary)
         guard status == errSecSuccess, let data, data.count == Self.keyLength else { return nil }
         return SymmetricKey(data: data)
     }
 
     func delete(for id: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: id,
-        ]
-        _ = client.delete(query as CFDictionary)
+        _ = client.delete(Self.baseQuery(service: service, id: id) as CFDictionary)
     }
 }

@@ -186,14 +186,20 @@ enum AuditKeyManager {
         return readKeychainKey().key
     }
 
-    private static func readKeychainKey() -> (status: OSStatus, key: SymmetricKey?) {
-        let query: [String: Any] = [
+    /// Names the entry as non-synchronizable so the key never reaches iCloud Keychain.
+    static var keyQuery: [String: Any] {
+        [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecAttrSynchronizable as String: false,
         ]
+    }
+
+    private static func readKeychainKey() -> (status: OSStatus, key: SymmetricKey?) {
+        var query = keyQuery
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess else { return (status, nil) }
@@ -204,13 +210,9 @@ enum AuditKeyManager {
     }
 
     private static func addKeychainKey(_ key: SymmetricKey) -> OSStatus {
-        let add: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: key.withUnsafeBytes { Data($0) },
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        ]
+        var add = keyQuery
+        add[kSecValueData as String] = key.withUnsafeBytes { Data($0) }
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         return SecItemAdd(add as CFDictionary, nil)
     }
 

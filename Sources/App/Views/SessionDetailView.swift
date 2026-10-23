@@ -610,7 +610,6 @@ struct SessionDetailView: View {
 
     private func scheduleReminder(_ leadTime: ReminderLeadTime) async {
         let draft = SessionReminderBuilder.draft(
-            patientName: patient.name,
             sessionDate: session.date,
             leadTime: leadTime
         )
@@ -624,7 +623,6 @@ struct SessionDetailView: View {
 
     private func scheduleEvent() async {
         let draft = SessionEventBuilder.draft(
-            patientName: patient.name,
             start: scheduleStart,
             durationMinutes: scheduleDurationMinutes,
             recurrence: scheduleRecurrence

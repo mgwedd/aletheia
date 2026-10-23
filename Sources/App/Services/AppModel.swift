@@ -77,7 +77,7 @@ final class AppModel: ObservableObject {
     init(
         settings: AppSettings,
         encryption: EncryptionManager,
-        spotlightIndexer: SpotlightIndexing = SpotlightIndexer.shared,
+        spotlightIndexer: SpotlightIndexing = SpotlightIndexerFactory.make(),
         featureRegistry: FeatureRegistry = .compose(tier: .current, from: FeatureRegistry.allModules)
     ) {
         self.settings = settings
@@ -447,14 +447,14 @@ final class AppModel: ObservableObject {
 
     /// Rebuilds the Spotlight index from the current patients/sessions when the
     /// build ships Spotlight indexing and the user has opted in, or clears it
-    /// otherwise. Metadata only — see `SpotlightItemBuilder`. Safe to call
+    /// otherwise (including while the app or data folder is locked). Metadata only — see `SpotlightItemBuilder`. Safe to call
     /// often; it's a no-op off macOS.
     func reindexSpotlight() {
         guard featureRegistry.contains(id: SpotlightFeatureModule.id) else {
             spotlightIndexer.clear()
             return
         }
-        guard settings.spotlightIndexingEnabled else {
+        guard settings.spotlightIndexingEnabled, !SystemSurfaceAccess.isLocked else {
             spotlightIndexer.clear()
             return
         }

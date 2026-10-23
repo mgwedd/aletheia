@@ -6,9 +6,9 @@ import Foundation
 ///
 /// Privacy: this app treats session audio and transcripts as PHI, so we never
 /// put transcript or summary *content* into the system-wide index — only the
-/// patient's name and session dates, and only when the user opts in (see
+/// patient's initials and session dates, and only when the user opts in (see
 /// `AppSettings.spotlightIndexingEnabled`). Even that is a deliberate choice a
-/// user makes, because a name in Spotlight is visible to anyone at the Mac.
+/// user makes, because anything in Spotlight is visible to anyone at the Mac.
 struct SpotlightEntry: Equatable {
     let uniqueIdentifier: String
     let title: String
@@ -38,12 +38,13 @@ enum SpotlightItemBuilder {
     /// The searchable entries for one patient and their sessions: a card for
     /// the patient plus one per session. Metadata only — no transcript text.
     static func entries(for patient: Patient, sessions: [SessionRecord]) -> [SpotlightEntry] {
+        let label = PatientLabel(patient)
         var entries: [SpotlightEntry] = [
             SpotlightEntry(
                 uniqueIdentifier: patientIdentifier(patient.id),
-                title: patient.name,
+                title: label.text,
                 contentDescription: "Therapy patient in Aletheia.",
-                keywords: keywords(for: patient),
+                keywords: Self.keywords,
                 contentModificationDate: nil
             )
         ]
@@ -53,9 +54,9 @@ enum SpotlightItemBuilder {
             entries.append(
                 SpotlightEntry(
                     uniqueIdentifier: sessionIdentifier(patientID: patient.id, folderName: session.folderName),
-                    title: "\(patient.name) — \(dateString)",
+                    title: "\(label.text) — \(dateString)",
                     contentDescription: "Therapy session on \(dateString).",
-                    keywords: keywords(for: patient) + ["session"],
+                    keywords: Self.keywords + ["session"],
                     contentModificationDate: session.date
                 )
             )
@@ -91,10 +92,6 @@ enum SpotlightItemBuilder {
         }
     }
 
-    private static func keywords(for patient: Patient) -> [String] {
-        let nameTokens = patient.name
-            .split(whereSeparator: { $0 == " " || $0 == "-" })
-            .map(String.init)
-        return nameTokens + ["therapy", "patient", "Aletheia"]
-    }
+    /// Fixed words only: nothing derived from the patient's name.
+    private static let keywords = ["therapy", "patient", "Aletheia"]
 }
