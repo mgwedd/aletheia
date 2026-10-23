@@ -25,6 +25,21 @@ final class XPCNetworkHelperConnection: NetworkHelperConnection, @unchecked Send
         }
     }
 
+    func fetchRevocations() async throws -> Data {
+        try await run { connection, finish in
+            let proxy = try Self.proxy(connection, finish)
+            proxy.fetchRevocations { data, error in
+                if let error {
+                    finish(.failure(error))
+                } else if let data {
+                    finish(.success(data))
+                } else {
+                    finish(.failure(ModelDownloadError.downloadFailed("The revocation list was empty.")))
+                }
+            }
+        }
+    }
+
     func download(
         asset: AssetID,
         into file: FileHandle,

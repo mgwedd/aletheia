@@ -88,7 +88,7 @@ final class EncryptionManager: ObservableObject {
 
     init(
         dataRootProvider: @escaping () -> URL?,
-        deviceKeys: DeviceKeyStoring = KeychainDeviceKeyStore(),
+        deviceKeys: DeviceKeyStoring = KeychainDeviceKeyStore.makeDefault(),
         defaults: UserDefaults = .standard,
         throttle: UnlockThrottle = UnlockThrottle()
     ) {
