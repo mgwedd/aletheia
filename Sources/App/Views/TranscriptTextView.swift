@@ -168,12 +168,13 @@ struct TranscriptTextView: NSViewRepresentable {
         /// Copy and drag take the text as it is on screen: call audio named,
         /// no hidden " (overlapping)" labels. The view is plain text, so there is no RTF.
         override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
-            let ok = super.writeSelection(to: pboard, types: types)
-            guard ok else { return ok }
-            if let text = pboard.string(forType: .string) {
-                pboard.setString(TranscriptStyler.forReader(text, callAudioName: callAudioName), forType: .string)
+            PHIPasteboard.writeSelection(to: pboard) { staging in
+                let ok = super.writeSelection(to: staging, types: types)
+                if ok, let text = staging.string(forType: .string) {
+                    staging.setString(TranscriptStyler.forReader(text, callAudioName: callAudioName), forType: .string)
+                }
+                return ok
             }
-            return ok
         }
 
         // VoiceOver reads the transcript as it is on screen.
