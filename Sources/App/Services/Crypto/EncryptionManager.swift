@@ -71,6 +71,9 @@ final class EncryptionManager: ObservableObject {
     /// whenever the key or on/off state changes.
     var onProtectionChanged: (() -> Void)?
 
+    /// Called after a passphrase change has been swapped in, never on a refusal.
+    var onPassphraseChanged: (() -> Void)?
+
     private let dataRootProvider: () -> URL?
     private let deviceKeys: DeviceKeyStoring
     private let defaults: UserDefaults
@@ -381,6 +384,7 @@ final class EncryptionManager: ObservableObject {
         }
         throttle.recordSuccess()
         try updated.keystore.replaceOnDisk(at: root, verifyingPassphrase: new, expectedDEK: updated.dek, beforeSwap: beforeSwap)
+        onPassphraseChanged?()
     }
 
     /// Drops the in-memory DEK; the folder stays encrypted and re-locks. Called

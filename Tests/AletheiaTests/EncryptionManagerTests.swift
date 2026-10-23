@@ -415,6 +415,22 @@ final class EncryptionManagerTests: XCTestCase {
         XCTAssertEqual(m.unlockRetryDelay, 0)
     }
 
+    func testChangePassphraseNotifiesOnlyOnSuccess() throws {
+        let m = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: isolatedDefaults())
+        try m.enable(passphrase: "old-passphrase-1", iterations: fastIterations)
+        var changes = 0
+        m.onPassphraseChanged = { changes += 1 }
+
+        XCTAssertThrowsError(try m.changePassphrase(current: "wrong one", new: "new-passphrase-2", iterations: fastIterations))
+        XCTAssertThrowsError(try m.changePassphrase(current: "old-passphrase-1", new: "short", iterations: fastIterations))
+        struct Interrupted: Error {}
+        XCTAssertThrowsError(try m.changePassphrase(current: "old-passphrase-1", new: "new-passphrase-2", iterations: fastIterations, beforeSwap: { throw Interrupted() }))
+        XCTAssertEqual(changes, 0)
+
+        try m.changePassphrase(current: "old-passphrase-1", new: "new-passphrase-2", iterations: fastIterations)
+        XCTAssertEqual(changes, 1)
+    }
+
     func testChangePassphraseRefusesShortNewPassphrase() throws {
         let m = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: isolatedDefaults())
         try m.enable(passphrase: "old-passphrase-1", iterations: fastIterations)
