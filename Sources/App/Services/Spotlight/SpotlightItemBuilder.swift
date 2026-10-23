@@ -80,10 +80,11 @@ enum SpotlightItemBuilder {
             guard parts.count == 2, let id = UUID(uuidString: parts[1]) else { return nil }
             return .patient(id)
         case "session":
-            // folderName never contains "/", but rejoin defensively.
-            guard parts.count >= 3, let id = UUID(uuidString: parts[1]) else { return nil }
-            let folderName = parts[2...].joined(separator: "/")
-            guard !folderName.isEmpty else { return nil }
+            // A folder name is one plain path component: no separators, no "..".
+            guard parts.count == 3, let id = UUID(uuidString: parts[1]) else { return nil }
+            let folderName = parts[2]
+            guard !folderName.isEmpty, folderName != ".", !folderName.contains(".."),
+                  !folderName.contains("\\") else { return nil }
             return .session(patientID: id, folderName: folderName)
         default:
             return nil

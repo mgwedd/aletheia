@@ -271,4 +271,43 @@ final class ShutdownCoordinatorTests: XCTestCase {
         XCTAssertEqual(errors, 0)
         XCTAssertFalse(runner.isStreaming)
     }
+
+    // MARK: - Search index
+
+    private struct NoopSpotlightIndexer: SpotlightIndexing {
+        func replaceIndex(with entries: [SpotlightEntry]) {}
+        func clear() {}
+    }
+
+    private func quitIndexFileSurvives(encrypted: Bool) async throws -> Bool {
+        let settings = AppSettings.shared
+        let originalRoot = settings.dataRootURL
+        settings.dataRootURL = root
+        defer {
+            settings.dataRootURL = originalRoot
+            SessionSearch.index = SearchIndex()
+        }
+        let root = self.root!
+        let defaultsName = "ShutdownCoordinatorTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: defaultsName)!
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let encryption = EncryptionManager(dataRootProvider: { root }, defaults: defaults)
+        if encrypted { try encryption.enable(passphrase: "test-passphrase-1", iterations: 100_000) }
+        let appModel = AppModel(settings: settings, encryption: encryption, spotlightIndexer: NoopSpotlightIndexer())
+
+        let indexFile = root.appendingPathComponent("search.sqlite")
+        try Data("index".utf8).write(to: indexFile)
+        await SearchSweepShutdownJob(appModel: appModel).shutDown()
+        return FileManager.default.fileExists(atPath: indexFile.path)
+    }
+
+    func testQuitDestroysIndexWhenEncryptionEnabled() async throws {
+        let survives = try await quitIndexFileSurvives(encrypted: true)
+        XCTAssertFalse(survives, "the plaintext index does not outlive an encrypted folder's session")
+    }
+
+    func testQuitKeepsIndexWhenEncryptionIsOff() async throws {
+        let survives = try await quitIndexFileSurvives(encrypted: false)
+        XCTAssertTrue(survives)
+    }
 }

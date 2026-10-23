@@ -9,6 +9,8 @@ enum LockCoverPolicy {
         case appLock
         /// Passphrase for an encrypted data folder.
         case passphrase
+        /// The folder was encrypted but its keystore is gone.
+        case keystoreMissing
     }
 
     /// Which covers apply, highest-priority (topmost) first. The app lock wins;
@@ -22,6 +24,7 @@ enum LockCoverPolicy {
         var covers: [Cover] = []
         if appLocked { covers.append(.appLock) }
         if hasDataFolder && encryption == .lockedNeedsPassphrase { covers.append(.passphrase) }
+        if hasDataFolder && encryption == .keystoreMissing { covers.append(.keystoreMissing) }
         return covers
     }
 

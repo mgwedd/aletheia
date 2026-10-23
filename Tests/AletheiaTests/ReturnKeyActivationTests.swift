@@ -28,7 +28,7 @@ final class ReturnKeyActivationTests: XCTestCase {
     private let model = Model()
 
     private func makeWindow(focusField: Bool) {
-        window = NSWindow(
+        window = TestWindow(
             contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: Host(model: model, focusField: focusField))

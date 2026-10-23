@@ -111,10 +111,25 @@ final class SessionRecorder: ObservableObject {
     /// menu-bar item) can name what's recording and route back to it, and so a
     /// session view knows whether *it* is the one recording.
     struct ActiveRecording: Equatable {
+        let sessionID: UUID
         let patientID: UUID
         let patientName: String
         let patientSlug: String
         let sessionFolder: String
+
+        init(
+            sessionID: UUID,
+            patientID: UUID,
+            patientName: String,
+            patientSlug: String,
+            sessionFolder: String
+        ) {
+            self.sessionID = sessionID
+            self.patientID = patientID
+            self.patientName = patientName
+            self.patientSlug = patientSlug
+            self.sessionFolder = sessionFolder
+        }
     }
 
     @Published private(set) var state: RecordingState = .idle
@@ -170,6 +185,23 @@ final class SessionRecorder: ObservableObject {
     private var protector: FileProtector = .passthrough
     private var micURL: URL?
     private var callURL: URL?
+
+    /// Root directory for audio staging.
+    var stagingDirectoryURL: URL
+    private(set) var currentStagingDir: URL?
+    private(set) var stagingMicURL: URL?
+    private(set) var stagingCallURL: URL?
+    /// The session whose staging folder is in use (from the start of `start()`
+    /// until its files are finalized), for the launch sweep to skip.
+    private(set) var stagingSessionID: UUID?
+
+    /// Injected hook for testing recording start without real audio hardware.
+    var audioCaptureStartOverride: ((_ stagingMicURL: URL, _ stagingCallURL: URL) async throws -> Void)?
+
+    init(stagingDirectoryURL: URL = Store.stagingDirectoryURL) {
+        self.stagingDirectoryURL = stagingDirectoryURL
+    }
+
     /// The Stop under way, so a second Stop (or the quit) waits for its seal
     /// instead of sealing the same files again.
     private var stopping: Task<Void, Never>?
@@ -179,7 +211,7 @@ final class SessionRecorder: ObservableObject {
 
     /// Files are open (recording, paused, stopped by a capture error, or
     /// still being finalized by a Stop).
-    var hasOpenRecording: Bool { micURL != nil }
+    var hasOpenRecording: Bool { stagingMicURL != nil || micURL != nil }
 
     /// Starts recording. Returns nil once recording, or why it isn't: another
     /// recording is in the way (which is left untouched), or this one failed to
@@ -194,8 +226,54 @@ final class SessionRecorder: ObservableObject {
         isStarting = true
         defer { isStarting = false }
 
+        let stagingDir = stagingDirectoryURL.appendingPathComponent(context.sessionID.uuidString, isDirectory: true)
+        let stageMic = stagingDir.appendingPathComponent("mic.caf")
+        let stageCall = stagingDir.appendingPathComponent("call.caf")
+        // Claimed before anything touches the folder, so the launch sweep leaves it alone.
+        stagingSessionID = context.sessionID
+        do {
+            // An earlier recording of this session still staged (it couldn't be sealed then):
+            // put it in place first, so this start can't overwrite or clear it.
+            for (stage, dest) in [(stageMic, micURL), (stageCall, callURL)] {
+                try protector.sealLargeFile(from: stage, to: dest)
+            }
+            try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stagingDir.path)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stagingDirectoryURL.path)
+        } catch {
+            stagingSessionID = nil
+            let message = "Couldn't prepare the recording folder: \(error.localizedDescription)"
+            state = .error(message)
+            return message
+        }
+
+        if let audioCaptureStartOverride {
+            do {
+                try await audioCaptureStartOverride(stageMic, stageCall)
+                self.protector = protector
+                self.currentStagingDir = stagingDir
+                self.stagingMicURL = stageMic
+                self.stagingCallURL = stageCall
+                self.micURL = micURL
+                self.callURL = callURL
+                isPaused = false
+                active = context
+                let started = Date()
+                clock = RecordingClock(startedAt: started)
+                state = .recording(startedAt: started)
+                return nil
+            } catch {
+                try? FileManager.default.removeItem(at: stagingDir)
+                stagingSessionID = nil
+                active = nil
+                state = .error(error.localizedDescription)
+                return error.localizedDescription
+            }
+        }
+
         let micGranted = await MicRecorder.requestPermission()
         guard micGranted else {
+            stagingSessionID = nil
             let message = MicRecorderError.permissionDenied.localizedDescription
             state = .error(message)
             return message
@@ -222,7 +300,7 @@ final class SessionRecorder: ObservableObject {
         callAudioProblem = nil
         lastCallAudioStart = .notTried
         do {
-            try mic.start(to: micURL)
+            try mic.start(to: stageMic)
             // System audio capture is best-effort — if system audio fails to start,
             // session recording still continues with the microphone track.
             let grantStore = CallAudioGrantStore.standard
@@ -231,7 +309,7 @@ final class SessionRecorder: ObservableObject {
                 confirmedBefore: grantStore.isConfirmed
             ) {
                 do {
-                    try await systemAudio.start(to: callURL)
+                    try await systemAudio.start(to: stageCall)
                     callAudioPolicy.recordAttempt(succeeded: true)
                     grantStore.confirm()
                     lastCallAudioStart = .started
@@ -250,6 +328,9 @@ final class SessionRecorder: ObservableObject {
                 recordingHealth.recordSystemAudioDisruption(CallAudioStartPolicy.skippedMessage)
             }
             self.protector = protector
+            self.currentStagingDir = stagingDir
+            self.stagingMicURL = stageMic
+            self.stagingCallURL = stageCall
             self.micURL = micURL
             self.callURL = callURL
             isPaused = false
@@ -265,6 +346,8 @@ final class SessionRecorder: ObservableObject {
         } catch {
             mic.stop()
             await systemAudio.stop()
+            try? FileManager.default.removeItem(at: stagingDir)
+            stagingSessionID = nil
             active = nil
             state = .error(error.localizedDescription)
             return error.localizedDescription
@@ -327,30 +410,56 @@ final class SessionRecorder: ObservableObject {
         callAudioProblem = nil
         isPaused = false
         clock = nil
-        let sealError = await sealRecordingsIfNeeded()
+        let sealError = await finalizeRecordings()
         let finished = active
         active = nil
+        stagingSessionID = nil
+        currentStagingDir = nil
+        stagingMicURL = nil
+        stagingCallURL = nil
         micURL = nil
         callURL = nil
         state = sealError.map { .error($0) } ?? .idle
         if let finished, sealError == nil, !isQuitting { onStopped?(finished) }
     }
 
-    /// Seals both recordings in place when encryption is on. Runs off the main
-    /// actor (chunked streaming, so bounded memory over a long recording). On
-    /// failure the plaintext recording is kept — losing the session would be
-    /// worse — and the error is surfaced so the user knows it wasn't encrypted.
-    private func sealRecordingsIfNeeded() async -> String? {
-        guard protector.requiresProtection else { return nil }
+    /// Finalizes recordings from staging to the session destination folder:
+    /// sealed into place when encryption is on, moved when it's off. Runs off
+    /// the main actor (chunked streaming, bounded memory). A recording that
+    /// can't be sealed stays staged for the launch sweep, and the error is surfaced.
+    private func finalizeRecordings() async -> String? {
         let protector = self.protector
-        let urls = [micURL, callURL].compactMap { $0 }
+        let pairs: [(stage: URL, dest: URL)] = [
+            (stagingMicURL, micURL),
+            (stagingCallURL, callURL)
+        ].compactMap { stage, dest in
+            guard let stage, let dest else { return nil }
+            return (stage, dest)
+        }
+        let stagingDir = self.currentStagingDir
+
         return await Task.detached(priority: .utility) { () -> String? in
-            do {
-                for url in urls { try protector.sealLargeFileInPlace(at: url) }
-                return nil
-            } catch {
-                return "The recording was saved but couldn't be encrypted: \(error.localizedDescription)"
+            var sealErrorMessage: String? = nil
+            var kept = false
+
+            for pair in pairs {
+                guard FileManager.default.fileExists(atPath: pair.stage.path) else { continue }
+                do {
+                    try protector.sealLargeFile(from: pair.stage, to: pair.dest)
+                    try? FileManager.default.removeItem(at: pair.stage)
+                } catch {
+                    // Never dropped, and never left as plaintext in the session folder:
+                    // it stays in the private staging folder and the next launch seals it.
+                    kept = true
+                    sealErrorMessage = "The recording was kept but couldn't be encrypted yet (\(error.localizedDescription)). It's added to the session, encrypted, the next time Aletheia opens."
+                }
             }
+
+            if let stagingDir, !kept {
+                try? FileManager.default.removeItem(at: stagingDir)
+            }
+
+            return sealErrorMessage
         }.value
     }
 
@@ -416,8 +525,22 @@ final class SessionRecorder: ObservableObject {
     /// wiring can be exercised deterministically.
     func beginSimulatedRecordingForTesting(
         startedAt: Date = Date(),
-        grace: TimeInterval = CallAudioWatch.defaultGrace
+        grace: TimeInterval = CallAudioWatch.defaultGrace,
+        stagingDir: URL? = nil,
+        stagingMicURL: URL? = nil,
+        stagingCallURL: URL? = nil,
+        micURL: URL? = nil,
+        callURL: URL? = nil,
+        context: ActiveRecording? = nil,
+        protector: FileProtector = .passthrough
     ) {
+        self.currentStagingDir = stagingDir
+        self.stagingMicURL = stagingMicURL
+        self.stagingCallURL = stagingCallURL
+        self.micURL = micURL
+        self.callURL = callURL
+        self.active = context
+        self.protector = protector
         isPaused = false
         clock = RecordingClock(startedAt: startedAt)
         state = .recording(startedAt: startedAt)

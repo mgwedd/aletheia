@@ -14,6 +14,7 @@ enum AuditAction: String, Codable, CaseIterable {
     case recordDeleted
     case backupRun
     case auditLogExported
+    case recordingRecovered
 
     /// Human-readable label for the log viewer.
     var displayName: String {
@@ -27,6 +28,7 @@ enum AuditAction: String, Codable, CaseIterable {
         case .recordDeleted: return "Record deleted"
         case .backupRun: return "Backup run"
         case .auditLogExported: return "Audit log exported"
+        case .recordingRecovered: return "Recording recovered"
         }
     }
 }

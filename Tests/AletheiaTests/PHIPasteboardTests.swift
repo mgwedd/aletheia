@@ -30,11 +30,11 @@ final class PHIPasteboardTests: XCTestCase {
         XCTAssertNotNil(pasteboard.data(forType: PHIPasteboard.transient))
     }
 
-    func testGeneralPasteboardIsLimitedToHelperAndDiagnostics() throws {
+    func testGeneralPasteboardIsLimitedToHelper() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
         let sourceRoot = root.appendingPathComponent("Sources/App")
-        let allowed = Set(["Services/PHIPasteboard.swift", "Views/AIEngineProblemAlert.swift", "Views/DoctorView.swift"])
+        let allowed = Set(["Services/PHIPasteboard.swift"])
         let enumerator = FileManager.default.enumerator(at: sourceRoot, includingPropertiesForKeys: nil)!
         for case let file as URL in enumerator where file.pathExtension == "swift" {
             let relative = file.path.replacingOccurrences(of: sourceRoot.path + "/", with: "")
