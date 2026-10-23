@@ -14,6 +14,10 @@ enum FeedbackLink {
 
     static let formURL = URL(string: "https://astrealabs.com/feedback")!
 
+    /// The bug button at the foot of the sidebar, beside Settings.
+    static let bugSymbol = "ladybug"
+    static let bugHelp = "Report a bug (beta): opens the feedback form on astrealabs.com"
+
     /// The only query keys the link may carry.
     static let allowedQueryKeys: Set<String> = ["project", "type", "environment"]
 

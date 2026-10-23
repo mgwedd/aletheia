@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import Aletheia
 
@@ -57,5 +58,21 @@ final class FeedbackLinkTests: XCTestCase {
         for value in identifying {
             XCTAssertFalse(text.localizedCaseInsensitiveContains(value), "link contains \(value)")
         }
+    }
+
+    func testTheBugSymbolExists() {
+        XCTAssertNotNil(NSImage(systemSymbolName: FeedbackLink.bugSymbol, accessibilityDescription: nil))
+        XCTAssertTrue(FeedbackLink.bugHelp.contains("beta"))
+    }
+
+    /// The bug button sits beside Settings at the foot of the sidebar and opens the bug form.
+    func testTheSidebarFooterHasTheBugButton() throws {
+        let repo = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let list = try String(contentsOf: repo.appendingPathComponent("Sources/App/Views/PatientsListView.swift"), encoding: .utf8)
+        let bug = try XCTUnwrap(list.range(of: "NSWorkspace.shared.open(FeedbackLink.url(.bug))"))
+        let settings = try XCTUnwrap(list.range(of: "Button(action: onOpenSettings)"))
+        XCTAssertLessThan(bug.lowerBound, settings.lowerBound, "bug button comes just before Settings")
+        XCTAssertTrue(list.contains("systemImage: FeedbackLink.bugSymbol"))
     }
 }

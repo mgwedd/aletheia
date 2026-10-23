@@ -115,6 +115,14 @@ struct PatientsListView: View {
                     Spacer(minLength: 0)
                 }
 
+                // The app is in beta: a bug report is one click away.
+                Button { NSWorkspace.shared.open(FeedbackLink.url(.bug)) } label: {
+                    Label("Report a Bug", systemImage: FeedbackLink.bugSymbol)
+                }
+                .buttonStyle(.themeIcon)
+                .help(FeedbackLink.bugHelp)
+                .accessibilityIdentifier("sidebar-report-bug")
+
                 Button(action: onOpenSettings) {
                     Label("Settings", systemImage: "gearshape")
                 }
