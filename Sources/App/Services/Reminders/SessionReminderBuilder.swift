@@ -48,18 +48,17 @@ enum SessionReminderBuilder {
         return f
     }()
 
-    /// A follow-up reminder for a session. The title names the patient (this
-    /// goes into the user's own Reminders, at their request); the notes carry
-    /// the session date for context.
+    /// A follow-up reminder for a session. The title names no one (Reminders
+    /// sync to iCloud and show on lock screens); the notes carry the session
+    /// date for context.
     static func draft(
-        patientName: String,
         sessionDate: Date,
         leadTime: ReminderLeadTime,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> ReminderDraft {
         ReminderDraft(
-            title: "Follow up: \(patientName)",
+            title: "Follow up (Aletheia)",
             notes: "Re: therapy session on \(dateFormatter.string(from: sessionDate)).",
             dueDate: leadTime.dueDate(from: now, calendar: calendar)
         )

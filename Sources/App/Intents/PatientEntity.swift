@@ -6,14 +6,15 @@ import AppIntents
 /// A patient exposed to Shortcuts/Siri so intents can take "for [patient]".
 struct PatientEntity: AppEntity, Identifiable {
     let id: UUID
-    let name: String
+    /// Initials only: Siri and Shortcuts show and speak this.
+    let label: String
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation {
         TypeDisplayRepresentation(name: "Patient")
     }
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(name)")
+        DisplayRepresentation(title: "\(label)")
     }
 
     static var defaultQuery = PatientEntityQuery()
@@ -29,9 +30,10 @@ struct PatientEntityQuery: EntityQuery {
     }
 
     private func allPatients() -> [PatientEntity] {
+        guard !SystemSurfaceAccess.isLocked else { return [] }
         guard let store = SessionQueries.currentStore() else { return [] }
         let patients = (try? store.listPatients()) ?? []
-        return patients.map { PatientEntity(id: $0.id, name: $0.name) }
+        return patients.map { PatientEntity(id: $0.id, label: PatientLabel($0).text) }
     }
 }
 #endif

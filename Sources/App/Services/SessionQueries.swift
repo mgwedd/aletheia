@@ -1,7 +1,7 @@
 import Foundation
 
 struct SessionSummaryItem: Equatable {
-    let patientName: String
+    let label: PatientLabel
     let date: Date
 }
 
@@ -16,7 +16,7 @@ enum SessionQueries {
         var items: [SessionSummaryItem] = []
         for patient in (try? store.listPatients()) ?? [] {
             for session in (try? store.listSessions(for: patient)) ?? [] where calendar.isDate(session.date, inSameDayAs: now) {
-                items.append(SessionSummaryItem(patientName: patient.name, date: session.date))
+                items.append(SessionSummaryItem(label: PatientLabel(patient), date: session.date))
             }
         }
         return items.sorted { $0.date > $1.date }
