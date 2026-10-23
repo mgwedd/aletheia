@@ -154,6 +154,8 @@ final class AppModel: ObservableObject {
             Please update Aletheia before adding or changing anything here, \
             so none of your notes are lost.
             """
+        } else if case .migrationFailed = newStore.schemaCompatibility {
+            schemaWarning = "The patient folder upgrade could not finish. The original records and migration backup were kept. Resolve the folder issue and reopen Aletheia before editing records."
         } else {
             schemaWarning = nil
         }

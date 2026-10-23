@@ -42,9 +42,9 @@ final class EncryptedStoreTests: XCTestCase {
 
     func testPatientJSONIsSealedButListsBack() throws {
         let store = Store(root: tempRoot, protector: keyed)
-        _ = try store.createPatient(name: "Jordan Rivera")
+        let patient = try store.createPatient(name: "Jordan Rivera")
 
-        let file = tempRoot.appendingPathComponent("Patients/Jordan-Rivera/patient.json")
+        let file = store.patientDir(for: patient).appendingPathComponent("patient.json")
         let onDisk = try Data(contentsOf: file)
         XCTAssertTrue(DataCipher.isEnvelope(onDisk))
         XCTAssertNil(onDisk.range(of: Data("Jordan".utf8)), "the patient name must not be readable on disk")
