@@ -109,21 +109,27 @@ enum DataFolderPolicy {
         if let match = syncVolumePrefixes.first(where: { lowerPath.hasPrefix($0.prefix) }) {
             return .thirdPartyCloud(match.provider)
         }
-        var ancestor = URL(fileURLWithPath: path, isDirectory: true)
-        while true {
+        for ancestor in ancestors(of: path) {
             if let values = facts(ancestor) {
                 if values.ubiquitous { return .iCloudDesktopDocuments }
                 if values.syncMarker { return .thirdPartyCloud("Dropbox") }
             }
-            let parent = ancestor.deletingLastPathComponent()
-            if parent.path == ancestor.path { break }
-            ancestor = parent
         }
         if let values = facts(URL(fileURLWithPath: path, isDirectory: true)) {
             if values.localVolume == false { return .networkVolume }
             if values.removableVolume && values.encryptedVolume != true { return .removableUnencrypted }
         }
         return .ok
+    }
+
+    /// The folder and each folder above it, ending at `/`. Built from the path's
+    /// components: on macOS 15 `deletingLastPathComponent()` turns `/` into `/..`
+    /// rather than stopping.
+    static func ancestors(of path: String) -> [URL] {
+        let components = URL(fileURLWithPath: path).pathComponents
+        return (1...max(components.count, 1)).reversed().map { count in
+            URL(fileURLWithPath: NSString.path(withComponents: Array(components.prefix(count))), isDirectory: true)
+        }
     }
 
     private static func contains(_ path: String, in root: String) -> Bool {
