@@ -157,7 +157,7 @@ final class DataMigratorTests: XCTestCase {
     func testDisableWhileLockedThrows() throws {
         _ = try seedPlaintextFolder()
         let manager = EncryptionManager(dataRootProvider: { [root] in root })
-        _ = try manager.enable(passphrase: "pw", iterations: 1_000)
+        _ = try manager.enable(passphrase: "test-passphrase-1", iterations: 1_000)
         manager.lock()
         XCTAssertThrowsError(try manager.disable()) { error in
             XCTAssertEqual(error as? EncryptionManager.ManagerError, .locked)
@@ -217,5 +217,26 @@ final class DataMigratorTests: XCTestCase {
         let dirs = (try? FileManager.default.contentsOfDirectory(at: patients, includingPropertiesForKeys: nil)) ?? []
         return dirs.map { $0.appendingPathComponent("patient.json") }
             .first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    // MARK: older plaintext database copies
+
+    func testEnableRemovesOlderPlaintextSnapshots() throws {
+        _ = try seedPlaintextFolder()
+        let comments = try XCTUnwrap(CommentStore(root: root))
+        let snapshot = try XCTUnwrap(DatabaseSnapshotManager(root: root).makeSnapshot(of: comments, reason: "manual"))
+        let migrationsDir = BackupLayout.directory(.migrations, dataRoot: root)
+        try FileManager.default.createDirectory(at: migrationsDir, withIntermediateDirectories: true)
+        let migrationCopy = migrationsDir.appendingPathComponent("Aletheia-pre-v2-20240101T000000Z.sqlite")
+        XCTAssertTrue(comments.snapshot(to: migrationCopy))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: snapshot.path))
+
+        let manager = EncryptionManager(dataRootProvider: { [root] in root }, defaults: UserDefaults(suiteName: "DataMigratorTests-\(UUID().uuidString)")!)
+        let result = try manager.enable(passphrase: "test-passphrase-1", iterations: 1_000)
+
+        XCTAssertTrue(result.isComplete)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: snapshot.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: migrationCopy.path))
+        XCTAssertTrue(DatabaseSnapshotManager(root: root).snapshots().isEmpty)
     }
 }

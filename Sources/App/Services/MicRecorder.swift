@@ -72,10 +72,15 @@ final class MicRecorder {
         health.reset()
         levelSource.reset()
 
+        let dir = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+
         let inputNode = engine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
         writer = try MicFileWriter(url: url, format: format)
         self.fileURL = url
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         installTap(format: format)
 
         // An input-device swap or unplug mid-session posts this; capture can

@@ -31,6 +31,8 @@ enum AppLifecycle {
         resume.start(
             appModel: appModel,
             ledger: { settings.dataRootURL.map(InterruptedWorkLedger.init) },
+            stagingSessionID: { [weak recorder] in recorder?.stagingSessionID },
+            transcribesAfterRecording: { settings.autoTranscribeAfterRecording },
             transcribe: { [weak transcription] in transcription?.start(patient: $0.patient, session: $0.session) },
             summarize: { [weak integrations] in
                 integrations?.digestScheduler.sessionOpened(patient: $0.patient, session: $0.session)
@@ -76,26 +78,47 @@ final class SearchSweepShutdownJob: ShutdownJob {
 @MainActor
 final class InterruptedWorkLauncher {
     private var watcher: AnyCancellable?
+    private var hasRunSweep = false
 
     func start(
         appModel: AppModel,
         ledger: @escaping () -> InterruptedWorkLedger?,
+        stagingSessionID: @escaping () -> UUID? = { nil },
+        transcribesAfterRecording: @escaping () -> Bool = { true },
         transcribe: @escaping (InterruptedWorkResumer.Target) -> Void,
         summarize: @escaping (InterruptedWorkResumer.Target) -> Void
     ) {
-        guard let initial = ledger(), !initial.load().isEmpty else { return }
         // `patients` publishes before it changes; read the store once the change has landed.
         watcher = appModel.$patients.receive(on: DispatchQueue.main).sink { [weak self, weak appModel] _ in
-            guard let self, let appModel, let store = appModel.store, let ledger = ledger() else { return }
-            let left = InterruptedWorkResumer.resume(
-                ledger.load(),
-                patients: appModel.patients,
-                sessions: { try? store.listSessions(for: $0) },
-                transcribe: transcribe,
-                summarize: summarize
-            )
-            ledger.save(left)
-            if left.isEmpty { self.watcher = nil }
+            guard let self, let appModel, let store = appModel.store else { return }
+            let ledgerInstance = ledger()
+            // Not while an encrypted folder is locked: it runs once the unlock reloads the patients.
+            if !self.hasRunSweep, OrphanAudioSweep.canRun(with: appModel.currentProtector) {
+                self.hasRunSweep = true
+                OrphanAudioSweep.sweep(
+                    store: store,
+                    protector: appModel.currentProtector,
+                    audit: appModel.audit,
+                    ledger: ledgerInstance,
+                    activeSessionID: stagingSessionID(),
+                    queuesTranscription: transcribesAfterRecording()
+                )
+            }
+            guard let ledger = ledgerInstance else { return }
+            let items = ledger.load()
+            if !items.isEmpty {
+                let left = InterruptedWorkResumer.resume(
+                    items,
+                    patients: appModel.patients,
+                    sessions: { try? store.listSessions(for: $0) },
+                    transcribe: transcribe,
+                    summarize: summarize
+                )
+                ledger.save(left)
+                if left.isEmpty && self.hasRunSweep { self.watcher = nil }
+            } else if self.hasRunSweep {
+                self.watcher = nil
+            }
         }
     }
 }

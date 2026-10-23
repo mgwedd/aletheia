@@ -109,7 +109,7 @@ private struct OptionalLineSpacing: ViewModifier {
 /// well-set document instead of raw ``` fences and `**stars**`.
 ///
 /// Block structure comes from `MarkdownParser` (pure, tested); inline markup is
-/// handed to Apple's own `AttributedString(markdown:)`, so there's no
+/// handed to Apple's own Markdown parser (via `SafeMarkdown`), so there's no
 /// third-party Markdown engine and nothing to keep in sync with a spec. Fenced
 /// code renders as a copyable code card. A ```mermaid block the system prompt
 /// invites is drawn as a real diagram — flowcharts and sequence diagrams, laid
@@ -134,6 +134,7 @@ struct MarkdownMessageView: View {
             }
         }
         .textSelection(.enabled)
+        .discardingLinks()
     }
 
     @ViewBuilder
@@ -212,15 +213,12 @@ struct MarkdownMessageView: View {
         return text.font(font)
     }
 
-    /// Inline markup (bold, italic, inline code, links) via Apple's own parser,
+    /// Inline markup (bold, italic, inline code; links are shown as plain text) via Apple's own parser,
     /// preserving soft line breaks. Falls back to the raw string if it can't be
     /// interpreted — a half-streamed `**bold` shows its literal text rather than
     /// vanishing.
     private func inline(_ string: String, font: Font? = nil) -> Text {
-        let options = AttributedString.MarkdownParsingOptions(
-            interpretedSyntax: .inlineOnlyPreservingWhitespace
-        )
-        if let attributed = try? AttributedString(markdown: string, options: options) {
+        if let attributed = SafeMarkdown.attributed(from: string) {
             return styled(Text(attributed), font: font)
         }
         return styled(Text(string), font: font)

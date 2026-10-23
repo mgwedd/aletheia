@@ -21,6 +21,8 @@ private extension View {
 /// Launch-time setup that has to happen before the first window exists.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // A test run launches this app as its host: keep it from taking focus.
+        if let policy = TestHost.activationPolicy() { NSApp.setActivationPolicy(policy) }
         // Before any window is created, so a forced Light or Dark appearance
         // never flashes the system one first.
         AppSettings.shared.appearance.apply()
@@ -41,11 +43,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
 
-    #if DEBUG
     @MainActor func applicationDidFinishLaunching(_ notification: Notification) {
+        TestHost.concealWindowsWhenHostingTests()
+        #if DEBUG
         HarnessRun.runIfRequested()
+        #endif
     }
-    #endif
 }
 
 @main
@@ -67,6 +70,9 @@ struct AletheiaApp: App {
     @StateObject private var transcription: TranscriptionCoordinator
     /// Patient-records exports run in the background and report through this.
     @StateObject private var exports: ExportJobCenter
+    /// Keeps every app window out of screen sharing per the setting, and hides
+    /// sheets, alerts and popovers while the app is locked.
+    private let windowShield: WindowShield
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
 
@@ -76,6 +82,7 @@ struct AletheiaApp: App {
         let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL })
         _encryption = StateObject(wrappedValue: encryption)
         let appLock = AppLock(settings: settings)
+        if appLock.isLocked { encryption.lock() }
         SessionSearch.setAppLocked(appLock.isLocked)   // before AppModel builds the index: it starts closed behind the lock
         let appModel = AppModel(settings: settings, encryption: encryption)
         _appModel = StateObject(wrappedValue: appModel)
@@ -118,6 +125,18 @@ struct AletheiaApp: App {
             encryption?.autoUnlockFromDevice()
             appModel?.recordAudit(.appUnlocked)
         }
+        appLock.onLock = { [weak encryption] in encryption?.lock() }
+        // A recording or transcription keeps the key it started with until it
+        // ends; dropping it mid-way would leave the audio unsealed.
+        appLock.observeBackgroundWork(
+            busy: { [weak recorder, weak transcription] in
+                (recorder.map { $0.isBusy || $0.hasOpenRecording } ?? false) || (transcription?.isBusy ?? false)
+            },
+            changes: recorder.objectWillChange.merge(with: transcription.objectWillChange).eraseToAnyPublisher()
+        )
+        let windowShield = WindowShield(appLock: appLock, settings: settings)
+        windowShield.start()
+        self.windowShield = windowShield
         appLock.onUnlockFailed = { [weak appModel] reason in
             appModel?.recordAudit(.appUnlockFailed, detail: reason)
         }
@@ -172,8 +191,7 @@ struct AletheiaApp: App {
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    // Switching apps doesn't re-lock: AppLock does that on
-                    // app hide (⌘H), idle timeout, sleep and screen lock.
+                    // AppLock observes hide (when enabled), idle, sleep and screen lock.
                     if phase == .active, settings.autoCheckForUpdates {
                         Task { await updateService.checkForUpdates() }
                     }
@@ -239,13 +257,15 @@ struct AletheiaApp: App {
                 .environmentObject(appModel)
                 .environmentObject(integrations)
                 .environmentObject(encryption)
+                .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
         }
         .defaultSize(width: 620, height: 640)
 
-        // The Keyboard Shortcuts window, opened from the Help menu. It lists keys
-        // only, never patient data, so it carries no lock cover.
+        // The Keyboard Shortcuts window lists keys only, but follows the same
+        // lock presentation as every other app window.
         Window("Keyboard Shortcuts", id: ShortcutsWindow.id) {
             ShortcutsView()
+                .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
         }
         .defaultSize(width: 460, height: 560)
 
@@ -259,6 +279,7 @@ struct AletheiaApp: App {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(encryption)
+                .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
         }
 
         MenuBarExtra("Aletheia Recording", systemImage: menuBarSymbol) {
@@ -268,6 +289,7 @@ struct AletheiaApp: App {
                 .environmentObject(appModel)
                 .environmentObject(settings)
                 .environmentObject(integrations)
+                .environmentObject(appLock)
         }
         .menuBarExtraStyle(.window)
     }
@@ -317,6 +339,13 @@ private struct LockCover: ViewModifier {
             .overlay {
                 if covers.contains(.passphrase) {
                     EncryptionUnlockView()
+                        .environmentObject(encryption)
+                        .environmentObject(settings)
+                        .environmentObject(appModel)
+                        .transition(.opacity)
+                }
+                if covers.contains(.keystoreMissing) {
+                    EncryptionKeystoreMissingView()
                         .environmentObject(encryption)
                         .environmentObject(settings)
                         .environmentObject(appModel)

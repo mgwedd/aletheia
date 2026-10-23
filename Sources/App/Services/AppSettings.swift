@@ -54,9 +54,9 @@ enum IdleAutoLockTimeout: Int, CaseIterable, Identifiable, Codable, Hashable {
 
     var id: Int { rawValue }
 
-    /// Off: by default the app locks only when the Mac locks or sleeps, so the
-    /// Mac's own Lock Screen setting decides. The in-app idle lock is opt-in.
-    static let defaultTimeout: IdleAutoLockTimeout = .off
+    /// New installs lock after 15 minutes of inactivity. An explicit Never
+    /// choice remains available and persists.
+    static let defaultTimeout: IdleAutoLockTimeout = .fifteenMinutes
 
     var displayName: String {
         switch self {
@@ -89,6 +89,8 @@ final class AppSettings: ObservableObject {
         static let spotlightIndexingEnabled = "spotlightIndexingEnabled"
         static let appLockEnabled = "appLockEnabled"
         static let idleAutoLockMinutes = "idleAutoLockMinutes"
+        static let lockWhenHidden = "lockWhenHidden"
+        static let hideFromScreenSharing = "hideFromScreenSharing"
         static let acceptedLegalVersion = "acceptedLegalVersion"
         static let acceptedLegalDate = "acceptedLegalDate"
         static let progressNoteFormat = "progressNoteFormat"
@@ -164,6 +166,14 @@ final class AppSettings: ObservableObject {
     @Published var appLockEnabled: Bool {
         didSet { defaults.set(appLockEnabled, forKey: Keys.appLockEnabled) }
     }
+    @Published var lockWhenHidden: Bool {
+        didSet { defaults.set(lockWhenHidden, forKey: Keys.lockWhenHidden) }
+    }
+    @Published var hideFromScreenSharing: Bool {
+        didSet { defaults.set(hideFromScreenSharing, forKey: Keys.hideFromScreenSharing) }
+    }
+    /// Temporary exception; always resets at launch.
+    @Published var allowScreenSharingThisSession = false
     /// HIPAA §164.312(a)(2)(iii) "automatic logoff": how many minutes of
     /// inactivity before `AppLock` re-engages, one of `IdleAutoLockTimeout`'s
     /// `allCases` values. `0` means "Never" (idle auto-lock off). Only takes
@@ -415,7 +425,9 @@ final class AppSettings: ObservableObject {
         keepDataOutOfSystemBackups = BackupExclusion.resolvedExclusion(in: defaults)
         debugDiagnosticsEnabled = defaults.bool(forKey: Keys.debugDiagnosticsEnabled)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
-        appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
+        appLockEnabled = defaults.object(forKey: Keys.appLockEnabled) as? Bool ?? true
+        lockWhenHidden = defaults.object(forKey: Keys.lockWhenHidden) as? Bool ?? false
+        hideFromScreenSharing = defaults.object(forKey: Keys.hideFromScreenSharing) as? Bool ?? true
         if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,
            IdleAutoLockTimeout.allCases.map(\.rawValue).contains(stored) {
             idleAutoLockMinutes = stored

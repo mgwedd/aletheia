@@ -92,6 +92,15 @@ final class CommentStore {
     /// index in step). Runs on the saving thread; must not block.
     var onSessionAnnotationsChanged: ((UUID) -> Void)?
 
+    /// Called when a stored note or session chat exists but can't be decoded
+    /// (it reads as empty meanwhile; the record itself is left in place).
+    var onRecordDecodeFailure: (() -> Void)? {
+        didSet {
+            annotations.onDecodeFailure = onRecordDecodeFailure
+            chats.onDecodeFailure = onRecordDecodeFailure
+        }
+    }
+
     /// Every record kind this store's data lives under, for operations (only
     /// `reencrypt`, today) that must walk everything regardless of which
     /// repository owns it.

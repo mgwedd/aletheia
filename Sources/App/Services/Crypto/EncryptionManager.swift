@@ -26,6 +26,9 @@ final class EncryptionManager: ObservableObject {
         case lockedNeedsPassphrase
         /// DEK held; files can be read and written.
         case unlocked
+        /// Encryption was turned on for this folder but its keystore is gone.
+        /// Nothing can be read or written until the keystore is restored.
+        case keystoreMissing
     }
 
     enum ManagerError: LocalizedError, Equatable {
@@ -34,6 +37,9 @@ final class EncryptionManager: ObservableObject {
         case notEnabled
         case locked
         case decryptionIncomplete([String])
+        case keystoreMissing
+        case passphraseTooShort
+        case throttled(retryAfter: TimeInterval)
 
         var errorDescription: String? {
             switch self {
@@ -41,6 +47,12 @@ final class EncryptionManager: ObservableObject {
             case .alreadyEnabled: return "Encryption is already turned on for this folder."
             case .notEnabled: return "Encryption isn't turned on for this folder."
             case .locked: return "Unlock the data with your passphrase before changing encryption."
+            case .keystoreMissing:
+                return "This folder was encrypted but its keystore is missing. Restore the keystore file to the data folder, or choose a different folder."
+            case .passphraseTooShort:
+                return "Use a passphrase of at least \(PassphraseStrength.requiredLength) characters."
+            case let .throttled(retryAfter):
+                return "Too many incorrect passphrases. Try again in \(Int(retryAfter.rounded(.up))) seconds."
             case let .decryptionIncomplete(items):
                 return "Encryption is still on: \(items.count) item(s) couldn't be decrypted, so nothing was removed. Try again."
             }
@@ -48,8 +60,12 @@ final class EncryptionManager: ObservableObject {
     }
 
     @Published private(set) var state: State = .disabled {
-        didSet { SessionSearch.setEncryptionLocked(state == .lockedNeedsPassphrase) }
+        didSet { SessionSearch.setEncryptionLocked(state == .lockedNeedsPassphrase || state == .keystoreMissing) }
     }
+
+    /// Why the last attempt to keep the key in this Mac's keychain failed, for
+    /// the UI to show; nil after a success.
+    @Published private(set) var rememberError: String?
 
     /// Set by `AppModel` so the stores rebuild with a fresh `FileProtector`
     /// whenever the key or on/off state changes.
@@ -57,6 +73,8 @@ final class EncryptionManager: ObservableObject {
 
     private let dataRootProvider: () -> URL?
     private let deviceKeys: DeviceKeyStoring
+    private let defaults: UserDefaults
+    private var throttle: UnlockThrottle
     private var keyReference: ProtectionKey?
     private var keyedRoot: URL?
     private var dek: SymmetricKey? {
@@ -68,9 +86,16 @@ final class EncryptionManager: ObservableObject {
         }
     }
 
-    init(dataRootProvider: @escaping () -> URL?, deviceKeys: DeviceKeyStoring = KeychainDeviceKeyStore()) {
+    init(
+        dataRootProvider: @escaping () -> URL?,
+        deviceKeys: DeviceKeyStoring = KeychainDeviceKeyStore(),
+        defaults: UserDefaults = .standard,
+        throttle: UnlockThrottle = UnlockThrottle()
+    ) {
         self.dataRootProvider = dataRootProvider
         self.deviceKeys = deviceKeys
+        self.defaults = defaults
+        self.throttle = throttle
         refreshState()
         autoUnlockFromDevice()
     }
@@ -79,11 +104,45 @@ final class EncryptionManager: ObservableObject {
 
     var dataRoot: URL? { dataRootProvider() }
 
-    /// Whether this folder has a keystore, i.e. encryption has been turned on
-    /// (independent of whether it's unlocked this session).
+    /// Whether encryption has been turned on for this folder (independent of
+    /// whether it's unlocked this session): it has a keystore, or it had one
+    /// that has since gone missing.
     var isEnabled: Bool {
         guard let root = dataRoot else { return false }
-        return Keystore.exists(at: root)
+        return Keystore.exists(at: root) || markerPresent(at: root)
+    }
+
+    /// Encryption was turned on here but the keystore file is gone.
+    var isKeystoreMissing: Bool {
+        guard let root = dataRoot else { return false }
+        return !Keystore.exists(at: root) && markerPresent(at: root)
+    }
+
+    /// Seconds before another passphrase attempt is allowed; 0 when one is.
+    var unlockRetryDelay: TimeInterval { throttle.remainingDelay }
+
+    // MARK: - Enabled marker
+
+    /// Small file in the data folder, mirrored by a UserDefaults flag, written when
+    /// encryption is turned on and removed only when it is turned off. If it is
+    /// present without a keystore, the keystore was lost, not never created.
+    static let markerFileName = ".aletheia-encryption-enabled"
+
+    private func markerURL(_ root: URL) -> URL { root.appendingPathComponent(Self.markerFileName) }
+    private func markerDefaultsKey(_ root: URL) -> String { "encryptionEnabled.\(root.standardizedFileURL.path)" }
+
+    private func markerPresent(at root: URL) -> Bool {
+        FileManager.default.fileExists(atPath: markerURL(root).path) || defaults.bool(forKey: markerDefaultsKey(root))
+    }
+
+    private func writeMarker(at root: URL) throws {
+        try Data("1\n".utf8).write(to: markerURL(root), options: .atomic)
+        defaults.set(true, forKey: markerDefaultsKey(root))
+    }
+
+    private func clearMarker(at root: URL) {
+        try? FileManager.default.removeItem(at: markerURL(root))
+        defaults.removeObject(forKey: markerDefaultsKey(root))
     }
 
     var isUnlocked: Bool { state == .unlocked }
@@ -105,7 +164,13 @@ final class EncryptionManager: ObservableObject {
             return
         }
         if keyedRoot != root { dek = nil }
-        state = dek == nil ? .lockedNeedsPassphrase : .unlocked
+        // Folders encrypted before the marker existed get one now.
+        if Keystore.exists(at: root), !markerPresent(at: root) { try? writeMarker(at: root) }
+        if dek != nil {
+            state = .unlocked
+        } else {
+            state = Keystore.exists(at: root) ? .lockedNeedsPassphrase : .keystoreMissing
+        }
     }
 
     /// Explicit device-key unlock, used at launch and after successful app
@@ -131,6 +196,16 @@ final class EncryptionManager: ObservableObject {
     /// the passphrase. Assigns the keystore a stable id on first use. Requires
     /// the folder to be unlocked.
     func rememberOnDevice() throws {
+        do {
+            try storeKeyOnDevice()
+            rememberError = nil
+        } catch {
+            rememberError = error.localizedDescription
+            throw error
+        }
+    }
+
+    private func storeKeyOnDevice() throws {
         guard let root = dataRoot, var keystore = Keystore.load(from: root) else { throw ManagerError.notEnabled }
         guard let dek else { throw FileProtector.ProtectorError.locked }
         let id: String
@@ -163,12 +238,23 @@ final class EncryptionManager: ObservableObject {
     func enable(passphrase: String, iterations: Int = PassphraseKDF.defaultIterations) throws -> DataMigrator.Result {
         guard let root = dataRoot else { throw ManagerError.noDataFolder }
         guard !Keystore.exists(at: root) else { throw ManagerError.alreadyEnabled }
+        // A new key here would orphan whatever the lost keystore sealed.
+        guard !markerPresent(at: root) else { throw ManagerError.keystoreMissing }
+        guard PassphraseStrength.meetsRequirement(passphrase) else { throw ManagerError.passphraseTooShort }
         let (keystore, dek) = try Keystore.create(passphrase: passphrase, iterations: iterations)
-        try keystore.write(to: root)
+        try writeMarker(at: root)
+        do {
+            try keystore.write(to: root)
+        } catch {
+            clearMarker(at: root)
+            throw error
+        }
         self.dek = dek
         state = .unlocked
         let result = DataMigrator.migrate(root: root, from: .passthrough, to: protector)
+        SessionSearch.deleteIndex()   // built while the folder was plaintext; the sweep rebuilds it
         onProtectionChanged?()
+        SessionSearch.openIndex()
         return result
     }
 
@@ -182,6 +268,7 @@ final class EncryptionManager: ObservableObject {
         let result = DataMigrator.migrate(root: root, from: protector, to: .passthrough)
         guard result.isComplete else { throw ManagerError.decryptionIncomplete(result.failures) }
         forgetOnDevice() // drop the keychain copy before the keystore (which holds its id) is gone
+        clearMarker(at: root) // before the keystore goes, so a half-finished disable never looks like a lost keystore
         try FileManager.default.removeItem(at: root.appendingPathComponent(Keystore.fileName))
         dek = nil
         state = .disabled
@@ -192,10 +279,18 @@ final class EncryptionManager: ObservableObject {
 
     /// Unlocks an already-enabled folder by recovering the DEK from `passphrase`.
     func unlock(passphrase: String) throws {
-        guard let root = dataRoot, let keystore = Keystore.load(from: root) else {
-            throw ManagerError.notEnabled
+        guard let root = dataRoot, isEnabled else { throw ManagerError.notEnabled }
+        guard Keystore.exists(at: root) else { throw ManagerError.keystoreMissing }
+        guard let keystore = Keystore.load(from: root) else { throw Keystore.KeystoreError.malformed }
+        let wait = throttle.remainingDelay
+        guard wait <= 0 else { throw ManagerError.throttled(retryAfter: wait) }
+        do {
+            dek = try keystore.unlock(passphrase: passphrase)
+        } catch {
+            throttle.recordFailure()
+            throw error
         }
-        dek = try keystore.unlock(passphrase: passphrase)
+        throttle.recordSuccess()
         state = .unlocked
         onProtectionChanged?()
         SessionSearch.openIndex()   // after the stores are rebuilt, so the sweep it starts reads with the new key

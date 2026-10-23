@@ -45,7 +45,7 @@ final class ChatStopTests: XCTestCase {
     private func pressEscape(isSending: Bool) throws -> Int {
         var stops = 0
         let hosting = NSHostingView(rootView: Host(isSending: isSending, onStop: { stops += 1 }))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = TestWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = hosting
         hosting.layoutSubtreeIfNeeded()
         let textView = try XCTUnwrap(findTextView(in: hosting))
