@@ -50,7 +50,7 @@ final class SearchHomeHotkeyTests: XCTestCase {
         let appModel = AppModel(
             settings: settings, encryption: EncryptionManager(dataRootProvider: { root }),
             spotlightIndexer: NoopSpotlightIndexer())
-        window = NSWindow(
+        window = TestWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_000, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: Host(appModel: appModel, settings: settings))
         NSApp.activate(ignoringOtherApps: true)
@@ -68,6 +68,12 @@ final class SearchHomeHotkeyTests: XCTestCase {
     private func settle() {
         window.contentView?.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    }
+
+    /// Runs the loop until `condition` holds, or a second passes.
+    private func wait(until condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(1)
+        while !condition() && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
     }
 
     private func descendants(of view: NSView) -> [NSView] {
@@ -98,9 +104,14 @@ final class SearchHomeHotkeyTests: XCTestCase {
     func testCommandFMovesTheCursorFromTheSidebarToTheHomeField() throws {
         // SwiftUI only moves focus in the key window, and a window is only key
         // while the app is frontmost, which a full run in the background isn't.
+        try XCTSkipIf(TestHost.runsInBackground(), "the test host runs in the background; CI runs this in the foreground")
         try XCTSkipUnless(window.isKeyWindow, "the test window can't become key while another app is frontmost")
         let sidebar = try XCTUnwrap(field(GlobalSearchField.prompt))
         let home = try XCTUnwrap(field(GlobalSearchField.homePrompt))
+        // The home focuses its field once it appears; let that land first, or it
+        // takes the cursor back from the sidebar as a click that early would lose it.
+        wait { isFocused(home) }
+        XCTAssertTrue(isFocused(home))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
         settle()
         XCTAssertTrue(isFocused(sidebar))

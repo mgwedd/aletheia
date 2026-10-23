@@ -36,7 +36,7 @@ final class CallAudioNameTests: XCTestCase {
     func testTheViewDrawsTheNameAndKeepsTheStoredLabel() throws {
         var text = stored
         let binding = Binding(get: { text }, set: { text = $0 })
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = TestWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: Host(text: binding))
         window.contentView?.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.1))
