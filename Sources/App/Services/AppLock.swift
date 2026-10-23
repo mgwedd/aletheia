@@ -123,9 +123,7 @@ struct SystemUnlockAuthenticator: UnlockAuthenticator {
 @MainActor
 final class AppLock: ObservableObject {
     /// True while the lock screen should cover the app.
-    @Published private(set) var isLocked: Bool {
-        didSet { OllamaResidency.shared.setLocked(isLocked) }
-    }
+    @Published private(set) var isLocked: Bool
     /// Set when an unlock attempt fails, for the lock screen to show.
     @Published var lastError: String?
 
@@ -176,7 +174,6 @@ final class AppLock: ObservableObject {
             enabled: settings.appLockEnabled,
             canAuthenticate: canAuthenticate()
         )
-        OllamaResidency.shared.setLocked(isLocked)   // didSet doesn't run in init
         // A lock that happened (or a launch) while another app was frontmost
         // prompts once the user comes back.
         didBecomeActiveObserver = NotificationCenter.default.addObserver(
@@ -228,7 +225,6 @@ final class AppLock: ObservableObject {
             SessionSearch.setAppLocked(true)
             // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
             SessionSearch.closeIndex()
-            OllamaClient.unloadLoaded()
             LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript
         }
     }

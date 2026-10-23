@@ -11,38 +11,25 @@ private final class CountingAssistant: Assistant, @unchecked Sendable {
 }
 
 final class AIProgressTests: XCTestCase {
-    // MARK: Stats parsing
+    // MARK: Stats
 
-    private let finalLine = """
-    {"model":"llama3.1:8b","created_at":"2026-10-13T10:00:00Z","response":"","done":true,"done_reason":"stop","total_duration":9000000000,"load_duration":50000000,"prompt_eval_count":2400,"prompt_eval_duration":3000000000,"eval_count":300,"eval_duration":6000000000}
-    """
-
-    func testFinalChunkCarriesRunStats() throws {
-        let chunk = try XCTUnwrap(OllamaClient.streamChunk(fromLine: finalLine, expectedPromptTokens: 2500))
-        XCTAssertTrue(chunk.done)
-        let stats = try XCTUnwrap(chunk.stats)
-        XCTAssertEqual(stats.promptTokens, 2400)
-        XCTAssertEqual(stats.promptNanos, 3_000_000_000)
-        XCTAssertEqual(stats.outputTokens, 300)
-        XCTAssertEqual(stats.outputNanos, 6_000_000_000)
+    func testRunStatsGiveReadAndWriteSpeeds() throws {
+        let stats = AIRunStats(
+            promptTokens: 2400, promptNanos: 3_000_000_000,
+            outputTokens: 300, outputNanos: 6_000_000_000, expectedPromptTokens: 2500)
         XCTAssertEqual(try XCTUnwrap(stats.readTokensPerSecond), 800, accuracy: 0.001)
         XCTAssertEqual(try XCTUnwrap(stats.writeTokensPerSecond), 50, accuracy: 0.001)
     }
 
-    func testMidStreamChunkHasNoStats() throws {
-        let chunk = try XCTUnwrap(OllamaClient.streamChunk(fromLine: #"{"response":"Hi","done":false}"#))
-        XCTAssertNil(chunk.stats)
-    }
-
-    func testFinalChunkWithoutCountsStillParses() throws {
-        let chunk = try XCTUnwrap(OllamaClient.streamChunk(fromLine: #"{"response":"","done":true}"#))
-        XCTAssertNil(chunk.stats?.promptTokens)
-        XCTAssertFalse(try XCTUnwrap(chunk.stats).possiblyTruncated)
+    func testStatsWithoutCountsAreNotTruncated() {
+        let stats = AIRunStats()
+        XCTAssertNil(stats.promptTokens)
+        XCTAssertFalse(stats.possiblyTruncated)
     }
 
     // MARK: Tripwire
 
-    func testTripwireFlagsAPromptOllamaReadLittleOf() {
+    func testTripwireFlagsAPromptTheEngineReadLittleOf() {
         XCTAssertTrue(AIRunStats(promptTokens: 4096, expectedPromptTokens: 20_000).possiblyTruncated)
         XCTAssertFalse(AIRunStats(promptTokens: 19_000, expectedPromptTokens: 20_000).possiblyTruncated)
         // Exactly 60% is not flagged; below it is.
@@ -59,25 +46,13 @@ final class AIProgressTests: XCTestCase {
     }
 
     func testCachedPrefixIsNotMistakenForTruncation() {
-        // 40,000 characters sent, the first 30,000 already held by Ollama: only the
-        // 10,000-character tail is read, and that is what the tripwire expects.
-        let memory = PromptPrefixMemory()
-        let first = String(repeating: "a", count: 40_000)
-        XCTAssertEqual(memory.sharedPrefixCharacters(model: "m", text: first), 0)
-        let second = String(first.prefix(30_000)) + String(repeating: "b", count: 10_000)
-        let cached = memory.sharedPrefixCharacters(model: "m", text: second)
-        XCTAssertEqual(cached, 30_000)
-        let expected = ContextBudget.estimatedTokens(forCharacters: second.count - cached)
-        XCTAssertFalse(AIRunStats(promptTokens: 2500, expectedPromptTokens: expected).possiblyTruncated)
-        // The same small count against the uncached estimate would have fired.
-        XCTAssertTrue(AIRunStats(promptTokens: 2500, expectedPromptTokens: ContextBudget.estimatedTokens(forCharacters: second.count)).possiblyTruncated)
-    }
-
-    func testPrefixMemoryIsPerModel() {
-        let memory = PromptPrefixMemory()
-        let text = String(repeating: "x", count: 6000)
-        _ = memory.sharedPrefixCharacters(model: "a", text: text)
-        XCTAssertEqual(memory.sharedPrefixCharacters(model: "b", text: text), 0)
+        // The tripwire expects only the uncached tail: 2,500 tokens read of an
+        // expected 2,500 is complete, while the same count against the whole
+        // prompt's estimate would have fired.
+        let whole = ContextBudget.estimatedTokens(forCharacters: 40_000)
+        let tail = ContextBudget.estimatedTokens(forCharacters: 10_000)
+        XCTAssertFalse(AIRunStats(promptTokens: 2500, expectedPromptTokens: tail).possiblyTruncated)
+        XCTAssertTrue(AIRunStats(promptTokens: 2500, expectedPromptTokens: whole).possiblyTruncated)
     }
 
     // MARK: Speeds
@@ -107,7 +82,7 @@ final class AIProgressTests: XCTestCase {
     }
 
     func testPartialPrefixHitIsNotRecordedAsReadSpeed() {
-        // 8K prompt, 6K cached: Ollama counts all 8K but spent time on 2K only.
+        // 8K prompt, 6K cached: the engine counts all 8K but spent time on 2K only.
         var stats = AIRunStats(promptTokens: 8000, promptNanos: 4_000_000_000, expectedPromptTokens: 2200)
         XCTAssertNotNil(stats.readTokensPerSecond)
         stats.reusedPrefix = true

@@ -532,18 +532,14 @@ enum MermaidPasteboard {
             item.setData(png, forType: .png)
         }
         item.setString(source, forType: .string)
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.writeObjects([item])
+        PHIPasteboard.write([item])
         #endif
     }
 
     /// Just the Mermaid source, as text.
     static func copySource(_ source: String) {
         #if canImport(AppKit)
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(source, forType: .string)
+        PHIPasteboard.writeString(source)
         #endif
     }
 }
