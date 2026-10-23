@@ -19,6 +19,9 @@ final class ChatRepository {
 
     private let core: PersistenceCore
     private let protector: FileProtector
+    /// Called when a stored session chat can't be decoded, so the caller can
+    /// report it instead of the chat reading as empty.
+    var onDecodeFailure: (() -> Void)?
 
     init(core: PersistenceCore, protector: FileProtector) {
         self.core = core
@@ -29,7 +32,11 @@ final class ChatRepository {
 
     func sessionChat(sessionID: UUID) -> [ChatMessage] {
         guard let record = core.record(kind: Self.sessionChatKind, id: sessionID.uuidString) else { return [] }
-        return RecordPayloadCodec.decode([ChatMessage].self, from: record.payload, using: protector) ?? []
+        if let messages = RecordPayloadCodec.decode([ChatMessage].self, from: record.payload, using: protector) {
+            return messages
+        }
+        onDecodeFailure?()
+        return []
     }
 
     /// Upserts a session's chat by its session id. An empty conversation

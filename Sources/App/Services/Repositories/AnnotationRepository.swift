@@ -21,6 +21,9 @@ final class AnnotationRepository {
 
     private let core: PersistenceCore
     private let protector: FileProtector
+    /// Called when a stored note can't be decoded, so the caller can report it
+    /// instead of the note reading as empty.
+    var onDecodeFailure: (() -> Void)?
 
     init(core: PersistenceCore, protector: FileProtector) {
         self.core = core
@@ -138,7 +141,11 @@ final class AnnotationRepository {
 
     func note(sessionID: UUID) -> String {
         guard let record = core.record(kind: Self.noteKind, id: sessionID.uuidString) else { return "" }
-        return RecordPayloadCodec.decode(String.self, from: record.payload, using: protector) ?? ""
+        if let text = RecordPayloadCodec.decode(String.self, from: record.payload, using: protector) {
+            return text
+        }
+        onDecodeFailure?()
+        return ""
     }
 
     @discardableResult

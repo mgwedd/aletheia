@@ -272,7 +272,7 @@ final class AppModel: ObservableObject {
         do {
             let listing = try store.patientListing()
             patients = listing.patients
-            unreadablePatients = listing.unreadable
+            unreadablePatients = listing.unreadable + store.unreadableEntries.filter { $0.kind == .storedRecord }
             reindexSpotlight()
         } catch {
             errorMessage = error.localizedDescription
