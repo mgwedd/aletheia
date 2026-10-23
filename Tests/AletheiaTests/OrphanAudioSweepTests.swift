@@ -11,6 +11,7 @@ final class OrphanAudioSweepTests: XCTestCase {
     private var protector: FileProtector!
     private var store: Store!
     private var auditLog: AuditLog!
+    private var originalScratchRoot: URL!
 
     override func setUpWithError() throws {
         super.setUp()
@@ -23,6 +24,9 @@ final class OrphanAudioSweepTests: XCTestCase {
         try FileManager.default.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: tempCafDir, withIntermediateDirectories: true)
 
+        originalScratchRoot = PrivateStaging.root
+        PrivateStaging.root = tempDir.appendingPathComponent("DefaultScratch", isDirectory: true)
+
         key = SymmetricKey(size: .bits256)
         protector = FileProtector(key: key)
         store = Store(root: storeRoot, protector: protector)
@@ -30,6 +34,7 @@ final class OrphanAudioSweepTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        PrivateStaging.root = originalScratchRoot
         try? FileManager.default.removeItem(at: tempDir)
         super.tearDown()
     }
@@ -227,6 +232,22 @@ final class OrphanAudioSweepTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: temp2.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: keep1.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: keep2.path))
+    }
+
+    func testPurgesScratchLeftoversFromEarlierRuns() throws {
+        let scratch = tempDir.appendingPathComponent("Scratch", isDirectory: true)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        let leftover = scratch.appendingPathComponent("restore-1.sqlite")
+        try Data("db".utf8).write(to: leftover)
+        let past = Date(timeIntervalSinceNow: -3600)
+        try FileManager.default.setAttributes([.creationDate: past, .modificationDate: past], ofItemAtPath: leftover.path)
+
+        let result = OrphanAudioSweep.sweep(
+            store: store, protector: protector, audit: auditLog,
+            stagingRoot: stagingRoot, scratchRoot: scratch, temporaryDirectory: tempCafDir)
+
+        XCTAssertEqual(result.temporaryFilesPurged, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: leftover.path))
     }
 
     // MARK: - Live recordings, locked folders and failures

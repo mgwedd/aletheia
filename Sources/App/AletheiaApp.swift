@@ -215,7 +215,8 @@ struct AletheiaApp: App {
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    // AppLock observes hide (when enabled), idle, sleep and screen lock.
+                    // Activation can trigger another update check. AppLock
+                    // handles hide (when enabled), idle, sleep, and screen lock.
                     if phase == .active, settings.autoCheckForUpdates {
                         Task { await updateService.checkForUpdates() }
                     }

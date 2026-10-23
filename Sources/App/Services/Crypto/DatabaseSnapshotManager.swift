@@ -70,18 +70,22 @@ struct DatabaseSnapshotManager {
     @discardableResult
     func restore(_ snapshot: URL, to liveURL: URL) -> Bool {
         guard fileManager.fileExists(atPath: snapshot.path) else { return false }
+        var replacement: URL?
         do {
             // Give `replaceItemAt` a throwaway copy so the snapshot survives.
-            let replacement = fileManager.temporaryDirectory
-                .appendingPathComponent("restore-\(UUID().uuidString).sqlite")
-            try fileManager.copyItem(at: snapshot, to: replacement)
+            let copy = try PrivateStaging.scratchFile(prefix: "restore", ext: "sqlite")
+            replacement = copy
+            try fileManager.removeItem(at: copy)
+            try fileManager.copyItem(at: snapshot, to: copy)
+            try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: copy.path)
             if fileManager.fileExists(atPath: liveURL.path) {
-                _ = try fileManager.replaceItemAt(liveURL, withItemAt: replacement)
+                _ = try fileManager.replaceItemAt(liveURL, withItemAt: copy)
             } else {
-                try fileManager.moveItem(at: replacement, to: liveURL)
+                try fileManager.moveItem(at: copy, to: liveURL)
             }
             return true
         } catch {
+            if let replacement { PrivateStaging.remove(replacement) }
             return false
         }
     }
