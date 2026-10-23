@@ -40,15 +40,10 @@ struct SettingsView: View {
     @State private var confirmDisableEncryption = false
     @State private var isDisablingEncryption = false
     @State private var rememberOnDevice = false
-    /// Audit-log entries for the viewer, newest first. Loaded on appear and after
-    /// an export; a snapshot, not a live binding (the log is append-only on disk).
-    @State private var auditEntries: [AuditEvent] = []
-    @State private var auditVerificationMessage: String?
     /// A folder chosen for Export All Records that needs a warning before writing.
     @State private var riskyExportFolder: RiskyExportFolder?
     /// The pane last shown, so Settings reopens where it was left.
     @AppStorage("settings.selectedPane") private var selectedPaneRaw: String = SettingsPane.default.rawValue
-    private let auditPreviewLimit = 15
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
 
@@ -134,7 +129,6 @@ struct SettingsView: View {
         .liveStatusRefresh { authoritative in await runHealthChecks(authoritative: authoritative) }
         .onAppear {
             rememberOnDevice = encryption.isRememberedOnDevice
-            loadAuditEntries()
         }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -1025,131 +1019,7 @@ struct SettingsView: View {
             SecurityPostureView()
         }
         NetworkAccessView()
-        auditLogSection
-    }
-
-    private var auditLogSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Security audit log").eyebrowStyle()
-            SettingsCaption("An on-device record of app unlocks (when app lock is on), encryption changes and exports. Deletions and backups are not recorded yet. It holds no names or clinical content and never leaves this Mac. It supports, but does not by itself satisfy, HIPAA's audit-control requirement (§164.312(b)).")
-            if auditEntries.isEmpty {
-                SettingsCard {
-                    SettingsCaption("No activity recorded yet. App unlocks are only logged when app lock is on.")
-                }
-            } else {
-                SettingsRowsCard {
-                    ForEach(Array(auditEntries.prefix(auditPreviewLimit).enumerated()), id: \.offset) { item in
-                        if item.offset > 0 { SettingsHairline() }
-                        HStack {
-                            Text(item.element.action.displayName)
-                                .foregroundStyle(Theme.text.color)
-                            Spacer()
-                            Text(auditTimestamp(item.element))
-                                .foregroundStyle(Theme.muted.color)
-                        }
-                        .font(Theme.Typography.caption)
-                        .padding(.vertical, 9)
-                    }
-                }
-                if auditEntries.count > auditPreviewLimit {
-                    SettingsCaption("Showing the \(auditPreviewLimit) most recent of \(auditEntries.count) entries.")
-                }
-            }
-            HStack(spacing: 8) {
-                Button("Verify integrity & export audit report", action: verifyIntegrityAndExportReport)
-                    .buttonStyle(.themed)
-                    .disabled(auditEntries.isEmpty)
-                Button("Refresh", action: loadAuditEntries)
-                    .buttonStyle(.themed)
-                Button("Export…", action: exportAuditLog)
-                    .buttonStyle(.themed)
-                    .disabled(auditEntries.isEmpty)
-                Spacer()
-            }
-            if let auditVerificationMessage {
-                SettingsCaption(auditVerificationMessage)
-            }
-        }
-    }
-
-    // MARK: - Audit log viewer
-
-    /// Load the log into the viewer, newest first. `entries()` reads file order
-    /// (oldest first), so reverse for a most-recent-at-top list.
-    private func loadAuditEntries() {
-        auditEntries = Array((appModel.audit?.entries() ?? []).reversed())
-    }
-
-    private func auditTimestamp(_ entry: AuditEvent) -> String {
-        guard let date = entry.date else { return entry.at }
-        return Self.auditDateFormatter.string(from: date)
-    }
-
-    /// Human-readable, oldest-first rendering for the exported file (a log reads
-    /// naturally top-to-bottom in time). Header states the PHI-free scope.
-    private func auditExportText() -> String {
-        let all = appModel.audit?.entries() ?? []
-        let header = """
-        Aletheia security audit log (HIPAA §164.312(b)) — an on-device record with no PHI.
-        Exported \(Self.auditDateFormatter.string(from: Date()))
-
-        """
-        let lines = all.map { entry -> String in
-            let ts = entry.date.map { Self.auditDateFormatter.string(from: $0) } ?? entry.at
-            var parts = ["\(ts)  \(entry.action.displayName)"]
-            if let subject = entry.subjectID { parts.append("record \(subject)") }
-            if let detail = entry.detail { parts.append(detail) }
-            return parts.joined(separator: "  ·  ")
-        }
-        return header + lines.joined(separator: "\n") + "\n"
-    }
-
-    private func verifyIntegrityAndExportReport() {
-        guard let audit = appModel.audit else { return }
-        let result = audit.verifyIntegrity()
-        let statusString: String
-        switch result {
-        case .verified(let count):
-            statusString = "Integrity verified: all \(count) entries intact."
-        case .broken(let seq, let reason):
-            statusString = "Integrity check failed at entry #\(seq): \(reason)"
-        case .unverifiable(let reason):
-            statusString = "Audit log unverifiable: \(reason)"
-        }
-        auditVerificationMessage = statusString
-
-        let name = FileSaver.fileName("Aletheia Audit Report", Self.auditFileStamp())
-        let report = audit.generateReport(status: statusString)
-        let outcome = FileSaver.saveText(report, suggestedName: "\(name).txt")
-        if case .saved = outcome {
-            appModel.recordAudit(.auditLogExported)
-            loadAuditEntries()
-        }
-        exportResult = outcome.shown
-    }
-
-    private func exportAuditLog() {
-        let name = FileSaver.fileName("Aletheia Audit Log", Self.auditFileStamp())
-        let outcome = FileSaver.saveText(auditExportText(), suggestedName: "\(name).txt")
-        if case .saved = outcome {
-            // The export itself is an ePHI-adjacent action worth recording.
-            appModel.recordAudit(.auditLogExported)
-            loadAuditEntries()
-        }
-        exportResult = outcome.shown
-    }
-
-    private static let auditDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        return f
-    }()
-
-    private static func auditFileStamp() -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
+        AuditLogSection(exportResult: $exportResult)
     }
 
     private func disableEncryption() {
