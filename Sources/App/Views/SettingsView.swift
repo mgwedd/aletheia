@@ -724,6 +724,16 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
             }
             .themeBanner(.info)
+        case .keystoreMissing:
+            HStack(alignment: .center, spacing: 14) {
+                Chip("Keystore missing", tone: .recording)
+                Text(EncryptionManager.ManagerError.keystoreMissing.localizedDescription)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .themeBanner(.warn)
         case .lockedNeedsPassphrase:
             HStack(alignment: .center, spacing: 14) {
                 Chip("On — locked")
@@ -769,6 +779,9 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 12)
             }
+            if let failure = encryption.rememberError {
+                SettingsCaption("This Mac's keychain couldn't keep the key: \(failure)")
+            }
         }
     }
 
@@ -806,7 +819,7 @@ struct SettingsView: View {
                 }
             }
             .padding(.top, 4)
-        case .lockedNeedsPassphrase:
+        case .lockedNeedsPassphrase, .keystoreMissing:
             EmptyView()
         }
     }

@@ -57,3 +57,25 @@ final class WhisperModelDownloader: ObservableObject {
         }
     }
 }
+
+enum WhisperModelFile {
+    /// Puts `new` at `destination` without a window where neither model exists:
+    /// an existing file is swapped atomically, so a failure leaves it untouched.
+    static func replace(_ destination: URL, with new: URL) throws {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: destination.path) {
+            _ = try fm.replaceItemAt(destination, withItemAt: new)
+        } else {
+            try fm.moveItem(at: new, to: destination)
+        }
+    }
+
+    /// Cheap load-time check that the stored model is the pinned size.
+    static func verifySize(at url: URL, expectedBytes: Int64) throws {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let actual = (attributes[.size] as? NSNumber)?.int64Value ?? -1
+        guard actual == expectedBytes else {
+            throw WhisperTranscriberError.modelSizeMismatch
+        }
+    }
+}

@@ -80,8 +80,7 @@ struct NetworkAccessView: View {
     }
 
     private func copy(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        PHIPasteboard.writeString(text)
         copied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
     }

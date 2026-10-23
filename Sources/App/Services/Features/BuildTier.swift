@@ -62,14 +62,24 @@ enum BuildTier: String, CaseIterable, Comparable, Codable {
 
     /// The effective tier for this build. Defaults to the compiled tier; an
     /// `AletheiaBuildTier` Info.plist value, if present and valid, overrides it
-    /// (an escape hatch for forcing a tier without a recompile — e.g. a QA
-    /// build). A missing or unrecognized value falls back to `compiled`, so a
-    /// plain Release build is always the thin `.production` product.
+    /// (an escape hatch for forcing a tier in a development build). Release
+    /// builds ignore it, and a missing or unrecognized value falls back to
+    /// `compiled`, so a Release build is always the thin `.production` product.
     static var current: BuildTier {
-        if let raw = Bundle.main.object(forInfoDictionaryKey: "AletheiaBuildTier") as? String,
-           let tier = BuildTier(rawValue: raw) {
-            return tier
-        }
-        return compiled
+        #if DEBUG
+        let isReleaseBuild = false
+        #else
+        let isReleaseBuild = true
+        #endif
+        return resolve(
+            override: Bundle.main.object(forInfoDictionaryKey: "AletheiaBuildTier") as? String,
+            compiled: compiled,
+            isReleaseBuild: isReleaseBuild
+        )
+    }
+
+    static func resolve(override: String?, compiled: BuildTier, isReleaseBuild: Bool) -> BuildTier {
+        guard !isReleaseBuild, let override, let tier = BuildTier(rawValue: override) else { return compiled }
+        return tier
     }
 }
