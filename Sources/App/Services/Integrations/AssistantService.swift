@@ -15,6 +15,9 @@ struct AssistantService {
     /// Told when a run is about to read its prompt and when it finishes (see
     /// `ChatStreamRunner.reporter`).
     var report: (@Sendable (AIRunEvent) -> Void)?
+    /// The patient's name, for the prompts' speaker guide: notes and answers
+    /// call the call-audio speaker by its first word. Empty means "the client".
+    var clientName: String = ""
 
     private func checkBudget(system: String, prompt: String) throws {
         guard budget.fits(system: system, prompt: prompt) else {
@@ -62,7 +65,7 @@ struct AssistantService {
     }
 
     func summarize(transcript: String, patientBackground: String = "") async throws -> String {
-        try await generate(task: .note, system: systemPrompt, prompt: Prompts.summarize(transcript: transcript, patientBackground: patientBackground))
+        try await generate(task: .note, system: systemPrompt, prompt: Prompts.summarize(transcript: transcript, patientBackground: patientBackground, clientName: clientName))
     }
 
     /// Drafts a clinical progress note in the given documentation format
@@ -86,7 +89,8 @@ struct AssistantService {
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
                 verbosity: verbosity,
-                instructions: instructions
+                instructions: instructions,
+                clientName: clientName
             ),
             grammar: format.grammar
         )
@@ -112,7 +116,8 @@ struct AssistantService {
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
                 verbosity: verbosity,
-                instructions: instructions
+                instructions: instructions,
+                clientName: clientName
             ),
             grammar: format.grammar
         )
@@ -134,7 +139,8 @@ struct AssistantService {
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
                 history: history,
-                question: question
+                question: question,
+                clientName: clientName
             )
         )
     }
@@ -142,14 +148,14 @@ struct AssistantService {
     func answerAboutPatient(context: String, history: [ChatMessage], question: String) async throws -> String {
         try await generate(task: .chat,
             system: Prompts.chatSystemPrompt(systemPrompt, question: question),
-            prompt: Prompts.patientChat(context: context, history: history, question: question)
+            prompt: Prompts.patientChat(context: context, history: history, question: question, clientName: clientName)
         )
     }
 
     // MARK: - Streaming
 
     /// Streams the answer to a session question as the growing full text so far.
-    /// Backends that stream natively (Ollama, Foundation Models, llama.cpp) emit
+    /// Backends that stream natively (Foundation Models, llama.cpp) emit
     /// progressively; others fall back to a single final emission.
     func streamAnswerAboutSession(
         transcript: String,
@@ -167,7 +173,8 @@ struct AssistantService {
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
                 history: history,
-                question: question
+                question: question,
+                clientName: clientName
             )
         )
     }
@@ -178,7 +185,7 @@ struct AssistantService {
     /// (measured by script, so a conversation in Japanese takes its real share).
     func patientContextCharacters(history: [ChatMessage], question: String) -> Int {
         let system = Prompts.chatSystemPrompt(systemPrompt, question: question)
-        let wrapper = Prompts.patientChat(context: "", history: history, question: question)
+        let wrapper = Prompts.patientChat(context: "", history: history, question: question, clientName: clientName)
         return budget.availableCharacters(
             reserving: ContextBudget.weightedLength(of: system) + ContextBudget.weightedLength(of: wrapper))
     }
@@ -190,7 +197,7 @@ struct AssistantService {
     ) -> AsyncThrowingStream<String, Error> {
         run(task: .chat,
             system: Prompts.chatSystemPrompt(systemPrompt, question: question),
-            prompt: Prompts.patientChat(context: context, history: history, question: question)
+            prompt: Prompts.patientChat(context: context, history: history, question: question, clientName: clientName)
         )
     }
 

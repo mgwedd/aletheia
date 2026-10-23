@@ -57,12 +57,22 @@ final class EncryptionManager: ObservableObject {
 
     private let dataRootProvider: () -> URL?
     private let deviceKeys: DeviceKeyStoring
-    private var dek: SymmetricKey?
+    private var keyReference: ProtectionKey?
+    private var keyedRoot: URL?
+    private var dek: SymmetricKey? {
+        get { keyReference?.key }
+        set {
+            keyReference?.revoke()
+            keyReference = newValue.map(ProtectionKey.init)
+            keyedRoot = newValue == nil ? nil : dataRoot
+        }
+    }
 
     init(dataRootProvider: @escaping () -> URL?, deviceKeys: DeviceKeyStoring = KeychainDeviceKeyStore()) {
         self.dataRootProvider = dataRootProvider
         self.deviceKeys = deviceKeys
-        refresh()
+        refreshState()
+        autoUnlockFromDevice()
     }
 
     // MARK: - Derived state
@@ -81,24 +91,34 @@ final class EncryptionManager: ObservableObject {
     /// The protector the stores use: carries the DEK only while unlocked, so it
     /// seals/opens; otherwise it's a passthrough (encryption off) — reads of an
     /// encrypted-but-locked folder then surface `.locked` rather than garbage.
-    var protector: FileProtector { FileProtector(key: dek) }
+    var protector: FileProtector {
+        guard isEnabled else { return .passthrough }
+        return FileProtector(keyReference: keyReference, requiresKey: true)
+    }
 
     /// Recomputes state from disk. Call on launch and whenever the data folder
     /// changes; it doesn't drop an already-held key for the same folder.
-    func refresh() {
+    func refreshState() {
         guard isEnabled, let root = dataRoot else {
             dek = nil
             state = .disabled
             return
         }
-        // Auto-unlock from this Mac's keychain if the user chose to be remembered.
-        if dek == nil, let id = Keystore.load(from: root)?.id, let key = deviceKeys.load(for: id) {
-            dek = key
-        }
+        if keyedRoot != root { dek = nil }
         state = dek == nil ? .lockedNeedsPassphrase : .unlocked
-        // Ended unlocked (e.g. `lock()` re-read the remembered key): the index may open again,
-        // unless the app lock is still up.
-        if state == .unlocked { SessionSearch.openIndex() }
+    }
+
+    /// Explicit device-key unlock, used at launch and after successful app
+    /// authentication. A state refresh or lock must never call this.
+    func autoUnlockFromDevice() {
+        refreshState()
+        guard state == .lockedNeedsPassphrase, let root = dataRoot,
+              let id = Keystore.load(from: root)?.id,
+              let key = deviceKeys.load(for: id) else { return }
+        dek = key
+        state = .unlocked
+        onProtectionChanged?()
+        SessionSearch.openIndex()
     }
 
     /// Whether the DEK is remembered in this Mac's keychain for auto-unlock.
@@ -186,11 +206,9 @@ final class EncryptionManager: ObservableObject {
     func lock() {
         guard dek != nil else { return }
         dek = nil
-        SessionSearch.setEncryptionLocked(true)   // before the delete; `refresh()` below may release it again
+        state = .lockedNeedsPassphrase
         SessionSearch.deleteIndex()   // plaintext transcript text: gone while locked, rebuilt on unlock
-        OllamaClient.unloadLoaded()
         LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript
-        refresh()
         onProtectionChanged?()
     }
 

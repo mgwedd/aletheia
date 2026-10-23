@@ -11,38 +11,25 @@ private final class CountingAssistant: Assistant, @unchecked Sendable {
 }
 
 final class AIProgressTests: XCTestCase {
-    // MARK: Stats parsing
+    // MARK: Stats
 
-    private let finalLine = """
-    {"model":"llama3.1:8b","created_at":"2026-10-13T10:00:00Z","response":"","done":true,"done_reason":"stop","total_duration":9000000000,"load_duration":50000000,"prompt_eval_count":2400,"prompt_eval_duration":3000000000,"eval_count":300,"eval_duration":6000000000}
-    """
-
-    func testFinalChunkCarriesRunStats() throws {
-        let chunk = try XCTUnwrap(OllamaClient.streamChunk(fromLine: finalLine, expectedPromptTokens: 2500))
-        XCTAssertTrue(chunk.done)
-        let stats = try XCTUnwrap(chunk.stats)
-        XCTAssertEqual(stats.promptTokens, 2400)
-        XCTAssertEqual(stats.promptNanos, 3_000_000_000)
-        XCTAssertEqual(stats.outputTokens, 300)
-        XCTAssertEqual(stats.outputNanos, 6_000_000_000)
+    func testRunStatsGiveReadAndWriteSpeeds() throws {
+        let stats = AIRunStats(
+            promptTokens: 2400, promptNanos: 3_000_000_000,
+            outputTokens: 300, outputNanos: 6_000_000_000, expectedPromptTokens: 2500)
         XCTAssertEqual(try XCTUnwrap(stats.readTokensPerSecond), 800, accuracy: 0.001)
         XCTAssertEqual(try XCTUnwrap(stats.writeTokensPerSecond), 50, accuracy: 0.001)
     }
 
-    func testMidStreamChunkHasNoStats() throws {
-        let chunk = try XCTUnwrap(OllamaClient.streamChunk(fromLine: #"{"response":"Hi","done":false}"#))
-        XCTAssertNil(chunk.stats)
-    }
-
-    func testFinalChunkWithoutCountsStillParses() throws {
-        let chunk = try XCTUnwrap(OllamaClient.streamChunk(fromLine: #"{"response":"","done":true}"#))
-        XCTAssertNil(chunk.stats?.promptTokens)
-        XCTAssertFalse(try XCTUnwrap(chunk.stats).possiblyTruncated)
+    func testStatsWithoutCountsAreNotTruncated() {
+        let stats = AIRunStats()
+        XCTAssertNil(stats.promptTokens)
+        XCTAssertFalse(stats.possiblyTruncated)
     }
 
     // MARK: Tripwire
 
-    func testTripwireFlagsAPromptOllamaReadLittleOf() {
+    func testTripwireFlagsAPromptTheEngineReadLittleOf() {
         XCTAssertTrue(AIRunStats(promptTokens: 4096, expectedPromptTokens: 20_000).possiblyTruncated)
         XCTAssertFalse(AIRunStats(promptTokens: 19_000, expectedPromptTokens: 20_000).possiblyTruncated)
         // Exactly 60% is not flagged; below it is.
@@ -59,25 +46,13 @@ final class AIProgressTests: XCTestCase {
     }
 
     func testCachedPrefixIsNotMistakenForTruncation() {
-        // 40,000 characters sent, the first 30,000 already held by Ollama: only the
-        // 10,000-character tail is read, and that is what the tripwire expects.
-        let memory = PromptPrefixMemory()
-        let first = String(repeating: "a", count: 40_000)
-        XCTAssertEqual(memory.sharedPrefixCharacters(model: "m", text: first), 0)
-        let second = String(first.prefix(30_000)) + String(repeating: "b", count: 10_000)
-        let cached = memory.sharedPrefixCharacters(model: "m", text: second)
-        XCTAssertEqual(cached, 30_000)
-        let expected = ContextBudget.estimatedTokens(forCharacters: second.count - cached)
-        XCTAssertFalse(AIRunStats(promptTokens: 2500, expectedPromptTokens: expected).possiblyTruncated)
-        // The same small count against the uncached estimate would have fired.
-        XCTAssertTrue(AIRunStats(promptTokens: 2500, expectedPromptTokens: ContextBudget.estimatedTokens(forCharacters: second.count)).possiblyTruncated)
-    }
-
-    func testPrefixMemoryIsPerModel() {
-        let memory = PromptPrefixMemory()
-        let text = String(repeating: "x", count: 6000)
-        _ = memory.sharedPrefixCharacters(model: "a", text: text)
-        XCTAssertEqual(memory.sharedPrefixCharacters(model: "b", text: text), 0)
+        // The tripwire expects only the uncached tail: 2,500 tokens read of an
+        // expected 2,500 is complete, while the same count against the whole
+        // prompt's estimate would have fired.
+        let whole = ContextBudget.estimatedTokens(forCharacters: 40_000)
+        let tail = ContextBudget.estimatedTokens(forCharacters: 10_000)
+        XCTAssertFalse(AIRunStats(promptTokens: 2500, expectedPromptTokens: tail).possiblyTruncated)
+        XCTAssertTrue(AIRunStats(promptTokens: 2500, expectedPromptTokens: whole).possiblyTruncated)
     }
 
     // MARK: Speeds
@@ -107,7 +82,7 @@ final class AIProgressTests: XCTestCase {
     }
 
     func testPartialPrefixHitIsNotRecordedAsReadSpeed() {
-        // 8K prompt, 6K cached: Ollama counts all 8K but spent time on 2K only.
+        // 8K prompt, 6K cached: the engine counts all 8K but spent time on 2K only.
         var stats = AIRunStats(promptTokens: 8000, promptNanos: 4_000_000_000, expectedPromptTokens: 2200)
         XCTAssertNotNil(stats.readTokensPerSecond)
         stats.reusedPrefix = true
@@ -123,26 +98,13 @@ final class AIProgressTests: XCTestCase {
         XCTAssertNotNil(AIRunStats(promptTokens: 300, promptNanos: 3_000_000_000, expectedPromptTokens: 0).readTokensPerSecond)
     }
 
-    func testWritingLineShowsTimeLeftOnceSpeedKnown() {
+    /// Stage and elapsed time only: no token counts or time-left guesses.
+    func testWritingLineIsTheStageAndElapsedTime() {
         var progress = AIRunProgress(startedAt: Date(timeIntervalSince1970: 0))
         progress.firstTokenAt = Date(timeIntervalSince1970: 10)
         progress.tokensWritten = 50
-        let now = Date(timeIntervalSince1970: 20)
-        let line = AIProgressFormat.statusLine(
-            progress, now: now, readTokensPerSecond: nil, writeTokensPerSecond: 10, expectedOutputTokens: 650)
-        XCTAssertEqual(line, "Writing… · 50 tokens · about 1 min left · 0:20")  // 600 left at 10/s
-        let unknown = AIProgressFormat.statusLine(progress, now: now, readTokensPerSecond: nil)
-        XCTAssertEqual(unknown, "Writing… · 50 tokens · 0:20")
-    }
-
-    func testWritingLineHidesTimeLeftPastExpectedLength() {
-        var progress = AIRunProgress(startedAt: Date(timeIntervalSince1970: 0))
-        progress.firstTokenAt = Date(timeIntervalSince1970: 10)
-        progress.tokensWritten = 500
-        let line = AIProgressFormat.statusLine(
-            progress, now: Date(timeIntervalSince1970: 20), readTokensPerSecond: nil,
-            writeTokensPerSecond: 10, expectedOutputTokens: 400)
-        XCTAssertEqual(line, "Writing… · 500 tokens · 0:20")
+        progress.estimatedPromptTokens = 24_000
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: Date(timeIntervalSince1970: 20)), "Writing… · 0:20")
     }
 
     func testOutputLengthIsAveragedPerTask() throws {
@@ -323,18 +285,9 @@ final class AIProgressTests: XCTestCase {
         XCTAssertEqual(AIProgressFormat.elapsed(-3), "0:00")
         XCTAssertEqual(AIProgressFormat.estimatedTokens(800), "~800 tokens")
         XCTAssertEqual(AIProgressFormat.estimatedTokens(31_200), "~31K tokens")
-        XCTAssertEqual(AIProgressFormat.tokens(412), "412 tokens")
-        XCTAssertEqual(AIProgressFormat.tokens(1), "1 token")
     }
 
     func testEstimateWording() {
-        XCTAssertNil(AIProgressFormat.readingRemaining(estimatedTokens: 31_000, tokensPerSecond: nil, elapsed: 5))
-        XCTAssertEqual(AIProgressFormat.readingRemaining(estimatedTokens: 6_000, tokensPerSecond: 100, elapsed: 20), 40)
-        XCTAssertEqual(AIProgressFormat.readingRemaining(estimatedTokens: 6_000, tokensPerSecond: 100, elapsed: 90), 0)
-        XCTAssertEqual(AIProgressFormat.remaining(60), "about 1 min left")
-        XCTAssertEqual(AIProgressFormat.remaining(200), "about 3 min left")
-        XCTAssertEqual(AIProgressFormat.remaining(20), "less than a minute left")
-        XCTAssertEqual(AIProgressFormat.remaining(0), "taking longer than estimated")
         XCTAssertEqual(try XCTUnwrap(AIProgressFormat.readingFraction(estimatedTokens: 6_000, tokensPerSecond: 100, elapsed: 30)), 0.5, accuracy: 0.001)
         XCTAssertEqual(AIProgressFormat.readingFraction(estimatedTokens: 6_000, tokensPerSecond: 100, elapsed: 500), 0.95)
         XCTAssertNil(AIProgressFormat.readingFraction(estimatedTokens: nil, tokensPerSecond: 100, elapsed: 1))
@@ -345,17 +298,17 @@ final class AIProgressTests: XCTestCase {
         var progress = AIRunProgress(readTitle: "Reading the session", writeTitle: "Writing the note", startedAt: start)
         progress.estimatedPromptTokens = 31_000
 
-        let reading = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(42), readTokensPerSecond: 31_000.0 / 100)
-        XCTAssertEqual(reading, "Reading the session… · ~31K tokens · about 1 min left · 0:42")
+        let reading = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(42))
+        XCTAssertEqual(reading, "Reading the session… · 0:42")
 
-        let unknownSpeed = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(3), readTokensPerSecond: nil)
-        XCTAssertEqual(unknownSpeed, "Reading the session… · ~31K tokens · 0:03")
+        let unknownSpeed = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(3))
+        XCTAssertEqual(unknownSpeed, "Reading the session… · 0:03")
 
         // The line replaces itself: once text arrives it says only what is being written.
         progress.firstTokenAt = start.addingTimeInterval(65)
         progress.tokensWritten = 412
-        let writing = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(77), readTokensPerSecond: nil)
-        XCTAssertEqual(writing, "Writing the note… · 412 tokens · 1:17")
+        let writing = AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(77))
+        XCTAssertEqual(writing, "Writing the note… · 1:17")
     }
 
     func testStatusLinePutsWhatSearchFoundBeforeTheReading() {
@@ -364,13 +317,13 @@ final class AIProgressTests: XCTestCase {
         progress.lead = "1 mention, in the Oct 13 session"
         progress.estimatedPromptTokens = 3_000
         XCTAssertEqual(
-            AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(4), readTokensPerSecond: nil),
-            "1 mention, in the Oct 13 session. Reading what was gathered… · ~3K tokens · 0:04")
+            AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(4)),
+            "1 mention, in the Oct 13 session. Reading what was gathered… · 0:04")
         progress.firstTokenAt = start.addingTimeInterval(9)
         progress.tokensWritten = 20
         XCTAssertEqual(
-            AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(12), readTokensPerSecond: nil),
-            "Writing the answer… · 20 tokens · 0:12")
+            AIProgressFormat.statusLine(progress, now: start.addingTimeInterval(12)),
+            "Writing the answer… · 0:12")
     }
 
     // MARK: Effort & Multi-Stage Progress
@@ -405,8 +358,8 @@ final class AIProgressTests: XCTestCase {
             "Checking what to look up · 0:07",
         ])
         XCTAssertEqual(
-            AIProgressFormat.statusLine(progress, now: t0.addingTimeInterval(15), readTokensPerSecond: nil),
-            "4 mentions, across 2 sessions. Reading the sessions… · ~4K tokens · 0:15")
+            AIProgressFormat.statusLine(progress, now: t0.addingTimeInterval(15)),
+            "4 mentions, across 2 sessions. Reading the sessions… · 0:15")
     }
 
     // MARK: Status line per surface
@@ -415,18 +368,18 @@ final class AIProgressTests: XCTestCase {
         let t0 = Date(timeIntervalSince1970: 1_000)
         // Ask, single session (SessionDetailView.sendChat's titles).
         let sessionAsk = AIRunProgress(readTitle: "Reading the session", writeTitle: "Writing the answer", startedAt: t0)
-        XCTAssertEqual(AIProgressFormat.statusLine(sessionAsk, now: t0.addingTimeInterval(2), readTokensPerSecond: nil),
+        XCTAssertEqual(AIProgressFormat.statusLine(sessionAsk, now: t0.addingTimeInterval(2)),
                        "Reading the session… · 0:02")
         // Background digest: DigestBuilder's stage titles.
         var digest = AIRunProgress(readTitle: "Reading", startedAt: t0)
         digest.beginStage(readTitle: "Reading part 2 of 5", writeTitle: DigestBuilder.writeTitle, startedAt: t0.addingTimeInterval(30))
         digest.firstTokenAt = t0.addingTimeInterval(40)
         digest.tokensWritten = 90
-        XCTAssertEqual(AIProgressFormat.statusLine(digest, now: t0.addingTimeInterval(61), readTokensPerSecond: nil),
-                       "\(DigestBuilder.writeTitle)… · 90 tokens · 1:01")
+        XCTAssertEqual(AIProgressFormat.statusLine(digest, now: t0.addingTimeInterval(61)),
+                       "\(DigestBuilder.writeTitle)… · 1:01")
         // Compaction.
         let compact = AIRunProgress(readTitle: "Reading the conversation", writeTitle: "Summarizing the conversation", startedAt: t0)
-        XCTAssertEqual(AIProgressFormat.statusLine(compact, now: t0, readTokensPerSecond: nil),
+        XCTAssertEqual(AIProgressFormat.statusLine(compact, now: t0),
                        "Reading the conversation… · 0:00")
     }
 }

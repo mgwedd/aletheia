@@ -66,12 +66,12 @@ final class ExportRendererTests: XCTestCase {
     }
 
     func testWordAndPDFOfADocumentWithoutATitleStartWithTheBody() throws {
-        let plain = ExportDocument(markdown: "# Aletheia — Dana\n\nBody text")
+        let plain = ExportDocument(markdown: "# Dana\n\nBody text")
         let word = try XCTUnwrap(ExportRenderer.data(for: .word, document: plain))
         let readBack = try NSAttributedString(
             data: word, options: [.documentType: NSAttributedString.DocumentType.officeOpenXML], documentAttributes: nil
         )
-        XCTAssertTrue(readBack.string.hasPrefix("Aletheia"))
+        XCTAssertTrue(readBack.string.hasPrefix("Dana"))
     }
 }
 
@@ -115,6 +115,8 @@ final class RichClipboardTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(pasteboard.string(forType: .string)).contains("Continue weekly sessions."))
         XCTAssertNotNil(pasteboard.data(forType: .rtf))
         XCTAssertNotNil(pasteboard.data(forType: .html))
+        XCTAssertNotNil(pasteboard.data(forType: PHIPasteboard.concealed))
+        XCTAssertNotNil(pasteboard.data(forType: PHIPasteboard.transient))
     }
 
     func testNothingElseRemainsFromTheOldPasteboardContents() {

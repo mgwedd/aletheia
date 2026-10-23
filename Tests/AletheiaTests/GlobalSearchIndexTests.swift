@@ -148,8 +148,32 @@ final class GlobalSearchIndexTests: XCTestCase {
         store.syncSearchIndex()
         XCTAssertEqual(search("worries").section(.transcript)?.total, 1)
         XCTAssertEqual(search("thera").section(.transcript)?.total, 1)
-        XCTAssertNil(search("therapist").section(.transcript), "a common word is not searched")
-        XCTAssertEqual(search("the").unsearchedWords, ["the"])
+    }
+
+    func testCommonAndOneLetterWordsAreFound() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let session = try store.createSession(for: patient)
+        try store.saveTranscript(
+            "[00:01] You: I met the therapist.\n[00:02] You: Let it be.\n[00:03] You: Garden.", for: patient, session: session)
+        store.syncSearchIndex()
+        XCTAssertEqual(search("therapist").section(.transcript)?.total, 1)
+        XCTAssertEqual(search("the").section(.transcript)?.total, 1)
+        XCTAssertEqual(search("I").section(.transcript)?.total, 1)
+        XCTAssertEqual(search("let it be").section(.transcript)?.total, 1, "a query of only common words")
+        XCTAssertEqual(search("I").section(.transcript)?.hits.first?.snippet, "[00:01] You: I met the therapist.")
+    }
+
+    /// Common words are stored whole, so they don't share a stem with a name
+    /// (Ask's search: `SessionSearchTests.testMatchesWholeWordsNotSubstrings`).
+    func testCommonWordsAreStoredWhole() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let session = try store.createSession(for: patient)
+        try store.saveTranscript("[00:01] You: She does it every time.", for: patient, session: session)
+        store.syncSearchIndex()
+        XCTAssertEqual(search("time").section(.transcript)?.total, 1)
+        XCTAssertEqual(search("does").section(.transcript)?.total, 1)
+        XCTAssertEqual(SearchIndex.stored("does"), "does")
+        XCTAssertEqual(SearchIndex.stored("worries"), "worry")
     }
 
     func testHeadingsTheIndexStoresDoNotMatchOnTheirOwn() throws {
@@ -237,6 +261,17 @@ final class GlobalSearchIndexTests: XCTestCase {
         guard case .cancelled = index.matchLive(clauses: ["\"garden\" *"], shouldContinue: { false }) else {
             return XCTFail("stops when told to")
         }
+
+        // Part way through one word's rows: a common word can match most of the index.
+        let lines = (0..<(SearchIndex.checkEvery + 10)).map { "[00:01] A: The day \($0)." }.joined(separator: "\n")
+        let long = SearchIndex.Item(
+            session: "s2", patient: "p", kind: "transcript", date: 0, fingerprint: SearchIndex.fingerprint(of: lines), text: lines)
+        index.replace(session: "s2", patient: "p", kinds: [.transcript], items: [long], stamp: "1")
+        var asked = 0
+        guard case .cancelled = index.matchLive(clauses: ["\"the\""], shouldContinue: { asked += 1; return asked == 1 }) else {
+            return XCTFail("stops within a word's rows")
+        }
+        XCTAssertEqual(asked, 2)
         index.mayOpen = { false }
         index.close()
         guard case .unavailable = index.matchLive(clauses: ["\"garden\" *"]) else {
@@ -394,15 +429,24 @@ final class GlobalSearchIndexTests: XCTestCase {
     }
 
     func testAnOutdatedIndexFileStartsOverAndSaysSo() throws {
-        let file = root.appendingPathComponent("v2.sqlite")
+        try assertOutdatedIndexStartsOver(version: 2)
+    }
+
+    /// Version 3 stored common words as a stand-in, so they couldn't be searched for.
+    func testAnIndexWithoutCommonWordsStartsOver() throws {
+        try assertOutdatedIndexStartsOver(version: 3)
+    }
+
+    private func assertOutdatedIndexStartsOver(version: Int) throws {
+        let file = root.appendingPathComponent("v\(version).sqlite")
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open(file.path, &db), SQLITE_OK)
-        let v2 = """
+        let old = """
             CREATE TABLE doc(id INTEGER PRIMARY KEY, patient TEXT, session TEXT NOT NULL, kind TEXT NOT NULL,
                 date REAL NOT NULL, fp TEXT NOT NULL, lines INTEGER NOT NULL, tokens INTEGER NOT NULL, UNIQUE(session, kind, fp));
-            PRAGMA user_version = 2;
+            PRAGMA user_version = \(version);
             """
-        XCTAssertEqual(sqlite3_exec(db, v2, nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db, old, nil, nil, nil), SQLITE_OK)
         sqlite3_close(db)
 
         let outdated = SearchIndex(url: file)
@@ -417,8 +461,8 @@ final class GlobalSearchIndexTests: XCTestCase {
             session: "s", patient: "p", kinds: [.transcript],
             items: [SearchIndex.Item(session: "s", patient: "p", kind: "transcript", date: 0, fingerprint: SearchIndex.fingerprint(of: text), text: text)],
             stamp: "1")
-        guard case .found(let documents, _) = outdated.matchLive(clauses: ["\"garden\" *"]) else { return XCTFail("readable") }
-        XCTAssertEqual(documents.count, 1)
+        guard case .found(let documents, _) = outdated.matchLive(clauses: ["\"the\""]) else { return XCTFail("readable") }
+        XCTAssertEqual(documents.count, 1, "common words are stored")
     }
 
     // MARK: Cost and limits

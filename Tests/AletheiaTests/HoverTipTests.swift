@@ -57,9 +57,8 @@ final class HoverIntentTests: XCTestCase {
 
 final class HelpTipsTests: XCTestCase {
     private var allTips: [HelpTip] {
-        [HelpTips.myNotes, HelpTips.sessionChatScope, HelpTips.patientChatScope]
+        [HelpTips.myNotes, HelpTips.compact]
             + settingsTips
-            + ProgressNoteFormat.allCases.map(HelpTips.noteFormat)
     }
 
     private var settingsTips: [HelpTip] {
@@ -70,11 +69,7 @@ final class HelpTipsTests: XCTestCase {
     func testIdsAreFixed() {
         // Read state is stored under these ids; changing one re-shows the tip.
         XCTAssertEqual(HelpTips.myNotes.id, "notes.mine")
-        XCTAssertEqual(HelpTips.sessionChatScope.id, "chat.session.scope")
-        XCTAssertEqual(HelpTips.patientChatScope.id, "chat.patient.scope")
-        for format in ProgressNoteFormat.allCases {
-            XCTAssertEqual(HelpTips.noteFormat(format).id, "notes.format")
-        }
+        XCTAssertEqual(HelpTips.compact.id, "chat.compact")
         XCTAssertEqual(settingsTips.map(\.id), [
             "settings.autoTranscribe", "settings.aiInstructions", "settings.defaultNoteFormat",
             "settings.includeComments", "settings.summariesOnBattery",
@@ -82,8 +77,7 @@ final class HelpTipsTests: XCTestCase {
     }
 
     func testDistinctTipsHaveDistinctIds() {
-        let ids = ([HelpTips.noteFormat(.soap), HelpTips.myNotes,
-                    HelpTips.sessionChatScope, HelpTips.patientChatScope] + settingsTips).map(\.id)
+        let ids = ([HelpTips.myNotes, HelpTips.compact] + settingsTips).map(\.id)
         XCTAssertEqual(Set(ids).count, ids.count)
     }
 
@@ -96,16 +90,51 @@ final class HelpTipsTests: XCTestCase {
         }
     }
 
-    func testNoteFormatTipFollowsTheSelectedFormat() {
-        for format in ProgressNoteFormat.allCases {
-            let tip = HelpTips.noteFormat(format)
-            XCTAssertEqual(tip.heading, format.displayName)
-            XCTAssertEqual(tip.text, format.blurb)
+    func testRemovedCopyDoesNotReturnToTheSources() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+        let banned = [
+            "Answers come from this session's transcript",
+            "AI-generated. Read alongside",
+            "centers what happened in the room",
+            "most widely accepted progress-note format",
+            "# Aletheia —",
+            "var blurb: String",
+            // The Ask-all field's scope tip and its "Read: …" coverage line were noise.
+            "What answers come from",
+            "coverageNotice",
+        ]
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+        var offenders: [String] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            for phrase in banned where text.contains(phrase) {
+                // Effort and verbosity levels keep their own blurbs; only the note format's is gone.
+                if phrase == "var blurb: String" && !url.lastPathComponent.hasPrefix("ProgressNoteFormat") { continue }
+                offenders.append("\(url.lastPathComponent): \(phrase)")
+            }
         }
+        XCTAssertEqual(offenders, [])
     }
 
-    func testPatientChatTipKeepsTheScopeTheContextBuilderUses() {
-        XCTAssertEqual(HelpTips.patientChatScope.text, PatientChatView.scopeNote)
+    func testExportFormatRowsHaveNoFocusRing() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/App/Views/ExportButton.swift"), encoding: .utf8)
+        XCTAssertTrue(source.contains(".focusEffectDisabled()"))
+    }
+
+    /// Compaction isn't a word therapists use; the tip says what it does and why.
+    func testCompactTipExplainsWhatAndWhy() throws {
+        XCTAssertTrue(HelpTips.compact.text.contains("summary"))
+        XCTAssertTrue(HelpTips.compact.text.contains("/compact"))
+        let pane = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/App/Views/ChatPaneView.swift"), encoding: .utf8)
+        XCTAssertTrue(pane.contains(".hoverTip(HelpTips.compact"))
     }
 
     func testTipsHaveNoRulesOrActions() {
@@ -141,5 +170,19 @@ final class HelpTipsTests: XCTestCase {
                      "FileVault encrypts everything on this Mac at rest"] {
             XCTAssertTrue(settings.contains(kept), kept)
         }
+    }
+
+    /// The AI instructions tip opens above the section's header, not over the
+    /// instructions editor.
+    func testAIInstructionsTipIsAnchoredToTheSectionNotTheEditor() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let settings = try String(contentsOf: root.appendingPathComponent("Sources/App/Views/SettingsView.swift"), encoding: .utf8)
+        let start = try XCTUnwrap(settings.range(of: "private var instructionsCard: some View {"))
+        let end = try XCTUnwrap(settings.range(of: "private var riskPhrasesCard", range: start.upperBound..<settings.endIndex))
+        let card = settings[start.upperBound..<end.lowerBound]
+        XCTAssertFalse(card.contains("minHeight: 140)\n                .hoverTip"), "tip is on the editor")
+        XCTAssertTrue(card.contains("        }\n        // On the section"), "tip should follow the card's closing brace")
+        XCTAssertTrue(card.contains(".hoverTip(HelpTips.aiInstructions, arrowEdge: .top)"))
     }
 }

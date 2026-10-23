@@ -20,6 +20,7 @@ struct PatientChatView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var integrations: Integrations
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var recorder: SessionRecorder
 
     @State private var threads: [ChatThread] = []
     @State private var selectedThreadID: UUID?
@@ -34,15 +35,13 @@ struct PatientChatView: View {
     @State private var pendingRetries = PendingRetries<String, () -> Void>()
     @State private var renamingThread: ChatThread?
     @State private var renameText = ""
-    /// Sessions whose transcript couldn't be read when the last question was
-    /// asked; non-zero shows a caption that answers may be incomplete.
-    /// How much transcript text the last question's context held; nil until a
-    /// question is asked or when everything fit.
-    @State private var coverageNotice: String?
     /// Shown while the sessions are being decrypted and searched, before the model starts.
     @State private var searchingNotice: String?
     /// When the current Ask began searching: the status line counts from here.
     @State private var searchingSince: Date?
+    /// The lookup that gathers context before the model starts, and the question it is for.
+    @State private var searchTask: Task<Void, Never>?
+    @State private var searchingMessageID: UUID?
 
     @StateObject private var chatRunner = ChatStreamRunner()
 
@@ -82,18 +81,17 @@ struct PatientChatView: View {
                         isSending: isSending,
                         suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.patient : [],
                         onSend: send,
-                        onStop: { chatRunner.stop() },
+                        onStop: stopAnswer,
                         queuedStatus: chatRunner.queuedStatus,
-                        scopeTip: HelpTips.patientChatScope,
                         notices: notices,
                         busyNotice: searchingNotice,
                         busySince: searchingSince,
                         busySteps: searchingNotice == nil ? nil : PatientAskSteps(effort: settings.patientChatEffort, layered: true).gathering,
                         onCompact: { compact($0) },
                         progress: chatRunner.progress,
-                        speed: integrations.modelSpeed,
                         effort: $settings.patientChatEffort,
-                        effortFeature: .patientChat
+                        effortFeature: .patientChat,
+                        isSessionRecording: recorder.isRecording
                     )
                     .frame(minWidth: 360)
                 } else {
@@ -108,10 +106,6 @@ struct PatientChatView: View {
             integrations.digestScheduler.patientOpened(patient)
         }
         .onChange(of: selectedThreadID) { _, newID in
-            // The notice belongs to the question just asked, not to other threads.
-            if !isSending {
-                coverageNotice = nil
-            }
             // Load the newly-selected thread's messages, but never clobber an
             // in-flight working copy (persist() re-selects the same id).
             guard !isSending, let newID, let thread = threads.first(where: { $0.id == newID }) else { return }
@@ -134,14 +128,9 @@ struct PatientChatView: View {
         })
     }
 
-    /// What the answers draw on, matching what `gatherCitedPatientContext`
-    /// sends (see `PatientZoom`).
-    static let scopeNote = "Answers come from the patient's background, your notes and comments, and each session's summary. When the history is too long to read whole, a search of every session finds the parts worth a closer look, and only those are read in detail. Each answer shows what it read. To ask about one session in full, open it and use its Ask tab."
-
-    /// Caveats about the last question's context, shown above the composer.
+    /// Caveats about the last answer, shown above the composer.
     private var notices: [String] {
         var lines: [String] = []
-        if let coverageNotice { lines.append(coverageNotice) }
         if chatRunner.progress.stats?.possiblyTruncated == true && !isSending {
             lines.append(AIRunStats.truncationNotice)
         }
@@ -322,7 +311,7 @@ struct PatientChatView: View {
         let assistantID = UUID()
         // Snapshot everything the prompt needs now; the request itself is only
         // made when the queue starts this job.
-        let service = integrations.makeAssistantService(report: chatRunner.reporter)
+        let service = integrations.makeAssistantService(report: chatRunner.reporter, clientName: patient.name)
         // The whole context is sized from this Mac's budget less the
         // instructions, the conversation and the question.
         let characterBudget = service.patientContextCharacters(history: history, question: question)
@@ -343,7 +332,8 @@ struct PatientChatView: View {
         searchingSince = askedAt
         let patient = patient
         let includeBackground = settings.includePatientBackground
-        Task {
+        searchingMessageID = userMessage.id
+        searchTask = Task {
             let context = await Task.detached(priority: .userInitiated) {
                 store.gatherCitedPatientContext(
                     for: patient,
@@ -352,6 +342,10 @@ struct PatientChatView: View {
                     includeBackground: includeBackground
                 )
             }.value
+            // Stopped while gathering: `stopAnswer` has already put things back.
+            guard !Task.isCancelled else { return }
+            searchTask = nil
+            searchingMessageID = nil
             searchingNotice = nil
             searchingSince = nil
             startAnswer(
@@ -359,6 +353,23 @@ struct PatientChatView: View {
                 effort: effort, totalBudget: characterBudget, askedAt: askedAt,
                 userMessage: userMessage, assistantID: assistantID, threadID: threadID
             )
+        }
+    }
+
+    /// Stop: the running answer, or, while the sessions are still being gathered
+    /// (the model hasn't started), that lookup, taking the unanswered question
+    /// back out of the thread.
+    private func stopAnswer() {
+        if let searchTask {
+            searchTask.cancel()
+            self.searchTask = nil
+            if let id = searchingMessageID { messages.removeAll { $0.id == id } }
+            searchingMessageID = nil
+            searchingNotice = nil
+            searchingSince = nil
+            isSending = false
+        } else {
+            chatRunner.stop()
         }
     }
 
@@ -373,18 +384,9 @@ struct PatientChatView: View {
     ) {
         guard let store = appModel.store else { return }
         let patient = patient
-        var initialCoverage = context.coverage
-        initialCoverage.effort = effort
-        var latestCoverageLabel = initialCoverage.label
         // Grows when a follow-up lookup reads a session the context didn't hold,
         // so a citation of that session shows its date and is listed.
         var answerSources = context.sources
-        // What the notice and caption say comes from what was sent: they are
-        // set once the answer starts (or ends), never for a run that was refused.
-        func showCoverage() {
-            coverageNotice = latestCoverageLabel
-        }
-        coverageNotice = nil
         chatRunner.start(
             queue: integrations.inferenceQueue,
             kind: .patientChat,
@@ -407,22 +409,18 @@ struct PatientChatView: View {
                     service: service,
                     builder: integrations.digests,
                     live: { started, change in chatRunner.update(started: started, change) },
-                    onCoverage: { updated in
-                        latestCoverageLabel = updated.label
-                        if isSending { coverageNotice = updated.label }
-                    },
+                    onCoverage: { _ in },
                     onSources: { answerSources = $0 }
                 )
             },
             // Stream the raw answer live; fold in the numbered source footer once
             // the full text is in, so citations don't flicker mid-stream.
             onReveal: { text in
-                showCoverage()
                 messages.upsert(id: assistantID, role: .assistant, text: text)
             },
             onError: { error in
                 isSending = false
-                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                if let incident = AIEngineIncident.from(error: error) {
                     // The question stays in the thread (and nothing is lost if the
                     // alert is cancelled); a retry takes the unanswered turn out
                     // first so the question is asked once.
@@ -440,7 +438,6 @@ struct PatientChatView: View {
                 persist(threadID: threadID)
             },
             onFinish: { finalText in
-                showCoverage()
                 // Builds without the SourceCitationsFeatureModule show the raw
                 // answer, without the sources footer.
                 let decorated = Citations.display(
@@ -469,7 +466,7 @@ struct PatientChatView: View {
         guard let threadID = selectedThreadID, !messages.isEmpty else { return }
         isSending = true
         let summaryID = UUID()
-        let service = integrations.makeAssistantService(report: chatRunner.reporter)
+        let service = integrations.makeAssistantService(report: chatRunner.reporter, clientName: patient.name)
         let history = messages
         chatRunner.start(
             queue: integrations.inferenceQueue,

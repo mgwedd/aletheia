@@ -136,6 +136,9 @@ private struct SettingsSidebarRow: View {
                 .contentShape(shape)
         }
         .buttonStyle(.plain)
+        // The selected fill marks the row; a focus ring would sit on the first
+        // row the sheet focused, not the selected one.
+        .focusEffectDisabled()
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovered)
         .accessibilityAddTraits(isSelected ? .isSelected : [])

@@ -73,7 +73,7 @@ private struct NoteProgressRow: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             VStack(alignment: .leading, spacing: 6) {
-                AIStatusLineView(text: NoteProgress.statusLine(title: title, progress, now: context.date, speed: speed))
+                AIStatusLineView(text: NoteProgress.statusLine(title: title, progress, now: context.date))
                 ThemeProgressBar(value: highWater.clamp(NoteProgress.fraction(progress, now: context.date, speed: speed)))
                     .frame(maxWidth: 240)
             }
@@ -252,6 +252,8 @@ struct SessionDetailView: View {
     @StateObject private var chatRunner = ChatStreamRunner()
     @StateObject private var noteRunner = ChatStreamRunner()
     @State private var errorMessage: String?
+    /// How the last export ended, shown until dismissed.
+    @State private var exportResult: SaveOutcome?
     /// Set when note generation or a chat answer failed because the local AI
     /// engine is down; `engineRetries` re-runs whatever failed after the fix.
     @State private var engineIncident: AIEngineIncident?
@@ -395,6 +397,7 @@ struct SessionDetailView: View {
             Text(confirmationMessage ?? "")
         }
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
+        .exportResultAlert($exportResult)
     }
 
     private var header: some View {
@@ -688,9 +691,11 @@ struct SessionDetailView: View {
         guard let store = appModel.store else { return }
         let document = ExportDocument(markdown: store.exportSessionMarkdown(patient: patient, session: session))
         let base = FileSaver.fileName(patient.name, String(session.folderName.prefix(10)))
-        if ExportRenderer.save(document, as: format, baseName: base, onFailure: { appModel.errorMessage = $0 }) {
+        let outcome = ExportRenderer.save(document, as: format, baseName: base)
+        if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
         }
+        exportResult = outcome.shown
     }
 
     /// Saves the note on screen in `format`, after the usual save panel.
@@ -703,9 +708,11 @@ struct SessionDetailView: View {
             markdown: summaryText
         )
         let base = FileSaver.fileName(patient.name, dateStr, noteFormat)
-        if ExportRenderer.save(document, as: format, baseName: base, onFailure: { appModel.errorMessage = $0 }) {
+        let outcome = ExportRenderer.save(document, as: format, baseName: base)
+        if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
         }
+        exportResult = outcome.shown
     }
 
     private var hasAnyRecording: Bool {
@@ -795,7 +802,8 @@ struct SessionDetailView: View {
                         focusToken: focusToken,
                         composingRange: composingRange,
                         onComposingRectChange: { composerAnchor = $0 },
-                        onSelectionRectChange: { transcriptSelectionRect = $0 }
+                        onSelectionRectChange: { transcriptSelectionRect = $0 },
+                        callAudioName: Prompts.clientFirstName(patient.name)
                     )
                     // The comment composer sits on the transcript, just under the
                     // passage being commented on; the comment button floats at
@@ -1120,7 +1128,7 @@ struct SessionDetailView: View {
             .disabled(locked)
             .opacity(locked ? 0.55 : 1)
             .accessibilityLabel("Note")
-            .hoverTip(showingMyNotes ? HelpTips.myNotes : HelpTips.noteFormat(settings.progressNoteFormat))
+            .hoverTip(showingMyNotes ? HelpTips.myNotes : nil)
             .padding([.horizontal, .top], 20)
 
             if showingMyNotes {
@@ -1601,8 +1609,8 @@ struct SessionDetailView: View {
             notices: sessionChatNotices,
             onCompact: { compactChat($0) },
             progress: chatRunner.progress,
-            speed: integrations.modelSpeed,
-            effort: $settings.sessionChatEffort
+            effort: $settings.sessionChatEffort,
+            isSessionRecording: recorder.isRecording
         )
     }
 
@@ -1828,7 +1836,7 @@ struct SessionDetailView: View {
         let instructions = settings.noteInstructions[format.rawValue]
         // Snapshot the inputs now; the request itself is only made when the
         // queue starts this job (it may be waiting behind a chat answer).
-        let service = integrations.makeAssistantService(report: noteRunner.reporter)
+        let service = integrations.makeAssistantService(report: noteRunner.reporter, clientName: patient.name)
         let transcript = transcriptText
         let notes = sessionNote
         // The transcript's comments, and those on this format's note: a comment
@@ -1880,7 +1888,7 @@ struct SessionDetailView: View {
                 if settings.progressNoteFormat == format { summaryText = text }
             },
             onError: { error in
-                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                if let incident = AIEngineIncident.from(error: error) {
                     engineRetries.set({ generateNote() }, for: .note)
                     engineIncident = incident
                 } else {
@@ -1895,7 +1903,7 @@ struct SessionDetailView: View {
             onFinish: { raw in
                 // Save the tidied text, so copy, export and edit see the same
                 // paragraphs and labels the pane shows.
-                let final = NoteMarkdown.tidy(raw)
+                let final = SpeakerCodes.scrub(NoteMarkdown.tidy(raw), clientName: patient.name)
                 // Stopped part-way: say the saved note is only what was written so far.
                 if noteStopping, !final.isEmpty, !(produced.text ?? "").contains(LongSessionNote.CheckOutcome.stopped.text) {
                     produced.text = [produced.text, LongSessionNote.stoppedEarlyText].compactMap { $0 }.joined(separator: " ")
@@ -1956,7 +1964,7 @@ struct SessionDetailView: View {
         let assistantID = UUID()
         // Snapshot the inputs now; the request itself is only made when the
         // queue starts this job (it may be waiting behind the note).
-        let service = integrations.makeAssistantService(report: chatRunner.reporter)
+        let service = integrations.makeAssistantService(report: chatRunner.reporter, clientName: patient.name)
         let transcript = transcriptText
         let notes = sessionNote
         let sessionComments = comments
@@ -1999,7 +2007,7 @@ struct SessionDetailView: View {
             onReveal: { text in chatMessages.upsert(id: assistantID, role: .assistant, text: text) },
             onError: { error in
                 isChatSending = false
-                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                if let incident = AIEngineIncident.from(error: error) {
                     // The question stays in the conversation (nothing is lost if the
                     // alert is cancelled); a retry takes the unanswered turn out
                     // first so the question is asked once.
@@ -2035,7 +2043,7 @@ extension SessionDetailView {
         guard let store = appModel.store, !chatMessages.isEmpty else { return }
         isChatSending = true
         let summaryID = UUID()
-        let service = integrations.makeAssistantService(report: chatRunner.reporter)
+        let service = integrations.makeAssistantService(report: chatRunner.reporter, clientName: patient.name)
         let history = chatMessages
         chatRunner.start(
             queue: integrations.inferenceQueue,
@@ -2080,7 +2088,7 @@ private struct InlineCommentComposerCard: View {
     var onCancel: () -> Void
     var onSave: () -> Void
 
-    @FocusState private var focused: Bool
+    @State private var focused = false
 
     private var canSave: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -2130,29 +2138,14 @@ private struct InlineCommentComposerCard: View {
     }
 
     private var editor: some View {
-        TextEditor(text: $text)
-            .font(Theme.Typography.body)
-            .lineSpacing(4)
-            .foregroundStyle(Theme.text.color)
-            .scrollContentBackground(.hidden)
-            .focused($focused)
-            // TextEditor insets its text by 5pt; this brings it to the design's
-            // 12 x 10 padding.
-            .padding(.horizontal, 7)
-            .padding(.vertical, 10)
-            .frame(height: 84)
-            .overlay(alignment: .topLeading) {
-                if text.isEmpty {
-                    Text("Add a comment…")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.muted.color)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .allowsHitTesting(false)
-                }
-            }
-            .themeField(isFocused: focused)
-            .accessibilityLabel("Comment")
+        ThemeTextArea(
+            text: $text,
+            placeholder: "Add a comment…",
+            height: .flexible(min: 84),
+            accessibilityLabel: "Comment",
+            isFocused: $focused
+        )
+        .frame(height: 84)
     }
 }
 

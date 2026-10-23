@@ -54,7 +54,7 @@ After the downloads, Aletheia works offline. If a row will not turn green, see t
 4. Click **Stop** when finished. Transcription starts by itself if **Settings → General → Transcribe automatically when a recording ends** is on; otherwise click **Transcribe**.
 5. Open the **Notes** tab to jot your own notes and generate the progress note. Choose the format (narrative, SOAP, DAP, BIRP or GIRP) under **Settings → Note format**. Use the **Length** menu to make it shorter or longer, then **Regenerate** to apply. **Edit** it, then **Copy** to paste into your record (formatting is kept), or **Export** it as a PDF, Word or Markdown file. **Export** on the session saves the note and transcript together. On the patient page, **Export all records** builds a zip of the whole history in the background. ⌘S saves your edits and ⌘G generates or regenerates the note.
 6. Use the **Ask** tab to question this session, or **Ask about this patient** on the patient page. Answers say what was read.
-7. The **Search** field at the top right (⌘F) searches patients, sessions, your notes, progress notes, comments and transcripts. Results appear in one grouped list; use the arrow keys to move and Return to open. **Help → Keyboard Shortcuts** (⌘/) lists every shortcut.
+7. The **Search all patients** field at the foot of the sidebar (⌘F, wherever the cursor is; ⌥⌘F finds within the open transcript or note) searches patients, sessions, your notes, progress notes, comments and transcripts. Results appear in one grouped list; use the arrow keys to move and Return to open. **Help → Keyboard Shortcuts** (⌘/) lists every shortcut.
 
 Always read the transcript and note before relying on them. Names and clinical terms are often misheard, and AI drafts can be wrong.
 
@@ -86,9 +86,9 @@ flowchart LR
 
 ### What a note or answer reads
 
-- **Context window.** Ollama is sent a fixed context window (`num_ctx`) equal to this Mac's context budget, so it never truncates silently. Each Mac has a prompt budget: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB or more (one tier lower on Intel). A prompt over budget fails with a clear message and nothing is sent.
+- **Context window.** The prompt is never truncated silently. Each Mac has a prompt budget: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB or more (one tier lower on Intel). A prompt over budget fails with a clear message and nothing is sent.
 - **Token estimate.** The budget check counts by script: about 3 Latin characters a token, but about a token per character for Japanese, Chinese, Korean and similar scripts.
-- **Tripwire.** If Ollama reports reading well under what was sent, or reading right up to its window's limit, the answer shows a notice that the model may not have read everything.
+- **Tripwire.** If the engine reports reading well under what was sent, or reading right up to its window's limit, the answer shows a notice that the model may not have read everything.
 - **Progress.** A note shows one line and a progress bar while it is generated; chat shows the stage, elapsed time and token counts.
 - **Chat memory.** Past about 12,000 characters, older messages are replaced by a summary (also `/compact [focus]`). Source material is always sent fresh.
 - **One session** chat sends the session's transcript.
@@ -144,7 +144,6 @@ The only third-party dependencies are the official whisper.cpp and llama.cpp XCF
 ### AI backends and recommended models
 
 - **Built-in llama.cpp** is the default runtime, in-process. See [Embedded llama.cpp](#embedded-llamacpp).
-- **Ollama** is an optional engine chosen in Settings. The app talks to it on `127.0.0.1` only.
 - **Apple Intelligence** is disabled via `Integrations.appleIntelligenceBlocked = true`.
 
 `ModelAdvisor` picks defaults from your hardware:
@@ -237,7 +236,7 @@ CI runs on macOS runners (the only place the Swift code compiles). To save macOS
 
 - **Conventional Commits** drive releases: `feat` → minor; `fix`, `perf`, `revert` → patch; `!` or `BREAKING CHANGE` → major; everything else → no release. Squash-merge with the PR title as the subject.
 - **`CHANGELOG.md` is generated.** Do not edit it by hand.
-- **Privacy invariants:** PHI never leaves the Mac; no analytics; the only outbound calls are the update check, opt-in model downloads, and loopback Ollama. Apple Intelligence stays disabled.
+- **Privacy invariants:** PHI never leaves the Mac; no analytics; the only outbound calls are the update check and opt-in model downloads. Apple Intelligence stays disabled.
 - **Dependencies:** first-party and pinned. GitHub Actions are first-party only.
 - **Settings** follow the `AppSettings` pattern: UserDefaults-backed, `private enum Keys`, values loaded in `init`.
 - **Colors** come from `Theme` (`Sources/App/Views/Theme`); no color literals in screens.
@@ -245,7 +244,7 @@ CI runs on macOS runners (the only place the Swift code compiles). To save macOS
 
 ### Embedded llama.cpp
 
-The official llama.cpp XCFramework (`Packages/LlamaCpp`, pinned by URL and checksum) is linked into every build. The built-in model is the default AI engine in every build: setup downloads it inside Aletheia, with nothing else to install. Ollama remains an optional engine you can choose in Settings.
+The official llama.cpp XCFramework (`Packages/LlamaCpp`, pinned by URL and checksum) is linked into every build. The built-in model is the default AI engine in every build: setup downloads it inside Aletheia, with nothing else to install.
 
 Models come from ggml-org on Hugging Face, pinned to a revision and verified by SHA-256 before install:
 

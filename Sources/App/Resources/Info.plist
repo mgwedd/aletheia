@@ -17,9 +17,9 @@
 	<key>CFBundleName</key>
 	<string>Aletheia</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.60.0</string>
+	<string>2.62.1</string>
 	<key>CFBundleVersion</key>
-	<string>503</string>
+	<string>529</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSApplicationCategoryType</key>
@@ -27,7 +27,9 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Private use only. Not for distribution.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Aletheia needs microphone access to record your voice during a therapy session.</string>
+	<string>Aletheia needs microphone access to record your voice during a therapy session, and to type what you say into the Ask box. Audio stays on this Mac.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Aletheia turns your speech into text in the Ask box. Recognition happens on this Mac; nothing you say is sent anywhere.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Aletheia adds a follow-up reminder to your Reminders only when you ask it to, so a session doesn't slip through the cracks.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

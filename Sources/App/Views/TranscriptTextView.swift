@@ -1,6 +1,7 @@
 import SwiftUI
 #if canImport(AppKit)
 import AppKit
+import CoreText
 #endif
 
 /// The transcript text view: a plain-text `NSTextView` that is always editable
@@ -65,6 +66,10 @@ struct TranscriptTextView: NSViewRepresentable {
     /// selection changes and as the text scrolls or re-wraps; nil for a caret.
     /// It anchors the floating comment button.
     var onSelectionRectChange: (CGRect?) -> Void = { _ in }
+    /// Shown in place of the "Call audio" label: the patient's first name.
+    /// Display only; the stored transcript keeps "Call audio". Empty shows
+    /// the label as stored.
+    var callAudioName: String = ""
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -118,6 +123,7 @@ struct TranscriptTextView: NSViewRepresentable {
         }
 
         context.coordinator.textView = textView
+        textView.layoutManager?.delegate = context.coordinator
         // Tell the coordinator when the visible area moves or the text re-wraps,
         // so a composer anchored under a passage follows it.
         scroll.contentView.postsBoundsChangedNotifications = true
@@ -137,8 +143,11 @@ struct TranscriptTextView: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let textView = scroll.documentView as? NSTextView else { return }
+        let renamed = context.coordinator.parent.callAudioName != callAudioName
         context.coordinator.parent = self
         textView.isEditable = isEditable
+        (textView as? ClickReportingTextView)?.callAudioName = callAudioName
+        if renamed { context.coordinator.restyle(textView) }
         // Only touch the view when the text or the set of comment anchors
         // actually changed; rebuilding on every SwiftUI pass would clobber the
         // user's caret and selection.
@@ -153,6 +162,33 @@ struct TranscriptTextView: NSViewRepresentable {
     /// a simple click.
     final class ClickReportingTextView: NSTextView {
         var onPlainClick: ((Int) -> Void)?
+        /// See `TranscriptTextView.callAudioName`.
+        var callAudioName = ""
+
+        /// Copy and drag take the text as it is on screen: call audio named,
+        /// no hidden " (overlapping)" labels. The view is plain text, so there is no RTF.
+        override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
+            PHIPasteboard.writeSelection(to: pboard) { staging in
+                let ok = super.writeSelection(to: staging, types: types)
+                if ok, let text = staging.string(forType: .string) {
+                    staging.setString(TranscriptStyler.forReader(text, callAudioName: callAudioName), forType: .string)
+                }
+                return ok
+            }
+        }
+
+        // VoiceOver reads the transcript as it is on screen.
+        override func accessibilityValue() -> String? {
+            super.accessibilityValue().map { TranscriptStyler.forReader($0, callAudioName: callAudioName) }
+        }
+
+        override func accessibilityString(for range: NSRange) -> String? {
+            super.accessibilityString(for: range).map { TranscriptStyler.forReader($0, callAudioName: callAudioName) }
+        }
+
+        override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
+            super.accessibilityAttributedString(for: range).map { TranscriptStyler.forReader($0, callAudioName: callAudioName) }
+        }
 
         override func mouseDown(with event: NSEvent) {
             super.mouseDown(with: event) // runs the whole press-drag-release
@@ -161,7 +197,11 @@ struct TranscriptTextView: NSViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
+        /// Marks characters that stay in the stored text but are not drawn.
+        static let hiddenKey = NSAttributedString.Key("aletheia.hiddenOverlapLabel")
+        /// On a call-audio label: the name drawn in its place.
+        static let displayNameKey = NSAttributedString.Key("aletheia.callAudioDisplayName")
         static let font = NSFont.systemFont(ofSize: 15)
         static let timestampFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         /// Where the words start: time stamps sit in a column to the left, and a
@@ -204,10 +244,9 @@ struct TranscriptTextView: NSViewRepresentable {
                     .foregroundColor: color,
                 ]
             case .overlapTag:
-                return [
-                    .font: NSFont.systemFont(ofSize: 10),
-                    .foregroundColor: Theme.muted.nsColor,
-                ]
+                // Kept in the text (offsets and the model hint depend on it) but
+                // laid out as zero-width null glyphs; see `layoutManager(_:shouldGenerateGlyphs:...)`.
+                return [Coordinator.hiddenKey: true]
             }
         }
 
@@ -239,6 +278,62 @@ struct TranscriptTextView: NSViewRepresentable {
         private var isApplyingProgrammaticChange = false
 
         init(_ parent: TranscriptTextView) { self.parent = parent }
+
+        // MARK: Hidden characters
+
+        /// Replaces the glyphs of hidden characters with null glyphs: no width,
+        /// nothing drawn, but the characters (and so every offset) stay put. A
+        /// call-audio label is laid out as the name instead: the name's glyphs
+        /// all belong to the label's first character, and the label's own
+        /// characters become null glyphs.
+        func layoutManager(
+            _ layoutManager: NSLayoutManager,
+            shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+            properties props: UnsafePointer<NSLayoutManager.GlyphProperty>,
+            characterIndexes charIndexes: UnsafePointer<Int>,
+            font: NSFont,
+            forGlyphRange glyphRange: NSRange
+        ) -> Int {
+            guard let storage = layoutManager.textStorage else { return 0 }
+            var outGlyphs: [CGGlyph] = []
+            var outProps: [NSLayoutManager.GlyphProperty] = []
+            var outIndexes: [Int] = []
+            var changed = false
+            var lastNamed = -1
+            for i in 0..<glyphRange.length {
+                let index = charIndexes[i]
+                guard index < storage.length else {
+                    outGlyphs.append(glyphs[i]); outProps.append(props[i]); outIndexes.append(index)
+                    continue
+                }
+                var label = NSRange()
+                if let name = storage.attribute(Self.displayNameKey, at: index, effectiveRange: &label) as? String {
+                    changed = true
+                    if index == label.location, lastNamed != index {
+                        lastNamed = index
+                        let units = Array(name.utf16)
+                        var named = [CGGlyph](repeating: 0, count: units.count)
+                        CTFontGetGlyphsForCharacters(font as CTFont, units, &named, units.count)
+                        for glyph in named where glyph != 0 {
+                            outGlyphs.append(glyph); outProps.append([]); outIndexes.append(index)
+                        }
+                    } else {
+                        outGlyphs.append(glyphs[i]); outProps.append(.null); outIndexes.append(index)
+                    }
+                } else if storage.attribute(Self.hiddenKey, at: index, effectiveRange: nil) != nil {
+                    changed = true
+                    outGlyphs.append(glyphs[i]); outProps.append(.null); outIndexes.append(index)
+                } else {
+                    outGlyphs.append(glyphs[i]); outProps.append(props[i]); outIndexes.append(index)
+                }
+            }
+            guard changed else { return 0 }
+            layoutManager.setGlyphs(
+                outGlyphs, properties: outProps, characterIndexes: outIndexes, font: font,
+                forGlyphRange: NSRange(location: glyphRange.location, length: outGlyphs.count)
+            )
+            return outGlyphs.count
+        }
 
         // MARK: Syncing with SwiftUI
 
@@ -275,6 +370,9 @@ struct TranscriptTextView: NSViewRepresentable {
         /// styling and highlight attributes in place. Only attributes change —
         /// never the characters — so the caret, selection and undo history are
         /// untouched.
+        /// Repaints the styling after the call-audio name changed.
+        func restyle(_ textView: NSTextView) { applyHighlights(to: textView) }
+
         private func applyHighlights(to textView: NSTextView) {
             guard let storage = textView.textStorage else { return }
             let anchors = parent.comments
@@ -301,6 +399,10 @@ struct TranscriptTextView: NSViewRepresentable {
             let string = storage.string as NSString
             for styled in TranscriptStyler.spans(in: storage.string) where NSMaxRange(styled.range) <= storage.length {
                 storage.addAttributes(Self.attributes(for: styled.role), range: styled.range)
+                if case let .speaker(label) = styled.role, !parent.callAudioName.isEmpty,
+                   TranscriptStyler.tone(for: label) == .callAudio {
+                    storage.addAttribute(Self.displayNameKey, value: parent.callAudioName, range: styled.range)
+                }
                 if styled.role == .timestamp, styled.range.length > 0 {
                     let spaces = Self.whitespace(after: styled.range, in: string)
                     let kern = Self.columnKern(forTimestamp: string.substring(with: styled.range), trailingSpaces: spaces)

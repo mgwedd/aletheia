@@ -62,7 +62,7 @@ enum SessionSearch {
         let score: Double
         /// The session the passage belongs to, when the document named one.
         var sessionID: UUID? = nil
-        /// Positions (in indexed words, stopwords included) of the matches within the passage at `lineIndex`.
+        /// Positions (in indexed words) of the matches within the passage at `lineIndex`.
         var tokenOffsets: [Int] = []
     }
 
@@ -139,9 +139,10 @@ enum SessionSearch {
         return result
     }
 
-    /// Words never counted or searched: function words, question words (also
-    /// typed without the apostrophe, "whats"), and words about the sessions
-    /// themselves. A count for one of them only gets read back to the reader.
+    /// Words Ask never counts or searches for: function words, question words
+    /// (also typed without the apostrophe, "whats"), and words about the
+    /// sessions themselves. Global search looks up every word; the index keeps
+    /// these whole (`SearchIndex.stored`). A count for one of them only gets read back to the reader.
     static let stopwords: Set<String> = Set("""
         a about above after again all also am an and any are as at be because been before being between both but by \
         can could did do does doing done down during each few for from further get got had has have having he her here \
@@ -157,6 +158,10 @@ enum SessionSearch {
         month months year years day days ever always never again yes yeah okay ok please \
         whats whos hows wheres whens whys thats theres heres dont doesnt didnt isnt wasnt cant
         """.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init))
+
+    /// Stopwords as the index stores them. One is never taken for a typo or a
+    /// sound-alike of another word ("dont" is not "dent"); typed, it still matches itself.
+    private static let storedStopwords = Set(stopwords.map { SearchIndex.stored($0) })
 
     /// Words that ask about the history as a whole rather than one thing in it.
     private static let acrossSessionWords: Set<String> = [
@@ -372,7 +377,7 @@ enum SessionSearch {
     private enum Matcher {
         /// Stored words by byte length (weight 1 exact, below 1 a typo or sound-alike).
         case words([[Key]])
-        /// Stored words, `SearchIndex.stopToken` standing for a stopword.
+        /// A phrase's stored words, in order.
         case phrase([[UInt8]])
         case prefix([UInt8])
     }
@@ -652,9 +657,7 @@ enum SessionSearch {
                 continue
             }
             if term.words.count > 1 {
-                var pattern = term.words.map { stopwords.contains($0) ? SearchIndex.stopToken : SearchIndex.ftsToken(stem($0)) }
-                while pattern.first == SearchIndex.stopToken { pattern.removeFirst() }
-                while pattern.last == SearchIndex.stopToken { pattern.removeLast() }
+                let pattern = term.words.map { SearchIndex.stored($0) }.filter { !$0.isEmpty }
                 if !pattern.isEmpty {
                     matchers.append(.phrase(pattern.map { Array($0.utf8) }))
                     clauses.append("\"\(pattern.joined(separator: " "))\"")
@@ -662,13 +665,13 @@ enum SessionSearch {
                 }
             }
             let word = SearchIndex.ftsToken(term.words[0])
-            let stemmed = SearchIndex.ftsToken(stem(term.words[0]))
+            let stemmed = SearchIndex.stored(term.words[0])
             let target = term.isName ? word : stemmed
             var weights: [String: Double] = [stemmed: 1]
             if term.isName { weights[word] = 1 }
             if !term.quoted {
                 if words == nil { words = vocabulary() }
-                for key in words ?? [] where weights[key] == nil && abs(key.count - target.count) <= 2 {
+                for key in words ?? [] where weights[key] == nil && abs(key.count - target.count) <= 2 && !storedStopwords.contains(key) {
                     if let weight = matchWeight(token: key, term: target, isName: term.isName) { weights[key] = weight }
                 }
             }

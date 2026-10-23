@@ -115,7 +115,10 @@ plaintext and sealed files alike, so a half-converted folder still works.
 **Remember on this Mac (optional).** From the unlock gate or Settings the user
 can store the DEK in the login keychain (`DeviceKeyStore`,
 `WhenUnlockedThisDeviceOnly`, never synced), so the folder auto-unlocks on
-launch instead of asking for the passphrase. It's a convenience/security
+launch instead of asking for the passphrase. Locking the encrypted folder drops
+the in-memory key and revokes store and worker copies; refreshing the folder
+does not reload it. A successful app unlock can explicitly load the remembered
+key again. It's a convenience/security
 trade-off — anything running as the logged-in user can then reach the key, the
 same "malware while unlocked" surface already excluded above — so it's **off by
 default** and the passphrase is always the fallback. Turning encryption off, or

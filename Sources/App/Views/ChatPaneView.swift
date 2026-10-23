@@ -7,34 +7,32 @@ enum ChatComposerLayout {
     /// The field grows with its text between these heights, then scrolls.
     static let minFieldHeight: CGFloat = 40
     static let maxFieldHeight: CGFloat = 120
+    /// Width kept clear inside the box, at its trailing edge, for the Stop or
+    /// mic icon (a 28pt button, 6pt in from the edge, and a little air).
+    static let accessoryWidth: CGFloat = 40
 
-    enum ReturnKeyAction: Equatable {
+    /// What sits at the trailing edge of the composer.
+    enum TrailingControl: Equatable {
+        /// The Send button beside the box.
         case send
-        case newline
+        /// The round Stop button inside the box, while an answer is being made.
+        case stop
     }
 
-    /// Return sends; Shift or Option with Return adds a line.
-    static func returnKeyAction(shift: Bool, option: Bool) -> ReturnKeyAction {
-        shift || option ? .newline : .send
+    static func trailingControl(isSending: Bool, canStop: Bool) -> TrailingControl {
+        isSending && canStop ? .stop : .send
     }
 
-    enum TabKeyAction: Equatable {
-        case nextControl
-        case previousControl
+    /// Esc stops a running answer; idle, it is left for whatever else wants it
+    /// (closing a sheet, clearing search).
+    static func escapeStops(isSending: Bool, canStop: Bool) -> Bool {
+        isSending && canStop
     }
 
-    /// A multi-line editor inserts a tab character for Tab; here it moves focus
-    /// on, as the single-line field it replaced did.
-    static func tabKeyAction(shift: Bool) -> TabKeyAction {
-        shift ? .previousControl : .nextControl
-    }
-
-    /// The text the invisible sizing copy of the field measures: never empty
-    /// (the empty field is still one line tall), and a trailing newline counts
-    /// as the line it starts.
-    static func sizingText(for draft: String) -> String {
-        if draft.isEmpty || draft.hasSuffix("\n") { return draft + " " }
-        return draft
+    /// A question is one paragraph: any run of line breaks (a pasted
+    /// paragraph, say) becomes a single space when it is sent.
+    static func collapsingLineBreaks(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\s*[\\r\\n]+\\s*", with: " ", options: .regularExpression)
     }
 }
 
@@ -59,9 +57,6 @@ struct ChatPaneView: View {
     /// `InferenceQueue`). Replaces the "Thinking…" spinner with this calm
     /// status and a Cancel button (which calls `onStop`).
     var queuedStatus: String? = nil
-    /// What the answers are drawn from, as a tip on the question field. The
-    /// default describes the per-session chat.
-    var scopeTip: HelpTip = HelpTips.sessionChatScope
     /// Caveats about the last answer, shown above the composer in muted type.
     var notices: [String] = []
     /// What is under way before the model starts (e.g. searching), shown as
@@ -74,18 +69,24 @@ struct ChatPaneView: View {
     /// Compacts the conversation, with an optional focus: the Compact button
     /// and the `/compact [focus]` command. Nil hides both.
     var onCompact: ((String) -> Void)? = nil
-    /// Live state of the running answer, and the model's measured read speed
-    /// (for the time estimate); drives the progress line under the conversation.
+    /// Live state of the running answer; drives the progress line under the conversation.
     var progress = AIRunProgress()
-    var speed: ModelSpeed? = nil
     /// Optional Fast / Normal / Focus selector shown above the field (#286 Step 5b).
     var effort: Binding<AnswerEffort>? = nil
     /// Which chat the selector applies to, for its description.
     var effortFeature: EffortFeature = .sessionChat
+    /// True while a session is being recorded: the recorder owns the
+    /// microphone, so the dictation mic is hidden.
+    var isSessionRecording = false
+    /// The dictation engine; nil uses on-device Apple Speech. Tests pass a fake.
+    var voiceInput: VoiceInput? = nil
 
     @State private var draft: String = ""
-    @FocusState private var inputFocused: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var inputFocused = false
+    /// Bumped on send so dictation stops writing into the cleared draft.
+    @State private var voiceResetToken = 0
+    /// Whether the mic is drawn, reported by the mic itself.
+    @State private var micShown = false
 
     private var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
@@ -101,7 +102,7 @@ struct ChatPaneView: View {
                         .buttonStyle(.themed)
                         .controlSize(.small)
                         .disabled(isSending)
-                        .help("Summarize the conversation so far to make room for more. Type /compact followed by a topic to keep that topic in detail.")
+                        .hoverTip(HelpTips.compact, arrowEdge: .top)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
@@ -123,6 +124,8 @@ struct ChatPaneView: View {
         }
         .background(Theme.panel.color)
         .textSelection(.enabled)
+        // Esc from anywhere else in the pane; idle, it is left alone.
+        .onExitCommand(perform: ChatComposerLayout.escapeStops(isSending: isSending, canStop: onStop != nil) ? { _ = escapeStops() } : nil)
     }
 
     // MARK: Conversation
@@ -141,17 +144,20 @@ struct ChatPaneView: View {
                         progressIndicator
                             .id("sending-indicator")
                     }
+                    // Zero-height end marker: scrolling to it lands on the true
+                    // bottom, under the stack's spacing, not 20pt short of it.
+                    Color.clear.frame(height: 0).id(Self.bottomID)
                 }
-                .padding(20)
+                .padding(EdgeInsets(top: 20, leading: 20, bottom: 0, trailing: 20))
+                .background(ChatBottomFollower(followToken: messages.count))
             }
-            .onChange(of: messages.count) { _, _ in
-                scrollToBottom(proxy)
-            }
-            .onChange(of: messages.last?.text) { _, _ in
-                scrollToBottom(proxy)
-            }
-            .onChange(of: isSending) { _, _ in
-                scrollToBottom(proxy)
+            // A thread opens at its latest message, not its first. The anchor
+            // covers the first layout and later growth; the explicit jumps
+            // below cover a different thread arriving in this same view.
+            .defaultScrollAnchor(.bottom)
+            .onAppear { jumpToLatest(proxy) }
+            .onChange(of: messages.first?.id) { _, _ in
+                jumpToLatest(proxy)
             }
         }
     }
@@ -212,7 +218,7 @@ struct ChatPaneView: View {
                     ThemeProgressBar(value: steps.fraction)
                         .frame(maxWidth: 240)
                 }
-                AIProgressView(progress: progress, speed: speed)
+                AIProgressView(progress: progress)
             }
         }
     }
@@ -235,14 +241,7 @@ struct ChatPaneView: View {
             }
             HStack(alignment: .bottom, spacing: 10) {
                 inputField
-                if isSending, let onStop {
-                    Button(role: .destructive, action: onStop) {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(.themed)
-                    .controlSize(.large)
-                    .help("Stop generating")
-                } else {
+                if ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .send {
                     Button("Send", action: send)
                         .buttonStyle(.themePrimary)
                         .controlSize(.large)
@@ -256,60 +255,51 @@ struct ChatPaneView: View {
         .themeDivider(.top)
     }
 
-    /// The field is a `TextEditor` so it scrolls (a vertical `TextField` clips
-    /// past its line limit). An invisible copy of the text sizes it: it grows
-    /// with the text up to `maxFieldHeight`, then the editor scrolls.
+    /// The shared themed text area: it grows with the text up to
+    /// `maxFieldHeight`, then scrolls. Return, Enter, Shift-Return and
+    /// Option-Return all send (never a line break); Tab moves on to the next control.
     private var inputField: some View {
-        Text(ChatComposerLayout.sizingText(for: draft))
-            .font(Theme.Typography.body)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .hidden()
-            .frame(minHeight: ChatComposerLayout.minFieldHeight, maxHeight: ChatComposerLayout.maxFieldHeight)
-            .overlay {
-                TextEditor(text: $draft)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.text.color)
-                    .scrollContentBackground(.hidden)
-                    .focused($inputFocused)
-                    .disabled(isSending)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .onKeyPress(.tab, phases: .down) { press in
-                        switch ChatComposerLayout.tabKeyAction(shift: press.modifiers.contains(.shift)) {
-                        case .nextControl: NSApp.keyWindow?.selectNextKeyView(nil)
-                        case .previousControl: NSApp.keyWindow?.selectPreviousKeyView(nil)
-                        }
-                        return .handled
-                    }
-                    .onKeyPress(.return, phases: .down) { press in
-                        switch ChatComposerLayout.returnKeyAction(
-                            shift: press.modifiers.contains(.shift),
-                            option: press.modifiers.contains(.option)
-                        ) {
-                        case .send:
-                            send()
-                            return .handled
-                        case .newline:
-                            return .ignored
-                        }
-                    }
-            }
-            .overlay(alignment: .topLeading) {
-                if draft.isEmpty {
-                    Text("Ask about \(title)…")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.muted.color)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
+        ThemeTextArea(
+            text: $draft,
+            placeholder: "Ask about \(title)…",
+            height: .grows(min: ChatComposerLayout.minFieldHeight, max: ChatComposerLayout.maxFieldHeight),
+            accessibilityLabel: "Ask about \(title)",
+            onSubmit: send,
+            onEscape: escapeStops,
+            modifiedReturnSubmits: true,
+            tabMovesFocus: true,
+            trailingInset: trailingAccessoryShown ? ChatComposerLayout.accessoryWidth : 0,
+            isFocused: $inputFocused
+        )
+        .disabled(isSending)
+        .overlay(alignment: .trailing) {
+            HStack(spacing: 2) {
+                if ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .stop, let onStop {
+                    StopButton(action: onStop)
                 }
+                VoiceMicControl(
+                    draft: $draft,
+                    isSending: isSending,
+                    isSessionRecording: isSessionRecording,
+                    resetToken: voiceResetToken,
+                    input: voiceInput,
+                    onShownChange: { micShown = $0 }
+                )
             }
-            .themeField(isFocused: inputFocused)
-            .hoverTip(scopeTip, arrowEdge: .top)
+            .padding(.trailing, 6)
+        }
+    }
+
+    /// Stop or the mic is drawn over the box's trailing edge.
+    private var trailingAccessoryShown: Bool {
+        micShown || ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .stop
+    }
+
+    /// Esc while an answer is being made stops it; true when it did.
+    private func escapeStops() -> Bool {
+        guard ChatComposerLayout.escapeStops(isSending: isSending, canStop: onStop != nil), let onStop else { return false }
+        onStop()
+        return true
     }
 
     private func effortRow(_ effort: Binding<AnswerEffort>) -> some View {
@@ -329,25 +319,52 @@ struct ChatPaneView: View {
         }
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        withAnimation(reduceMotion ? nil : Animation.easeOut(duration: 0.15)) {
-            if isSending {
-                proxy.scrollTo("sending-indicator", anchor: .bottom)
-            } else if let last = messages.last {
-                proxy.scrollTo(last.id, anchor: .bottom)
-            }
-        }
+    /// Unanimated jump to the latest message, repeated once the lazy stack has
+    /// measured what it just loaded (the first attempt can land short).
+    private static let bottomID = "chat-bottom"
+
+    private func jumpToLatest(_ proxy: ScrollViewProxy) {
+        guard !messages.isEmpty else { return }
+        proxy.scrollTo(Self.bottomID, anchor: .bottom)
+        DispatchQueue.main.async { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
     }
 
     private func send() {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = ChatComposerLayout.collapsingLineBreaks(draft.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty else { return }
+        voiceResetToken += 1
         draft = ""
         if let onCompact, let focus = ChatMemory.compactCommand(text) {
             onCompact(focus)
         } else {
             onSend(text)
         }
+    }
+}
+
+/// The in-box Stop control: a stop square in a circle, no fill or border.
+struct StopButton: View {
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .strokeBorder(hovering ? Theme.text.color : Theme.muted.color, lineWidth: 1.5)
+                    .frame(width: 20, height: 20)
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(hovering ? Theme.text.color : Theme.muted.color)
+            }
+            .frame(width: 28, height: 28)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Stop (Esc)")
+        .accessibilityLabel("Stop")
+        .accessibilityHint("Stops generating the answer. Escape does the same.")
     }
 }
 
@@ -491,5 +508,107 @@ private struct SuggestionPill: View {
             .contentShape(Capsule())
             .onHover { isHovered = $0 }
             .animation(.easeOut(duration: 0.12), value: highlighted)
+    }
+}
+
+/// Keeps the conversation on its latest line while an answer streams in, the
+/// way chat apps do: while the reader is at the bottom, every growth of the
+/// content (a new chunk, a re-measured row, the progress line going away)
+/// keeps them there. Any scroll up by the reader stops it at once, and nothing
+/// moves while they are mid-gesture: the reader wins. Scrolling back to the
+/// bottom, or sending a message (`followToken` changes), resumes it. Done on the
+/// AppKit scroll view directly, unanimated, so no SwiftUI scroll fights it.
+private struct ChatBottomFollower: NSViewRepresentable {
+    let followToken: Int
+
+    func makeNSView(context: Context) -> ChatBottomFollowerView { ChatBottomFollowerView() }
+
+    func updateNSView(_ view: ChatBottomFollowerView, context: Context) {
+        if view.followToken != followToken {
+            view.followToken = followToken
+            view.follow()
+        }
+    }
+}
+
+final class ChatBottomFollowerView: NSView {
+    var followToken = 0
+    /// Within this of the bottom counts as at the bottom.
+    static let slack: CGFloat = 40
+    private(set) var isFollowing = true
+    private weak var scrollView: NSScrollView?
+    private var observers: [NSObjectProtocol] = []
+    /// Set while this view moves the scroll itself, so it isn't read as the reader scrolling.
+    private var pinning = false
+    /// A trackpad or scroll-bar drag in progress.
+    private var liveScrolling = false
+    private var lastDistance: CGFloat = 0
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        guard window != nil, let scroll = enclosingScrollView, let document = scroll.documentView else { return }
+        scrollView = scroll
+        scroll.contentView.postsBoundsChangedNotifications = true
+        document.postsFrameChangedNotifications = true
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(
+            forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.readerScrolled() } })
+        observers.append(center.addObserver(
+            forName: NSView.frameDidChangeNotification, object: document, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.contentChanged() } })
+        observers.append(center.addObserver(
+            forName: NSScrollView.willStartLiveScrollNotification, object: scroll, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.liveScrolling = true } })
+        observers.append(center.addObserver(
+            forName: NSScrollView.didEndLiveScrollNotification, object: scroll, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.liveScrolling = false
+                self?.readerScrolled()
+            }
+        })
+        follow()
+    }
+
+    deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+
+    func follow() {
+        isFollowing = true
+        pin()
+    }
+
+    private var distanceFromBottom: CGFloat {
+        guard let scroll = scrollView, let document = scroll.documentView else { return 0 }
+        let visible = scroll.contentView.documentVisibleRect
+        return document.isFlipped ? document.frame.height - visible.maxY : visible.minY
+    }
+
+    private func readerScrolled() {
+        guard !pinning else { return }
+        let distance = distanceFromBottom
+        // Moving up at all means the reader wants the history; otherwise follow
+        // again once they are back at the bottom.
+        isFollowing = distance <= lastDistance + 0.5 && distance <= Self.slack
+        lastDistance = distance
+    }
+
+    private func contentChanged() {
+        if isFollowing && !liveScrolling { pin() } else { lastDistance = distanceFromBottom }
+    }
+
+    private func pin() {
+        guard let scroll = scrollView, let document = scroll.documentView else { return }
+        let clip = scroll.contentView
+        let maxY = max(0, document.frame.height - clip.bounds.height)
+        let y = document.isFlipped ? maxY : 0
+        guard abs(clip.bounds.origin.y - y) > 0.5 else { return }
+        pinning = true
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+        scroll.reflectScrolledClipView(clip)
+        pinning = false
+        lastDistance = distanceFromBottom
     }
 }

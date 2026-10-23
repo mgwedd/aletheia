@@ -128,6 +128,30 @@ private struct ThemeIconButton: View {
     }
 }
 
+/// The lock screen's large lock symbol: just the glyph, with a subtle hover
+/// fill and a slightly stronger ink on hover or press.
+struct ThemeLockSymbolButtonStyle: ButtonStyle {
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let active = isHovered || configuration.isPressed
+        configuration.label
+            .labelStyle(.iconOnly)
+            .font(.system(size: 44, weight: .regular))
+            .foregroundStyle(active ? Theme.text.color : Theme.muted.color)
+            .frame(width: 96, height: 96)
+            .background(active ? Theme.hover.color : .clear, in: Circle())
+            .contentShape(Circle())
+            .onHover { isHovered = $0 }
+            .animation(.easeOut(duration: 0.12), value: active)
+    }
+}
+
+extension ButtonStyle where Self == ThemeLockSymbolButtonStyle {
+    /// `.buttonStyle(.themeLockSymbol)`
+    static var themeLockSymbol: ThemeLockSymbolButtonStyle { ThemeLockSymbolButtonStyle() }
+}
+
 extension ButtonStyle where Self == ThemeButtonStyle {
     /// `.buttonStyle(.themed)`
     static var themed: ThemeButtonStyle { ThemeButtonStyle() }

@@ -126,16 +126,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT: ${{ steps.version.outputs.next }}
-          HAS_DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY != '' }}
         run: |
           set -euo pipefail
-          # A tag pushed with the deploy key starts release.yml by itself
-          # (on: push: tags). Dispatching too would build the release twice.
-          if [ "$HAS_DEPLOY_KEY" = "true" ]; then
-            echo "v${NEXT} was pushed with the deploy key; release.yml starts from the tag push."
-            exit 0
-          fi
-          # A tag pushed with GITHUB_TOKEN can't start workflows, so dispatch
-          # release.yml explicitly against the tag.
+          # Always dispatch. The tag points at the [skip ci] release commit,
+          # and GitHub skips push workflows for it, so the tag push never
+          # starts release.yml, even when it was pushed with the deploy key.
           gh workflow run release.yml --ref "v${NEXT}"
           echo "Dispatched release.yml for v${NEXT}."

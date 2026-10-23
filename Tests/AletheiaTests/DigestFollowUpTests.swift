@@ -65,7 +65,7 @@ final class DigestFollowUpTests: XCTestCase {
         let service = AssistantService(assistant: fake, model: "m")
         let builder = DigestBuilder(queue: InferenceQueue())
 
-        builder.ensureDigest(for: patient, session: session, transcript: first, store: store, service: service)
+        let firstBuild = builder.ensureDigest(for: patient, session: session, transcript: first, store: store, service: service)
         try await wait { fake.prompts.contains { $0.contains("STALL") } }
         // The new build reuses the sections the first one finished (only the merge
         // is left), so that call is slowed enough to still be running below.
@@ -73,8 +73,11 @@ final class DigestFollowUpTests: XCTestCase {
         try store.saveTranscript(second, for: patient, session: session)
         builder.ensureDigest(for: patient, session: session, transcript: second, store: store, service: service)
 
-        // The cancelled first build has unwound by now; the new one must still be tracked.
-        try await Task.sleep(nanoseconds: 80_000_000)
+        // Once the new build is tracked and the cancelled first one has unwound,
+        // the new one must still be tracked. (Waits on events, not a fixed time:
+        // the new build reads its cached sections first, which is slow on CI.)
+        try await wait { builder.progress[session.id] != nil }
+        await firstBuild?.value
         XCTAssertNotNil(builder.progress[session.id])
 
         try await wait { store.digest(for: patient, session: session, model: "m") != nil }

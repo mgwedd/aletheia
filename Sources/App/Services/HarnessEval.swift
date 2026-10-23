@@ -4,14 +4,13 @@ import Foundation
 /// Debug-only LLM evaluation (driven by scripts/eval-llm.sh):
 ///   --harness-eval <transcript.txt> [--question TEXT] [--model NAME] [--budget TOKENS] [--out <dir>]
 /// Runs the app's real paths on the transcript through `AssistantService` and
-/// the local Ollama client: a progress note, the session digest, and one
+/// the built-in model: a progress note, the session digest, and one
 /// session-chat question. Prints each output with its coverage, timings and the
-/// fixed seed/model/num_ctx; with --out, also writes `report.txt` and
-/// `report.json` there. Temperature 0 and a fixed seed, so reruns match.
+/// model and context size; with --out, also writes `report.txt` and
+/// `report.json` there.
 /// The transcript is PHI: the script never writes outside the terminal or an
 /// out-of-repo directory.
 struct HarnessEvalArgs: Equatable {
-    static let seed = 42
     static let defaultQuestion = "What were the main topics discussed, and were there any risk concerns?"
 
     var transcript: URL
@@ -38,7 +37,7 @@ struct HarnessEvalArgs: Equatable {
 
 /// One evaluated stage (note, digest, chat) and how to print it.
 struct EvalStage {
-    /// One model call: what we estimated sending and what Ollama reported.
+    /// One model call: what we estimated sending and what the engine reported.
     struct Call { var estimatedTokens: Int; var stats: AIRunStats? }
 
     var name: String
@@ -52,10 +51,10 @@ struct EvalStage {
     var promptTokens: Int { calls.compactMap(\.stats?.promptTokens).reduce(0, +) }
     var estimatedTokens: Int { calls.map(\.estimatedTokens).reduce(0, +) }
     var truncated: Bool { calls.contains { $0.stats?.possiblyTruncated == true } }
-    /// Requests always carry this Mac's budget as `num_ctx` (see `OllamaClient.generateBody`).
+    /// Requests always carry this Mac's budget as `num_ctx` (see `LlamaAssistant`).
     var numCtx: Int? { calls.isEmpty ? nil : ContextBudget.current.tokens }
-    /// Cold prefill speed: only calls with no shared prompt prefix. Ollama counts a cached
-    /// prefix in prompt_eval_count but barely spends time on it, which inflates the rate.
+    /// Cold prefill speed: only calls with no shared prompt prefix. A cached prefix is
+    /// counted in the prompt tokens but barely costs time, which inflates the rate.
     var prefillTPS: Double? { Self.prefill(calls.filter { $0.stats?.reusedPrefix == false }) }
     /// Calls that reused a cached prefix: not a measure of how fast this Mac reads.
     var warmPrefillTPS: Double? { Self.prefill(calls.filter { $0.stats?.reusedPrefix == true }) }
@@ -74,7 +73,7 @@ struct EvalStage {
         func tps(_ v: Double?) -> String { v.map { String(format: "%.1f tok/s", $0) } ?? "n/a" }
         let reported = calls.contains { $0.stats?.promptTokens != nil } ? String(promptTokens) : "n/a"
         var lines = ["== \(name) ==", error.map { "ERROR: \($0)" } ?? output, "", "coverage: \(coverage)"]
-        lines.append("prompt tokens: \(reported) (Ollama prompt_eval_count) vs \(estimatedTokens) estimated, "
+        lines.append("prompt tokens: \(reported) (engine-reported) vs \(estimatedTokens) estimated, "
             + "\(calls.count) call(s); " + (truncated ? "TRIPWIRE FIRED: possibly truncated" : "tripwire clear"))
         var timing = String(format: "timing: wall %.1fs, prefill %@ (cold)", wallSeconds, tps(prefillTPS))
         if let warm = warmPrefillTPS { timing += ", prefill " + tps(warm) + " (cache-warm, inflated by prefix cache)" }
@@ -107,7 +106,7 @@ enum EvalReport {
         transcriptTokens: Int? = nil
     ) -> String {
         let ctx = budget == numCtx ? "" : " (--budget override; requests send num_ctx \(numCtx))"
-        return "Aletheia LLM eval: model \(model), seed \(HarnessEvalArgs.seed), temperature 0, "
+        return "Aletheia LLM eval: model \(model), "
             + "context budget \(budget) tokens\(ctx), transcript \(transcriptChars) chars "
             + "(~\(transcriptTokens ?? ContextBudget.estimatedTokens(forCharacters: transcriptChars)) tokens estimated)"
     }
@@ -131,7 +130,7 @@ enum EvalReport {
 
     static func json(header: String, stages: [EvalStage]) -> Data? {
         try? JSONSerialization.data(
-            withJSONObject: ["header": header, "seed": HarnessEvalArgs.seed, "stages": stages.map(\.json)],
+            withJSONObject: ["header": header, "stages": stages.map(\.json)],
             options: [.prettyPrinted, .sortedKeys])
     }
 }
@@ -172,14 +171,12 @@ enum HarnessEval {
             return 1
         }
         let settings = AppSettings.shared
-        let model = args.model ?? settings.ollamaModelName
-        let client = OllamaClient(baseURL: settings.ollamaBaseURL)
+        let model = args.model ?? settings.llamaModel.shortName
+        let client = Integrations(settings: settings).makeAssistant()
         guard await client.hasModel(model) else {
-            print("error: \(OllamaError.modelNotFound(model).localizedDescription)")
+            print("error: the built-in model isn't downloaded. Download it in Settings first.")
             return 1
         }
-        // Reproducible: greedy decoding and a fixed seed for every call below.
-        OllamaClient.extraOptions = ["temperature": 0, "seed": HarnessEvalArgs.seed]
         let log = EvalRunLog()
         var service = AssistantService(assistant: client, model: model)
         if let t = args.budgetTokens { service.budget = ContextBudget(tokens: t) }

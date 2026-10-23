@@ -9,6 +9,45 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.62.1] - 2026-10-21
+
+### Fixed
+- open the AI instructions tip above the section, not over the editor (#409)
+
+## [2.62.0] - 2026-10-21
+
+### Added
+- find every word, however common or short (#407)
+
+### Fixed
+- drop the search home hint and the risk-phrase example (#408)
+
+## [2.61.1] - 2026-10-21
+
+### Fixed
+- roomier sidebar search, clearer search hints, and quieter Settings (#406)
+
+## [2.61.0] - 2026-10-21
+
+### Added
+- hold-to-talk voice input in the Ask box, recognized on this Mac (#404)
+- show one status line for every model run, and narrate Ask's search from its results (#393)
+- open transcript and note hits at the match and flash it (#387)
+- show Settings "how this works" asides as hover tips (#391)
+
+### Fixed
+- make global search obvious and Cmd-F reliable; keep the sidebar reachable (#403)
+- minimal lock screen that relies on the system sheet (#402)
+- Return and Enter press the keyboard-focused button (#399)
+- one themed multi-line text input with the placeholder on the caret (#397)
+- name speakers 'You' and the patient's first name, never Y or C (#396)
+- hide the "(overlapping)" label from the rendered transcript (#400)
+- open Ask threads at the latest message (#398)
+- gentler divider snap, animated collapse, draggable strip, clearer arrow (#395)
+- trim export header/disclaimer, format blurbs, chat scope tip, and export menu focus ring (#394)
+- send passages not whole transcripts, cap the context, and stop echoing search counts (#389)
+- wind work down on quit within a deadline and resume it at launch (#390)
+
 ## [2.60.0] - 2026-10-21
 
 ### Added

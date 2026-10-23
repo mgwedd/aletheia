@@ -1,42 +1,50 @@
 import AppKit
 import UniformTypeIdentifiers
 
+/// How a save through the panel ended: written to a file, cancelled, or failed.
+enum SaveOutcome: Equatable {
+    case saved(URL)
+    case cancelled
+    case failed(String)
+
+    /// What to show the therapist afterwards: nothing for a cancelled save.
+    var shown: SaveOutcome? { self == .cancelled ? nil : self }
+}
+
 /// Saves text to a user-chosen location via NSSavePanel. Under App Sandbox
 /// the user-selected-read-write entitlement covers writing to whatever file
 /// the panel returns, so no security-scoped bookmark is needed for a
 /// one-shot save.
 enum FileSaver {
-    @discardableResult
-    static func saveText(_ text: String, suggestedName: String) -> Bool {
+    static func saveText(_ text: String, suggestedName: String) -> SaveOutcome {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = suggestedName
         panel.canCreateDirectories = true
         if let markdown = UTType(filenameExtension: "md") {
             panel.allowedContentTypes = [markdown, .plainText]
         }
-        guard panel.runModal() == .OK, let url = panel.url else { return false }
-        do {
-            try text.write(to: url, atomically: true, encoding: .utf8)
-            return true
-        } catch {
-            return false
-        }
+        guard panel.runModal() == .OK, let url = panel.url else { return .cancelled }
+        return write(Data(text.utf8), to: url)
     }
 
     /// Saves bytes to a user-chosen location via NSSavePanel, restricted to
     /// `type` (a PDF, a Word document, ...).
-    @discardableResult
-    static func saveData(_ data: Data, suggestedName: String, type: UTType) -> Bool {
+    static func saveData(_ data: Data, suggestedName: String, type: UTType) -> SaveOutcome {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = suggestedName
         panel.canCreateDirectories = true
         panel.allowedContentTypes = [type]
-        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        guard panel.runModal() == .OK, let url = panel.url else { return .cancelled }
+        return write(data, to: url)
+    }
+
+    /// Writes the file the panel chose.
+    static func write(_ data: Data, to url: URL) -> SaveOutcome {
         do {
             try data.write(to: url, options: .atomic)
-            return true
+            return .saved(url)
         } catch {
-            return false
+            return .failed("\(url.lastPathComponent) couldn't be saved. \(error.localizedDescription)")
         }
     }
 

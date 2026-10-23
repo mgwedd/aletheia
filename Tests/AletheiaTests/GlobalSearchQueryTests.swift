@@ -22,7 +22,6 @@ final class GlobalSearchQueryTests: XCTestCase {
         XCTAssertEqual(query.words, ["couples", "therapy"])
         XCTAssertEqual(query.required, ["couples", "therapy"])
         XCTAssertEqual(query.textTerms.map(\.word), ["couples", "therapy"])
-        XCTAssertTrue(query.unsearched.isEmpty)
 
         XCTAssertEqual(GlobalSearchQuery("Dana's dana").words, ["dana"])
         XCTAssertEqual(GlobalSearchQuery("José").words, ["jose"])
@@ -31,18 +30,12 @@ final class GlobalSearchQueryTests: XCTestCase {
         XCTAssertEqual(many.words.last, "eight8")
     }
 
-    func testCommonWordsAndSingleLettersAreNotLookedUpInText() {
-        let query = GlobalSearchQuery("the garden s")
-        XCTAssertEqual(query.required, ["garden", "s"], "common words don't have to match")
-        XCTAssertEqual(query.textTerms.map(\.word), ["garden"])
-        XCTAssertEqual(query.unsearched, ["the", "s"])
+    func testEveryWordIsLookedUpInTextHoweverCommonOrShort() {
+        let query = GlobalSearchQuery("the therapist I s")
+        XCTAssertEqual(query.required, ["the", "therapist", "i", "s"])
+        XCTAssertEqual(query.textTerms.map(\.word), ["the", "therapist", "i", "s"])
 
-        let common = GlobalSearchQuery("the")
-        XCTAssertEqual(common.required, ["the"], "a query of only common words still matches names")
-        XCTAssertTrue(common.textTerms.isEmpty)
-        XCTAssertEqual(common.unsearched, ["the"])
-
-        XCTAssertEqual(GlobalSearchQuery("8").textTerms.map(\.word), ["8"], "a one-digit number is looked up")
+        XCTAssertEqual(GlobalSearchQuery("8").textTerms.map(\.word), ["8"])
         XCTAssertTrue(GlobalSearchQuery("  ,. ").isEmpty)
     }
 
@@ -64,9 +57,9 @@ final class GlobalSearchQueryTests: XCTestCase {
         XCTAssertTrue(digit.matches(indexed: "8"))
         XCTAssertFalse(digit.matches(indexed: "80"))
 
-        let stand = GlobalSearchTerm(raw: "qz")
-        XCTAssertFalse(stand.matchesPrefixes, "never expands to the stand-in stored for common words")
-        XCTAssertFalse(stand.matches(indexed: SearchIndex.stopToken))
+        let letter = GlobalSearchTerm(raw: "i")
+        XCTAssertEqual(letter.clause, "\"i\"", "a single letter is a whole word, not the start of most of the index")
+        XCTAssertFalse(letter.matches(indexed: "if"))
     }
 
     // MARK: Names and dates
@@ -77,7 +70,7 @@ final class GlobalSearchQueryTests: XCTestCase {
         XCTAssertTrue(GlobalSearchQuery("ann").matchesPatient(nameForm: name))
         XCTAssertTrue(GlobalSearchQuery("o'brien jo").matchesPatient(nameForm: name))
         XCTAssertFalse(GlobalSearchQuery("joanne smith").matchesPatient(nameForm: name))
-        XCTAssertTrue(GlobalSearchQuery("the obrien").matchesPatient(nameForm: name), "common words are not required")
+        XCTAssertFalse(GlobalSearchQuery("the obrien").matchesPatient(nameForm: name), "every word is required, common ones too")
     }
 
     func testDatesAnswerToDayMonthAndYear() {
@@ -158,6 +151,15 @@ final class GlobalSearchQueryTests: XCTestCase {
         let text = "Worried, she slept. Therapy helped."
         let ranges = GlobalSearchText.wordRanges(in: text, terms: GlobalSearchQuery("worries thera").textTerms)
         XCTAssertEqual(ranges.map { String(text[$0]) }, ["Worried", "Therapy"])
+    }
+
+    /// The index leaves out "[00:01] You:", so a match there would mark who
+    /// spoke instead of what was said.
+    func testWordRangesSkipTranscriptSpeakerLabels() {
+        let text = "[00:01] You: you said so.\n[00:04] Patient: the patient left."
+        let ranges = GlobalSearchText.wordRanges(in: text, terms: GlobalSearchQuery("you patient").textTerms)
+        XCTAssertEqual(ranges.map { text.distance(from: text.startIndex, to: $0.lowerBound) }, [13, 47])
+        XCTAssertEqual(ranges.map { String(text[$0]) }, ["you", "patient"])
     }
 
     // MARK: Ranking

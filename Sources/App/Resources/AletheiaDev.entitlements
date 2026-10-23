@@ -9,10 +9,10 @@
 	-->
 	<!--
 	App Sandbox is on. Aletheia never launches an external process
-	(no ffmpeg / whisper-cli / ollama subprocess): transcription runs
-	in-process via whisper.cpp (linked framework), and Ollama is reached over
-	localhost HTTP, so full sandboxing is possible without giving up any
-	feature.
+	(no ffmpeg / whisper-cli / llama subprocess): transcription runs
+	in-process via whisper.cpp and the AI model runs in-process via llama.cpp
+	(both linked frameworks), so full sandboxing is possible without giving up
+	any feature.
 	-->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
@@ -21,7 +21,7 @@
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
 
-	<!-- Talking to the locally-running Ollama server on 127.0.0.1. -->
+	<!-- Outbound HTTPS only for the update check and opt-in model downloads. -->
 	<key>com.apple.security.network.client</key>
 	<true/>
 

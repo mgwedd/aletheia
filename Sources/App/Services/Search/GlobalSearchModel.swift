@@ -56,11 +56,6 @@ enum GlobalSearchRow: Equatable, Identifiable {
 
     /// What the results area says when nothing matched.
     static func emptyMessage(query: String, results: GlobalSearchResults) -> String {
-        if !results.unsearchedWords.isEmpty {
-            let words = results.unsearchedWords.map { "\u{201C}\($0)\u{201D}" }.joined(separator: ", ")
-            let verb = results.unsearchedWords.count == 1 ? "is" : "are"
-            return "\(words) \(verb) too common or too short to search notes and transcripts for. Add another word."
-        }
         let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return results.coverage.isComplete ? "No results for \u{201C}\(typed)\u{201D}" : "No results yet for \u{201C}\(typed)\u{201D}"
     }
@@ -148,9 +143,25 @@ struct SearchHitDestination: Equatable {
     }
 }
 
-/// ⌘F: focus the search field, except while the cursor is in a transcript or
-/// note, where it opens that text's own find bar as before.
+/// ⌥⌘F: the find bar of the transcript or note that has the cursor (⌘F is
+/// always the global search).
 enum GlobalSearchShortcut {
+    /// Plain ⌘F, the key a text view's find bar would otherwise claim.
+    static func isGlobalSearch(_ event: NSEvent) -> Bool {
+        isF(event, modifiers: .command)
+    }
+
+    /// ⌥⌘F.
+    static func isFindInText(_ event: NSEvent) -> Bool {
+        isF(event, modifiers: [.command, .option])
+    }
+
+    private static func isF(_ event: NSEvent, modifiers: NSEvent.ModifierFlags) -> Bool {
+        event.type == .keyDown
+            && event.modifierFlags.intersection([.command, .shift, .option, .control]) == modifiers
+            && event.charactersIgnoringModifiers?.lowercased() == "f"
+    }
+
     /// The responder if it is a text view with its own find bar (the transcript
     /// or a note), not the editor of a text field such as the search field.
     @MainActor

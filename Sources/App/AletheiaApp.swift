@@ -104,6 +104,7 @@ struct AletheiaApp: App {
         _recorder = StateObject(wrappedValue: recorder)
         let exports = ExportJobCenter(notifier: UserNotificationService())
         _exports = StateObject(wrappedValue: exports)
+        ReturnKeyActivation.install()
         AppLifecycle.configure(
             settings: settings, appModel: appModel, recorder: recorder,
             transcription: transcription, integrations: integrations, exports: exports)
@@ -113,10 +114,9 @@ struct AletheiaApp: App {
         ))
         // Record each successful unlock in the on-device audit log (HIPAA
         // §164.312(b)). AppLock stays decoupled from the log via this hook.
-        appLock.onUnlock = { [weak appModel] in
+        appLock.onUnlock = { [weak appModel, weak encryption] in
+            encryption?.autoUnlockFromDevice()
             appModel?.recordAudit(.appUnlocked)
-            // Reload only what the lock unloaded; not ~5 GB on every unlock.
-            OllamaClient.warmUpResumed()
         }
         appLock.onUnlockFailed = { [weak appModel] reason in
             appModel?.recordAudit(.appUnlockFailed, detail: reason)
@@ -183,6 +183,8 @@ struct AletheiaApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
+            // View > Show/Hide Sidebar (⌃⌘S).
+            SidebarCommands()
             // Stock File > Close Window (⌘W). Stated explicitly so it's always
             // present and works for the main, Doctor and Settings windows alike.
             CommandGroup(replacing: .saveItem) {
@@ -222,6 +224,7 @@ struct AletheiaApp: App {
                 .environmentObject(settings)
                 .environmentObject(appModel)
                 .environmentObject(integrations)
+                .environmentObject(recorder)
                 .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
         }
         .defaultSize(width: 920, height: 720)

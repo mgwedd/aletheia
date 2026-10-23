@@ -26,28 +26,26 @@ enum GlobalSearchEngine {
         var coverage = GlobalSearchCoverage(index.progress.snapshot())
         let context = GlobalSearchContext(query: query, calendar: calendar)
         var sections = catalogSections(query, catalog: catalog, context: context, limits: limits)
-        if !query.textTerms.isEmpty {
-            let clauses = query.textTerms.map { $0.clause }
-            switch index.matchLive(clauses: clauses, shouldContinue: shouldContinue) {
-            case .unavailable:
-                return nil
-            case .cancelled:
-                return .empty
-            case .found(let documents, let passages):
-                let ranked = GlobalSearchRanking.rank(passages: passages, documents: documents) { document in
-                    guard let place = catalog.place(session: document.session) else { return nil }
-                    return context.answered(place)
-                }
-                let found = textSections(
-                    ranked: ranked, documents: documents, catalog: catalog, reader: reader,
-                    limits: limits, context: context, shouldContinue: shouldContinue)
-                sections += found.sections
-                if found.staleSessions > 0, coverage == .complete {
-                    coverage = .indexing(sessions: found.staleSessions)
-                }
+        let clauses = query.textTerms.map { $0.clause }
+        switch index.matchLive(clauses: clauses, shouldContinue: shouldContinue) {
+        case .unavailable:
+            return nil
+        case .cancelled:
+            return .empty
+        case .found(let documents, let passages):
+            let ranked = GlobalSearchRanking.rank(passages: passages, documents: documents) { document in
+                guard let place = catalog.place(session: document.session) else { return nil }
+                return context.answered(place)
+            }
+            let found = textSections(
+                ranked: ranked, documents: documents, catalog: catalog, reader: reader,
+                limits: limits, context: context, shouldContinue: shouldContinue)
+            sections += found.sections
+            if found.staleSessions > 0, coverage == .complete {
+                coverage = .indexing(sessions: found.staleSessions)
             }
         }
-        return results(sections, coverage: coverage, query: query)
+        return results(sections, coverage: coverage)
     }
 
     /// The results when the index couldn't be read: patients and sessions as
@@ -65,16 +63,15 @@ enum GlobalSearchEngine {
         for kind in [SearchKind.sessionNotes, .note, .comment, .transcript] {
             sections.append(section(kind, scanned.filter { $0.kind == kind }, limits: limits))
         }
-        return results(sections, coverage: .scanned, query: query)
+        return results(sections, coverage: .scanned)
     }
 
-    private static func results(_ sections: [GlobalSearchSection], coverage: GlobalSearchCoverage, query: GlobalSearchQuery) -> GlobalSearchResults {
+    private static func results(_ sections: [GlobalSearchSection], coverage: GlobalSearchCoverage) -> GlobalSearchResults {
         let order = SearchKind.allCases
         let kept = sections.filter { $0.total > 0 }.sorted { a, b in
             (order.firstIndex(of: a.kind) ?? 0) < (order.firstIndex(of: b.kind) ?? 0)
         }
-        return GlobalSearchResults(
-            sections: kept, coverage: coverage, unsearchedWords: query.textTerms.isEmpty ? query.unsearched : [])
+        return GlobalSearchResults(sections: kept, coverage: coverage)
     }
 
     static func section(_ kind: SearchKind, _ all: [SearchHit], limits: GlobalSearchLimits) -> GlobalSearchSection {
@@ -238,7 +235,8 @@ enum GlobalSearchEngine {
             shown.append(SearchHit(
                 id: "transcript-\(document.session)", kind: .transcript, patient: place.patient, session: place.session,
                 passage: line,
-                snippet: GlobalSearchText.snippet(lines[line], terms: terms)))
+                snippet: GlobalSearchText.snippet(
+                    TranscriptStyler.forReader(lines[line], callAudioName: Prompts.clientFirstName(place.patient.name)), terms: terms)))
         }
         let transcriptSection = GlobalSearchSection(kind: .transcript, hits: shown, total: max(shown.count, transcripts.count - dropped))
 

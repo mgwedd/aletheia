@@ -192,7 +192,7 @@ struct LocalToolCall: Equatable, Codable {
     var to: String?
 }
 
-/// A model that is not held to the grammar (Ollama) often writes a time as a
+/// A model that is not held to the grammar (a freeform model) often writes a time as a
 /// bare number, `"start": 600`, where the grammar demands a string. Every field
 /// is read as text when it is a string or a number, so such a plan still decodes.
 extension LocalToolCall {
@@ -951,7 +951,8 @@ enum LongSessionChat {
                 comments: commentLines,
                 patientBackground: patientBackground,
                 history: history,
-                question: question
+                question: question,
+                clientName: service.clientName
             )
         }
         if service.budget.fits(system: system, prompt: makePrompt(transcript)) {
@@ -1220,7 +1221,7 @@ enum PatientChatAnswer {
                     }
 
                     let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question)
-                    let prompt = Prompts.patientChat(context: finalContext, history: history, question: question)
+                    let prompt = Prompts.patientChat(context: finalContext, history: history, question: question, clientName: service.clientName)
                     var chatService = service
                     chatService.systemPrompt = system
                     live(nil) { $0.steps = steps.writing }

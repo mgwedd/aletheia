@@ -56,7 +56,7 @@ final class GlobalSearchModelTests: XCTestCase {
                 GlobalSearchSection(kind: .patient, hits: [hit("p", .patient, session: false)], total: 1),
                 GlobalSearchSection(kind: .transcript, hits: [hit("t1", .transcript), hit("t2", .transcript)], total: 9),
             ],
-            coverage: .complete, unsearchedWords: [])
+            coverage: .complete)
         let rows = GlobalSearchRow.rows(for: results, limits: GlobalSearchLimits())
         XCTAssertEqual(rows.map(\.id), ["p", "t1", "t2", "more-transcript"])
         XCTAssertEqual(rows.last, .more(.transcript, hidden: 7))
@@ -84,26 +84,22 @@ final class GlobalSearchModelTests: XCTestCase {
     }
 
     func testEmptyMessagesSayWhy() {
-        let common = GlobalSearchResults(sections: [], coverage: .complete, unsearchedWords: ["the"])
-        XCTAssertEqual(
-            GlobalSearchRow.emptyMessage(query: "the", results: common),
-            "\u{201C}the\u{201D} is too common or too short to search notes and transcripts for. Add another word.")
         XCTAssertEqual(GlobalSearchRow.emptyMessage(query: " kayak ", results: .empty), "No results for \u{201C}kayak\u{201D}")
-        let indexing = GlobalSearchResults(sections: [], coverage: .indexing(sessions: 3), unsearchedWords: [])
+        let indexing = GlobalSearchResults(sections: [], coverage: .indexing(sessions: 3))
         XCTAssertEqual(GlobalSearchRow.emptyMessage(query: "kayak", results: indexing), "No results yet for \u{201C}kayak\u{201D}")
     }
 
     func testVoiceOverHearsTheCountAndWhetherItMayBeIncomplete() {
         XCTAssertEqual(GlobalSearchAnnouncement.text(for: .empty), "No results")
         let one = GlobalSearchResults(
-            sections: [GlobalSearchSection(kind: .note, hits: [hit("n", .note)], total: 1)], coverage: .complete, unsearchedWords: [])
+            sections: [GlobalSearchSection(kind: .note, hits: [hit("n", .note)], total: 1)], coverage: .complete)
         XCTAssertEqual(GlobalSearchAnnouncement.text(for: one), "1 result in 1 group")
         let many = GlobalSearchResults(
             sections: [
                 GlobalSearchSection(kind: .note, hits: [hit("n", .note)], total: 4),
                 GlobalSearchSection(kind: .transcript, hits: [hit("t", .transcript)], total: 8),
             ],
-            coverage: .indexing(sessions: 2), unsearchedWords: [])
+            coverage: .indexing(sessions: 2))
         XCTAssertEqual(GlobalSearchAnnouncement.text(for: many), "12 results in 2 groups. Indexing 2 sessions; results may be incomplete.")
     }
 
@@ -220,8 +216,14 @@ final class GlobalSearchModelTests: XCTestCase {
         let entries = ShortcutCatalog.sections.flatMap(\.entries)
         XCTAssertEqual(entries.first { $0.title == "Search everything" }.map { ShortcutGlyphs.symbols(for: $0.shortcut) }, "⌘F")
         let field = try source("Sources/App/Views/GlobalSearchField.swift")
-        XCTAssertTrue(field.contains(".shortcut(AppHotkey.search, help: \"Search everything\")"))
+        XCTAssertEqual(ShortcutGlyphs.symbols(for: AppHotkey.findInText), "⌥⌘F")
         XCTAssertTrue(field.contains("ShortcutHint(AppHotkey.search)"))
+        XCTAssertTrue(field.contains("if large {\n                ShortcutHint(AppHotkey.search)"),
+                      "the keycaps only show on the large field; in the sidebar they squeeze the placeholder")
+        XCTAssertTrue(field.contains("GlobalSearchShortcut.isGlobalSearch(event)"))
+        let list = try source("Sources/App/Views/PatientsListView.swift")
+        XCTAssertTrue(list.contains("GlobalSearchField("), "the field is in the sidebar")
+        XCTAssertFalse(try source("Sources/App/Views/RootView.swift").contains("GlobalSearchField("), "and not in the toolbar")
         XCTAssertTrue(try source("Sources/App/Views/RootView.swift").contains("GlobalSearchHotkey(isFocused: isFocused)"))
     }
 
@@ -259,7 +261,8 @@ final class GlobalSearchModelTests: XCTestCase {
         XCTAssertTrue(list.contains("List(appModel.patients, selection:"), "and is not filtered while searching")
         let rootView = try source("Sources/App/Views/RootView.swift")
         XCTAssertFalse(rootView.contains("GlobalSearchView("), "no separate search sheet")
-        XCTAssertTrue(rootView.contains("ToolbarItem(placement: .primaryAction) {\n                        GlobalSearchField("))
+        XCTAssertFalse(rootView.contains("GlobalSearchField("), "the field is in the sidebar, not the detail toolbar")
+        XCTAssertTrue(list.contains("GlobalSearchField(model: search"))
         XCTAssertFalse(FileManager.default.fileExists(
             atPath: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
                 .appendingPathComponent("Sources/App/Views/GlobalSearchView.swift").path))

@@ -183,6 +183,13 @@ final class SessionSearchTests: XCTestCase {
         XCTAssertEqual(search([doc("[00:05] A: Dana came by.")], "Dana").totalMentions, 1)
     }
 
+    /// "were" sounds like "Wear" (both W600) but is a common word, which is
+    /// never taken for a sound-alike or a typo of another.
+    func testCommonWordIsNotASoundAlikeOfAName() {
+        XCTAssertEqual(search([doc("[00:05] A: They were late.")], "Wear").totalMentions, 0)
+        XCTAssertEqual(search([doc("[00:05] A: Wear came.")], "Wear").totalMentions, 1)
+    }
+
     func testOneLetterTyposMatchLongerWordsOnly() {
         XCTAssertEqual(search([doc("[00:05] A: A lot of anxeity lately.")], "anxiety").totalMentions, 1)
         XCTAssertEqual(search([doc("[00:05] A: The cat sat.")], "cut").totalMentions, 0)
@@ -223,8 +230,10 @@ final class SessionSearchTests: XCTestCase {
         let text = "[00:01] A: The wedding cake was lovely.\n[00:02] A: A cake wedding came, then at the end of the garden.\n[00:03] A: The end, one garden."
         XCTAssertEqual(search([doc(text)], "\"wedding cake\"").totalMentions, 1)
         XCTAssertEqual(search([doc(text)], "\"cake wedding\"").totalMentions, 1)
-        // Stopwords inside a phrase hold their place but are not checked.
+        // Common words in a phrase are checked like any other.
         XCTAssertEqual(search([doc(text)], "\"end of the garden\"").totalMentions, 1)
+        XCTAssertEqual(search([doc(text)], "\"end of a garden\"").totalMentions, 0)
+        XCTAssertEqual(search([doc(text)], "\"at the end\"").totalMentions, 1, "a phrase of only common words")
     }
 
     func testQuotedWordIsExactOnly() {
