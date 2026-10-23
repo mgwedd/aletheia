@@ -14,6 +14,19 @@ final class DataFolderPolicyTests: XCTestCase {
         XCTAssertEqual(DataFolderPolicy.verdict(for: URL(fileURLWithPath: "/Users/clinician/Library/Application Support/Aletheia/Data"), realHome: home, resourceValues: { _ in nil }), .ok)
     }
 
+    func testTheAncestorWalkEndsAtTheRoot() {
+        XCTAssertEqual(DataFolderPolicy.ancestors(of: "/Users/clinician/ClinicData").map(\.path),
+                       ["/Users/clinician/ClinicData", "/Users/clinician", "/Users", "/"])
+        XCTAssertEqual(DataFolderPolicy.ancestors(of: "/").map(\.path), ["/"])
+
+        var visited: [String] = []
+        _ = DataFolderPolicy.verdict(for: home.appendingPathComponent("ClinicData"), realHome: home, facts: { url in
+            visited.append(url.path)
+            return DataFolderPolicy.ResourceFacts()
+        })
+        XCTAssertEqual(visited, ["/Users/clinician/ClinicData", "/Users/clinician", "/Users", "/", "/Users/clinician/ClinicData"])
+    }
+
     func testUbiquitousAncestorIsRejected() {
         let folder = home.appendingPathComponent("Documents/ClinicData")
         let verdict = DataFolderPolicy.verdict(for: folder, realHome: home, facts: { url in
