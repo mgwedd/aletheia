@@ -37,11 +37,14 @@ final class ChatRepository {
     /// stays tidy for the many sessions that are never chatted about.
     @discardableResult
     func saveSessionChat(_ messages: [ChatMessage], sessionID: UUID, now: Date = Date()) -> Bool {
+        let existing = core.record(kind: Self.sessionChatKind, id: sessionID.uuidString)
+        // An unreadable conversation looks empty; never replace or clear it.
+        guard RecordPayloadCodec.mayOverwrite(existing, using: protector) else { return false }
         guard !messages.isEmpty else {
             return core.remove(kind: Self.sessionChatKind, id: sessionID.uuidString)
         }
         guard let data = RecordPayloadCodec.encode(messages, using: protector) else { return false }
-        let createdAt = core.record(kind: Self.sessionChatKind, id: sessionID.uuidString)?.createdAt ?? now
+        let createdAt = existing?.createdAt ?? now
         let record = PersistedRecord(
             id: sessionID.uuidString, kind: Self.sessionChatKind, itemID: sessionID,
             payload: data, createdAt: createdAt, updatedAt: now
@@ -70,9 +73,10 @@ final class ChatRepository {
     /// alone on an update).
     @discardableResult
     func saveChatThread(_ thread: ChatThread, patientID: UUID) -> Bool {
+        let existing = core.record(kind: Self.chatThreadKind, id: thread.id.uuidString)
+        guard RecordPayloadCodec.mayOverwrite(existing, using: protector) else { return false }
         let payload = ChatThreadPayload(title: thread.title, messages: thread.messages)
         guard let data = RecordPayloadCodec.encode(payload, using: protector) else { return false }
-        let existing = core.record(kind: Self.chatThreadKind, id: thread.id.uuidString)
         let record = PersistedRecord(
             id: thread.id.uuidString, kind: Self.chatThreadKind,
             ownerID: existing?.ownerID ?? patientID,
@@ -94,11 +98,9 @@ final class ChatRepository {
     }
 
     /// A record whose id isn't a UUID can't happen from this repository's own
-    /// writes, so that's the one case that drops the row; a record that fails
-    /// to *decode* (undecryptable under the current protector) still surfaces
-    /// as a thread with best-effort text, same as `AnnotationRepository`'s
-    /// comments — matching the old per-column SQL, where a garbled read never
-    /// made a row disappear.
+    /// writes, so that row is dropped. Legacy plaintext that isn't valid thread
+    /// JSON still surfaces with best-effort text; a sealed payload that can't be
+    /// opened is omitted and reported by `CommentStore.unreadableEntries`.
     private func makeThread(_ record: PersistedRecord) -> ChatThread? {
         guard let id = UUID(uuidString: record.id) else { return nil }
         if let payload = RecordPayloadCodec.decode(ChatThreadPayload.self, from: record.payload, using: protector) {

@@ -89,6 +89,15 @@ final class FileProtectorTests: XCTestCase {
         }
     }
 
+    func testFieldEncodeThrowsLockedForRevokedKey() {
+        let reference = ProtectionKey(key)
+        let protector = FileProtector(keyReference: reference, requiresKey: true)
+        reference.revoke()
+        XCTAssertThrowsError(try FieldCipher.encode("private note", using: protector)) { error in
+            XCTAssertEqual(error as? FileProtector.ProtectorError, .locked)
+        }
+    }
+
     func testFieldDecodeThrowsForBadEnvelopeButAcceptsLegacyPlaintext() throws {
         let protector = FileProtector(key: key)
         let sealed = try FieldCipher.encode("secret", using: protector)

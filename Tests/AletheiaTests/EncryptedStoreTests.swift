@@ -92,11 +92,11 @@ final class EncryptedStoreTests: XCTestCase {
         XCTAssertEqual(comment.body, "explore triggers next time")
         XCTAssertEqual(store.note(sessionID: session), "private note body")
 
-        // A passthrough reader over the same DB cannot recover the plaintext.
+        // A passthrough reader over the same DB cannot recover the plaintext,
+        // and never shows the ciphertext in its place.
         let locked = try XCTUnwrap(CommentStore(root: tempRoot, protector: .passthrough))
-        let lockedComment = try XCTUnwrap(locked.comments(sessionID: session).first)
-        XCTAssertNotEqual(lockedComment.body, "explore triggers next time")
-        XCTAssertNotEqual(locked.note(sessionID: session), "private note body")
+        XCTAssertTrue(locked.comments(sessionID: session).isEmpty)
+        XCTAssertEqual(locked.note(sessionID: session), "")
     }
 
     func testLegacyPlaintextCommentsStayReadableUnderKey() throws {

@@ -142,8 +142,10 @@ final class AnnotationRepository {
 
     @discardableResult
     func saveNote(sessionID: UUID, text: String, now: Date = Date()) -> Bool {
-        guard let data = RecordPayloadCodec.encode(text, using: protector) else { return false }
-        let createdAt = core.record(kind: Self.noteKind, id: sessionID.uuidString)?.createdAt ?? now
+        let existing = core.record(kind: Self.noteKind, id: sessionID.uuidString)
+        guard RecordPayloadCodec.mayOverwrite(existing, using: protector),
+              let data = RecordPayloadCodec.encode(text, using: protector) else { return false }
+        let createdAt = existing?.createdAt ?? now
         let record = PersistedRecord(
             id: sessionID.uuidString, kind: Self.noteKind, itemID: sessionID,
             payload: data, createdAt: createdAt, updatedAt: now

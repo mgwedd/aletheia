@@ -241,15 +241,21 @@ final class CommentStore {
     /// Returns false on any storage error.
     @discardableResult
     func reencrypt(to newProtector: FileProtector) -> Bool {
+        // A row that can't be opened or sealed is left untouched and fails the
+        // pass, but the remaining rows are still converted.
+        var ok = true
         for kind in Self.allKinds {
             for record in core.allRecords(kind: kind) {
+                guard let payload = RecordPayloadCodec.reseal(record.payload, from: protector, to: newProtector) else {
+                    ok = false
+                    continue
+                }
                 var resealed = record
-                guard let payload = RecordPayloadCodec.reseal(record.payload, from: protector, to: newProtector) else { return false }
                 resealed.payload = payload
                 guard core.put(resealed) else { return false }
             }
         }
-        return true
+        return ok
     }
 
     /// Database rows with envelopes that fail authentication or cannot be
