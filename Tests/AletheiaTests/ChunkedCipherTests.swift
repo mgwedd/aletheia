@@ -144,6 +144,51 @@ final class ChunkedCipherTests: XCTestCase {
         try openFails(header(chunkSize: 0, chunkCount: 0), .malformed)
     }
 
+    // MARK: - Seal consistency
+
+    func testSealRejectsOutOfRangeChunkSize() throws {
+        let src = try write(randomData(10_000), "src.bin")
+        for bad in [0, 512, 4095, (16 << 20) + 1] {
+            XCTAssertThrowsError(try ChunkedCipher.seal(fileAt: src, to: dir.appendingPathComponent("s.bin"), using: key, chunkSize: bad)) {
+                XCTAssertEqual($0 as? ChunkedCipher.ChunkedError, .malformed, "chunkSize \(bad)")
+            }
+        }
+    }
+
+    func testSealThrowsWhenSourceIsShorterThanDeclared() throws {
+        // A file that shrank after its size was read: sealing must fail rather
+        // than write an envelope whose chunk count it can't satisfy.
+        let src = try write(randomData(10_000), "src.bin")
+        let input = try FileHandle(forReadingFrom: src)
+        defer { try? input.close() }
+        XCTAssertThrowsError(try ChunkedCipher.seal(input, size: 12_000, to: dir.appendingPathComponent("s.bin"), using: key, chunkSize: 4096)) {
+            XCTAssertEqual($0 as? ChunkedCipher.ChunkedError, .sourceChanged)
+        }
+    }
+
+    func testSealThrowsWhenSourceIsLongerThanDeclared() throws {
+        // A file that grew after its size was read: the extra bytes would be
+        // undeclared trailing chunks that `open` rejects.
+        let src = try write(randomData(10_000), "src.bin")
+        let input = try FileHandle(forReadingFrom: src)
+        defer { try? input.close() }
+        XCTAssertThrowsError(try ChunkedCipher.seal(input, size: 8192, to: dir.appendingPathComponent("s.bin"), using: key, chunkSize: 4096)) {
+            XCTAssertEqual($0 as? ChunkedCipher.ChunkedError, .sourceChanged)
+        }
+    }
+
+    func testSealFromHandleWithExactSizeRoundTrips() throws {
+        let plaintext = randomData(10_000)
+        let src = try write(plaintext, "src.bin")
+        let sealed = dir.appendingPathComponent("sealed.bin")
+        let opened = dir.appendingPathComponent("opened.bin")
+        let input = try FileHandle(forReadingFrom: src)
+        try ChunkedCipher.seal(input, size: plaintext.count, to: sealed, using: key, chunkSize: 4096)
+        try input.close()
+        try ChunkedCipher.open(fileAt: sealed, to: opened, using: key)
+        XCTAssertEqual(try Data(contentsOf: opened), plaintext)
+    }
+
     // MARK: - FileProtector large-file helpers
 
     func testSealInPlaceThenDecryptedCopyRoundTrips() throws {
