@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Paste field for a license key, with a clear message for each way it can be refused.
-/// Used by first-run and Settings > License. Checks entirely on this Mac.
+/// Used by first-run and Settings > License key. Checks entirely on this Mac.
 struct LicenseEntryView: View {
     @EnvironmentObject private var license: LicenseState
     var buttonTitle = "Check license"
@@ -85,7 +85,7 @@ struct LicenseBanner: View {
         case .revoked:
             return "Your license is no longer valid. New recordings and the AI are paused; everything you have already recorded stays open, searchable and exportable."
         case .grandfathered:
-            return "Add your license key in Settings > License. Recording and the AI keep working meanwhile."
+            return "Add your license key in Settings > License key. Recording and the AI keep working meanwhile."
         case .unlicensed:
             return "Add a license key to record or use the AI. Everything you have already recorded stays open, searchable and exportable."
         case .invalid(let error):
@@ -94,7 +94,7 @@ struct LicenseBanner: View {
     }
 }
 
-/// Settings > License: who the license is for, when it ends, and a field to replace it.
+/// Settings > License key: who the license is for, when it ends, and a field to replace it.
 struct LicensePane: View {
     @EnvironmentObject private var license: LicenseState
 

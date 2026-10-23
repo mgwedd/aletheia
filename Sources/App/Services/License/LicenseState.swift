@@ -146,13 +146,13 @@ final class LicenseState: ObservableObject {
         case .valid, .expiringSoon, .grandfathered:
             return nil
         case .unlicensed:
-            return "Aletheia needs a license key to record or run the AI. Add yours in Settings > License. Your existing records are untouched."
+            return "Aletheia needs a license key to record or run the AI. Add yours in Settings > License key. Your existing records are untouched."
         case .invalid(let error):
-            return "\(error.errorDescription ?? "The license key could not be verified.") Add a valid key in Settings > License. Your existing records are untouched."
+            return "\(error.errorDescription ?? "The license key could not be verified.") Add a valid key in Settings > License key. Your existing records are untouched."
         case .expired(let token):
-            return "Your license expired on \(token.expiresAt.licenseText), so new recordings and the AI are paused. Add a new key in Settings > License. Your existing records are untouched."
+            return "Your license expired on \(token.expiresAt.licenseText), so new recordings and the AI are paused. Add a new key in Settings > License key. Your existing records are untouched."
         case .revoked:
-            return "This license is no longer valid, so new recordings and the AI are paused. Add a new key in Settings > License. Your existing records are untouched."
+            return "This license is no longer valid, so new recordings and the AI are paused. Add a new key in Settings > License key. Your existing records are untouched."
         }
     }
 

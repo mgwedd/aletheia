@@ -61,6 +61,10 @@ targets:
           - "Resources/AletheiaDev.entitlements"
       # The wire contract with the network helper, compiled into both sides.
       - path: Sources/NetworkHelperShared
+      # The repo-root notices, copied into the app so Settings › Licenses shows
+      # exactly this file (ThirdPartyNoticesTests compares the two).
+      - path: THIRD-PARTY-NOTICES.md
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.app
