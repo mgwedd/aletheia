@@ -17,7 +17,7 @@ enum Legal {
     /// it is exactly what gets stored as the accepted version. **Bump this
     /// whenever TERMS.md or PRIVACY.md change materially** — users are then
     /// required to re-accept, and the new version + timestamp are recorded.
-    static let currentVersion = "2026-09-17"
+    static let currentVersion = "2026-10-22"
 
     /// Canonical, human-readable copies in the repository. Shown as links in the
     /// first-run acceptance step and in Settings.

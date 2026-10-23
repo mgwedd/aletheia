@@ -21,6 +21,19 @@ final class LegalTests: XCTestCase {
         XCTAssertTrue(Legal.privacyURL.absoluteString.hasSuffix("/PRIVACY.md"))
     }
 
+    /// The acceptance version must move whenever a policy's "Last updated" date
+    /// does, or users keep an acceptance of the old text.
+    func testCurrentVersionIsNotOlderThanThePublishedPolicies() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for path in ["TERMS.md", "PRIVACY.md"] {
+            let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+            let date = try XCTUnwrap(
+                text.firstMatch(of: /_Last updated: (\d{4}-\d{2}-\d{2})_/)?.1, path)
+            XCTAssertGreaterThanOrEqual(Legal.currentVersion, String(date), path)
+        }
+    }
+
     func testPublishedPrivacyAndSafeguardDocsDescribeCurrentBackupState() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
