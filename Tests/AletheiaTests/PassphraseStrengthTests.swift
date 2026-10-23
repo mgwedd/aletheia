@@ -55,4 +55,10 @@ final class PassphraseStrengthTests: XCTestCase {
         let accented = PassphraseStrength.evaluate(letters + "\u{E9}")
         XCTAssertGreaterThan(accented.fraction, plain.fraction)
     }
+
+    func testRequirementIsTwelveCharacters() {
+        XCTAssertFalse(PassphraseStrength.meetsRequirement(""))
+        XCTAssertFalse(PassphraseStrength.meetsRequirement(String(repeating: "a", count: 11)))
+        XCTAssertTrue(PassphraseStrength.meetsRequirement(String(repeating: "a", count: 12)))
+    }
 }

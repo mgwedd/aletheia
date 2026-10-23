@@ -76,11 +76,13 @@ final class AppLockPolicyTests: XCTestCase {
     }
 
     @MainActor
-    func testUnlockLastsThroughHidingAndSwitchingApps() async {
+    func testHideRespectsSettingAndDisplaySleepLocks() async {
         let settings = AppSettings.shared
         let priorEnabled = settings.appLockEnabled
-        defer { settings.appLockEnabled = priorEnabled }
+        let priorHide = settings.lockWhenHidden
+        defer { settings.appLockEnabled = priorEnabled; settings.lockWhenHidden = priorHide }
         settings.appLockEnabled = true
+        settings.lockWhenHidden = false
 
         let appLock = AppLock(settings: settings, canAuthenticate: { true })
         XCTAssertTrue(appLock.isLocked)
@@ -88,14 +90,23 @@ final class AppLockPolicyTests: XCTestCase {
         appLock.simulateUnlockedForTesting()
         XCTAssertFalse(appLock.isLocked)
 
-        // One unlock per session on this Mac: switching to another app, hiding
-        // Aletheia (⌘H) or the display sleeping on its own must not re-lock.
         NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: nil)
         NotificationCenter.default.post(name: NSApplication.didHideNotification, object: nil)
-        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.screensDidSleepNotification, object: nil)
         await Task.yield()
         await Task.yield()
         XCTAssertFalse(appLock.isLocked)
+
+        settings.lockWhenHidden = true
+        NotificationCenter.default.post(name: NSApplication.didHideNotification, object: nil)
+        await Task.yield()
+        await Task.yield()
+        XCTAssertTrue(appLock.isLocked)
+
+        appLock.simulateUnlockedForTesting()
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.screensDidSleepNotification, object: nil)
+        await Task.yield()
+        await Task.yield()
+        XCTAssertTrue(appLock.isLocked)
     }
 
     @MainActor
@@ -121,24 +132,40 @@ final class AppLockPolicyTests: XCTestCase {
     }
 
     func testRelockTriggersAreLeavingTheMacOnly() {
-        XCTAssertEqual(RelockTrigger.allCases, [.systemSleep, .screenLock, .userSwitch])
+        XCTAssertEqual(RelockTrigger.allCases, [.systemSleep, .displaySleep, .screenLock, .userSwitch])
         let names = RelockTrigger.allCases.map(\.notificationName)
         XCTAssertEqual(names, [
             NSWorkspace.willSleepNotification,
+            NSWorkspace.screensDidSleepNotification,
             Notification.Name("com.apple.screenIsLocked"),
             NSWorkspace.sessionDidResignActiveNotification,
         ])
         XCTAssertFalse(names.contains(NSApplication.didHideNotification))
-        XCTAssertFalse(names.contains(NSWorkspace.screensDidSleepNotification))
+        XCTAssertTrue(names.contains(NSWorkspace.screensDidSleepNotification))
         XCTAssertEqual(RelockTrigger.allCases.filter(\.isDistributed), [.screenLock])
     }
 
-    func testAppLockSourceHasNoHideOrDisplaySleepTrigger() throws {
+    func testAppLockSourceHasHideAndDisplaySleepTrigger() throws {
         let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/App/Services/AppLock.swift"), encoding: .utf8)
-        XCTAssertFalse(source.contains("didHideNotification"))
-        XCTAssertFalse(source.contains("screensDidSleepNotification"))
+        XCTAssertTrue(source.contains("didHideNotification"))
+        XCTAssertTrue(source.contains("screensDidSleepNotification"))
+    }
+
+    func testNewDefaultsAndExplicitChoices() {
+        let suiteName = "app-lock-\(UUID())"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let fresh = AppSettings(defaults: defaults)
+        XCTAssertTrue(fresh.appLockEnabled)
+        XCTAssertEqual(fresh.idleAutoLockMinutes, 15)
+        XCTAssertTrue(fresh.hideFromScreenSharing)
+        defaults.set(false, forKey: "appLockEnabled")
+        defaults.set(0, forKey: "idleAutoLockMinutes")
+        let explicit = AppSettings(defaults: defaults)
+        XCTAssertFalse(explicit.appLockEnabled)
+        XCTAssertEqual(explicit.idleAutoLockMinutes, 0)
     }
 
     @MainActor

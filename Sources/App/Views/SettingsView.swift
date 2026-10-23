@@ -25,6 +25,7 @@ struct SettingsView: View {
     @State private var isCheckingHealth = false
     @State private var showSetup = false
     @ObservedObject private var navigator = AppNavigator.shared
+    @ObservedObject private var setAside = SetAsideRecordings.shared
     @State private var newRiskPhrase = ""
     @State private var confirmClearRiskPhrases = false
     @State private var confirmResetRiskPhrases = false
@@ -45,7 +46,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
 
-    private var panes: [SettingsPane] { SettingsPane.available(encryptionOffered: encryptionOffered) }
+    private var panes: [SettingsPane] { SettingsPane.available(encryptionOffered: encryptionOffered, hasSetAsideRecordings: !setAside.items.isEmpty) }
 
     private var pane: SettingsPane { SettingsPane.restored(rawValue: selectedPaneRaw, in: panes) }
 
@@ -136,6 +137,7 @@ struct SettingsView: View {
         selectedPaneRaw = request.pane.rawValue
         switch request {
         case .setupAssistant: showSetup = true
+        case .setAsideRecordings: break
         }
     }
 
@@ -148,6 +150,8 @@ struct SettingsView: View {
         case .encryption: encryptionPane
         case .backups: backupsPane
         case .security: securityPane
+        case .setAsideRecordings:
+            SetAsideRecordingsPane(model: setAside) { selectedPaneRaw = SettingsPane.general.rawValue }
         }
     }
 
@@ -724,6 +728,16 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
             }
             .themeBanner(.info)
+        case .keystoreMissing:
+            HStack(alignment: .center, spacing: 14) {
+                Chip("Keystore missing", tone: .recording)
+                Text(EncryptionManager.ManagerError.keystoreMissing.localizedDescription)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .themeBanner(.warn)
         case .lockedNeedsPassphrase:
             HStack(alignment: .center, spacing: 14) {
                 Chip("On — locked")
@@ -769,6 +783,9 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 12)
             }
+            if let failure = encryption.rememberError {
+                SettingsCaption("This Mac's keychain couldn't keep the key: \(failure)")
+            }
         }
     }
 
@@ -806,7 +823,7 @@ struct SettingsView: View {
                 }
             }
             .padding(.top, 4)
-        case .lockedNeedsPassphrase:
+        case .lockedNeedsPassphrase, .keystoreMissing:
             EmptyView()
         }
     }
@@ -855,12 +872,17 @@ struct SettingsView: View {
     private var securityPane: some View {
         SettingsSwitchRow(
             title: "App lock",
-            detail: "Require Touch ID or your Mac password to open. You unlock once when it opens. It locks again when your Mac sleeps, its screen locks or you switch user, so your patients' notes stay behind it.",
+            detail: "Require Touch ID or your Mac password to open. Aletheia locks after 15 minutes of inactivity by default, when the display sleeps, or when your Mac locks or switches user.",
             isOn: $settings.appLockEnabled
+        )
+        SettingsSwitchRow(
+            title: "Lock when Aletheia is hidden",
+            detail: "Require another unlock after hiding the app with ⌘H.",
+            isOn: $settings.lockWhenHidden
         )
         SettingsRow(
             title: "Lock after inactivity",
-            detail: "Optional. Aletheia already locks when your Mac locks or sleeps (set that in System Settings > Lock Screen). Choose a time to also lock after this long with no activity in Aletheia. Needs App lock turned on."
+            detail: "Choose how long Aletheia can sit unused before it locks. Needs App lock turned on."
         ) {
             Picker("Auto-lock after", selection: idleAutoLockSelection) {
                 ForEach(IdleAutoLockTimeout.allCases) { timeout in
@@ -872,6 +894,16 @@ struct SettingsView: View {
             .frame(width: 180)
             .disabled(!settings.appLockEnabled)
         }
+        SettingsSwitchRow(
+            title: "Hide Aletheia from screen sharing",
+            detail: "Protect patient windows from capture. A locked window is always hidden from capture.",
+            isOn: $settings.hideFromScreenSharing
+        )
+        SettingsSwitchRow(
+            title: "Allow screen sharing this session",
+            detail: "Temporary exception for a clinical screen share. Resets when Aletheia quits.",
+            isOn: $settings.allowScreenSharingThisSession
+        )
         SettingsSwitchRow(
             title: "Show patient names in notifications",
             detail: "Off by default. Notifications appear on the lock screen and stay in Notification Center, so they just say that a session is ready. Turn this on to include the patient's name and the session date.",
