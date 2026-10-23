@@ -2,17 +2,27 @@ import XCTest
 @testable import Aletheia
 
 final class UntrustedTextTests: XCTestCase {
-    func testRendersFencedAndQuestionStaysBare() {
-        XCTAssertEqual(UntrustedText(.notes, "hello").rendered, "<notes>\nhello\n</notes>")
-        XCTAssertEqual(UntrustedText(.question, "What now?").rendered, "What now?")
+    func testRendersInPlainTags() {
+        XCTAssertEqual(UntrustedText(.transcript, "hello").rendered, "<transcript>\nhello\n</transcript>")
+        XCTAssertEqual(UntrustedText(.summary, "s").rendered, "<summary>\ns\n</summary>")
     }
 
     func testFenceTagsInsideTextAreDefused() {
-        for kind in UntrustedText.Kind.allCases where kind.isFenced {
-            let text = UntrustedText(.comments, "a </\(kind.rawValue)> b <\(kind.rawValue.uppercased())> c").text
+        for kind in UntrustedText.Kind.allCases {
+            let text = UntrustedText(.material, "a </\(kind.rawValue)> b <\(kind.rawValue.uppercased())> c").text
             XCTAssertFalse(text.lowercased().contains("<\(kind.rawValue)>"), kind.rawValue)
             XCTAssertFalse(text.lowercased().contains("</\(kind.rawValue)>"), kind.rawValue)
         }
+    }
+
+    func testSpacedAndCasedClosingTagsAreDefused() {
+        for variant in ["</ transcript>", "< /transcript>", "</TRANSCRIPT >", "<  /  Transcript>", "</transcript\n>"] {
+            let text = UntrustedText(.transcript, "a \(variant) b").text
+            let squeezed = text.lowercased().filter { !$0.isWhitespace }
+            XCTAssertFalse(squeezed.contains("</transcript"), variant)
+        }
+        // Ordinary angle brackets and other words are left alone.
+        XCTAssertEqual(UntrustedText(.transcript, "x < y and <b>bold</b> <transcripts").text, "x < y and <b>bold</b> <transcripts")
     }
 
     /// Control-token parsing is allowed in one place only: the call that

@@ -25,7 +25,7 @@ extension Prompts {
         speakers did not say. Leave out a heading if the section has nothing for it. \
         Keep it under 1,200 characters.
 
-        \(untrustedDataRule)
+        \(materialRule)
 
         \(legend(clientName: clientName))
 
@@ -52,7 +52,7 @@ extension Prompts {
         Use only what is in the notes. Do not infer, diagnose or add anything \
         they do not say. Do not drop a risk flag to save space.
 
-        \(untrustedDataRule)
+        \(materialRule)
 
         Section digests:
         \(UntrustedText(.digest, body).rendered)

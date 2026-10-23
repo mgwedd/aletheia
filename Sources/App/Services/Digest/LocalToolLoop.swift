@@ -77,9 +77,10 @@ enum PatientDigestMerger {
             guard !trimmed.isEmpty else { continue }
             let prefix = "Session digest:\n"
             let available = min(remaining, recentCap - recentUsed) - prefix.count - 2
+                - UntrustedText.tagOverhead(.digest)
             guard available > 60 else { break }
             let body = fitDigest(trimmed, limit: available)
-            let block = prefix + body
+            let block = prefix + UntrustedText(.digest, body).rendered
             individualByDate[item.date] = individualByDate[item.date].map { $0 + "\n\n" + block } ?? block
             let cost = block.count + 2
             remaining -= cost
@@ -129,7 +130,7 @@ enum PatientDigestMerger {
             var lines: [String] = []
             var includedTags: [String] = []
             var includedSources: [CitationSource] = []
-            var usedInMonth = header.count + 1
+            var usedInMonth = header.count + 1 + UntrustedText.tagOverhead(.digest)
 
             for item in items {
                 let dateStr = shortDateFormatter.string(from: item.date)
@@ -151,7 +152,7 @@ enum PatientDigestMerger {
 
             guard !lines.isEmpty else { break }
             let finalHeader = "===== Earlier Sessions: \(title) [\(includedTags.joined(separator: ", "))] ====="
-            let blockText = finalHeader + "\n" + lines.joined(separator: "\n")
+            let blockText = finalHeader + "\n" + UntrustedText(.digest, lines.joined(separator: "\n")).rendered
             monthBlocks.append(MonthBlock(
                 monthTitle: title,
                 tags: includedTags,
@@ -746,10 +747,11 @@ enum LocalToolLoop {
         remainingCalls: Int,
         history: [ChatMessage] = []
     ) -> String {
-        // The earlier turns, so a follow-up like "and the week before?" is
-        // planned against what it follows from, as the final answer is.
-        let conversation = Prompts.formatHistory(history, question: question)
-        let historyBlock = conversation.isEmpty ? "" : "\n\n" + conversation
+        // The conversation since its latest summary goes in as chat turns (see
+        // `refine`); what came before it is here, so a follow-up like "and the
+        // week before?" is planned against what it follows from.
+        let earlier = Prompts.earlierConversation(history)
+        let historyBlock = earlier.isEmpty ? "" : "\n\n" + earlier
         let priorBlock = priorToolOutputs.isEmpty
             ? ""
             : "\n\nResults from earlier tool lookups:\n" + UntrustedText(.material, priorToolOutputs.joined(separator: "\n\n")).rendered
@@ -771,12 +773,12 @@ enum LocalToolLoop {
 
         Respond ONLY with a JSON object of the form {"calls":[...]}. Do not write the final answer yet.
 
-        \(Prompts.untrustedDataRule)
+        \(Prompts.materialRule)
 
         Initial material:
-        \(UntrustedText(.material, initialContext).rendered)\(priorBlock)\(historyBlock)
+        \(initialContext)\(priorBlock)\(historyBlock)
 
-        Therapist's question: \(UntrustedText(.question, question).rendered)
+        Therapist's question: \(question)
         """
     }
 
@@ -839,12 +841,14 @@ enum LocalToolLoop {
                 remainingCalls: remainingCalls,
                 history: history
             )
-            guard service.fits(prompt: planPrompt) else { break }
+            let turns = PromptTurn.recent(history, question: question)
+            guard service.fits(prompt: planPrompt, turns: turns) else { break }
 
             let rawPlan: String
             do {
                 rawPlan = try await builder.runStage(
                     planPrompt,
+                    turns: turns,
                     read: round == 0 ? "Choosing what to read closely" : "Choosing what else to read",
                     write: "Choosing what to read",
                     task: .digest,
@@ -902,7 +906,8 @@ enum LocalToolLoop {
 
         let block = accepted.isEmpty
             ? ""
-            : "Additional passages and digests from follow-up lookups:\n" + accepted.joined(separator: "\n\n")
+            : "Additional passages and digests from follow-up lookups:\n"
+                + UntrustedText(.material, accepted.joined(separator: "\n\n")).rendered
         return RefinementResult(
             additionalContext: block,
             outcomes: outcomes,
@@ -944,29 +949,30 @@ enum LongSessionChat {
         live: @escaping DigestBuilder.Live,
         coverage: @escaping (String?) -> Void
     ) -> AsyncThrowingStream<String, Error> {
-        let commentLines = AssistantService.formatComments(comments)
+        let fields: TherapistFields
+        do {
+            fields = try TherapistFields(
+                notes: notes, comments: AssistantService.formatComments(comments), background: patientBackground,
+                question: question, query: question, budget: service.budget)
+        } catch {
+            return AsyncThrowingStream { $0.finish(throwing: error) }
+        }
         let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question)
-        func makePrompt(_ material: String) -> String {
+        let turns = PromptTurn.recent(history, question: question)
+        func makePrompt(_ material: SessionMaterial) -> String {
             Prompts.sessionChat(
-                transcript: material,
-                notes: notes,
-                comments: commentLines,
-                patientBackground: patientBackground,
+                material: material,
+                notes: fields.notes,
+                comments: fields.comments,
+                patientBackground: fields.background,
                 history: history,
                 question: question,
                 clientName: service.clientName
             )
         }
-        if service.budget.fits(system: system, prompt: makePrompt(transcript)) {
-            coverage(nil)
-            return service.streamAnswerAboutSession(
-                transcript: transcript,
-                notes: notes,
-                comments: comments,
-                patientBackground: patientBackground,
-                history: history,
-                question: question
-            )
+        if service.budget.fits(system: system, prompt: PromptTurn.flattened(turns, then: makePrompt(.transcript(transcript)))) {
+            coverage(fields.coverageNote)
+            return service.streamAnswer(system: system, turns: turns, prompt: makePrompt(.transcript(transcript)))
         }
 
         return AsyncThrowingStream { continuation in
@@ -998,7 +1004,8 @@ enum LongSessionChat {
                     let total = ContextBudget.characters(
                         fitting: service.budget.availableCharacters(
                             reserving: ContextBudget.weightedLength(of: system)
-                                + ContextBudget.weightedLength(of: makePrompt("")) + headerReserve
+                                + ContextBudget.weightedLength(of: PromptTurn.flattened(turns, then: makePrompt(.transcript(""))))
+                                + headerReserve
                         ),
                         like: transcript
                     )
@@ -1014,10 +1021,11 @@ enum LongSessionChat {
                     }
 
                     let (digestText, _) = LongSessionNote.fit(
-                        Prompts.longSessionDigest(digest.sessionDigest),
-                        to: min(digestShare, max(200, initialRoom / 2))
+                        digest.sessionDigest,
+                        to: min(digestShare, max(200, initialRoom / 2)) - Prompts.longSessionDigestOverhead
                     )
-                    let passageLimit = max(200, initialRoom - digestText.count)
+                    let passageLimit = max(
+                        200, initialRoom - (digestText.isEmpty ? 0 : digestText.count + Prompts.longSessionDigestOverhead))
 
                     let doc = SessionSearch.Document(
                         date: sessionDate,
@@ -1057,7 +1065,7 @@ enum LongSessionChat {
                     let searchStage = "Searched session · \(searchResult.hits.count) matching passage\(searchResult.hits.count == 1 ? "" : "s")"
                     live(nil) { $0.recordCompletedStage(searchStage) }
 
-                    let baseMaterial = Prompts.longSessionMaterial(digest: digestText, passages: passagesText)
+                    let baseMaterial = Prompts.sessionMaterial(.excerpts(digest: digestText, passages: passagesText))
                     let totalLines = LongSessionNote.nonBlankLines(transcript).count
                     func makeCoverageLabel(toolLookups: Int) -> String {
                         var text = "Read: a summary of the whole session (\(digest.sections.count) part\(digest.sections.count == 1 ? "" : "s")) plus \(passageLineCount) of \(totalLines) transcript lines"
@@ -1065,11 +1073,12 @@ enum LongSessionChat {
                             text += " and \(toolLookups) follow-up lookup\(toolLookups == 1 ? "" : "s")"
                         }
                         text += " · \(effort.displayName)."
+                        if let note = fields.coverageNote { text += " " + note }
                         return text
                     }
                     coverage(makeCoverageLabel(toolLookups: 0))
 
-                    var finalMaterial = baseMaterial
+                    var followUps = ""
                     if effort.maxToolCalls > 0 {
                         let scope = LocalToolScope(sessions: [
                             LocalToolSession(
@@ -1080,7 +1089,7 @@ enum LongSessionChat {
                                 transcript: transcript,
                                 digest: digest,
                                 notes: notes,
-                                comments: commentLines
+                                comments: AssistantService.formatComments(comments)
                             )
                         ])
                         let remainingForTools = max(0, total - baseMaterial.count - 80)
@@ -1096,7 +1105,7 @@ enum LongSessionChat {
                             live: live
                         )
                         if !refinement.additionalContext.isEmpty {
-                            finalMaterial += "\n\n" + refinement.additionalContext
+                            followUps = refinement.additionalContext
                             let validCount = refinement.outcomes.filter { !$0.isError }.count
                             coverage(makeCoverageLabel(toolLookups: validCount))
                         }
@@ -1105,7 +1114,8 @@ enum LongSessionChat {
                     var chatService = service
                     chatService.systemPrompt = system
                     _ = try await builder.runStage(
-                        makePrompt(finalMaterial),
+                        makePrompt(.excerpts(digest: digestText, passages: passagesText, followUps: followUps)),
+                        turns: turns,
                         read: "Reading passages",
                         write: "Writing the answer",
                         task: .chat,
@@ -1167,6 +1177,9 @@ enum PatientChatAnswer {
         onCoverage: @escaping (TranscriptCoverage) -> Void,
         onSources: @escaping ([CitationSource]) -> Void = { _ in }
     ) -> AsyncThrowingStream<String, Error> {
+        if let error = context.inputError {
+            return AsyncThrowingStream { $0.finish(throwing: error) }
+        }
         var baseCoverage = context.coverage
         baseCoverage.effort = effort
 
@@ -1229,6 +1242,7 @@ enum PatientChatAnswer {
                     live(nil) { $0.steps = steps.writing }
                     _ = try await builder.runStage(
                         prompt,
+                        turns: PromptTurn.recent(history, question: question),
                         read: "Reading what was gathered",
                         write: "Writing the answer",
                         task: .chat,

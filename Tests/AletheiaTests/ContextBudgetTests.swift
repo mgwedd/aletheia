@@ -2,37 +2,31 @@ import XCTest
 @testable import Aletheia
 
 final class ContextBudgetTests: XCTestCase {
-    func testUntrustedSegmentsAreCapped() {
-        let budget = ContextBudget(tokens: 8_192)
-        let cap = budget.untrustedSegmentCharacters
-        XCTAssertGreaterThan(cap, 0)
-        XCTAssertLessThan(cap, budget.availableCharacters(reserving: 0))
-
-        let huge = String(repeating: "a", count: cap * 10)
-        for kind in [UntrustedText.Kind.notes, .comments, .background, .question] {
-            let text = UntrustedText(kind, huge, budget: budget).text
-            XCTAssertLessThanOrEqual(ContextBudget.weightedLength(of: text), cap + UntrustedText.cutMarker.count, "\(kind)")
-            XCTAssertTrue(text.hasSuffix(UntrustedText.cutMarker), "\(kind)")
+    /// Material is never cut where it is tagged: callers size it, and a prompt
+    /// that still doesn't fit is refused by the budget check.
+    func testUntrustedTextIsNeverCut() {
+        let huge = String(repeating: "a", count: 2_000_000)
+        for kind in UntrustedText.Kind.allCases {
+            XCTAssertEqual(UntrustedText(kind, huge).text, huge, "\(kind)")
         }
-        // Sized by their callers: never cut here, so the newest chat turns survive.
-        for kind in [UntrustedText.Kind.conversation, .digest, .draft, .transcript, .material] {
-            XCTAssertEqual(UntrustedText(kind, huge, budget: budget).text, huge, "\(kind)")
-        }
-        let small = UntrustedText(.notes, "short note", budget: budget).text
-        XCTAssertEqual(small, "short note")
     }
 
-    func testWholeTranscriptsAreLeftToTheBudgetCheck() {
+    /// A huge comment is not cut silently: only the parts that match go in,
+    /// under a line saying so, and the coverage names the field.
+    func testHugeCommentGoesInAsMatchingPartsAndIsReported() throws {
         let budget = ContextBudget(tokens: 8_192)
-        let long = String(repeating: "word ", count: budget.untrustedSegmentCharacters)
-        XCTAssertEqual(UntrustedText(.transcript, long, budget: budget).text, long)
-        XCTAssertEqual(UntrustedText(.material, long, budget: budget).text, long)
-    }
-
-    func testHugeCommentCannotCrowdOutTheInstructions() {
-        let comment = String(repeating: "x", count: 5_000_000)
-        let prompt = Prompts.sessionChat(transcript: "[00:01] You: hi", comments: [comment], history: [], question: "Q?")
-        XCTAssertLessThan(prompt.count, ContextBudget.current.availableCharacters(reserving: 0))
-        XCTAssertTrue(prompt.contains(Prompts.untrustedDataRule))
+        let filler = (1...4_000).map { "Line \($0) about the weather and the bus." }
+        var lines = filler
+        lines.insert("She mentioned her sister's wedding again.", at: 2_500)
+        let fields = try TherapistFields(
+            notes: "short", comments: [lines.joined(separator: "\n")], background: "",
+            query: "sister wedding", budget: budget)
+        XCTAssertEqual(fields.excerpted, [.comments])
+        XCTAssertEqual(fields.notes, "short")
+        let comment = try XCTUnwrap(fields.comments.first)
+        XCTAssertLessThanOrEqual(comment.count, TherapistInput.room(in: budget))
+        XCTAssertTrue(comment.contains("sister's wedding"))
+        XCTAssertTrue(comment.hasPrefix("(About "))
+        XCTAssertEqual(fields.coverageNote, "Only the parts of the margin comments that match were read: it is too long to send whole.")
     }
 }

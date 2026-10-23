@@ -1,64 +1,57 @@
 import Foundation
 
-/// Text the model must treat as data: transcripts, notes, comments, earlier
-/// answers. The only way such text gets into a prompt. It is fenced in fixed
-/// tags (`Prompts.untrustedDataRule` tells the model to ignore instructions
-/// inside them), any copy of those tags inside the text is defused, and
-/// free-standing pastes (background, notes, comments, the question) are
-/// capped so one huge paste can't crowd out the instructions.
+/// Text the therapist didn't write, going into a prompt as reference material:
+/// transcripts, digests, the model's own drafts and chat summaries, and
+/// passages quoted from those. It is put in plain tags, and any copy of those
+/// tags inside the text is broken, so material can't close its own tags and
+/// pass for the instructions around it. `Prompts.materialRule` is the one line
+/// that tells the model what the tags mean.
+///
+/// Nothing is cut here: callers size material to the budget (the long-session
+/// digest and passages, compaction), and a prompt that still doesn't fit is
+/// refused with an error, never trimmed.
+///
+/// The therapist's own words (her notes, comments, background, questions,
+/// edited prompts and chat turns) are instructions and context she chose, so
+/// they are never put in these tags.
 struct UntrustedText: Equatable {
     enum Kind: String, CaseIterable {
-        case transcript, background, notes, comments, conversation, digest, draft, material
-        /// The therapist's own question: sent as-is, not fenced.
-        case question
-
-        var isFenced: Bool { self != .question }
-        /// Only free-standing pastes are capped. Transcripts, material, the
-        /// conversation, digests and drafts are sized by their callers (the fit
-        /// check, compaction, the digest budget); cutting them here would
-        /// silently drop text, such as the newest chat turns.
-        var isCapped: Bool { [.background, .notes, .comments, .question].contains(self) }
+        /// A session transcript, whole or as passages.
+        case transcript
+        /// A model-written summary of a session or of its sections.
+        case digest
+        /// A model-written draft note under check.
+        case draft
+        /// A model-written summary of an earlier chat (compaction).
+        case summary
+        /// A mix of the above: retrieved passages, digests, generated notes.
+        case material
     }
-
-    static let cutMarker = "\n[… cut: too long]"
 
     let kind: Kind
     let text: String
 
-    init(_ kind: Kind, _ raw: String, budget: ContextBudget = .current) {
+    init(_ kind: Kind, _ raw: String) {
         self.kind = kind
-        var text = Self.defused(raw)
-        if kind.isCapped {
-            let cap = budget.untrustedSegmentCharacters
-            if ContextBudget.weightedLength(of: text) > cap {
-                text = String(ContextBudget.prefix(Substring(text), weightedLength: cap)) + Self.cutMarker
-            }
-        }
-        self.text = text
+        self.text = Self.defused(raw)
     }
 
-    var isEmpty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// The text in its tags, as it goes into the prompt.
+    var rendered: String { "<\(kind.rawValue)>\n\(text)\n</\(kind.rawValue)>" }
 
-    /// The text as it goes into the prompt: fenced, or bare for a question.
-    var rendered: String {
-        kind.isFenced ? "<\(kind.rawValue)>\n\(text)\n</\(kind.rawValue)>" : text
-    }
+    /// The characters the tags add around `kind`'s text.
+    static func tagOverhead(_ kind: Kind) -> Int { 2 * kind.rawValue.count + 7 }
 
-    private static let fencePattern: NSRegularExpression? = {
-        let names = Kind.allCases.filter(\.isFenced).map(\.rawValue).joined(separator: "|")
-        return try? NSRegularExpression(pattern: "<(/?)(\(names))\\b", options: .caseInsensitive)
+    /// Tag names and spaced or cased variants (`</ transcript>`, `< /Digest >`).
+    private static let tagPattern: NSRegularExpression? = {
+        let names = Kind.allCases.map(\.rawValue).joined(separator: "|")
+        return try? NSRegularExpression(pattern: "<(\\s*/?\\s*)(\(names))\\b", options: .caseInsensitive)
     }()
 
-    /// Breaks any copy of a fence tag, so text can't close its own fence.
-    private static func defused(_ raw: String) -> String {
-        guard let fencePattern else { return raw }
-        return fencePattern.stringByReplacingMatches(
+    /// Breaks any copy of a tag, so text can't close its own.
+    static func defused(_ raw: String) -> String {
+        guard let tagPattern else { return raw }
+        return tagPattern.stringByReplacingMatches(
             in: raw, range: NSRange(raw.startIndex..., in: raw), withTemplate: "<\u{200B}$1$2")
     }
-}
-
-extension ContextBudget {
-    /// The most one untrusted segment (a note, comment, answer or background)
-    /// may take: a quarter of what the window can read.
-    var untrustedSegmentCharacters: Int { availableCharacters(reserving: 0) / 4 }
 }
