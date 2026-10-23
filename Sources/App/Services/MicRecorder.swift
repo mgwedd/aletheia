@@ -73,8 +73,7 @@ final class MicRecorder {
         levelSource.reset()
 
         let dir = url.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+        try PrivateStaging.ensurePrivateDirectory(dir)
 
         let inputNode = engine.inputNode
         let format = inputNode.outputFormat(forBus: 0)

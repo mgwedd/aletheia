@@ -26,7 +26,7 @@ final class SpotlightItemBuilderTests: XCTestCase {
 
         let sessionEntry = entries[1]
         XCTAssertEqual(sessionEntry.uniqueIdentifier, SpotlightItemBuilder.sessionIdentifier(patientID: p.id, folderName: "2026-03-05_Session"))
-        XCTAssertTrue(sessionEntry.title.contains("Jane Doe"))
+        XCTAssertEqual(sessionEntry.title, "J.D. — \(longDate(2026, 3, 5))")
         XCTAssertEqual(sessionEntry.contentModificationDate, date(2026, 3, 5))
     }
 
@@ -41,6 +41,19 @@ final class SpotlightItemBuilderTests: XCTestCase {
         )
         XCTAssertTrue(entries.allSatisfy { $0.keywords.contains("therapy") })
         XCTAssertEqual(entries[1].contentDescription, "Therapy session on \(longDate(2026, 3, 5)).")
+    }
+
+    func testNoFieldContainsTheName() {
+        let p = patient()
+        let sessions = [SessionRecord(patientId: p.id, date: date(2026, 3, 5), folderName: "2026-03-05_Session")]
+        for entry in SpotlightItemBuilder.entries(for: p, sessions: sessions) {
+            let fields = [entry.uniqueIdentifier, entry.title, entry.contentDescription] + entry.keywords
+            for field in fields {
+                XCTAssertFalse(field.localizedCaseInsensitiveContains("Jane"), field)
+                XCTAssertFalse(field.localizedCaseInsensitiveContains("Doe"), field)
+            }
+        }
+        XCTAssertEqual(SpotlightItemBuilder.entries(for: p, sessions: sessions)[0].title, "J.D.")
     }
 
     func testPatientRouteRoundTrips() {

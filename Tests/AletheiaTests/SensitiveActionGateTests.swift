@@ -104,7 +104,9 @@ final class SensitiveActionGateTests: XCTestCase {
         get throws {
             let repo = URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            return try String(contentsOf: repo.appendingPathComponent("Sources/App/Views/SettingsView.swift"), encoding: .utf8)
+            return try ["Sources/App/Views/SettingsView.swift", "Sources/App/Views/Settings/AuditLogSection.swift"]
+                .map { try String(contentsOf: repo.appendingPathComponent($0), encoding: .utf8) }
+                .joined(separator: "\n")
         }
     }
 
@@ -116,7 +118,7 @@ final class SensitiveActionGateTests: XCTestCase {
             ("disableEncryption", "disableEncryption()"),
             ("changePassphrase", "showChangePassphraseSheet = true"),
             ("changeDataFolder", "chooseFolder()"),
-            ("exportActivityLog", "exportAuditLog()"),
+            ("exportActivityLog", "exportLog()"),
             ("exportActivityLog", "verifyIntegrityAndExportReport()"),
             ("exportAllRecords", "chooseExportAllFolder()"),
         ]
@@ -134,7 +136,7 @@ final class SensitiveActionGateTests: XCTestCase {
     func testGatedCallsAreNotAlsoReachableUngated() throws {
         let source = try settingsSource
         // Each gated function is only invoked from inside requireAuth.
-        for call in ["disableEncryption()", "chooseFolder()", "exportAuditLog()", "verifyIntegrityAndExportReport()"] {
+        for call in ["disableEncryption()", "chooseFolder()", "exportLog()", "verifyIntegrityAndExportReport()"] {
             let all = source.components(separatedBy: call).count - 1
             let gated = source.components(separatedBy: "{ \(call)").count - 1
             // one extra occurrence is the function declaration ("func name()")
