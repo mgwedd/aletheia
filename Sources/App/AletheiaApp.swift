@@ -198,6 +198,7 @@ struct AletheiaApp: App {
                     DataFolderMoveView()
                         .environmentObject(settings)
                         .environmentObject(appModel)
+                        .noWritingTools()
                 }
                 .frame(minWidth: 900, minHeight: 600)
                 .onAppear {

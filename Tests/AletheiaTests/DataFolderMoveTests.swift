@@ -87,7 +87,7 @@ final class DataFolderMoveTests: XCTestCase {
         settings.dataRootURL = source
         let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL }, deviceKeys: MemoryDeviceKeys())
         let appModel = AppModel(settings: settings, encryption: encryption, spotlightIndexer: NoopSpotlight())
-        _ = try encryption.enable(passphrase: "pw", iterations: 1_000)
+        _ = try encryption.enable(passphrase: "correct horse battery", iterations: 100_000)
         try encryption.rememberOnDevice()
         XCTAssertTrue(encryption.isUnlocked)
 
