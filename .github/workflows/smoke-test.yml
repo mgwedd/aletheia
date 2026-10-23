@@ -19,6 +19,9 @@ on:
   # Manual run (Actions tab): all three tiers, e.g. to check preview on a branch.
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   # The event is part of the group so a manual run on main can't cancel the
   # push run that Auto Release waits for.
@@ -35,6 +38,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Check per-tier entitlements
         run: ./scripts/check-entitlements.sh
       - name: Self-test the entitlements guard
@@ -66,6 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Does this change more than docs?
         id: check
@@ -134,6 +140,8 @@ jobs:
         run: echo "Only documentation changed; skipping the build and tests."
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
         if: env.RUN_BUILD == 'true'
 
       - name: Show selected Xcode

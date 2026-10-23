@@ -5,8 +5,8 @@ name: Release
 # polls, and publishes both as a GitHub Release.
 #
 # Signing/notarization uses secrets in the `release` environment. A TAG release
-# requires them and fails without them (set the repository variable
-# ALLOW_UNSIGNED_RELEASE=true to publish an ad-hoc build anyway). A dry run
+# requires them and fails without them (there is no unsigned override: a tag
+# fails while the repository variable ALLOW_UNSIGNED_RELEASE is set). A dry run
 # builds with or without them; without them the build is ad-hoc signed (first
 # launch needs right-click → Open). Set each with `gh secret set NAME --env
 # release` (hidden prompt, or piped on stdin).
@@ -40,7 +40,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -53,6 +53,12 @@ jobs:
     # The signing and notarization secrets live in this environment, which
     # requires an approval before the job starts.
     environment: release
+    # Publishing needs contents: write; provenance needs the two attestation
+    # permissions. They are granted to this job only.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE != '' }}
       HAS_NOTARIZATION: ${{ secrets.ASC_API_KEY != '' && secrets.ASC_API_KEY_ID != '' && secrets.ASC_API_ISSUER_ID != '' }}
@@ -60,22 +66,39 @@ jobs:
       IS_TAG: ${{ github.ref_type == 'tag' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # A published release reaches every user through the updater, so a tag
       # must ship signed and notarized: fail before building rather than
       # publish a DMG Gatekeeper warns about. Dry runs (branch dispatch) still
-      # build without the secrets. Set the repository variable
-      # ALLOW_UNSIGNED_RELEASE to `true` to publish an ad-hoc build anyway.
+      # build without the secrets.
       - name: Require a signed, notarized build for a tag
-        if: env.IS_TAG == 'true' && vars.ALLOW_UNSIGNED_RELEASE != 'true'
+        if: env.IS_TAG == 'true'
         run: |
           if [ "${HAS_SIGNING}" != "true" ] || [ "${HAS_NOTARIZATION}" != "true" ]; then
-            echo "::error::A tag release needs the signing and notarization secrets in the release environment (or ALLOW_UNSIGNED_RELEASE=true)."
+            echo "::error::A tag release needs the signing and notarization secrets in the release environment."
             exit 1
           fi
 
+      # The unsigned-release override is gone: a tag fails while it is set.
+      - name: Refuse the unsigned-release override on a tag
+        if: env.IS_TAG == 'true' && vars.ALLOW_UNSIGNED_RELEASE != ''
+        run: |
+          echo "::error::ALLOW_UNSIGNED_RELEASE is set; delete the repository variable. A tag release is always signed and notarized."
+          exit 1
+
       - name: Show selected Xcode
         run: xcodebuild -version
+
+      # Every build tool is installed here, pinned and checksum-verified
+      # (scripts/tools.lock), before the signing certificate is imported:
+      # nothing fetched from the network runs while the certificate is unlocked.
+      - name: Install XcodeGen (pinned)
+        run: |
+          set -euo pipefail
+          ./scripts/install-xcodegen.sh --dest "$RUNNER_TEMP/tools" > "$RUNNER_TEMP/xcodegen-bin"
+          cat "$RUNNER_TEMP/xcodegen-bin" >> "$GITHUB_PATH"
 
       - name: Import Developer ID certificate
         if: env.HAS_SIGNING == 'true'
@@ -168,6 +191,13 @@ jobs:
             || { echo "::error::Hardened Runtime is not enabled on the helper"; exit 1; }
           echo "$HELPER_INFO" | grep -q 'Timestamp=' \
             || { echo "::error::No secure timestamp on the helper's signature"; exit 1; }
+
+      # The signed app's entitlement keys must equal the production file's, with
+      # no Calendar/Reminders strings in its Info.plist and no debug-only
+      # --harness flags in the executable.
+      - name: Check the built app against production
+        if: env.HAS_SIGNING == 'true'
+        run: ./scripts/check-entitlements.sh --app dist/Aletheia.app
 
       - name: Package DMG and appcast
         id: package
@@ -297,16 +327,21 @@ jobs:
       - name: Launch the packaged app
         run: ./scripts/launch-smoke.sh "${{ steps.package.outputs.dmg }}"
 
+      - name: Attest build provenance
+        if: env.IS_TAG == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ steps.package.outputs.dmg }}
+
       - name: Create GitHub Release
         if: env.IS_TAG == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ALLOW_UNSIGNED_RELEASE: ${{ vars.ALLOW_UNSIGNED_RELEASE }}
         run: |
           set -euo pipefail
           # Second guard: whatever the secrets said, publish only what was
           # actually notarized and stapled above.
-          if [ "${NOTARIZED:-false}" != "true" ] && [ "${ALLOW_UNSIGNED_RELEASE:-}" != "true" ]; then
+          if [ "${NOTARIZED:-false}" != "true" ]; then
             echo "::error::The DMG was not notarized; not publishing."
             exit 1
           fi

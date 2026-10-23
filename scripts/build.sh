@@ -4,7 +4,7 @@
 # ScreenCaptureKit apps need the full Xcode app from the App Store).
 #
 # What this does:
-#   1. Installs XcodeGen (via Homebrew) if it's missing.
+#   1. Installs the pinned XcodeGen release (scripts/tools.lock) if it's missing.
 #   2. Generates Aletheia.xcodeproj from project.yml.
 #   3. Builds a Release build with the Hardened Runtime enabled, ad-hoc code
 #      signed (no Apple Developer account needed). Set CODE_SIGN_IDENTITY to
@@ -34,12 +34,9 @@ if ! xcodebuild -version >/dev/null 2>&1; then
 fi
 
 if ! command -v xcodegen >/dev/null 2>&1; then
-    echo "XcodeGen not found — installing via Homebrew…"
-    if ! command -v brew >/dev/null 2>&1; then
-        echo "Homebrew is required to install XcodeGen. Install it from https://brew.sh, then re-run this script." >&2
-        exit 1
-    fi
-    brew install xcodegen
+    echo "XcodeGen not found — installing the pinned release (scripts/tools.lock)…"
+    XCODEGEN_BIN="$(scripts/install-xcodegen.sh --dest "$PWD/build/tools")"
+    export PATH="$XCODEGEN_BIN:$PATH"
 fi
 
 echo "Generating Xcode project…"
