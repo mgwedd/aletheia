@@ -193,4 +193,37 @@ final class AppLockPolicyTests: XCTestCase {
         XCTAssertEqual(failedReason, "Biometry lockout")
         XCTAssertEqual(appLock.lastError, "Biometry lockout")
     }
+
+    private final class SpotlightSpy: SpotlightIndexing {
+        private(set) var clears = 0
+        func replaceIndex(with entries: [SpotlightEntry]) {}
+        func clear() { clears += 1 }
+    }
+
+    @MainActor
+    func testLockClearsSpotlightAndIdleTimerRunsInCommonModes() throws {
+        let settings = AppSettings.shared
+        let priorEnabled = settings.appLockEnabled
+        defer { settings.appLockEnabled = priorEnabled }
+        settings.appLockEnabled = true
+
+        let spy = SpotlightSpy()
+        let appLock = AppLock(settings: settings, canAuthenticate: { true }, spotlight: spy)
+        appLock.simulateUnlockedForTesting()
+        XCTAssertEqual(spy.clears, 0)
+        appLock.lockIfEnabled()
+        XCTAssertTrue(appLock.isLocked)
+        XCTAssertEqual(spy.clears, 1, "locking removes our Spotlight items")
+        appLock.lockIfEnabled()
+        XCTAssertEqual(spy.clears, 1, "already locked: nothing more to clear")
+
+        appLock.simulateUnlockedForTesting()
+
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/Services/AppLock.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(code.contains("RunLoop.main.add(timer, forMode: .common)"))
+        XCTAssertFalse(code.contains("Timer.scheduledTimer"), "scheduledTimer uses the default mode and stalls during menu tracking")
+    }
 }

@@ -15,15 +15,16 @@ final class SessionEventBuilderTests: XCTestCase {
 
     func testDraftTitleAndDuration() {
         let start = calendar.date(from: DateComponents(year: 2026, month: 3, day: 12, hour: 9))!
-        let draft = SessionEventBuilder.draft(patientName: "Jane Doe", start: start, durationMinutes: 50, calendar: calendar)
-        XCTAssertEqual(draft.title, "Session with Jane Doe")
+        let draft = SessionEventBuilder.draft(start: start, durationMinutes: 50, calendar: calendar)
+        XCTAssertEqual(draft.title, "Therapy session")
+        XCTAssertFalse(ICSExporter.generate(for: draft).contains("Jane"))
         XCTAssertEqual(draft.startDate, start)
         XCTAssertEqual(draft.endDate, calendar.date(byAdding: .minute, value: 50, to: start))
     }
 
     func testDefaultDurationIsATherapyHour() {
         let start = now!
-        let draft = SessionEventBuilder.draft(patientName: "Jane", start: start, calendar: calendar)
+        let draft = SessionEventBuilder.draft(start: start, calendar: calendar)
         let minutes = calendar.dateComponents([.minute], from: draft.startDate, to: draft.endDate).minute
         XCTAssertEqual(minutes, 50)
     }
@@ -39,7 +40,6 @@ final class SessionEventBuilderTests: XCTestCase {
     func testDraftWithRecurrence() {
         let start = calendar.date(from: DateComponents(year: 2026, month: 3, day: 12, hour: 9))!
         let draft = SessionEventBuilder.draft(
-            patientName: "Jane Doe",
             start: start,
             durationMinutes: 50,
             recurrence: .everyTwoWeeks,

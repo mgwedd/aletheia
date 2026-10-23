@@ -146,6 +146,7 @@ struct AletheiaApp: App {
         appLock.onUnlock = { [weak appModel, weak encryption] in
             encryption?.autoUnlockFromDevice()
             appModel?.recordAudit(.appUnlocked)
+            appModel?.reindexSpotlight()
         }
         appLock.onLock = { [weak encryption] in encryption?.lock() }
         // A recording or transcription keeps the key it started with until it
@@ -224,7 +225,8 @@ struct AletheiaApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     // An expiry that passed while the app was open takes effect now.
                     if phase == .active { license.refresh() }
-                    // AppLock observes hide (when enabled), idle, sleep and screen lock.
+                    // Activation can trigger another update check. AppLock
+                    // handles hide (when enabled), idle, sleep, and screen lock.
                     if phase == .active, settings.autoCheckForUpdates {
                         Task { await updateService.checkForUpdates() }
                     }

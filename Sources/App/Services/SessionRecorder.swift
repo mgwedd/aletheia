@@ -243,8 +243,7 @@ final class SessionRecorder: ObservableObject {
             for (stage, dest) in [(stageMic, micURL), (stageCall, callURL)] {
                 try protector.sealLargeFile(from: stage, to: dest)
             }
-            try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stagingDir.path)
+            try PrivateStaging.ensurePrivateDirectory(stagingDir)
             try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stagingDirectoryURL.path)
         } catch {
             stagingSessionID = nil
