@@ -313,6 +313,40 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// How a candidate backup folder is judged. Injectable so tests stay off the
+    /// real filesystem facts (iCloud, volumes).
+    var backupFolderVerdict: (URL) -> DataFolderPolicy.Verdict = { DataFolderPolicy.verdict(for: $0) }
+
+    /// Writes an encrypted archive of the database into `folder` (a folder the
+    /// user chose), sealed with the folder key, and records the backup once on
+    /// success. Nothing is recorded when the backup is refused or fails.
+    func backUpNow(to folder: URL) async -> BackupOutcome {
+        guard let root = settings.dataRootURL, let comments = commentStore else {
+            return .failed("Choose a data folder first.")
+        }
+        guard let key = encryption.protector.heldKey else {
+            return .failed("Turn on and unlock encryption first. Backups are sealed with your encryption key.")
+        }
+        let verdict = backupFolderVerdict(folder)
+        guard verdict == .ok else { return .failed(verdict.explanation) }
+        let dataPath = root.standardizedFileURL.resolvingSymlinksInPath().path
+        let folderPath = folder.standardizedFileURL.resolvingSymlinksInPath().path
+        guard folderPath != dataPath, !folderPath.hasPrefix(dataPath + "/") else {
+            return .failed("Choose a folder outside your data folder, ideally on another disk.")
+        }
+        var service = LocalEncryptedBackupService(root: root, key: key)
+        service.destinationOverride = folder
+        let outcome = await BackupCoordinator(store: comments, destination: service).backUpNow(reason: "manual")
+        if case .success = outcome {
+            // The key wrapper is passphrase-protected; keeping it beside the
+            // archive lets the backup be opened without the original data folder.
+            if !Keystore.exists(at: folder), let keystore = Keystore.load(from: root) { try? keystore.write(to: folder) }
+            settings.localEncryptedBackupEnabled = true
+            recordAudit(.backupRun)
+        }
+        return outcome
+    }
+
     /// Record an ePHI-affecting action, if a data folder (and thus a log) exists.
     /// The thin seam call sites use so they don't reach into `audit` directly.
     func recordAudit(_ action: AuditAction, subjectID: String? = nil, detail: String? = nil) {

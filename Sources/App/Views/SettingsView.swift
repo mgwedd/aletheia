@@ -871,8 +871,8 @@ struct SettingsView: View {
         HStack(alignment: .center, spacing: 14) {
             Chip("Time Machine", tone: .info)
             Text(settings.keepDataOutOfSystemBackups
-                 ? "Your data folder is kept out of Time Machine and iCloud backups. Aletheia does not make its own backup copies yet, so keep a copy of your own."
-                 : "Aletheia does not make its own backup copies yet. Time Machine includes the data folder by default.")
+                 ? "Your data folder is kept out of Time Machine and iCloud backups. Use Back up now to save an encrypted copy to a folder on this Mac or an external disk."
+                 : "Time Machine includes the data folder by default. You can also use Back up now to save an encrypted copy to a folder of your choice.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.text.color)
                 .fixedSize(horizontal: false, vertical: true)
@@ -887,6 +887,7 @@ struct SettingsView: View {
             )
             .padding(.vertical, 12)
         }
+        BackupNowView()
         SettingsCaption("Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder.")
         Button("Show backups folder in Finder", action: showBackupsFolder)
             .buttonStyle(.themed)

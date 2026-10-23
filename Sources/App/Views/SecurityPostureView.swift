@@ -25,9 +25,6 @@ struct SecurityPostureView: View {
             auditLogActive: appModel.audit != nil,
             auditLogVerifiable: appModel.audit?.isVerifiable ?? true,
             localEncryptedBackup: settings.localEncryptedBackupEnabled,
-            localBackupActive: LocalEncryptedBackupService.isWired,
-            iCloudBackupEnabled: settings.iCloudEncryptedBackupEnabled,
-            iCloudBackupConfigured: ICloudEncryptedBackupService.isProvisioned,
             networkOnline: reachability.isOnline,
             diskEncrypted: appModel.diskEncrypted
         )

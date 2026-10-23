@@ -114,7 +114,6 @@ final class AppSettings: ObservableObject {
         static let summariesPaused = "summariesPaused"
         static let prepareSummariesOnBattery = "prepareSummariesOnBattery"
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
-        static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
         static let autoTranscribeAfterRecording = "autoTranscribeAfterRecording"
         static let appearance = "appearance"
@@ -283,17 +282,11 @@ final class AppSettings: ObservableObject {
             noteInstructions[format.rawValue] = trimmed
         }
     }
-    /// Opt-in: keep an end-to-end-encrypted backup copy of the database on this
-    /// Mac (in addition to whatever Time Machine already does). The default is
-    /// off — Time Machine of the data folder is the baseline local backup.
+    /// Set once "Back up now" has written an end-to-end-encrypted archive. Shown
+    /// in the security overview; Time Machine of the data folder stays the
+    /// baseline local backup.
     @Published var localEncryptedBackupEnabled: Bool {
         didSet { defaults.set(localEncryptedBackupEnabled, forKey: Keys.localEncryptedBackupEnabled) }
-    }
-    /// Opt-in: also upload the end-to-end-encrypted backup to the user's private
-    /// iCloud (CloudKit). The blob is encrypted with the user's key before it
-    /// leaves the Mac, so Apple only ever stores ciphertext. Off by default.
-    @Published var iCloudEncryptedBackupEnabled: Bool {
-        didSet { defaults.set(iCloudEncryptedBackupEnabled, forKey: Keys.iCloudEncryptedBackupEnabled) }
     }
     /// Opt-in: keep a session's raw audio (`mic.caf` / `call.caf`) on disk after
     /// it has been transcribed. Off by default (transcript-only) — the recording
@@ -414,7 +407,6 @@ final class AppSettings: ObservableObject {
         systemPrompt = (savedPrompt?.isEmpty == false) ? savedPrompt! : Prompts.defaultSystemPrompt
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
         localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)
-        iCloudEncryptedBackupEnabled = defaults.bool(forKey: Keys.iCloudEncryptedBackupEnabled)
         keepAudioRecordings = defaults.bool(forKey: Keys.keepAudioRecordings)
         autoTranscribeAfterRecording = Self.resolvedAutoTranscribe(in: defaults)
         appearance = defaults.string(forKey: Keys.appearance)

@@ -1,11 +1,10 @@
 # Privacy Policy
 
-_Last updated: 2026-09-19_
+_Last updated: 2026-10-23_
 
 **Plain-language summary:** By default, Aletheia runs entirely offline on your
-Mac. You can optionally turn on end-to-end encrypted backup to your own
-iCloud account; this is off by default and only happens if you enable it.
-Either way, the developer does **not** collect, receive, transmit, store, or
+Mac. You can save an encrypted backup copy to a folder on your own Mac or an
+external disk; the App never uploads it anywhere. The developer does **not** collect, receive, transmit, store, or
 have any access to your data or your patients' data. There are no accounts, no
 analytics, no telemetry, and no developer-operated servers that receive your
 data.
@@ -34,12 +33,10 @@ history, and patient information are stored **only** in the data folder you
 choose on your Mac, by default. You control that folder, its backups, and who
 can access your Mac.
 
-If you choose to turn on **encrypted iCloud backup** (off by default), the App
-encrypts a copy of your data on your Mac before uploading it to **your own**
-iCloud account. That backup is end-to-end encrypted: it is unreadable by the
-developer and by Apple's staff. You decide whether this feature is on, and you
-can turn it off at any time. Regardless of this setting, your data is never
-sent to the developer or to any developer-operated server.
+If you use **Back up now** in Settings, the App writes an encrypted copy of your
+database to a folder you choose on your Mac or an external disk. It refuses
+iCloud Drive and other synced folders, and it never uploads the copy. Your data
+is never sent to the developer or to any developer-operated server.
 
 ## 4. Network connections the App makes
 
@@ -55,12 +52,6 @@ outbound connections, and **none of them send data to the developer**:
   you; no patient data is uploaded.
 - **Local AI** — Ollama runs on your machine and is reached only at
   `127.0.0.1` (your computer). Traffic does not leave the Mac.
-- **Encrypted iCloud backup (opt-in, off by default)** — only if you turn this
-  on, the App encrypts your data on your Mac and uploads that encrypted copy to
-  **your own** iCloud account (Apple's infrastructure), so you can restore it.
-  This is the one connection that carries your (encrypted) data, and it goes
-  only to your own iCloud, never to the developer or a developer-operated
-  server.
 
 ## 5. You are the data controller
 
@@ -75,9 +66,7 @@ patient consent, retention, and disclosure of that data.
 
 Protecting the data on your Mac is your responsibility. Enable **FileVault**,
 use the App's **Touch ID / password lock**, keep backups, and restrict physical
-and account access to the computer. If you enable encrypted iCloud backup,
-also protect your Apple ID (strong password, two-factor authentication), since
-it controls access to that backup. See [SECURITY.md](SECURITY.md).
+and account access to the computer. See [SECURITY.md](SECURITY.md).
 
 ## 7. Children
 

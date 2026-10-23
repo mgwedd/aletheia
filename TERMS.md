@@ -54,7 +54,7 @@ You are solely responsible for:
 - **Device security.** Protecting the Mac the App runs on — FileVault, the App's
   Touch ID / password lock, account security, and physical access. See
   [SECURITY.md](SECURITY.md).
-- **Backups.** Backing up your data folder. The App does not back up your data.
+- **Backups.** Backing up your data folder. The App can save an encrypted copy of its database to a folder you choose (Settings › Backups); that copy does not include recordings or other files, so keep your own backups too.
 - **Third-party software.** Any tools you install to use with the App (for
   example Ollama or model files), under their own licenses and terms.
 

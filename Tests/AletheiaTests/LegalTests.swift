@@ -20,4 +20,16 @@ final class LegalTests: XCTestCase {
         XCTAssertTrue(Legal.termsURL.absoluteString.hasSuffix("/TERMS.md"))
         XCTAssertTrue(Legal.privacyURL.absoluteString.hasSuffix("/PRIVACY.md"))
     }
+
+    /// The legal documents describe backups as local-only: no iCloud backup is offered.
+    func testDocumentsDoNotOfferAnICloudBackup() throws {
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for name in ["PRIVACY.md", "TERMS.md", "SECURITY.md"] {
+            let text = try String(contentsOf: repo.appendingPathComponent(name), encoding: .utf8).lowercased()
+            XCTAssertFalse(text.contains("icloud backup"), "\(name) must not offer an iCloud backup")
+            XCTAssertFalse(text.contains("backup to your own"), "\(name) must not describe an upload")
+        }
+        let terms = try String(contentsOf: repo.appendingPathComponent("TERMS.md"), encoding: .utf8)
+        XCTAssertFalse(terms.contains("does not back up your data"))
+    }
 }

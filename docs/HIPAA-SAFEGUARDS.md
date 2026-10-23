@@ -21,7 +21,6 @@ flowchart LR
     C["Clinician's Mac<br/>(the only place PHI lives)"]
     C -->|update check: version file only| U["appcast host"]
     C -->|opt-in model download| M["model host"]
-    C -->|opt-in, end-to-end encrypted| I["clinician's own iCloud"]
     C -.->|local only, 127.0.0.1| O["on-device AI (Ollama / llama.cpp)"]
     D["Developer"]:::none
     classDef none fill:#f6f6f6,stroke:#bbb,color:#888;
@@ -45,10 +44,10 @@ Legend: **✅ in place** · **◐ in progress** · **○ clinician responsibilit
 | **Emergency access procedure (a)(2)(ii)** *(addressable)* | ✅ | A 24-word BIP-39 emergency recovery key (≥256 bits entropy) is generated when at-rest encryption is enabled and can be replaced at any time in Settings › Encryption. It wraps the data encryption key (DEK) in an independent keyslot. Clinicians are guided to print or export the key as a PDF during setup and store it in an offline, physically secured location (e.g. a locked safe or deposit box). Emergency access is executed by clicking "Use recovery key…" on the folder unlock screen. The recovery key is never written to disk in the data folder. |
 | **Automatic logoff (a)(2)(iii)** *(addressable)* | ◐ | App lock re-engages whenever the Mac locks or sleeps, so the Mac's screen-lock setting (System Settings › Lock Screen) provides the logoff; set a short interval there. An optional **in-app idle lock** (off by default) also re-locks after inactivity in Aletheia. |
 | **Encryption & decryption (a)(2)(iv)** *(addressable)* | ✅ | AES-256-GCM at rest for the database, transcripts, summaries, session digests, and audio (see [ENCRYPTION.md](ENCRYPTION.md)); FileVault recommended as the disk-level baseline. First-run recommends turning it on as an opt-out step (with a passphrase, a 24-word emergency recovery key, and optional transparent unlock on this Mac), so a new install is guided to encrypt by default rather than leaving it a buried toggle. |
-| **Audit controls (b)** — record and examine activity involving ePHI | ✅ / ◐ | An on-device, append-only audit log (`audit.log`, one JSON line per event) records ePHI-affecting actions with timestamps and holds **no names or clinical content** — only action types and opaque record ids. It's viewable and exportable in Settings, stored only on the Mac. App-unlock and encryption enable/disable/unlock are wired now; export/delete/backup events attach as those flows land. |
+| **Audit controls (b)** — record and examine activity involving ePHI | ✅ / ◐ | An on-device, append-only audit log (`audit.log`, one JSON line per event) records ePHI-affecting actions with timestamps and holds **no names or clinical content** — only action types and opaque record ids. It's viewable and exportable in Settings, stored only on the Mac. App-unlock and encryption enable/disable/unlock are wired now; export, delete and backup events are recorded as those flows run. |
 | **Integrity (c)(1)** — protect ePHI from improper alteration/destruction | ✅ / ○ | SQLite `PRAGMA secure_delete` zeroes freed pages; atomic writes for identity/metadata; encrypted backups are sealed snapshots. Source-of-truth transcript is editable by the clinician by design (right-to-amend), with edits under the clinician's control. |
 | **Person/entity authentication (d)** | ✅ | App lock via `LocalAuthentication` (Touch ID or Mac password) gates access to the app; macOS account auth gates the device. |
-| **Transmission security (e)(1)** — guard ePHI in transit | ✅ | PHI is not transmitted. The only outbound connections carry no PHI (update check, opt-in model downloads) or are local (`127.0.0.1` on-device AI). Optional iCloud backup is **end-to-end encrypted on-device before upload**, so only ciphertext leaves the Mac. The Settings security overview surfaces live network reachability and the iCloud-backup posture so the clinician can see, at a glance, that nothing but ciphertext ever leaves. |
+| **Transmission security (e)(1)** — guard ePHI in transit | ✅ | PHI is not transmitted. The only outbound connections carry no PHI (update check, opt-in model downloads) or are local (`127.0.0.1` on-device AI). Encrypted backups are written to a folder the clinician picks on the Mac and are never uploaded. The Settings security overview surfaces live network reachability. |
 
 Patient folders use opaque UUID names after the v2 folder migration. Session
 folder names still carry dates of service. The FTS cache (`search.sqlite`)
@@ -70,11 +69,11 @@ These belong to the practice. Aletheia supports, but cannot satisfy, them:
   a short screen-lock interval (optionally the in-app idle lock).
 - **Contingency plan / data backup (§164.308(a)(7))** — by default the data
   folder is **included in Time Machine**, because the app writes no backup of
-  its own unless opted in and there would otherwise be a single copy. The folder
+  its own unless you run Back up now and there would otherwise be a single copy. The folder
   can hold unencrypted PHI (when at-rest encryption is off), so **Time Machine
-  backups must be on an encrypted disk**. The app's opt-in, end-to-end-encrypted
-  snapshot (optionally to the clinician's own iCloud) is the additional
-  recommended recovery path, and a clinician who prefers to keep the data folder
+  backups must be on an encrypted disk**. The app's Back up now, an end-to-end-encrypted
+  database archive written to a local folder the clinician chooses (never an
+  iCloud or other synced folder), is the additional recommended recovery path, and a clinician who prefers to keep the data folder
   out of system backups (`isExcludedFromBackup`) can turn that on in Settings ›
   Backup. Test your restores.
 - **Facility & workstation/device controls (§164.310)** — physical security of
@@ -107,8 +106,8 @@ the app keeps records until the clinician removes them.
 - Settings › Security — app lock, optional idle lock, FileVault guidance.
 - Settings › Extra Encryption — at-rest encryption (Tier 2) and recovery
   passphrase; see [ENCRYPTION.md](ENCRYPTION.md).
-- Settings › Backup — optional system-backup exclusion (off by default) and opt-in
-  encrypted snapshot.
+- Settings › Backups — optional system-backup exclusion (off by default) and Back up
+  now (encrypted database archive to a local folder).
 - Settings › Legal — locally recorded acceptance of the current Terms/Privacy.
 
 See also [SECURITY.md](../SECURITY.md) for the threat model and the
