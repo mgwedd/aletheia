@@ -9,7 +9,12 @@ enum AuditLogCopy {
         ("encryption changes", [.encryptionEnabled, .encryptionDisabled, .encryptionUnlocked]),
         ("exports", [.recordExported, .auditLogExported]),
         ("deletions", [.recordDeleted]),
-        ("passphrase changes", [.encryptionPassphraseChanged]),
+        ("changes to security settings", [.securitySettingChanged]),
+        ("changes to the data folder", [.dataFolderChanged]),
+        ("recovery key and passphrase changes", [.encryptionKeyChanged, .encryptionPassphraseChanged]),
+        ("repeated failed unlocks", [.repeatedUnlockFailures]),
+        ("failed exports", [.exportFailed]),
+        ("failed integrity checks", [.integrityCheckFailed]),
         ("recovered recordings", [.recordingRecovered]),
     ]
 
@@ -169,7 +174,8 @@ struct AuditLogSection: View {
     private func verifyIntegrityAndExportReport() {
         guard let audit = appModel.audit else { return }
         let status: String
-        switch audit.verifyIntegrity() {
+        let result = audit.verifyIntegrity()
+        switch result {
         case .verified(let count):
             status = "Integrity verified: all \(count) entries intact."
         case .broken(let seq, let reason):
@@ -178,6 +184,7 @@ struct AuditLogSection: View {
             status = "Audit log unverifiable: \(reason)"
         }
         verificationMessage = status
+        appModel.applyIntegrityResult(result)
         let name = FileSaver.fileName("Aletheia Audit Report", Self.fileStamp())
         let outcome = FileSaver.saveText(audit.generateReport(status: status), suggestedName: "\(name).txt")
         finishExport(outcome)
@@ -191,6 +198,9 @@ struct AuditLogSection: View {
     private func finishExport(_ outcome: SaveOutcome) {
         if case .saved = outcome {
             appModel.recordAudit(.auditLogExported)
+            load()
+        } else if case .failed = outcome {
+            appModel.recordAudit(.exportFailed, detail: "Activity log")
             load()
         }
         exportResult = outcome.shown

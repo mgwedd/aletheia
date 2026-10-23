@@ -75,6 +75,7 @@ struct AletheiaApp: App {
     private let windowShield: WindowShield
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
+    @State private var showDataFolderMove = false
 
     init() {
         let settings = AppSettings.shared
@@ -86,6 +87,9 @@ struct AletheiaApp: App {
         SessionSearch.setAppLocked(appLock.isLocked)   // before AppModel builds the index: it starts closed behind the lock
         let appModel = AppModel(settings: settings, encryption: encryption)
         _appModel = StateObject(wrappedValue: appModel)
+        settings.onAuditedChange = { [weak appModel] detail in
+            appModel?.recordAudit(.securitySettingChanged, detail: detail)
+        }
         let integrations = Integrations(settings: settings)
         _integrations = StateObject(wrappedValue: integrations)
         let transcription = TranscriptionCoordinator(
@@ -124,6 +128,7 @@ struct AletheiaApp: App {
         appLock.onUnlock = { [weak appModel, weak encryption] in
             encryption?.autoUnlockFromDevice()
             appModel?.recordAudit(.appUnlocked)
+            appModel?.noteUnlockSuccess()
             appModel?.reindexSpotlight()
         }
         appLock.onLock = { [weak encryption] in encryption?.lock() }
@@ -139,7 +144,7 @@ struct AletheiaApp: App {
         windowShield.start()
         self.windowShield = windowShield
         appLock.onUnlockFailed = { [weak appModel] reason in
-            appModel?.recordAudit(.appUnlockFailed, detail: reason)
+            appModel?.noteUnlockFailure(reason)
         }
         appLock.onLocked = { [weak appModel] in
             appModel?.recordAudit(.appLocked)
@@ -190,7 +195,20 @@ struct AletheiaApp: App {
                         // presents) reads must be injected here explicitly.
                         .environmentObject(encryption)
                 }
+                .sheet(isPresented: Binding(
+                    get: { DataFolderPolicy.presentsMoveSheet(requested: showDataFolderMove, appLocked: appLock.isLocked) },
+                    // Hidden by the app lock: keep the request so it shows again after unlock.
+                    set: { if !$0 && !appLock.isLocked { showDataFolderMove = false } }
+                )) {
+                    DataFolderMoveView()
+                        .environmentObject(settings)
+                        .environmentObject(appModel)
+                        .noWritingTools()
+                }
                 .frame(minWidth: 900, minHeight: 600)
+                .onAppear {
+                    showDataFolderMove = settings.dataRootURL != nil && settings.dataRootVerdict != .ok
+                }
                 .task {
                     if settings.autoCheckForUpdates {
                         await updateService.checkForUpdates()

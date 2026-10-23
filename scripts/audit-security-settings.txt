@@ -1,0 +1,8 @@
+# Settings whose changes must be written to the activity log. Each one's
+# `didSet` in AppSettings.swift has to call `audited(` (scripts/check-audit-wiring.sh
+# enforces it). Add a new security-relevant setting here, then wire it.
+appLockEnabled
+lockWhenHidden
+idleAutoLockMinutes
+spotlightIndexingEnabled
+hideFromScreenSharing

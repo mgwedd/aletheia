@@ -391,6 +391,8 @@ struct PatientDetailView: View {
                 .recordExported, subjectID: patient.id.uuidString,
                 detail: "Patient records, zip of \(outcome.sessionCount) sessions"
             )
+        } onFailed: {
+            model.recordAudit(.exportFailed, subjectID: patient.id.uuidString, detail: "Patient records, zip")
         }
     }
 }

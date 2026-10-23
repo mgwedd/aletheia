@@ -213,6 +213,12 @@ struct RootView: View {
                     onDismiss: { appModel.dismissSaveFailure() }
                 )
             }
+            if appModel.auditWriteFailed {
+                SecurityAlertStrip(message: SecurityPosture.auditWriteFailedDetail)
+            }
+            ForEach(appModel.securityAlerts) { alert in
+                SecurityAlertStrip(message: alert.message) { appModel.dismissSecurityAlert(alert) }
+            }
             if !setAside.items.isEmpty {
                 SetAsideRecordingsStrip(count: setAside.items.count) {
                     navigator.requestSettings(.setAsideRecordings)

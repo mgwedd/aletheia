@@ -25,6 +25,9 @@ struct PostureItem: Identifiable, Equatable {
 /// view feeds it the current settings/encryption/lock state and renders the
 /// result; it makes no changes itself.
 enum SecurityPosture {
+    /// Shown in the overview and as a banner while the log can't be written.
+    static let auditWriteFailedDetail = "Aletheia couldn't write to the activity log, so recent actions may not be recorded. Check that the data folder's disk has space and is writable."
+
     static func evaluate(
         appLockEnabled: Bool,
         canAuthenticate: Bool,
@@ -38,6 +41,10 @@ enum SecurityPosture {
         encryptionOffered: Bool = true,
         auditLogActive: Bool,
         auditLogVerifiable: Bool = true,
+        /// The last attempt to write an entry failed.
+        auditWriteFailed: Bool = false,
+        /// The log's integrity check found a break in the chain.
+        auditChainBroken: Bool = false,
         localEncryptedBackup: Bool,
         localBackupActive: Bool,
         iCloudBackupEnabled: Bool,
@@ -93,6 +100,12 @@ enum SecurityPosture {
         if !auditLogActive {
             auditLevel = .informational
             auditDetail = "Choose a data folder to begin recording the on-device audit log."
+        } else if auditWriteFailed {
+            auditLevel = .actionRecommended
+            auditDetail = Self.auditWriteFailedDetail
+        } else if auditChainBroken {
+            auditLevel = .actionRecommended
+            auditDetail = "The log's integrity check failed, so it may have been edited or damaged. Review it in Settings > Security."
         } else if auditLogVerifiable {
             auditLevel = .secure
             auditDetail = "Security-relevant actions are recorded on this Mac (no names or clinical content)."
