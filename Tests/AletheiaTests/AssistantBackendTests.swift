@@ -2,48 +2,51 @@ import XCTest
 @testable import Aletheia
 
 final class AssistantBackendResolverTests: XCTestCase {
-    // MARK: Automatic prefers on-device, in order
+    // MARK: Automatic prefers Apple Intelligence, else the built-in engine
 
     func testAutomaticPrefersAppleIntelligenceWhenAvailable() {
-        let r = AssistantBackendResolver(appleIntelligenceAvailable: true, localLlamaAvailable: true)
+        let r = AssistantBackendResolver(appleIntelligenceAvailable: true)
         XCTAssertEqual(r.resolve(.automatic), .appleIntelligence)
     }
 
-    func testAutomaticFallsToLocalLlamaWhenNoAppleIntelligence() {
-        let r = AssistantBackendResolver(appleIntelligenceAvailable: false, localLlamaAvailable: true)
+    func testAutomaticFallsToTheBuiltInEngineWhenNoAppleIntelligence() {
+        let r = AssistantBackendResolver(appleIntelligenceAvailable: false)
         XCTAssertEqual(r.resolve(.automatic), .localLlama)
     }
 
-    func testAutomaticFallsToOllamaWhenNothingOnDevice() {
-        let r = AssistantBackendResolver(appleIntelligenceAvailable: false, localLlamaAvailable: false)
-        XCTAssertEqual(r.resolve(.automatic), .ollama)
-    }
-
-    // MARK: Explicit choices are honored when available, else fall back safely
+    // MARK: Explicit choices are honored when available, else fall back to the built-in engine
 
     func testExplicitAppleIntelligenceHonoredWhenAvailable() {
-        let r = AssistantBackendResolver(appleIntelligenceAvailable: true, localLlamaAvailable: false)
+        let r = AssistantBackendResolver(appleIntelligenceAvailable: true)
         XCTAssertEqual(r.resolve(.appleIntelligence), .appleIntelligence)
     }
 
-    func testExplicitAppleIntelligenceFallsBackWhenUnavailable() {
-        // No on-device runtime → falls to Ollama rather than failing.
-        let r = AssistantBackendResolver(appleIntelligenceAvailable: false, localLlamaAvailable: false)
-        XCTAssertEqual(r.resolve(.appleIntelligence), .ollama)
-
-        // Embedded runtime present → prefer that over Ollama.
-        let withLlama = AssistantBackendResolver(appleIntelligenceAvailable: false, localLlamaAvailable: true)
-        XCTAssertEqual(withLlama.resolve(.appleIntelligence), .localLlama)
+    func testExplicitAppleIntelligenceFallsBackToTheBuiltInEngineWhenUnavailable() {
+        let r = AssistantBackendResolver(appleIntelligenceAvailable: false)
+        XCTAssertEqual(r.resolve(.appleIntelligence), .localLlama)
     }
 
-    func testExplicitLocalLlamaFallsBackWhenUnavailable() {
-        let r = AssistantBackendResolver(appleIntelligenceAvailable: false, localLlamaAvailable: false)
-        XCTAssertEqual(r.resolve(.localLlama), .ollama)
+    func testExplicitBuiltInEngineIsAlwaysTheBuiltInEngine() {
+        for available in [false, true] {
+            let r = AssistantBackendResolver(appleIntelligenceAvailable: available)
+            XCTAssertEqual(r.resolve(.localLlama), .localLlama)
+        }
     }
 
-    func testExplicitOllamaAlwaysResolvesToOllama() {
-        let r = AssistantBackendResolver(appleIntelligenceAvailable: true, localLlamaAvailable: true)
-        XCTAssertEqual(r.resolve(.ollama), .ollama)
+    // MARK: Stored preference (older versions stored other values)
+
+    func testStoredPreferenceDecodesKnownValues() {
+        for backend in AssistantBackend.allCases {
+            XCTAssertEqual(AssistantBackendResolver.preference(fromStored: backend.rawValue), backend)
+        }
+    }
+
+    func testRetiredOrUnknownStoredPreferenceMeansAutomatic() {
+        // "ollama" is the value an older version stored for the server engine.
+        XCTAssertEqual(AssistantBackendResolver.preference(fromStored: "ollama"), .automatic) // legacy-key
+        XCTAssertEqual(AssistantBackendResolver.preference(fromStored: "somethingNew"), .automatic)
+        XCTAssertEqual(AssistantBackendResolver.preference(fromStored: ""), .automatic)
+        XCTAssertEqual(AssistantBackendResolver.preference(fromStored: nil), .automatic)
     }
 
     // MARK: Enum surface used by the settings picker
@@ -68,7 +71,6 @@ final class AssistantBackendResolverTests: XCTestCase {
         let options = AssistantBackend.selectableOptions(embeddedLlamaAvailable: false, appleIntelligenceBlocked: true)
         XCTAssertFalse(options.contains(.localLlama))
         XCTAssertTrue(options.contains(.automatic))
-        XCTAssertTrue(options.contains(.ollama))
     }
 
     /// With the embedded runtime module present (every shipping tier),
@@ -89,14 +91,12 @@ final class AssistantBackendResolverTests: XCTestCase {
         XCTAssertTrue(AssistantBackend.selectableOptions(embeddedLlamaAvailable: false, appleIntelligenceBlocked: false).contains(.appleIntelligence))
     }
 
-    /// `.automatic` and `.ollama` are always offered — every build has a safe
-    /// default and Ollama is always installable.
-    func testAutomaticAndOllamaAreAlwaysOffered() {
+    /// `.automatic` is always offered; every build has a safe default.
+    func testAutomaticIsAlwaysOffered() {
         for embeddedLlamaAvailable in [false, true] {
             for appleIntelligenceBlocked in [false, true] {
                 let options = AssistantBackend.selectableOptions(embeddedLlamaAvailable: embeddedLlamaAvailable, appleIntelligenceBlocked: appleIntelligenceBlocked)
                 XCTAssertTrue(options.contains(.automatic))
-                XCTAssertTrue(options.contains(.ollama))
             }
         }
     }

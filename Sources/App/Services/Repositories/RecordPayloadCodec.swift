@@ -31,6 +31,13 @@ enum RecordPayloadCodec {
         try? FieldCipher.decode(String(decoding: payload, as: UTF8.self), using: protector)
     }
 
+    /// Whether `existing` may be replaced: a payload this protector can't open
+    /// is kept as-is for recovery instead of being overwritten by a new value.
+    static func mayOverwrite(_ existing: PersistedRecord?, using protector: FileProtector) -> Bool {
+        guard let existing else { return true }
+        return openedText(from: existing.payload, using: protector) != nil
+    }
+
     static func hasUnreadableEnvelope(_ payload: Data, using protector: FileProtector) -> Bool {
         guard protector.isEncrypting else { return false } // locked folders are not damaged
         let stored = String(decoding: payload, as: UTF8.self)

@@ -15,13 +15,51 @@ import Foundation
 /// envelope is only ever handed back decrypted. The one hard error is an
 /// envelope with no key — an encrypted file read while the folder is locked —
 /// which must surface, not silently look like missing content.
+/// A shared, revocable reference. Store and worker copies of FileProtector do
+/// not retain their own DEK; locking invalidates all of them at once.
+final class ProtectionKey: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: SymmetricKey?
+
+    init(_ key: SymmetricKey) { stored = key }
+
+    var key: SymmetricKey? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored
+    }
+
+    func revoke() {
+        lock.lock()
+        stored = nil
+        lock.unlock()
+    }
+}
+
 struct FileProtector: Sendable {
-    let key: SymmetricKey?
+    private let keyReference: ProtectionKey?
+    private let requiresKey: Bool
+
+    init(key: SymmetricKey?) {
+        keyReference = key.map(ProtectionKey.init)
+        requiresKey = key != nil
+    }
+
+    init(keyReference: ProtectionKey?, requiresKey: Bool) {
+        self.keyReference = keyReference
+        self.requiresKey = requiresKey
+    }
+
+    private var key: SymmetricKey? { keyReference?.key }
+
+    /// Reject all access, including plaintext writes in a partially migrated folder.
+    static let locked = FileProtector(keyReference: nil, requiresKey: true)
 
     /// The passthrough protector used everywhere encryption is off.
     static let passthrough = FileProtector(key: nil)
 
     var isEncrypting: Bool { key != nil }
+    var requiresProtection: Bool { requiresKey }
 
     enum ProtectorError: LocalizedError, Equatable {
         case locked
@@ -43,6 +81,7 @@ struct FileProtector: Sendable {
     /// `.locked` for an envelope with no key; propagates a decryption failure
     /// (wrong key / tampering) and any file-read error.
     func data(contentsOf url: URL) throws -> Data {
+        if requiresKey && key == nil { throw ProtectorError.locked }
         let raw = try Data(contentsOf: url)
         guard DataCipher.isEnvelope(raw) else { return raw } // legacy/opted-out plaintext
         guard let key else { throw ProtectorError.locked }
@@ -53,6 +92,7 @@ struct FileProtector: Sendable {
     /// (mirrors the old `try? Data(contentsOf:)` "missing → nil" behavior),
     /// while still throwing on a present-but-undecryptable file.
     func dataIfPresent(at url: URL) throws -> Data? {
+        if requiresKey && key == nil { throw ProtectorError.locked }
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         return try data(contentsOf: url)
     }
@@ -67,6 +107,7 @@ struct FileProtector: Sendable {
     /// unchanged. Used where a value is encrypted but not written to its own
     /// file (e.g. a database column).
     func seal(_ data: Data) throws -> Data {
+        if requiresKey && key == nil { throw ProtectorError.locked }
         guard let key else { return data }
         return try DataCipher.seal(data, using: key)
     }
@@ -74,6 +115,7 @@ struct FileProtector: Sendable {
     /// Opens an in-memory blob that may or may not be an envelope, symmetric to
     /// `seal`. A plaintext blob is returned as-is; an envelope needs the key.
     func open(_ blob: Data) throws -> Data {
+        if requiresKey && key == nil { throw ProtectorError.locked }
         guard DataCipher.isEnvelope(blob) else { return blob }
         guard let key else { throw ProtectorError.locked }
         return try DataCipher.open(blob, using: key)
@@ -101,6 +143,7 @@ struct FileProtector: Sendable {
     /// session audio, where reading the whole recording into memory to use the
     /// one-shot cipher would be wasteful.
     func sealLargeFileInPlace(at url: URL) throws {
+        if requiresKey && key == nil { throw ProtectorError.locked }
         guard let key else { return }
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         guard !ChunkedCipher.isEnvelope(fileAt: url) else { return }
@@ -117,6 +160,7 @@ struct FileProtector: Sendable {
     /// URL is returned untouched. Lets audio processing (which needs a real,
     /// seekable file) stay crypto-agnostic.
     func decryptedCopyOfLargeFile(at url: URL) throws -> (url: URL, isTemporary: Bool) {
+        if requiresKey && key == nil { throw ProtectorError.locked }
         guard let key, ChunkedCipher.isEnvelope(fileAt: url) else { return (url, false) }
         let temp = FileManager.default.temporaryDirectory
             .appendingPathComponent("aletheia-\(UUID().uuidString).caf")
@@ -139,9 +183,12 @@ struct FileProtector: Sendable {
 /// which it is, so a column migrates lazily just like a file.
 enum FieldCipher {
     static func encode(_ text: String, using protector: FileProtector) throws -> String {
-        guard protector.isEncrypting else { return text }
+        // A revoked key still requires protection: never fall back to plaintext.
+        guard protector.requiresProtection else { return text }
         do {
             return try protector.seal(Data(text.utf8)).base64EncodedString()
+        } catch FileProtector.ProtectorError.locked {
+            throw FileProtector.ProtectorError.locked
         } catch {
             throw FileProtector.ProtectorError.sealFailed
         }

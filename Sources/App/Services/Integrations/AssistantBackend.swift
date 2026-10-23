@@ -5,7 +5,7 @@ import Foundation
 /// The design goal (see README) is that a therapist on a modern Mac gets
 /// working AI with *nothing to install*: Apple Intelligence runs the model
 /// on-device, managed by the OS. Where that isn't available the app falls
-/// back to a backend that can be installed or bundled. This enum is the
+/// back to the built-in llama.cpp engine. This enum is the
 /// user-facing preference; `AssistantBackendResolver` turns it into the
 /// backend that will actually run given what this Mac supports.
 enum AssistantBackend: String, CaseIterable, Identifiable, Codable, Hashable {
@@ -14,8 +14,6 @@ enum AssistantBackend: String, CaseIterable, Identifiable, Codable, Hashable {
     /// Apple's on-device Foundation Models (Apple Intelligence). No install,
     /// no model download, no external process.
     case appleIntelligence
-    /// A local Ollama server reached over its HTTP API.
-    case ollama
     /// Embedded llama.cpp runtime bundled in the app.
     case localLlama
 
@@ -25,7 +23,6 @@ enum AssistantBackend: String, CaseIterable, Identifiable, Codable, Hashable {
         switch self {
         case .automatic: return "Automatic (recommended)"
         case .appleIntelligence: return "Apple Intelligence (on-device)"
-        case .ollama: return "Ollama"
         case .localLlama: return "Built-in model"
         }
     }
@@ -37,8 +34,6 @@ enum AssistantBackend: String, CaseIterable, Identifiable, Codable, Hashable {
             return "Use the AI model built into Aletheia."
         case .appleIntelligence:
             return "Runs entirely on your Mac with nothing to install. Requires a Mac that supports Apple Intelligence."
-        case .ollama:
-            return "Runs a model through the free Ollama app. Works on older Macs; needs a one-time install."
         case .localLlama:
             return "A model built into Aletheia itself. Nothing else to install."
         }
@@ -54,7 +49,7 @@ extension AssistantBackend {
     /// `.localLlama` ("Built-in model") is withheld unless the embedded
     /// llama.cpp module is present in this build's `FeatureRegistry` (see
     /// `EmbeddedLlamaFeatureModule`), so a build without it never advertises
-    /// an engine that would silently fall back to Ollama. `.appleIntelligence` is withheld while
+    /// an engine that is not there. `.appleIntelligence` is withheld while
     /// `Integrations.appleIntelligenceBlocked` holds it off (kept provably
     /// on-device — see project README). Neither flag changes
     /// `AssistantBackendResolver`'s fallback behavior for an already-selected
@@ -76,29 +71,23 @@ struct AssistantBackendResolver {
     /// Whether Apple's Foundation Models are usable right now (supported Mac,
     /// Apple Intelligence enabled, model downloaded).
     var appleIntelligenceAvailable: Bool
-    /// Whether the embedded llama.cpp runtime is linked into this build. Its
-    /// model may still need downloading; that's a setup step, not a fallback.
-    var localLlamaAvailable: Bool
 
+    /// Everything that isn't an available Apple Intelligence resolves to the
+    /// built-in engine, the only other engine there is. (In a build without the
+    /// llama.cpp runtime that engine reports itself unavailable; see
+    /// `UnavailableAssistant`.)
     func resolve(_ preference: AssistantBackend) -> AssistantBackend {
         switch preference {
-        case .automatic:
-            if appleIntelligenceAvailable { return .appleIntelligence }
-            if localLlamaAvailable { return .localLlama }
-            return .ollama
-        case .appleIntelligence:
-            return appleIntelligenceAvailable ? .appleIntelligence : fallback
+        case .automatic, .appleIntelligence:
+            return appleIntelligenceAvailable ? .appleIntelligence : .localLlama
         case .localLlama:
-            return localLlamaAvailable ? .localLlama : fallback
-        case .ollama:
-            return .ollama
+            return .localLlama
         }
     }
 
-    /// When an explicitly chosen on-device backend isn't available, prefer the
-    /// embedded runtime if present, otherwise Ollama (which the user can always
-    /// install) — never fail outright.
-    private var fallback: AssistantBackend {
-        localLlamaAvailable ? .localLlama : .ollama
+    /// Decodes a stored preference. Anything unrecognised, including the
+    /// value from an older version, means the built-in engine.
+    static func preference(fromStored raw: String?) -> AssistantBackend {
+        raw.flatMap(AssistantBackend.init(rawValue:)) ?? .automatic
     }
 }

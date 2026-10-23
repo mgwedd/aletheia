@@ -46,6 +46,22 @@ final class DeviceKeyStoreTests: XCTestCase {
         XCTAssertTrue(relaunched.protector.isEncrypting)
     }
 
+    func testLockDropsRememberedKeyUntilExplicitUnlock() throws {
+        let device = InMemoryDeviceKeyStore()
+        let m = manager(device)
+        try m.enable(passphrase: "pw", iterations: fastIterations)
+        try m.rememberOnDevice()
+        m.lock()
+        XCTAssertEqual(m.state, .lockedNeedsPassphrase)
+        m.refreshState()
+        XCTAssertEqual(m.state, .lockedNeedsPassphrase)
+        XCTAssertFalse(m.protector.isEncrypting)
+
+        m.autoUnlockFromDevice()
+        XCTAssertEqual(m.state, .unlocked)
+        XCTAssertTrue(m.protector.isEncrypting)
+    }
+
     func testForgetOnDeviceRestoresPassphrasePromptNextLaunch() throws {
         let device = InMemoryDeviceKeyStore()
         let first = manager(device)

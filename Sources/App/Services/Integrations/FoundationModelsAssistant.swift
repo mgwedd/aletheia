@@ -7,7 +7,7 @@ import FoundationModels
 /// There's no server, no model file to download, and no external process: the
 /// model ships with the OS and Apple updates it. On a Mac that supports Apple
 /// Intelligence this is the primary backend — it's what lets setup be truly
-/// zero-install for the everyday user. The app falls back to Ollama where it
+/// zero-install for the everyday user. The app falls back to the built-in model where it
 /// isn't available.
 ///
 /// The whole file is behind `#if canImport(FoundationModels)` so it compiles

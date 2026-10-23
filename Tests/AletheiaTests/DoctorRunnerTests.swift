@@ -1,7 +1,7 @@
 import XCTest
 @testable import Aletheia
 
-/// `DoctorRunner` against stub probes: no real disk, SQLite, keystore or Ollama.
+/// `DoctorRunner` against stub probes: no real disk, SQLite, keystore or model.
 final class DoctorRunnerTests: XCTestCase {
     private struct StubProbes: DoctorProbing {
         var env = DoctorEnvironment(
@@ -250,26 +250,16 @@ final class DoctorRunnerTests: XCTestCase {
         probes.tools = [
             ToolHealthCheck(kind: .dataFolder, title: "Data folder", status: .ok, detail: "/Users/tester/Aletheia"),
             ToolHealthCheck(kind: .microphone, title: "Microphone access", status: .failed, detail: "Turn this on in System Settings."),
-            ToolHealthCheck(kind: .ollama, title: "AI summaries & chat", status: .warning, detail: "model missing", ollamaState: .modelMissing),
+            ToolHealthCheck(kind: .builtInModel, title: "AI summaries & chat", status: .warning, detail: "model missing"),
             ToolHealthCheck(kind: .screenRecording, title: "Call audio capture", status: .ok, detail: "ok")
         ]
         let report = await run(probes)
         XCTAssertNil(check("tools.dataFolder", in: report))
         XCTAssertEqual(check("tools.microphone", in: report)?.status, .failed)
         XCTAssertNotNil(check("tools.microphone", in: report)?.nextStep)
-        XCTAssertEqual(check("tools.ollama", in: report)?.status, .warning)
+        XCTAssertEqual(check("tools.builtInModel", in: report)?.status, .warning)
         XCTAssertEqual(check("tools.screenRecording", in: report)?.status, .ok)
         XCTAssertNil(check("tools.screenRecording", in: report)?.nextStep)
-    }
-
-    // MARK: Loopback-only Ollama
-
-    func testLoopbackDetection() {
-        XCTAssertTrue(LiveDoctorProbes.isLoopback(URL(string: "http://127.0.0.1:11434")!))
-        XCTAssertTrue(LiveDoctorProbes.isLoopback(URL(string: "http://localhost:11434")!))
-        XCTAssertTrue(LiveDoctorProbes.isLoopback(URL(string: "http://[::1]:11434")!))
-        XCTAssertFalse(LiveDoctorProbes.isLoopback(URL(string: "http://192.168.1.20:11434")!))
-        XCTAssertFalse(LiveDoctorProbes.isLoopback(URL(string: "https://example.com")!))
     }
 
     // MARK: Time Machine Exclusion
@@ -367,11 +357,11 @@ final class DoctorRunnerTests: XCTestCase {
         probes = StubProbes()
         probes.tools = [
             ToolHealthCheck(kind: .microphone, title: "Microphone", status: .failed, detail: "denied"),
-            ToolHealthCheck(kind: .ollama, title: "Ollama", status: .warning, detail: "missing", ollamaState: .modelMissing)
+            ToolHealthCheck(kind: .builtInModel, title: "AI model", status: .warning, detail: "missing")
         ]
         report = await run(probes)
         XCTAssertEqual(check("tools.microphone", in: report)?.action, .openSystemSettings)
-        XCTAssertEqual(check("tools.ollama", in: report)?.action, .setupAssistant)
+        XCTAssertEqual(check("tools.builtInModel", in: report)?.action, .setupAssistant)
     }
 
     // MARK: Module

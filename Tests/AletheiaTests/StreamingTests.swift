@@ -53,27 +53,6 @@ final class StreamSmootherTests: XCTestCase {
     }
 }
 
-final class OllamaStreamChunkTests: XCTestCase {
-    func testParsesResponseAndDone() {
-        let line = "{\"response\":\"Hello\",\"done\":false}"
-        let chunk = OllamaClient.streamChunk(fromLine: line)
-        XCTAssertEqual(chunk?.text, "Hello")
-        XCTAssertEqual(chunk?.done, false)
-    }
-
-    func testParsesDoneChunk() {
-        let line = "{\"response\":\"\",\"done\":true}"
-        let chunk = OllamaClient.streamChunk(fromLine: line)
-        XCTAssertEqual(chunk?.text, "")
-        XCTAssertEqual(chunk?.done, true)
-    }
-
-    func testIgnoresGarbageLine() {
-        XCTAssertNil(OllamaClient.streamChunk(fromLine: ""))
-        XCTAssertNil(OllamaClient.streamChunk(fromLine: "not json"))
-    }
-}
-
 final class AssistantServiceStreamingTests: XCTestCase {
     private func collect(_ stream: AsyncThrowingStream<String, Error>) async throws -> [String] {
         var out: [String] = []

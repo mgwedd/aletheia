@@ -62,11 +62,49 @@ final class EncryptionManagerTests: XCTestCase {
 
         m.lock()
         XCTAssertEqual(m.state, .lockedNeedsPassphrase)
-        XCTAssertFalse(m.protector.isEncrypting, "locked → passthrough, so encrypted files surface as .locked")
+        XCTAssertFalse(m.protector.isEncrypting)
 
         try m.unlock(passphrase: "open sesame")
         XCTAssertEqual(m.state, .unlocked)
         XCTAssertTrue(m.protector.isEncrypting)
+    }
+
+    func testProtectorUsedAfterLockThrowsLocked() throws {
+        let m = manager(root: tempRoot)
+        try m.enable(passphrase: "pw", iterations: fastIterations)
+        let captured = m.protector
+        let file = tempRoot.appendingPathComponent("note.txt")
+        try captured.write("private", to: file)
+        m.lock()
+
+        XCTAssertThrowsError(try captured.string(contentsOf: file)) {
+            XCTAssertEqual($0 as? FileProtector.ProtectorError, .locked)
+        }
+        XCTAssertThrowsError(try captured.write("leak", to: file)) {
+            XCTAssertEqual($0 as? FileProtector.ProtectorError, .locked)
+        }
+        XCTAssertThrowsError(try captured.seal(Data("leak".utf8))) {
+            XCTAssertEqual($0 as? FileProtector.ProtectorError, .locked)
+        }
+        XCTAssertNil(RecordPayloadCodec.encode("leak", using: captured),
+                     "a captured database store must fail the save instead of writing plaintext")
+        try m.unlock(passphrase: "pw")
+        XCTAssertThrowsError(try captured.string(contentsOf: file), "old handles stay revoked after a new unlock")
+        XCTAssertEqual(try m.protector.string(contentsOf: file), "private")
+    }
+
+    func testChangingDataFolderRevokesCapturedProtector() throws {
+        var selectedRoot: URL? = tempRoot
+        let m = EncryptionManager(dataRootProvider: { selectedRoot })
+        try m.enable(passphrase: "pw", iterations: fastIterations)
+        let captured = m.protector
+
+        selectedRoot = nil
+        m.refreshState()
+        XCTAssertEqual(m.state, .disabled)
+        XCTAssertThrowsError(try captured.seal(Data("private".utf8))) {
+            XCTAssertEqual($0 as? FileProtector.ProtectorError, .locked)
+        }
     }
 
     func testUnlockWithWrongPassphraseThrows() throws {

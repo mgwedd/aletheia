@@ -1,6 +1,6 @@
 import Foundation
 
-/// The prompt templates sent to the local Ollama model. Kept in one place
+/// The prompt templates sent to the local AI model. Kept in one place
 /// so the disclaimer language (summaries can be wrong; always read the
 /// transcript) stays consistent everywhere it's used.
 enum Prompts {
