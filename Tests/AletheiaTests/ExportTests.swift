@@ -115,6 +115,8 @@ final class RichClipboardTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(pasteboard.string(forType: .string)).contains("Continue weekly sessions."))
         XCTAssertNotNil(pasteboard.data(forType: .rtf))
         XCTAssertNotNil(pasteboard.data(forType: .html))
+        XCTAssertNotNil(pasteboard.data(forType: PHIPasteboard.concealed))
+        XCTAssertNotNil(pasteboard.data(forType: PHIPasteboard.transient))
     }
 
     func testNothingElseRemainsFromTheOldPasteboardContents() {

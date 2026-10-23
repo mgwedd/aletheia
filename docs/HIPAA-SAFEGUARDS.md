@@ -68,12 +68,21 @@ Legend: **✅ in place** · **◐ in progress** · **○ clinician responsibilit
 | Safeguard (§164.312) | Status | How Aletheia addresses it |
 | --- | --- | --- |
 | **Access control (a)(1)** — unique user ID, limit access to authorized users | ✅ / ○ | Single-user app scoped to one macOS account. The macOS login (unique user, password/Touch ID) is the access boundary; the app adds its own lock below. |
+| **Emergency access procedure (a)(2)(ii)** *(addressable)* | ✅ | A 24-word BIP-39 emergency recovery key (≥256 bits entropy) is generated when at-rest encryption is enabled and can be replaced at any time in Settings › Encryption. It wraps the data encryption key (DEK) in an independent keyslot. Clinicians are guided to print or export the key as a PDF during setup and store it in an offline, physically secured location (e.g. a locked safe or deposit box). Emergency access is executed by clicking "Use recovery key…" on the folder unlock screen. The recovery key is never written to disk in the data folder. |
 | **Automatic logoff (a)(2)(iii)** *(addressable)* | ◐ | App lock re-engages whenever the Mac locks or sleeps, so the Mac's screen-lock setting (System Settings › Lock Screen) provides the logoff; set a short interval there. An optional **in-app idle lock** (off by default) also re-locks after inactivity in Aletheia. |
 | **Encryption & decryption (a)(2)(iv)** *(addressable)* | ◐ / ○ | FileVault is the recommended disk-level baseline. The optional AES-256-GCM at-rest feature is currently available in developer builds only, not production; see [ENCRYPTION.md](ENCRYPTION.md). Production users should use FileVault and encrypted backup media. |
 | **Audit controls (b)** — record and examine activity involving ePHI | ◐ | A local JSON-lines `audit.log` records app unlocks and failed unlocks, encryption changes, exports, and patient deletions, with timestamps and no patient names or clinical text. It is viewable and exportable in Settings. Writes are best effort, and the file has no integrity seal or actor identity; some actions, including backups, recording deletion, and chat deletion, are not yet recorded. |
 | **Integrity (c)(1)** — protect ePHI from improper alteration/destruction | ◐ / ○ | SQLite `PRAGMA secure_delete` zeroes freed pages and identity/metadata writes are atomic. The clinician can edit transcripts and draft notes; the app does not yet retain an immutable original or amendment history. Local database snapshots assist recovery, but a complete backup of the data folder remains a practice responsibility. |
 | **Person/entity authentication (d)** | ✅ | App lock via `LocalAuthentication` (Touch ID or Mac password) gates access to the app; macOS account auth gates the device. |
 | **Transmission security (e)(1)** — guard ePHI in transit | ◐ | Update checks and opt-in model downloads use external hosts; the default Ollama endpoint is local (`127.0.0.1:11434`). The app has no working cloud-backup upload. A clinician-chosen data folder may itself be in a synced location, so select a local folder when PHI must stay on the Mac. |
+
+Patient folders use opaque UUID names after the v2 folder migration. Session
+folder names still carry dates of service. The FTS cache (`search.sqlite`)
+contains searchable plaintext terms; it is protected by the FileVault gate,
+excluded from Time Machine, deleted on lock, and rebuilt on unlock. The v2
+migration retains a structured JSON pre-image under `.backups/migrations/files/`.
+That backup and session folder names remain within the FileVault protected data
+folder.
 
 ## Administrative & physical safeguards — §164.308 / §164.310
 
@@ -97,6 +106,16 @@ These belong to the practice. Aletheia supports, but cannot satisfy, them:
   lost or left unattended.
 - **Media disposal (§164.310(d))** — the app's secure-delete and at-rest
   encryption support defensible disposal of ePHI on the device.
+
+## Emergency access procedure (§164.312(a)(2)(ii))
+
+If a clinician forgets their primary encryption passphrase, or during an emergency when authorized personnel require access to critical clinical records:
+
+1. **Obtain the physical recovery key:** Retrieve the printed or exported 24-word emergency recovery key from the practice's physical security storage (e.g., locked fireproof safe or safety deposit box).
+2. **Launch Aletheia:** Ensure the target encrypted data folder is selected.
+3. **Open the recovery interface:** On the folder unlock screen, click **"Use recovery key…"**.
+4. **Enter the 24 words:** Enter the 24 BIP-39 words separated by spaces. Aletheia verifies the 8-bit checksum and unseals the data encryption key (DEK).
+5. **Post-recovery security:** Once unlocked, navigate to **Settings › Encryption** and click **"Create New Recovery Key…"** to invalidate the old recovery key and mint a fresh one for physical archiving.
 
 ## Retention note
 

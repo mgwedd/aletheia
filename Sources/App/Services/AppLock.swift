@@ -34,17 +34,18 @@ extension AppLockPolicy {
 }
 
 /// What re-locks the app once it has been unlocked: the Mac itself being left.
-/// One unlock lasts the user's session on this Mac. Hiding Aletheia (⌘H),
-/// switching apps and the display dimming or sleeping on its own do not
-/// re-lock; the idle timer is a separate, opt-in setting.
+/// Hiding is controlled by the privacy setting. Display sleep always locks;
+/// switching apps alone does not. The idle timer is separate.
 enum RelockTrigger: CaseIterable, Equatable {
     case systemSleep
+    case displaySleep
     case screenLock
     case userSwitch
 
     var notificationName: Notification.Name {
         switch self {
         case .systemSleep: return NSWorkspace.willSleepNotification
+        case .displaySleep: return NSWorkspace.screensDidSleepNotification
         case .screenLock: return Notification.Name("com.apple.screenIsLocked")
         case .userSwitch: return NSWorkspace.sessionDidResignActiveNotification
         }
@@ -113,6 +114,27 @@ struct SystemUnlockAuthenticator: UnlockAuthenticator {
     }
 }
 
+/// Used while the app is hosting unit tests: it never shows the system sheet,
+/// so lock tests don't put Touch ID prompts on the developer's screen. It
+/// answers as if the sheet was cancelled, so it can never unlock the app.
+struct NonPromptingUnlockAuthenticator: UnlockAuthenticator {
+    func authenticate(reason: String) async throws -> Bool {
+        throw LAError(.appCancel)
+    }
+}
+
+enum UnlockAuthenticatorFactory {
+    /// The system sheet, except when XCTest is driving this process.
+    static func make(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> UnlockAuthenticator {
+        if TestHost.isHostingTests(environment: environment) {
+            return NonPromptingUnlockAuthenticator()
+        }
+        return SystemUnlockAuthenticator()
+    }
+}
+
 /// Tier-1 protection: gate opening the app behind Touch ID / the login password.
 ///
 /// This is a *presentation* lock (it keeps the UI, and the PHI it shows, behind
@@ -123,15 +145,17 @@ struct SystemUnlockAuthenticator: UnlockAuthenticator {
 @MainActor
 final class AppLock: ObservableObject {
     /// True while the lock screen should cover the app.
-    @Published private(set) var isLocked: Bool {
-        didSet { OllamaResidency.shared.setLocked(isLocked) }
-    }
+    @Published private(set) var isLocked: Bool
     /// Set when an unlock attempt fails, for the lock screen to show.
     @Published var lastError: String?
 
     /// Called once on each successful unlock, so the composition root can record
     /// an audit entry (HIPAA §164.312(b)) without `AppLock` depending on the log.
     var onUnlock: (() -> Void)?
+    /// Drops the folder key when the presentation lock engages. Deferred while
+    /// a recording or transcription is still writing to the folder (see
+    /// `observeBackgroundWork`), so locking never leaves that work without a key.
+    var onLock: (() -> Void)?
     /// Called when an unlock attempt fails (not user cancellation), to record
     /// failed authentication attempts in the audit log (HIPAA §164.312(b)).
     var onUnlockFailed: ((String) -> Void)?
@@ -153,8 +177,13 @@ final class AppLock: ObservableObject {
     private var distributedObservers: [NSObjectProtocol] = []
     private var didBecomeActiveObserver: NSObjectProtocol?
     private var didResignActiveObserver: NSObjectProtocol?
+    private var didHideObserver: NSObjectProtocol?
     private var promptGate = AutoPromptGate()
     private var settingsCancellable: AnyCancellable?
+    private var isWritingInBackground: () -> Bool = { false }
+    private var backgroundWorkCancellable: AnyCancellable?
+    /// The lock engaged while background work was writing; `onLock` runs once it ends.
+    private(set) var keyDropPending = false
 
     /// How often the idle timer checks elapsed time against the configured
     /// timeout. Coarse on purpose: auto-lock only needs to notice idleness
@@ -165,7 +194,7 @@ final class AppLock: ObservableObject {
     init(
         settings: AppSettings,
         canAuthenticate: @escaping () -> Bool = AppLock.canAuthenticate,
-        authenticator: UnlockAuthenticator = SystemUnlockAuthenticator(),
+        authenticator: UnlockAuthenticator = UnlockAuthenticatorFactory.make(),
         isAppActive: @escaping () -> Bool = { NSApp.isActive }
     ) {
         self.settings = settings
@@ -176,7 +205,6 @@ final class AppLock: ObservableObject {
             enabled: settings.appLockEnabled,
             canAuthenticate: canAuthenticate()
         )
-        OllamaResidency.shared.setLocked(isLocked)   // didSet doesn't run in init
         // A lock that happened (or a launch) while another app was frontmost
         // prompts once the user comes back.
         didBecomeActiveObserver = NotificationCenter.default.addObserver(
@@ -188,6 +216,14 @@ final class AppLock: ObservableObject {
             forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.promptGate.appResigned() }
+        }
+        didHideObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didHideNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.settings.lockWhenHidden else { return }
+                self.lockIfEnabled()
+            }
         }
         observeActivity()
         observeRelockTriggers()
@@ -205,6 +241,7 @@ final class AppLock: ObservableObject {
         idleTimer?.invalidate()
         if let didBecomeActiveObserver { NotificationCenter.default.removeObserver(didBecomeActiveObserver) }
         if let didResignActiveObserver { NotificationCenter.default.removeObserver(didResignActiveObserver) }
+        if let didHideObserver { NotificationCenter.default.removeObserver(didHideObserver) }
         settingsCancellable?.cancel()
         if let activityMonitor { NSEvent.removeMonitor(activityMonitor) }
         for observer in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
@@ -224,18 +261,42 @@ final class AppLock: ObservableObject {
     /// stepping away re-requires authentication. No-op when the lock is off.
     func lockIfEnabled() {
         if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: canAuthenticateProvider()) {
+            guard !isLocked else { return }
             isLocked = true
+            dropKeyUnlessWriting()
             SessionSearch.setAppLocked(true)
             // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
             SessionSearch.closeIndex()
-            OllamaClient.unloadLoaded()
             LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript
         }
+    }
+
+    /// Lets a recording or transcription finish with the folder key it started
+    /// with: while `busy` answers true the lock covers the windows but keeps the
+    /// key, and drops it when `changes` next fires with the work finished.
+    func observeBackgroundWork(busy: @escaping () -> Bool, changes: AnyPublisher<Void, Never>) {
+        isWritingInBackground = busy
+        backgroundWorkCancellable = changes
+            .receive(on: DispatchQueue.main)   // objectWillChange fires before the new value is stored
+            .sink { [weak self] in
+                MainActor.assumeIsolated { self?.backgroundWorkChanged() }
+            }
+    }
+
+    private func backgroundWorkChanged() {
+        guard keyDropPending, isLocked else { return }
+        dropKeyUnlessWriting()
+    }
+
+    private func dropKeyUnlessWriting() {
+        keyDropPending = isWritingInBackground()
+        if !keyDropPending { onLock?() }
     }
 
     /// Test seam: puts the lock into the unlocked state without prompting Touch ID.
     func simulateUnlockedForTesting() {
         isLocked = false
+        keyDropPending = false
         SessionSearch.setAppLocked(false)
     }
 
@@ -268,6 +329,7 @@ final class AppLock: ObservableObject {
             let ok = try await authenticator.authenticate(reason: LockScreenCopy.authenticationReason)
             if ok {
                 isLocked = false
+                keyDropPending = false
                 SessionSearch.setAppLocked(false)
                 SessionSearch.openIndex()
                 lastError = nil
@@ -313,7 +375,7 @@ final class AppLock: ObservableObject {
         lastActivity = Date()
     }
 
-    /// The Mac sleeping, its screen locking, or a switch to another user
+    /// The Mac or display sleeping, its screen locking, or a switch to another user
     /// re-lock immediately: those mean the user has left the Mac. See
     /// `RelockTrigger` for what deliberately does not.
     private func observeRelockTriggers() {

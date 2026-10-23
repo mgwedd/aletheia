@@ -31,7 +31,7 @@ final class SearchHomeViewTests: XCTestCase {
     override func setUp() async throws {
         model = GlobalSearchModel()
         probe = Probe()
-        window = NSWindow(contentRect: NSRect(origin: .zero, size: paneSize), styleMask: [.titled], backing: .buffered, defer: false)
+        window = TestWindow(contentRect: NSRect(origin: .zero, size: paneSize), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: Host(model: model, probe: probe))
         window.makeKeyAndOrderFront(nil)
         settle()

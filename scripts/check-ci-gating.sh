@@ -14,6 +14,9 @@
 #     required check would stay pending forever); cd.yml's long-standing
 #     `paths-ignore` is the only filter allowed.
 #   - no third-party marketplace actions (only `actions/*`).
+#   - hardening rules in scripts/check-workflow-hardening.py (permissions,
+#     persist-credentials, pinned tools before the signing import, no unsigned
+#     override on a tag, provenance attestation, no package cache in cd.yml).
 #   - auto-release.yml always dispatches release.yml against the new tag (its
 #     tag points at a [skip ci] commit, so the tag push starts nothing).
 # and that scripts/ci-changes.sh maps changed files to the right answer.
@@ -110,6 +113,16 @@ self_test() {
 
     # launch-smoke.sh: passes an app that stays up, fails one that exits.
     scripts/launch-smoke.sh --self-test >/dev/null || err "launch-smoke.sh self-test failed"
+
+    # Pinned XcodeGen install, entitlement checks and workflow hardening rules.
+    scripts/install-xcodegen.sh --self-test >/dev/null || err "install-xcodegen.sh self-test failed"
+    scripts/check-entitlements.sh --self-test >/dev/null || err "check-entitlements.sh self-test failed"
+    if python3 -c 'import yaml' 2>/dev/null; then
+        python3 scripts/check-workflow-hardening.py --self-test >/dev/null \
+            || err "check-workflow-hardening.py self-test failed"
+    else
+        echo "check-ci-gating: PyYAML not available; skipping workflow hardening self-test" >&2
+    fi
 }
 
 self_test
@@ -169,8 +182,8 @@ if guard is None:
     bad("release.yml: missing 'Require a signed, notarized build for a tag'")
 else:
     cond, run = str(guard.get("if", "")), guard.get("run", "")
-    if "env.IS_TAG == 'true'" not in cond or "vars.ALLOW_UNSIGNED_RELEASE" not in cond:
-        bad("release.yml: the signing guard must run on tags unless ALLOW_UNSIGNED_RELEASE is set")
+    if "env.IS_TAG == 'true'" not in cond or "ALLOW_UNSIGNED_RELEASE" in cond:
+        bad("release.yml: the signing guard must run on every tag, with no unsigned override")
     if "HAS_SIGNING" not in run or "HAS_NOTARIZATION" not in run or "exit 1" not in run:
         bad("release.yml: the signing guard must fail without signing and notarization secrets")
     names = list(rsteps)
@@ -178,8 +191,8 @@ else:
         bad("release.yml: the signing guard must run before the build")
 publish = rsteps.get("Create GitHub Release", {})
 prun = publish.get("run", "")
-if 'NOTARIZED:-false}" != "true"' not in prun or "ALLOW_UNSIGNED_RELEASE" not in prun:
-    bad("release.yml: Create GitHub Release must refuse a build that was not notarized")
+if 'NOTARIZED:-false}" != "true"' not in prun or "ALLOW_UNSIGNED_RELEASE" in prun:
+    bad("release.yml: Create GitHub Release must refuse a build that was not notarized, with no override")
 if "--notes-file" not in prun:
     bad("release.yml: the release body must come from --notes-file (the CHANGELOG entry)")
 if "release-notes.sh" not in rsteps.get("Package DMG and appcast", {}).get("run", ""):
@@ -323,6 +336,8 @@ for p in problems:
     print(f"check-ci-gating: {p}", file=sys.stderr)
 sys.exit(1 if problems else 0)
 PY
+
+python3 scripts/check-workflow-hardening.py || fail=1
 
 if [ "$fail" -ne 0 ]; then
     echo "check-ci-gating: FAILED" >&2

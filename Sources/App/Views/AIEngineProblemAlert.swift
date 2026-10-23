@@ -4,22 +4,11 @@ import AppKit
 /// The side effects a recovery can perform, as closures so the routing from a
 /// problem to its fix is unit-tested with fakes.
 struct AIEngineActions {
-    var openDownloadPage: () -> Void
-    var startOllama: () async throws -> Void
-    var pullModel: (_ name: String, _ onProgress: @escaping (Double, String) -> Void) async throws -> Void
     var downloadBuiltInModel: (_ onProgress: @escaping (Double, String) -> Void) async throws -> Void = { _ in }
 
     @MainActor
     static func live(integrations: Integrations) -> AIEngineActions {
         AIEngineActions(
-            openDownloadPage: { SystemSettingsLinks.openOllamaDownload() },
-            startOllama: {
-                let assistant = integrations.makeAssistant()
-                try await OllamaLauncher.launchAndWaitUntilReachable { await assistant.isReachable() }
-            },
-            pullModel: { name, onProgress in
-                try await integrations.makeAssistant().pullModel(name, onProgress: onProgress)
-            },
             downloadBuiltInModel: { onProgress in
                 try await integrations.downloadBuiltInModel { progress in
                     onProgress(progress, LlamaModelDownloader.shared.statusText)
@@ -37,9 +26,6 @@ enum AIEngineRecovery {
         onProgress: @escaping (Double, String) -> Void = { _, _ in }
     ) async throws {
         switch problem.action {
-        case .getOllama: actions.openDownloadPage()
-        case .startOllama: try await actions.startOllama()
-        case .downloadModel(let name): try await actions.pullModel(name, onProgress)
         case .downloadBuiltInModel: try await actions.downloadBuiltInModel(onProgress)
         case .retry: break
         }
@@ -66,7 +52,7 @@ final class AIEngineRecoveryController: ObservableObject {
         progress = nil
         status = Self.startingStatus(for: problem)
         switch problem.action {
-        case .downloadModel, .downloadBuiltInModel: progress = 0
+        case .downloadBuiltInModel: progress = 0
         default: break
         }
         defer { isWorking = false }
@@ -88,9 +74,6 @@ final class AIEngineRecoveryController: ObservableObject {
 
     static func startingStatus(for problem: AIEngineProblem) -> String {
         switch problem.action {
-        case .getOllama: return "Opening the Ollama download page…"
-        case .startOllama: return "Starting Ollama…"
-        case .downloadModel(let name): return "Downloading \(name)…"
         case .downloadBuiltInModel: return "Downloading the AI model…"
         case .retry: return "Trying again…"
         }
@@ -126,8 +109,7 @@ private func copyDetails(_ incident: AIEngineIncident, integrations: Integration
         backend: integrations.effectiveAssistantBackend.displayName,
         model: integrations.activeModelName
     )
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(text, forType: .string)
+    PHIPasteboard.writeString(text)
 }
 
 private struct AIEngineAlert: ViewModifier {
@@ -175,8 +157,8 @@ private struct AIEngineAlert: ViewModifier {
             if fixed, problem.retriesAfterAction {
                 retry()
             } else {
-                // Nothing will re-run the failed request (the fix failed, or it
-                // only opened a download page), so don't keep it for later.
+                // Nothing will re-run the failed request (the fix failed), so
+                // don't keep it for later.
                 discard()
             }
         }
@@ -187,8 +169,7 @@ extension View {
     /// Shows a recovery alert for the AI engine problem, with one button that
     /// fixes it in place (with progress), a Copy Details button for support, and
     /// a `retry` of the failed requests after a successful fix. `discard` runs
-    /// when no retry will happen (Cancel, a failed fix, or a fix that only opens
-    /// a download page), so the caller can drop what it was holding.
+    /// when no retry will happen (Cancel or a failed fix), so the caller can drop what it was holding.
     func aiEngineAlert(_ incident: Binding<AIEngineIncident?>, retry: @escaping () -> Void, discard: @escaping () -> Void) -> some View {
         modifier(AIEngineAlert(incident: incident, retry: retry, discard: discard))
     }
@@ -274,14 +255,8 @@ struct AIEngineBanner: View {
 @MainActor
 enum AIEngineHealth {
     static func problem(integrations: Integrations) async -> AIEngineProblem? {
-        let assistant = integrations.makeAssistant()
         let modelURL = integrations.llamaModelURL
-        return await AIEngineProbe(
-            isOllamaBackend: integrations.effectiveAssistantBackend == .ollama,
-            modelName: integrations.ollamaModelName,
-            isReachable: { await assistant.isReachable() },
-            hasModel: { await assistant.hasModel($0) },
-            isInstalled: { OllamaAppLocator.isInstalled() },
+        return AIEngineProbe(
             isBuiltInBackend: integrations.effectiveAssistantBackend == .localLlama,
             builtInModelPresent: { FileManager.default.fileExists(atPath: modelURL.path) }
         ).problem()

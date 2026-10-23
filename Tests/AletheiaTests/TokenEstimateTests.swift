@@ -125,26 +125,10 @@ final class TokenEstimateTests: XCTestCase {
         XCTAssertFalse(AIRunStats(promptTokens: window, expectedPromptTokens: edge).possiblyTruncated)
     }
 
-    func testFinalChunkCarriesTheWindow() throws {
-        let line = #"{"response":"","done":true,"prompt_eval_count":6200,"eval_count":10}"#
-        let cut = try XCTUnwrap(OllamaClient.streamChunk(fromLine: line, expectedPromptTokens: 6_000, contextTokens: 8_192))
-        XCTAssertEqual(cut.stats?.contextTokens, 8_192)
-        XCTAssertTrue(try XCTUnwrap(cut.stats).possiblyTruncated)
-        let roomy = try XCTUnwrap(OllamaClient.streamChunk(fromLine: line, expectedPromptTokens: 6_000, contextTokens: 32_768))
-        XCTAssertFalse(try XCTUnwrap(roomy.stats).possiblyTruncated)
-    }
-
-    func testExpectedPromptTokensCountsByScriptAndSkipsTheCachedPrefix() {
-        let system = String(repeating: "s", count: 2_999)
-        let prompt = String(repeating: japanese, count: 500)   // 6,000 characters
-        XCTAssertEqual(OllamaClient.expectedPromptTokens(system: system, prompt: prompt, cachedCharacters: 0),
-                       (2_999 + 18_000) / 3)
-        // The first 4,000 characters (the system text, the newline and 1,000 Japanese) are held.
-        XCTAssertEqual(OllamaClient.expectedPromptTokens(system: system, prompt: prompt, cachedCharacters: 4_000),
-                       (2_999 + 18_000 - (2_999 + 1 + 3_000)) / 3)
-        // English: the same as counting characters, as before.
-        let english = String(repeating: "e", count: 9_000)
-        XCTAssertEqual(OllamaClient.expectedPromptTokens(system: system, prompt: english, cachedCharacters: 2_000),
-                       ContextBudget.estimatedTokens(forCharacters: system.count + english.count - 2_000))
+    func testTheWindowDecidesWhetherASixThousandTokenReadWasCut() {
+        let cut = AIRunStats(promptTokens: 6_200, expectedPromptTokens: 6_000, contextTokens: 8_192)
+        XCTAssertTrue(cut.possiblyTruncated)
+        let roomy = AIRunStats(promptTokens: 6_200, expectedPromptTokens: 6_000, contextTokens: 32_768)
+        XCTAssertFalse(roomy.possiblyTruncated)
     }
 }

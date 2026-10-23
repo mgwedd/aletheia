@@ -1389,7 +1389,9 @@ struct SessionDetailView: View {
     private func requestGenerateNote() {
         guard let store = appModel.store else { return }
         let state = store.noteEditState(for: patient, session: session, format: settings.progressNoteFormat)
-        if NoteEditing.shouldArchiveBeforeReplacing(state) {
+        if state == .unreadable {
+            errorMessage = StoreError.noteUnreadable.localizedDescription
+        } else if NoteEditing.shouldArchiveBeforeReplacing(state) {
             confirmRegenerate = true
         } else {
             generateNote()
@@ -1517,7 +1519,7 @@ struct SessionDetailView: View {
     }
 
     private func startRecording() async {
-        guard let store = appModel.store else { return }
+        guard appModel.authorizeNewPHI(), let store = appModel.store else { return }
         let micURL = store.micRecordingURL(for: patient, session: session)
         let callURL = store.callRecordingURL(for: patient, session: session)
         // Refused (another recording is in the way) or failed to start: say why.
@@ -1525,6 +1527,7 @@ struct SessionDetailView: View {
             micURL: micURL,
             callURL: callURL,
             context: .init(
+                sessionID: session.id,
                 patientID: patient.id,
                 patientName: patient.name,
                 patientSlug: patient.slug,
@@ -1595,6 +1598,11 @@ struct SessionDetailView: View {
             onSessionUpdated()
         case .blank(let notice):
             // Nothing was transcribed; any existing transcript is untouched.
+            noSpeechNotice = notice
+            onSessionUpdated()
+        case .completedAudioKept(let notice):
+            reloadTranscript()
+            transcriptDraft = transcriptText
             noSpeechNotice = notice
             onSessionUpdated()
         case .cancelled:
@@ -1712,7 +1720,7 @@ struct SessionDetailView: View {
                 if settings.progressNoteFormat == format { summaryText = text }
             },
             onError: { error in
-                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                if let incident = AIEngineIncident.from(error: error) {
                     engineRetries.set({ generateNote() }, for: .note)
                     engineIncident = incident
                 } else {
@@ -1831,7 +1839,7 @@ struct SessionDetailView: View {
             onReveal: { text in chatMessages.upsert(id: assistantID, role: .assistant, text: text) },
             onError: { error in
                 isChatSending = false
-                if let incident = AIEngineIncident.from(error: error, ollamaInstalled: OllamaAppLocator.isInstalled()) {
+                if let incident = AIEngineIncident.from(error: error) {
                     // The question stays in the conversation (nothing is lost if the
                     // alert is cancelled); a retry takes the unanswered turn out
                     // first so the question is asked once.

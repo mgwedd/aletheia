@@ -10,6 +10,7 @@ struct RootView: View {
     @EnvironmentObject private var transcription: TranscriptionCoordinator
     @EnvironmentObject private var exports: ExportJobCenter
     @ObservedObject private var navigator = AppNavigator.shared
+    @ObservedObject private var setAside = SetAsideRecordings.shared
     @Environment(\.openWindow) private var openWindow
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
@@ -92,6 +93,12 @@ struct RootView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(appModel.errorMessage ?? "")
+        }
+        .alert(appModel.fileVaultNotice?.title ?? "", isPresented: fileVaultBinding) {
+            Button("Open System Settings") { SystemSettingsLinks.openFileVaultSettings() }
+            Button(appModel.fileVaultNotice == .blocked ? "Cancel" : "Continue", role: .cancel) {}
+        } message: {
+            Text(appModel.fileVaultNotice?.message ?? "")
         }
         .alert("Update Aletheia", isPresented: schemaWarningBinding) {
             Button("OK", role: .cancel) {}
@@ -205,6 +212,12 @@ struct RootView: View {
                     onDismiss: { appModel.dismissSaveFailure() }
                 )
             }
+            if !setAside.items.isEmpty {
+                SetAsideRecordingsStrip(count: setAside.items.count) {
+                    navigator.requestSettings(.setAsideRecordings)
+                    showSettings = true
+                }
+            }
         }
     }
 
@@ -229,6 +242,13 @@ struct RootView: View {
         Binding(
             get: { updateService.available != nil },
             set: { if !$0 { updateService.dismiss() } }
+        )
+    }
+
+    private var fileVaultBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.fileVaultNotice != nil },
+            set: { if !$0 { appModel.fileVaultNotice = nil } }
         )
     }
 

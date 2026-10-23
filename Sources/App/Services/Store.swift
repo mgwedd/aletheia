@@ -3,6 +3,7 @@ import Foundation
 enum StoreError: LocalizedError {
     case noDataRoot
     case patientNotFound
+    case patientFolderMigrationIncomplete
     case sessionNotFound
     /// A session folder's `session.json` is present but couldn't be read or
     /// decoded. The file is **never** rewritten and no replacement identity is
@@ -14,11 +15,19 @@ enum StoreError: LocalizedError {
     /// A session folder has no `session.json` and one couldn't be saved (for
     /// example a read-only folder), so the session can't be given a stable id.
     case sessionMetadataUnwritable(folder: URL, underlying: Error)
+    /// A saved note (or its generated baseline) exists but couldn't be read, so
+    /// it was not replaced.
+    case noteUnreadable
+    /// A session folder name that isn't a single plain folder name.
+    case invalidFolderName
+    /// Raw audio that couldn't be removed.
+    case recordingNotDeleted
 
     var errorDescription: String? {
         switch self {
         case .noDataRoot: return "No data folder has been chosen yet. Open Settings to pick one."
         case .patientNotFound: return "That patient couldn't be found on disk."
+        case .patientFolderMigrationIncomplete: return "The patient folder upgrade must finish before records can be changed. Reopen Aletheia after resolving the folder issue."
         case .sessionNotFound: return "That session couldn't be found on disk."
         // No patient names, note text or paths here: the folder is available
         // as a structured value on the case for callers that want to show it.
@@ -28,14 +37,20 @@ enum StoreError: LocalizedError {
         case .sessionMetadataUnwritable:
             return "Aletheia couldn't save an identity file (session.json) for this session folder. "
                 + "The folder was left as it was."
+        case .noteUnreadable:
+            return "Aletheia couldn't read the saved note for this session, so it was left as it is. "
+                + "Nothing was replaced."
+        case .invalidFolderName: return "That session folder name isn't valid."
+        case .recordingNotDeleted:
+            return "The recording couldn't be deleted from your data folder."
         }
     }
 }
 
 /// All disk I/O lives here. Layout, on purpose, is plain and Finder-browsable:
 ///
-///   <dataRoot>/Patients/<Patient-Slug>/patient.json
-///   <dataRoot>/Patients/<Patient-Slug>/YYYY-MM-DD_Session/
+///   <dataRoot>/Patients/<Patient-UUID>/patient.json
+///   <dataRoot>/Patients/<Patient-UUID>/YYYY-MM-DD_Session/
 ///       session.json       (the session's stable id + date)
 ///       mic.caf            (therapist's microphone)
 ///       call.caf            (the other side of the call, captured system audio)
@@ -47,8 +62,8 @@ enum StoreError: LocalizedError {
 ///
 /// Identity is a persisted `UUID`, never the path. A patient's id lives in
 /// `patient.json`, a session's in `session.json` — both assigned once at
-/// creation. The folder names (`<Patient-Slug>/`, `YYYY-MM-DD_Session/`) are a
-/// human-friendly *organization* detail, freely renamable: the SQLite store
+/// creation. Patient folder names are opaque UUIDs; session folder names are
+/// dates. Both can be renamed: the SQLite store
 /// (`CommentStore`) keys comments/notes/chats on those ids, so annotations
 /// follow a session or patient across a rename or move. A folder that turns up
 /// without a `session.json` (created before this scheme, or dropped in by hand)
@@ -123,7 +138,11 @@ final class Store {
         self.searchIndex = searchIndex
         self.protector = protector
         self.commentStore = commentStore ?? (openDatabaseIfMissing ? CommentStore(root: root, protector: protector) : nil)
-        self.schemaCompatibility = Store.reconcileSchema(at: root)
+        self.schemaCompatibility = Store.reconcileSchema(at: root, protector: protector)
+        self.commentStore?.onRecordDecodeFailure = { [weak self] in
+            guard let self else { return }
+            self.recordStoredDamage(folder: root, file: "Aletheia.sqlite", reason: .undecodable)
+        }
         // Comments and the therapist's own notes are saved straight to the
         // database by the views; this keeps the index in step with them.
         if searchIndex != nil {
@@ -135,7 +154,14 @@ final class Store {
 
     // MARK: - Schema
 
-    private static func reconcileSchema(at root: URL) -> SchemaCompatibility {
+    /// Serializes opening a folder within the process: the app and an App
+    /// Intent can each build a `Store` at the same moment, and two folder
+    /// migrations racing over the same directories could undo each other.
+    private static let reconcileLock = NSLock()
+
+    private static func reconcileSchema(at root: URL, protector: FileProtector) -> SchemaCompatibility {
+        reconcileLock.lock()
+        defer { reconcileLock.unlock() }
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         let metaURL = root.appendingPathComponent(DataSchema.metadataFileName)
@@ -148,15 +174,35 @@ final class Store {
                 return .needsNewerApp(dataVersion: meta.schemaVersion, appVersion: current)
             }
             if meta.schemaVersion < current {
-                // (Migrations from meta.schemaVersion → current would run here.)
+                if meta.schemaVersion < 2 {
+                    do {
+                        let outcome = try PatientFolderMigration.run(root: root, protector: protector)
+                        // Damaged records were left as they are: keep the old
+                        // stamp so the next open tries them again.
+                        if outcome.skippedUnreadable > 0 { return .ok }
+                    } catch {
+                        return .migrationFailed
+                    }
+                }
                 writeMetadata(StoreMetadata(schemaVersion: current, lastWrittenBy: appVersion), to: metaURL)
                 return .upgraded(fromVersion: meta.schemaVersion)
             }
             return .ok
         }
 
-        // No stamp yet (fresh folder, or one from before versioning existed):
-        // claim it at the current version.
+        // An unstamped legacy folder can contain named patient directories.
+        // Treat it as v1 and migrate before claiming the current version.
+        if fileManager.fileExists(atPath: root.appendingPathComponent("Patients").path) {
+            do {
+                let outcome = try PatientFolderMigration.run(root: root, protector: protector)
+                if outcome.skippedUnreadable > 0 {
+                    writeMetadata(StoreMetadata(schemaVersion: 1, lastWrittenBy: appVersion), to: metaURL)
+                    return .ok
+                }
+            } catch {
+                return .migrationFailed
+            }
+        }
         writeMetadata(StoreMetadata(schemaVersion: current, lastWrittenBy: appVersion), to: metaURL)
         return .ok
     }
@@ -203,7 +249,7 @@ final class Store {
                 continue
             }
             do {
-                patients.append(try JSONDecoder.aletheia.decode(Patient.self, from: data))
+                patients.append(Store.locatedIn(dir, try JSONDecoder.aletheia.decode(Patient.self, from: data)))
             } catch {
                 unreadable.append(UnreadableEntry(kind: .patientRecord, reason: .undecodable, folder: dir))
             }
@@ -251,44 +297,52 @@ final class Store {
         recordedUnreadable.append(contentsOf: entries)
     }
 
+    /// Notes a stored file or database record that exists but couldn't be read,
+    /// so it shows up in the damaged-records list instead of reading as empty.
+    private func recordStoredDamage(folder: URL, file: String, reason: UnreadableEntry.Reason) {
+        let entry = UnreadableEntry(kind: .storedRecord, reason: reason, folder: folder, fileLabel: file)
+        unreadableLock.lock()
+        defer { unreadableLock.unlock() }
+        if !recordedUnreadable.contains(where: { $0.id == entry.id }) {
+            recordedUnreadable.append(entry)
+        }
+    }
+
     func createPatient(name: String) throws -> Patient {
+        guard schemaCompatibility != .migrationFailed else { throw StoreError.patientFolderMigrationIncomplete }
         try fileManager.createDirectory(at: patientsDir, withIntermediateDirectories: true)
-        let slug = try uniqueSlug(for: name)
-        let patient = Patient(name: name, slug: slug)
+        var id = UUID()
+        while fileManager.fileExists(atPath: patientsDir.appendingPathComponent(id.uuidString).path) {
+            id = UUID()
+        }
+        let patient = Patient(id: id, name: name, slug: id.uuidString)
         try fileManager.createDirectory(at: patientDir(for: patient), withIntermediateDirectories: true)
         try save(patient)
         return patient
     }
 
     func save(_ patient: Patient) throws {
+        guard schemaCompatibility != .migrationFailed else { throw StoreError.patientFolderMigrationIncomplete }
         let data = try JSONEncoder.aletheia.encode(patient)
         try fileManager.createDirectory(at: patientDir(for: patient), withIntermediateDirectories: true)
         try protector.write(data, to: patientDir(for: patient).appendingPathComponent("patient.json"))
     }
 
+    /// The folder a `patient.json` was found in is where that patient's
+    /// sessions are. A recorded `slug` can disagree with it: a folder upgrade
+    /// interrupted between moving a folder and rewriting its record, or a
+    /// folder renamed by hand. Trusting the slug there would hide the sessions
+    /// and send new ones to a folder with no patient record.
+    static func locatedIn(_ folder: URL, _ patient: Patient) -> Patient {
+        let name = folder.lastPathComponent
+        guard patient.slug != name else { return patient }
+        return Patient(
+            id: patient.id, name: patient.name, notes: patient.notes, createdAt: patient.createdAt,
+            slug: name, clinicalHistory: patient.clinicalHistory, medications: patient.medications)
+    }
+
     func patientDir(for patient: Patient) -> URL {
         patientsDir.appendingPathComponent(patient.slug, isDirectory: true)
-    }
-
-    private func uniqueSlug(for name: String) throws -> String {
-        let base = slugify(name)
-        var candidate = base
-        var suffix = 2
-        let existing = Set(try fileManager.contentsOfDirectory(at: patientsDir, includingPropertiesForKeys: nil).map { $0.lastPathComponent })
-        while existing.contains(candidate) {
-            candidate = "\(base)-\(suffix)"
-            suffix += 1
-        }
-        return candidate
-    }
-
-    private func slugify(_ name: String) -> String {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let allowed = trimmed.map { char -> Character in
-            char.isLetter || char.isNumber ? char : "-"
-        }
-        let collapsed = String(allowed).split(separator: "-").joined(separator: "-")
-        return collapsed.isEmpty ? "Patient" : collapsed
     }
 
     /// Deletes a patient and all associated clinical data:
@@ -432,7 +486,13 @@ final class Store {
     /// folder isn't there and `StoreError.sessionMetadataUnreadable` when its
     /// `session.json` is present but damaged (the file is left as it was).
     func loadSession(for patient: Patient, folderName: String) throws -> SessionRecord {
-        let folder = patientDir(for: patient).appendingPathComponent(folderName, isDirectory: true)
+        guard !folderName.isEmpty, folderName != ".", folderName != "..",
+              !folderName.contains("/"), !folderName.contains("\\") else {
+            throw StoreError.invalidFolderName
+        }
+        let patientFolder = patientDir(for: patient).standardizedFileURL
+        let folder = patientFolder.appendingPathComponent(folderName, isDirectory: true).standardizedFileURL
+        guard folder.path.hasPrefix(patientFolder.path + "/") else { throw StoreError.invalidFolderName }
         var isDir: ObjCBool = false
         guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDir), isDir.boolValue else {
             throw StoreError.sessionNotFound
@@ -528,6 +588,26 @@ final class Store {
         patientDir(for: patient).appendingPathComponent(session.folderName, isDirectory: true)
     }
 
+    /// The private staging root where live audio files are recorded before being
+    /// sealed into the patient session folder. Created with 0o700 permissions.
+    static var stagingDirectoryURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Aletheia", isDirectory: true)
+            .appendingPathComponent("Staging", isDirectory: true)
+    }
+
+    static func stagingDir(for sessionID: UUID, in stagingRoot: URL = stagingDirectoryURL) -> URL {
+        stagingRoot.appendingPathComponent(sessionID.uuidString, isDirectory: true)
+    }
+
+    func stagingMicURL(for session: SessionRecord, in stagingRoot: URL = stagingDirectoryURL) -> URL {
+        Store.stagingDir(for: session.id, in: stagingRoot).appendingPathComponent("mic.caf")
+    }
+
+    func stagingCallURL(for session: SessionRecord, in stagingRoot: URL = stagingDirectoryURL) -> URL {
+        Store.stagingDir(for: session.id, in: stagingRoot).appendingPathComponent("call.caf")
+    }
+
     func micRecordingURL(for patient: Patient, session: SessionRecord) -> URL {
         sessionDir(for: patient, session: session).appendingPathComponent("mic.caf")
     }
@@ -539,13 +619,18 @@ final class Store {
     /// Removes a session's raw audio (`mic.caf` / `call.caf`) from disk. Called
     /// after transcription when `AudioRetentionPolicy` says the audio should not
     /// be kept (the transcript-only default), so the recording — the most
-    /// sensitive artifact a session produces — doesn't linger. Best-effort: an
-    /// absent file is a no-op, and a removal failure is swallowed rather than
-    /// surfaced, since the transcript is already saved and is the document of
-    /// record.
-    func deleteRecordings(for patient: Patient, session: SessionRecord) {
-        try? FileManager.default.removeItem(at: micRecordingURL(for: patient, session: session))
-        try? FileManager.default.removeItem(at: callRecordingURL(for: patient, session: session))
+    /// sensitive artifact a session produces — doesn't linger. An absent file is
+    /// a no-op. Both files are attempted; if either can't be removed this throws
+    /// `StoreError.recordingNotDeleted`, so the caller can tell the user the
+    /// audio is still on disk.
+    func deleteRecordings(for patient: Patient, session: SessionRecord) throws {
+        var failed = false
+        for url in [micRecordingURL(for: patient, session: session), callRecordingURL(for: patient, session: session)] {
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            do { try FileManager.default.removeItem(at: url) } catch { failed = true }
+        }
+        try? FileManager.default.removeItem(at: Store.stagingDir(for: session.id))
+        if failed { throw StoreError.recordingNotDeleted }
     }
 
     func transcript(for patient: Patient, session: SessionRecord) -> String? {
@@ -955,14 +1040,18 @@ final class Store {
     }
 
     /// Whether the saved `format` note is untouched generated text, the user's
-    /// edit, or absent. Read-only (unlike `note(for:...)`).
+    /// edit, or absent. `.unreadable` when the note or its baseline exists but
+    /// can't be read. Read-only (unlike `note(for:...)`).
     func noteEditState(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) -> NoteEditState {
-        let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
-        let current = (try? protector.stringIfPresent(at: url)) ?? nil
-        return NoteEditing.state(
-            current: current,
-            baseline: generatedNoteBaseline(for: patient, session: session, format: format)
-        )
+        do {
+            let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
+            let current = try protector.stringIfPresent(at: url)
+            let baseline = try protector.stringIfPresent(
+                at: noteSidecarURL(.generated, patient: patient, session: session, format: format))
+            return NoteEditing.state(current: current, baseline: baseline)
+        } catch {
+            return .unreadable
+        }
     }
 
     /// Saves a note the assistant just generated. If the note it replaces was
@@ -979,8 +1068,10 @@ final class Store {
         coverage: String? = nil
     ) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
-        if NoteEditing.shouldArchiveBeforeReplacing(noteEditState(for: patient, session: session, format: format)),
-           let edited = (try? protector.stringIfPresent(at: url)) ?? nil {
+        let state = noteEditState(for: patient, session: session, format: format)
+        if state == .unreadable { throw StoreError.noteUnreadable }
+        if NoteEditing.shouldArchiveBeforeReplacing(state),
+           let edited = try protector.stringIfPresent(at: url) {
             try protector.write(edited, to: noteSidecarURL(.previous, patient: patient, session: session, format: format))
         }
         try saveNote(text, for: patient, session: session, format: format, generatedFromTranscript: transcript)
@@ -1014,7 +1105,8 @@ final class Store {
         guard let previous = previousNote(for: patient, session: session, format: format),
               !NoteEditing.normalized(previous).isEmpty else { return nil }
         let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
-        let current = (try? protector.stringIfPresent(at: url)) ?? nil
+        let current: String?
+        do { current = try protector.stringIfPresent(at: url) } catch { throw StoreError.noteUnreadable }
         if let current {
             try protector.write(current, to: noteSidecarURL(.previous, patient: patient, session: session, format: format))
         }
@@ -1048,7 +1140,7 @@ final class Store {
         guard let commentStore else { return }
         let legacyFile = sessionDir(for: patient, session: session).appendingPathComponent("chat.json")
         guard fileManager.fileExists(atPath: legacyFile.path) else { return }
-        let legacy = loadChat(at: legacyFile)
+        guard let legacy = loadChat(at: legacyFile) else { return }
         if legacy.isEmpty {
             try? fileManager.removeItem(at: legacyFile)
             return
@@ -1058,16 +1150,26 @@ final class Store {
     }
 
     func loadPatientChat(for patient: Patient) -> [ChatMessage] {
-        loadChat(at: patientDir(for: patient).appendingPathComponent("patient_chat.json"))
+        loadChat(at: patientDir(for: patient).appendingPathComponent("patient_chat.json")) ?? []
     }
 
     func savePatientChat(_ messages: [ChatMessage], for patient: Patient) throws {
         try saveChat(messages, at: patientDir(for: patient).appendingPathComponent("patient_chat.json"))
     }
 
-    private func loadChat(at url: URL) -> [ChatMessage] {
-        guard let data = (try? protector.dataIfPresent(at: url)) ?? nil else { return [] }
-        return (try? JSONDecoder.aletheia.decode([ChatMessage].self, from: data)) ?? []
+    /// The messages in a chat file; empty when there is no file. nil when the file
+    /// exists but can't be read or decoded (it is reported, and left in place).
+    private func loadChat(at url: URL) -> [ChatMessage]? {
+        do {
+            guard let data = try protector.dataIfPresent(at: url) else { return [] }
+            return try JSONDecoder.aletheia.decode([ChatMessage].self, from: data)
+        } catch FileProtector.ProtectorError.locked {
+            return nil
+        } catch {
+            recordStoredDamage(folder: url.deletingLastPathComponent(), file: url.lastPathComponent,
+                               reason: error is DecodingError ? .undecodable : .notReadable)
+            return nil
+        }
     }
 
     // MARK: - Chat threads (per-patient, multi-thread)
@@ -1126,7 +1228,7 @@ final class Store {
         } else if hasLegacyChat {
             // Pre-thread era: the single conversation becomes one thread. Only
             // when there were no thread files, matching the original import rule.
-            let legacy = loadPatientChat(for: patient)
+            guard let legacy = loadChat(at: legacyChatFile) else { return }
             if !legacy.isEmpty {
                 let thread = ChatThread(
                     title: "",

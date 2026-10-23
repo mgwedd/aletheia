@@ -54,9 +54,9 @@ enum IdleAutoLockTimeout: Int, CaseIterable, Identifiable, Codable, Hashable {
 
     var id: Int { rawValue }
 
-    /// Off: by default the app locks only when the Mac locks or sleeps, so the
-    /// Mac's own Lock Screen setting decides. The in-app idle lock is opt-in.
-    static let defaultTimeout: IdleAutoLockTimeout = .off
+    /// New installs lock after 15 minutes of inactivity. An explicit Never
+    /// choice remains available and persists.
+    static let defaultTimeout: IdleAutoLockTimeout = .fifteenMinutes
 
     var displayName: String {
         switch self {
@@ -82,15 +82,15 @@ final class AppSettings: ObservableObject {
         static let whisperModel = "whisperModel"
         static let assistantBackend = "assistantBackend"
         static let llamaModel = "llamaModel"
-        static let ollamaModelName = "ollamaModelName"
         static let systemPrompt = "systemPrompt"
-        static let ollamaBaseURL = "ollamaBaseURL"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
         static let updateFeedURL = "updateFeedURL"
         static let autoCheckForUpdates = "autoCheckForUpdates"
         static let spotlightIndexingEnabled = "spotlightIndexingEnabled"
         static let appLockEnabled = "appLockEnabled"
         static let idleAutoLockMinutes = "idleAutoLockMinutes"
+        static let lockWhenHidden = "lockWhenHidden"
+        static let hideFromScreenSharing = "hideFromScreenSharing"
         static let acceptedLegalVersion = "acceptedLegalVersion"
         static let acceptedLegalDate = "acceptedLegalDate"
         static let progressNoteFormat = "progressNoteFormat"
@@ -122,7 +122,7 @@ final class AppSettings: ObservableObject {
     /// release publishes one, the check just finds nothing (no error shown).
     static let defaultUpdateFeedURL = URL(string: "https://github.com/mgwedd/aletheia/releases/latest/download/appcast.json")!
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
 
     @Published var dataRootURL: URL?
     @Published var whisperModel: WhisperModel {
@@ -140,16 +140,10 @@ final class AppSettings: ObservableObject {
             if llamaModel != oldValue { LlamaRuntime.unloadAll() }
         }
     }
-    @Published var ollamaModelName: String {
-        didSet { defaults.set(ollamaModelName, forKey: Keys.ollamaModelName) }
-    }
     /// The system prompt prepended to every LLM request. Defaults to
     /// `Prompts.defaultSystemPrompt`; fully editable (and resettable) in Settings.
     @Published var systemPrompt: String {
         didSet { defaults.set(systemPrompt, forKey: Keys.systemPrompt) }
-    }
-    @Published var ollamaBaseURL: URL {
-        didSet { defaults.set(ollamaBaseURL.absoluteString, forKey: Keys.ollamaBaseURL) }
     }
     @Published var hasCompletedFirstRun: Bool {
         didSet { defaults.set(hasCompletedFirstRun, forKey: Keys.hasCompletedFirstRun) }
@@ -172,6 +166,14 @@ final class AppSettings: ObservableObject {
     @Published var appLockEnabled: Bool {
         didSet { defaults.set(appLockEnabled, forKey: Keys.appLockEnabled) }
     }
+    @Published var lockWhenHidden: Bool {
+        didSet { defaults.set(lockWhenHidden, forKey: Keys.lockWhenHidden) }
+    }
+    @Published var hideFromScreenSharing: Bool {
+        didSet { defaults.set(hideFromScreenSharing, forKey: Keys.hideFromScreenSharing) }
+    }
+    /// Temporary exception; always resets at launch.
+    @Published var allowScreenSharingThisSession = false
     /// HIPAA §164.312(a)(2)(iii) "automatic logoff": how many minutes of
     /// inactivity before `AppLock` re-engages, one of `IdleAutoLockTimeout`'s
     /// `allCases` values. `0` means "Never" (idle auto-lock off). Only takes
@@ -368,7 +370,21 @@ final class AppSettings: ObservableObject {
     let hardware: HardwareCapabilities
     let recommendation: ModelRecommendation
 
-    private init() {
+    /// Settings from an older version that no longer exist; cleared on load.
+    static let retiredKeys = [
+        "ollamaModelName", // legacy-key
+        "ollamaBaseURL", // legacy-key
+    ]
+
+    private static func removeRetiredKeys(from defaults: UserDefaults) {
+        for key in retiredKeys { defaults.removeObject(forKey: key) }
+    }
+
+    private convenience init() { self.init(defaults: .standard) }
+
+    /// Test seam: the shared instance uses `UserDefaults.standard`.
+    init(defaults: UserDefaults) {
+        self.defaults = defaults
         let hardware = HardwareCapabilities.current()
         let recommendation = ModelAdvisor.recommend(for: hardware)
         self.hardware = hardware
@@ -381,24 +397,22 @@ final class AppSettings: ObservableObject {
         } else {
             whisperModel = recommendation.whisperModel
         }
-        if let raw = defaults.string(forKey: Keys.assistantBackend), let backend = AssistantBackend(rawValue: raw) {
-            assistantBackend = backend
-        } else {
-            assistantBackend = .automatic
+        // An unrecognised stored value (including one from an older version that
+        // offered another engine) means the built-in engine.
+        let storedBackend = defaults.string(forKey: Keys.assistantBackend)
+        let backend = AssistantBackendResolver.preference(fromStored: storedBackend)
+        if let storedBackend, storedBackend != backend.rawValue {
+            defaults.set(backend.rawValue, forKey: Keys.assistantBackend)
         }
+        assistantBackend = backend
+        Self.removeRetiredKeys(from: defaults)
         if let raw = defaults.string(forKey: Keys.llamaModel), let model = LlamaModel(rawValue: raw) {
             llamaModel = model
         } else {
             llamaModel = .recommended(for: hardware)
         }
-        ollamaModelName = defaults.string(forKey: Keys.ollamaModelName) ?? recommendation.ollamaModel
         let savedPrompt = defaults.string(forKey: Keys.systemPrompt)
         systemPrompt = (savedPrompt?.isEmpty == false) ? savedPrompt! : Prompts.defaultSystemPrompt
-        if let raw = defaults.string(forKey: Keys.ollamaBaseURL), let url = URL(string: raw) {
-            ollamaBaseURL = url
-        } else {
-            ollamaBaseURL = URL(string: "http://127.0.0.1:11434")!
-        }
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
         localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)
         iCloudEncryptedBackupEnabled = defaults.bool(forKey: Keys.iCloudEncryptedBackupEnabled)
@@ -411,7 +425,9 @@ final class AppSettings: ObservableObject {
         keepDataOutOfSystemBackups = BackupExclusion.resolvedExclusion(in: defaults)
         debugDiagnosticsEnabled = defaults.bool(forKey: Keys.debugDiagnosticsEnabled)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
-        appLockEnabled = defaults.bool(forKey: Keys.appLockEnabled)
+        appLockEnabled = defaults.object(forKey: Keys.appLockEnabled) as? Bool ?? true
+        lockWhenHidden = defaults.object(forKey: Keys.lockWhenHidden) as? Bool ?? false
+        hideFromScreenSharing = defaults.object(forKey: Keys.hideFromScreenSharing) as? Bool ?? true
         if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,
            IdleAutoLockTimeout.allCases.map(\.rawValue).contains(stored) {
             idleAutoLockMinutes = stored

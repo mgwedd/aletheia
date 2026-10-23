@@ -211,6 +211,9 @@ final class SystemAudioCapture: NSObject {
         config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
         config.showsCursor = false
 
+        let dir = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
         self.fileURL = url
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         do {
@@ -251,6 +254,7 @@ final class SystemAudioCapture: NSObject {
         do {
             if file == nil {
                 file = try AVAudioFile(forWriting: fileURL, settings: buffer.format.settings)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
                 log.info("audio file created: \(buffer.format.sampleRate, privacy: .public) Hz, \(buffer.format.channelCount, privacy: .public) ch")
             }
             try file?.write(from: buffer)

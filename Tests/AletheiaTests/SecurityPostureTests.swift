@@ -13,13 +13,15 @@ final class SecurityPostureTests: XCTestCase {
         idleAutoLockMinutes: Int = 15,
         encryptionEnabled: Bool = true,
         encryptionUnlocked: Bool = true,
+        encryptionKeystoreMissing: Bool = false,
         encryptionOffered: Bool = true,
         auditLogActive: Bool = true,
         localEncryptedBackup: Bool = true,
         localBackupActive: Bool = true,
         iCloudBackupEnabled: Bool = false,
         iCloudBackupConfigured: Bool = false,
-        networkOnline: Bool? = nil
+        networkOnline: Bool? = nil,
+        diskEncrypted: Bool? = nil
     ) -> [PostureItem] {
         SecurityPosture.evaluate(
             appLockEnabled: appLockEnabled,
@@ -27,18 +29,28 @@ final class SecurityPostureTests: XCTestCase {
             idleAutoLockMinutes: idleAutoLockMinutes,
             encryptionEnabled: encryptionEnabled,
             encryptionUnlocked: encryptionUnlocked,
+            encryptionKeystoreMissing: encryptionKeystoreMissing,
             encryptionOffered: encryptionOffered,
             auditLogActive: auditLogActive,
             localEncryptedBackup: localEncryptedBackup,
             localBackupActive: localBackupActive,
             iCloudBackupEnabled: iCloudBackupEnabled,
             iCloudBackupConfigured: iCloudBackupConfigured,
-            networkOnline: networkOnline
+            networkOnline: networkOnline,
+            diskEncrypted: diskEncrypted
         )
     }
 
     private func item(_ id: String, in items: [PostureItem]) -> PostureItem? {
         items.first { $0.id == id }
+    }
+
+    func testFileVaultItemFollowsTheProbe() {
+        XCTAssertEqual(item("fileVault", in: evaluate(diskEncrypted: true))?.level, .secure)
+        XCTAssertEqual(item("fileVault", in: evaluate(diskEncrypted: false))?.level, .actionRecommended)
+        XCTAssertEqual(item("fileVault", in: evaluate(diskEncrypted: nil))?.level, .informational)
+        XCTAssertEqual(SecurityPosture.overall(evaluate(diskEncrypted: false)), .actionRecommended)
+        XCTAssertTrue(item("fileVault", in: evaluate(diskEncrypted: false))?.detail.contains("external drive") ?? false)
     }
 
     func testEncryptionItemIsOmittedWhenTheBuildDoesNotOfferIt() {
@@ -175,5 +187,13 @@ final class SecurityPostureTests: XCTestCase {
             networkOnline: true)
         XCTAssertFalse(items.contains { $0.level == .actionRecommended })
         XCTAssertEqual(SecurityPosture.overall(items), .secure)
+    }
+
+    func testMissingKeystoreNeedsAction() {
+        let items = evaluate(encryptionEnabled: true, encryptionUnlocked: false, encryptionKeystoreMissing: true)
+        let encryption = item("encryption", in: items)
+        XCTAssertEqual(encryption?.level, .actionRecommended)
+        XCTAssertTrue(encryption?.detail.contains("keystore is missing") ?? false)
+        XCTAssertEqual(SecurityPosture.overall(items), .actionRecommended)
     }
 }

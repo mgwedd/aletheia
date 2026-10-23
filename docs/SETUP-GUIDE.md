@@ -18,8 +18,6 @@ responsibility; the app does not handle them for you.
 - **Nothing else to install.** Speech-to-text and the AI model both run
   inside Aletheia, and call audio is captured with a built-in macOS feature,
   so there is no Homebrew, ffmpeg, virtual audio driver, or separate AI app.
-  If you already use [Ollama](https://ollama.com), you can pick it instead
-  under **Settings → AI and models**.
 
 ## Getting the app
 
@@ -75,7 +73,7 @@ Start with the built-in checks. They are faster than guessing:
 | Model download fails or stalls | The model is large. Keep the Mac awake and online, check free disk space, and retry. It is verified against a pinned checksum, so a partial file is never used. |
 | The first note after opening the app is slow | The model loads into memory first. Later requests in the same session are faster. |
 | Slow or low-quality answers | The model may be too large for this Mac's memory (slow) or too small (shallow). Pick another under **Settings → AI and models**. |
-| Using Ollama and nothing is generated | Ollama is not running. Open the Ollama app or use the **Launch Ollama** step in the setup checklist. Aletheia only talks to Ollama on your own Mac. |
+| Nothing is generated | The AI model may not be downloaded yet. Download it from the setup checklist or **Settings → AI and models**. |
 | A note format looks wrong | Set the format (narrative, SOAP, DAP, BIRP, GIRP) in Settings, then regenerate. |
 
 ### Data folder and storage

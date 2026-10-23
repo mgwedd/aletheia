@@ -17,6 +17,7 @@ struct SecurityPostureView: View {
             idleAutoLockMinutes: settings.idleAutoLockMinutes,
             encryptionEnabled: encryption.isEnabled,
             encryptionUnlocked: encryption.isUnlocked,
+            encryptionKeystoreMissing: encryption.isKeystoreMissing,
             encryptionOffered: SettingsAvailability.encryptionOffered(
                 isEnabled: encryption.isEnabled,
                 moduleInBuild: appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
@@ -26,7 +27,8 @@ struct SecurityPostureView: View {
             localBackupActive: LocalEncryptedBackupService.isWired,
             iCloudBackupEnabled: settings.iCloudEncryptedBackupEnabled,
             iCloudBackupConfigured: ICloudEncryptedBackupService.isProvisioned,
-            networkOnline: reachability.isOnline
+            networkOnline: reachability.isOnline,
+            diskEncrypted: appModel.diskEncrypted
         )
     }
 

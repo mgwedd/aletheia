@@ -7,7 +7,7 @@ final class SetupTests: XCTestCase {
     }
 
     func testOkChecksHaveNoAction() {
-        for kind in [ToolHealthCheck.Kind.dataFolder, .microphone, .screenRecording, .whisperModel, .ollama, .builtInModel, .appleIntelligence, .calendar, .reminders, .termsAndPrivacy] {
+        for kind in [ToolHealthCheck.Kind.dataFolder, .microphone, .screenRecording, .whisperModel, .builtInModel, .appleIntelligence, .calendar, .reminders, .termsAndPrivacy] {
             XCTAssertNil(Setup.action(for: check(kind, .ok)))
         }
     }
@@ -18,11 +18,6 @@ final class SetupTests: XCTestCase {
         XCTAssertEqual(Setup.action(for: check(.microphone, .failed)), .openMicrophoneSettings)
         XCTAssertEqual(Setup.action(for: check(.screenRecording, .failed)), .requestScreenRecording)
         XCTAssertEqual(Setup.action(for: check(.whisperModel, .failed)), .downloadTranscriptionModel)
-        // No engine-state detail (older/other caller, or a plain fixture like
-        // `check(...)` here) falls back to the pre-#111 "install" action rather
-        // than guessing Ollama is already there.
-        XCTAssertEqual(Setup.action(for: check(.ollama, .failed)), .installOrOpenOllama)
-        XCTAssertEqual(Setup.action(for: check(.ollama, .warning)), .downloadOllamaModel)
         XCTAssertEqual(Setup.action(for: check(.builtInModel, .failed)), .downloadBuiltInModel)
         XCTAssertEqual(Setup.action(for: check(.appleIntelligence, .failed)), .enableAppleIntelligence)
         XCTAssertNil(Setup.action(for: check(.appleIntelligence, .warning)))
@@ -43,26 +38,11 @@ final class SetupTests: XCTestCase {
         XCTAssertNil(Setup.action(for: ready))
     }
 
-    // MARK: #111 — launch vs. install, driven by `ollamaState`
-
-    // `ToolHealth` is main-actor isolated, so these build their checks there.
-    @MainActor
-    func testOllamaFailedWithInstalledNotRunningOffersLaunch() {
-        let installedNotRunning = ToolHealth.classifyOllama(reachable: false, hasModel: false, modelName: "llama3.1:8b", installed: true)
-        XCTAssertEqual(Setup.action(for: installedNotRunning), .launchOllama)
-    }
-
-    @MainActor
-    func testOllamaFailedWithNotInstalledOffersDownloadPage() {
-        let notInstalled = ToolHealth.classifyOllama(reachable: false, hasModel: false, modelName: "llama3.1:8b", installed: false)
-        XCTAssertEqual(Setup.action(for: notInstalled), .installOrOpenOllama)
-    }
-
     func testIsReadyIgnoresWarningsButNotFailures() {
-        let allOk = [check(.dataFolder, .ok), check(.microphone, .ok), check(.ollama, .ok)]
+        let allOk = [check(.dataFolder, .ok), check(.microphone, .ok), check(.builtInModel, .ok)]
         XCTAssertTrue(Setup.isReady(allOk))
 
-        let withWarning = [check(.dataFolder, .ok), check(.microphone, .warning), check(.ollama, .warning)]
+        let withWarning = [check(.dataFolder, .ok), check(.microphone, .warning), check(.builtInModel, .warning)]
         XCTAssertTrue(Setup.isReady(withWarning), "warnings shouldn't block finishing setup")
 
         let withFailure = [check(.dataFolder, .failed), check(.microphone, .ok)]
@@ -70,12 +50,12 @@ final class SetupTests: XCTestCase {
     }
 
     func testItemsPreserveOrderAndActions() {
-        let checks = [check(.dataFolder, .failed), check(.microphone, .ok), check(.ollama, .warning)]
+        let checks = [check(.dataFolder, .failed), check(.microphone, .ok), check(.builtInModel, .warning)]
         let items = Setup.items(from: checks)
         XCTAssertEqual(items.count, 3)
         XCTAssertEqual(items[0].action, .chooseFolder)
         XCTAssertNil(items[1].action)
-        XCTAssertEqual(items[2].action, .downloadOllamaModel)
+        XCTAssertEqual(items[2].action, .downloadBuiltInModel)
     }
 
     func testProgressCountsDoneRowsAndHighlightsTheFirstActionableOne() {
@@ -83,7 +63,7 @@ final class SetupTests: XCTestCase {
             check(.dataFolder, .ok),
             check(.appleIntelligence, .warning),   // nothing to click
             check(.microphone, .warning),
-            check(.ollama, .failed),
+            check(.builtInModel, .failed),
         ])
         let progress = Setup.progress(items)
         XCTAssertEqual(progress.done, 1)

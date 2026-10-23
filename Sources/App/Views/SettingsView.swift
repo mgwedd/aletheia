@@ -21,14 +21,11 @@ struct SettingsView: View {
     @EnvironmentObject private var encryption: EncryptionManager
     @StateObject private var whisperDownloader = WhisperModelDownloader()
     @ObservedObject private var llamaDownloader = LlamaModelDownloader.shared
-    @State private var ollamaPullProgress: Double = 0
-    @State private var ollamaPullStatus: String = ""
-    @State private var isPullingOllamaModel = false
-    @State private var isStartingOllama = false
     @State private var healthChecks: [ToolHealthCheck] = []
     @State private var isCheckingHealth = false
     @State private var showSetup = false
     @ObservedObject private var navigator = AppNavigator.shared
+    @ObservedObject private var setAside = SetAsideRecordings.shared
     @State private var newRiskPhrase = ""
     @State private var confirmClearRiskPhrases = false
     @State private var confirmResetRiskPhrases = false
@@ -36,6 +33,7 @@ struct SettingsView: View {
     /// How the last audit log export ended, shown until dismissed.
     @State private var exportResult: SaveOutcome?
     @State private var showEncryptionSetup = false
+    @State private var showNewRecoveryKeySheet = false
     @State private var showConsentGuide = false
     @State private var confirmDisableEncryption = false
     @State private var isDisablingEncryption = false
@@ -49,7 +47,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
 
-    private var panes: [SettingsPane] { SettingsPane.available(encryptionOffered: encryptionOffered) }
+    private var panes: [SettingsPane] { SettingsPane.available(encryptionOffered: encryptionOffered, hasSetAsideRecordings: !setAside.items.isEmpty) }
 
     private var pane: SettingsPane { SettingsPane.restored(rawValue: selectedPaneRaw, in: panes) }
 
@@ -107,6 +105,10 @@ struct SettingsView: View {
             EncryptionSetupSheet()
                 .environmentObject(encryption)
         }
+        .sheet(isPresented: $showNewRecoveryKeySheet) {
+            NewRecoveryKeySheet()
+                .environmentObject(encryption)
+        }
         .sheet(isPresented: $showConsentGuide) {
             ConsentGuideView()
         }
@@ -140,6 +142,7 @@ struct SettingsView: View {
         selectedPaneRaw = request.pane.rawValue
         switch request {
         case .setupAssistant: showSetup = true
+        case .setAsideRecordings: break
         }
     }
 
@@ -152,6 +155,8 @@ struct SettingsView: View {
         case .encryption: encryptionPane
         case .backups: backupsPane
         case .security: securityPane
+        case .setAsideRecordings:
+            SetAsideRecordingsPane(model: setAside) { selectedPaneRaw = SettingsPane.general.rawValue }
         }
     }
 
@@ -453,26 +458,9 @@ struct SettingsView: View {
         }
     }
 
-    /// The Ollama engine's state as the last health check saw it, if known.
-    private var ollamaEngineState: OllamaEngineState? {
-        healthChecks.first { $0.kind == .ollama }?.ollamaState
-    }
-
-    @ViewBuilder
-    private var ollamaChip: some View {
-        if integrations.effectiveAssistantBackend == .ollama, let state = ollamaEngineState {
-            switch state {
-            case .notInstalled: Chip("Ollama not installed", tone: .warn)
-            case .installedNotRunning: Chip("Ollama not running", tone: .warn)
-            case .starting: Chip("Ollama starting", tone: .info)
-            case .running, .modelMissing, .ready: Chip("Ollama running", tone: .ok)
-            }
-        }
-    }
-
     private var languageCard: some View {
         SettingsCard {
-            SettingsCardHeader(title: "Language model") { ollamaChip }
+            SettingsCardHeader(title: "Language model") { EmptyView() }
             SettingsRow(title: "Engine", detail: settings.assistantBackend.summary) {
                 Picker("Engine", selection: $settings.assistantBackend) {
                     // Apple Intelligence is intentionally hidden for now (see
@@ -502,71 +490,10 @@ struct SettingsView: View {
             .font(Theme.Typography.caption)
             .accessibilityElement(children: .combine)
 
-            if integrations.effectiveAssistantBackend == .ollama {
-                SettingsHairline()
-                ollamaControls
-            } else if integrations.effectiveAssistantBackend == .appleIntelligence {
+            if integrations.effectiveAssistantBackend == .appleIntelligence {
                 Label("Runs on your Mac with Apple Intelligence — nothing to install or download.", systemImage: "apple.logo")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var ollamaControls: some View {
-        SettingsRow(
-            title: "Model",
-            detail: OllamaCatalog.option(for: settings.ollamaModelName)?.blurb
-        ) {
-            Picker("Model", selection: ollamaModelSelection) {
-                ForEach(OllamaCatalog.options) { option in
-                    Text("\(option.label) (~\(String(format: "%.1f", option.approxSizeGB)) GB)")
-                        .tag(option.tag)
-                }
-                Text("Custom…").tag(OllamaCatalog.customTag)
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(width: 280)
-        }
-        SettingsCaption("Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.ollamaModel).")
-        if !OllamaCatalog.contains(settings.ollamaModelName) {
-            TextField("Ollama model tag (e.g. qwen2.5:7b)", text: $settings.ollamaModelName)
-                .textFieldStyle(.plain)
-                .font(Theme.Typography.body)
-                .padding(.horizontal, 12)
-                .frame(height: 38)
-                .themeField()
-        }
-        SettingsCaption("Ollama must be installed and running (its icon shows in the menu bar). Get it from ollama.com.")
-        HStack(spacing: 8) {
-            if isPullingOllamaModel {
-                ThemeProgressBar(value: ollamaPullProgress)
-                Text(ollamaPullStatus)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                    .lineLimit(1)
-            } else {
-                Button("Download \(settings.ollamaModelName)") { Task { await pullOllamaModel() } }
-                    .buttonStyle(.themed)
-                    .disabled(settings.ollamaModelName.trimmingCharacters(in: .whitespaces).isEmpty)
-                if ollamaEngineState == .notInstalled {
-                    Button("Get Ollama") { SystemSettingsLinks.openOllamaDownload() }
-                        .buttonStyle(.themed)
-                }
-                if ollamaEngineState == .installedNotRunning {
-                    Button(isStartingOllama ? "Starting…" : "Start Ollama") { Task { await startOllama() } }
-                        .buttonStyle(.themePrimary)
-                        .disabled(isStartingOllama)
-                }
-                if ollamaEngineState == .running || ollamaEngineState == .ready || ollamaEngineState == .modelMissing {
-                    Button("Open Ollama") {
-                        OllamaLauncher.openOllamaApp()
-                    }
-                    .buttonStyle(.themed)
-                }
-                Spacer()
             }
         }
     }
@@ -806,6 +733,16 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
             }
             .themeBanner(.info)
+        case .keystoreMissing:
+            HStack(alignment: .center, spacing: 14) {
+                Chip("Keystore missing", tone: .recording)
+                Text(EncryptionManager.ManagerError.keystoreMissing.localizedDescription)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .themeBanner(.warn)
         case .lockedNeedsPassphrase:
             HStack(alignment: .center, spacing: 14) {
                 Chip("On — locked")
@@ -850,6 +787,20 @@ struct SettingsView: View {
                         }
                 }
                 .padding(.vertical, 12)
+                SettingsHairline()
+                SettingsRow(
+                    title: "Emergency recovery key",
+                    detail: "A 24-word key allows unlocking your data folder if you forget your passphrase. If you misplace your printed key, create a new one to invalidate the old one."
+                ) {
+                    Button("Create New Recovery Key…") {
+                        showNewRecoveryKeySheet = true
+                    }
+                    .buttonStyle(.themed)
+                }
+                .padding(.vertical, 12)
+            }
+            if let failure = encryption.rememberError {
+                SettingsCaption("This Mac's keychain couldn't keep the key: \(failure)")
             }
         }
     }
@@ -859,7 +810,7 @@ struct SettingsView: View {
     private var encryptionSchemeDescription: String {
         let chunkMiB = ChunkedCipher.defaultChunkSize / (1 << 20)
         let iterations = PassphraseKDF.defaultIterations.formatted()
-        return "A random data key seals each file with AES-256-GCM; long recordings are sealed in \(chunkMiB) MiB chunks. Your passphrase wraps that key (PBKDF2-HMAC-SHA256, \(iterations) iterations). If you forget the passphrase, your data cannot be recovered."
+        return "A random data key seals each file with AES-256-GCM; long recordings are sealed in \(chunkMiB) MiB chunks. Your passphrase wraps that key (PBKDF2-HMAC-SHA256, \(iterations) iterations). A 24-word emergency recovery key provides a fallback if you lose your passphrase."
     }
 
     @ViewBuilder
@@ -888,7 +839,7 @@ struct SettingsView: View {
                 }
             }
             .padding(.top, 4)
-        case .lockedNeedsPassphrase:
+        case .lockedNeedsPassphrase, .keystoreMissing:
             EmptyView()
         }
     }
@@ -937,12 +888,17 @@ struct SettingsView: View {
     private var securityPane: some View {
         SettingsSwitchRow(
             title: "App lock",
-            detail: "Require Touch ID or your Mac password to open. You unlock once when it opens. It locks again when your Mac sleeps, its screen locks or you switch user, so your patients' notes stay behind it.",
+            detail: "Require Touch ID or your Mac password to open. Aletheia locks after 15 minutes of inactivity by default, when the display sleeps, or when your Mac locks or switches user.",
             isOn: $settings.appLockEnabled
+        )
+        SettingsSwitchRow(
+            title: "Lock when Aletheia is hidden",
+            detail: "Require another unlock after hiding the app with ⌘H.",
+            isOn: $settings.lockWhenHidden
         )
         SettingsRow(
             title: "Lock after inactivity",
-            detail: "Optional. Aletheia already locks when your Mac locks or sleeps (set that in System Settings > Lock Screen). Choose a time to also lock after this long with no activity in Aletheia. Needs App lock turned on."
+            detail: "Choose how long Aletheia can sit unused before it locks. Needs App lock turned on."
         ) {
             Picker("Auto-lock after", selection: idleAutoLockSelection) {
                 ForEach(IdleAutoLockTimeout.allCases) { timeout in
@@ -955,13 +911,23 @@ struct SettingsView: View {
             .disabled(!settings.appLockEnabled)
         }
         SettingsSwitchRow(
+            title: "Hide Aletheia from screen sharing",
+            detail: "Protect patient windows from capture. A locked window is always hidden from capture.",
+            isOn: $settings.hideFromScreenSharing
+        )
+        SettingsSwitchRow(
+            title: "Allow screen sharing this session",
+            detail: "Temporary exception for a clinical screen share. Resets when Aletheia quits.",
+            isOn: $settings.allowScreenSharingThisSession
+        )
+        SettingsSwitchRow(
             title: "Show patient names in notifications",
             detail: "Off by default. Notifications appear on the lock screen and stay in Notification Center, so they just say that a session is ready. Turn this on to include the patient's name and the session date.",
             isOn: $settings.notificationsShowPatientNames
         )
         SettingsRow(
             title: "Encrypt this Mac's disk with FileVault",
-            detail: "Recommended. FileVault encrypts everything on this Mac at rest so patient data can't be read if the computer is lost or stolen. macOS manages it; it doesn't affect your backups."
+            detail: "Required before adding new patients, sessions or recordings. FileVault encrypts everything on this Mac at rest so patient data can't be read if the computer is lost or stolen. macOS manages it; it doesn't affect your backups. Existing records stay readable either way."
         ) {
             Button("Open Settings") { SystemSettingsLinks.openFileVaultSettings() }
                 .buttonStyle(.themed)
@@ -1106,54 +1072,6 @@ struct SettingsView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-
-    /// Launches the installed Ollama and waits until it answers, then refreshes
-    /// the status chip.
-    private func startOllama() async {
-        isStartingOllama = true
-        defer { isStartingOllama = false }
-        do {
-            try await AIEngineRecovery.perform(.notRunning, actions: .live(integrations: integrations))
-            await runHealthChecks()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func pullOllamaModel() async {
-        isPullingOllamaModel = true
-        ollamaPullProgress = 0
-        defer { isPullingOllamaModel = false }
-        do {
-            let assistant = integrations.makeAssistant()
-            try await assistant.pullModel(settings.ollamaModelName) { progress, status in
-                Task { @MainActor in
-                    ollamaPullProgress = progress
-                    ollamaPullStatus = status
-                }
-            }
-            await runHealthChecks()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    /// Maps the free-form `ollamaModelName` to the tiered picker: a known catalog
-    /// tag selects that row; anything else selects "Custom…" and reveals the text
-    /// field. Picking a catalog row sets the tag; switching to Custom clears a
-    /// catalog tag so the field starts empty for typing.
-    private var ollamaModelSelection: Binding<String> {
-        Binding(
-            get: { OllamaCatalog.contains(settings.ollamaModelName) ? settings.ollamaModelName : OllamaCatalog.customTag },
-            set: { newValue in
-                if newValue == OllamaCatalog.customTag {
-                    if OllamaCatalog.contains(settings.ollamaModelName) { settings.ollamaModelName = "" }
-                } else {
-                    settings.ollamaModelName = newValue
-                }
-            }
-        )
     }
 
     /// Bridges the `Int`-backed `idleAutoLockMinutes` setting to the

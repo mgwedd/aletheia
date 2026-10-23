@@ -10,6 +10,7 @@ final class SessionNotificationsTests: XCTestCase {
         let all = [
             SessionNotifications.transcriptionComplete(patientName: "Jane Doe", date: date, showsName: false),
             SessionNotifications.transcriptionProblem(patientName: "Jane Doe", date: date, showsName: false),
+            SessionNotifications.recordingNotDeleted(patientName: "Jane Doe", date: date, showsName: false),
             SessionNotifications.summaryReady(patientName: "Jane Doe", date: date, showsName: false),
             SessionNotifications.longRecordingReminder(patientName: "Jane Doe", showsName: false),
         ]
@@ -26,6 +27,7 @@ final class SessionNotificationsTests: XCTestCase {
             let ids = [
                 SessionNotifications.transcriptionComplete(patientName: "Jane Doe", date: date, showsName: showsName).identifier,
                 SessionNotifications.transcriptionProblem(patientName: "Jane Doe", date: date, showsName: showsName).identifier,
+                SessionNotifications.recordingNotDeleted(patientName: "Jane Doe", date: date, showsName: showsName).identifier,
                 SessionNotifications.summaryReady(patientName: "Jane Doe", date: date, showsName: showsName).identifier,
                 SessionNotifications.longRecordingReminder(patientName: "Jane Doe", showsName: showsName).identifier,
             ]
@@ -91,5 +93,12 @@ final class SessionNotificationsTests: XCTestCase {
                           || source.contains("showsName: self.settings.notificationsShowPatientNames"), path)
             XCTAssertFalse(source.contains("showsName: true"), path)
         }
+    }
+
+    func testRecordingNotDeletedSaysTheTranscriptIsSaved() {
+        let content = SessionNotifications.recordingNotDeleted(patientName: "Jane Doe", date: date, showsName: true)
+        XCTAssertTrue(content.body.contains("Jane Doe"))
+        XCTAssertTrue(content.body.contains("was transcribed"))
+        XCTAssertFalse(content.body.contains("wasn't transcribed"))
     }
 }

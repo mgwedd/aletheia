@@ -58,8 +58,8 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     private var _lastPromptTokens = 0
     private var _lastStats: AIRunStats?
 
-    /// How long the model may sit unused before it is unloaded (matches Ollama's
-    /// `keep_alive`). Tests shorten it; the idle timer reads it off the main thread.
+    /// How long the model may sit unused before it is unloaded (the keep-alive window).
+    /// Tests shorten it; the idle timer reads it off the main thread.
     var idleDelay: TimeInterval {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _idleDelay }
         set { stateLock.lock(); _idleDelay = newValue; stateLock.unlock() }

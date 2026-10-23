@@ -13,13 +13,24 @@ enum RecordPayloadCodec {
             let data = try? JSONEncoder.aletheia.encode(value),
             let json = String(data: data, encoding: .utf8)
         else { return nil }
-        return Data(FieldCipher.encode(json, using: protector).utf8)
+        // A store captured before lock retains a revocable protector. Do not
+        // fall back to plaintext if its key was revoked before this write.
+        guard protector.requiresProtection else { return Data(json.utf8) }
+        guard let sealed = try? protector.seal(Data(json.utf8)) else { return nil }
+        return Data(sealed.base64EncodedString().utf8)
     }
 
     static func decode<T: Decodable>(_ type: T.Type, from payload: Data, using protector: FileProtector) -> T? {
         let json = openedText(from: payload, using: protector)
         guard let data = json.data(using: .utf8) else { return nil }
         return try? JSONDecoder.aletheia.decode(T.self, from: data)
+    }
+
+    /// Whether `payload` is a stored value that can't be decoded as `type` even
+    /// though the key is held. A locked protector proves nothing, so it never
+    /// counts as damage.
+    static func isDamaged<T: Decodable>(_ type: T.Type, payload: Data, using protector: FileProtector) -> Bool {
+        !protector.isLocked && decode(type, from: payload, using: protector) == nil
     }
 
     /// Opens just the field-cipher layer, without assuming what's underneath is

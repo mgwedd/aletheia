@@ -21,6 +21,7 @@ struct RecordingMenuBar: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var integrations: Integrations
+    @EnvironmentObject private var appLock: AppLock
     @Environment(\.openWindow) private var openWindow
     @State private var engineState: EngineRunState = .loading
     /// The patient chosen in the picker; falls back to the first one when unset
@@ -31,13 +32,23 @@ struct RecordingMenuBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if let active = recorder.active {
+            if appLock.isLocked {
+                Label("Aletheia is locked", systemImage: "lock.fill")
+                    .font(Theme.Typography.control)
+                Button("Unlock") {
+                    MainWindow.show(openWindow: openWindow)
+                    appLock.requestUnlock()
+                }
+                .buttonStyle(.themePrimary)
+            } else if let active = recorder.active {
                 recordingControls(active)
             } else {
                 startControls
             }
-            hairline
-            quietRows
+            if !appLock.isLocked {
+                hairline
+                quietRows
+            }
         }
         .padding(16)
         .frame(width: 280)
@@ -46,6 +57,7 @@ struct RecordingMenuBar: View {
         // 5s while it's open — cheap enough for the local-only health check
         // this reuses, and nothing here is data anyone would need faster.
         .liveStatusRefresh(every: 5) { _ in
+            guard !appLock.isLocked else { return }
             engineState = await EngineStatusProbe.currentState(settings: settings, integrations: integrations)
         }
     }
@@ -85,7 +97,7 @@ struct RecordingMenuBar: View {
 
     // MARK: Engine status
 
-    /// Read-only line showing whether the local AI engine (Ollama, or the
+    /// Read-only line showing whether the local AI engine (the
     /// embedded llama.cpp runtime) is reachable and which model is active —
     /// reuses the same health-check seam as Settings/setup, just polled here
     /// on a slower cadence since the menu bar is glanced at, not stared at.
@@ -210,7 +222,7 @@ struct RecordingMenuBar: View {
             }
             .buttonStyle(.themePrimary)
             .controlSize(.large)
-            .disabled(selectedPatient == nil || recorder.isStarting)
+            .disabled(selectedPatient == nil || !MenuBarContentPolicy.canStartRecording(isLocked: appLock.isLocked, isStarting: recorder.isStarting))
             if let startProblem {
                 Text(startProblem)
                     .font(Theme.Typography.caption)
@@ -236,10 +248,17 @@ struct RecordingMenuBar: View {
     }
 
     private func start(for patient: Patient) async {
+        guard !appLock.isLocked else { return }
         // Taken now: after the awaits below, a system panel may be the key window.
         let panel = MainWindow.menuBarPanel()
         // Before creating a session, so a refused start leaves no empty one behind.
         guard !recorder.isBusy else { return }
+        // The menu has no alert of its own, so a refusal reads in its problem line.
+        appModel.refreshDiskEncryption()
+        guard PHIEntryGate.allowsNewPHI(diskEncrypted: appModel.diskEncrypted) else {
+            startProblem = PHIEntryGate.blockedMessage
+            return
+        }
         guard let store = appModel.store,
               let session = appModel.startNewSession(for: patient) else {
             startProblem = "Couldn't create a session. Check the data folder in Settings."
@@ -249,6 +268,7 @@ struct RecordingMenuBar: View {
             micURL: store.micRecordingURL(for: patient, session: session),
             callURL: store.callRecordingURL(for: patient, session: session),
             context: .init(
+                sessionID: session.id,
                 patientID: patient.id,
                 patientName: patient.name,
                 patientSlug: patient.slug,

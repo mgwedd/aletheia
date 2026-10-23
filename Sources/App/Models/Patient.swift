@@ -19,7 +19,8 @@ struct Patient: Identifiable, Codable, Hashable {
     var name: String
     var notes: String
     let createdAt: Date
-    /// Folder name on disk, e.g. "Jane-Doe" or "Jane-Doe-2" if the name collides.
+    /// Folder name on disk. New records use the patient's UUID; legacy names
+    /// are migrated to UUIDs when the data folder upgrades to schema v2.
     let slug: String
     /// The therapist's TL;DR of the patient's background (free text / Markdown).
     var clinicalHistory: String
