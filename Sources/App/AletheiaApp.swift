@@ -21,6 +21,8 @@ private extension View {
 /// Launch-time setup that has to happen before the first window exists.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // A test run launches this app as its host: keep it from taking focus.
+        if let policy = TestHost.activationPolicy() { NSApp.setActivationPolicy(policy) }
         // Before any window is created, so a forced Light or Dark appearance
         // never flashes the system one first.
         AppSettings.shared.appearance.apply()
@@ -41,11 +43,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
 
-    #if DEBUG
     @MainActor func applicationDidFinishLaunching(_ notification: Notification) {
+        TestHost.concealWindowsWhenHostingTests()
+        #if DEBUG
         HarnessRun.runIfRequested()
+        #endif
     }
-    #endif
 }
 
 @main
@@ -330,6 +333,13 @@ private struct LockCover: ViewModifier {
             .overlay {
                 if covers.contains(.passphrase) {
                     EncryptionUnlockView()
+                        .environmentObject(encryption)
+                        .environmentObject(settings)
+                        .environmentObject(appModel)
+                        .transition(.opacity)
+                }
+                if covers.contains(.keystoreMissing) {
+                    EncryptionKeystoreMissingView()
                         .environmentObject(encryption)
                         .environmentObject(settings)
                         .environmentObject(appModel)

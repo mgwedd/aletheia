@@ -109,8 +109,7 @@ private func copyDetails(_ incident: AIEngineIncident, integrations: Integration
         backend: integrations.effectiveAssistantBackend.displayName,
         model: integrations.activeModelName
     )
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(text, forType: .string)
+    PHIPasteboard.writeString(text)
 }
 
 private struct AIEngineAlert: ViewModifier {

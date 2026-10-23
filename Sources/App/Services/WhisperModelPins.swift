@@ -35,4 +35,14 @@ extension WhisperModel {
         case .largeV3: return "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"
         }
     }
+
+    /// Exact size in bytes of `ggml-<rawValue>.bin` at `revision`.
+    var expectedBytes: Int64 {
+        switch self {
+        case .baseEn: return 147_964_211
+        case .smallEn: return 487_614_201
+        case .mediumEn: return 1_533_774_781
+        case .largeV3: return 3_095_033_483
+        }
+    }
 }

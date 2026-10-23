@@ -19,6 +19,9 @@ final class ChatRepository {
 
     private let core: PersistenceCore
     private let protector: FileProtector
+    /// Called when a stored session chat can't be decoded, so the caller can
+    /// report it instead of the chat reading as empty.
+    var onDecodeFailure: (() -> Void)?
 
     init(core: PersistenceCore, protector: FileProtector) {
         self.core = core
@@ -29,19 +32,28 @@ final class ChatRepository {
 
     func sessionChat(sessionID: UUID) -> [ChatMessage] {
         guard let record = core.record(kind: Self.sessionChatKind, id: sessionID.uuidString) else { return [] }
-        return RecordPayloadCodec.decode([ChatMessage].self, from: record.payload, using: protector) ?? []
+        if let messages = RecordPayloadCodec.decode([ChatMessage].self, from: record.payload, using: protector) {
+            return messages
+        }
+        if !protector.isLocked { onDecodeFailure?() }
+        return []
     }
 
     /// Upserts a session's chat by its session id. An empty conversation
     /// removes the record rather than storing an empty payload, so the store
-    /// stays tidy for the many sessions that are never chatted about.
+    /// stays tidy for the many sessions that are never chatted about. Refuses
+    /// (returns false) to replace or remove a stored chat that can't be decoded.
     @discardableResult
     func saveSessionChat(_ messages: [ChatMessage], sessionID: UUID, now: Date = Date()) -> Bool {
+        let existing = core.record(kind: Self.sessionChatKind, id: sessionID.uuidString)
+        if let existing, RecordPayloadCodec.isDamaged([ChatMessage].self, payload: existing.payload, using: protector) {
+            return false
+        }
         guard !messages.isEmpty else {
             return core.remove(kind: Self.sessionChatKind, id: sessionID.uuidString)
         }
         guard let data = RecordPayloadCodec.encode(messages, using: protector) else { return false }
-        let createdAt = core.record(kind: Self.sessionChatKind, id: sessionID.uuidString)?.createdAt ?? now
+        let createdAt = existing?.createdAt ?? now
         let record = PersistedRecord(
             id: sessionID.uuidString, kind: Self.sessionChatKind, itemID: sessionID,
             payload: data, createdAt: createdAt, updatedAt: now

@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import Aletheia
 
@@ -114,5 +115,35 @@ final class ChatRepositoryTests: XCTestCase {
                       "matches the original DELETE ... WHERE id AND patient_id semantics: no-op, not an error")
         XCTAssertEqual(repository.chatThreads(patientID: owner).map(\.title), ["Owner's"],
                        "a thread cannot be deleted by the wrong patient")
+    }
+
+    // MARK: - Undecodable session chat
+
+    func testUndecodableSessionChatIsReportedAndNeitherReplacedNorRemoved() {
+        let session = UUID()
+        XCTAssertTrue(core.put(PersistedRecord(
+            id: session.uuidString, kind: "sessionChat", itemID: session,
+            payload: Data("{ broken".utf8), createdAt: Date(), updatedAt: Date())))
+        var reports = 0
+        repository.onDecodeFailure = { reports += 1 }
+
+        XCTAssertEqual(repository.sessionChat(sessionID: session), [])
+        XCTAssertEqual(reports, 1)
+        XCTAssertFalse(repository.saveSessionChat([ChatMessage(role: .user, text: "new")], sessionID: session))
+        XCTAssertFalse(repository.saveSessionChat([], sessionID: session), "clearing doesn't delete it either")
+        XCTAssertEqual(core.record(kind: "sessionChat", id: session.uuidString)?.payload, Data("{ broken".utf8))
+    }
+
+    func testLockedSessionChatIsNotReportedAsDamaged() {
+        let key = ProtectionKey(SymmetricKey(size: .bits256))
+        let sealed = ChatRepository(core: core, protector: FileProtector(keyReference: key, requiresKey: true))
+        let session = UUID()
+        XCTAssertTrue(sealed.saveSessionChat([ChatMessage(role: .user, text: "private")], sessionID: session))
+        key.revoke()
+        var reports = 0
+        sealed.onDecodeFailure = { reports += 1 }
+
+        XCTAssertEqual(sealed.sessionChat(sessionID: session), [])
+        XCTAssertEqual(reports, 0)
     }
 }

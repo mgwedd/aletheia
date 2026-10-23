@@ -280,9 +280,7 @@ struct DoctorView: View {
 
     private func copyReport() {
         guard let report else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(report.plainText(), forType: .string)
+        PHIPasteboard.writeString(report.plainText())
         justCopied = true
         Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)

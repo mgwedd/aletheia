@@ -14,6 +14,13 @@ enum StoreError: LocalizedError {
     /// A session folder has no `session.json` and one couldn't be saved (for
     /// example a read-only folder), so the session can't be given a stable id.
     case sessionMetadataUnwritable(folder: URL, underlying: Error)
+    /// A saved note (or its generated baseline) exists but couldn't be read, so
+    /// it was not replaced.
+    case noteUnreadable
+    /// A session folder name that isn't a single plain folder name.
+    case invalidFolderName
+    /// Raw audio that couldn't be removed.
+    case recordingNotDeleted
 
     var errorDescription: String? {
         switch self {
@@ -28,6 +35,12 @@ enum StoreError: LocalizedError {
         case .sessionMetadataUnwritable:
             return "Aletheia couldn't save an identity file (session.json) for this session folder. "
                 + "The folder was left as it was."
+        case .noteUnreadable:
+            return "Aletheia couldn't read the saved note for this session, so it was left as it is. "
+                + "Nothing was replaced."
+        case .invalidFolderName: return "That session folder name isn't valid."
+        case .recordingNotDeleted:
+            return "The recording couldn't be deleted from your data folder."
         }
     }
 }
@@ -124,6 +137,10 @@ final class Store {
         self.protector = protector
         self.commentStore = commentStore ?? (openDatabaseIfMissing ? CommentStore(root: root, protector: protector) : nil)
         self.schemaCompatibility = Store.reconcileSchema(at: root)
+        self.commentStore?.onRecordDecodeFailure = { [weak self] in
+            guard let self else { return }
+            self.recordStoredDamage(folder: root, file: "Aletheia.sqlite", reason: .undecodable)
+        }
         // Comments and the therapist's own notes are saved straight to the
         // database by the views; this keeps the index in step with them.
         if searchIndex != nil {
@@ -249,6 +266,17 @@ final class Store {
         defer { unreadableLock.unlock() }
         recordedUnreadable.removeAll(where: scope)
         recordedUnreadable.append(contentsOf: entries)
+    }
+
+    /// Notes a stored file or database record that exists but couldn't be read,
+    /// so it shows up in the damaged-records list instead of reading as empty.
+    private func recordStoredDamage(folder: URL, file: String, reason: UnreadableEntry.Reason) {
+        let entry = UnreadableEntry(kind: .storedRecord, reason: reason, folder: folder, fileLabel: file)
+        unreadableLock.lock()
+        defer { unreadableLock.unlock() }
+        if !recordedUnreadable.contains(where: { $0.id == entry.id }) {
+            recordedUnreadable.append(entry)
+        }
     }
 
     func createPatient(name: String) throws -> Patient {
@@ -432,7 +460,13 @@ final class Store {
     /// folder isn't there and `StoreError.sessionMetadataUnreadable` when its
     /// `session.json` is present but damaged (the file is left as it was).
     func loadSession(for patient: Patient, folderName: String) throws -> SessionRecord {
-        let folder = patientDir(for: patient).appendingPathComponent(folderName, isDirectory: true)
+        guard !folderName.isEmpty, folderName != ".", folderName != "..",
+              !folderName.contains("/"), !folderName.contains("\\") else {
+            throw StoreError.invalidFolderName
+        }
+        let patientFolder = patientDir(for: patient).standardizedFileURL
+        let folder = patientFolder.appendingPathComponent(folderName, isDirectory: true).standardizedFileURL
+        guard folder.path.hasPrefix(patientFolder.path + "/") else { throw StoreError.invalidFolderName }
         var isDir: ObjCBool = false
         guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDir), isDir.boolValue else {
             throw StoreError.sessionNotFound
@@ -539,13 +573,17 @@ final class Store {
     /// Removes a session's raw audio (`mic.caf` / `call.caf`) from disk. Called
     /// after transcription when `AudioRetentionPolicy` says the audio should not
     /// be kept (the transcript-only default), so the recording — the most
-    /// sensitive artifact a session produces — doesn't linger. Best-effort: an
-    /// absent file is a no-op, and a removal failure is swallowed rather than
-    /// surfaced, since the transcript is already saved and is the document of
-    /// record.
-    func deleteRecordings(for patient: Patient, session: SessionRecord) {
-        try? FileManager.default.removeItem(at: micRecordingURL(for: patient, session: session))
-        try? FileManager.default.removeItem(at: callRecordingURL(for: patient, session: session))
+    /// sensitive artifact a session produces — doesn't linger. An absent file is
+    /// a no-op. Both files are attempted; if either can't be removed this throws
+    /// `StoreError.recordingNotDeleted`, so the caller can tell the user the
+    /// audio is still on disk.
+    func deleteRecordings(for patient: Patient, session: SessionRecord) throws {
+        var failed = false
+        for url in [micRecordingURL(for: patient, session: session), callRecordingURL(for: patient, session: session)] {
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            do { try FileManager.default.removeItem(at: url) } catch { failed = true }
+        }
+        if failed { throw StoreError.recordingNotDeleted }
     }
 
     func transcript(for patient: Patient, session: SessionRecord) -> String? {
@@ -955,14 +993,18 @@ final class Store {
     }
 
     /// Whether the saved `format` note is untouched generated text, the user's
-    /// edit, or absent. Read-only (unlike `note(for:...)`).
+    /// edit, or absent. `.unreadable` when the note or its baseline exists but
+    /// can't be read. Read-only (unlike `note(for:...)`).
     func noteEditState(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) -> NoteEditState {
-        let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
-        let current = (try? protector.stringIfPresent(at: url)) ?? nil
-        return NoteEditing.state(
-            current: current,
-            baseline: generatedNoteBaseline(for: patient, session: session, format: format)
-        )
+        do {
+            let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
+            let current = try protector.stringIfPresent(at: url)
+            let baseline = try protector.stringIfPresent(
+                at: noteSidecarURL(.generated, patient: patient, session: session, format: format))
+            return NoteEditing.state(current: current, baseline: baseline)
+        } catch {
+            return .unreadable
+        }
     }
 
     /// Saves a note the assistant just generated. If the note it replaces was
@@ -979,8 +1021,10 @@ final class Store {
         coverage: String? = nil
     ) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
-        if NoteEditing.shouldArchiveBeforeReplacing(noteEditState(for: patient, session: session, format: format)),
-           let edited = (try? protector.stringIfPresent(at: url)) ?? nil {
+        let state = noteEditState(for: patient, session: session, format: format)
+        if state == .unreadable { throw StoreError.noteUnreadable }
+        if NoteEditing.shouldArchiveBeforeReplacing(state),
+           let edited = try protector.stringIfPresent(at: url) {
             try protector.write(edited, to: noteSidecarURL(.previous, patient: patient, session: session, format: format))
         }
         try saveNote(text, for: patient, session: session, format: format, generatedFromTranscript: transcript)
@@ -1014,7 +1058,8 @@ final class Store {
         guard let previous = previousNote(for: patient, session: session, format: format),
               !NoteEditing.normalized(previous).isEmpty else { return nil }
         let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
-        let current = (try? protector.stringIfPresent(at: url)) ?? nil
+        let current: String?
+        do { current = try protector.stringIfPresent(at: url) } catch { throw StoreError.noteUnreadable }
         if let current {
             try protector.write(current, to: noteSidecarURL(.previous, patient: patient, session: session, format: format))
         }
@@ -1048,7 +1093,7 @@ final class Store {
         guard let commentStore else { return }
         let legacyFile = sessionDir(for: patient, session: session).appendingPathComponent("chat.json")
         guard fileManager.fileExists(atPath: legacyFile.path) else { return }
-        let legacy = loadChat(at: legacyFile)
+        guard let legacy = loadChat(at: legacyFile) else { return }
         if legacy.isEmpty {
             try? fileManager.removeItem(at: legacyFile)
             return
@@ -1058,16 +1103,26 @@ final class Store {
     }
 
     func loadPatientChat(for patient: Patient) -> [ChatMessage] {
-        loadChat(at: patientDir(for: patient).appendingPathComponent("patient_chat.json"))
+        loadChat(at: patientDir(for: patient).appendingPathComponent("patient_chat.json")) ?? []
     }
 
     func savePatientChat(_ messages: [ChatMessage], for patient: Patient) throws {
         try saveChat(messages, at: patientDir(for: patient).appendingPathComponent("patient_chat.json"))
     }
 
-    private func loadChat(at url: URL) -> [ChatMessage] {
-        guard let data = (try? protector.dataIfPresent(at: url)) ?? nil else { return [] }
-        return (try? JSONDecoder.aletheia.decode([ChatMessage].self, from: data)) ?? []
+    /// The messages in a chat file; empty when there is no file. nil when the file
+    /// exists but can't be read or decoded (it is reported, and left in place).
+    private func loadChat(at url: URL) -> [ChatMessage]? {
+        do {
+            guard let data = try protector.dataIfPresent(at: url) else { return [] }
+            return try JSONDecoder.aletheia.decode([ChatMessage].self, from: data)
+        } catch FileProtector.ProtectorError.locked {
+            return nil
+        } catch {
+            recordStoredDamage(folder: url.deletingLastPathComponent(), file: url.lastPathComponent,
+                               reason: error is DecodingError ? .undecodable : .notReadable)
+            return nil
+        }
     }
 
     // MARK: - Chat threads (per-patient, multi-thread)
@@ -1126,7 +1181,7 @@ final class Store {
         } else if hasLegacyChat {
             // Pre-thread era: the single conversation becomes one thread. Only
             // when there were no thread files, matching the original import rule.
-            let legacy = loadPatientChat(for: patient)
+            guard let legacy = loadChat(at: legacyChatFile) else { return }
             if !legacy.isEmpty {
                 let thread = ChatThread(
                     title: "",
