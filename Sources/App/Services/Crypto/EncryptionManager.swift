@@ -354,6 +354,35 @@ final class EncryptionManager: ObservableObject {
         return key
     }
 
+    /// Changes the passphrase. Needs the current passphrase (counted by the
+    /// shared unlock throttle) and a new one that meets the minimum. Only the
+    /// passphrase slot is re-wrapped: the data key, the recovery key slot and
+    /// the files are untouched, so nothing is re-encrypted. The keystore is
+    /// swapped in only after the new one has been written and verified.
+    func changePassphrase(
+        current: String,
+        new: String,
+        iterations: Int = PassphraseKDF.defaultIterations,
+        beforeSwap: (() throws -> Void)? = nil
+    ) throws {
+        guard let root = dataRoot, isEnabled else { throw ManagerError.notEnabled }
+        guard Keystore.exists(at: root) else { throw ManagerError.keystoreMissing }
+        guard dek != nil else { throw ManagerError.locked }
+        guard let keystore = Keystore.load(from: root) else { throw Keystore.KeystoreError.malformed }
+        let wait = throttle.remainingDelay
+        guard wait <= 0 else { throw ManagerError.throttled(retryAfter: wait) }
+        guard PassphraseStrength.meetsRequirement(new) else { throw ManagerError.passphraseTooShort }
+        let updated: (keystore: Keystore, dek: SymmetricKey)
+        do {
+            updated = try keystore.replacingPassphrase(current: current, new: new, iterations: iterations)
+        } catch Keystore.KeystoreError.wrongPassphrase {
+            throttle.recordFailure()
+            throw Keystore.KeystoreError.wrongPassphrase
+        }
+        throttle.recordSuccess()
+        try updated.keystore.replaceOnDisk(at: root, verifyingPassphrase: new, expectedDEK: updated.dek, beforeSwap: beforeSwap)
+    }
+
     /// Drops the in-memory DEK; the folder stays encrypted and re-locks. Called
     /// on the same "app hidden" transition as the Tier-1 app lock.
     func lock() {
