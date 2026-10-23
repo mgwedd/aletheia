@@ -65,12 +65,14 @@ enum LlamaPrompt {
 
     /// Splits a template rendered with the slot markers into segments: the
     /// template's own text may carry control tokens; `system` and `prompt`
-    /// (transcripts, notes, chat input, all of it) never do. Nil when a marker
+    /// (transcripts, notes, chat input, all of it) never do. Both are trimmed,
+    /// as the shipped models' templates trim message text. Nil when a marker
     /// is missing or repeated, so the caller falls back to the raw prompt.
     static func segments(skeleton: String, system: String, prompt: String) -> [Segment]? {
         let sys = system.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         var slots: [(range: Range<String.Index>, content: String)] = []
-        for (marker, content) in [(systemSlot, sys), (promptSlot, prompt)] {
+        for (marker, content) in [(systemSlot, sys), (promptSlot, body)] {
             let found = skeleton.ranges(of: marker)
             if marker == systemSlot && sys.isEmpty {
                 guard found.isEmpty else { return nil }

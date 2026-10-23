@@ -55,6 +55,17 @@ final class LlamaPromptTests: XCTestCase {
         ])
     }
 
+    func testPromptTextIsTrimmedLikeTheTemplateWouldTrimIt() {
+        let parts = LlamaPrompt.segments(template: "{{- '<|turn>model\\n' -}}", system: " S \n", prompt: "\nP\n\n")
+        XCTAssertEqual(parts, [
+            .init(text: "<bos><|turn>system\n", parseSpecial: true),
+            .init(text: "S", parseSpecial: false),
+            .init(text: "<turn|>\n<|turn>user\n", parseSpecial: true),
+            .init(text: "P", parseSpecial: false),
+            .init(text: "<turn|>\n<|turn>model\n", parseSpecial: true),
+        ])
+    }
+
     func testRawPromptFallbackIsPlainText() {
         let parts = LlamaPrompt.segments(template: nil, system: "", prompt: hostile)
         XCTAssertEqual(parts, [.init(text: hostile, parseSpecial: false)])
