@@ -11,11 +11,17 @@
 #
 # Any disagreement, missing value, or unexpected shape of the Swift source fails.
 #
+# The embedded LLM models in Sources/App/Services/Llama/LlamaModel.swift are
+# checked too, from the Hugging Face tree API alone (no download): the pinned
+# revision must resolve, and the file's LFS sha256 and byte size must match the
+# pinned sha256 and the size recorded in the source.
+#
 # Usage:
 #   scripts/verify-model-pins.sh           verify the pins in the Swift source
 #   scripts/verify-model-pins.sh --print   bootstrap: use the CURRENT Hugging Face
 #                                          revision and print what to pin (still
 #                                          fails on any cross-source disagreement)
+#   scripts/verify-model-pins.sh --self-test   offline fixture checks of the parsers
 #
 # Needs curl and sha256sum/shasum + sha1sum/shasum. Downloads ~5 GB in total, so
 # it is meant for CI (see .github/workflows/verify-model-pins.yml), not every build.
@@ -25,6 +31,11 @@ cd "$(dirname "$0")/.."
 
 PINS_FILE="Sources/App/Services/WhisperModelPins.swift"
 SETTINGS_FILE="Sources/App/Services/AppSettings.swift"
+LLAMA_FILE="Sources/App/Services/Llama/LlamaModel.swift"
+LLAMA_ORG="ggml-org"
+LLAMA_EXPECTED_COUNT=2
+# The one exact line that builds the LLM download URL from the pinned revision.
+LLAMA_URL_LINE='        URL(string: "https://huggingface.co/ggml-org/\(repo)/resolve/\(revision)/\(fileName)")!'
 HF_REPO="ggerganov/whisper.cpp"
 README_URL="https://raw.githubusercontent.com/ggerganov/whisper.cpp/master/models/README.md"
 # "<Swift case>|<raw value>" pairs; must mirror `enum WhisperModel` exactly
@@ -174,14 +185,205 @@ check_model() { # case raw pin(optional; verify mode)
   return 0
 }
 
+# ---- LLM pins (LlamaModel.swift) --------------------------------------------
+
+# Prints "<property> <case> <value>" for every `case .x: return <value>` line of
+# the pinned computed properties. For approximateSizeMB the value is the exact
+# byte count from the trailing "// 6,036,116,480 bytes" comment.
+llama_fields() {
+  awk '
+    /^    (private )?var (fileName|repo|revision|expectedSHA256|approximateSizeMB): / {
+      prop = $0; sub(/^    (private )?var /, "", prop); sub(/:.*/, "", prop); next
+    }
+    /^    }$/ { prop = "" }
+    prop != "" && /^        case \.[A-Za-z0-9_]+: return / {
+      c = $0; sub(/^        case \./, "", c); sub(/:.*/, "", c)
+      if (prop == "approximateSizeMB") {
+        if (match($0, /\/\/ [0-9,]+ bytes/)) {
+          b = substr($0, RSTART + 3, RLENGTH - 9); gsub(/,/, "", b); print prop, c, b
+        } else { print prop, c, "MISSING" }
+      } else if (match($0, /return "[^"]*"/)) {
+        v = substr($0, RSTART + 8, RLENGTH - 9); print prop, c, v
+      } else { print prop, c, "MISSING" }
+    }
+  ' "$LLAMA_FILE"
+}
+
+# Strict: exactly LLAMA_EXPECTED_COUNT cases, each with every field, 40-hex
+# revision, 64-hex sha, numeric size, a revision-pinned URL. Prints
+# "<case>|<repo>|<revision>|<sha256>|<bytes>|<file>" per model.
+extract_llama() {
+  local fields cases c prop v row out=""
+  [ -f "$LLAMA_FILE" ] || die "missing $LLAMA_FILE"
+  grep -qxF -- "$LLAMA_URL_LINE" "$LLAMA_FILE" \
+    || die "downloadURL in $LLAMA_FILE must be exactly the revision-pinned resolve/\\(revision) URL under ${LLAMA_ORG}"
+  [ "$(grep -c 'resolve/' "$LLAMA_FILE" || true)" -eq 1 ] || die "unexpected extra resolve/ URL in $LLAMA_FILE"
+  fields=$(llama_fields)
+  cases=$(awk '/^enum LlamaModel/ { i = 1; next } i && /^}/ { i = 0 } i && /^    case [A-Za-z0-9_]+ = "/ { sub(/^    case /, ""); sub(/ =.*/, ""); print }' "$LLAMA_FILE")
+  [ "$(count_lines "$cases")" -eq "$LLAMA_EXPECTED_COUNT" ] || die "expected exactly $LLAMA_EXPECTED_COUNT cases in enum LlamaModel, found $(count_lines "$cases")"
+  for c in $cases; do
+    row="$c"
+    for prop in repo revision expectedSHA256 approximateSizeMB fileName; do
+      v=$(printf '%s\n' "$fields" | awk -v p="$prop" -v c="$c" '$1 == p && $2 == c {print $3}')
+      [ "$(count_lines "$v")" -eq 1 ] && [ "$v" != "MISSING" ] || die "LlamaModel.$c: need exactly one $prop value (with byte-count comment for approximateSizeMB)"
+      case "$prop" in
+        revision) printf '%s' "$v" | grep -qE '^[0-9a-f]{40}$' || die "LlamaModel.$c: revision is not a 40-char lowercase hex commit sha" ;;
+        expectedSHA256) printf '%s' "$v" | grep -qE '^[0-9a-f]{64}$' || die "LlamaModel.$c: expectedSHA256 is not 64 lowercase hex" ;;
+        approximateSizeMB) printf '%s' "$v" | grep -qE '^[0-9]+$' || die "LlamaModel.$c: size comment is not a byte count" ;;
+      esac
+      row="$row|$v"
+    done
+    out="${out}${row}
+"
+  done
+  printf '%s' "$out"
+}
+
+lfs_size_for() { # tree_json file
+  printf '%s' "$1" \
+    | sed 's/{"type":/\
+{"type":/g' \
+    | grep -F "\"path\":\"$2\"" \
+    | sed -nE 's/.*"lfs":\{"oid":"[0-9a-f]{64}","size":([0-9]+).*/\1/p'
+}
+
+# Compare one model's pins to a tree-API reading. Counts failures via fail().
+llama_compare() { # case tree_json sha256 bytes file
+  local c="$1" tree="$2" pin="$3" bytes="$4" file="$5" oid size
+  oid=$(lfs_oid_for "$tree" "$file"); size=$(lfs_size_for "$tree" "$file")
+  echo "    sha256 (HF LFS) ${oid:-<missing>}"
+  echo "    sha256 (pin)    ${pin}"
+  echo "    size   (HF LFS) ${size:-<missing>}"
+  echo "    size   (source) ${bytes}"
+  if [ "$(count_lines "$oid")" -ne 1 ] || [ "$(count_lines "$size")" -ne 1 ]; then
+    fail "${c}: expected exactly 1 LFS entry for ${file} in the HF tree"
+    return
+  fi
+  [ "$oid" = "$pin" ] || fail "${c}: pin (${pin}) != HF LFS oid (${oid})"
+  [ "$size" = "$bytes" ] || fail "${c}: size in ${LLAMA_FILE} (${bytes}) != HF LFS size (${size})"
+}
+
+check_llama_models() {
+  local rows c repo rev sha bytes file tree
+  rows=$(extract_llama) || exit 1
+  summary ""
+  summary "### LLM pins"
+  summary ""
+  summary "| model | revision | sha256 (pin) | bytes |"
+  summary "|---|---|---|---|"
+  while IFS='|' read -r c repo rev sha bytes file; do
+    [ -n "$c" ] || continue
+    echo "==> ${c}: ${LLAMA_ORG}/${repo} @ ${rev}"
+    summary "| \`${c}\` | \`${rev}\` | \`${sha}\` | ${bytes} |"
+    if ! tree=$(curl --fail --location --silent --show-error --retry 3 --retry-all-errors \
+      "https://huggingface.co/api/models/${LLAMA_ORG}/${repo}/tree/${rev}"); then
+      fail "${c}: revision ${rev} does not resolve on Hugging Face (tree API failed)"
+      continue
+    fi
+    llama_compare "$c" "$tree" "$sha" "$bytes" "$file"
+  done <<ROWS
+$rows
+ROWS
+}
+
+# ---- self-test (offline) ----------------------------------------------------
+
+self_test() {
+  local d ok=1 rows wt
+  d=$(mktemp -d); trap 'rm -rf "$d"' RETURN
+  cat >"$d/Llama.swift" <<'SWIFT'
+enum LlamaModel: String {
+    case a1 = "a-one"
+    case b2 = "b-two"
+
+    var approximateSizeMB: Int {
+        switch self {
+        case .a1: return 6036   // 6,036,116,480 bytes
+        case .b2: return 2841   // 2,841,481,184 bytes
+        }
+    }
+    var fileName: String {
+        switch self {
+        case .a1: return "a.gguf"
+        case .b2: return "b.gguf"
+        }
+    }
+    private var repo: String {
+        switch self {
+        case .a1: return "A-GGUF"
+        case .b2: return "B-GGUF"
+        }
+    }
+    var revision: String {
+        switch self {
+        case .a1: return "0aba27dd2f1c7f4941a94a5c59d80e0a256f9ff8"
+        case .b2: return "b4243c156154b6dca9324415f8c7ccc098b4aed1"
+        }
+    }
+    var expectedSHA256: String {
+        switch self {
+        case .a1: return "b4778681efbd6898fe1965e74f810b3b7dfdf6afab01df9c88c1b0e6e9ca122d"
+        case .b2: return "8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52"
+        }
+    }
+    var downloadURL: URL {
+        URL(string: "https://huggingface.co/ggml-org/\(repo)/resolve/\(revision)/\(fileName)")!
+    }
+}
+SWIFT
+  local good=b4778681efbd6898fe1965e74f810b3b7dfdf6afab01df9c88c1b0e6e9ca122d
+  local tree='[{"type":"file","oid":"x","size":5,"path":"README.md"},{"type":"file","oid":"y","size":6036116480,"lfs":{"oid":"'$good'","size":6036116480,"pointerSize":135},"path":"a.gguf"}]'
+  check() { # description exit-code (0 = pass)
+    if [ "$2" -eq 0 ]; then echo "ok   - $1"; else echo "FAIL - $1" >&2; ok=0; fi
+  }
+
+  LLAMA_FILE="$d/Llama.swift"
+  rows=$(extract_llama)
+  [ "$(count_lines "$rows")" -eq 2 ] && printf '%s\n' "$rows" | grep -qx "a1|A-GGUF|0aba27dd2f1c7f4941a94a5c59d80e0a256f9ff8|${good}|6036116480|a.gguf"
+  check "llama pins parse from source" $?
+
+  FAILURES=0
+  llama_compare a1 "$tree" $good 6036116480 a.gguf >/dev/null
+  check "matching sha256 + size passes" "$FAILURES"
+
+  FAILURES=0
+  llama_compare a1 "$tree" 0000000000000000000000000000000000000000000000000000000000000000 6036116480 a.gguf >/dev/null 2>&1
+  [ "$FAILURES" -eq 1 ]; check "tampered sha256 pin fails" $?
+
+  FAILURES=0
+  llama_compare a1 "$tree" $good 6036116481 a.gguf >/dev/null 2>&1
+  [ "$FAILURES" -eq 1 ]; check "wrong size fails" $?
+
+  FAILURES=0
+  llama_compare a1 "$tree" $good 6036116480 missing.gguf >/dev/null 2>&1
+  [ "$FAILURES" -eq 1 ]; check "file absent from tree fails" $?
+
+  sed 's/0aba27dd2f1c7f4941a94a5c59d80e0a256f9ff8/main/' "$d/Llama.swift" >"$d/Bad.swift"
+  (LLAMA_FILE="$d/Bad.swift"; extract_llama) >/dev/null 2>&1
+  [ $? -ne 0 ]; check "non-commit revision is rejected" $?
+
+  sed 's#resolve/\\(revision)#resolve/main#' "$d/Llama.swift" >"$d/Bad2.swift"
+  (LLAMA_FILE="$d/Bad2.swift"; extract_llama) >/dev/null 2>&1
+  [ $? -ne 0 ]; check "floating resolve/main URL is rejected" $?
+
+  # The Whisper tree reading still parses (shared LFS helper).
+  wt='[{"type":"file","oid":"y","size":9,"lfs":{"oid":"'$good'","size":9,"pointerSize":1},"path":"ggml-base.en.bin"}]'
+  [ "$(lfs_oid_for "$wt" ggml-base.en.bin)" = "$good" ]
+  check "whisper LFS oid parse" $?
+
+  [ "$ok" -eq 1 ] || { echo "self-test FAILED" >&2; return 1; }
+  echo "self-test passed"
+}
+
 # ---- main -------------------------------------------------------------------
 
 main() {
   case "${1:-}" in
     "") MODE="verify" ;;
     --print) MODE="print" ;;
-    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
-    *) die "unknown argument: $1 (use --print or no arguments)" ;;
+    --self-test) self_test; exit $? ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    *) die "unknown argument: $1 (use --print, --self-test or no arguments)" ;;
   esac
   command -v curl >/dev/null 2>&1 || die "curl is required"
 
@@ -222,6 +424,8 @@ main() {
     check_model "$case_name" "$raw" "$pin"
   done
   echo "REVISION|${REVISION}"
+
+  check_llama_models
 
   if [ "$FAILURES" -gt 0 ]; then
     summary ""

@@ -16,6 +16,7 @@ on:
   pull_request:
     paths:
       - Sources/App/Services/WhisperModelPins.swift
+      - Sources/App/Services/Llama/LlamaModel.swift
       - scripts/verify-model-pins.sh
       - .github/workflows/verify-model-pins.yml
   schedule:
