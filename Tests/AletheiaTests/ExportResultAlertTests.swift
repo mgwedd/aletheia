@@ -46,7 +46,7 @@ final class ExportResultAlertTests: XCTestCase {
         var dismissed = 0
         let hosting = NSHostingView(rootView: ExportResultAlert(
             outcome: .saved(url), onDismiss: { dismissed += 1 }, open: { opened.append($0) }))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = TestWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = hosting
         window.makeKeyAndOrderFront(nil)
         defer { window.orderOut(nil) }

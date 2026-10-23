@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import Aletheia
 
@@ -176,5 +177,39 @@ final class AnnotationRepositoryTests: XCTestCase {
 
     func testMissingNoteIsEmptyString() {
         XCTAssertEqual(repository.note(sessionID: UUID()), "")
+    }
+
+    // MARK: - Undecodable notes
+
+    private func putRaw(_ payload: String, sessionID: UUID) {
+        XCTAssertTrue(core.put(PersistedRecord(
+            id: sessionID.uuidString, kind: "note", itemID: sessionID,
+            payload: Data(payload.utf8), createdAt: Date(), updatedAt: Date())))
+    }
+
+    func testUndecodableNoteIsReportedAndNeverReplaced() {
+        let session = UUID()
+        putRaw("not json", sessionID: session)
+        var reports = 0
+        repository.onDecodeFailure = { reports += 1 }
+
+        XCTAssertEqual(repository.note(sessionID: session), "")
+        XCTAssertEqual(reports, 1)
+        XCTAssertFalse(repository.saveNote(sessionID: session, text: "typed over the empty field"))
+        XCTAssertEqual(core.record(kind: "note", id: session.uuidString)?.payload, Data("not json".utf8))
+    }
+
+    func testLockedNoteIsNotReportedAsDamaged() {
+        let key = ProtectionKey(SymmetricKey(size: .bits256))
+        let protector = FileProtector(keyReference: key, requiresKey: true)
+        let sealed = AnnotationRepository(core: core, protector: protector)
+        let session = UUID()
+        XCTAssertTrue(sealed.saveNote(sessionID: session, text: "private"))
+        key.revoke()
+        var reports = 0
+        sealed.onDecodeFailure = { reports += 1 }
+
+        XCTAssertEqual(sealed.note(sessionID: session), "")
+        XCTAssertEqual(reports, 0, "a locked store can't tell damage from a missing key")
     }
 }

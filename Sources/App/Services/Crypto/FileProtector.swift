@@ -60,6 +60,8 @@ struct FileProtector: Sendable {
 
     var isEncrypting: Bool { key != nil }
     var requiresProtection: Bool { requiresKey }
+    /// Encryption is on but the key isn't held (locked, or revoked by a lock).
+    var isLocked: Bool { requiresKey && key == nil }
 
     enum ProtectorError: LocalizedError, Equatable {
         case locked

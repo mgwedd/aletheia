@@ -113,6 +113,27 @@ struct SystemUnlockAuthenticator: UnlockAuthenticator {
     }
 }
 
+/// Used while the app is hosting unit tests: it never shows the system sheet,
+/// so lock tests don't put Touch ID prompts on the developer's screen. It
+/// answers as if the sheet was cancelled, so it can never unlock the app.
+struct NonPromptingUnlockAuthenticator: UnlockAuthenticator {
+    func authenticate(reason: String) async throws -> Bool {
+        throw LAError(.appCancel)
+    }
+}
+
+enum UnlockAuthenticatorFactory {
+    /// The system sheet, except when XCTest is driving this process.
+    static func make(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> UnlockAuthenticator {
+        if TestHost.isHostingTests(environment: environment) {
+            return NonPromptingUnlockAuthenticator()
+        }
+        return SystemUnlockAuthenticator()
+    }
+}
+
 /// Tier-1 protection: gate opening the app behind Touch ID / the login password.
 ///
 /// This is a *presentation* lock (it keeps the UI, and the PHI it shows, behind
@@ -163,7 +184,7 @@ final class AppLock: ObservableObject {
     init(
         settings: AppSettings,
         canAuthenticate: @escaping () -> Bool = AppLock.canAuthenticate,
-        authenticator: UnlockAuthenticator = SystemUnlockAuthenticator(),
+        authenticator: UnlockAuthenticator = UnlockAuthenticatorFactory.make(),
         isAppActive: @escaping () -> Bool = { NSApp.isActive }
     ) {
         self.settings = settings

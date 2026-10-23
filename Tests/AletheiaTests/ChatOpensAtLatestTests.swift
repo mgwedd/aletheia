@@ -41,7 +41,7 @@ final class ChatOpensAtLatestTests: XCTestCase {
     }
 
     private func open(_ model: Model) {
-        window = NSWindow(
+        window = TestWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 500),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: Host(model: model))

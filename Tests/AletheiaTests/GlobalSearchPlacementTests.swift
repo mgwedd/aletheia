@@ -61,7 +61,7 @@ final class GlobalSearchPlacementTests: XCTestCase {
             settings: settings, encryption: EncryptionManager(dataRootProvider: { root }),
             spotlightIndexer: NoopSpotlightIndexer())
         search = GlobalSearchModel()
-        window = NSWindow(
+        window = TestWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_000, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: Host(appModel: appModel, settings: settings, search: search))
         window.makeKeyAndOrderFront(nil)

@@ -60,6 +60,15 @@ final class SpotlightItemBuilderTests: XCTestCase {
         XCTAssertNil(SpotlightItemBuilder.route(forIdentifier: "session/\(UUID().uuidString)"), "missing folder name")
     }
 
+    func testRejectsTraversalFolderName() {
+        let id = UUID().uuidString
+        XCTAssertNil(SpotlightItemBuilder.route(forIdentifier: "session/\(id)/../x"))
+        XCTAssertNil(SpotlightItemBuilder.route(forIdentifier: "session/\(id)/.."))
+        XCTAssertNil(SpotlightItemBuilder.route(forIdentifier: "session/\(id)/a/b"))
+        XCTAssertNil(SpotlightItemBuilder.route(forIdentifier: "session/\(id)/"))
+        XCTAssertNil(SpotlightItemBuilder.route(forIdentifier: "session/\(id)/a..b"))
+    }
+
     private func longDate(_ y: Int, _ m: Int, _ d: Int) -> String {
         let f = DateFormatter()
         f.dateStyle = .long
