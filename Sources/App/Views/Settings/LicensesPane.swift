@@ -3,7 +3,9 @@ import SwiftUI
 /// Settings › Licenses: the third-party notices, read-only. The text is the
 /// bundled copy of `THIRD-PARTY-NOTICES.md`.
 struct LicensesPane: View {
-    private let blocks = ThirdPartyNotices.load().map(ThirdPartyNotices.blocks(from:)) ?? []
+    // Read once: the bundled file never changes while the app runs.
+    private static let blocks = ThirdPartyNotices.load().map(ThirdPartyNotices.blocks(from:)) ?? []
+    private var blocks: [ThirdPartyNotices.Block] { Self.blocks }
 
     var body: some View {
         if blocks.isEmpty {

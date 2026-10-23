@@ -222,11 +222,11 @@ For more information, please refer to <http://unlicense.org/>
 
 - Source: https://github.com/Cyan4973/xxHash (vendored in llama.cpp at `vendor/hash/xxhash`)
 - License: BSD 2-Clause License
-- Copyright: Copyright (c) 2012-2021 Yann Collet
+- Copyright: Copyright (C) 2012-2023 Yann Collet
 
 ```text
 xxHash Library
-Copyright (c) 2012-2021 Yann Collet
+Copyright (C) 2012-2023 Yann Collet
 All rights reserved.
 
 BSD 2-Clause License (https://www.opensource.org/licenses/bsd-license.php)
