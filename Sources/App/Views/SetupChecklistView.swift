@@ -90,6 +90,13 @@ struct SetupChecklistView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.muted.color)
                     .fixedSize(horizontal: false, vertical: true)
+                // The model's license, readable before the download starts.
+                if item.action == .downloadTranscriptionModel {
+                    ModelLicenseLink(settings.whisperModel)
+                }
+                if item.action == .downloadBuiltInModel {
+                    ModelLicenseLink(settings.llamaModel)
+                }
                 if item.action == .downloadTranscriptionModel, whisperDownloader.isDownloading {
                     ProgressView(value: whisperDownloader.progress)
                         .tint(Theme.accent.color)
