@@ -70,6 +70,12 @@ final class SearchHomeHotkeyTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
     }
 
+    /// Runs the loop until `condition` holds, or a second passes.
+    private func wait(until condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(1)
+        while !condition() && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    }
+
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap { descendants(of: $0) }
     }
@@ -102,6 +108,10 @@ final class SearchHomeHotkeyTests: XCTestCase {
         try XCTSkipUnless(window.isKeyWindow, "the test window can't become key while another app is frontmost")
         let sidebar = try XCTUnwrap(field(GlobalSearchField.prompt))
         let home = try XCTUnwrap(field(GlobalSearchField.homePrompt))
+        // The home focuses its field once it appears; let that land first, or it
+        // takes the cursor back from the sidebar as a click that early would lose it.
+        wait { isFocused(home) }
+        XCTAssertTrue(isFocused(home))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
         settle()
         XCTAssertTrue(isFocused(sidebar))
