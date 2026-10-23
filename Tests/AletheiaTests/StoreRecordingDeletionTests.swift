@@ -33,7 +33,7 @@ final class StoreRecordingDeletionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: micURL.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: callURL.path))
 
-        store.deleteRecordings(for: patient, session: session)
+        try store.deleteRecordings(for: patient, session: session)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: micURL.path), "mic audio should be gone")
         XCTAssertFalse(FileManager.default.fileExists(atPath: callURL.path), "call audio should be gone")
@@ -46,7 +46,23 @@ final class StoreRecordingDeletionTests: XCTestCase {
         let patient = try store.createPatient(name: "Jane Doe")
         let session = try store.createSession(for: patient)
         // No recordings were ever written; deleting must not throw or crash.
-        store.deleteRecordings(for: patient, session: session)
+        try store.deleteRecordings(for: patient, session: session)
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: session).path))
+    }
+
+    func testDeleteRecordingsReportsFailure() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let session = try store.createSession(for: patient)
+        let micURL = store.micRecordingURL(for: patient, session: session)
+        try Data("mic".utf8).write(to: micURL)
+        let dir = micURL.deletingLastPathComponent()
+        // A read-only folder: the file can't be unlinked.
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dir.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.path) }
+
+        XCTAssertThrowsError(try store.deleteRecordings(for: patient, session: session)) { error in
+            guard case StoreError.recordingNotDeleted = error else { return XCTFail("got \(error)") }
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: micURL.path))
     }
 }

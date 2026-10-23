@@ -219,6 +219,9 @@ enum TranscriptionOutcome: Equatable {
     case completed
     /// Nothing was transcribed; the recording was kept. Carries the notice.
     case blank(notice: String)
+    /// The transcript was saved, but the raw audio couldn't be deleted and is
+    /// still on disk. Carries the notice.
+    case completedAudioKept(notice: String)
     case cancelled
     case failed(message: String)
 }

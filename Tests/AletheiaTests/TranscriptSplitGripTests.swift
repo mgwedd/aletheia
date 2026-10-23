@@ -35,7 +35,7 @@ final class TranscriptSplitGripTests: XCTestCase {
 
     override func setUp() async throws {
         model = Model()
-        window = NSWindow(
+        window = TestWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: 600),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: Host(model: model))

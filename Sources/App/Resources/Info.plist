@@ -30,10 +30,12 @@
 	<string>Aletheia needs microphone access to record your voice during a therapy session, and to type what you say into the Ask box. Audio stays on this Mac.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Aletheia turns your speech into text in the Ask box. Recognition happens on this Mac; nothing you say is sent anywhere.</string>
+#ifdef ALETHEIA_DEV
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Aletheia adds a follow-up reminder to your Reminders only when you ask it to, so a session doesn't slip through the cracks.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Aletheia adds a next-session event to your Calendar only when you ask it to.</string>
+#endif
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>LSApplicationSecondaryCategoryType</key>

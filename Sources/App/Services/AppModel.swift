@@ -184,7 +184,12 @@ final class AppModel: ObservableObject {
         searchSync?.cancel()
         searchSync = nil
         guard let index = searchIndex else { return }
-        await Task.detached(priority: .userInitiated) { index.close() }.value
+        // The index file holds transcript text in the clear: when the folder is
+        // encrypted, don't leave it behind. The next launch's sweep rebuilds it.
+        let destroy = encryption.isEnabled
+        await Task.detached(priority: .userInitiated) {
+            if destroy { index.destroy() } else { index.close() }
+        }.value
     }
 
     /// Runs a save that goes to the database and, if it throws, raises the
@@ -283,7 +288,7 @@ final class AppModel: ObservableObject {
         do {
             let listing = try store.patientListing()
             patients = listing.patients
-            unreadablePatients = listing.unreadable
+            unreadablePatients = listing.unreadable + store.unreadableEntries.filter { $0.kind == .storedRecord }
             reindexSpotlight()
         } catch {
             errorMessage = error.localizedDescription

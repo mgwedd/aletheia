@@ -13,6 +13,7 @@ final class SecurityPostureTests: XCTestCase {
         idleAutoLockMinutes: Int = 15,
         encryptionEnabled: Bool = true,
         encryptionUnlocked: Bool = true,
+        encryptionKeystoreMissing: Bool = false,
         encryptionOffered: Bool = true,
         auditLogActive: Bool = true,
         localEncryptedBackup: Bool = true,
@@ -28,6 +29,7 @@ final class SecurityPostureTests: XCTestCase {
             idleAutoLockMinutes: idleAutoLockMinutes,
             encryptionEnabled: encryptionEnabled,
             encryptionUnlocked: encryptionUnlocked,
+            encryptionKeystoreMissing: encryptionKeystoreMissing,
             encryptionOffered: encryptionOffered,
             auditLogActive: auditLogActive,
             localEncryptedBackup: localEncryptedBackup,
@@ -185,5 +187,13 @@ final class SecurityPostureTests: XCTestCase {
             networkOnline: true)
         XCTAssertFalse(items.contains { $0.level == .actionRecommended })
         XCTAssertEqual(SecurityPosture.overall(items), .secure)
+    }
+
+    func testMissingKeystoreNeedsAction() {
+        let items = evaluate(encryptionEnabled: true, encryptionUnlocked: false, encryptionKeystoreMissing: true)
+        let encryption = item("encryption", in: items)
+        XCTAssertEqual(encryption?.level, .actionRecommended)
+        XCTAssertTrue(encryption?.detail.contains("keystore is missing") ?? false)
+        XCTAssertEqual(SecurityPosture.overall(items), .actionRecommended)
     }
 }
