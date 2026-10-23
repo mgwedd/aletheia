@@ -178,7 +178,7 @@ final class PatientZoomTests: XCTestCase {
         for opening in openings {
             XCTAssertLessThanOrEqual(opening.cost, budget / PatientZoom.openingSlots)
             XCTAssertEqual(opening.cost, opening.block.count + 2 + PatientZoom.headerAllowance)
-            XCTAssertTrue(opening.block.hasPrefix(PatientZoom.openingLabel + "\n[00:00] Y: \(opening.tag) line 0"))
+            XCTAssertTrue(opening.block.hasPrefix(PatientZoom.openingLabel + "\n<transcript>\n[00:00] Y: \(opening.tag) line 0"))
         }
 
         // Two sessions split the room in two.

@@ -367,7 +367,7 @@ final class SessionSearchTests: XCTestCase {
         _ = search([doc("[00:01] A: Dana called.")], "Dana")
         XCTAssertTrue(SessionSearch.index.isOpen)
         let manager = EncryptionManager(dataRootProvider: { root })
-        try manager.enable(passphrase: "test-passphrase-1", iterations: 1_000)
+        try manager.enable(passphrase: "test-passphrase-1", iterations: 100_000)
         _ = search([doc("[00:01] A: Dana called.")], "Dana")
         manager.lock()
         XCTAssertFalse(SessionSearch.index.isOpen, "no connection (and no page cache) is left holding indexed text")

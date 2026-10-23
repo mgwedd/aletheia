@@ -39,7 +39,7 @@ final class SpeakerNamesTests: XCTestCase {
             Prompts.progressNote(format: .soap, transcript: "T.", clientName: "Jane Doe"),
             Prompts.sessionChat(transcript: "T.", history: history, question: "Q?", clientName: "Jane Doe"),
             Prompts.patientChat(context: "T.", history: history, question: "Q?", clientName: "Jane Doe"),
-            Prompts.noteCheck(draft: "D", material: "M", clientName: "Jane Doe"),
+            Prompts.noteCheck(draft: "D", material: .transcript("M"), clientName: "Jane Doe"),
         ]
         for prompt in prompts {
             XCTAssertTrue(prompt.contains(Prompts.legend(clientName: "Jane Doe")))

@@ -4,7 +4,7 @@ import XCTest
 @testable import Aletheia
 
 final class RecoveryKeyTests: XCTestCase {
-    private let fastIterations = 1_000
+    private let fastIterations = 100_000
 
     private func raw(_ key: SymmetricKey) -> Data { key.withUnsafeBytes { Data($0) } }
 

@@ -13,16 +13,21 @@ final class SelectableTextTests: XCTestCase {
         return try String(contentsOf: file, encoding: .utf8)
     }
 
+    /// Patient screens select through the Theme kit, which also blocks Writing Tools.
+    private func selectable(_ text: String) -> Bool {
+        text.contains(".textSelection(.enabled)") || text.contains(".selectablePatientText()")
+    }
+
     func testReadOnlyScreensAllowSelection() throws {
         for name in ["SettingsView.swift", "SessionDetailView.swift", "ConsentGuideView.swift",
                      "FirstRunView.swift", "UpdatePromptView.swift", "ChatPaneView.swift"] {
-            XCTAssertTrue(try source(name).contains(".textSelection(.enabled)"), "\(name) should allow selecting text")
+            XCTAssertTrue(selectable(try source(name)), "\(name) should allow selecting text")
         }
     }
 
     func testClickableListsNeverEnableSelection() throws {
         for name in ["PatientsListView.swift", "PatientDetailView.swift", "GlobalSearchResultsView.swift", "RecordingMenuBar.swift"] {
-            XCTAssertFalse(try source(name).contains(".textSelection(.enabled)"), "\(name) has click-to-act rows")
+            XCTAssertFalse(selectable(try source(name)), "\(name) has click-to-act rows")
         }
     }
 
@@ -31,6 +36,6 @@ final class SelectableTextTests: XCTestCase {
         let call = try XCTUnwrap(session.range(of: "CommentsRailView("))
         let after = session[call.upperBound...].prefix(700)
         XCTAssertTrue(after.contains(".textSelection(.disabled)"), "the comments rail must opt out of selection")
-        XCTAssertFalse(try source("CommentsRailView.swift").contains(".textSelection(.enabled)"))
+        XCTAssertFalse(selectable(try source("CommentsRailView.swift")))
     }
 }

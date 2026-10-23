@@ -203,7 +203,7 @@ private struct RichNoteTextView: NSViewRepresentable {
 /// The editor's text view: plain-text paste and the Notes formatting shortcuts.
 /// The shortcuts live here, not on toolbar buttons, so they only apply while
 /// this field is the one being typed in.
-final class NoteTextView: NSTextView {
+final class NoteTextView: PatientTextView {
     weak var controller: RichNoteEditorController?
 
     override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {

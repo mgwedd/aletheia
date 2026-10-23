@@ -21,9 +21,12 @@
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
 
-	<!-- Outbound HTTPS only for the update check and opt-in model downloads. -->
-	<key>com.apple.security.network.client</key>
-	<true/>
+	<!--
+	Deliberately NO com.apple.security.network.client: the app cannot open a
+	network connection. The update check and opt-in model downloads run in the
+	bundled XPC helper (Sources/NetworkHelper), the only process with network
+	access. scripts/check-entitlements.sh fails CI if the key returns here.
+	-->
 
 	<!--
 	DEV tier only. Adding a follow-up reminder to the user's Reminders (EventKit), only on an

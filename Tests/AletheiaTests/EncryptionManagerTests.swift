@@ -3,7 +3,7 @@ import XCTest
 @testable import Aletheia
 
 final class EncryptionManagerTests: XCTestCase {
-    private let fastIterations = 1_000
+    private let fastIterations = 100_000
     private var tempRoot: URL!
 
     override func setUpWithError() throws {

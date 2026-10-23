@@ -56,6 +56,21 @@ enum SchemaMigrator {
         );
         CREATE INDEX IF NOT EXISTS idx_records_kind_item ON records(kind, item_id);
         CREATE INDEX IF NOT EXISTS idx_records_kind_owner ON records(kind, owner_id);
+        """),
+        Migration(version: 2, sql: """
+        CREATE TABLE IF NOT EXISTS audit_events (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            at TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            action TEXT NOT NULL,
+            subject_id TEXT,
+            detail TEXT,
+            app_version TEXT NOT NULL,
+            prev_mac BLOB,
+            mac BLOB
+        );
+        CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit_events BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit_events BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END;
         """)
     ]
 

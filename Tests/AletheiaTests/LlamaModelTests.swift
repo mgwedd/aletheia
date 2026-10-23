@@ -70,14 +70,14 @@ final class LlamaRuntimeTests: XCTestCase {
 
         let gemmaURL = dir.appendingPathComponent(LlamaModel.gemma4_e2b.fileName)
         try Data("weights".utf8).write(to: gemmaURL)
-        try Data("resume".utf8).write(to: LlamaModelDownloader.resumeDataURL(for: gemmaURL))
+        try Data("resume".utf8).write(to: ModelFileInstaller.legacyResumeDataURL(for: gemmaURL))
 
         XCTAssertEqual(LlamaRuntime.unusedDownloadedModels(besides: .llama31_8b, in: dir), [.gemma4_e2b])
         XCTAssertTrue(LlamaRuntime.unusedDownloadedModels(besides: .gemma4_e2b, in: dir).isEmpty)
 
         try LlamaRuntime.removeModel(.gemma4_e2b, in: dir)
         XCTAssertFalse(FileManager.default.fileExists(atPath: gemmaURL.path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: LlamaModelDownloader.resumeDataURL(for: gemmaURL).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ModelFileInstaller.legacyResumeDataURL(for: gemmaURL).path))
         XCTAssertTrue(LlamaRuntime.unusedDownloadedModels(besides: .llama31_8b, in: dir).isEmpty)
     }
 }
@@ -96,10 +96,10 @@ final class LlamaInstallVerifiedTests: XCTestCase {
         let download = dir.appendingPathComponent("tmp-download")
         try Data("good".utf8).write(to: dest)
         try Data("bad".utf8).write(to: download)
-        XCTAssertThrowsError(try LlamaModelDownloader.installVerified(
+        XCTAssertThrowsError(try ModelFileInstaller.installVerified(
             from: download, to: dest, expectedSHA256: String(repeating: "0", count: 64)))
         XCTAssertEqual(try Data(contentsOf: dest), Data("good".utf8))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: LlamaModelDownloader.partialURL(for: dest).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ModelFileInstaller.partialURL(for: dest).path))
     }
 
     func testMatchReplacesExistingAndLeavesNoPartialOrResumeFile() throws {
@@ -108,12 +108,12 @@ final class LlamaInstallVerifiedTests: XCTestCase {
         let download = dir.appendingPathComponent("tmp-download")
         try Data("old".utf8).write(to: dest)
         try Data("new".utf8).write(to: download)
-        try Data("resume".utf8).write(to: LlamaModelDownloader.resumeDataURL(for: dest))
+        try Data("resume".utf8).write(to: ModelFileInstaller.legacyResumeDataURL(for: dest))
         let sha = try ModelDigest.sha256(ofFileAt: download)
-        try LlamaModelDownloader.installVerified(from: download, to: dest, expectedSHA256: sha)
+        try ModelFileInstaller.installVerified(from: download, to: dest, expectedSHA256: sha)
         XCTAssertEqual(try Data(contentsOf: dest), Data("new".utf8))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: LlamaModelDownloader.partialURL(for: dest).path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: LlamaModelDownloader.resumeDataURL(for: dest).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ModelFileInstaller.partialURL(for: dest).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ModelFileInstaller.legacyResumeDataURL(for: dest).path))
     }
 
     func testDiskSpaceCheckRefusesWhenVolumeIsTooFull() throws {
@@ -159,31 +159,5 @@ final class LlamaInstallVerifiedTests: XCTestCase {
             err.errorDescription,
             "Not enough free disk space to download the model (at least 3.3 GB required)."
         )
-    }
-
-    func testResumeDataIsSavedWhenDownloadFailsWithResumePayload() throws {
-        let dir = try tmpDir()
-        let dest = dir.appendingPathComponent("model.gguf")
-        let downloader = LlamaModelDownloader()
-        downloader.setDestinationForTesting(dest)
-
-        let session = URLSession(configuration: .ephemeral)
-        let dummyTask = session.dataTask(with: URL(string: "https://example.invalid")!)
-
-        // Error without resume data writes no `.resume` file.
-        let plainError = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
-        downloader.urlSession(session, task: dummyTask, didCompleteWithError: plainError)
-        let resumeURL = LlamaModelDownloader.resumeDataURL(for: dest)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: resumeURL.path))
-
-        // Error carrying `NSURLSessionDownloadTaskResumeData` persists it to `<dest>.resume`.
-        let resumePayload = Data("partial-bytes".utf8)
-        let resumableError = NSError(
-            domain: NSURLErrorDomain,
-            code: NSURLErrorNetworkConnectionLost,
-            userInfo: [NSURLSessionDownloadTaskResumeData: resumePayload]
-        )
-        downloader.urlSession(session, task: dummyTask, didCompleteWithError: resumableError)
-        XCTAssertEqual(try? Data(contentsOf: resumeURL), resumePayload)
     }
 }
