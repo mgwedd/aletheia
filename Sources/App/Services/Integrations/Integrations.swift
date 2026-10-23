@@ -29,7 +29,7 @@ final class Integrations: ObservableObject {
 
     /// Speech-to-text: whisper.cpp with Metal (see `WhisperTranscriber`).
     func makeTranscriber() -> Transcribing {
-        WhisperTranscriber(modelPath: settings.whisperModelPath)
+        WhisperTranscriber(modelPath: settings.whisperModelPath, expectedBytes: settings.whisperModel.expectedBytes)
     }
 
     /// Low-level LLM adapter, chosen by the resolved backend (see

@@ -56,4 +56,14 @@ final class BuildTierTests: XCTestCase {
     func testCurrentFallsBackToCompiledTierWhenUnset() {
         XCTAssertEqual(BuildTier.current, .compiled)
     }
+
+    func testOverrideIsIgnoredInReleaseBuilds() {
+        XCTAssertEqual(BuildTier.resolve(override: "dev", compiled: .production, isReleaseBuild: true), .production)
+    }
+
+    func testOverrideAppliesInDevelopmentBuilds() {
+        XCTAssertEqual(BuildTier.resolve(override: "dev", compiled: .production, isReleaseBuild: false), .dev)
+        XCTAssertEqual(BuildTier.resolve(override: "bogus", compiled: .preview, isReleaseBuild: false), .preview)
+        XCTAssertEqual(BuildTier.resolve(override: nil, compiled: .preview, isReleaseBuild: false), .preview)
+    }
 }
