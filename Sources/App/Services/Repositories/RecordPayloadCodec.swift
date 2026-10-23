@@ -13,7 +13,11 @@ enum RecordPayloadCodec {
             let data = try? JSONEncoder.aletheia.encode(value),
             let json = String(data: data, encoding: .utf8)
         else { return nil }
-        return Data(FieldCipher.encode(json, using: protector).utf8)
+        // A store captured before lock retains a revocable protector. Do not
+        // fall back to plaintext if its key was revoked before this write.
+        guard protector.requiresProtection else { return Data(json.utf8) }
+        guard let sealed = try? protector.seal(Data(json.utf8)) else { return nil }
+        return Data(sealed.base64EncodedString().utf8)
     }
 
     static func decode<T: Decodable>(_ type: T.Type, from payload: Data, using protector: FileProtector) -> T? {

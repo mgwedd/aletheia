@@ -13,8 +13,6 @@ struct SetupChecklistView: View {
     @State private var items: [SetupItem] = []
     @State private var isChecking = false
     @State private var busyAction: SetupAction?
-    @State private var ollamaPullProgress: Double = 0
-    @State private var ollamaPullStatus = ""
     @State private var errorMessage: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -101,21 +99,6 @@ struct SetupChecklistView: View {
                         .tint(Theme.accent.color)
                     if !llamaDownloader.statusText.isEmpty {
                         Text(llamaDownloader.statusText)
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.muted.color)
-                    }
-                }
-                if item.action == .downloadOllamaModel, busyAction == .downloadOllamaModel {
-                    ProgressView(value: ollamaPullProgress)
-                        .tint(Theme.accent.color)
-                    Text(ollamaPullStatus)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.muted.color)
-                }
-                if item.action == .launchOllama, busyAction == .launchOllama {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text("Starting Ollama…")
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.muted.color)
                     }
@@ -281,34 +264,8 @@ struct SetupChecklistView: View {
                EventKitAccess.status(.reminders) == .denied {
                 SystemSettingsLinks.openRemindersSettings()
             }
-        case .installOrOpenOllama:
-            SystemSettingsLinks.openOllamaDownload()
         case .reviewTerms:
             NSWorkspace.shared.open(Legal.termsURL)
-        case .launchOllama:
-            busyAction = .launchOllama
-            defer { busyAction = nil }
-            do {
-                try await OllamaLauncher.launchAndWaitUntilReachable {
-                    await integrations.makeAssistant().isReachable()
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        case .downloadOllamaModel:
-            busyAction = .downloadOllamaModel
-            ollamaPullProgress = 0
-            defer { busyAction = nil }
-            do {
-                try await integrations.makeAssistant().pullModel(settings.ollamaModelName) { progress, status in
-                    Task { @MainActor in
-                        ollamaPullProgress = progress
-                        ollamaPullStatus = status
-                    }
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
         }
         await refresh()
     }

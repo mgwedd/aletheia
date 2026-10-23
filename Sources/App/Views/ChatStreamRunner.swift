@@ -3,7 +3,7 @@ import Foundation
 
 /// Drives the *responsive-but-calm* streaming reveal for a chat answer.
 ///
-/// The problem it solves: a local model emits text in bursty clumps (Ollama
+/// The problem it solves: a local model emits text in bursty clumps (the engine
 /// NDJSON, llama.cpp tokens, Foundation Models snapshots), and painting each
 /// burst straight to screen either machine-guns characters or lurches in
 /// paragraph-sized jumps — both feel worse than a steady flow. So this splits

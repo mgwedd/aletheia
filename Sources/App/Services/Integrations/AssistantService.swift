@@ -155,7 +155,7 @@ struct AssistantService {
     // MARK: - Streaming
 
     /// Streams the answer to a session question as the growing full text so far.
-    /// Backends that stream natively (Ollama, Foundation Models, llama.cpp) emit
+    /// Backends that stream natively (Foundation Models, llama.cpp) emit
     /// progressively; others fall back to a single final emission.
     func streamAnswerAboutSession(
         transcript: String,

@@ -2,12 +2,11 @@
 # Local LLM evaluation on one session (on-device only).
 #
 # Runs the Debug app's `--harness-eval` mode: through the app's own
-# AssistantService + Ollama client it writes the session note, builds the
+# AssistantService + built-in engine it writes the session note, builds the
 # session digest and answers one session-chat question, then prints each output
-# with its coverage (Ollama prompt_eval_count vs the estimate, whether the
+# with its coverage (the engine's prompt token count vs the estimate, whether the
 # truncation tripwire fired, the coverage label), timings (prefill/decode
-# tok/s, wall time) and the model, seed and num_ctx used. Temperature 0 and a
-# fixed seed, so reruns are comparable.
+# tok/s, wall time) and and the model used.
 #
 # Usage:
 #   scripts/eval-llm.sh [--session DIR | --transcript FILE] [--question TEXT]
@@ -16,7 +15,7 @@
 #                        (decrypt first if the folder is encrypted).
 #     --transcript FILE  a transcript text file ([MM:SS] Speaker: text lines).
 #     --question TEXT    the chat question (a default is used if omitted).
-#     --model NAME       Ollama model (default: the app's configured model).
+#     --model NAME       model name (default: the app's configured model).
 #     --budget TOKENS    override this Mac's context budget, to exercise the
 #                        doesn't-fit path with a shorter transcript.
 #     --out DIR          also write report.txt and report.json there (owner-only).
@@ -25,7 +24,7 @@
 #
 # PRIVACY: the transcript is PHI. Output goes only to the terminal or to an
 # --out directory outside the repo (refused otherwise); nothing here touches
-# the network except the local Ollama at 127.0.0.1. Never commit a report.
+# the network. Never commit a report.
 # Use synthetic transcripts for anything you share.
 
 set -uo pipefail

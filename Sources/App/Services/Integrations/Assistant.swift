@@ -2,8 +2,8 @@ import Foundation
 
 /// The local large-language-model integration used for summaries and chat.
 ///
-/// This is an adapter seam: today the only implementation is `OllamaClient`
-/// (talking to a local Ollama server), but any backend that can generate
+/// This is an adapter seam: today the implementations are `LlamaAssistant`
+/// (the built-in engine) and `FoundationModelsAssistant`, but any backend that can generate
 /// text from a prompt — a different local runtime, or a future on-device
 /// model — can conform without the rest of the app changing. Everything the
 /// UI needs goes through this protocol and `AssistantService`, never a
@@ -107,7 +107,7 @@ extension Assistant {
     }
 
     /// Default: no real streaming — run the batch `generate` and emit the whole
-    /// answer once. Backends that can stream (Ollama, Foundation Models,
+    /// answer once. Backends that can stream (Foundation Models,
     /// llama.cpp) override this.
     func stream(model: String, system: String, prompt: String) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in

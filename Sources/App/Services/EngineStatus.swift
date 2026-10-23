@@ -11,7 +11,7 @@ enum EngineRunState: Equatable {
     case reachable(engineName: String, modelName: String)
     /// Engine reachable, but the configured model isn't downloaded yet.
     case reachableNoModel(engineName: String, modelName: String)
-    /// Engine not reachable at all (e.g. Ollama isn't running).
+    /// Engine not reachable at all.
     case unreachable(engineName: String)
 }
 
@@ -66,7 +66,7 @@ struct EngineStatusPresentation: Equatable {
     }
 }
 
-/// Probes the same backend/assistant seam `ToolHealth.ollamaCheck` uses (no
+/// Probes the same backend/assistant seam `ToolHealth` uses (no
 /// new health check) so the menu bar's engine line and the Settings/setup
 /// checklist status agree. Deliberately stateless and read-only — nothing
 /// here writes to `AppSettings` or persists anything — so the caller (the
@@ -75,8 +75,7 @@ struct EngineStatusPresentation: Equatable {
 @MainActor
 enum EngineStatusProbe {
     /// Re-probes engine reachability and model presence. Cheap: just the
-    /// existing local health check (an HTTP call to 127.0.0.1 for Ollama, or
-    /// a local file/runtime check for the embedded engine) — no new network
+    /// existing local health check (a local file/runtime check) — no network
     /// calls and nothing that leaves this Mac.
     static func currentState(settings: AppSettings, integrations: Integrations) async -> EngineRunState {
         let backend = integrations.effectiveAssistantBackend
@@ -103,19 +102,18 @@ enum EngineStatusProbe {
     nonisolated static func engineName(for backend: AssistantBackend) -> String {
         switch backend {
         case .appleIntelligence: return "Apple Intelligence"
-        case .ollama, .automatic: return "Ollama"
-        case .localLlama: return "Built-in engine"
+        case .localLlama, .automatic: return "Built-in engine"
         }
     }
 
     /// The active model name for whichever backend is running. The embedded
-    /// engine's model choice lives in `settings.llamaModel`; every other
-    /// backend uses the shared Ollama model tag. `nonisolated` for the same
+    /// engine's model choice lives in `settings.llamaModel`, and the
+    /// OS-managed Apple Intelligence model has no name of its own. `nonisolated` for the same
     /// reason as `engineName(for:)`.
     nonisolated static func modelName(for backend: AssistantBackend, settings: AppSettings) -> String {
         switch backend {
-        case .localLlama: return settings.llamaModel.shortName
-        case .appleIntelligence, .ollama, .automatic: return settings.ollamaModelName
+        case .localLlama, .automatic: return settings.llamaModel.shortName
+        case .appleIntelligence: return "Apple Intelligence"
         }
     }
 }

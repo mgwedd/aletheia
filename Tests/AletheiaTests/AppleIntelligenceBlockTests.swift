@@ -10,14 +10,11 @@ final class AppleIntelligenceBlockTests: XCTestCase {
         XCTAssertFalse(Integrations.appleIntelligenceAvailable)
     }
 
-    func testAutomaticResolvesToLocalBackendsWhenAppleIntelligenceUnavailable() {
-        let noLocal = AssistantBackendResolver(appleIntelligenceAvailable: false, localLlamaAvailable: false)
-        XCTAssertEqual(noLocal.resolve(.automatic), .ollama)
+    func testAutomaticResolvesToTheBuiltInEngineWhenAppleIntelligenceUnavailable() {
+        let resolver = AssistantBackendResolver(appleIntelligenceAvailable: false)
+        XCTAssertEqual(resolver.resolve(.automatic), .localLlama)
 
-        let withLocal = AssistantBackendResolver(appleIntelligenceAvailable: false, localLlamaAvailable: true)
-        XCTAssertEqual(withLocal.resolve(.automatic), .localLlama)
-
-        // Even an explicit Apple Intelligence preference falls back to local.
-        XCTAssertEqual(noLocal.resolve(.appleIntelligence), .ollama)
+        // Even an explicit Apple Intelligence preference falls back to the built-in engine.
+        XCTAssertEqual(resolver.resolve(.appleIntelligence), .localLlama)
     }
 }
