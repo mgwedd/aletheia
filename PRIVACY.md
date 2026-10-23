@@ -3,8 +3,9 @@
 _Last updated: 2026-10-23_
 
 **Plain-language summary:** Aletheia keeps clinical data in a folder you choose.
-A cloud-synced folder may be copied by its provider. The app does not currently
-upload an encrypted backup. The app itself has no network access: a bundled,
+A cloud-synced folder may be copied by its provider. Back Up Now saves an
+encrypted copy of the database to a folder you choose on your Mac or an external
+disk; the App never uploads it. The app itself has no network access: a bundled,
 sandboxed helper makes the few outbound requests, and none carries patient data.
 The developer does not collect, receive, store, or
 have access to your data or your patients' data. There are no accounts, analytics,
@@ -69,7 +70,12 @@ files that open without the App. The copy is not encrypted by the App, and the
 App warns when the destination is on an unencrypted disk or a synced folder.
 Keep it on an encrypted disk. The export is written only to the folder you pick.
 
-The App does not upload backups of its own. App
+Settings > Backups > Back Up Now writes an encrypted copy of the database (not
+recordings or other files) to a folder you choose. It needs encryption to be on and
+unlocked, refuses synced folders (iCloud Drive, Dropbox and similar), network
+locations and unencrypted removable disks, and never uploads the copy. Each
+successful run is recorded once in the audit log. There is no restore screen in
+the App yet. The App does not upload backups of its own. App
 settings, downloaded models, and an optional remembered encryption key are
 stored separately in the app container or login Keychain; the audit log's
 signing key is in the login Keychain. Your data is not sent to the developer or a

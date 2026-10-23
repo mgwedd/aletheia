@@ -9,6 +9,7 @@ enum AuditLogCopy {
         ("encryption changes", [.encryptionEnabled, .encryptionDisabled, .encryptionUnlocked]),
         ("exports", [.recordExported, .auditLogExported]),
         ("deletions", [.recordDeleted]),
+        ("backups", [.backupRun]),
         ("passphrase changes", [.encryptionPassphraseChanged]),
         ("recovered recordings", [.recordingRecovered]),
     ]
@@ -25,7 +26,7 @@ enum AuditLogCopy {
     static var caption: String {
         let phrases = recorded.map(\.phrase)
         let list = phrases.dropLast().joined(separator: ", ") + ", and " + phrases[phrases.count - 1]
-        return "An on-device record of \(list). Backups and viewing records are not recorded yet. It holds no names or clinical content and never leaves this Mac. It supports, but does not by itself satisfy, HIPAA's audit-control requirement (§164.312(b))."
+        return "An on-device record of \(list). Viewing records is not recorded yet. It holds no names or clinical content and never leaves this Mac. It supports, but does not by itself satisfy, HIPAA's audit-control requirement (§164.312(b))."
     }
 }
 
