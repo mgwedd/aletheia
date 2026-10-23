@@ -31,9 +31,11 @@ final class UnlockAuthenticatorFactoryTests: XCTestCase {
 
     @MainActor
     func testAnAppLockBuiltWithDefaultsStaysLockedAndQuietUnderTests() async {
-        let settings = AppSettings.shared
-        let prior = settings.appLockEnabled
-        defer { settings.appLockEnabled = prior }
+        // Its own defaults suite, so the test never touches the host app's settings.
+        let suite = "UnlockAuthenticatorFactoryTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
         settings.appLockEnabled = true
 
         let lock = AppLock(settings: settings, canAuthenticate: { true }, isAppActive: { true })
