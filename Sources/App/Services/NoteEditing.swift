@@ -14,6 +14,9 @@ enum NoteEditState: Equatable {
     /// The note differs from the generated baseline. Treated as the
     /// therapist's own work: Regenerate must ask first and keep the old text.
     case edited
+    /// The saved note (or its baseline) exists but couldn't be read. Nothing may
+    /// replace it.
+    case unreadable
 }
 
 /// Pure rules for hand-editing a generated progress note. No I/O — the Store
