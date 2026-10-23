@@ -80,12 +80,14 @@ final class LlamaAssistant: Assistant {
 
     func request(
         system: String,
+        turns: [PromptTurn] = [],
         prompt: String,
         task: AITask = .note,
         grammar: LocalLLMGrammar? = nil
     ) -> LocalLLMRequest {
         LocalLLMRequest(
             system: system,
+            turns: turns,
             prompt: prompt,
             sampling: LocalLLMSampling.forTask(task, maxTokens: maxTokensOverride),
             grammar: grammar
@@ -118,10 +120,17 @@ final class LlamaAssistant: Assistant {
     }
 
     func generate(
-        model _: String, system: String, prompt: String, task: AITask, grammar: LocalLLMGrammar?
+        model: String, system: String, prompt: String, task: AITask, grammar: LocalLLMGrammar?
+    ) async throws -> String {
+        try await generate(model: model, system: system, turns: [], prompt: prompt, task: task, grammar: grammar)
+    }
+
+    func generate(
+        model _: String, system: String, turns: [PromptTurn], prompt: String, task: AITask, grammar: LocalLLMGrammar?
     ) async throws -> String {
         if let missingModel { throw missingModel }
-        return try await activeEngine.generate(request(system: system, prompt: prompt, task: task, grammar: grammar))
+        return try await activeEngine.generate(
+            request(system: system, turns: turns, prompt: prompt, task: task, grammar: grammar))
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -144,17 +153,29 @@ final class LlamaAssistant: Assistant {
     }
 
     func stream(
-        model _: String,
+        model: String,
         system: String,
         prompt: String,
         task: AITask,
         grammar: LocalLLMGrammar?,
         onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {
+        stream(model: model, system: system, turns: [], prompt: prompt, task: task, grammar: grammar, onStats: onStats)
+    }
+
+    func stream(
+        model _: String,
+        system: String,
+        turns: [PromptTurn],
+        prompt: String,
+        task: AITask,
+        grammar: LocalLLMGrammar?,
+        onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
         if let missingModel { return AsyncThrowingStream { $0.finish(throwing: missingModel) } }
-        let expectedTokens = ContextBudget.estimatedTokens(system: system, prompt: prompt)
+        let expectedTokens = ContextBudget.estimatedTokens(system: system, prompt: PromptTurn.flattened(turns, then: prompt))
         return activeEngine.stream(
-            request(system: system, prompt: prompt, task: task, grammar: grammar),
+            request(system: system, turns: turns, prompt: prompt, task: task, grammar: grammar),
             onStats: onStats.map { callback in
                 { @Sendable raw in
                     var stats = raw

@@ -53,7 +53,7 @@ final class AnnotationRepository {
     }
 
     func comments(sessionID: UUID) -> [SessionComment] {
-        core.records(kind: Self.commentKind, itemID: sessionID).map(makeComment)
+        core.records(kind: Self.commentKind, itemID: sessionID).compactMap(makeComment)
     }
 
     @discardableResult
@@ -120,11 +120,10 @@ final class AnnotationRepository {
         core.record(kind: Self.commentKind, id: id)?.itemID
     }
 
-    /// A record that can't be decoded under the current protector (reading a
-    /// sealed database with a passthrough/wrong key) still surfaces as a
-    /// comment rather than silently vanishing — with best-effort text, the
-    /// same "still there, just garbled" behavior the old per-column SQL had.
-    private func makeComment(_ record: PersistedRecord) -> SessionComment {
+    /// Legacy malformed plaintext remains visible for recovery. A sealed
+    /// payload that cannot be opened is omitted from the normal list and
+    /// reported by `CommentStore.unreadableEntries` instead.
+    private func makeComment(_ record: PersistedRecord) -> SessionComment? {
         if let payload = RecordPayloadCodec.decode(CommentPayload.self, from: record.payload, using: protector) {
             let noteFormat = payload.format.flatMap(ProgressNoteFormat.init(rawValue:))
             return SessionComment(
@@ -135,7 +134,7 @@ final class AnnotationRepository {
                 format: noteFormat
             )
         }
-        let garbled = RecordPayloadCodec.openedText(from: record.payload, using: protector)
+        guard let garbled = RecordPayloadCodec.openedText(from: record.payload, using: protector) else { return nil }
         return SessionComment(
             id: record.id, quotedText: "", body: garbled,
             createdAt: record.createdAt, updatedAt: record.updatedAt, anchorSeconds: nil
@@ -158,6 +157,7 @@ final class AnnotationRepository {
     @discardableResult
     func saveNote(sessionID: UUID, text: String, now: Date = Date()) -> Bool {
         let existing = core.record(kind: Self.noteKind, id: sessionID.uuidString)
+        guard RecordPayloadCodec.mayOverwrite(existing, using: protector) else { return false }
         if let existing, RecordPayloadCodec.isDamaged(String.self, payload: existing.payload, using: protector) {
             return false
         }

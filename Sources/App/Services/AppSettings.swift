@@ -39,6 +39,12 @@ enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
         case .largeV3: return "Large v3"
         }
     }
+
+    /// Whisper's weights are released by OpenAI under the MIT License.
+    var licenseName: String { "MIT License" }
+
+    /// Where that license can be read (opened in the user's browser).
+    var licenseURL: URL { URL(string: "https://github.com/openai/whisper/blob/main/LICENSE")! }
 }
 
 /// Idle auto-lock choices offered in Settings (HIPAA §164.312(a)(2)(iii)
@@ -84,7 +90,6 @@ final class AppSettings: ObservableObject {
         static let llamaModel = "llamaModel"
         static let systemPrompt = "systemPrompt"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
-        static let updateFeedURL = "updateFeedURL"
         static let autoCheckForUpdates = "autoCheckForUpdates"
         static let spotlightIndexingEnabled = "spotlightIndexingEnabled"
         static let appLockEnabled = "appLockEnabled"
@@ -117,11 +122,6 @@ final class AppSettings: ObservableObject {
         static let dismissedDamagedRecordIDs = "dismissedDamagedRecordIDs"
     }
 
-    /// Where the app looks for its update manifest. Defaults to the
-    /// `appcast.json` asset of the repo's latest GitHub release; until a
-    /// release publishes one, the check just finds nothing (no error shown).
-    static let defaultUpdateFeedURL = URL(string: "https://github.com/mgwedd/aletheia/releases/latest/download/appcast.json")!
-
     private let defaults: UserDefaults
 
     @Published var dataRootURL: URL?
@@ -147,9 +147,6 @@ final class AppSettings: ObservableObject {
     }
     @Published var hasCompletedFirstRun: Bool {
         didSet { defaults.set(hasCompletedFirstRun, forKey: Keys.hasCompletedFirstRun) }
-    }
-    @Published var updateFeedURL: URL {
-        didSet { defaults.set(updateFeedURL.absoluteString, forKey: Keys.updateFeedURL) }
     }
     /// Whether to check for software updates automatically on launch and when the app
     /// becomes active. On by default. When off, updates are only checked when the
@@ -458,11 +455,6 @@ final class AppSettings: ObservableObject {
         acceptedLegalVersion = defaults.string(forKey: Keys.acceptedLegalVersion) ?? ""
         let acceptedInterval = defaults.double(forKey: Keys.acceptedLegalDate)
         acceptedLegalDate = acceptedInterval > 0 ? Date(timeIntervalSince1970: acceptedInterval) : nil
-        if let raw = defaults.string(forKey: Keys.updateFeedURL), let url = URL(string: raw) {
-            updateFeedURL = url
-        } else {
-            updateFeedURL = AppSettings.defaultUpdateFeedURL
-        }
         autoCheckForUpdates = defaults.object(forKey: Keys.autoCheckForUpdates) as? Bool ?? true
         if let savedDismissed = defaults.stringArray(forKey: Keys.dismissedDamagedRecordIDs) {
             dismissedDamagedRecordIDs = Set(savedDismissed)

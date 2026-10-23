@@ -28,8 +28,13 @@ Concise, non-obvious rules for this repo. (Obvious stuff omitted on purpose.)
 - Deployment target: **macOS 14**.
 
 ## Privacy / architecture invariants (non-negotiable)
-- **PHI never leaves the Mac.** No analytics/telemetry/servers. Only outbound
-  calls: update appcast check and opt-in model downloads — neither carries PHI.
+- **PHI never leaves the Mac.** No analytics/telemetry/servers. The main app
+  has **no network entitlement**; the only outbound calls are made by the bundled
+  network helper (`Sources/NetworkHelper`, a sandboxed XPC service): the update
+  check and opt-in model downloads — neither carries PHI. The app asks it for
+  fixed assets by integer ID; it takes no URL, string or data. Don't add
+  `network.client` to the app or `URLSession`/sockets outside the helper
+  (`scripts/check-entitlements.sh` and `NetworkHelperSourceTests` enforce it).
   The built-in llama.cpp engine is the only AI engine; there is no AI server.
 - **Apple Intelligence is intentionally disabled** via
   `Integrations.appleIntelligenceBlocked = true` (kept provably on-device). Don't
@@ -53,6 +58,11 @@ Concise, non-obvious rules for this repo. (Obvious stuff omitted on purpose.)
   literals or system colors in screens; add a colorset + `Theme` token +
   `Theme.all` entry (and a `pairings` entry if text sits on it). Controls use
   the kit in `ThemeComponents.swift`. Light/Dark/System is `NSApp.appearance`.
+- **Text goes through the Theme text kit** (`ThemeTextField`, `ThemeTextArea`,
+  `TextField.patient`, `PatientTextView`, `.selectablePatientText()`), which keeps
+  macOS Writing Tools off. `WritingToolsBlockTests` rejects raw `TextField`,
+  `TextEditor`, `SecureField`, `.textSelection` and `NSTextView` subclasses outside
+  `Views/Theme`, except in its allowlist of files with no patient data.
 - `AppSettings` pattern: UserDefaults-backed, `private enum Keys`,
   `@Published var x { didSet { defaults.set(...) } }`, all loaded in `init`.
 - Repo **auto-deletes head branches on merge**; merging a base branch closes its

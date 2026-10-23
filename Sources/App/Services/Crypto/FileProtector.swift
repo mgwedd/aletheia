@@ -51,6 +51,9 @@ struct FileProtector: Sendable {
     }
 
     private var key: SymmetricKey? { keyReference?.key }
+    /// The folder key while it is held, nil once revoked by a lock. For the audit
+    /// ledger, which derives its signing key from it.
+    var heldKey: SymmetricKey? { key }
 
     /// Reject all access, including plaintext writes in a partially migrated folder.
     static let locked = FileProtector(keyReference: nil, requiresKey: true)
@@ -65,11 +68,14 @@ struct FileProtector: Sendable {
 
     enum ProtectorError: LocalizedError, Equatable {
         case locked
+        case sealFailed
 
         var errorDescription: String? {
             switch self {
             case .locked:
                 return "This data is encrypted. Unlock it with your recovery passphrase to open it."
+            case .sealFailed:
+                return "This data could not be encrypted, so it was not saved."
             }
         }
     }
@@ -222,17 +228,20 @@ struct FileProtector: Sendable {
 /// stored as base64 of the envelope; otherwise it's plain text. Decode detects
 /// which it is, so a column migrates lazily just like a file.
 enum FieldCipher {
-    static func encode(_ text: String, using protector: FileProtector) -> String {
-        guard protector.isEncrypting, let sealed = try? protector.seal(Data(text.utf8)) else { return text }
-        return sealed.base64EncodedString()
+    static func encode(_ text: String, using protector: FileProtector) throws -> String {
+        // A revoked key still requires protection: never fall back to plaintext.
+        guard protector.requiresProtection else { return text }
+        do {
+            return try protector.seal(Data(text.utf8)).base64EncodedString()
+        } catch FileProtector.ProtectorError.locked {
+            throw FileProtector.ProtectorError.locked
+        } catch {
+            throw FileProtector.ProtectorError.sealFailed
+        }
     }
 
-    static func decode(_ stored: String, using protector: FileProtector) -> String {
-        guard
-            let data = Data(base64Encoded: stored),
-            DataCipher.isEnvelope(data),
-            let opened = try? protector.open(data)
-        else { return stored }
-        return String(decoding: opened, as: UTF8.self)
+    static func decode(_ stored: String, using protector: FileProtector) throws -> String {
+        guard let data = Data(base64Encoded: stored), DataCipher.isEnvelope(data) else { return stored }
+        return String(decoding: try protector.open(data), as: UTF8.self)
     }
 }

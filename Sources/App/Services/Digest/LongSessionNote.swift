@@ -70,18 +70,23 @@ enum LongSessionNote {
         live: @escaping DigestBuilder.Live,
         coverage: @escaping (String) -> Void
     ) -> AsyncThrowingStream<String, Error> {
-        let commentLines = AssistantService.formatComments(comments)
-        func prompt(_ material: String) -> String {
+        let fields: TherapistFields
+        do {
+            fields = try TherapistFields(
+                notes: notes, comments: AssistantService.formatComments(comments), background: patientBackground,
+                query: topics(for: format).joined(separator: " "), budget: service.budget)
+        } catch {
+            return AsyncThrowingStream { $0.finish(throwing: error) }
+        }
+        func prompt(_ material: SessionMaterial) -> String {
             Prompts.progressNote(
-                format: format, transcript: material, notes: notes, comments: commentLines,
-                patientBackground: patientBackground,
+                format: format, material: material, notes: fields.notes, comments: fields.comments,
+                patientBackground: fields.background,
                 verbosity: verbosity, instructions: instructions, clientName: service.clientName)
         }
-        if service.fits(prompt: prompt(transcript)) {
-            return service.streamProgressNote(
-                format: format, transcript: transcript, notes: notes, comments: comments,
-                patientBackground: patientBackground,
-                verbosity: verbosity, instructions: instructions)
+        if service.fits(prompt: prompt(.transcript(transcript))) {
+            if let note = fields.coverageNote { coverage(note) }
+            return service.streamDigest(prompt: prompt(.transcript(transcript)), task: .note, grammar: format.grammar)
         }
 
         return AsyncThrowingStream { continuation in
@@ -96,7 +101,7 @@ enum LongSessionNote {
                     let total = ContextBudget.characters(
                         fitting: service.budget.availableCharacters(
                             reserving: ContextBudget.weightedLength(of: service.systemPrompt)
-                                + ContextBudget.weightedLength(of: prompt("")) + headerReserve),
+                                + ContextBudget.weightedLength(of: prompt(.transcript(""))) + headerReserve),
                         like: transcript)
                     let transcriptCopy = transcript
                     let flaggedCost = await offMain { strongCost(in: transcriptCopy, phrases: riskPhrases) }
@@ -120,23 +125,24 @@ enum LongSessionNote {
                     let riskLimit = min(riskReserve, room / 3)
                     let strongBudget = min(flaggedCost, room * 2 / 3)
                     let (digestText, cut) = fit(
-                        Prompts.longSessionDigest(digest.sessionDigest), to: room - strongBudget - riskLimit)
+                        digest.sessionDigest, to: room - strongBudget - riskLimit - Prompts.longSessionDigestOverhead)
                     let omitted = cut && digestText.isEmpty
                     let shortened = cut && !omitted
-                    let limit = room - digestText.count
+                    let limit = room - (digestText.isEmpty ? 0 : digestText.count + Prompts.longSessionDigestOverhead)
                     let found = await offMain {
                         passages(
                             in: transcriptCopy, format: format, limit: limit, riskLimit: riskLimit,
                             phrases: riskPhrases, strongBudget: strongBudget)
                     }
                     try Task.checkCancellation()
-                    let material = Prompts.longSessionMaterial(digest: digestText, passages: found.text)
+                    let material = SessionMaterial.excerpts(digest: digestText, passages: found.text)
                     let totalLines = nonBlankLines(transcript).count
                     @MainActor func label(_ check: CheckOutcome?) -> String {
                         coverageLabel(
                             digestParts: digest.sections.count, digestShortened: shortened, digestOmitted: omitted,
                             passageLines: found.lineCount, totalLines: totalLines, effort: effort,
                             droppedRisk: found.droppedRisk, check: check)
+                            + (fields.coverageNote.map { " " + $0 } ?? "")
                     }
                     coverage(label(plannedCheck))
 
@@ -177,7 +183,7 @@ enum LongSessionNote {
     /// One call that corrects `draft` against `material`. The corrected note is
     /// handed to `accept` only if it looks complete; anything else keeps the draft.
     private static func check(
-        draft: String, material: String, format: ProgressNoteFormat, phrases: [String],
+        draft: String, material: SessionMaterial, format: ProgressNoteFormat, phrases: [String],
         service: AssistantService, builder: DigestBuilder, live: @escaping DigestBuilder.Live, accept: (String) -> Void
     ) async -> CheckOutcome {
         let prompt = Prompts.noteCheck(draft: draft, material: material, clientName: service.clientName)
@@ -533,29 +539,8 @@ enum LongSessionNote {
 }
 
 extension Prompts {
-    /// The digest, headed for the note prompt.
-    static func longSessionDigest(_ digest: String) -> String {
-        "Digest of the whole session (times in brackets):\n\(digest)"
-    }
-
-    /// Stands in for the transcript when it is too long to send whole.
-    static func longSessionMaterial(digest: String, passages: String) -> String {
-        """
-        (This session is too long to include in full. Below is a digest of the whole \
-        session, then passages from the original transcript: lines about risk, then \
-        lines chosen for each part of the note; […] marks skipped lines. Use the \
-        digest for the overall picture. Take quotes, risk statements and denials only \
-        from the passages. Do not add detail that neither contains.)
-
-        \(digest)
-
-        Passages from the original transcript:
-        \(passages)
-        """
-    }
-
     /// Asks the model to correct a draft note against its source material.
-    static func noteCheck(draft: String, material: String, clientName: String = "") -> String {
+    static func noteCheck(draft: String, material: SessionMaterial, clientName: String = "") -> String {
         """
         Below are a draft clinical note and the material it was written from: a digest \
         of the whole session and passages from the original transcript. Check every \
@@ -568,13 +553,15 @@ extension Prompts {
         Return only the full corrected note, with no commentary. If nothing needs \
         changing, return the draft unchanged.
 
+        \(materialRule)
+
         \(legend(clientName: clientName))
 
         Source material:
-        \(material)
+        \(sessionMaterial(material))
 
         Draft note:
-        \(draft)
+        \(UntrustedText(.draft, draft).rendered)
         """
     }
 }

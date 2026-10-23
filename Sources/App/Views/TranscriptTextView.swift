@@ -160,11 +160,10 @@ struct TranscriptTextView: NSViewRepresentable {
     /// empty selection) with the caret position it landed on. Used instead of the
     /// `.link` attribute, which in an editable text view doesn't reliably fire on
     /// a simple click.
-    final class ClickReportingTextView: NSTextView {
+    final class ClickReportingTextView: PatientTextView {
         var onPlainClick: ((Int) -> Void)?
         /// See `TranscriptTextView.callAudioName`.
         var callAudioName = ""
-
         /// Copy and drag take the text as it is on screen: call audio named,
         /// no hidden " (overlapping)" labels. The view is plain text, so there is no RTF.
         override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {

@@ -13,6 +13,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case encryption
     case backups
     case security
+    case licenses
     case setAsideRecordings
 
     static let `default`: SettingsPane = .general
@@ -27,6 +28,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .encryption: return "Encryption"
         case .backups: return "Backups"
         case .security: return "Security"
+        case .licenses: return "Licenses"
         case .setAsideRecordings: return "Set-aside recordings"
         }
     }

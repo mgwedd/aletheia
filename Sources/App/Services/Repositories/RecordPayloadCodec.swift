@@ -13,15 +13,12 @@ enum RecordPayloadCodec {
             let data = try? JSONEncoder.aletheia.encode(value),
             let json = String(data: data, encoding: .utf8)
         else { return nil }
-        // A store captured before lock retains a revocable protector. Do not
-        // fall back to plaintext if its key was revoked before this write.
-        guard protector.requiresProtection else { return Data(json.utf8) }
-        guard let sealed = try? protector.seal(Data(json.utf8)) else { return nil }
-        return Data(sealed.base64EncodedString().utf8)
+        guard let sealed = try? FieldCipher.encode(json, using: protector) else { return nil }
+        return Data(sealed.utf8)
     }
 
     static func decode<T: Decodable>(_ type: T.Type, from payload: Data, using protector: FileProtector) -> T? {
-        let json = openedText(from: payload, using: protector)
+        guard let json = openedText(from: payload, using: protector) else { return nil }
         guard let data = json.data(using: .utf8) else { return nil }
         return try? JSONDecoder.aletheia.decode(T.self, from: data)
     }
@@ -35,19 +32,33 @@ enum RecordPayloadCodec {
 
     /// Opens just the field-cipher layer, without assuming what's underneath is
     /// valid JSON for any particular type — the building block `decode` uses,
-    /// and the fallback for a caller that must still show *something* when a
-    /// record can't be decoded as its domain type (typically because it's
-    /// still-sealed ciphertext read under the wrong key: `FieldCipher.decode`
-    /// then hands back the ciphertext string unchanged rather than throwing).
-    static func openedText(from payload: Data, using protector: FileProtector) -> String {
-        FieldCipher.decode(String(decoding: payload, as: UTF8.self), using: protector)
+    /// and the fallback for legacy plaintext that is not valid domain JSON.
+    /// An envelope that cannot be opened never reaches the fallback UI.
+    static func openedText(from payload: Data, using protector: FileProtector) -> String? {
+        try? FieldCipher.decode(String(decoding: payload, as: UTF8.self), using: protector)
+    }
+
+    /// Whether `existing` may be replaced: a payload this protector can't open
+    /// is kept as-is for recovery instead of being overwritten by a new value.
+    static func mayOverwrite(_ existing: PersistedRecord?, using protector: FileProtector) -> Bool {
+        guard let existing else { return true }
+        return openedText(from: existing.payload, using: protector) != nil
+    }
+
+    static func hasUnreadableEnvelope(_ payload: Data, using protector: FileProtector) -> Bool {
+        guard protector.isEncrypting else { return false } // locked folders are not damaged
+        let stored = String(decoding: payload, as: UTF8.self)
+        guard let data = Data(base64Encoded: stored), DataCipher.isEnvelope(data) else { return false }
+        return (try? protector.open(data)) == nil
     }
 
     /// Re-seals a payload from one protector to another without decoding its
     /// domain shape at all: the field cipher wraps the *whole* JSON blob, so
     /// opening and re-sealing that one layer migrates any kind of record the
     /// same way. This is what backs every repository's `reencrypt`.
-    static func reseal(_ payload: Data, from: FileProtector, to: FileProtector) -> Data {
-        Data(FieldCipher.encode(openedText(from: payload, using: from), using: to).utf8)
+    static func reseal(_ payload: Data, from: FileProtector, to: FileProtector) -> Data? {
+        guard let opened = openedText(from: payload, using: from),
+              let sealed = try? FieldCipher.encode(opened, using: to) else { return nil }
+        return Data(sealed.utf8)
     }
 }

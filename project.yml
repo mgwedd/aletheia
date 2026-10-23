@@ -59,6 +59,12 @@ targets:
           - "Resources/Info.plist"
           - "Resources/Aletheia.entitlements"
           - "Resources/AletheiaDev.entitlements"
+      # The wire contract with the network helper, compiled into both sides.
+      - path: Sources/NetworkHelperShared
+      # The repo-root notices, copied into the app so Settings › Licenses shows
+      # exactly this file (ThirdPartyNoticesTests compares the two).
+      - path: THIRD-PARTY-NOTICES.md
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.app
@@ -94,6 +100,10 @@ targets:
           CODE_SIGN_ENTITLEMENTS: Sources/App/Resources/Aletheia.entitlements
     dependencies:
       - target: WhisperEngine
+      # The only process with network access. XcodeGen embeds an `xpc-service`
+      # dependency in Contents/XPCServices. The app itself has no
+      # `com.apple.security.network.client` entitlement.
+      - target: AletheiaNetworkHelper
       # Listed so Xcode copies whisper.framework into the app bundle (it only
       # embeds a package's binary framework for the target that names it).
       - package: WhisperCpp
@@ -116,12 +126,40 @@ targets:
     dependencies:
       - package: WhisperCpp
 
+  # The sandboxed XPC service that makes every outbound request (update check,
+  # model downloads). Its entitlements are exactly app-sandbox + network.client:
+  # no file, app-group or keychain access, so it cannot read patient data.
+  # scripts/check-entitlements.sh guards both halves of that split.
+  AletheiaNetworkHelper:
+    type: xpc-service
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/NetworkHelper
+        excludes:
+          - "Info.plist"
+          - "NetworkHelper.entitlements"
+      - path: Sources/NetworkHelperShared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.networkhelper
+        PRODUCT_NAME: NetworkHelper
+        # Hand-maintained files, pointed at directly (see the Aletheia target).
+        INFOPLIST_FILE: Sources/NetworkHelper/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/NetworkHelper/NetworkHelper.entitlements
+
   AletheiaTests:
     type: bundle.unit-test
     platform: macOS
     deploymentTarget: "14.0"
     sources:
       - path: Tests/AletheiaTests
+      # The helper's fetch logic and asset table, compiled into the test bundle
+      # so they can be exercised without launching the XPC service.
+      - path: Sources/NetworkHelper/AssetCatalog.swift
+      - path: Sources/NetworkHelper/HelperError.swift
+      - path: Sources/NetworkHelper/HelperFetcher.swift
+      - path: Sources/NetworkHelper/HelperTasks.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.appTests
@@ -136,6 +174,7 @@ schemes:
     build:
       targets:
         Aletheia: all
+        AletheiaNetworkHelper: all
         AletheiaTests: [test]
     test:
       targets:

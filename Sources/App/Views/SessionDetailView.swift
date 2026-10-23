@@ -322,7 +322,7 @@ struct SessionDetailView: View {
         }
         .navigationTitle(Self.dateFormatter.string(from: session.date))
         .background(Theme.window.color)
-        .textSelection(.enabled)
+        .selectablePatientText()
         .onAppear {
             if initialShowingMyNotes {
                 showingMyNotes = true
@@ -966,7 +966,7 @@ struct SessionDetailView: View {
         let body = inlineCommentBody.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !quote.isEmpty, !body.isEmpty else { return }
         let anchorSecs = anchorSeconds(quote: quote, start: pendingQuoteStart)
-        let created = commentStore.addComment(
+        let created = appModel.addComment(
             sessionID: session.id,
             quotedText: quote,
             body: body,
@@ -974,13 +974,11 @@ struct SessionDetailView: View {
             quoteStart: pendingQuoteStart
         )
         comments = commentStore.comments(sessionID: session.id, format: nil)
+        // Keep the composer (and the typed comment) open when the save failed.
+        guard let created else { return }
         showInlineComposer = false
         // Bring the new card into view in the rail.
-        if let id = created?.id {
-            focusComment(id)
-        } else {
-            focusedCommentID = nil
-        }
+        focusComment(created.id)
     }
 
     /// Requests focus on a comment: highlights its card, scrolls the card into
@@ -1063,7 +1061,7 @@ struct SessionDetailView: View {
 
     private func resolveComment(_ comment: SessionComment, _ resolved: Bool) {
         guard let commentStore = appModel.commentStore else { return }
-        commentStore.setCommentResolved(id: comment.id, resolved: resolved)
+        appModel.setCommentResolved(id: comment.id, resolved: resolved)
         comments = commentStore.comments(sessionID: session.id, format: nil)
         // A resolved comment loses its highlight; don't keep focusing it.
         if resolved, focusedCommentID == comment.id { focusedCommentID = nil }
@@ -1364,12 +1362,11 @@ struct SessionDetailView: View {
     }
 
     private func saveNoteInlineComment() {
-        guard let commentStore = appModel.commentStore else { return }
         let quote = notePendingQuote
         let body = noteInlineCommentBody.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !quote.isEmpty, !body.isEmpty else { return }
         let format = settings.progressNoteFormat
-        let created = commentStore.addComment(
+        let created = appModel.addComment(
             sessionID: session.id,
             quotedText: quote,
             body: body,
@@ -1377,13 +1374,11 @@ struct SessionDetailView: View {
             quoteStart: notePendingQuoteStart,
             format: format
         )
+        // Keep the composer (and the typed comment) open when the save failed.
+        guard let created else { return }
         reloadNoteComments(for: format)
         showNoteComposer = false
-        if let id = created?.id {
-            focusNoteComment(id)
-        } else {
-            focusedNoteCommentID = nil
-        }
+        focusNoteComment(created.id)
     }
 
     private func focusNoteComment(_ id: String) {
@@ -1403,16 +1398,14 @@ struct SessionDetailView: View {
     }
 
     private func resolveNoteComment(_ comment: SessionComment, _ resolved: Bool) {
-        guard let commentStore = appModel.commentStore else { return }
-        commentStore.setCommentResolved(id: comment.id, resolved: resolved)
+        appModel.setCommentResolved(id: comment.id, resolved: resolved)
         reloadNoteComments()
         if resolved, focusedNoteCommentID == comment.id { focusedNoteCommentID = nil }
     }
 
     private func editNoteComment(_ comment: SessionComment, _ body: String) {
-        guard let commentStore = appModel.commentStore,
-              CommentsRailView.canSaveEdit(draft: body, original: comment.body) else { return }
-        commentStore.updateComment(id: comment.id, body: body)
+        guard CommentsRailView.canSaveEdit(draft: body, original: comment.body) else { return }
+        appModel.updateComment(id: comment.id, body: body)
         reloadNoteComments()
     }
 
@@ -1672,7 +1665,7 @@ struct SessionDetailView: View {
     private func editComment(_ comment: SessionComment, _ body: String) {
         guard let commentStore = appModel.commentStore,
               CommentsRailView.canSaveEdit(draft: body, original: comment.body) else { return }
-        commentStore.updateComment(id: comment.id, body: body)
+        appModel.updateComment(id: comment.id, body: body)
         comments = commentStore.comments(sessionID: session.id, format: nil)
     }
 

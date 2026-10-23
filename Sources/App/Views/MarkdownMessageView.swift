@@ -133,7 +133,7 @@ struct MarkdownMessageView: View {
                 view(for: block)
             }
         }
-        .textSelection(.enabled)
+        .selectablePatientText()
         .discardingLinks()
     }
 
@@ -265,7 +265,7 @@ private struct CodeCard: View {
                     .font(.system(.callout, design: .monospaced))
                     .lineSpacing(0)
                     .foregroundStyle(Theme.text.color)
-                    .textSelection(.enabled)
+                    .selectablePatientText()
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

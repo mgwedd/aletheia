@@ -104,7 +104,7 @@ struct NoteReaderView: NSViewRepresentable {
         context.coordinator.updateComposing(in: textView, composingRange: composingRange)
     }
 
-    final class ClickReportingTextView: NSTextView {
+    final class ClickReportingTextView: PatientTextView {
         var onPlainClick: ((Int) -> Void)?
 
         /// Copy and drag of the note stay on this Mac and out of clipboard history.

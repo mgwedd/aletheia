@@ -10,6 +10,8 @@ final class AppModel: ObservableObject {
     /// shows them so they don't vanish silently. Session-level damage lives on
     /// `Store.unreadableEntries` / `Store.sessionListing(for:)`.
     @Published var unreadablePatients: [UnreadableEntry] = []
+    /// Encrypted database payloads that could not be opened at the last refresh.
+    @Published var unreadableDatabaseRecords: [UnreadableEntry] = []
     @Published var errorMessage: String?
     /// Whether the data folder's volume is encrypted (nil = unknown). Refreshed
     /// when the folder changes and before each new-record action.
@@ -100,7 +102,9 @@ final class AppModel: ObservableObject {
         encryption.refreshState()
         refreshDiskEncryption()
         let dataRoot = settings.dataRootURL
-        audit = dataRoot.map(AuditLog.init)
+        audit = dataRoot.map { root in
+            AuditLog(root: root, dekProvider: { [weak self] in self?.encryption.protector.heldKey })
+        }
         logEncryptionTransitionIfNeeded()
         saveFailureSubject = nil
         guard let root = dataRoot else {
@@ -109,6 +113,7 @@ final class AppModel: ObservableObject {
             databaseState = .noDataFolder
             patients = []
             unreadablePatients = []
+            unreadableDatabaseRecords = []
             schemaWarning = nil
             return
         }
@@ -216,6 +221,41 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Adds an inline comment, surfacing a failure (see `attemptSave`).
+    func addComment(
+        sessionID: UUID, quotedText: String, body: String, anchorSeconds: Double?, quoteStart: Int?,
+        format: ProgressNoteFormat? = nil
+    ) -> SessionComment? {
+        var added: SessionComment?
+        attemptSave("comment") {
+            guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
+            added = commentStore.addComment(
+                sessionID: sessionID, quotedText: quotedText, body: body,
+                anchorSeconds: anchorSeconds, quoteStart: quoteStart, format: format
+            )
+            guard added != nil else { throw DatabaseWriteError.writeFailed }
+        }
+        return added
+    }
+
+    /// Edits a comment's body, surfacing a failure (see `attemptSave`).
+    @discardableResult
+    func updateComment(id: String, body: String) -> Bool {
+        attemptSave("comment") {
+            guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
+            guard commentStore.updateComment(id: id, body: body) else { throw DatabaseWriteError.writeFailed }
+        }
+    }
+
+    /// Resolves or reopens a comment, surfacing a failure (see `attemptSave`).
+    @discardableResult
+    func setCommentResolved(id: String, resolved: Bool) -> Bool {
+        attemptSave("comment") {
+            guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
+            guard commentStore.setCommentResolved(id: id, resolved: resolved) else { throw DatabaseWriteError.writeFailed }
+        }
+    }
+
     /// Records that saving `subject` failed. See `attemptSave`.
     func reportSaveFailure(_ subject: String) {
         saveFailureSubject = subject
@@ -256,7 +296,7 @@ final class AppModel: ObservableObject {
     /// Record an ePHI-affecting action, if a data folder (and thus a log) exists.
     /// The thin seam call sites use so they don't reach into `audit` directly.
     func recordAudit(_ action: AuditAction, subjectID: String? = nil, detail: String? = nil) {
-        audit?.record(action, subjectID: subjectID, detail: detail)
+        _ = try? audit?.record(action, subjectID: subjectID, detail: detail)
     }
 
     /// Compares the current encryption on/unlocked state against the last build's
@@ -273,13 +313,13 @@ final class AppModel: ObservableObject {
         guard let wasEnabled = lastEncryptionEnabled,
               let wasUnlocked = lastEncryptionUnlocked else { return }
         if !wasEnabled, enabled {
-            audit?.record(.encryptionEnabled)
+            _ = try? audit?.record(.encryptionEnabled)
         } else if wasEnabled, !enabled {
-            audit?.record(.encryptionDisabled)
+            _ = try? audit?.record(.encryptionDisabled)
         } else if wasEnabled, enabled, !wasUnlocked, unlocked {
             // Unlocking an already-enabled folder (a fresh enable already logs
             // .encryptionEnabled, so it isn't double-counted as an unlock).
-            audit?.record(.encryptionUnlocked)
+            _ = try? audit?.record(.encryptionUnlocked)
         }
     }
 
@@ -289,6 +329,7 @@ final class AppModel: ObservableObject {
             let listing = try store.patientListing()
             patients = listing.patients
             unreadablePatients = listing.unreadable + store.unreadableEntries.filter { $0.kind == .storedRecord }
+            unreadableDatabaseRecords = commentStore?.unreadableEntries ?? []
             reindexSpotlight()
         } catch {
             errorMessage = error.localizedDescription

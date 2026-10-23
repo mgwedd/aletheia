@@ -349,8 +349,10 @@ final class PatientChatContextTests: XCTestCase {
         ]
         let prompt = Prompts.patientChat(context: "CTX", history: history, question: question)
         XCTAssertEqual(occurrences(of: question, in: prompt), 1)
-        XCTAssertTrue(prompt.contains("Earlier question"))
-        XCTAssertTrue(prompt.contains("Earlier answer"))
+        // The earlier exchange goes in as chat turns, without the question.
+        let turns = PromptTurn.recent(history, question: question)
+        XCTAssertEqual(turns.map(\.text), ["Earlier question", "Earlier answer"])
+        XCTAssertEqual(occurrences(of: question, in: PromptTurn.flattened(turns, then: prompt)), 1)
     }
 
     func testQuestionAppearsOnceWithPriorHistoryOnly() {
@@ -414,13 +416,13 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertLessThanOrEqual(context.text.count, 12_000)
         XCTAssertTrue(context.coverage.layered)
         XCTAssertFalse(context.coverage.wholeTranscripts)
-        XCTAssertTrue(section(context.text, tag: "S1").contains("Session digest:\nSummary of day 8."))
+        XCTAssertTrue(section(context.text, tag: "S1").contains("Session digest:\n<digest>\nSummary of day 8."))
         XCTAssertFalse(section(context.text, tag: "S1").contains("weather"), "a session with a summary gets no transcript text")
         // The summaries' leftover room is shared by at most 4 sessions, newest first:
         // S4–S7 get their openings, cut short; the oldest, S8, gets nothing.
         for tag in ["S4", "S5", "S6", "S7"] {
             let block = section(context.text, tag: tag)
-            XCTAssertTrue(block.contains(PatientZoom.openingLabel + "\n[00:00] Patient: We talked"), tag)
+            XCTAssertTrue(block.contains(PatientZoom.openingLabel + "\n<transcript>\n[00:00] Patient: We talked"), tag)
             XCTAssertTrue(block.contains(PatientZoom.openingCutMarker), tag)
         }
         XCTAssertFalse(context.text.contains("===== Session [S8]"))
@@ -549,7 +551,7 @@ final class PatientChatContextTests: XCTestCase {
         // On this budget the newest 4 keep their own summary (`individualSummaryLimit`); older ones merge by month.
         XCTAssertEqual(context.coverage.monthMergedSessions, 5)
         XCTAssertEqual(context.coverage.digestTags, Set((1...9).map { "S\($0)" }))
-        XCTAssertTrue(section(context.text, tag: "S1").contains("Session digest:\nDigest summary for session 9"))
+        XCTAssertTrue(section(context.text, tag: "S1").contains("Session digest:\n<digest>\nDigest summary for session 9"))
         XCTAssertTrue(context.text.contains("===== Earlier Sessions: December 2025 [S5, S6] ====="))
         XCTAssertTrue(context.text.contains("===== Earlier Sessions: November 2025 [S7] ====="))
         XCTAssertTrue(context.text.contains("===== Earlier Sessions: October 2025 [S8, S9] ====="))
@@ -651,8 +653,8 @@ final class PatientChatContextTests: XCTestCase {
 
         XCTAssertTrue(context.coverage.layered)
         let newest = section(context.text, tag: "S1")
-        XCTAssertTrue(newest.contains("Session digest:\nWhole-session summary."))
-        XCTAssertTrue(newest.contains("Summary of the part search points at [20:00–29:00] (1 matching transcript line):\nA trip with her brother that went badly."), newest)
+        XCTAssertTrue(newest.contains("Session digest:\n<digest>\nWhole-session summary."))
+        XCTAssertTrue(newest.contains("Summary of the part search points at [20:00–29:00] (1 matching transcript line):\n<digest>\nA trip with her brother that went badly."), newest)
         XCTAssertFalse(context.text.contains("Opening small talk about errands."), "nothing points at that part")
         XCTAssertTrue(context.text.contains(PatientZoom.areasHeader))
         XCTAssertTrue(context.text.contains("(read_section session S1, start 20:00, end 29:00)"))
@@ -719,13 +721,13 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertTrue(context.coverage.layered)
         for (tag, day) in [("S2", 5), ("S4", 3), ("S6", 1)] {
             let block = section(context.text, tag: tag)
-            XCTAssertTrue(block.contains(PatientZoom.openingLabel + "\n[00:00] Patient: Day \(day) begins."), tag)
+            XCTAssertTrue(block.contains(PatientZoom.openingLabel + "\n<transcript>\n[00:00] Patient: Day \(day) begins."), tag)
             XCTAssertTrue(block.contains(PatientZoom.openingCutMarker), tag)
             XCTAssertFalse(block.contains("Day \(day) ends."), "\(tag): only the opening, never the whole transcript")
         }
         for (tag, day) in [("S1", 6), ("S3", 4), ("S5", 2)] {
             let block = section(context.text, tag: tag)
-            XCTAssertTrue(block.contains("Session digest:\nSummary of day \(day)."), tag)
+            XCTAssertTrue(block.contains("Session digest:\n<digest>\nSummary of day \(day)."), tag)
             XCTAssertFalse(block.contains(PatientZoom.openingLabel), "\(tag) has a summary")
             XCTAssertFalse(block.contains("Day \(day) begins."), tag)
         }
@@ -824,7 +826,7 @@ final class PatientChatContextTests: XCTestCase {
         let openings = store.gatherCitedPatientContext(for: patient, relevantTo: termless, characterBudget: termlessBudget)
         XCTAssertLessThanOrEqual(openings.text.count, termlessBudget)
         XCTAssertGreaterThanOrEqual(openings.coverage.openingSessions, 4)
-        XCTAssertTrue(section(openings.text, tag: "S1").contains(PatientZoom.openingLabel + "\n[0:00] Y: Session 99 line 0 "))
+        XCTAssertTrue(section(openings.text, tag: "S1").contains(PatientZoom.openingLabel + "\n<transcript>\n[0:00] Y: Session 99 line 0 "))
         XCTAssertFalse(openings.text.contains("Session 99 line 899 "), "never a whole transcript")
         XCTAssertTrue(try XCTUnwrap(openings.coverage.label).contains("with no summary yet"))
         let kayaking = store.gatherCitedPatientContext(

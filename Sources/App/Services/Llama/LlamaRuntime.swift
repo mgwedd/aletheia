@@ -58,8 +58,8 @@ enum LlamaRuntime {
     static func removeModel(_ model: LlamaModel, in directory: URL = modelsDirectory) throws {
         unloadAll()
         let url = directory.appendingPathComponent(model.fileName)
-        try? FileManager.default.removeItem(at: LlamaModelDownloader.partialURL(for: url))
-        try? FileManager.default.removeItem(at: LlamaModelDownloader.resumeDataURL(for: url))
+        try? FileManager.default.removeItem(at: ModelFileInstaller.partialURL(for: url))
+        try? FileManager.default.removeItem(at: ModelFileInstaller.legacyResumeDataURL(for: url))
         if FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
         }

@@ -25,7 +25,7 @@ check() {
         elif [ -n "$used" ] && [ "$listed" = 1 ]; then
             echo "AuditAction.$name is recorded now; remove it from scripts/audit-unwired.txt"; bad=1
         fi
-    done < <(sed -n 's/^[[:space:]]*case \([A-Za-z]*\)$/\1/p' "$def")
+    done < <(sed -n '/enum AuditAction/,/^[[:space:]]*}/ s/^[[:space:]]*case \([A-Za-z]*\)$/\1/p' "$def")
     return $bad
 }
 

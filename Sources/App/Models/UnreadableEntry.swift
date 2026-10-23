@@ -12,6 +12,7 @@ struct UnreadableEntry: Identifiable, Equatable {
     enum Kind: String, Equatable {
         case patientRecord   // `patient.json`
         case sessionRecord   // `session.json`
+        case databaseRecord  // payload in `Aletheia.sqlite`
         case storedRecord    // a chat file or a database record (note, chat)
     }
 
@@ -30,24 +31,33 @@ struct UnreadableEntry: Identifiable, Equatable {
     let folder: URL
     /// The owning patient's id, for `.sessionRecord` entries.
     let patientId: UUID?
+    /// Non-PHI row identity for a database payload; distinguishes rows in one file.
+    let recordIdentifier: String?
     /// The damaged file's name, for `.storedRecord` entries.
     let fileLabel: String?
 
-    init(kind: Kind, reason: Reason, folder: URL, patientId: UUID? = nil, fileLabel: String? = nil) {
+    init(kind: Kind, reason: Reason, folder: URL, patientId: UUID? = nil, recordIdentifier: String? = nil, fileLabel: String? = nil) {
         self.kind = kind
         self.reason = reason
         self.folder = folder
         self.patientId = patientId
+        self.recordIdentifier = recordIdentifier
         self.fileLabel = fileLabel
     }
 
-    var id: String { "\(kind.rawValue)|\(folder.path)" + (fileLabel.map { "|\($0)" } ?? "") }
+    var id: String {
+        var base = "\(kind.rawValue)|\(folder.path)"
+        if let recordIdentifier { base += "|\(recordIdentifier)" }
+        if let fileLabel { base += "|\(fileLabel)" }
+        return base
+    }
 
     /// The file that couldn't be read.
     var fileName: String {
         switch kind {
         case .patientRecord: return "patient.json"
         case .sessionRecord: return "session.json"
+        case .databaseRecord: return "Aletheia.sqlite"
         case .storedRecord: return fileLabel ?? "stored record"
         }
     }
@@ -62,10 +72,12 @@ struct UnreadableEntry: Identifiable, Equatable {
         }
         switch reason {
         case .notReadable:
+            if kind == .databaseRecord { return "Database record couldn't be opened" }
             return kind == .patientRecord
                 ? "Patient record couldn't be opened"
                 : "Session record couldn't be opened"
         case .undecodable:
+            if kind == .databaseRecord { return "Database record is damaged" }
             return kind == .patientRecord
                 ? "Patient record file is damaged"
                 : "Session record file is damaged"
@@ -77,6 +89,9 @@ struct UnreadableEntry: Identifiable, Equatable {
     /// Plain-language, non-blocking explanation: what happened and what was (not)
     /// done to the file. The location is shown separately by the UI.
     var message: String {
+        if kind == .databaseRecord {
+            return "Aletheia couldn't open an encrypted database record. The original record was left untouched."
+        }
         if kind == .storedRecord {
             return "Aletheia couldn't read a stored note or chat (\(fileName)), so it isn't shown. "
                 + "The original data was left untouched and nothing was overwritten. "

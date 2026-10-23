@@ -3,7 +3,7 @@ import XCTest
 @testable import Aletheia
 
 final class EncryptionManagerTests: XCTestCase {
-    private let fastIterations = 1_000
+    private let fastIterations = 100_000
     private var tempRoot: URL!
 
     override func setUpWithError() throws {
@@ -132,6 +132,35 @@ final class EncryptionManagerTests: XCTestCase {
         let relaunched = manager(root: tempRoot)
         try relaunched.unlock(passphrase: "second")
         XCTAssertEqual(relaunched.state, .unlocked)
+    }
+
+    func testEnableWithRecoveryKeyUnlocksWithBoth() throws {
+        let m = manager(root: tempRoot)
+        let key = RecoveryKey.generate()
+        try m.enable(passphrase: "my-passphrase", recoveryKey: key, iterations: fastIterations)
+        XCTAssertTrue(m.hasRecoveryKey)
+
+        m.lock()
+        try m.unlock(recoveryKey: key)
+        XCTAssertEqual(m.state, .unlocked)
+
+        m.lock()
+        try m.unlock(passphrase: "my-passphrase")
+        XCTAssertEqual(m.state, .unlocked)
+    }
+
+    func testReplaceRecoveryKeyUpdatesSlot() throws {
+        let m = manager(root: tempRoot)
+        let initialKey = RecoveryKey.generate()
+        try m.enable(passphrase: "test-passphrase-1", recoveryKey: initialKey, iterations: fastIterations)
+
+        let replacementKey = try m.replaceRecoveryKey(iterations: fastIterations)
+        XCTAssertNotEqual(replacementKey, initialKey)
+
+        m.lock()
+        XCTAssertThrowsError(try m.unlock(recoveryKey: initialKey))
+        try m.unlock(recoveryKey: replacementKey)
+        XCTAssertEqual(m.state, .unlocked)
     }
 
     /// The non-negotiable constraint behind gating `AtRestEncryptionFeatureModule`
@@ -286,6 +315,50 @@ final class EncryptionManagerTests: XCTestCase {
         try m.unlock(passphrase: "test-passphrase-1")
         XCTAssertEqual(m.state, .unlocked)
         XCTAssertEqual(m.unlockRetryDelay, 0)
+    }
+
+    /// Wrong recovery keys and wrong passphrases count against one throttle;
+    /// a key with a bad checksum never reaches the keystore and isn't counted.
+    func testRecoveryKeyUnlockSharesThePassphraseThrottle() throws {
+        var now = Date(timeIntervalSince1970: 1_000)
+        let throttle = UnlockThrottle(freeAttempts: 1, baseDelay: 10, maxDelay: 100, now: { now })
+        let m = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: isolatedDefaults(), throttle: throttle)
+        let key = RecoveryKey.generate()
+        try m.enable(passphrase: "test-passphrase-1", recoveryKey: key, iterations: fastIterations)
+        m.lock()
+
+        var words = RecoveryKey.words(from: key)
+        words[23] = words[23] == "abandon" ? "zoo" : "abandon"
+        for _ in 0..<5 {
+            XCTAssertThrowsError(try m.unlock(recoveryKey: words.joined(separator: " "))) {
+                XCTAssertEqual($0 as? RecoveryKey.RecoveryKeyError, .invalidChecksum)
+            }
+        }
+        XCTAssertEqual(m.unlockRetryDelay, 0, "typos aren't counted")
+
+        XCTAssertThrowsError(try m.unlock(passphrase: "wrong passphrase"))   // free
+        XCTAssertThrowsError(try m.unlock(recoveryKey: RecoveryKey.generate())) {
+            XCTAssertEqual($0 as? Keystore.KeystoreError, .wrongRecoveryKey)
+        }
+        XCTAssertEqual(m.unlockRetryDelay, 10)
+        XCTAssertThrowsError(try m.unlock(recoveryKey: key)) {
+            XCTAssertEqual($0 as? EncryptionManager.ManagerError, .throttled(retryAfter: 10))
+        }
+        now.addTimeInterval(11)
+        try m.unlock(recoveryKey: key)
+        XCTAssertEqual(m.state, .unlocked)
+        XCTAssertEqual(m.unlockRetryDelay, 0)
+    }
+
+    func testRecoveryKeyUnlockReportsMissingKeystore() throws {
+        let m = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: isolatedDefaults())
+        let key = RecoveryKey.generate()
+        try m.enable(passphrase: "test-passphrase-1", recoveryKey: key, iterations: fastIterations)
+        m.lock()
+        try FileManager.default.removeItem(at: tempRoot.appendingPathComponent(Keystore.fileName))
+        XCTAssertThrowsError(try m.unlock(recoveryKey: key)) {
+            XCTAssertEqual($0 as? EncryptionManager.ManagerError, .keystoreMissing)
+        }
     }
 
     private struct FailingDeviceKeys: DeviceKeyStoring {

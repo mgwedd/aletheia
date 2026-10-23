@@ -41,7 +41,7 @@ case "$area" in
     # Info.plist and other resources, the CD/release workflows, and the scripts
     # packaging calls.
     package)
-        pattern='^(project\.yml$|Packages/|Sources/App/Resources/|\.github/workflows/(cd|release)\.yml$|scripts/(build|apply-release|compute-release|changelog-section|ci-changes|launch-smoke|release-notes)\.sh$)'
+        pattern='^(project\.yml$|Packages/|Sources/App/Resources/|Sources/NetworkHelper/|Sources/NetworkHelperShared/|\.github/workflows/(cd|release)\.yml$|scripts/(build|apply-release|compute-release|changelog-section|ci-changes|launch-smoke|release-notes)\.sh$)'
         ;;
     *)
         echo "usage: $0 <code|benchmarks|package> [BASE_REF [HEAD_REF]]" >&2

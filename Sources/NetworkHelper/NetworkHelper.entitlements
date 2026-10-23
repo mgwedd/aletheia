@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	The network helper: the ONLY code in Aletheia that can open a socket, and
+	the only thing it can do beyond that is nothing. It has no file access, no
+	app group and no keychain access, so it cannot read patient data. The app is
+	the mirror image: it reads patient data and has no network entitlement.
+	scripts/check-entitlements.sh fails CI if anything is added here.
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- Outgoing connections: the update check and opt-in model downloads. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>

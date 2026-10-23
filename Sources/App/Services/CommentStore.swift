@@ -80,6 +80,7 @@ struct SessionComment: Identifiable, Equatable {
 /// `UUID`. Identity is never derived from a folder name or slug, so annotations
 /// follow a session or patient even if the on-disk folder is renamed or moved.
 final class CommentStore {
+    private let root: URL
     private let core: SQLitePersistenceCore
     private let annotations: AnnotationRepository
     private let chats: ChatRepository
@@ -126,6 +127,7 @@ final class CommentStore {
     /// schema, refused/failed migration, corrupt or locked file, …).
     init(opening root: URL, protector: FileProtector = .passthrough) throws {
         let core = try SQLitePersistenceCore(opening: Self.databaseURL(root: root))
+        self.root = root
         self.core = core
         self.protector = protector
         self.annotations = AnnotationRepository(core: core, protector: protector)
@@ -274,13 +276,35 @@ final class CommentStore {
     /// Returns false on any storage error.
     @discardableResult
     func reencrypt(to newProtector: FileProtector) -> Bool {
+        // A row that can't be opened or sealed is left untouched and fails the
+        // pass, but the remaining rows are still converted.
+        var ok = true
         for kind in Self.allKinds {
             for record in core.allRecords(kind: kind) {
+                guard let payload = RecordPayloadCodec.reseal(record.payload, from: protector, to: newProtector) else {
+                    ok = false
+                    continue
+                }
                 var resealed = record
-                resealed.payload = RecordPayloadCodec.reseal(record.payload, from: protector, to: newProtector)
+                resealed.payload = payload
                 guard core.put(resealed) else { return false }
             }
         }
-        return true
+        return ok
+    }
+
+    /// Database rows with envelopes that fail authentication or cannot be
+    /// opened under the current key. The original payload is never changed.
+    var unreadableEntries: [UnreadableEntry] {
+        Self.allKinds.flatMap { kind in
+            core.allRecords(kind: kind).compactMap { record in
+                guard RecordPayloadCodec.hasUnreadableEnvelope(record.payload, using: protector) else { return nil }
+                return UnreadableEntry(
+                    kind: .databaseRecord, reason: .notReadable,
+                    folder: root,
+                    recordIdentifier: "\(kind)|\(record.id)"
+                )
+            }
+        }
     }
 }

@@ -87,7 +87,7 @@ enum OrphanAudioSweep {
                 // A set-aside take never replaces a recording the session has since gained.
                 if recover(item, into: patient, session: session, store: store, protector: protector, overwrites: !isQuarantined) {
                     result.stagedSessionsRecovered += 1
-                    audit?.record(.recordingRecovered, subjectID: session.id.uuidString, detail: "staged")
+                    _ = try? audit?.record(.recordingRecovered, subjectID: session.id.uuidString, detail: "staged")
                     if let ledger, queuesTranscription, !session.hasTranscript {
                         ledger.record([InterruptedWork(kind: .transcription, patientID: patient.id, sessionFolder: session.folderName)])
                     }
@@ -122,7 +122,7 @@ enum OrphanAudioSweep {
 
                         if sealedAny {
                             result.legacySessionsSealed += 1
-                            audit?.record(.recordingRecovered, subjectID: session.id.uuidString, detail: "legacy plaintext")
+                            _ = try? audit?.record(.recordingRecovered, subjectID: session.id.uuidString, detail: "legacy plaintext")
                         }
                     }
                 }
@@ -203,7 +203,7 @@ enum OrphanAudioSweep {
             else { continue }
             if recover(item, into: patient, session: session, store: store, protector: protector, overwrites: false) {
                 count += 1
-                audit?.record(.recordingRecovered, subjectID: session.id.uuidString, detail: "set aside")
+                _ = try? audit?.record(.recordingRecovered, subjectID: session.id.uuidString, detail: "set aside")
             }
         }
         NotificationCenter.default.post(name: .setAsideRecordingsMayHaveChanged, object: nil)
@@ -242,7 +242,7 @@ enum OrphanAudioSweep {
         let recovered = recover(item, into: patient, session: session, store: store, protector: protector)
         NotificationCenter.default.post(name: .setAsideRecordingsMayHaveChanged, object: nil)
         guard recovered else { throw ManualRecoveryError.nothingRecovered }
-        audit?.record(.recordingRecovered, subjectID: session.id.uuidString, detail: "set aside, chosen session")
+        _ = try? audit?.record(.recordingRecovered, subjectID: session.id.uuidString, detail: "set aside, chosen session")
     }
 
     /// Where recordings whose session can't be found are kept.
