@@ -13,29 +13,32 @@ straight to the FileVault pane, and turning it on is strongly recommended. It
 doesn't affect backups.
 
 **App lock (Touch ID / password).** Optional, in Settings › Security. When on,
-Aletheia requires your Touch ID or Mac password to open and re-locks when it's
-hidden, so an unlocked, unattended Mac doesn't expose patient notes through the
+Aletheia requires your Touch ID or Mac password to open and re-locks when your
+Mac sleeps, its screen locks, or you switch user (and, optionally, after a
+period of inactivity), so an unlocked, unattended Mac doesn't expose patient notes through the
 app. It changes no files and has no effect on backup or restore. Password
 fallback is always available, so you can't be locked out of your own data.
 
-**At-rest encryption of the data folder (opt-in, "Extra Encryption").** Settings
-can encrypt the SQLite database's text columns, transcripts, summaries, and
-audio with AES-256-GCM so the files are ciphertext on disk (protecting against
-a compromised-while-running Mac and any synced copies). Key handling uses
+**At-rest encryption of the data folder (opt-in, developer builds only).**
+Settings › Encryption can encrypt selected SQLite database fields, transcripts, summaries, and
+audio with AES-256-GCM so those files are ciphertext on disk, including in
+copied or synced copies of the folder. Key handling uses
 envelope encryption: a recovery passphrase you set wraps a per-folder data key,
 with an optional Keychain-backed "remember on this Mac" so you aren't prompted
 every launch. Trade-off: encrypted files are no longer Finder-readable
 plaintext, and the recovery passphrase must be kept safe — losing it and any
-device-remembered copy makes the data unrecoverable. Full design in
+device-remembered copy makes the data unrecoverable. Production builds do not
+offer to turn it on; a folder that is already encrypted can still be unlocked
+and managed. The search index (`search.sqlite`) stays plaintext. Full design in
 [docs/ENCRYPTION.md](docs/ENCRYPTION.md).
 
 **Backups.** The data folder backs up with zero configuration via macOS Time
 Machine (keep those backups on an encrypted disk — the folder can hold
-unencrypted data; Settings › Backup can exclude it if you prefer). Settings ›
-Backup also offers an opt-in end-to-end-encrypted backup
-archive (`.aletheiabackup`, sealed with your key) written to a local
-`.backups/archives/` folder, plus a staged (not yet live) opt-in encrypted iCloud
-destination for the same archive. Point-in-time database snapshots
+unencrypted data; Settings › Backups can exclude it if you prefer). Aletheia
+does not make or upload backup copies of its own: an end-to-end-encrypted
+archive (`.aletheiabackup`, sealed with your key) for a local
+`.backups/archives/` folder and an encrypted iCloud destination are built but
+not connected to the app. Point-in-time database snapshots
 (`.backups/snapshots/` and `.backups/migrations/`, via SQLite's `VACUUM INTO`)
 protect schema migrations and encryption on/off changes against a mid-write
 failure. All of these live in the single hidden `.backups/` folder inside your
@@ -44,12 +47,16 @@ there automatically).
 
 ## Threat model, briefly
 
-| Scenario | FileVault | App lock | Extra Encryption |
+| Scenario | FileVault | App lock | At-rest encryption |
 | --- | --- | --- | --- |
 | Mac lost/stolen while off | ✅ | — | ✅ |
 | Someone opens your unlocked Mac | — | ✅ | ✅ |
-| Malware / another process reading the folder while you're logged in | — | — | ✅ |
-| A synced (e.g. iCloud) copy of the folder | — | — | ✅ |
+| Malware / another process reading the folder while you're logged in | — | — | ◐ |
+| A synced (e.g. iCloud) copy of the folder | — | — | ◐ |
+
+◐: sealed files and fields stay ciphertext, but folder names and the search
+index (`search.sqlite`) do not, and a key remembered on this Mac or held by the
+unlocked app is reachable by software running as you.
 
 ## Keeping secrets & PHI out of the repo
 

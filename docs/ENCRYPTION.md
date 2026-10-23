@@ -1,9 +1,9 @@
 # At-rest encryption (Tier 2)
 
 Opt-in AES-256-GCM encryption of selected data-folder contents. This feature is
-currently available in developer builds only; production builds do not offer
-its setup or management UI. An already-encrypted folder can still be unlocked
-and read. This document describes the implemented design (see **Rollout**).
+currently available in developer builds only; production builds do not offer to
+turn it on. A folder that is already encrypted can still be unlocked, read, and
+managed (including turned off) from Settings › Encryption in any build. This document describes the implemented design (see **Rollout**).
 
 Tier 1 (already shipped) is the Touch ID / password **app lock** — it gates
 _opening the running app_. Tier 2 seals supported files and database fields
@@ -86,6 +86,9 @@ Does **not** protect against:
 - **Metadata** — patient/session **folder names and the folder layout** are not
   encrypted (they're how the app finds things). Names are chosen by the user;
   keep identifying detail out of them if that matters.
+- **Search index** — `search.sqlite` holds plaintext transcript, note, and comment text
+  for search once the folder is unlocked, and it stays on disk between launches.
+  A copied or synced folder includes it.
 
 The encryption implementation uses Apple's **CryptoKit** and **CommonCrypto**.
 No SQLCipher is used; the database is an ordinary SQLite file with selected
@@ -99,13 +102,14 @@ field values sealed when the feature is enabled.
 | comment quote/body, note body (Aletheia.sqlite) | field-level (`FieldCipher`, base64 envelope per value); DB file, schema, keys, timestamps stay a normal SQLite file — no SQLCipher |
 | mic.caf, call.caf | streaming `ChunkedCipher` (bounded memory), sealed on stop, decrypted to a temp file for transcription |
 
-Not encrypted (by design): patient/session **folder names**, the schema
-metadata stamp, and the keystore itself. Names are how the app finds things;
+Not encrypted: patient/session **folder names**, the schema metadata stamp,
+the keystore itself, the plaintext search index (`search.sqlite`), and the
+audit log (`audit.log`, which holds no clinical text). Names are how the app finds things;
 keep identifying detail out of them if that matters.
 
 ## Turning it on / off
 
-In developer builds, Settings → **Extra Encryption**. Turning it on sets a recovery passphrase and
+Settings → **Encryption** (turning it on is offered in developer builds only). Turning it on sets a recovery passphrase and
 runs `DataMigrator` to seal the folder's existing PHI; turning it off decrypts
 everything back to plain files first and only then removes the keystore, so a
 failure never leaves data unreadable. The DEK is held in memory for the running

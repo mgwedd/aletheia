@@ -29,12 +29,13 @@ Update requests to GitHub may expose an IP address and app version to that host.
 
 Recordings, transcripts, summaries, notes, comments, medications, clinical
 history, and patient information are stored in the data folder you choose. The
-current picker can select iCloud Drive or another synced location. Choose a local
-folder if you want the data to remain on this Mac. Production builds do not offer
-at-rest encryption for new data folders, so use FileVault and encrypted backup
-media.
+folder picker opens in iCloud Drive when it is available and suggests it, but you
+can pick any folder. A folder in iCloud Drive or another synced location is
+copied by that provider. Choose a local folder if you want the data to remain on
+this Mac. Production builds do not offer at-rest encryption for new data
+folders, so use FileVault and encrypted backup media.
 
-The cloud-backup preference in Settings does not initiate an upload. App
+The App does not upload backups of its own. App
 settings, downloaded models, and an optional remembered encryption key are
 stored separately in the app container or login Keychain. Your data is not sent
 to the developer or a developer-operated server.
@@ -43,12 +44,13 @@ to the developer or a developer-operated server.
 
 The App works offline for its core features. Its network paths are:
 
-- **Update check** — if enabled, the App fetches a version file (an "appcast")
+- **Update check** — when enabled (the default), the App fetches a version file (an "appcast")
   from GitHub. Your IP address and App version may be visible to the host; no
   patient data is sent.
 - **Model downloads** — when you ask to download a speech-to-text or language
-  model, the App downloads the file from Hugging Face. No patient data is
-  uploaded by this request.
+  model, the App downloads the file from Hugging Face. If you ask the App to
+  download an Ollama model, Ollama fetches it from its own registry
+  (`ollama.com`). No patient data is uploaded by these requests.
 - **Local AI** — the default Ollama endpoint is `127.0.0.1:11434`. Its address
   is configurable, so verify that it points to this Mac before sending clinical
   content to Ollama.

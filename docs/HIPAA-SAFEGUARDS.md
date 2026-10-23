@@ -12,8 +12,9 @@ record-keeping rules reviewed before relying on any of this.
 
 Aletheia is a **single-user** application. PHI (session audio,
 transcripts, summaries, notes, comments, session digests) is created and stored
-in a data folder the clinician chooses. The current picker can select a synced
-folder, so the practice must choose a local location to keep PHI on the Mac.
+in a data folder the clinician chooses. The folder picker opens in iCloud Drive
+when it is available and suggests it, so the practice must deliberately choose a
+local location to keep PHI on the Mac.
 The developer runs **no servers,
 accounts, analytics, or telemetry** and never receives, transmits, stores, or can
 access any of that data.
@@ -39,25 +40,26 @@ administrative and physical safeguards the practice owns; the app's job is the
 ## Data flow & local asset inventory
 
 Use this inventory when documenting the practice's Security Risk Analysis.
-Paths are relative to the data folder selected at first run; the present picker
-can select an iCloud Drive or other synced folder. Confirm the chosen folder and
+Paths are relative to the data folder selected at first run; the picker opens in
+iCloud Drive when it is available, and any synced folder can be selected. Confirm the chosen folder and
 the destination and encryption of any system backup.
 
 | Asset | Location and handling |
 | --- | --- |
 | Patient and session files | `Patients/<patient folder>/<session folder>/` contains `patient.json`, `session.json`, audio (`mic.caf`, `call.caf`), transcripts, summaries, generated notes, digests, and chats. Patient folder names and session folder names can reveal identifying information. These files are plaintext unless optional at-rest encryption was enabled in a developer build or an earlier build. |
 | Clinical database | `Aletheia.sqlite` holds records and metadata. The optional encryption feature seals selected fields, not the SQLite file, schema, or all metadata. |
-| Search index | `search.sqlite` is a local plaintext search index. It is removed when the encryption manager locks and rebuilt on unlock. |
+| Search index | `search.sqlite` is a local full-text index of transcript, note, and comment text. It is plaintext even when optional encryption is on, and it stays on disk between launches; the app lock closes it but does not delete it. It is deleted when encryption is turned off and rebuilt when missing. |
 | Audit log | `audit.log` is local JSON lines with actions, times, and optional opaque identifiers. It is plaintext, best effort, and has no tamper-evident seal. |
 | Recovery material and copies | `.aletheia-keystore.json` stores a wrapped data key if optional encryption is enabled. `.backups/snapshots/` and `.backups/migrations/` hold local safety copies; the encrypted archive service is not wired into the app. |
 | Other local storage | App settings and the selected-folder bookmark live in the macOS app container. Downloaded models live under the app's Application Support directory. Optional remembered data keys use the device-only login Keychain service `com.aletheia.datakey`. |
 
 The app checks the GitHub release appcast when update checks are enabled and
-downloads models from Hugging Face when requested. The default Ollama endpoint
+downloads models from Hugging Face when requested; an Ollama model download is
+fetched by Ollama from its own registry. The default Ollama endpoint
 is `http://127.0.0.1:11434`; its address is configurable. These network
 requests are separate from the data folder. A synced data folder can transmit
 its contents through the user's cloud provider outside the app's own network
-requests. The current cloud-backup setting does not upload an archive.
+requests. The app does not upload backups of its own.
 
 ## Technical safeguards — §164.312
 
@@ -68,7 +70,7 @@ Legend: **✅ in place** · **◐ in progress** · **○ clinician responsibilit
 | **Access control (a)(1)** — unique user ID, limit access to authorized users | ✅ / ○ | Single-user app scoped to one macOS account. The macOS login (unique user, password/Touch ID) is the access boundary; the app adds its own lock below. |
 | **Automatic logoff (a)(2)(iii)** *(addressable)* | ◐ | App lock re-engages whenever the Mac locks or sleeps, so the Mac's screen-lock setting (System Settings › Lock Screen) provides the logoff; set a short interval there. An optional **in-app idle lock** (off by default) also re-locks after inactivity in Aletheia. |
 | **Encryption & decryption (a)(2)(iv)** *(addressable)* | ◐ / ○ | FileVault is the recommended disk-level baseline. The optional AES-256-GCM at-rest feature is currently available in developer builds only, not production; see [ENCRYPTION.md](ENCRYPTION.md). Production users should use FileVault and encrypted backup media. |
-| **Audit controls (b)** — record and examine activity involving ePHI | ◐ | A local JSON-lines `audit.log` records wired actions including app unlocks, encryption changes, exports, and deletions, with timestamps and no patient names or clinical text. It is viewable and exportable in Settings. Writes are best effort, and the file has no integrity seal or actor identity; some actions, including backups, are not yet recorded. |
+| **Audit controls (b)** — record and examine activity involving ePHI | ◐ | A local JSON-lines `audit.log` records app unlocks and failed unlocks, encryption changes, exports, and patient deletions, with timestamps and no patient names or clinical text. It is viewable and exportable in Settings. Writes are best effort, and the file has no integrity seal or actor identity; some actions, including backups, recording deletion, and chat deletion, are not yet recorded. |
 | **Integrity (c)(1)** — protect ePHI from improper alteration/destruction | ◐ / ○ | SQLite `PRAGMA secure_delete` zeroes freed pages and identity/metadata writes are atomic. The clinician can edit transcripts and draft notes; the app does not yet retain an immutable original or amendment history. Local database snapshots assist recovery, but a complete backup of the data folder remains a practice responsibility. |
 | **Person/entity authentication (d)** | ✅ | App lock via `LocalAuthentication` (Touch ID or Mac password) gates access to the app; macOS account auth gates the device. |
 | **Transmission security (e)(1)** — guard ePHI in transit | ◐ | Update checks and opt-in model downloads use external hosts; the default Ollama endpoint is local (`127.0.0.1:11434`). The app has no working cloud-backup upload. A clinician-chosen data folder may itself be in a synced location, so select a local folder when PHI must stay on the Mac. |
@@ -108,9 +110,10 @@ the app keeps records until the clinician removes them.
 ## Where these controls live in the app
 
 - Settings › Security — app lock, optional idle lock, FileVault guidance.
-- Settings › Extra Encryption — optional at-rest encryption in developer builds;
-  see [ENCRYPTION.md](ENCRYPTION.md).
-- Settings › Backup — optional system-backup exclusion (off by default).
+- Settings › Encryption — optional at-rest encryption in developer builds, and
+  in any build for a folder that is already encrypted; see
+  [ENCRYPTION.md](ENCRYPTION.md).
+- Settings › Backups — optional system-backup exclusion (off by default).
 - Settings › Legal — locally recorded acceptance of the current Terms/Privacy.
 
 See also [SECURITY.md](../SECURITY.md) for the threat model and the
