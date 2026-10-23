@@ -75,6 +75,7 @@ struct AletheiaApp: App {
     private let windowShield: WindowShield
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
+    @State private var showDataFolderMove = false
 
     init() {
         let settings = AppSettings.shared
@@ -190,7 +191,20 @@ struct AletheiaApp: App {
                         // presents) reads must be injected here explicitly.
                         .environmentObject(encryption)
                 }
+                .sheet(isPresented: Binding(
+                    get: { DataFolderPolicy.presentsMoveSheet(requested: showDataFolderMove, appLocked: appLock.isLocked) },
+                    // Hidden by the app lock: keep the request so it shows again after unlock.
+                    set: { if !$0 && !appLock.isLocked { showDataFolderMove = false } }
+                )) {
+                    DataFolderMoveView()
+                        .environmentObject(settings)
+                        .environmentObject(appModel)
+                        .noWritingTools()
+                }
                 .frame(minWidth: 900, minHeight: 600)
+                .onAppear {
+                    showDataFolderMove = settings.dataRootURL != nil && settings.dataRootVerdict != .ok
+                }
                 .task {
                     if settings.autoCheckForUpdates {
                         await updateService.checkForUpdates()
