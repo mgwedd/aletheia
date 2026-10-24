@@ -139,7 +139,7 @@ final class EncryptionManager: ObservableObject {
     }
 
     private func writeMarker(at root: URL) throws {
-        try Data("1\n".utf8).write(to: markerURL(root), options: .atomic)
+        try SecureFS.write(Data("1\n".utf8), to: markerURL(root))
         defaults.set(true, forKey: markerDefaultsKey(root))
     }
 

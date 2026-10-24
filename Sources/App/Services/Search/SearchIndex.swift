@@ -558,7 +558,7 @@ final class SearchIndex {
 
     private func openOnce() -> OpaquePointer? {
         var handle: OpaquePointer?
-        if let url { try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true) }
+        if let url { try? SecureFS.createDirectory(at: url.deletingLastPathComponent()) }
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
         guard sqlite3_open_v2(url?.path ?? ":memory:", &handle, flags, nil) == SQLITE_OK, let db = handle else {
             sqlite3_close_v2(handle)

@@ -55,7 +55,7 @@ struct InterruptedWorkLedger {
             return
         }
         do {
-            try JSONEncoder().encode(items).write(to: url, options: .atomic)
+            try SecureFS.write(JSONEncoder().encode(items), to: url)
         } catch {
             log.error("Couldn't save the interrupted-work list: \(error.localizedDescription, privacy: .public)")
         }
