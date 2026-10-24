@@ -526,7 +526,7 @@ final class AppSettings: ObservableObject {
         let root = Self.standardDataRoot
         let verdict = DataFolderPolicy.verdict(for: root)
         guard verdict == .ok else { throw DataFolderSelectionError.rejected(verdict.explanation) }
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try SecureFS.createDirectory(at: root)
         defaults.removeObject(forKey: Keys.dataRootBookmark)
         defaults.set(true, forKey: Keys.usesStandardDataRoot)
         dataRootURL = root
