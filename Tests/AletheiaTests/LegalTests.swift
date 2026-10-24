@@ -178,6 +178,16 @@ final class LegalTests: XCTestCase {
         XCTAssertFalse(try doc("docs/ENCRYPTION.md").contains("audit.log`, which"))
     }
 
+    /// The threat model exists, SECURITY.md links it, and it names the
+    /// boundaries the code enforces.
+    func testThreatModelExistsAndSecurityLinksIt() throws {
+        XCTAssertTrue(try doc("SECURITY.md").contains("docs/THREAT-MODEL.md"))
+        let text = try doc("docs/THREAT-MODEL.md")
+        for needle in ["Sources/NetworkHelper", "no network entitlement", "SHA-256", "FileVault", "Out of scope"] {
+            XCTAssertTrue(text.contains(needle), needle)
+        }
+    }
+
     /// Statements that used to be true and are not any more.
     func testDocsHaveNoStaleClaims() throws {
         for path in ["PRIVACY.md", "SECURITY.md", "docs/HIPAA-SAFEGUARDS.md", "docs/ENCRYPTION.md", "docs/SETUP-GUIDE.md"] {

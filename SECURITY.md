@@ -93,6 +93,8 @@ pass for instructions.
 
 ## Threat model, briefly
 
+The full model, by trust boundary, is in [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
+
 | Scenario | FileVault | App lock | At-rest encryption |
 | --- | --- | --- | --- |
 | Mac lost/stolen while off | ✅ | — | ✅ |
