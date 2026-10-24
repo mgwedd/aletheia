@@ -24,6 +24,8 @@ struct SecurityPostureView: View {
             ),
             auditLogActive: appModel.audit != nil,
             auditLogVerifiable: appModel.audit?.isVerifiable ?? true,
+            auditWriteFailed: appModel.auditWriteFailed,
+            auditChainBroken: appModel.securityAlerts.contains { $0.id == "auditLogBroken" },
             localEncryptedBackup: settings.localEncryptedBackupEnabled,
             networkOnline: reachability.isOnline,
             diskEncrypted: appModel.diskEncrypted
