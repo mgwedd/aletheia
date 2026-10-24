@@ -7,7 +7,6 @@ phiDeleted
 aiInference
 phiCopied
 backupRestored
-recordingConsentAttested
 noteSigned
 aiNoteVerified
 retentionWarningOverridden
