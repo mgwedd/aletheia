@@ -30,13 +30,16 @@ Before you start: setup finished, a data folder chosen, and the disk encrypted w
 - **PATIENT-07** Type a change in the editor and click **Cancel** → "Discard your changes?" offers **Discard Changes** and **Keep Editing**.
 - **PATIENT-08** Click **Delete patient…** and type her name → **Delete Patient** enables on a match, and her folder and everything in it is gone.
 - **PATIENT-09** Add a patient on a Mac with FileVault off → a "Turn on FileVault" alert appears and no patient is added.
+- **PATIENT-10** Choose **Edit Profile…** and click **Add medication** twice (dev build) → two rows with Medication and Dose fields appear; **Remove medication** deletes one; none left reads "None recorded."
+- **PATIENT-11** Save medications with one row left blank (dev build) → the blank row is dropped, and the profile card lists the others as name and dose.
+- **PATIENT-12** Edit and save a patient in a Release build → no Medications table appears, and medications stored earlier by a dev build are kept.
 
 ## 3. Start a session (SESSION)
 Before you start: a patient with no sessions.
 - **SESSION-01** Open the patient with no sessions → the list says "No Sessions Yet" with a **New session** button.
 - **SESSION-02** Click **New session** twice on the same day → both sessions are listed newest first, each with date and time.
-- **SESSION-03** Record and transcribe a session → its row shows the current state, ending with a Transcript or Note chip.
-- **SESSION-04** Click a Settings link in a warning strip → Settings opens on the page it points to.
+- **SESSION-03** Record, stop and transcribe a session → its row reads "Recording in progress", then "Transcribing…", then shows a Transcript chip; saving a note adds a Note chip.
+- **SESSION-04** Click **Review in Settings…** on the set-aside recordings warning strip → Settings opens on its "Set-aside recordings" page.
 - **SESSION-05** In a Release build, search the Shortcuts app for Aletheia → it offers no actions.
 - **SESSION-06** Schedule a repeating next session with "Save an .ics file" ticked (dev build) → Calendar gains an event with no patient name and the file is saved.
 - **SESSION-07** Choose **Remind Me** > Tomorrow (dev build) → Reminders gains a "Follow up" item that names no patient.
@@ -52,11 +55,12 @@ Before you start: a session with no transcript, a Mac that can play some audio, 
 - **RECORD-06** Deny microphone access and click **Record Session** → no recording starts and an alert says how to allow it in System Settings.
 - **RECORD-07** Click **Record Session** on a Mac with FileVault off → recording doesn't start and a "Turn on FileVault" alert appears.
 - **RECORD-08** Let a recording run past 90 minutes → a "Still recording" alert asks whether you forgot, with **Keep Recording** and **Stop Now**.
-- **RECORD-09** Click **Stop Recording** → the audio is saved with the session and transcription starts by itself.
+- **RECORD-09** Click **Stop Recording** → the microphone and call audio are saved as two files with the session, and transcription starts by itself.
 - **RECORD-10** Force-quit Aletheia mid-recording and reopen → the audio up to that moment is recovered into its session.
 - **RECORD-11** Force-quit mid-recording, delete that patient's folder in Finder and reopen → a warning strip says a recording is set aside, naming no patient.
 - **RECORD-12** Click **Review in Settings…** and recover the item into a session → its audio is added to that session and leaves the list.
 - **RECORD-13** Click **Delete…** on a set-aside recording and confirm → the audio is gone for good.
+
 
 ## 5. Transcribe (TRANSCRIBE)
 Before you start: a session that has a recording and no transcript.
@@ -72,6 +76,7 @@ Before you start: a session that has a recording and no transcript.
 - **TRANSCRIBE-10** Type in the transcript → an edit bar appears with **Save** and **Discard**, and ⌘S keeps the edit.
 - **TRANSCRIBE-11** Edit the transcript, then click another session → "Save your transcript edits?" offers **Save**, **Discard Edits** and **Cancel**.
 - **TRANSCRIBE-12** Turn on "Keep raw audio after transcription" with encryption on (dev build) → the recording is kept after the transcript is saved.
+- **TRANSCRIBE-13** Damage the downloaded speech model, then click **Transcribe** → a "Something went wrong" alert gives the reason and a "Transcription needs attention" notification arrives.
 
 ## 6. Comment on the transcript (COMMENT)
 Before you start: a session with a saved transcript and no comments.
@@ -119,6 +124,9 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-13** Click **Compact** on a long chat → a "Conversation compacted" card replaces the older messages.
 - **CHAT-14** Ask for a flowchart of the main themes → a diagram appears with a **Diagram**/**Source** toggle.
 - **CHAT-15** Ask for a code block and click its **Copy** button → it shows "Copied".
+- **CHAT-16** Remove the AI model and ask a question → a "Something went wrong" or engine alert appears, the question stays in the chat, and **Retry** asks it again.
+- **CHAT-17** Right-click a thread in the **Chats** list → the menu offers Rename and Delete.
+- **CHAT-18** Set a different effort in an **Ask** tab, the patient chat and notes → each keeps its own setting when you switch back.
 
 ## 9. Summaries prepared in the background (DIGEST)
 Before you start: a patient whose sessions have transcripts too long for this Mac to read at once, and the AI model downloaded.
@@ -142,6 +150,8 @@ Before you start: two patients with transcripts, notes and comments, one of them
 - **SEARCH-10** Quit, delete search.sqlite from the data folder and reopen → search still works and nothing is lost.
 - **SEARCH-11** Lock the app and unlock it → search works again after unlock.
 - **SEARCH-12** Turn on "Find patients in Spotlight" (dev build) → Spotlight lists patients by initials, never names.
+- **SEARCH-13** Search a transcript word in capitals, then in lowercase → both return the same results, and accents are ignored.
+- **SEARCH-14** Type "Joanne" plus a topic word from her notes → only her sessions mentioning the topic appear, and adding a date word narrows them to that date.
 
 ## 11. Export and archive (EXPORT)
 Before you start: two patients with transcripts, notes and comments, one session with a kept recording, and one with nothing in it.
@@ -179,6 +189,7 @@ Before you start: a developer build, or a data folder that is already encrypted;
 - **ENCRYPT-07** Enter a wrong passphrase (dev build) → an error says it didn't unlock the data, and repeated failures add a wait.
 - **ENCRYPT-08** Click **Change Passphrase…** (dev build) → it asks for the current and a new passphrase, and the recovery key keeps working.
 - **ENCRYPT-09** Click **Turn Off…** and confirm (dev build) → files are decrypted before the key is removed.
+- **ENCRYPT-10** Stop a recording while the encrypted data folder is locked (dev build) → the audio stays out of the session folder, transcription doesn't start, and reopening adds it.
 
 ## 14. Backups, data folder and upgrades (BACKUP)
 Before you start: some patients and sessions in the data folder, and a copy of it to experiment on.

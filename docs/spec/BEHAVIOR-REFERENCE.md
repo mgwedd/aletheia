@@ -22,8 +22,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 | Harness/eval (HAR) | 1 |
 | Chat & Q&A (CHT) | 69 |
 | AI engine & models (AIE) | 45 |
-| Patients (PAT) | 45 |
-| Sessions (SES) | 35 |
+| Patients (PAT) | 47 |
+| Sessions (SES) | 36 |
 | Search (SRC) | 57 |
 | Comments (CMT) | 32 |
 | Export & archive (EXP) | 48 |
@@ -35,7 +35,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 | Appearance, accessibility & shortcuts (UX) | 21 |
 | Legal & consent (LEG) | 11 |
 | Build tiers (BLD) | 17 |
-| **Total** | **999** |
+| **Total** | **1002** |
 
 ## Recording (REC)
 
@@ -54,7 +54,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **REC-007** When a session already has a transcript or a recording, or is being transcribed or waiting in the transcription queue, no Record button is offered for it.
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionProgress.swift:118, Sources/App/Views/SessionDetailView.swift:1556` · `qa: RECORD-03`
 - **REC-008** When a recording finishes, the session folder holds the microphone and the call audio as two separate audio files rather than one mixed file.
-  `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:444, Sources/App/Services/Store.swift:619, Sources/App/Services/WhisperTranscriber.swift:59` · `qa: BUILD-10`
+  `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:444, Sources/App/Services/Store.swift:619, Sources/App/Services/WhisperTranscriber.swift:59` · `qa: RECORD-09`
 - **REC-009** When microphone access has been denied, pressing Record does not start a recording and shows "Aletheia doesn't have permission to use the microphone. Open System Settings > Privacy & Security > Microphone and turn it on for Aletheia."
   `surface: ui` · `evidence: Sources/App/Services/MicRecorder.swift:5, Sources/App/Services/SessionRecorder.swift:281` · `qa: RECORD-06`
 - **REC-010** When call audio cannot be captured, recording continues with the microphone only and the session pane shows "Only your microphone is being recorded." followed by the reason.
@@ -126,9 +126,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **REC-043** When a recording stops and encryption is off, the staged audio is moved into the session folder.
   `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:444, Sources/App/Services/Crypto/FileProtector.swift:177` · `qa: BUILD-11`
 - **REC-044** When a recording cannot be encrypted on stop (for example the encrypted folder is locked), the audio stays in the private staging folder, never as plaintext in the session folder, and is added to the session, encrypted, the next time Aletheia opens.
-  `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:460, Sources/App/Services/OrphanAudioSweep.swift:45` · `qa: ENCRYPT-05` · ⚠ TODO: the recorder builds a user-facing "kept but couldn't be encrypted yet" message, but no screen displays it; the code does not tell the user, docs imply it does
+  `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:460, Sources/App/Services/OrphanAudioSweep.swift:45` · `qa: ENCRYPT-10` · ⚠ TODO: the recorder builds a user-facing "kept but couldn't be encrypted yet" message, but no screen displays it; the code does not tell the user, docs imply it does
 - **REC-045** When a recording could not be encrypted on stop, automatic transcription does not start for it.
-  `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:437` · `qa: BUILD-11`
+  `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:437` · `qa: ENCRYPT-10`
 - **REC-046** When the app is force-quit or crashes mid-recording, the audio captured up to that moment stays readable and is recovered into its session at the next launch.
   `surface: background` · `evidence: Sources/App/Services/AudioCrashSafety.swift, Sources/App/Services/MicFileWriter.swift, Sources/App/Services/MicRecorder.swift:165` · `qa: RECORD-10`
 - **REC-047** When Aletheia launches and finds staged audio belonging to a known session, the audio is moved or encrypted into that session and the recovery appears in the activity log as "Recording recovered".
@@ -301,7 +301,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-017** When a transcription finishes, a notification says it is ready, naming the patient only if notification names are enabled.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift, Sources/App/Services/Notifications/SessionNotifications.swift:19` · `qa: NOTIFY-02`
 - **TRN-018** When a transcription fails, an alert titled "Something went wrong" shows the reason on the session screen and a "Transcription needs attention" notification tells the user.
-  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:1588, Sources/App/Services/TranscriptionCoordinator.swift:90-104` · `qa: TRANSCRIBE-01`
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:1588, Sources/App/Services/TranscriptionCoordinator.swift:90-104` · `qa: TRANSCRIBE-13`
 - **TRN-019** When a transcription finishes successfully, the transcript is saved only if it is complete, never as a partial file.
   `surface: invariant` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift` · `qa: TRANSCRIBE-08`
 - **TRN-020** When a transcription finishes with speech detected, the recording is deleted by default and only the transcript is kept.
@@ -960,7 +960,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CHT-013** When a patient has several chat threads, a "Chats" sidebar lists them most recent first with relative times such as "Just now", and offers a New Chat button.
   `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift:166-169, Sources/App/Views/PatientChatView.swift:535, Sources/App/Models/ChatThread.swift` · `qa: CHAT-09`
 - **CHT-014** When the user opens a thread's context menu, it offers Rename and Delete.
-  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift:204-205` · `qa: CHAT-09`
+  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift:204-205` · `qa: CHAT-17`
 - **CHT-015** When a thread has no name given by the user, its title is taken from the first question (whitespace collapsed, at most 40 characters, cut at a word with "…"), and "New chat" if there is none.
   `surface: ui` · `evidence: Sources/App/Models/ChatThread.swift` · `qa: CHAT-09`
 - **CHT-016** When no thread is selected, the window shows "No Chat Selected" with a New Chat button, and when there are no threads the sidebar shows "No chats yet".
@@ -970,7 +970,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CHT-018** When the patient page or patient chat is shown, it shows summary-preparation progress for that patient's history.
   `surface: ui` · `evidence: Sources/App/Views/SummaryStatusRow.swift, Sources/App/Views/PatientChatView.swift` · `qa: CHAT-08`
 - **CHT-019** When a question fails, "Something went wrong" (or the engine-problem alert) appears and the question stays in the chat; choosing Retry on the engine alert removes the unanswered turn and asks it again.
-  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift:119, Sources/App/Views/PatientChatView.swift:455, Sources/App/Views/SessionDetailView.swift:56-78` · `qa: NOTE-09`
+  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift:119, Sources/App/Views/PatientChatView.swift:455, Sources/App/Views/SessionDetailView.swift:56-78` · `qa: CHAT-16`
 - **CHT-020** When the chat is shown, an "AI effort" control offers Fast, Normal and Focus, is disabled while an answer is being written, and defaults to Normal.
   `surface: ui` · `evidence: Sources/App/Models/AnswerEffort.swift, Sources/App/Views/ChatPaneView.swift:311` · `qa: CHAT-05`
 - **CHT-021** When effort is Fast, the answer makes no follow-up lookups; at Normal it makes up to 4 lookups in 1 round; at Focus up to 10 in 2 rounds.
@@ -1047,7 +1047,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CHT-058** When the Up or Down arrow key is pressed in the thread list, the selection moves to the neighbouring thread.
   `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift` · `qa: CHAT-09` · ⚠ TODO: arrow-key selection taken from the draft, not re-traced
 - **CHT-059** When the effort is changed in session chat, patient chat or notes, each of the three keeps its own setting.
-  `surface: ui` · `evidence: Sources/App/Models/AnswerEffort.swift` · `qa: CHAT-05`
+  `surface: ui` · `evidence: Sources/App/Models/AnswerEffort.swift` · `qa: CHAT-18`
 - **CHT-060** When a session is short enough to fit, the session chat reads it whole.
   `surface: background` · `evidence: Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: CHAT-03`
 - **CHT-061** When a patient-wide question does not fit whole, the chat falls back to the passages matching the question, then to the newest sessions that fit, and last to the newest session's transcript cut short.
@@ -1202,9 +1202,13 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **PAT-016** When the therapist saves a profile, the name, patient notes and clinical history (and the medications, when that table is shown) are saved together in a single update.
   `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift, Sources/App/Services/AppModel.swift` · `qa: PATIENT-05`
 - **PAT-017** When the medications feature is not in the build (it is a preview-tier feature), the medications table is hidden and any stored medications are kept untouched on save.
-  `surface: invariant` · `evidence: Sources/App/Views/PatientProfileEditor.swift, Sources/App/Services/PatientMedicationsFeatureModule.swift` · `qa: PATIENT-06`
-- **PAT-018** When medications are edited, the therapist can add rows (Add medication) with a name and a dose and remove rows, the table reads "None recorded." when empty, and rows with both name and dose blank (after trimming) are dropped on save.
-  `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift` · `qa: PATIENT-06`
+  `surface: invariant` · `evidence: Sources/App/Views/PatientProfileEditor.swift:105, Sources/App/Services/PatientMedicationsFeatureModule.swift` · `qa: PATIENT-12`
+- **PAT-018** When medications are edited, the therapist can add rows (Add medication) with a name and a dose and remove rows (Remove medication), and the table reads "None recorded." when empty.
+  `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift:244, Sources/App/Views/PatientProfileEditor.swift:251, Sources/App/Views/PatientProfileEditor.swift:266` · `qa: PATIENT-10`
+- **PAT-046** When medications are saved, rows with both name and dose blank (after trimming) are dropped.
+  `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift:58` · `qa: PATIENT-11`
+- **PAT-047** When a patient has medications, the profile card lists each one with a name as "name dose", separated by commas, and leaves out any row with no name.
+  `surface: ui` · `evidence: Sources/App/Models/Patient.swift:113` · `qa: PATIENT-11`
 - **PAT-019** When "Include patient background" is on (the default), the clinical history, the therapist's patient notes and the current medications (those with a name) are supplied as a "Patient background" block when drafting notes, in session chat and in patient chat, and the block is left out when the patient has entered none.
   `surface: background` · `evidence: Sources/App/Models/Patient.swift, Sources/App/Services/Store.swift, Sources/App/Views/SettingsView.swift, Sources/App/Views/SessionDetailView.swift, Sources/App/Views/PatientChatView.swift` · `qa: NOTE-04`
 - **PAT-020** When the patient notes caption says the notes are available to the AI and included in exports, the same notes are included in the records export as "Patient notes.txt" (only when non-empty) and in the assistant background.
@@ -1277,9 +1281,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **SES-007** When the session list is shown, sessions appear newest first, each with the medium date, then the time and "Audio" when call.caf or mic.caf exists.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Services/Store.swift` · `qa: SESSION-02`
 - **SES-008** When a session has a transcript (transcript.txt) or a saved summary (summary.txt), its row shows a "Transcript" or "Note" chip, and "Recording" while it is being recorded.
-  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Models/SessionRecord.swift` · `qa: SESSION-03`
+  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift:447, Sources/App/Views/PatientDetailView.swift:448, Sources/App/Views/PatientDetailView.swift:449, Sources/App/Models/SessionRecord.swift` · `qa: SESSION-03`
 - **SES-009** When a session is being recorded, transcribed or waiting to be transcribed, its row says "Recording in progress", "Transcribing…" or "Waiting to transcribe" with a spinner while transcribing.
-  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift` · `qa: SESSION-03`
+  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift:420, Sources/App/Views/PatientDetailView.swift:421, Sources/App/Views/PatientDetailView.swift:422` · `qa: SESSION-03`
 - **SES-010** When a transcription finishes for any of the patient's sessions, the list refreshes so the chips and recording state update even if that session is not open.
   `surface: background` · `evidence: Sources/App/Views/PatientDetailView.swift` · `qa: SESSION-03`
 - **SES-011** When the therapist clicks the empty space of the session list, the open session stays open.
@@ -1302,8 +1306,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Views/PatientDetailView.swift` · `qa: SEARCH-06`
 - **SES-020** When the menu-bar "Open Aletheia", "Show this session" (which opens the recording's patient), Unlock or start-recording actions are used, or Doctor's update check runs, the main window is unhidden, activated and reopened or raised; a successful unlock otherwise only hands focus to a visible window.
   `surface: background` · `evidence: Sources/App/Services/MainWindow.swift, Sources/App/Services/AppLock.swift` · `qa: MENUBAR-03`
-- **SES-021** When Settings pages are requested from elsewhere in the app (setup assistant, set-aside recordings), the app navigates to them.
-  `surface: ui` · `evidence: Sources/App/Services/AppNavigator.swift, Sources/App/Views/RootView.swift` · `qa: SESSION-04`
+- **SES-021** When the set-aside recordings warning strip's Review in Settings… is chosen, Settings opens on the Set-aside recordings page.
+  `surface: ui` · `evidence: Sources/App/Views/RootView.swift:223, Sources/App/Services/AppNavigator.swift:111, Sources/App/Views/SettingsView.swift:176` · `qa: SESSION-04`
+- **SES-036** When Set up… is chosen in the Doctor, Settings opens on the General page with the Setup Assistant shown.
+  `surface: ui` · `evidence: Sources/App/Services/Features/Doctor/DoctorModel.swift:70, Sources/App/Views/SettingsView.swift:158` · `qa: SECURITY-07`
 - **SES-022** When the therapist chooses Schedule Next… (a developer-build-only feature), a "Schedule next session" sheet offers quick picks "Next week", "In 2 weeks" and "In 4 weeks" that keep the chosen time of day, and Date and Time pickers.
   `surface: ui` · `evidence: Sources/App/Views/ScheduleNextSessionSheet.swift, Sources/App/Views/SessionDetailView.swift` · `qa: SESSION-06`
 - **SES-023** When the schedule sheet is shown, the session length can be 30, 45, 50, 60 or 90 minutes (default 50), and a different current length is added to the choices.
@@ -1388,13 +1394,13 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **SRC-026** When a query has more than eight different words, only the first eight are used and repeated words count once.
   `surface: invariant` · `evidence: Sources/App/Services/Search/GlobalSearchQuery.swift` · `qa: SEARCH-06`
 - **SRC-027** When a patient's name and a topic are typed together in the sidebar or home search field, the notes, comments and transcripts of that patient's sessions that mention the topic are found, and a word of the date narrows them to sessions on that date.
-  `surface: ui` · `evidence: Sources/App/Services/Search/GlobalSearchQuery.swift, Sources/App/Services/Search/GlobalSearchEngine.swift` · `qa: SEARCH-06`
+  `surface: ui` · `evidence: Sources/App/Services/Search/GlobalSearchQuery.swift, Sources/App/Services/Search/GlobalSearchEngine.swift` · `qa: SEARCH-14`
 - **SRC-028** When a word is typed in the sidebar or home search field, other forms of it match because words are matched by their stem, except common words, which match whole.
-  `surface: ui` · `evidence: Sources/App/Services/Search/GlobalSearchQuery.swift, Sources/App/Services/Search/SearchIndex.swift` · `qa: SEARCH-06`
+  `surface: ui` · `evidence: Sources/App/Services/Search/GlobalSearchQuery.swift, Sources/App/Services/Search/SearchIndex.swift` · `qa: SEARCH-07`
 - **SRC-029** When a word of two or more characters is typed in the sidebar or home search field, results keep up with typing, so "thera" finds "therapy"; a single letter or digit matches only as a whole word; a patient's name matches anywhere inside it, so "ann" finds "Joanne".
-  `surface: ui` · `evidence: Sources/App/Services/Search/GlobalSearchQuery.swift, Sources/App/Services/Search/GlobalSearchEngine.swift` · `qa: SEARCH-06`
+  `surface: ui` · `evidence: Sources/App/Services/Search/GlobalSearchQuery.swift, Sources/App/Services/Search/GlobalSearchEngine.swift` · `qa: SEARCH-07`
 - **SRC-030** When a query is typed in capitals or without accents, it still matches text regardless of case and diacritics.
-  `surface: ui` · `evidence: Sources/App/Services/TextSearch.swift, Sources/App/Services/Search/GlobalSearchQuery.swift` · `qa: SEARCH-06`
+  `surface: ui` · `evidence: Sources/App/Services/TextSearch.swift, Sources/App/Services/Search/GlobalSearchQuery.swift` · `qa: SEARCH-13`
 - **SRC-031** When results are ranked inside a group, the best match comes first by relevance, then by more matching passages, then by newer session; patients are listed alphabetically and sessions newest first.
   `surface: ui` · `evidence: Sources/App/Services/Search/GlobalSearch.swift, Sources/App/Services/Search/GlobalSearchEngine.swift` · `qa: SEARCH-07`
 - **SRC-032** When the README lists typo tolerance, sound-alike names, quoted phrases, "wor*" prefixes and date phrases, those apply to the assistant's retrieval over a patient's history, not to the sidebar or home search field, which has no typo tolerance, sound-alike names or quoted phrases.
@@ -1432,7 +1438,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **SRC-048** When a note's legacy summary exists with no per-format notes, the sidebar and home search find it and show it as the "Summary" note.
   `surface: background` · `evidence: Sources/App/Services/Store.swift, Sources/App/Services/Search/GlobalSearchEngine.swift` · `qa: SEARCH-03`
 - **SRC-049** When results are shown, a footer lists the keys for move, open (only when there are rows) and clear, with the total number of matches ("1 result", "N results").
-  `surface: ui` · `evidence: Sources/App/Views/GlobalSearchResultsView.swift` · `qa: SEARCH-04`
+  `surface: ui` · `evidence: Sources/App/Views/GlobalSearchResultsView.swift` · `qa: SEARCH-05`
 - **SRC-050** When a result is opened, the search clears and the field gives up focus.
   `surface: ui` · `evidence: Sources/App/Views/RootView.swift` · `qa: SEARCH-05`
 - **SRC-051** When a query is typed, the sidebar patient list is not filtered by it; matches show only in the results.
@@ -1444,7 +1450,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **SRC-054** When "may", "mar" or "march" is typed, it counts as a date word only next to a number that also matches that date (for example "march 2026"); otherwise it is an ordinary word.
   `surface: ui` · `evidence: Sources/App/Services/Search/GlobalSearchQuery.swift` · `qa: SEARCH-06`
 - **SRC-055** When folder encryption is locked, the index file is deleted, and when the app launches with encryption on and locked, any leftover index file is deleted.
-  `surface: invariant` · `evidence: Sources/App/Services/Crypto/EncryptionManager.swift, Sources/App/Services/AppModel.swift` · `qa: ENCRYPT-09`
+  `surface: invariant` · `evidence: Sources/App/Services/Crypto/EncryptionManager.swift, Sources/App/Services/AppModel.swift` · `qa: SEARCH-11`
 - **SRC-056** When folder encryption is turned on or off, the index file is deleted and rebuilt.
   `surface: invariant` · `evidence: Sources/App/Services/Crypto/EncryptionManager.swift` · `qa: ENCRYPT-09`
 - **SRC-057** When the app or folder is unlocked, the index is reopened and the background sweep runs again.
@@ -1493,7 +1499,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CMT-020** When a comment or note is saved, edited, resolved or deleted, the search index for that session is refreshed in the background, with bursts of changes combined.
   `surface: background` · `evidence: Sources/App/Services/CommentStore.swift, Sources/App/Services/Store.swift` · `qa: COMMENT-07`
 - **CMT-021** When a search is made in the sidebar or home search field, comments (resolved ones too) are found by what the therapist wrote and also by the quoted passage, and a comment hit shows the comment text if it matches, otherwise the quote.
-  `surface: ui` · `evidence: Sources/App/Services/Store.swift, Sources/App/Services/Search/GlobalSearchEngine.swift` · `qa: SEARCH-06`
+  `surface: ui` · `evidence: Sources/App/Services/Store.swift, Sources/App/Services/Search/GlobalSearchEngine.swift` · `qa: SEARCH-03`
 - **CMT-022** When the assistant is asked about a patient, each session's material gives the therapist's own session notes and comments, labelled as her words, before the generated progress notes, within a per-session length cap; for a single session, her notes and comments are included alongside the transcript.
   `surface: background` · `evidence: Sources/App/Services/Store.swift, Sources/App/Services/Prompts.swift:350` · `qa: NOTE-04`
 - **CMT-023** When comments are stored, they sit in the local database inside the data folder, sealed at rest like other patient data, and are keyed by the session's identity.
