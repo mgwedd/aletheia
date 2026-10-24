@@ -53,6 +53,7 @@ final class ShutdownCoordinatorTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        SessionSearch.index = SearchIndex()   // AppModel pointed it at this test's folder
         try? FileManager.default.removeItem(at: root)
     }
 

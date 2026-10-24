@@ -64,13 +64,15 @@ enum TherapistInput {
             + "that match the question are below; [\u{2026}] marks what is skipped.)"
         let limit = max(0, room - lead.count - 1)
         // Searched line by line (the transcript kind): the other kinds index whole
-        // paragraphs, and a long single-spaced text is one paragraph.
+        // paragraphs, and a long single-spaced text is one paragraph. A private
+        // in-memory index: this text belongs to no session, so it stays out of the
+        // app's index, and a closed or locked app index can't hide its matches.
         let document = SessionSearch.Document(date: Date(), tag: "", kind: .transcript, text: trimmed)
         let lines = trimmed.components(separatedBy: "\n")
         var blocks: [String] = []
         var taken = Set<Int>()
         var used = 0
-        for hit in SessionSearch.search([document], question: query, characterBudget: limit).hits
+        for hit in SessionSearch.search([document], question: query, characterBudget: limit, in: SearchIndex()).hits
         where hit.lineIndex < lines.count && !taken.contains(hit.lineIndex) {
             // The matching line with two lines either side, or the line alone
             // when that is too long.
