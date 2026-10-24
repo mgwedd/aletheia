@@ -327,10 +327,9 @@ final class EncryptionManagerTests: XCTestCase {
         try m.enable(passphrase: "test-passphrase-1", recoveryKey: key, iterations: fastIterations)
         m.lock()
 
-        var words = RecoveryKey.words(from: key)
-        words[23] = words[23] == "abandon" ? "zoo" : "abandon"
+        let typo = RecoveryKeyTestSupport.badChecksumVariant(of: key)
         for _ in 0..<5 {
-            XCTAssertThrowsError(try m.unlock(recoveryKey: words.joined(separator: " "))) {
+            XCTAssertThrowsError(try m.unlock(recoveryKey: typo)) {
                 XCTAssertEqual($0 as? RecoveryKey.RecoveryKeyError, .invalidChecksum)
             }
         }
