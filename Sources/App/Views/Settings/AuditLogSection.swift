@@ -60,6 +60,8 @@ struct AuditLogSection: View {
     @EnvironmentObject private var appModel: AppModel
     /// How the last export ended; shown by the Settings screen.
     @Binding var exportResult: SaveOutcome?
+    /// Runs an export only after the user re-authenticates.
+    let requireAuth: (SensitiveAction, @escaping @MainActor () -> Void) -> Void
 
     /// Newest first. A snapshot, loaded on appear and after an export.
     @State private var entries: [AuditEvent] = []
@@ -95,12 +97,12 @@ struct AuditLogSection: View {
                 }
             }
             HStack(spacing: 8) {
-                Button("Verify integrity & export audit report", action: verifyIntegrityAndExportReport)
+                Button("Verify integrity & export audit report") { requireAuth(.exportActivityLog) { verifyIntegrityAndExportReport() } }
                     .buttonStyle(.themed)
                     .disabled(entries.isEmpty)
                 Button("Refresh", action: load)
                     .buttonStyle(.themed)
-                Button("Export…", action: exportLog)
+                Button("Export…") { requireAuth(.exportActivityLog) { exportLog() } }
                     .buttonStyle(.themed)
                     .disabled(entries.isEmpty)
                 Spacer()
