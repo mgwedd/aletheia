@@ -20,6 +20,14 @@ final class LlamaModelTests: XCTestCase {
         }
     }
 
+    func testExpectedBytesMatchThePinnedSizes() {
+        XCTAssertEqual(LlamaModel.llama31_8b.expectedBytes, 6_036_116_480)
+        XCTAssertEqual(LlamaModel.gemma4_e2b.expectedBytes, 2_841_481_184)
+        for model in LlamaModel.allCases {
+            XCTAssertEqual(Int64(model.approximateSizeMB), (model.expectedBytes + 500_000) / 1_000_000, "\(model)")
+        }
+    }
+
     func testDownloadURLsArePinnedToACommit() {
         for model in LlamaModel.allCases {
             XCTAssertNotNil(model.revision.range(of: "^[0-9a-f]{40}$", options: .regularExpression))
