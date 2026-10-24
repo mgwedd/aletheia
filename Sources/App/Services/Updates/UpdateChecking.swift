@@ -7,7 +7,6 @@ struct ReleaseInfo: Decodable, Equatable {
     let releaseNotes: String
     let minimumSystemVersion: String?
     let publishedAt: Date?
-    let releasePageURL: URL?
     /// SHA-256 of the release archive, written into the feed after the archive
     /// is notarized. Older feeds don't have it.
     let sha256: String?
@@ -18,7 +17,6 @@ struct ReleaseInfo: Decodable, Equatable {
         case releaseNotes
         case minimumSystemVersion
         case publishedAt
-        case releasePageURL
         case sha256
     }
 
@@ -28,7 +26,6 @@ struct ReleaseInfo: Decodable, Equatable {
         releaseNotes: String,
         minimumSystemVersion: String? = nil,
         publishedAt: Date? = nil,
-        releasePageURL: URL? = nil,
         sha256: String? = nil
     ) {
         self.version = version
@@ -36,36 +33,14 @@ struct ReleaseInfo: Decodable, Equatable {
         self.releaseNotes = releaseNotes
         self.minimumSystemVersion = minimumSystemVersion
         self.publishedAt = publishedAt
-        self.releasePageURL = releasePageURL
         self.sha256 = sha256
-    }
-
-    /// URL to view this release in a browser, or nil when the feed supplied
-    /// nothing that points at this app's own releases on github.com.
-    var releasePageLink: URL? {
-        if let releasePageURL { return ReleaseLink.validated(releasePageURL) }
-        guard ReleaseLink.validated(downloadURL) != nil else { return nil }
-        return URL(string: "https://github.com/mgwedd/aletheia/releases/tag/v\(version)")
-            .flatMap(ReleaseLink.validated)
-            ?? URL(string: "https://github.com/mgwedd/aletheia/releases")
     }
 }
 
-/// Which links from the update feed the app will open: https, github.com,
-/// no credentials or port, and a path inside this app's own repository.
+/// The one page the app opens for releases: Aletheia's download page on
+/// astrealabs.com. Links in the update feed are never opened in the browser.
 enum ReleaseLink {
-    static let host = "github.com"
-    static let pathPrefix = "/mgwedd/aletheia/"
-
-    static func validated(_ url: URL) -> URL? {
-        guard url.scheme?.lowercased() == "https",
-              url.host?.lowercased() == host,
-              url.user == nil, url.password == nil, url.port == nil,
-              url.path.hasPrefix(pathPrefix),
-              !url.pathComponents.contains("..")
-        else { return nil }
-        return url
-    }
+    static let downloadsPage = URL(string: "https://astrealabs.com/aletheia/download")!
 }
 
 /// The update-source integration (another adapter seam). The default

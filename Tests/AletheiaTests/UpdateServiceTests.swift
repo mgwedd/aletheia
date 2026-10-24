@@ -183,78 +183,45 @@ final class UpdateServiceTests: XCTestCase {
 
     private let goodDownload = URL(string: "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg")!
 
-    func testReleasePageLinkFallback() {
-        let goodPage = URL(string: "https://github.com/mgwedd/aletheia/releases/tag/v1.2.0")!
-        let withPage = ReleaseInfo(
-            version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes",
-            releasePageURL: goodPage
-        )
-        XCTAssertEqual(withPage.releasePageLink, goodPage)
-
-        let withoutPage = ReleaseInfo(version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes")
-        XCTAssertEqual(withoutPage.releasePageLink, goodPage)
-
-        let thirdParty = ReleaseInfo(
-            version: "1.2.0",
-            downloadURL: URL(string: "https://mycdn.example.org/downloads/Aletheia.dmg")!,
-            releaseNotes: "Notes"
-        )
-        XCTAssertNil(thirdParty.releasePageLink)
+    func testReleasesOpenAletheiasDownloadPageOnAstreaLabs() {
+        let page = ReleaseLink.downloadsPage
+        XCTAssertEqual(page.scheme, "https")
+        XCTAssertEqual(page.host, "astrealabs.com")
+        XCTAssertEqual(page.path, "/aletheia/download")
+        XCTAssertNil(page.query)
+        XCTAssertNil(page.fragment)
     }
 
-    func testReleasePageURLAcceptsThisAppsReleaseLinks() {
-        for raw in [
-            "https://github.com/mgwedd/aletheia/releases/tag/v1.2.0",
-            "https://GitHub.com/mgwedd/aletheia/releases",
-            "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg"
-        ] {
-            let url = URL(string: raw)!
-            XCTAssertEqual(ReleaseLink.validated(url), url, raw)
-        }
-    }
-
-    func testReleasePageURLRejectsNonHttpsAndForeignHosts() {
-        for raw in [
-            "file:///Applications/Calculator.app",
-            "http://github.com/mgwedd/aletheia/releases",
-            "https://evil.example/mgwedd/aletheia/releases",
-            "https://github.com.evil.example/mgwedd/aletheia/releases",
-            "https://gist.github.com/mgwedd/aletheia/releases",
-            "https://github.com/other/aletheia/releases",
-            "https://github.com/mgwedd/aletheia-fork/releases",
-            "https://github.com/mgwedd/aletheia",
-            "https://github.com/mgwedd/aletheia/../evil/repo",
-            "https://github.com/mgwedd/aletheia/%2e%2e/evil/repo",
-            "https://user:pw@github.com/mgwedd/aletheia/releases",
-            "https://evil.example@github.com/mgwedd/aletheia/releases",
-            "https://github.com:8443/mgwedd/aletheia/releases",
-            "javascript:alert(1)"
-        ] {
-            XCTAssertNil(ReleaseLink.validated(URL(string: raw)!), raw)
-        }
-    }
-
-    func testFeedWithForeignLinksOffersNoReleasePage() {
-        let bad = ReleaseInfo(
-            version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes",
-            releasePageURL: URL(string: "file:///etc/passwd")!
-        )
-        XCTAssertNil(bad.releasePageLink)
+    /// Links in the feed are ignored: a page URL in it is not even decoded.
+    @MainActor
+    func testFeedLinksAreNeverOpened() throws {
+        let json = #"{"version":"1.2.0","downloadURL":"https://evil.example/x.dmg","releaseNotes":"n","releasePageURL":"file:///etc/passwd"}"#
+        let release = try JSONDecoder().decode(ReleaseInfo.self, from: Data(json.utf8))
+        var opened: [URL] = []
+        GuidedDownloadInstaller(open: { opened.append($0) }).install(release)
+        XCTAssertEqual(opened, [ReleaseLink.downloadsPage])
     }
 
     @MainActor
-    func testInstallerOpensNothingForForeignReleasePage() {
+    func testInstallerFallsBackToTheDownloadsPage() async {
         var opened: [URL] = []
-        let installer = GuidedDownloadInstaller(open: { opened.append($0) })
+        let done = expectation(description: "fallback opened")
+        let installer = GuidedDownloadInstaller(helper: FailingHelper(), open: { opened.append($0); done.fulfill() })
         installer.install(ReleaseInfo(
-            version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes",
-            releasePageURL: URL(string: "https://evil.example/x")!
+            version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes", sha256: String(repeating: "a", count: 64)
         ))
-        XCTAssertTrue(opened.isEmpty)
-        installer.install(ReleaseInfo(
-            version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes"
-        ))
-        XCTAssertEqual(opened.count, 1)
+        await fulfillment(of: [done], timeout: 10)
+        XCTAssertEqual(opened, [ReleaseLink.downloadsPage])
+    }
+
+    /// Nothing in the app links to GitHub releases any more.
+    func testNoScreenLinksToGitHubReleases() throws {
+        let repo = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for file in ["Views/UpdatePromptView.swift", "Views/SettingsView.swift", "Services/Updates/UpdateInstalling.swift", "Services/Updates/UpdateChecking.swift"] {
+            let text = try String(contentsOf: repo.appendingPathComponent("Sources/App/\(file)"), encoding: .utf8)
+            XCTAssertFalse(text.contains("github.com"), file)
+        }
     }
 
     func testCodeSigningStatusInspectorAndDescriptions() {
@@ -319,7 +286,7 @@ final class UpdatePromptLayoutTests: XCTestCase {
     func testAllFourActionsAreOnOfferedRows() {
         XCTAssertEqual(
             Set(UpdatePromptLayout.rows.flatMap { $0 }),
-            [UpdatePromptLayout.viewOnGitHub, UpdatePromptLayout.skip, UpdatePromptLayout.later, UpdatePromptLayout.download]
+            [UpdatePromptLayout.viewDownloads, UpdatePromptLayout.skip, UpdatePromptLayout.later, UpdatePromptLayout.download]
         )
     }
 
@@ -329,4 +296,15 @@ final class UpdatePromptLayoutTests: XCTestCase {
         let single = UpdatePromptLayout.rows.flatMap { $0 }
         XCTAssertGreaterThan(rowWidth(single, spacing: UpdatePromptLayout.rowSpacing), UpdatePromptLayout.contentWidth)
     }
+}
+
+/// A helper whose every call fails, so the installer takes its fallback.
+private struct FailingHelper: NetworkHelping {
+    struct Failure: Error {}
+    func fetchAppcast() async throws -> Data { throw Failure() }
+    func fetchRevocations() async throws -> Data { throw Failure() }
+    func download(
+        _ asset: AssetID, expectedSHA256: String, to destination: URL,
+        onProgress: @escaping @Sendable (Double) -> Void
+    ) async throws { throw Failure() }
 }
