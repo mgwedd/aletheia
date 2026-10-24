@@ -188,6 +188,35 @@ final class LegalTests: XCTestCase {
         }
     }
 
+    /// The data folder must be on this Mac, so no document may say the picker
+    /// opens in or suggests iCloud Drive.
+    func testDocsDoNotSuggestICloudForTheDataFolder() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let docsDir = root.appendingPathComponent("docs")
+        let extra = try FileManager.default.contentsOfDirectory(atPath: docsDir.path)
+            .filter { $0.hasSuffix(".md") }.map { "docs/\($0)" }
+        let paths = ["README.md", "PRIVACY.md", "SECURITY.md"] + extra
+        XCTAssertTrue(paths.contains("docs/SETUP-GUIDE.md"))
+        let banned = ["opens in icloud drive", "suggests icloud", "suggests it", "icloud drive or any folder",
+                      "icloud drive when it is available", "keep downloaded"]
+        for path in paths {
+            let text = try doc(path).lowercased()
+            for phrase in banned {
+                XCTAssertFalse(text.contains(phrase), "\(path) contains \"\(phrase)\"")
+            }
+        }
+        XCTAssertTrue(try doc("README.md").contains("Use the standard location"))
+    }
+
+    /// The entitlement comments must not describe the picker as opening in iCloud Drive.
+    func testEntitlementsCommentsDoNotMentionICloudDrive() throws {
+        for path in ["Sources/App/Resources/Aletheia.entitlements", "Sources/App/Resources/AletheiaDev.entitlements"] {
+            let text = try doc(path).lowercased()
+            XCTAssertFalse(text.contains("icloud"), path)
+        }
+    }
+
     /// Statements that used to be true and are not any more.
     func testDocsHaveNoStaleClaims() throws {
         for path in ["PRIVACY.md", "SECURITY.md", "docs/HIPAA-SAFEGUARDS.md", "docs/ENCRYPTION.md", "docs/SETUP-GUIDE.md"] {

@@ -16,6 +16,8 @@ final class SecurityPostureTests: XCTestCase {
         encryptionKeystoreMissing: Bool = false,
         encryptionOffered: Bool = true,
         auditLogActive: Bool = true,
+        auditWriteFailed: Bool = false,
+        auditChainBroken: Bool = false,
         localEncryptedBackup: Bool = true,
         networkOnline: Bool? = nil,
         diskEncrypted: Bool? = nil
@@ -29,6 +31,8 @@ final class SecurityPostureTests: XCTestCase {
             encryptionKeystoreMissing: encryptionKeystoreMissing,
             encryptionOffered: encryptionOffered,
             auditLogActive: auditLogActive,
+            auditWriteFailed: auditWriteFailed,
+            auditChainBroken: auditChainBroken,
             localEncryptedBackup: localEncryptedBackup,
             networkOnline: networkOnline,
             diskEncrypted: diskEncrypted
@@ -37,6 +41,16 @@ final class SecurityPostureTests: XCTestCase {
 
     private func item(_ id: String, in items: [PostureItem]) -> PostureItem? {
         items.first { $0.id == id }
+    }
+
+    func testAuditLogItemFlagsAFailedWriteAndABrokenChain() {
+        XCTAssertEqual(item("auditLog", in: evaluate())?.level, .secure)
+        let failed = item("auditLog", in: evaluate(auditWriteFailed: true))
+        XCTAssertEqual(failed?.level, .actionRecommended)
+        XCTAssertEqual(failed?.detail, SecurityPosture.auditWriteFailedDetail)
+        let broken = item("auditLog", in: evaluate(auditChainBroken: true))
+        XCTAssertEqual(broken?.level, .actionRecommended)
+        XCTAssertTrue(broken?.detail.contains("integrity check failed") == true)
     }
 
     func testFileVaultItemFollowsTheProbe() {

@@ -44,6 +44,12 @@ enum BackupExclusion {
         try url.setResourceValues(values)
     }
 
+    /// Marks `url` excluded from backups, ignoring failure. For folders the app
+    /// creates itself and can still use if the flag can't be written.
+    static func markExcluded(_ url: URL) {
+        try? setExcluded(true, at: url)
+    }
+
     /// Whether `url` is currently marked excluded from backups. `false` when the
     /// value can't be read.
     ///
