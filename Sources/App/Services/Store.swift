@@ -22,6 +22,8 @@ enum StoreError: LocalizedError {
     case invalidFolderName
     /// Raw audio that couldn't be removed.
     case recordingNotDeleted
+    /// A patient name that is empty once whitespace is trimmed.
+    case blankPatientName
 
     var errorDescription: String? {
         switch self {
@@ -43,6 +45,7 @@ enum StoreError: LocalizedError {
         case .invalidFolderName: return "That session folder name isn't valid."
         case .recordingNotDeleted:
             return "The recording couldn't be deleted from your data folder."
+        case .blankPatientName: return "A patient needs a name."
         }
     }
 }
@@ -314,6 +317,7 @@ final class Store {
 
     func createPatient(name: String) throws -> Patient {
         guard schemaCompatibility != .migrationFailed else { throw StoreError.patientFolderMigrationIncomplete }
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw StoreError.blankPatientName }
         try SecureFS.createDirectory(at: patientsDir)
         var id = UUID()
         while fileManager.fileExists(atPath: patientsDir.appendingPathComponent(id.uuidString).path) {
