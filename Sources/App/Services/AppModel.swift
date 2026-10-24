@@ -528,6 +528,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func addPatient(name: String) -> Patient? {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         guard authorizeNewPHI() else { return nil }
         guard let store else { return nil }
         do {
