@@ -60,7 +60,7 @@ enum RecoveryKeyDocument {
     }
 
     /// Asks where to save the PDF and writes it, unless the chosen place is in
-    /// the data folder.
+    /// the data folder or a synced, network or unencrypted removable location.
     @MainActor
     static func save(key: String, dataRoot: URL?, replacesPrevious: Bool) -> SaveOutcome {
         guard let data = pdf(key: key, dataRoot: dataRoot, replacesPrevious: replacesPrevious) else {
@@ -72,9 +72,21 @@ enum RecoveryKeyDocument {
         return write(data, to: url, dataRoot: dataRoot)
     }
 
-    /// Writes the PDF to `url`, refusing a destination inside the data folder.
-    static func write(_ data: Data, to url: URL, dataRoot: URL?) -> SaveOutcome {
+    /// Writes the PDF to `url`, refusing a destination inside the data folder or
+    /// in a place that syncs, is on a network volume, or is on an unencrypted
+    /// removable disk. `verdict` classifies the folder the file goes in.
+    static func write(
+        _ data: Data,
+        to url: URL,
+        dataRoot: URL?,
+        verdict: (URL) -> DataFolderPolicy.Verdict = { DataFolderPolicy.verdict(for: $0) }
+    ) -> SaveOutcome {
         if isInsideDataFolder(url, dataRoot: dataRoot) { return .failed(insideDataFolderMessage) }
+        let folder = url.standardizedFileURL.deletingLastPathComponent()
+        let placement = verdict(folder)
+        if placement != .ok {
+            return .failed("The recovery key can't be saved here. \(placement.explanation)")
+        }
         return FileSaver.write(data, to: url)
     }
 
