@@ -135,6 +135,22 @@ final class LlamaLoadSizeCheckTests: XCTestCase {
         XCTAssertEqual(loaderCalls, 0, "a wrong-sized file must never reach the loader")
     }
 
+    func testMissingModelReportsNotDownloaded() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("missing-\(UUID().uuidString).gguf")
+        var loaderCalls = 0
+        let engine = LlamaEngine(
+            modelURL: url, adapterURL: nil, expectedModelBytes: 100,
+            sampling: LocalLLMSampling(maxTokens: 32),
+            modelLoader: { _ in loaderCalls += 1; return nil })
+        do {
+            try await engine.load()
+            XCTFail("expected modelNotDownloaded")
+        } catch {
+            XCTAssertEqual(error as? LocalLLMEngineError, .modelNotDownloaded)
+        }
+        XCTAssertEqual(loaderCalls, 0)
+    }
+
     func testRightSizedModelReachesTheLoader() async throws {
         let url = try tempModel(bytes: 100)
         var loadedURL: URL?

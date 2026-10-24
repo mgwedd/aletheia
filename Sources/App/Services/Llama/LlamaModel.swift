@@ -128,7 +128,9 @@ enum LlamaModelFile {
     /// Cheap load-time check that the stored model is the pinned size
     /// (the counterpart of `WhisperModelFile.verifySize`).
     static func verifySize(at url: URL, expectedBytes: Int64) throws {
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            throw LocalLLMEngineError.modelNotDownloaded
+        }
         let actual = (attributes[.size] as? NSNumber)?.int64Value ?? -1
         guard actual == expectedBytes else {
             throw LocalLLMEngineError.loadFailed(
