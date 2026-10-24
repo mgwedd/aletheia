@@ -104,7 +104,7 @@ struct AletheiaApp: App {
                 await integrations?.makeNotifier().post(
                     SessionNotifications.longRecordingReminder(
                         patientName: recording.patientName,
-                        showsName: settings.notificationsShowPatientNames
+                        policy: .current(showFullName: settings.notificationsShowPatientNames)
                     )
                 )
             }
