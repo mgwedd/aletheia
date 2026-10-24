@@ -100,6 +100,7 @@ struct AletheiaApp: App {
         _transcription = StateObject(wrappedValue: transcription)
         let recorder = SessionRecorder()
         recorder.onStopped = { [weak transcription] in transcription?.startAfterRecording($0) }
+        recorder.onNotice = { [weak appModel] in appModel?.noteRecordingProblem($0) }
         // Also a system notification, so it's noticed when the app isn't
         // focused (the therapist has likely switched to the call window).
         recorder.onLongRunning = { [weak integrations] recording in

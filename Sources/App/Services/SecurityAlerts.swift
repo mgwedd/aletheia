@@ -34,11 +34,13 @@ struct FailedUnlockMonitor: Equatable {
 enum SecurityAlert: Equatable, Identifiable {
     case repeatedUnlockFailures(attempts: Int, minutes: Int)
     case auditLogBroken(entry: Int64)
+    case recordingEncryptionDeferred
 
     var id: String {
         switch self {
         case .repeatedUnlockFailures: return "repeatedUnlockFailures"
         case .auditLogBroken: return "auditLogBroken"
+        case .recordingEncryptionDeferred: return "recordingEncryptionDeferred"
         }
     }
 
@@ -48,6 +50,8 @@ enum SecurityAlert: Equatable, Identifiable {
             return "There were \(attempts) failed unlock attempts within \(minutes) minutes. If that wasn't you, change your Mac's login password."
         case let .auditLogBroken(entry):
             return "The activity log doesn't pass its integrity check (it first breaks at entry #\(entry)). It may have been edited or damaged. Open Settings > Security to review it."
+        case .recordingEncryptionDeferred:
+            return "Your recording was saved, but it couldn't be encrypted yet. Aletheia will encrypt it and add it to the session the next time it opens."
         }
     }
 }

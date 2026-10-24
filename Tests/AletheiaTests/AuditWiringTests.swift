@@ -211,6 +211,14 @@ final class AuditWiringTests: XCTestCase {
 
     // MARK: - Alerts
 
+    func testRecordingProblemsShowAsDismissibleAlerts() {
+        makeModel()
+        appModel.noteRecordingProblem(.recordingEncryptionDeferred)
+        XCTAssertEqual(appModel.securityAlerts, [.recordingEncryptionDeferred])
+        appModel.dismissSecurityAlert(.recordingEncryptionDeferred)
+        XCTAssertTrue(appModel.securityAlerts.isEmpty)
+    }
+
     func testThreeFailedUnlocksRaisesAlertAndOneEntry() {
         makeModel()
         let start = Date()

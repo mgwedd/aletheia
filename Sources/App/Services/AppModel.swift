@@ -438,6 +438,9 @@ final class AppModel: ObservableObject {
         securityAlerts.append(alert)
     }
 
+    /// A recording problem the user must hear about (raised by the recorder).
+    func noteRecordingProblem(_ alert: SecurityAlert) { raise(alert) }
+
     func dismissSecurityAlert(_ alert: SecurityAlert) {
         securityAlerts.removeAll { $0.id == alert.id }
     }

@@ -159,6 +159,10 @@ final class SessionRecorder: ObservableObject {
     /// Called once when a recording passes `RecordingLimit.reminderThreshold`,
     /// whatever screen (if any) is showing.
     var onLongRunning: ((ActiveRecording) -> Void)?
+    /// Called when something the user must be told about happens outside the
+    /// recording screen: a finished recording that couldn't be encrypted yet, or a
+    /// microphone that couldn't be restarted. The app shows it as a banner.
+    var onNotice: ((SecurityAlert) -> Void)?
     /// Why call audio isn't being captured for the current recording (it never
     /// started, or stopped part-way), or nil when it's fine. Shown on the
     /// recording screen so a mic-only session is never a silent surprise.
@@ -419,6 +423,8 @@ final class SessionRecorder: ObservableObject {
         micURL = nil
         callURL = nil
         state = sealError.map { .error($0) } ?? .idle
+        // The error state has no screen of its own, so tell the user here.
+        if sealError != nil { onNotice?(.recordingEncryptionDeferred) }
         if let finished, sealError == nil, !isQuitting { onStopped?(finished) }
     }
 

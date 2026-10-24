@@ -203,6 +203,36 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertNil(recorder.stagingSessionID)
     }
 
+    func testAStopThatCannotSealTellsTheUserItWillBeEncryptedNextLaunch() async {
+        let (recorder, tempRoot, _, dest) = makeStagingRecorder()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        var notices: [SecurityAlert] = []
+        recorder.onNotice = { notices.append($0) }
+        let key = ProtectionKey(SymmetricKey(size: .bits256))
+        _ = await recorder.start(
+            micURL: dest.appendingPathComponent("mic.caf"), callURL: dest.appendingPathComponent("call.caf"),
+            context: context(UUID()), protector: FileProtector(keyReference: key, requiresKey: true))
+        key.revoke()
+
+        await recorder.stop()
+
+        XCTAssertEqual(notices, [.recordingEncryptionDeferred])
+        XCTAssertTrue(SecurityAlert.recordingEncryptionDeferred.message.contains("saved"))
+        XCTAssertTrue(SecurityAlert.recordingEncryptionDeferred.message.contains("next time it opens"))
+    }
+
+    func testASuccessfulStopRaisesNoNotice() async {
+        let (recorder, tempRoot, _, dest) = makeStagingRecorder()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        var notices: [SecurityAlert] = []
+        recorder.onNotice = { notices.append($0) }
+        _ = await recorder.start(
+            micURL: dest.appendingPathComponent("mic.caf"), callURL: dest.appendingPathComponent("call.caf"),
+            context: context(UUID()), protector: .passthrough)
+        await recorder.stop()
+        XCTAssertTrue(notices.isEmpty)
+    }
+
     func testStartingAgainPutsAnEarlierStagedRecordingInPlaceFirst() async throws {
         let (recorder, tempRoot, stagingRoot, dest) = makeStagingRecorder()
         defer { try? FileManager.default.removeItem(at: tempRoot) }
