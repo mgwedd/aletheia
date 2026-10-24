@@ -40,14 +40,31 @@ struct ReleaseInfo: Decodable, Equatable {
         self.sha256 = sha256
     }
 
-    /// URL to view this release in a browser (e.g. GitHub release page).
-    var releasePageOrWebURL: URL {
-        if let releasePageURL { return releasePageURL }
-        if downloadURL.host?.contains("github.com") == true {
-            return URL(string: "https://github.com/mgwedd/aletheia/releases/tag/v\(version)")
-                ?? URL(string: "https://github.com/mgwedd/aletheia/releases")!
-        }
-        return downloadURL
+    /// URL to view this release in a browser, or nil when the feed supplied
+    /// nothing that points at this app's own releases on github.com.
+    var releasePageLink: URL? {
+        if let releasePageURL { return ReleaseLink.validated(releasePageURL) }
+        guard ReleaseLink.validated(downloadURL) != nil else { return nil }
+        return URL(string: "https://github.com/mgwedd/aletheia/releases/tag/v\(version)")
+            .flatMap(ReleaseLink.validated)
+            ?? URL(string: "https://github.com/mgwedd/aletheia/releases")
+    }
+}
+
+/// Which links from the update feed the app will open: https, github.com,
+/// no credentials or port, and a path inside this app's own repository.
+enum ReleaseLink {
+    static let host = "github.com"
+    static let pathPrefix = "/mgwedd/aletheia/"
+
+    static func validated(_ url: URL) -> URL? {
+        guard url.scheme?.lowercased() == "https",
+              url.host?.lowercased() == host,
+              url.user == nil, url.password == nil, url.port == nil,
+              url.path.hasPrefix(pathPrefix),
+              !url.pathComponents.contains("..")
+        else { return nil }
+        return url
     }
 }
 

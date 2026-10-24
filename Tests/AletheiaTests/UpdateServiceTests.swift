@@ -181,35 +181,80 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertNil(service.manualNotice)
     }
 
-    func testReleasePageOrWebURLFallback() {
-        let customURL = URL(string: "https://example.com/custom-release")!
-        let withPage = ReleaseInfo(
-            version: "1.2.0",
-            downloadURL: URL(string: "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg")!,
-            releaseNotes: "Notes",
-            releasePageURL: customURL
-        )
-        XCTAssertEqual(withPage.releasePageOrWebURL, customURL)
+    private let goodDownload = URL(string: "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg")!
 
-        let gitHubWithoutPage = ReleaseInfo(
-            version: "1.2.0",
-            downloadURL: URL(string: "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg")!,
-            releaseNotes: "Notes"
+    func testReleasePageLinkFallback() {
+        let goodPage = URL(string: "https://github.com/mgwedd/aletheia/releases/tag/v1.2.0")!
+        let withPage = ReleaseInfo(
+            version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes",
+            releasePageURL: goodPage
         )
-        XCTAssertEqual(
-            gitHubWithoutPage.releasePageOrWebURL,
-            URL(string: "https://github.com/mgwedd/aletheia/releases/tag/v1.2.0")!
-        )
+        XCTAssertEqual(withPage.releasePageLink, goodPage)
+
+        let withoutPage = ReleaseInfo(version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes")
+        XCTAssertEqual(withoutPage.releasePageLink, goodPage)
 
         let thirdParty = ReleaseInfo(
             version: "1.2.0",
             downloadURL: URL(string: "https://mycdn.example.org/downloads/Aletheia.dmg")!,
             releaseNotes: "Notes"
         )
-        XCTAssertEqual(
-            thirdParty.releasePageOrWebURL,
-            URL(string: "https://mycdn.example.org/downloads/Aletheia.dmg")!
+        XCTAssertNil(thirdParty.releasePageLink)
+    }
+
+    func testReleasePageURLAcceptsThisAppsReleaseLinks() {
+        for raw in [
+            "https://github.com/mgwedd/aletheia/releases/tag/v1.2.0",
+            "https://GitHub.com/mgwedd/aletheia/releases",
+            "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg"
+        ] {
+            let url = URL(string: raw)!
+            XCTAssertEqual(ReleaseLink.validated(url), url, raw)
+        }
+    }
+
+    func testReleasePageURLRejectsNonHttpsAndForeignHosts() {
+        for raw in [
+            "file:///Applications/Calculator.app",
+            "http://github.com/mgwedd/aletheia/releases",
+            "https://evil.example/mgwedd/aletheia/releases",
+            "https://github.com.evil.example/mgwedd/aletheia/releases",
+            "https://gist.github.com/mgwedd/aletheia/releases",
+            "https://github.com/other/aletheia/releases",
+            "https://github.com/mgwedd/aletheia-fork/releases",
+            "https://github.com/mgwedd/aletheia",
+            "https://github.com/mgwedd/aletheia/../evil/repo",
+            "https://github.com/mgwedd/aletheia/%2e%2e/evil/repo",
+            "https://user:pw@github.com/mgwedd/aletheia/releases",
+            "https://evil.example@github.com/mgwedd/aletheia/releases",
+            "https://github.com:8443/mgwedd/aletheia/releases",
+            "javascript:alert(1)"
+        ] {
+            XCTAssertNil(ReleaseLink.validated(URL(string: raw)!), raw)
+        }
+    }
+
+    func testFeedWithForeignLinksOffersNoReleasePage() {
+        let bad = ReleaseInfo(
+            version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes",
+            releasePageURL: URL(string: "file:///etc/passwd")!
         )
+        XCTAssertNil(bad.releasePageLink)
+    }
+
+    @MainActor
+    func testInstallerOpensNothingForForeignReleasePage() {
+        var opened: [URL] = []
+        let installer = GuidedDownloadInstaller(open: { opened.append($0) })
+        installer.install(ReleaseInfo(
+            version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes",
+            releasePageURL: URL(string: "https://evil.example/x")!
+        ))
+        XCTAssertTrue(opened.isEmpty)
+        installer.install(ReleaseInfo(
+            version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes"
+        ))
+        XCTAssertEqual(opened.count, 1)
     }
 
     func testCodeSigningStatusInspectorAndDescriptions() {

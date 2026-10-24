@@ -93,9 +93,11 @@ struct UpdatePromptView: View {
 
             VStack(spacing: 12) {
                 HStack(spacing: 16) {
-                    Link(UpdatePromptLayout.viewOnGitHub, destination: release.releasePageOrWebURL)
-                        .font(Theme.Typography.control)
-                        .foregroundStyle(Theme.accent.color)
+                    if let page = release.releasePageLink {
+                        Link(UpdatePromptLayout.viewOnGitHub, destination: page)
+                            .font(Theme.Typography.control)
+                            .foregroundStyle(Theme.accent.color)
+                    }
                     Button(UpdatePromptLayout.skip, action: onSkip)
                         .buttonStyle(.plain)
                         .font(Theme.Typography.control)
