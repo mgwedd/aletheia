@@ -23,7 +23,11 @@ final class ProtectionKey: @unchecked Sendable {
 
     init(_ key: SymmetricKey) { stored = key }
 
+    /// Runs before each read of the key. Tests use it to lock at an exact read.
+    var onRead: (@Sendable () -> Void)?
+
     var key: SymmetricKey? {
+        onRead?()
         lock.lock()
         defer { lock.unlock() }
         return stored
