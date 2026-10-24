@@ -20,7 +20,7 @@ final class SecureFSSourceScanTests: XCTestCase {
     /// Path (from the repo root) to the reason a raw call is acceptable there.
     static let allowlist: [String: String] = [
         "Sources/App/Services/SecureFS.swift": "the helper itself",
-        "Sources/App/Services/AuditLog.swift": "routed after the audit-events change lands",
+        "Sources/App/Services/AuditLog.swift": "routed through SecureFS in a follow-up change",
         "Sources/App/Services/Crypto/PrivateStaging.swift": "already creates its folder 0700 and its files 0600",
         "Sources/App/Services/SystemAudioCapture.swift": "already creates its folder 0700 and sets its files 0600",
         "Sources/App/Services/FileSaver.swift": "export to a location the user picks; keeps normal modes",
