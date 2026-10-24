@@ -98,4 +98,16 @@ enum FileSaver {
         }
         return String(cleaned)
     }
+
+    /// The base filename for a patient's export: their initials, then `parts`
+    /// (a date, a note format). Never the full name, so a file left in Downloads
+    /// or a backup doesn't name the client.
+    static func exportFileName(forPatientNamed name: String, _ parts: String...) -> String {
+        let label = PatientLabel.text(
+            forName: name,
+            surface: .exportFilename,
+            policy: .init(showFullName: false, isLocked: false)
+        )
+        return fileName(([label] + parts).joined(separator: " - "))
+    }
 }

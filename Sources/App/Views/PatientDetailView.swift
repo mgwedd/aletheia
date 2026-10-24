@@ -17,6 +17,7 @@ struct PatientDetailView: View {
     /// Carries a session chosen in global search to this patient's view.
     @ObservedObject private var navigator = AppNavigator.shared
     @State private var sessions: [SessionRecord] = []
+    @State private var pendingExport: ExportConfirmation?
     /// Session folders whose `session.json` couldn't be read (left untouched).
     @State private var damagedSessions: [UnreadableEntry] = []
     private var visibleDamagedSessions: [UnreadableEntry] {
@@ -168,6 +169,8 @@ struct PatientDetailView: View {
         // A transcription finishing changes which sessions have a transcript or
         // recording, even when it isn't the session currently on screen.
         .onChange(of: transcription.outcomes) { _, _ in refresh() }
+        .exportConfirmation($pendingExport, settings: settings)
+        .dismissOnLock { pendingExport = nil }
         .alert("Something went wrong", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -423,9 +426,16 @@ struct PatientDetailView: View {
     }
 
     private func exportRecords() {
+        guard appModel.store != nil, !exports.isRunning else { return }
+        pendingExport = ExportConfirmation(
+            patientName: patient.name, noun: "session", count: sessions.count, fileType: "zip", scope: .patientWide
+        ) { saveRecords() }
+    }
+
+    private func saveRecords() {
         guard let store = appModel.store, !exports.isRunning else { return }
         guard let destination = FileSaver.chooseDestination(
-            suggestedName: FileSaver.fileName(patient.name, "Records") + ".zip",
+            suggestedName: FileSaver.exportFileName(forPatientNamed: patient.name, "Records") + ".zip",
             type: .zip
         ) else { return }
         let patient = patient
