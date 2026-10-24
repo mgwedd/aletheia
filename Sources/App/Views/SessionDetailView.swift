@@ -1770,7 +1770,7 @@ struct SessionDetailView: View {
                     await integrations.makeNotifier().post(
                         SessionNotifications.summaryReady(
                             patientName: patient.name, date: session.date,
-                            showsName: settings.notificationsShowPatientNames
+                            policy: .current(showFullName: settings.notificationsShowPatientNames)
                         )
                     )
                 }
