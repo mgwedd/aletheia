@@ -8,11 +8,17 @@ enum WindowSharingPolicy {
 
     /// Sheets, alerts and popovers are their own windows, drawn above the lock
     /// cover of the window they belong to, so they are hidden while locked.
-    /// Save and open panels are left visible: they run modally, show only file
-    /// names, and hiding one would leave its modal session with nothing to dismiss.
+    /// Save and open panels are not hidden but cancelled (`cancelsWhileLocked`):
+    /// they run modally, and hiding one would leave its modal session with
+    /// nothing to dismiss.
     static func hidesWhileLocked(isSheet: Bool, isPopover: Bool, isFilePanel: Bool) -> Bool {
         !isFilePanel && (isSheet || isPopover)
     }
+
+    /// Open and save panels are closed when the app locks: a save panel's name
+    /// field can hold a patient's name, and a cancelled panel ends its modal
+    /// session cleanly where a hidden one would leave it waiting.
+    static func cancelsWhileLocked(isFilePanel: Bool) -> Bool { isFilePanel }
 
     enum LockedEventAction: Equatable {
         case pass
@@ -42,6 +48,7 @@ final class WindowShield {
     private let settings: AppSettings
     private let windows: () -> [NSWindow]
     private let isOverlay: (NSWindow) -> Bool
+    private let cancelFilePanel: (NSSavePanel) -> Void
     /// Windows hidden for the lock, with the alpha to restore.
     private let hidden = NSMapTable<NSWindow, NSNumber>.weakToStrongObjects()
     private var cancellables: Set<AnyCancellable> = []
@@ -52,8 +59,10 @@ final class WindowShield {
         appLock: AppLock,
         settings: AppSettings,
         windows: @escaping () -> [NSWindow] = { NSApp?.windows ?? [] },   // NSApp is still nil while the App initializes
-        isOverlay: ((NSWindow) -> Bool)? = nil
+        isOverlay: ((NSWindow) -> Bool)? = nil,
+        cancelFilePanel: @escaping (NSSavePanel) -> Void = { if $0.isVisible { $0.cancel(nil) } }
     ) {
+        self.cancelFilePanel = cancelFilePanel
         self.appLock = appLock
         self.settings = settings
         self.windows = windows
@@ -92,6 +101,11 @@ final class WindowShield {
         )
         for window in windows() {
             if window.sharingType != sharing { window.sharingType = sharing }
+            if locked, let panel = window as? NSSavePanel,
+               WindowSharingPolicy.cancelsWhileLocked(isFilePanel: true) {
+                cancelFilePanel(panel)
+                continue
+            }
             if locked, isOverlay(window), !isHidden(window) {
                 hidden.setObject(NSNumber(value: Double(window.alphaValue)), forKey: window)
                 window.alphaValue = 0
