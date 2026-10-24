@@ -67,7 +67,11 @@ final class LicenseLinkTests: XCTestCase {
         XCTAssertEqual(settings.licenseToken, "")
         guard case .unlicensed = state.status else { return XCTFail("status is \(state.status)") }
 
-        guard case .failure(.badSignature) = state.check(String(text.dropLast(2)) + "AA") else { return XCTFail("accepted a bad key") }
+        // Change one full-width character inside the signature, so the bytes always differ.
+        var chars = Array(text)
+        let i = chars.count - 10
+        chars[i] = chars[i] == "A" ? "B" : "A"
+        guard case .failure(.badSignature) = state.check(String(chars)) else { return XCTFail("accepted a bad key") }
     }
 
     func testTheOfferLineNamesTheLicenseeOrTheProblem() throws {
