@@ -892,7 +892,7 @@ struct SettingsView: View {
         .themeBanner(.info)
         SettingsRowsCard {
             SettingsSwitchRow(
-                title: "Keep my data out of Time Machine & iCloud backups",
+                title: BackupExclusion.settingTitle,
                 detail: "Off by default, so Time Machine includes your data folder — without it you'd have only one copy. Your data folder can hold unencrypted patient data (and audio/transcript files), so keep your Time Machine backups on an encrypted disk. Turn this on only if you'd rather keep the folder out of macOS system backups and rely on your own copy instead.",
                 isOn: $settings.keepDataOutOfSystemBackups
             )

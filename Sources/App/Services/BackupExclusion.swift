@@ -15,6 +15,9 @@ enum BackupExclusion {
     /// The `UserDefaults` key holding the user's explicit choice.
     static let defaultsKey = "keepDataOutOfSystemBackups"
 
+    /// The switch's label in Settings > Backups, also quoted by the Doctor.
+    static let settingTitle = "Keep my data out of Time Machine & iCloud backups"
+
     /// What applies when the user has never chosen: do **not** exclude, so Time
     /// Machine includes the data folder.
     static let defaultExcluded = false
