@@ -53,6 +53,7 @@ struct SetAsideRecordingsPane: View {
                 .padding(.vertical, 12)
             }
         }
+        .dismissOnLock { recovering = nil }
         .sheet(item: $recovering) { item in
             RecoverIntoSessionSheet(item: item) { message = $0 }
                 .environmentObject(appModel)
