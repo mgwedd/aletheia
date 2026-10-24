@@ -95,13 +95,24 @@ final class RecoveryKeyTests: XCTestCase {
     }
 
     func testValidationRejectsBadChecksum() {
-        var words = RecoveryKey.words(from: RecoveryKey.generate())
-        // Replacing the last word (which carries the checksum) with a different valid word breaks checksum.
-        let replacement = words[23] == "abandon" ? "zoo" : "abandon"
-        words[23] = replacement
-        let badChecksumKey = words.joined(separator: " ")
+        let badChecksumKey = RecoveryKeyTestSupport.badChecksumVariant(of: RecoveryKey.generate())
         XCTAssertThrowsError(try RecoveryKey.entropy(from: badChecksumKey)) { error in
             XCTAssertEqual(error as? RecoveryKey.RecoveryKeyError, .invalidChecksum)
+        }
+    }
+
+    /// 1,000 fixed keys include some where a fixed last-word swap would still
+    /// pass the checksum; the helper must break every one.
+    func testBadChecksumVariantAlwaysFailsTheChecksum() throws {
+        for seed in 0..<1_000 {
+            var entropy = Data(count: 32)
+            entropy.withUnsafeMutableBytes { $0.storeBytes(of: UInt32(seed).bigEndian, as: UInt32.self) }
+            let key = try RecoveryKey.keyFromEntropy(entropy)
+            let bad = RecoveryKeyTestSupport.badChecksumVariant(of: key)
+            XCTAssertNotEqual(bad, key)
+            XCTAssertThrowsError(try RecoveryKey.entropy(from: bad)) {
+                XCTAssertEqual($0 as? RecoveryKey.RecoveryKeyError, .invalidChecksum, "seed \(seed)")
+            }
         }
     }
 

@@ -11,7 +11,7 @@ struct FolderUnlockView: View {
     @State private var isUsingRecoveryKey = false
     @State private var passphrase = ""
     @State private var recoveryKey = ""
-    @State private var rememberOnDevice = false
+    @State private var rememberOnDevice = EncryptionSettingsDefaults.rememberKeyOnDevice
     @State private var errorMessage: String?
     @FocusState private var recoveryKeyFocused: Bool
 

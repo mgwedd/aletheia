@@ -102,6 +102,19 @@ def check(wf_dir, build_script):
             bad("release.yml: needs exactly one actions/attest-build-provenance step")
         elif not SHA_PIN.fullmatch(att[0]["uses"].split(" ")[0]):
             bad("release.yml: pin actions/attest-build-provenance to a full commit SHA")
+        # the SBOM is generated, uploaded with the release, and attested
+        sbom = next((i for i, r in enumerate(runs) if "scripts/sbom.sh" in r), None)
+        if sbom is None:
+            bad("release.yml: missing the SBOM step (scripts/sbom.sh)")
+        else:
+            sid = steps[sbom].get("id")
+            ref = "steps.%s.outputs" % sid if sid else None
+            if not sid:
+                bad("release.yml: the SBOM step needs an id so later steps can use its output")
+            elif not any(ref in str(s.get("run", "")) and "gh release create" in str(s.get("run", "")) for s in steps):
+                bad("release.yml: gh release create must upload the SBOM")
+            if len(att) == 1 and sid and ref not in str((att[0].get("with") or {}).get("subject-path", "")):
+                bad("release.yml: the provenance attestation must include the SBOM")
         perms = job.get("permissions") or {}
         if perms.get("id-token") != "write" or perms.get("attestations") != "write":
             bad("release.yml: the release job needs id-token: write and attestations: write")
@@ -126,7 +139,10 @@ def good_set():
         {"name": "Verify Developer ID signature", "run": "codesign --verify"},
         {"name": "Check the built app against production", "run": "./scripts/check-entitlements.sh --app dist/Aletheia.app"},
         {"name": "Package DMG and appcast", "run": "hdiutil"},
-        {"uses": "actions/attest-build-provenance@" + "b" * 40 + " # v4", "with": {"subject-path": "x"}},
+        {"name": "Generate the SBOM", "id": "sbom", "run": "./scripts/sbom.sh dist/x.json"},
+        {"uses": "actions/attest-build-provenance@" + "b" * 40 + " # v4",
+         "with": {"subject-path": "x\n${{ steps.sbom.outputs.path }}"}},
+        {"name": "Create GitHub Release", "run": "gh release create v1 dist/a.dmg \"${{ steps.sbom.outputs.path }}\""},
     ]}}}
     cd = {"name": "CD", "on": "push", "permissions": {"contents": "read"},
           "jobs": {"package": {"steps": [co_ok, {"run": "./scripts/build.sh"}]}}}
@@ -168,8 +184,13 @@ def self_test():
     run(lambda w, b: steps(w)[1].update({"if": "vars.ALLOW_UNSIGNED_RELEASE != 'true'"}), "ALLOW_UNSIGNED_RELEASE is set")
     run(lambda w, b: steps(w).pop(6), "--app")
     run(lambda w, b: steps(w).insert(5, steps(w).pop(6)), "after the signature check")
-    run(lambda w, b: steps(w).pop(8), "attest-build-provenance step")
-    run(lambda w, b: steps(w)[8].update(uses="actions/attest-build-provenance@v4"), "full commit SHA")
+    run(lambda w, b: steps(w).pop(9), "attest-build-provenance step")
+    run(lambda w, b: steps(w).pop(8), "missing the SBOM step")
+    run(lambda w, b: steps(w).pop(10), "must upload the SBOM")
+    run(lambda w, b: steps(w)[10].update(run="gh release create v1 dist/a.dmg"), "must upload the SBOM")
+    run(lambda w, b: steps(w)[9]["with"].update({"subject-path": "x"}), "attestation must include the SBOM")
+    run(lambda w, b: steps(w)[8].pop("id"), "needs an id")
+    run(lambda w, b: steps(w)[9].update(uses="actions/attest-build-provenance@v4"), "full commit SHA")
     run(lambda w, b: w["release.yml"]["jobs"]["release"].pop("permissions"), "id-token: write")
     run(lambda w, b: w["cd.yml"]["jobs"]["package"].update(permissions={"id-token": "write"}), "release job only")
     run(lambda w, b: "brew install xcodegen\n", "scripts/build.sh")
