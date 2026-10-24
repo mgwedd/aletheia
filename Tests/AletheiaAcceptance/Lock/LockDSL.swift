@@ -53,9 +53,7 @@ final class LockedMac {
         self.app = app
         let switches = switches
         let authenticator = authenticator
-        // Built-in app lock rule: with the folder key kept on this Mac the lock
-        // cannot be off. Builds without that rule take the plain initializer.
-        #if LOCK_REQUIRED_SEAM
+        // With the folder key kept on this Mac the lock cannot be off.
         let encryption = app.encryption
         let lock = AppLock(
             settings: app.settings,
@@ -65,15 +63,6 @@ final class LockedMac {
             spotlight: SilentSpotlight(),
             now: { [clock = app.clock] in clock.now },
             lockRequired: { [weak encryption] in encryption?.requiresAppLock ?? false })
-        #else
-        let lock = AppLock(
-            settings: app.settings,
-            canAuthenticate: { switches.canAuthenticate },
-            authenticator: authenticator,
-            isAppActive: { true },
-            spotlight: SilentSpotlight(),
-            now: { [clock = app.clock] in clock.now })
-        #endif
         self.lock = lock
         mainWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
                               styleMask: [.titled], backing: .buffered, defer: true)
@@ -341,6 +330,13 @@ extension Then where Subject == LockedMac {
     func showsNoLockScreen() {
         expect(!subject.isLocked, "expected the app to be unlocked")
         expect(subject.topCover == nil, "expected no cover, found \(String(describing: subject.topCover))")
+    }
+
+    /// The app lock is off at launch. An encrypted folder whose key is not kept on
+    /// this Mac still asks for its passphrase; that is the folder's cover, not the lock screen.
+    func showsNoAppLock() {
+        expect(!subject.isLocked, "expected the app to be unlocked")
+        expect(subject.topCover != .appLock, "expected no lock screen, found \(String(describing: subject.topCover))")
     }
 
     func isLocked() { expect(subject.isLocked, "expected the app to be locked") }

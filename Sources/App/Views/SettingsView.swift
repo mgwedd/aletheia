@@ -981,9 +981,12 @@ struct SettingsView: View {
     private var securityPane: some View {
         SettingsSwitchRow(
             title: "App lock",
-            detail: "Require Touch ID or your Mac password to open. Aletheia locks after 15 minutes of inactivity by default, when the display sleeps, or when your Mac locks or switches user.",
+            detail: encryption.requiresAppLock
+                ? "Stays on while the encryption key is kept on this Mac. Turn off \"Unlock automatically on this Mac\" first to change it."
+                : "Require Touch ID or your Mac password to open. Aletheia locks after 15 minutes of inactivity by default, when the display sleeps, or when your Mac locks or switches user.",
             isOn: appLockSelection
         )
+        .disabled(encryption.requiresAppLock)
         SettingsSwitchRow(
             title: "Lock when Aletheia is hidden",
             detail: "Require another unlock after hiding the app with ⌘H.",
@@ -1001,7 +1004,7 @@ struct SettingsView: View {
             .labelsHidden()
             .pickerStyle(.menu)
             .frame(width: 180)
-            .disabled(!settings.appLockEnabled)
+            .disabled(!(settings.appLockEnabled || encryption.requiresAppLock))
         }
         SettingsSwitchRow(
             title: "Hide Aletheia from screen sharing",
@@ -1093,7 +1096,7 @@ struct SettingsView: View {
     /// Turning the app lock on is free; turning it off needs a fresh check.
     private var appLockSelection: Binding<Bool> {
         Binding(
-            get: { settings.appLockEnabled },
+            get: { settings.appLockEnabled || encryption.requiresAppLock },
             set: { on in
                 if on {
                     settings.appLockEnabled = true

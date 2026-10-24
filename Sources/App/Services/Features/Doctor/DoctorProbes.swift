@@ -309,7 +309,7 @@ struct LiveDoctorProbes: DoctorProbing {
             return .count(store.scanForUnreadableEntries().count)
         }
         let dataRoot = settings.dataRootURL
-        let appLockEnabled = settings.appLockEnabled
+        let appLockEnabled = settings.appLockEnabled || appModel.encryptionRequiresAppLock
         let knownTerms = LiveDoctorProbes.knownTerms(for: appModel.patients)
         return LiveDoctorProbes(
             dataRoot: dataRoot,

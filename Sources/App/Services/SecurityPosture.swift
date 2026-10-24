@@ -181,7 +181,7 @@ enum SecurityPosture {
         networkOnline: Bool?
     ) -> [PostureItem] {
         evaluate(
-            appLockEnabled: settings.appLockEnabled,
+            appLockEnabled: settings.appLockEnabled || encryption.requiresAppLock,
             canAuthenticate: canAuthenticate,
             idleAutoLockMinutes: settings.idleAutoLockMinutes,
             encryptionEnabled: encryption.isEnabled,

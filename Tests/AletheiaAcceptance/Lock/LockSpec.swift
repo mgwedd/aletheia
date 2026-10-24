@@ -136,7 +136,7 @@ final class LockSpec: AcceptanceCase {
         then(confirmed).turnedAppLockOff()
 
         given.appRelaunched()
-        then(launch()).showsNoLockScreen()
+        then(launch()).showsNoAppLock()
     }
 
     func test_LOCK_12() async throws {
