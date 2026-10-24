@@ -19,13 +19,26 @@ struct PatientProfileDraft: Equatable {
     var notes: String
     var medications: [Medication]
 
-    init(patient: Patient, showsMedications: Bool) {
+    /// `edits` are unsaved changes kept from an earlier editor (closed by the
+    /// app locking); they start out typed in, on top of `patient`.
+    init(patient: Patient, showsMedications: Bool, edits: Patient? = nil) {
         original = patient
         self.showsMedications = showsMedications
-        name = patient.name
-        clinicalHistory = patient.clinicalHistory
-        notes = patient.notes
-        medications = patient.medications
+        let shown = edits ?? patient
+        name = shown.name
+        clinicalHistory = shown.clinicalHistory
+        notes = shown.notes
+        medications = shown.medications
+    }
+
+    /// The fields as currently typed, on top of the saved patient (unsaved).
+    var edited: Patient {
+        var patient = original
+        patient.name = name
+        patient.clinicalHistory = clinicalHistory
+        patient.notes = notes
+        patient.medications = medications
+        return patient
     }
 
     /// The name as it would be saved; nil while it is blank.

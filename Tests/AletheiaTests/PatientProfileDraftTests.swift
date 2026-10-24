@@ -43,6 +43,16 @@ final class PatientProfileDraftTests: XCTestCase {
         XCTAssertEqual(saved.notes, "Seen")
     }
 
+    func testEditsKeptFromALockStartTypedInAndCountAsChanges() {
+        var kept = patient()
+        kept.notes = "Typed before the lock"
+        let draft = PatientProfileDraft(patient: patient(), showsMedications: true, edits: kept)
+        XCTAssertEqual(draft.notes, "Typed before the lock")
+        XCTAssertTrue(draft.hasChanges)
+        XCTAssertEqual(draft.edited.notes, "Typed before the lock")
+        XCTAssertEqual(draft.original.notes, "")
+    }
+
     func testDeletionConfirmationIgnoresCaseAndOuterSpaces() {
         XCTAssertTrue(PatientDeletionConfirmation.matches(typed: " jane doe ", patientName: "Jane Doe"))
         XCTAssertFalse(PatientDeletionConfirmation.matches(typed: "Jane", patientName: "Jane Doe"))

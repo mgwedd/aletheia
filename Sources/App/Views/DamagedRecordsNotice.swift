@@ -37,6 +37,7 @@ struct DamagedRecordsNotice: View {
         .clipShape(shape)
         .overlay(shape.strokeBorder(Theme.line.color, lineWidth: 1))
         .accessibilityElement(children: .contain)
+        .dismissOnLock { reviewingEntry = nil }
         .sheet(item: $reviewingEntry) { entry in
             DamagedRecordReviewSheet(
                 entry: entry,

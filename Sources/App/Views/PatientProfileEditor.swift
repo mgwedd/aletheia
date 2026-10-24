@@ -29,6 +29,7 @@ struct PatientProfileEditor: View {
     private let patientID: UUID
     private let original: Patient
     private let initialFocus: ProfileField
+    private let onLockDraft: (Patient?) -> Void
 
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -38,11 +39,18 @@ struct PatientProfileEditor: View {
     @State private var showDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
 
-    init(patient: Patient, showsMedications: Bool, initialFocus: ProfileField = .name) {
+    /// `draft` carries unsaved edits kept when the app locked closed this sheet;
+    /// `onLockDraft` receives the edits if it closes that way again, and nil once
+    /// a draft has been taken up.
+    init(
+        patient: Patient, showsMedications: Bool, initialFocus: ProfileField = .name,
+        draft: Patient? = nil, onLockDraft: @escaping (Patient?) -> Void = { _ in }
+    ) {
         self.initialFocus = initialFocus
+        self.onLockDraft = onLockDraft
         patientID = patient.id
         original = patient
-        _draft = State(initialValue: PatientProfileDraft(patient: patient, showsMedications: showsMedications))
+        _draft = State(initialValue: PatientProfileDraft(patient: patient, showsMedications: showsMedications, edits: draft))
     }
 
     var body: some View {
@@ -96,6 +104,13 @@ struct PatientProfileEditor: View {
         .background(Theme.panel.color)
         .tint(Theme.accent.color)
         .interactiveDismissDisabled(draft.hasChanges)
+        .onAppear { onLockDraft(nil) }
+        // Locking closes the editor. Unsaved edits are kept in memory (not written)
+        // so reopening this patient's editor does not lose them.
+        .dismissOnLock {
+            onLockDraft(draft.hasChanges ? draft.edited : nil)
+            dismiss()
+        }
         .confirmationDialog("Discard your changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Discard Changes", role: .destructive) { dismiss() }
             Button("Keep Editing", role: .cancel) {}
