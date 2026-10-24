@@ -162,8 +162,7 @@ and attested it is correct.**
 | **Snapshot-before-migrate** (DB via `VACUUM INTO`) — refuse to migrate if the pre-image can't be written | **in place** (dormant until a v2+ migration ships: v1 is the baseline, so no pre-image is taken today) | `MigrationBackup` (pure policy) + `SQLitePersistenceCore` |
 | **Snapshot before an encryption on/off conversion** (rolling window of 5); on a successful *enable* the plaintext pre-image is deleted, on failure it is kept as the way back | **in place** | `DatabaseSnapshotManager` + `DataMigrator` |
 | **One backup home** (`.backups/`, a sub-folder per kind) and one-shot adoption of the older locations | **in place** | `BackupLayout` |
-| **Local end-to-end-encrypted archive** (sealed with the user's key) | service and coordinator built and tested; **not yet invoked from app code** (no "Back up now" UI, no schedule) | `LocalEncryptedBackupService`, `BackupCoordinator`, `EncryptedBackupArchive` |
-| **iCloud encrypted archive** | staged; reports "not configured" until the CloudKit capability is provisioned | `ICloudEncryptedBackupService` |
+| **Local end-to-end-encrypted archive** (sealed with the user's key) | **in place** via Settings › Backups › Back up now (user-chosen local folder; no schedule) | `LocalEncryptedBackupService`, `BackupCoordinator`, `EncryptedBackupArchive` |
 | **Attest-then-prune** UX + **Restore previous version** | next | `MigrationBackup.prunable` ready; needs Settings + a post-update banner. Nothing prunes migration pre-images today. |
 | **Snapshot the small JSON** (patient/session) alongside the DB | next | copy referenced JSON into the same pre-image set |
 | **Whole-folder atomicity** across DB + files | not covered | The archive covers only the SQLite database; transcripts, notes and `digest.json` are covered only through the data folder (for example Time Machine) |

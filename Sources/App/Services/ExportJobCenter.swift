@@ -38,9 +38,10 @@ final class ExportJobCenter: ObservableObject {
         sessionCount: Int,
         load: @escaping (Int) throws -> ArchiveSession,
         destination: URL,
-        onFinished: @escaping @MainActor (PatientArchiveWriter.Outcome) -> Void = { _ in }
+        onFinished: @escaping @MainActor (PatientArchiveWriter.Outcome) -> Void = { _ in },
+        onFailed: @escaping @MainActor () -> Void = {}
     ) -> Bool {
-        start(destination: destination, onFinished: onFinished) { progress, isCancelled in
+        start(destination: destination, onFinished: onFinished, onFailed: onFailed) { progress, isCancelled in
             try PatientArchiveWriter.write(
                 patientName: patientName,
                 background: background,
@@ -59,6 +60,7 @@ final class ExportJobCenter: ObservableObject {
     func start(
         destination: URL,
         onFinished: @escaping @MainActor (PatientArchiveWriter.Outcome) -> Void = { _ in },
+        onFailed: @escaping @MainActor () -> Void = {},
         work: @escaping (_ progress: (Double, String) -> Void, _ isCancelled: () -> Bool) throws -> PatientArchiveWriter.Outcome
     ) -> Bool {
         guard !isRunning else { return false }
@@ -82,7 +84,7 @@ final class ExportJobCenter: ObservableObject {
             } catch {
                 result = .failure(error)
             }
-            await self?.finish(result, destination: destination, generation: mine, onFinished: onFinished)
+            await self?.finish(result, destination: destination, generation: mine, onFinished: onFinished, onFailed: onFailed)
         }
         return true
     }
@@ -127,7 +129,8 @@ final class ExportJobCenter: ObservableObject {
         _ result: Result<PatientArchiveWriter.Outcome, Error>,
         destination: URL,
         generation: Int,
-        onFinished: @MainActor (PatientArchiveWriter.Outcome) -> Void
+        onFinished: @MainActor (PatientArchiveWriter.Outcome) -> Void,
+        onFailed: @MainActor () -> Void = {}
     ) {
         guard generation == self.generation else { return }
         task = nil
@@ -142,6 +145,7 @@ final class ExportJobCenter: ObservableObject {
             state = .idle
         case .failure(let error):
             state = .failed(Self.message(for: error))
+            onFailed()
             Task { await notifier.post(SessionNotifications.exportFailed()) }
         }
     }

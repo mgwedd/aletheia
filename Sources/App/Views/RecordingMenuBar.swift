@@ -123,7 +123,9 @@ struct RecordingMenuBar: View {
                 Chip("Recording", tone: .recording, showsDot: true)
             }
             Spacer(minLength: 8)
-            Text(active.patientName)
+            Text(MenuBarContentPolicy.patientLabel(
+                name: active.patientName, showFullName: settings.notificationsShowPatientNames,
+                isLocked: appLock.isLocked))
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
                 .lineLimit(1)
@@ -205,9 +207,12 @@ struct RecordingMenuBar: View {
         } else {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Patient").eyebrowStyle()
+                let labels = MenuBarContentPolicy.pickerLabels(
+                    appModel.patients.map { ($0.id, $0.name, $0.createdAt) },
+                    showFullName: settings.notificationsShowPatientNames, isLocked: appLock.isLocked)
                 Picker("Patient", selection: patientSelection) {
                     ForEach(appModel.patients) { patient in
-                        Text(patient.name).tag(patient.id)
+                        Text(labels[patient.id] ?? PatientLabel.blankFallback).tag(patient.id)
                     }
                 }
                 .pickerStyle(.menu)

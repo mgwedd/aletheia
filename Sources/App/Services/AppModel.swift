@@ -48,6 +48,15 @@ final class AppModel: ObservableObject {
     /// On-device, append-only audit log of ePHI-affecting actions (HIPAA
     /// §164.312(b)), living in the data folder beside the stores.
     private(set) var audit: AuditLog?
+    /// True while the last attempt to write an activity-log entry failed; shown
+    /// in the security overview and as a banner so a broken log isn't silent.
+    @Published private(set) var auditWriteFailed = false
+    /// Conditions to tell the user about (repeated failed unlocks, a broken
+    /// activity log), shown as banners until dismissed.
+    @Published private(set) var securityAlerts: [SecurityAlert] = []
+    private var failedUnlocks = FailedUnlockMonitor()
+    private var didRunLaunchIntegrityCheck = false
+    private var lastDataRootPath: String?
     /// The persistent search index (`<dataRoot>/search.sqlite`), reused while the data folder is unchanged.
     private var searchIndex: SearchIndex?
     private var searchSync: Task<Void, Never>?
@@ -76,6 +85,10 @@ final class AppModel: ObservableObject {
         self.spotlightIndexer = spotlightIndexer
         self.featureRegistry = featureRegistry
         rebuildStore()
+        encryption.recordAudit = { [weak self] action, detail in
+            self?.recordAudit(action, detail: detail)
+        }
+        runLaunchIntegrityCheck()
         // Rebuild the stores with a fresh protector whenever encryption is
         // enabled, unlocked, or locked, so reads/writes pick up the key change.
         encryption.onProtectionChanged = { [weak self] in self?.rebuildStore() }
@@ -117,9 +130,11 @@ final class AppModel: ObservableObject {
         encryption.refreshState()
         refreshDiskEncryption()
         let dataRoot = settings.dataRootURL
-        audit = dataRoot.map { root in
+        let previousAudit = audit
+        attachAudit(dataRoot.map { root in
             AuditLog(root: root, dekProvider: { [weak self] in self?.encryption.protector.heldKey })
-        }
+        })
+        logDataFolderChangeIfNeeded(from: previousAudit, to: dataRoot)
         logEncryptionTransitionIfNeeded()
         saveFailureSubject = nil
         guard let root = dataRoot else {
@@ -151,6 +166,10 @@ final class AppModel: ObservableObject {
             ))
         }
         commentStore = newCommentStore
+        let auditSink: (AuditAction, String?, String?) -> Void = { [weak self] action, subject, detail in
+            self?.recordAudit(action, subjectID: subject, detail: detail)
+        }
+        newCommentStore?.onAudit = auditSink
         let indexURL = root.appendingPathComponent("search.sqlite")
         let index = searchIndex?.url == indexURL ? searchIndex! : SearchIndex(url: indexURL)
         searchIndex = index
@@ -165,6 +184,7 @@ final class AppModel: ObservableObject {
         SessionSearch.index = index
         let newStore = Store(
             root: root, protector: protector, commentStore: newCommentStore, openDatabaseIfMissing: false, searchIndex: index)
+        newStore.onAudit = auditSink
         store = newStore
         startSearchSync()
         if case let .needsNewerApp(dataVersion, appVersion) = newStore.schemaCompatibility {
@@ -314,10 +334,112 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// How a candidate backup folder is judged. Injectable so tests stay off the
+    /// real filesystem facts (iCloud, volumes).
+    var backupFolderVerdict: (URL) -> DataFolderPolicy.Verdict = { DataFolderPolicy.verdict(for: $0) }
+
+    /// Writes an encrypted archive of the database into `folder` (a folder the
+    /// user chose), sealed with the folder key, and records the backup once on
+    /// success. Nothing is recorded when the backup is refused or fails.
+    func backUpNow(to folder: URL) async -> BackupOutcome {
+        guard let root = settings.dataRootURL, let comments = commentStore else {
+            return .failed("Choose a data folder first.")
+        }
+        guard let key = encryption.protector.heldKey else {
+            return .failed("Turn on and unlock encryption first. Backups are sealed with your encryption key.")
+        }
+        let verdict = backupFolderVerdict(folder)
+        guard verdict == .ok else { return .failed(verdict.explanation) }
+        let dataPath = root.standardizedFileURL.resolvingSymlinksInPath().path
+        let folderPath = folder.standardizedFileURL.resolvingSymlinksInPath().path
+        guard folderPath != dataPath, !folderPath.hasPrefix(dataPath + "/") else {
+            return .failed("Choose a folder outside your data folder, ideally on another disk.")
+        }
+        var service = LocalEncryptedBackupService(root: root, key: key)
+        service.destinationOverride = folder
+        let outcome = await BackupCoordinator(store: comments, destination: service).backUpNow(reason: "manual")
+        if case .success = outcome {
+            // The key wrapper is passphrase-protected; keeping it beside the
+            // archive lets the backup be opened without the original data folder.
+            if !Keystore.exists(at: folder), let keystore = Keystore.load(from: root) { try? keystore.write(to: folder) }
+            settings.localEncryptedBackupEnabled = true
+            recordAudit(.backupRun)
+        }
+        return outcome
+    }
+
     /// Record an ePHI-affecting action, if a data folder (and thus a log) exists.
     /// The thin seam call sites use so they don't reach into `audit` directly.
     func recordAudit(_ action: AuditAction, subjectID: String? = nil, detail: String? = nil) {
         _ = try? audit?.record(action, subjectID: subjectID, detail: detail)
+    }
+
+    /// Makes `log` the current activity log and mirrors its write-failure state
+    /// into `auditWriteFailed`.
+    func attachAudit(_ log: AuditLog?) {
+        audit = log
+        auditWriteFailed = log?.lastWriteFailed ?? false
+        log?.onWriteStateChanged = { [weak self] failed in
+            if Thread.isMainThread {
+                self?.auditWriteFailed = failed
+            } else {
+                DispatchQueue.main.async { self?.auditWriteFailed = failed }
+            }
+        }
+    }
+
+    /// A different data folder than the last build's: noted in the log it left
+    /// and in the one it opened. The first build (launch) is only a baseline.
+    private func logDataFolderChangeIfNeeded(from previous: AuditLog?, to root: URL?) {
+        let path = root?.standardizedFileURL.path
+        defer { lastDataRootPath = path }
+        guard let last = lastDataRootPath, let path, last != path else { return }
+        _ = try? previous?.record(.dataFolderChanged, detail: "Moved away from this folder")
+        recordAudit(.dataFolderChanged, detail: "Opened this folder")
+    }
+
+    // MARK: - Alerts
+
+    /// A failed unlock attempt: recorded, and counted toward a repeated-failure alert.
+    func noteUnlockFailure(_ reason: String, now: Date = Date()) {
+        recordAudit(.appUnlockFailed, detail: reason)
+        guard failedUnlocks.recordFailure(at: now) else { return }
+        let attempts = failedUnlocks.threshold
+        let minutes = Int(failedUnlocks.window / 60)
+        recordAudit(.repeatedUnlockFailures, detail: "\(attempts) failed unlocks within \(minutes) minutes")
+        raise(.repeatedUnlockFailures(attempts: attempts, minutes: minutes))
+    }
+
+    func noteUnlockSuccess() {
+        failedUnlocks.recordSuccess()
+    }
+
+    /// Checks the activity log's chain once, in the background, at launch.
+    private func runLaunchIntegrityCheck() {
+        guard !didRunLaunchIntegrityCheck, let log = audit else { return }
+        didRunLaunchIntegrityCheck = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let result = log.verifyIntegrity()
+            DispatchQueue.main.async { self?.applyIntegrityResult(result) }
+        }
+    }
+
+    /// A broken chain is recorded (once per break) and raised as an alert.
+    func applyIntegrityResult(_ result: IntegrityVerificationResult) {
+        guard case let .broken(seq, _) = result else { return }
+        let detail = "Chain broken at entry #\(seq)"
+        let alreadyRecorded = audit?.entries().last { $0.action == .integrityCheckFailed }?.detail == detail
+        if !alreadyRecorded { recordAudit(.integrityCheckFailed, detail: detail) }
+        raise(.auditLogBroken(entry: seq))
+    }
+
+    private func raise(_ alert: SecurityAlert) {
+        securityAlerts.removeAll { $0.id == alert.id }
+        securityAlerts.append(alert)
+    }
+
+    func dismissSecurityAlert(_ alert: SecurityAlert) {
+        securityAlerts.removeAll { $0.id == alert.id }
     }
 
     /// Compares the current encryption on/unlocked state against the last build's

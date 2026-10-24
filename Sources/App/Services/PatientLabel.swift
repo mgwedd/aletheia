@@ -18,6 +18,51 @@ struct PatientLabel: Equatable {
         let monogram = PatientInitials.from(name)
         text = monogram == "?" ? monogram : monogram.map { "\($0)." }.joined()
     }
+
+    // MARK: Surface policy
+
+    /// Where a patient is being named.
+    enum Surface: CaseIterable {
+        case inApp, notification, menuBar, intent, spotlight, calendar, reminder, exportFilename
+    }
+
+    /// What the clinician allows, and whether the app is locked right now.
+    struct Policy: Equatable {
+        /// The opt-in to show full names outside the app's own windows.
+        var showFullName: Bool
+        var isLocked: Bool
+
+        init(showFullName: Bool, isLocked: Bool) {
+            self.showFullName = showFullName
+            self.isLocked = isLocked
+        }
+
+        /// The policy right now: the opt-in plus the live lock state.
+        static func current(showFullName: Bool) -> Policy {
+            Policy(showFullName: showFullName, isLocked: SystemSurfaceAccess.isLocked)
+        }
+    }
+
+    /// Shown when a patient has no name.
+    static let blankFallback = "Client"
+
+    /// Whether `surface` shows the full name under `policy`. The app's own
+    /// windows always do; every other surface shows initials unless the clinician
+    /// opted in, and never while locked.
+    static func showsFullName(surface: Surface, policy: Policy) -> Bool {
+        if surface == .inApp { return true }
+        return policy.showFullName && !policy.isLocked
+    }
+
+    static func text(forName name: String, surface: Surface, policy: Policy) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return blankFallback }
+        return showsFullName(surface: surface, policy: policy) ? trimmed : PatientLabel(name: trimmed).text
+    }
+
+    static func text(for patient: Patient, surface: Surface, policy: Policy) -> String {
+        text(forName: patient.name, surface: surface, policy: policy)
+    }
 }
 
 /// Whether records may be opened or revealed from outside the app window. They

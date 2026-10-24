@@ -104,6 +104,9 @@ struct AletheiaApp: App {
         SessionSearch.setAppLocked(appLock.isLocked)   // before AppModel builds the index: it starts closed behind the lock
         let appModel = AppModel(settings: settings, encryption: encryption)
         _appModel = StateObject(wrappedValue: appModel)
+        settings.onAuditedChange = { [weak appModel] detail in
+            appModel?.recordAudit(.securitySettingChanged, detail: detail)
+        }
         let integrations = Integrations(settings: settings)
         _integrations = StateObject(wrappedValue: integrations)
         let license = LicenseState(settings: settings)
@@ -126,7 +129,7 @@ struct AletheiaApp: App {
                 await integrations?.makeNotifier().post(
                     SessionNotifications.longRecordingReminder(
                         patientName: recording.patientName,
-                        showsName: settings.notificationsShowPatientNames
+                        policy: .current(showFullName: settings.notificationsShowPatientNames)
                     )
                 )
             }
@@ -147,6 +150,7 @@ struct AletheiaApp: App {
         appLock.onUnlock = { [weak appModel, weak encryption] in
             encryption?.autoUnlockFromDevice()
             appModel?.recordAudit(.appUnlocked)
+            appModel?.noteUnlockSuccess()
             appModel?.reindexSpotlight()
         }
         appLock.onLock = { [weak encryption] in encryption?.lock() }
@@ -162,7 +166,7 @@ struct AletheiaApp: App {
         windowShield.start()
         self.windowShield = windowShield
         appLock.onUnlockFailed = { [weak appModel] reason in
-            appModel?.recordAudit(.appUnlockFailed, detail: reason)
+            appModel?.noteUnlockFailure(reason)
         }
         appLock.onLocked = { [weak appModel] in
             appModel?.recordAudit(.appLocked)

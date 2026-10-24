@@ -9,7 +9,13 @@ enum AuditLogCopy {
         ("encryption changes", [.encryptionEnabled, .encryptionDisabled, .encryptionUnlocked]),
         ("exports", [.recordExported, .auditLogExported]),
         ("deletions", [.recordDeleted]),
-        ("passphrase changes", [.encryptionPassphraseChanged]),
+        ("changes to security settings", [.securitySettingChanged]),
+        ("changes to the data folder", [.dataFolderChanged]),
+        ("recovery key and passphrase changes", [.encryptionKeyChanged, .encryptionPassphraseChanged]),
+        ("repeated failed unlocks", [.repeatedUnlockFailures]),
+        ("failed exports", [.exportFailed]),
+        ("failed integrity checks", [.integrityCheckFailed]),
+        ("backups", [.backupRun]),
         ("recovered recordings", [.recordingRecovered]),
     ]
 
@@ -25,7 +31,7 @@ enum AuditLogCopy {
     static var caption: String {
         let phrases = recorded.map(\.phrase)
         let list = phrases.dropLast().joined(separator: ", ") + ", and " + phrases[phrases.count - 1]
-        return "An on-device record of \(list). Backups and viewing records are not recorded yet. It holds no names or clinical content and never leaves this Mac. It supports, but does not by itself satisfy, HIPAA's audit-control requirement (§164.312(b))."
+        return "An on-device record of \(list). Viewing records is not recorded yet. It holds no names or clinical content and never leaves this Mac. It supports, but does not by itself satisfy, HIPAA's audit-control requirement (§164.312(b))."
     }
 }
 
@@ -55,6 +61,8 @@ struct AuditLogSection: View {
     @EnvironmentObject private var appModel: AppModel
     /// How the last export ended; shown by the Settings screen.
     @Binding var exportResult: SaveOutcome?
+    /// Runs an export only after the user re-authenticates.
+    let requireAuth: (SensitiveAction, @escaping @MainActor () -> Void) -> Void
 
     /// Newest first. A snapshot, loaded on appear and after an export.
     @State private var entries: [AuditEvent] = []
@@ -90,12 +98,12 @@ struct AuditLogSection: View {
                 }
             }
             HStack(spacing: 8) {
-                Button("Verify integrity & export audit report", action: verifyIntegrityAndExportReport)
+                Button("Verify integrity & export audit report") { requireAuth(.exportActivityLog) { verifyIntegrityAndExportReport() } }
                     .buttonStyle(.themed)
                     .disabled(entries.isEmpty)
                 Button("Refresh", action: load)
                     .buttonStyle(.themed)
-                Button("Export…", action: exportLog)
+                Button("Export…") { requireAuth(.exportActivityLog) { exportLog() } }
                     .buttonStyle(.themed)
                     .disabled(entries.isEmpty)
                 Spacer()
@@ -169,7 +177,8 @@ struct AuditLogSection: View {
     private func verifyIntegrityAndExportReport() {
         guard let audit = appModel.audit else { return }
         let status: String
-        switch audit.verifyIntegrity() {
+        let result = audit.verifyIntegrity()
+        switch result {
         case .verified(let count):
             status = "Integrity verified: all \(count) entries intact."
         case .broken(let seq, let reason):
@@ -178,6 +187,7 @@ struct AuditLogSection: View {
             status = "Audit log unverifiable: \(reason)"
         }
         verificationMessage = status
+        appModel.applyIntegrityResult(result)
         let name = FileSaver.fileName("Aletheia Audit Report", Self.fileStamp())
         let outcome = FileSaver.saveText(audit.generateReport(status: status), suggestedName: "\(name).txt")
         finishExport(outcome)
@@ -191,6 +201,9 @@ struct AuditLogSection: View {
     private func finishExport(_ outcome: SaveOutcome) {
         if case .saved = outcome {
             appModel.recordAudit(.auditLogExported)
+            load()
+        } else if case .failed = outcome {
+            appModel.recordAudit(.exportFailed, detail: "Activity log")
             load()
         }
         exportResult = outcome.shown

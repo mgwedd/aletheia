@@ -34,6 +34,22 @@ final class PrivateStagingTests: XCTestCase {
         XCTAssertEqual(originalRoot.lastPathComponent, "ScratchTests", "this process is hosting tests")
     }
 
+    func testScratchAndStagingRootsAreExcludedFromBackup() throws {
+        let staging = sandbox.appendingPathComponent("Staging", isDirectory: true)
+        try PrivateStaging.ensureBackupExcludedRoot(staging)
+        _ = try PrivateStaging.scratchFile(prefix: "t", ext: "bin")
+        XCTAssertEqual(try mode(staging), 0o700)
+        // The flag doesn't read back inside the App Sandbox container (see BackupExclusionTests).
+        let sandboxed = ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+            || NSHomeDirectory().contains("/Library/Containers/")
+        try XCTSkipIf(sandboxed, "isExcludedFromBackup doesn't read back inside the App Sandbox container.")
+        for dir in [staging, PrivateStaging.root] {
+            var url = dir
+            url.removeAllCachedResourceValues()
+            XCTAssertEqual(try url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true, dir.lastPathComponent)
+        }
+    }
+
     func testScratchFileIsOwnerOnlyInAnOwnerOnlyFolder() throws {
         let file = try PrivateStaging.scratchFile(prefix: "t", ext: "bin")
         XCTAssertEqual(file.deletingLastPathComponent().path, PrivateStaging.root.path)
@@ -174,10 +190,32 @@ final class PrivateStagingUsageTests: XCTestCase {
             let code = text.split(separator: "\n", omittingEmptySubsequences: false)
                 .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
                 .joined(separator: "\n")
-            if code.contains(".temporaryDirectory") || code.contains("NSTemporaryDirectory") { offenders.append(path) }
+            if code.contains(".temporaryDirectory") || code.contains("NSTemporaryDirectory")
+                || code.contains("mkstemp") || code.contains("createTemporaryFile") { offenders.append(path) }
         }
         XCTAssertGreaterThan(scanned, 50, "the scan should see the app sources")
         XCTAssertTrue(offenders.isEmpty, "use PrivateStaging instead of the shared temporary directory: \(offenders)")
+    }
+
+    /// The recorder marks its staging root when it creates it, so live audio stays out of backups.
+    func testTheRecorderKeepsItsStagingRootOutOfBackups() throws {
+        let text = try String(contentsOf: repo.appendingPathComponent("Sources/App/Services/SessionRecorder.swift"), encoding: .utf8)
+        XCTAssertTrue(text.contains("PrivateStaging.ensureBackupExcludedRoot(stagingDirectoryURL)"))
+    }
+
+    func testBackupFlagIsOnlySetThroughBackupExclusion() throws {
+        let root = repo.appendingPathComponent("Sources/App")
+        let files = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+        var offenders: [String] = []
+        for case let url as URL in files where url.pathExtension == "swift" {
+            if url.lastPathComponent == "BackupExclusion.swift" { continue }
+            let text = try String(contentsOf: url, encoding: .utf8)
+            let code = text.split(separator: "\n", omittingEmptySubsequences: false)
+                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+                .joined(separator: "\n")
+            if code.contains("isExcludedFromBackup =") { offenders.append(url.lastPathComponent) }
+        }
+        XCTAssertTrue(offenders.isEmpty, "use BackupExclusion to set the backup flag: \(offenders)")
     }
 
     func testTheComponentItselfExists() {

@@ -4,8 +4,7 @@ import XCTest
 
 /// End-to-end-encrypted backup: that the archive is opaque at rest and round-
 /// trips, that a wrong key can't open it, and that the local destination writes,
-/// retains, and restores — while the iCloud destination reports itself
-/// unconfigured until Apple setup lands.
+/// retains, and restores.
 final class BackupTests: XCTestCase {
     private var tempRoot: URL!
 
@@ -159,15 +158,16 @@ final class BackupTests: XCTestCase {
         XCTAssertTrue(names.allSatisfy { $0.contains("-r2") || $0.contains("-r3") }, "newest survive: \(names)")
     }
 
-    // MARK: - iCloud destination (staged)
-
-    func testICloudDestinationReportsUnconfigured() async {
-        let service = ICloudEncryptedBackupService(key: SymmetricKey(size: .bits256))
-        XCTAssertFalse(service.isConfigured)
-        let out = await service.backUp(databaseURL: tempRoot.appendingPathComponent("db"), reason: "manual")
-        XCTAssertEqual(out, .notConfigured)
-        let restore = await service.restoreLatest(to: tempRoot.appendingPathComponent("db"))
-        XCTAssertEqual(restore, .notConfigured)
+    func testDestinationOverrideWritesIntoTheChosenFolder() async throws {
+        let db = try writeSource("db")
+        let chosen = tempRoot.appendingPathComponent("chosen", isDirectory: true)
+        var service = LocalEncryptedBackupService(root: tempRoot, key: SymmetricKey(size: .bits256))
+        service.destinationOverride = chosen
+        guard case let .success(archive) = await service.backUp(databaseURL: db, reason: "manual") else {
+            return XCTFail("backup should succeed")
+        }
+        XCTAssertEqual(archive.deletingLastPathComponent().path, chosen.path)
+        XCTAssertTrue(EncryptedBackupArchive.isArchive(archive))
     }
 
     // MARK: - Settings persistence
@@ -177,8 +177,6 @@ final class BackupTests: XCTestCase {
         let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         defaults.set(true, forKey: "localEncryptedBackupEnabled")
-        defaults.set(true, forKey: "iCloudEncryptedBackupEnabled")
         XCTAssertTrue(defaults.bool(forKey: "localEncryptedBackupEnabled"))
-        XCTAssertTrue(defaults.bool(forKey: "iCloudEncryptedBackupEnabled"))
     }
 }

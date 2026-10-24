@@ -54,6 +54,10 @@ Concise, non-obvious rules for this repo. (Obvious stuff omitted on purpose.)
   Its `git grep` uses `-e "$PATTERN"` because patterns start with `-----BEGIN`.
 
 ## Conventions
+- **Names on out-of-app surfaces go through `PatientLabel`** (initials by default;
+  full name only with the opt-in and while unlocked). `scripts/check-patient-label.sh`
+  and `PatientLabelTests` scan notifications, the menu bar, Spotlight, Intents,
+  Calendar and Reminders.
 - **Colors come from `Theme`** (`Sources/App/Views/Theme`), backed by named
   colors in `Assets.xcassets/Theme` (light, dark, Increase Contrast). No color
   literals or system colors in screens; add a colorset + `Theme` token +
