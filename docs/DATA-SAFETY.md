@@ -165,7 +165,7 @@ and attested it is correct.**
 | **Local end-to-end-encrypted archive** (sealed with the user's key) | **in place** via Settings › Backups › Back up now (user-chosen local folder; no schedule) | `LocalEncryptedBackupService`, `BackupCoordinator`, `EncryptedBackupArchive` |
 | **Attest-then-prune** UX + **Restore previous version** | next | `MigrationBackup.prunable` ready; needs Settings + a post-update banner. Nothing prunes migration pre-images today. |
 | **Snapshot the small JSON** (patient/session) alongside the DB | next | copy referenced JSON into the same pre-image set |
-| **Whole-folder atomicity** across DB + files | not covered | The archive covers only the SQLite database; transcripts, notes and `digest.json` are covered only through the data folder (for example Time Machine) |
+| **Whole-folder atomicity** across DB + files | partial | Back Up Now archives the whole folder (the database as a consistent snapshot, other files as they are at that moment) and Restore from backup recovers it into an empty folder |
 
 ### Where backups live (one layout)
 

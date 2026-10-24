@@ -72,6 +72,18 @@ enum FileSaver {
         return panel.runModal() == .OK ? panel.url : nil
     }
 
+    /// Asks for one file with the given extension (a backup to restore).
+    static func chooseFile(prompt: String, message: String, fileExtension: String) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = prompt
+        panel.message = message
+        if let type = UTType(filenameExtension: fileExtension) { panel.allowedContentTypes = [type] }
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
     /// Saves an iCalendar (.ics) file to a user-chosen location via NSSavePanel.
     @discardableResult
     static func saveICS(_ text: String, suggestedName: String) -> Bool {

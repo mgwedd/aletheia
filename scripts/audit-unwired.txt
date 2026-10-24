@@ -6,7 +6,6 @@ phiAmended
 phiDeleted
 aiInference
 phiCopied
-backupRestored
 recordingConsentAttested
 noteSigned
 aiNoteVerified

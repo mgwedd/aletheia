@@ -131,7 +131,7 @@ A digest is an AI-written summary of one session, stored as `digest.json` beside
 
 `mic.caf` and `call.caf` are deleted after transcription by default. Schema changes are append-only migrations, with a pre-migration copy of the database in `.backups/migrations`. The SQLite file is a single `records` table of `(kind, id, owner, item, payload)`.
 
-The encrypted archive service covers only the SQLite database and is not invoked from the app. Transcripts, notes and digests are backed up only through the data folder itself (for example Time Machine). The app has no delete-session action.
+Back Up Now writes an encrypted archive of the whole data folder, and Restore from backup recovers it into a new, empty folder. The app has no delete-session action.
 
 ### Transcription
 
