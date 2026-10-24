@@ -121,14 +121,14 @@ for cid in checks:
 tests, pending = collections.Counter(), set()
 suite = os.path.isdir(SUITE)
 if suite:
-    copy_file, sources = None, {}
+    copy_files, sources = set(), {}
     for d, _, fs in os.walk(SUITE):
         for f in fs:
             if f.endswith(".swift"):
                 p = os.path.join(d, f)
                 sources[p] = open(p, encoding="utf-8").read()
-                if f == "Copy.swift":
-                    copy_file = p
+                if f == "Copy.swift" or f.endswith("Copy.swift"):
+                    copy_files.add(p)
     for p, text in sources.items():
         rel = os.path.relpath(p, root)
         if "XCTExpectFailure" in text:
@@ -150,17 +150,22 @@ if suite:
     for cid in checks:
         if cid not in tests:
             errs.append(f"{cid}: no test_{cid.replace('-', '_')}")
-    if copy_file:
-        rest = "".join(t for p, t in sources.items() if p != copy_file)
-        for name in re.findall(r"static let (\w+)", sources[copy_file]):
-            if not re.search(rf"\bCopy\.{name}\b", rest):
-                errs.append(f"Copy.{name} is used by no test")
+    if copy_files:
+        rest = "".join(t for p, t in sources.items() if p not in copy_files)
+        for cf in sorted(copy_files):
+            for name in re.findall(r"static let (\w+)", sources[cf]):
+                if not re.search(rf"\bCopy\.{name}\b", rest):
+                    errs.append(f"Copy.{name} is used by no test")
 
-print(f"{'journey':<10} {'checks':>6} {'tests':>6} {'pending':>7} {'missing':>7}")
+print(f"{'journey':<10} {'checks':>6} {'implemented':>11} {'pending':>7} {'missing':>7}")
+tot = [0, 0, 0, 0]
 for j, ids in journeys.items():
     have = [c for c in ids if c in tests]
-    print(f"{j:<10} {len(ids):>6} {len(have):>6} {len([c for c in have if c in pending]):>7} "
-          f"{len(ids) - len(have):>7}")
+    pend = len([c for c in have if c in pending])
+    row = [len(ids), len(have) - pend, pend, len(ids) - len(have)]
+    tot = [a + b for a, b in zip(tot, row)]
+    print(f"{j:<10} {row[0]:>6} {row[1]:>11} {row[2]:>7} {row[3]:>7}")
+print(f"{'total':<10} {tot[0]:>6} {tot[1]:>11} {tot[2]:>7} {tot[3]:>7}")
 print(f"{len(checks)} checks, {sum(items.values())} reference items, {len(tests)} tests"
       + ("" if suite else " (acceptance suite not started; test checks skipped)"))
 for e in errs:
@@ -211,8 +216,12 @@ MD
     cat > "$t/Tests/AletheiaAcceptance/DSL/Copy.swift" <<'SW'
 enum Copy { static let used = "a"; static let unused = "b" }
 SW
+    mkdir -p "$t/Tests/AletheiaAcceptance/Demo"
+    cat > "$t/Tests/AletheiaAcceptance/Demo/DemoCopy.swift" <<'SW'
+extension Copy { static let journeyUnused = "c"; static let journeyUsed = "d" }
+SW
     cat > "$t/Tests/AletheiaAcceptance/DemoSpec.swift" <<'SW'
-func test_DEMO_01() { _ = Copy.used }
+func test_DEMO_01() { _ = Copy.used; _ = Copy.journeyUsed }
 func test_DEMO_03() { try pending("later") }
 func test_DEMO_03() { XCTExpectFailure("known") }
 func test_DEMO_77() {}
@@ -222,16 +231,16 @@ SW
         'DEMO-03: names code' 'DEM-002: evidence src/Gone.swift no longer exists' \
         'DEM-002: evidence src/A.swift:9 is past the end' 'DEM-003: qa: DEMO-99 is not a check' \
         'DEMO-02: no reference item' 'DEMO-02: no test_DEMO_02' 'test_DEMO_03: defined 2 times' \
-        'test_DEMO_77 has no check' 'XCTExpectFailure' 'Copy.unused is used by no test' \
+        'test_DEMO_77 has no check' 'XCTExpectFailure' 'Copy.unused is used by no test' 'Copy.journeyUnused is used by no test' \
         'DEMO-04: needs exactly one' 'DEMO-05: quote over 6 words' 'malformed check line.*DEMO-9' \
         'OTHER-01: sits under the .DEMO. heading' 'DEM-004: no qa: tag' 'DEM-005: duplicate reference ID' \
         'DEM-006: no evidence: tag' 'DEM-007: evidence src/B.swift:2 is a blank' \
         'DEM-007: evidence src/B.swift:3 is a blank' 'DEM-007: evidence 2-9 is past the end' \
         'DEM-008: evidence Root.txt no longer exists' "DEM-008: evidence 'see notes' is not a path" \
-        '^DEMO .* 5 .* 2 .* 1 .* 3$'; do
+        '^DEMO +5 +1 +1 +3$'; do
         echo "$out" | grep -qE "$want" || { echo "self-test: not flagged: $want"; echo "$out"; exit 1; }
     done
-    echo "$out" | grep -qE 'DEM-001|DEM-009|Copy\.used|DEMO-01: no test' && { echo "self-test: clean item flagged"; echo "$out"; exit 1; }
+    echo "$out" | grep -qE 'DEM-001|DEM-009|Copy\.used|Copy\.journeyUsed|DEMO-01: no test' && { echo "self-test: clean item flagged"; echo "$out"; exit 1; }
     rm -rf "$t/Tests"
     { check "$t" || true; } | grep -q 'acceptance suite not started' || { echo "self-test: missing suite not reported"; exit 1; }
     echo "spec coverage gate self-test passed"; exit 0
