@@ -270,3 +270,73 @@ jobs:
           path: build/TestResults.xcresult
           retention-days: 7
           if-no-files-found: ignore
+
+  # The acceptance suite: one fitness function per check in
+  # docs/spec/ACCEPTANCE-CRITERIA.md (see docs/spec/EXECUTION-LAYER.md). A failing
+  # fitness function fails this job; pending ones (skipped) do not. The per-journey
+  # table is written to the job summary even when the job fails.
+  acceptance:
+    name: Acceptance
+    needs: changes
+    if: ${{ !cancelled() }}
+    runs-on: ${{ needs.changes.outputs.code == 'false' && 'ubuntu-latest' || 'macos-15' }}
+    timeout-minutes: 40
+    env:
+      RUN_BUILD: ${{ needs.changes.outputs.code != 'false' }}
+      NSUnbufferedIO: "YES"
+    steps:
+      - name: Docs-only change, nothing to build
+        if: env.RUN_BUILD != 'true'
+        run: echo "Only documentation changed; skipping the acceptance run."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+        if: env.RUN_BUILD == 'true'
+
+      - name: Install tools (XcodeGen, xcbeautify)
+        if: env.RUN_BUILD == 'true'
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate Xcode project
+        if: env.RUN_BUILD == 'true'
+        run: xcodegen generate
+
+      - name: Cache Swift packages
+        if: env.RUN_BUILD == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/SourcePackages
+          key: spm-macos-15-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
+          restore-keys: spm-macos-15-
+
+      - name: Run acceptance suite
+        if: env.RUN_BUILD == 'true'
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Aletheia.xcodeproj \
+            -scheme AletheiaAcceptance \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            -resultBundlePath build/AcceptanceResults.xcresult \
+            -only-testing:AletheiaAcceptance \
+            | xcbeautify --renderer github-actions
+
+      - name: Acceptance summary
+        if: always() && env.RUN_BUILD == 'true'
+        run: |
+          if [ -d build/AcceptanceResults.xcresult ]; then
+            ./scripts/acceptance-summary.sh build/AcceptanceResults.xcresult >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload acceptance results on failure
+        if: failure() && env.RUN_BUILD == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: AcceptanceResults
+          path: build/AcceptanceResults.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
