@@ -37,4 +37,33 @@ enum LockCoverPolicy {
     ) -> Cover? {
         cover(appLocked: appLocked, hasDataFolder: hasDataFolder, encryption: encryption).first
     }
+
+    /// Whether the content under the covers may be used. While the app is locked
+    /// the covers only hide it; this also takes away hit testing, keyboard focus
+    /// and Accessibility, so nothing behind the cover can be reached.
+    static func contentInteractionEnabled(isLocked: Bool) -> Bool { !isLocked }
+
+    /// Whether the window's first responder is dropped when the lock changes to
+    /// `isLocked`, so Copy and Select All have nothing to act on.
+    static func resignsFirstResponder(onLockChangingTo isLocked: Bool) -> Bool { isLocked }
+
+    /// The app-menu commands defined in `AletheiaApp.commands`. A command that
+    /// acts on patient content or opens a window showing it must be listed in
+    /// `disabledWhileLocked`.
+    enum MenuCommand: CaseIterable {
+        case closeWindow
+        case checkForUpdates
+        case showShortcuts
+        case openDoctor
+        case reportBug
+        case requestFeature
+
+        /// Opens a window that shows data from the data folder.
+        var actsOnContent: Bool { self == .openDoctor }
+    }
+
+    /// Whether `command` is greyed out in the menu.
+    static func commandDisabled(_ command: MenuCommand, isLocked: Bool) -> Bool {
+        isLocked && command.actsOnContent
+    }
 }
