@@ -227,6 +227,19 @@ final class LegalTests: XCTestCase {
         XCTAssertFalse(terms.localizedCaseInsensitiveContains("arbitration"))
     }
 
+    /// The company, not a person, owns the app and is the party in every legal text.
+    func testTheCompanyIsTheOwnerEverywhere() throws {
+        XCTAssertTrue(try doc("LICENSE").contains("Copyright (c) 2026 Astrea Labs LLC."))
+        XCTAssertTrue(try doc("PRIVACY.md").contains("Astrea Labs LLC,\na Wyoming limited liability company"))
+        XCTAssertTrue(try doc("Sources/App/Resources/Info.plist").contains("Astrea Labs LLC"))
+        for path in ["LICENSE", "TERMS.md", "PRIVACY.md", "SECURITY.md", "docs/HIPAA-SAFEGUARDS.md",
+                     "Sources/App/Resources/Info.plist"] {
+            let text = try doc(path)
+            XCTAssertFalse(text.contains("Michael"), path)
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("the developer"), path)
+        }
+    }
+
     func testTermsCoverRecordingConsentAndExports() throws {
         let terms = try doc("TERMS.md")
         for phrase in ["consent of every party", "24-word recovery key", "at least 12 characters",
