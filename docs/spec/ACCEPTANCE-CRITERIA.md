@@ -17,7 +17,7 @@ Before you start: a Release build and a throwaway data folder, with no earlier A
 - **SETUP-08** Click **Allow** on Call audio capture and grant it in macOS → the row turns done without a restart.
 - **SETUP-09** Look at the speech model and AI rows → each offers a download with its size, then shows ready once installed.
 - **SETUP-10** Click **Finish setup**, quit and reopen → the sheet doesn't appear again.
-- **SETUP-11** Look for "Protect your data" in a developer build (dev build) → it recommends encryption with a button that doesn't block **Finish setup**.
+- **SETUP-11** Look for "Protect your data" (dev build) → it recommends encryption with a button that doesn't block **Finish setup**.
 
 ## 2. Add a patient (PATIENT)
 Before you start: setup finished, a data folder chosen, and the disk encrypted with FileVault.
@@ -133,7 +133,7 @@ Before you start: two patients with transcripts, notes and comments, one of them
 - **SEARCH-01** Press ⌘F while the cursor is in a transcript → the sidebar search field takes focus.
 - **SEARCH-02** Type a word from a transcript into the sidebar field → results cover the detail pane.
 - **SEARCH-03** Look at the results → they are grouped Patients, Sessions, My notes, Progress notes, Comments and Transcripts, with highlighted snippets.
-- **SEARCH-04** Search a word that appears in many places → the best five show with a "Show more" row.
+- **SEARCH-04** Search a word that appears in many places → each group shows its best five and a "Show more" row.
 - **SEARCH-05** Press ↓ then Return on a result → it opens and the search clears; Esc clears a query.
 - **SEARCH-06** Open a transcript result → that session opens on the Transcript tab, scrolled to the matching line.
 - **SEARCH-07** Search the partial word "thera" → sessions mentioning "therapy" appear, best match first.
@@ -183,7 +183,7 @@ Before you start: a developer build, or a data folder that is already encrypted;
 ## 14. Backups, data folder and upgrades (BACKUP)
 Before you start: some patients and sessions in the data folder, and a copy of it to experiment on.
 - **BACKUP-01** Open **Settings** > **Backups** → a banner says Aletheia makes no backup copies of its own and Time Machine includes the folder.
-- **BACKUP-02** Turn on the option to keep your data out of backups → the banner confirms it, and tmutil isexcluded in Terminal reports the folder excluded.
+- **BACKUP-02** Turn on the option to keep your data out of backups → the banner confirms the folder is left out of Time Machine and iCloud backups.
 - **BACKUP-03** Click **Show backups folder in Finder** → the hidden backups folder opens.
 - **BACKUP-04** Delete a patient and open the backups folder → a database snapshot taken just before is there.
 - **BACKUP-05** Open a data folder written by an older version → it opens and upgrades in place with patients and sessions intact.
@@ -192,7 +192,7 @@ Before you start: some patients and sessions in the data folder, and a copy of i
 
 ## 15. Settings (SETTINGS)
 Before you start: setup finished.
-- **SETTINGS-01** Press ⌘, → Settings opens with General, AI and models, Note format, Backups, Security and Licenses panes.
+- **SETTINGS-01** Press ⌘, in a Release build → Settings opens with General, AI and models, Note format, Backups, Security and Licenses panes.
 - **SETTINGS-02** Look at the data folder in **General** → its path shows with **Choose…**, and the same folder is in use after relaunch.
 - **SETTINGS-03** Pick Light, then Dark under Appearance → the whole app changes at once and stays that way after relaunch.
 - **SETTINGS-04** Look at the defaults on a fresh install → automatic transcription is on, raw audio kept is off, and notification names are off.
@@ -204,6 +204,8 @@ Before you start: setup finished.
 - **SETTINGS-10** Open **Note format** → you can set the default format and summary length and toggle what drafts include.
 - **SETTINGS-11** Turn on "Show recording diagnostics" and record → the recording pane gains a call-audio diagnostics readout.
 - **SETTINGS-12** Open **General** > **Legal** and **Licenses** → the terms links, **Consent Guide…** and third-party notices are there.
+- **SETTINGS-13** Choose a folder inside iCloud Drive as the data folder → it is refused with a message to pick a folder that stays on this Mac.
+- **SETTINGS-14** Open Aletheia with its data folder now synced → a **Move data to this Mac** sheet offers to copy and verify it, then keep or delete the old one.
 
 ## 16. Security panel, activity log and Doctor (SECURITY)
 Before you start: a data folder with some activity (unlock, export, delete a patient).
@@ -219,7 +221,7 @@ Before you start: a data folder with some activity (unlock, export, delete a pat
 ## 17. Software updates (UPDATE)
 Before you start: a Release build of Aletheia and an internet connection; to see an offer, an older build or a newer release.
 - **UPDATE-01** Open **Settings** > **General** > **Software update** → it shows the version, a Notarization row and the automatic-check switch.
-- **UPDATE-02** Click **Check for updates** when up to date → "You're up to date" appears with a "You're Up to Date" alert.
+- **UPDATE-02** Click **Check for updates** when up to date → a "You're Up to Date" alert appears and Settings says you are up to date.
 - **UPDATE-03** Turn off Wi-Fi and click **Check for updates** → a "Couldn't Check for Updates" alert appears.
 - **UPDATE-04** Run an older build against a newer release → a prompt offers **View on GitHub**, **Skip this version**, **Remind me later** and **Download update**.
 - **UPDATE-05** Click **Remind me later** → the prompt closes and the same version is offered at a later check.
@@ -245,7 +247,7 @@ Before you start: at least one patient and the app unlocked.
 - **MENUBAR-04** Look at the panel while recording → it shows a **Recording** chip, the patient name, a timer, level bars, **Pause** and **Stop and save**.
 - **MENUBAR-05** Click **Pause** in the panel → a **Paused** chip and **Resume** appear.
 - **MENUBAR-06** Click **Stop and save** → the recording is saved and the panel returns to "Not recording".
-- **MENUBAR-07** Delete every patient and open the panel → it asks you to add a patient in the main window first
+- **MENUBAR-07** Delete every patient and open the panel → it asks you to add a patient in the main window first.
 - **MENUBAR-08** Make **Start recording** fail, such as with FileVault off → the reason appears under the button and the panel stays open.
 - **MENUBAR-09** Lock the app and open the panel → it shows "Aletheia is locked" with **Unlock**.
 - **MENUBAR-10** Press ⌘/ → a Keyboard Shortcuts window lists three groups.

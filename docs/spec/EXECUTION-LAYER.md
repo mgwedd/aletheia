@@ -90,8 +90,11 @@ CI) fails the build when any layer drifts from the one above it:
 - a QA check with no `test_<ID>`, a `test_<ID>` with no QA check, or a duplicate;
 - a reference item whose `qa:` tag names no QA check, or a QA check no
   reference item rolls up (a promise with no recorded detail);
-- a reference `evidence:` path that no longer exists, or a line range past the
-  end of the file — the usual sign a behavior moved or was deleted;
+- a reference item with no `evidence:` tag, an `evidence:` path that no longer
+  exists, a line range past the end of the file, or a cited start line that is
+  now blank or a lone closing brace — the usual signs a behavior moved or was
+  deleted;
+- a malformed check line, or a check filed under another journey's heading;
 - a `Copy` entry no test uses;
 - an `XCTExpectFailure` anywhere in the acceptance suite.
 
