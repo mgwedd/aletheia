@@ -10,6 +10,9 @@ enum AuditLogCopy {
         ("exports", [.recordExported, .auditLogExported]),
         ("creation and edits of patients, sessions, transcripts, notes and comments", [.phiCreated, .phiAmended]),
         ("deletions", [.recordDeleted, .phiDeleted]),
+        ("opening a patient or session", [.phiViewed]),
+        ("AI use on patient data (the kind of work only)", [.aiInference]),
+        ("copying patient text", [.phiCopied]),
         ("changes to security settings", [.securitySettingChanged]),
         ("changes to the data folder", [.dataFolderChanged]),
         ("recovery key and passphrase changes", [.encryptionKeyChanged, .encryptionPassphraseChanged]),
@@ -32,7 +35,7 @@ enum AuditLogCopy {
     static var caption: String {
         let phrases = recorded.map(\.phrase)
         let list = phrases.dropLast().joined(separator: ", ") + ", and " + phrases[phrases.count - 1]
-        return "An on-device record of \(list). Viewing records is not recorded yet. It holds no names or clinical content and never leaves this Mac. It supports, but does not by itself satisfy, HIPAA's audit-control requirement (§164.312(b))."
+        return "An on-device record of \(list). It holds no names or clinical content and never leaves this Mac. It supports, but does not by itself satisfy, HIPAA's audit-control requirement (§164.312(b))."
     }
 }
 
@@ -119,7 +122,7 @@ struct AuditLogSection: View {
     private func row(_ entry: AuditEvent) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Text(entry.action.displayName)
+                Text(entry.actionLabel)
                     .foregroundStyle(Theme.text.color)
                 Spacer()
                 Text(Self.timestamp(entry))
@@ -167,7 +170,7 @@ struct AuditLogSection: View {
         """
         let lines = all.map { entry -> String in
             let ts = entry.date.map { Self.dateFormatter.string(from: $0) } ?? entry.at
-            var parts = ["\(ts)  \(entry.action.displayName)"]
+            var parts = ["\(ts)  \(entry.actionLabel)"]
             if let subject = entry.subjectID { parts.append("record \(subject)") }
             if let detail = entry.detail { parts.append(detail) }
             return parts.joined(separator: "  ·  ")

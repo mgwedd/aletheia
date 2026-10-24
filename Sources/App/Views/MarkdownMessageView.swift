@@ -291,7 +291,7 @@ private struct CodeCard: View {
 
     private func copy() {
         #if canImport(AppKit)
-        PHIPasteboard.writeString(code)
+        PHIPasteboard.writeString(code, kind: .copiedChat)
         #endif
         copied = true
         Task {

@@ -90,7 +90,7 @@ final class CommentStore {
 
     /// Receives an activity-log entry (action, record id, note) for each comment
     /// or note changed, or comment or chat thread deleted. Never carries text.
-    var onAudit: ((AuditAction, String?, String?) -> Void)?
+    var onAudit: ((AuditAction, String?, AuditDetail?) -> Void)?
 
     /// Called when a stored note or session chat exists but can't be decoded
     /// (it reads as empty meanwhile; the record itself is left in place).
@@ -144,7 +144,7 @@ final class CommentStore {
         let added = annotations.addComment(sessionID: sessionID, quotedText: quotedText, body: body, anchorSeconds: anchorSeconds, quoteStart: quoteStart, now: now)
         if added != nil {
             onSessionAnnotationsChanged?(sessionID)
-            onAudit?(.phiAmended, sessionID.uuidString, PHIAuditDetail.comment)
+            onAudit?(.phiAmended, sessionID.uuidString, AuditDetail.comment)
         }
         return added
     }
@@ -154,7 +154,7 @@ final class CommentStore {
         let updated = annotations.updateComment(id: id, body: body, now: now)
         if updated {
             commentChanged(id)
-            onAudit?(.phiAmended, annotations.sessionID(ofComment: id)?.uuidString, PHIAuditDetail.comment)
+            onAudit?(.phiAmended, annotations.sessionID(ofComment: id)?.uuidString, AuditDetail.comment)
         }
         return updated
     }
@@ -172,7 +172,7 @@ final class CommentStore {
         let session = onSessionAnnotationsChanged == nil && onAudit == nil ? nil : annotations.sessionID(ofComment: id)
         let deleted = annotations.deleteComment(id: id)
         if deleted, let session { onSessionAnnotationsChanged?(session) }
-        if deleted { onAudit?(.phiDeleted, session?.uuidString, PHIAuditDetail.comment) }
+        if deleted { onAudit?(.phiDeleted, session?.uuidString, AuditDetail.comment) }
         return deleted
     }
 
@@ -193,7 +193,7 @@ final class CommentStore {
         if saved {
             onSessionAnnotationsChanged?(sessionID)
             if noteAuditDue(for: sessionID, now: now) {
-                onAudit?(.phiAmended, sessionID.uuidString, PHIAuditDetail.therapistNote)
+                onAudit?(.phiAmended, sessionID.uuidString, AuditDetail.therapistNote)
             }
         }
         return saved
@@ -231,7 +231,7 @@ final class CommentStore {
     @discardableResult
     func deleteChatThread(id: UUID, patientID: UUID) -> Bool {
         let deleted = chats.deleteChatThread(id: id, patientID: patientID)
-        if deleted { onAudit?(.phiDeleted, id.uuidString, PHIAuditDetail.chatThread) }
+        if deleted { onAudit?(.phiDeleted, id.uuidString, AuditDetail.chatThread) }
         return deleted
     }
 

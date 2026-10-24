@@ -532,14 +532,14 @@ enum MermaidPasteboard {
             item.setData(png, forType: .png)
         }
         item.setString(source, forType: .string)
-        PHIPasteboard.write([item])
+        PHIPasteboard.write([item], kind: .copiedChat)
         #endif
     }
 
     /// Just the Mermaid source, as text.
     static func copySource(_ source: String) {
         #if canImport(AppKit)
-        PHIPasteboard.writeString(source)
+        PHIPasteboard.writeString(source, kind: .copiedChat)
         #endif
     }
 }

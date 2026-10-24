@@ -310,6 +310,7 @@ struct SessionDetailView: View {
         .background(Theme.window.color)
         .selectablePatientText()
         .onAppear {
+            appModel.access.viewedSession(session.id)
             if initialShowingMyNotes {
                 showingMyNotes = true
             } else if let initialNoteFormat {
@@ -671,9 +672,9 @@ struct SessionDetailView: View {
         let base = FileSaver.fileName(patient.name, String(session.folderName.prefix(10)))
         let outcome = ExportRenderer.save(document, as: format, baseName: base)
         if case .saved = outcome {
-            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
+            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: .exportedSession(format))
         } else if case .failed = outcome {
-            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
+            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: .exportedSession(format))
         }
         exportResult = outcome.shown
     }
@@ -690,9 +691,9 @@ struct SessionDetailView: View {
         let base = FileSaver.fileName(patient.name, dateStr, noteFormat)
         let outcome = ExportRenderer.save(document, as: format, baseName: base)
         if case .saved = outcome {
-            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
+            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: .exportedNote(settings.progressNoteFormat, format))
         } else if case .failed = outcome {
-            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
+            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: .exportedNote(settings.progressNoteFormat, format))
         }
         exportResult = outcome.shown
     }
