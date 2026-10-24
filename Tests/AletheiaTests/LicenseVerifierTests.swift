@@ -32,6 +32,23 @@ final class LicenseVerifierTests: XCTestCase {
         XCTAssertEqual(token.expiresAt, now.addingTimeInterval(80 * day))
     }
 
+    func testAKeyWithoutAnExpiryIsAcceptedAndNeverExpires() throws {
+        var payload = LicenseTestMint.payload()
+        payload.removeValue(forKey: "exp")
+        let token = try verify(LicenseTestMint.token(payload, key: key))
+        XCTAssertNil(token.expiresAt)
+        XCTAssertFalse(token.isExpired(at: now.addingTimeInterval(1000 * day)))
+        XCTAssertNil(token.graceEndsAt)
+    }
+
+    func testAnExpiryThatIsNotANumberIsMalformed() throws {
+        for bad: Any in ["soon", NSNull()] {
+            var payload = LicenseTestMint.payload()
+            payload["exp"] = bad
+            assertRejects(try LicenseTestMint.token(payload, key: key), .malformed)
+        }
+    }
+
     func testTrimsSurroundingWhitespaceAndNewlines() throws {
         let text = try LicenseTestMint.token(LicenseTestMint.payload(), key: key)
         XCTAssertNoThrow(try verify("  \n\(text)\n "))
@@ -81,7 +98,7 @@ final class LicenseVerifierTests: XCTestCase {
     }
 
     func testRejectsMissingRequiredField() throws {
-        for field in ["v", "kid", "lid", "sub", "tier", "iat", "exp"] {
+        for field in ["v", "kid", "lid", "sub", "tier", "iat"] {
             var payload = LicenseTestMint.payload()
             payload.removeValue(forKey: field)
             assertRejects(try LicenseTestMint.token(payload, key: key), .malformed)

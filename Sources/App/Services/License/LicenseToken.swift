@@ -11,22 +11,24 @@ struct LicenseToken: Equatable {
     let sub: String
     let tier: String
     let issuedAt: Date
-    let expiresAt: Date
+    /// Nil for a key issued without an expiry: it never lapses (it can still be revoked).
+    let expiresAt: Date?
 
     /// The expiry warning starts this long before `expiresAt`.
     static let warningWindow: TimeInterval = 14 * 86_400
 
-    func isExpired(at now: Date) -> Bool { expiresAt <= now }
+    func isExpired(at now: Date) -> Bool { expiresAt.map { $0 <= now } ?? false }
 
     /// Whole days left (rounded up), or nil once expired.
     func daysRemaining(at now: Date) -> Int? {
-        guard !isExpired(at: now) else { return nil }
+        guard let expiresAt, !isExpired(at: now) else { return nil }
         return Int((expiresAt.timeIntervalSince(now) / 86_400).rounded(.up))
     }
 
     /// Within the warning window and not yet expired.
     func isExpiringSoon(at now: Date) -> Bool {
-        !isExpired(at: now) && expiresAt.timeIntervalSince(now) <= Self.warningWindow
+        guard let expiresAt else { return false }
+        return !isExpired(at: now) && expiresAt.timeIntervalSince(now) <= Self.warningWindow
     }
 
     /// After `expiresAt`, recording and the AI keep working this long so a late
@@ -34,14 +36,14 @@ struct LicenseToken: Equatable {
     static let gracePeriod: TimeInterval = 14 * 86_400
 
     /// When new work stops: `gracePeriod` after `expiresAt`.
-    var graceEndsAt: Date { expiresAt.addingTimeInterval(Self.gracePeriod) }
+    var graceEndsAt: Date? { expiresAt?.addingTimeInterval(Self.gracePeriod) }
 
     /// Expired, but still inside the grace period.
-    func isInGracePeriod(at now: Date) -> Bool { isExpired(at: now) && now < graceEndsAt }
+    func isInGracePeriod(at now: Date) -> Bool { isExpired(at: now) && graceEndsAt.map { now < $0 } == true }
 
     /// Whole days of grace left (rounded up), or nil outside the grace period.
     func graceDaysRemaining(at now: Date) -> Int? {
-        guard isInGracePeriod(at: now) else { return nil }
+        guard isInGracePeriod(at: now), let graceEndsAt else { return nil }
         return Int((graceEndsAt.timeIntervalSince(now) / 86_400).rounded(.up))
     }
 }
@@ -103,13 +105,27 @@ enum LicenseVerifier {
         let sub: String
         let tier: String
         let iat: Int64
-        let exp: Int64
+        /// Absent: the key never expires. Present but not a number: malformed.
+        let exp: Int64?
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            v = try c.decode(Int.self, forKey: .v)
+            kid = try c.decode(String.self, forKey: .kid)
+            lid = try c.decode(String.self, forKey: .lid)
+            sub = try c.decode(String.self, forKey: .sub)
+            tier = try c.decode(String.self, forKey: .tier)
+            iat = try c.decode(Int64.self, forKey: .iat)
+            exp = c.contains(.exp) ? try c.decode(Int64.self, forKey: .exp) : nil
+        }
+
+        enum CodingKeys: String, CodingKey { case v, kid, lid, sub, tier, iat, exp }
     }
 
     /// Full check, including expiry. Throws a `LicenseError` naming the first problem.
     static func verify(_ text: String, keyring: LicenseKeyring, now: Date) throws -> LicenseToken {
         let token = try verifySignature(text, keyring: keyring)
-        if token.isExpired(at: now) { throw LicenseError.expired(token.expiresAt) }
+        if token.isExpired(at: now), let expiresAt = token.expiresAt { throw LicenseError.expired(expiresAt) }
         if token.issuedAt.timeIntervalSince(now) > allowedClockSkew { throw LicenseError.issuedInFuture }
         return token
     }
@@ -135,7 +151,7 @@ enum LicenseVerifier {
         return LicenseToken(
             kid: payload.kid, lid: payload.lid, sub: payload.sub, tier: payload.tier,
             issuedAt: Date(timeIntervalSince1970: TimeInterval(payload.iat)),
-            expiresAt: Date(timeIntervalSince1970: TimeInterval(payload.exp)))
+            expiresAt: payload.exp.map { Date(timeIntervalSince1970: TimeInterval($0)) })
     }
 }
 
