@@ -3,16 +3,16 @@ import Foundation
 
 /// Outcome of a backup or restore attempt.
 enum BackupOutcome: Equatable {
-    /// The archive that was written/uploaded, or the database that was restored.
+    /// The archive that was written, or the database that was restored.
     case success(URL)
-    /// This destination isn't set up on this build (e.g. iCloud not provisioned).
+    /// This destination isn't usable on this build.
     case notConfigured
     case failed(String)
 }
 
-/// A destination an end-to-end-encrypted backup archive can be written to and
-/// restored from. Implementations only ever move the opaque
-/// `EncryptedBackupArchive` blob around — plaintext PHI never leaves the Mac.
+/// A local destination an end-to-end-encrypted backup archive can be written to
+/// and restored from. Implementations only ever move the opaque
+/// `EncryptedBackupArchive` blob around.
 protocol BackupService {
     /// Whether this destination is usable on this build/configuration.
     var isConfigured: Bool { get }
@@ -38,15 +38,11 @@ struct LocalEncryptedBackupService: BackupService {
     var keep: Int = 5
     private let fileManager = FileManager.default
 
-    /// Whether the app actually runs this service. The archive/restore code is
-    /// complete and tested, but nothing in the app calls `BackupCoordinator` yet,
-    /// so the Settings toggle is only a saved preference. The security overview
-    /// reads this so it never reports a backup that isn't being written. Flip it
-    /// to `true` in the change that wires "Back up now"/a schedule to the
-    /// coordinator.
-    static var isWired: Bool { false }
+    /// A folder the user chose. When set, archives are written straight into it
+    /// instead of the data folder's `.backups/archives/`.
+    var destinationOverride: URL?
 
-    var directory: URL { BackupLayout.directory(.archives, dataRoot: root) }
+    var directory: URL { destinationOverride ?? BackupLayout.directory(.archives, dataRoot: root) }
     var isConfigured: Bool { true }
 
     func backUp(databaseURL: URL, reason: String) async -> BackupOutcome {
@@ -57,7 +53,7 @@ struct LocalEncryptedBackupService: BackupService {
     func backUp(databaseURL: URL, reason: String, at date: Date) async -> BackupOutcome {
         BackupLayout.adoptLegacy(dataRoot: root, fileManager: fileManager)
         do {
-            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try SecureFS.createDirectory(at: directory)
             let name = "\(Self.stamp(date))-\(Self.slug(reason)).\(EncryptedBackupArchive.fileExtension)"
             let destination = directory.appendingPathComponent(name)
             try EncryptedBackupArchive.create(from: databaseURL, to: destination, using: key)
@@ -111,36 +107,4 @@ struct LocalEncryptedBackupService: BackupService {
         let collapsed = String(mapped).split(separator: "-").joined(separator: "-")
         return collapsed.isEmpty ? "backup" : collapsed
     }
-}
-
-/// Opt-in **end-to-end-encrypted** iCloud backup.
-///
-/// Same archive as `LocalEncryptedBackupService` — sealed with the user's key on
-/// this Mac — with only the opaque blob uploaded to the user's PRIVATE CloudKit
-/// database. Apple stores ciphertext it cannot read: the standard "you hold the
-/// key, the server sees only encrypted data" model.
-///
-/// TODO(Apple config — needs a signed build + the user's Apple Developer setup):
-///   - Add the iCloud + CloudKit capability and a container id to
-///     `project.yml` / `Aletheia.entitlements`
-///     (e.g. `iCloud.com.aletheia`).
-///   - Upload the archive as a `CKRecord` asset in the user's private database,
-///     keyed by app version + timestamp; keep the last N.
-///   - `restoreLatest`: fetch the newest record's asset, then hand it to
-///     `EncryptedBackupArchive.restore(from:to:using:)`.
-/// Until provisioned, `isConfigured` is false and calls return `.notConfigured`,
-/// so the UI can offer the choice without pretending it works yet.
-struct ICloudEncryptedBackupService: BackupService {
-    let key: SymmetricKey
-
-    /// Whether this build has the iCloud/CloudKit capability provisioned (see the
-    /// TODO above). `false` until a signed build wires it up, so the UI can show
-    /// the choice — and the security overview can say it's saved-but-not-yet-active
-    /// — without instances or a key on hand.
-    static var isProvisioned: Bool { false }
-
-    var isConfigured: Bool { Self.isProvisioned }
-
-    func backUp(databaseURL: URL, reason: String) async -> BackupOutcome { .notConfigured }
-    func restoreLatest(to databaseURL: URL) async -> BackupOutcome { .notConfigured }
 }

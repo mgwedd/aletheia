@@ -17,7 +17,7 @@ the cases FileVault doesn't:
 
 - the data folder living on an **external / USB drive**,
 - a **Time Machine or other backup** copy of it,
-- a folder placed inside a **synced directory** (iCloud Drive, Dropbox),
+- a folder placed inside a **synced directory** (iCloud Drive, Dropbox), which the App refuses for new data folders but cannot stop for a copy made outside it,
 - a Mac **logged in and unlocked** but with FileVault never enabled.
 
 In these cases, selected PHI content can leave FileVault's protection. Tier 2
@@ -138,7 +138,7 @@ does not reload it. A successful app unlock can explicitly load the remembered
 key again. It's a convenience/security
 trade-off — anything running as the logged-in user can then reach the key, the
 same "malware while unlocked" surface already excluded above — so the toggle is
-shown and pre-selected when turning encryption on, off by default at the unlock
+shown, off by default, both when turning encryption on and at the unlock
 gate, and can be turned off at any time; the passphrase is always the fallback. Turning encryption off, or
 toggling remember off, deletes the keychain copy.
 

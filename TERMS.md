@@ -55,9 +55,12 @@ You are solely responsible for:
   Touch ID / password lock, account security, and physical access. See
   [SECURITY.md](SECURITY.md).
 - **Backups.** Backing up your data folder. The App does not back up your data
-  on its own. Settings › Backups › Export All Records can export every record to a folder you choose;
-  that export is not encrypted by the App, so protecting and eventually deleting
-  it is also your responsibility.
+  automatically. Settings › Backups › Back Up Now saves an encrypted copy of the
+  database (not recordings or other files) to a folder you choose, so keep your
+  own backups of the whole data folder too. Settings › Backups ›
+  Export All Records can export every record to a folder you choose; that export is not
+  encrypted by the App, so protecting and eventually deleting it is also your
+  responsibility.
 - **Third-party software.** Any model files you download to use with the App,
   under their own licenses and terms.
 

@@ -29,4 +29,29 @@ final class ContextBudgetTests: XCTestCase {
         XCTAssertTrue(comment.hasPrefix("(About "))
         XCTAssertEqual(fields.coverageNote, "Only the parts of the margin comments that match were read: it is too long to send whole.")
     }
+
+    /// Long text is searched in its own index: matches are found even when the
+    /// app's index is closed, and none of the text is stored in the app's index.
+    func testExcerptsIgnoreAndLeaveTheAppIndexAlone() throws {
+        let saved = SessionSearch.index
+        defer { SessionSearch.index = saved }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let appIndex = SearchIndex(url: folder.appendingPathComponent("search.sqlite"))
+        SessionSearch.index = appIndex
+
+        var lines = (1...4_000).map { "Line \($0) about the weather and the bus." }
+        lines.insert("She mentioned her sister's wedding again.", at: 2_500)
+        let text = lines.joined(separator: "\n")
+        let room = TherapistInput.room(in: ContextBudget(tokens: 8_192))
+
+        XCTAssertTrue(TherapistInput.fit(text, room: room, query: "sister wedding").text.contains("sister's wedding"))
+        XCTAssertEqual(appIndex.counts().docs, 0, "the text went into the app's index")
+
+        appIndex.mayOpen = { false }
+        appIndex.close()
+        XCTAssertTrue(appIndex.isBlocked)
+        XCTAssertTrue(TherapistInput.fit(text, room: room, query: "sister wedding").text.contains("sister's wedding"))
+    }
 }

@@ -22,6 +22,8 @@ enum StoreError: LocalizedError {
     case invalidFolderName
     /// Raw audio that couldn't be removed.
     case recordingNotDeleted
+    /// A patient name that is empty once whitespace is trimmed.
+    case blankPatientName
 
     var errorDescription: String? {
         switch self {
@@ -43,6 +45,7 @@ enum StoreError: LocalizedError {
         case .invalidFolderName: return "That session folder name isn't valid."
         case .recordingNotDeleted:
             return "The recording couldn't be deleted from your data folder."
+        case .blankPatientName: return "A patient needs a name."
         }
     }
 }
@@ -129,6 +132,10 @@ final class Store {
     /// this build understands, computed once when the store opens.
     let schemaCompatibility: SchemaCompatibility
 
+    /// Receives an activity-log entry (action, record id, note) for each
+    /// recording deleted. Never carries text.
+    var onAudit: ((AuditAction, String?, String?) -> Void)?
+
     /// - Parameter openDatabaseIfMissing: when `commentStore` is nil, whether to
     ///   try opening the database here. `AppModel` passes `false` because it has
     ///   already tried (and recorded *why* it failed); a second attempt here could
@@ -163,7 +170,7 @@ final class Store {
         reconcileLock.lock()
         defer { reconcileLock.unlock() }
         let fileManager = FileManager.default
-        try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        try? SecureFS.createDirectory(at: root)
         let metaURL = root.appendingPathComponent(DataSchema.metadataFileName)
         let current = DataSchema.currentVersion
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
@@ -211,7 +218,7 @@ final class Store {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let data = try? encoder.encode(meta) {
-            try? data.write(to: url, options: .atomic)
+            try? SecureFS.write(data, to: url)
         }
     }
 
@@ -232,7 +239,7 @@ final class Store {
     /// locked isn't damage (the app's lock screen covers that), so it's skipped
     /// without being reported.
     func patientListing() throws -> PatientListing {
-        try fileManager.createDirectory(at: patientsDir, withIntermediateDirectories: true)
+        try SecureFS.createDirectory(at: patientsDir)
         let entries = try fileManager.contentsOfDirectory(at: patientsDir, includingPropertiesForKeys: nil)
         var patients: [Patient] = []
         var unreadable: [UnreadableEntry] = []
@@ -310,13 +317,14 @@ final class Store {
 
     func createPatient(name: String) throws -> Patient {
         guard schemaCompatibility != .migrationFailed else { throw StoreError.patientFolderMigrationIncomplete }
-        try fileManager.createDirectory(at: patientsDir, withIntermediateDirectories: true)
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw StoreError.blankPatientName }
+        try SecureFS.createDirectory(at: patientsDir)
         var id = UUID()
         while fileManager.fileExists(atPath: patientsDir.appendingPathComponent(id.uuidString).path) {
             id = UUID()
         }
         let patient = Patient(id: id, name: name, slug: id.uuidString)
-        try fileManager.createDirectory(at: patientDir(for: patient), withIntermediateDirectories: true)
+        try SecureFS.createDirectory(at: patientDir(for: patient))
         try save(patient)
         return patient
     }
@@ -324,7 +332,7 @@ final class Store {
     func save(_ patient: Patient) throws {
         guard schemaCompatibility != .migrationFailed else { throw StoreError.patientFolderMigrationIncomplete }
         let data = try JSONEncoder.aletheia.encode(patient)
-        try fileManager.createDirectory(at: patientDir(for: patient), withIntermediateDirectories: true)
+        try SecureFS.createDirectory(at: patientDir(for: patient))
         try protector.write(data, to: patientDir(for: patient).appendingPathComponent("patient.json"))
     }
 
@@ -524,7 +532,7 @@ final class Store {
             suffix += 1
         }
         let sessionDir = dir.appendingPathComponent(folderName, isDirectory: true)
-        try fileManager.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        try SecureFS.createDirectory(at: sessionDir)
         // Assign the session's stable identity at creation and persist it.
         let meta = SessionMetadata(id: UUID(), date: date)
         try writeSessionMetadata(meta, to: sessionMetadataURL(for: sessionDir))
@@ -581,7 +589,7 @@ final class Store {
 
     private func writeSessionMetadata(_ meta: SessionMetadata, to url: URL) throws {
         let data = try JSONEncoder.aletheia.encode(meta)
-        try data.write(to: url, options: .atomic)
+        try SecureFS.write(data, to: url)
     }
 
     func sessionDir(for patient: Patient, session: SessionRecord) -> URL {
@@ -635,11 +643,13 @@ final class Store {
     /// audio is still on disk.
     func deleteRecordings(for patient: Patient, session: SessionRecord) throws {
         var failed = false
+        var removed = false
         for url in [micRecordingURL(for: patient, session: session), callRecordingURL(for: patient, session: session)] {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            do { try FileManager.default.removeItem(at: url) } catch { failed = true }
+            do { try FileManager.default.removeItem(at: url); removed = true } catch { failed = true }
         }
         try? FileManager.default.removeItem(at: Store.stagingDir(for: session.id))
+        if removed { onAudit?(.recordDeleted, session.id.uuidString, "audio recording") }
         if failed { throw StoreError.recordingNotDeleted }
     }
 

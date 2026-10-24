@@ -1,6 +1,5 @@
 # AuditAction cases that exist but nothing records yet. Tracked in #243.
 # Remove a line when its call site lands; the guard fails on a stale entry.
-backupRun
 phiViewed
 phiCreated
 phiAmended

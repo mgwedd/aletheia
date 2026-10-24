@@ -43,11 +43,18 @@ enum PrivateStaging {
         try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
     }
 
+    /// `ensurePrivateDirectory` for a root that holds plaintext patient data:
+    /// the folder is also kept out of Time Machine and other backups.
+    static func ensureBackupExcludedRoot(_ url: URL) throws {
+        try ensurePrivateDirectory(url)
+        BackupExclusion.markExcluded(url)
+    }
+
     /// A fresh, empty `0600` file in the scratch folder. The caller writes to it
     /// and removes it with `remove(_:)`.
     static func scratchFile(prefix: String, ext: String) throws -> URL {
         _ = startedAt
-        try ensurePrivateDirectory(root)
+        try ensureBackupExcludedRoot(root)
         let url = root.appendingPathComponent("\(prefix)-\(UUID().uuidString).\(ext)")
         guard FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
             throw CocoaError(.fileWriteUnknown)

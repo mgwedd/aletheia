@@ -36,6 +36,7 @@ struct SettingsView: View {
     @State private var showEncryptionSetup = false
     @State private var showNewRecoveryKeySheet = false
     @State private var showChangePassphraseSheet = false
+    @State private var gate = SensitiveActionGate()
     @State private var showConsentGuide = false
     @State private var confirmDisableEncryption = false
     @State private var isDisablingEncryption = false
@@ -121,7 +122,7 @@ struct SettingsView: View {
             isPresented: $confirmDisableEncryption,
             titleVisibility: .visible
         ) {
-            Button("Turn Off and Decrypt", role: .destructive) { disableEncryption() }
+            Button("Turn Off and Decrypt", role: .destructive) { requireAuth(.disableEncryption) { disableEncryption() } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Your notes, transcripts, summaries, chat, records and recordings will be decrypted back to plain files on disk. FileVault, if on, still protects them.")
@@ -231,7 +232,7 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
                     .themeField()
                     .accessibilityLabel("Data folder")
-                Button("Choose…", action: chooseFolder)
+                Button("Choose…") { requireAuth(.changeDataFolder) { chooseFolder() } }
                     .buttonStyle(.themed)
                 Button("Show in Finder") {
                     if let url = settings.dataRootURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
@@ -297,7 +298,7 @@ struct SettingsView: View {
                 .padding(.vertical, 12)
                 SettingsHairline()
                 HStack {
-                    Link("View Releases on GitHub", destination: URL(string: "https://github.com/mgwedd/aletheia/releases")!)
+                    Link("View Downloads", destination: ReleaseLink.downloadsPage)
                         .font(Theme.Typography.body)
                     Spacer()
                 }
@@ -812,7 +813,7 @@ struct SettingsView: View {
                     detail: "Change the passphrase that unlocks your data folder. Your files aren't re-encrypted, and your recovery key keeps working."
                 ) {
                     Button("Change Passphrase…") {
-                        showChangePassphraseSheet = true
+                        requireAuth(.changePassphrase) { showChangePassphraseSheet = true }
                     }
                     .buttonStyle(.themed)
                 }
@@ -881,8 +882,8 @@ struct SettingsView: View {
         HStack(alignment: .center, spacing: 14) {
             Chip("Time Machine", tone: .info)
             Text(settings.keepDataOutOfSystemBackups
-                 ? "Your data folder is kept out of Time Machine and iCloud backups. Aletheia does not make its own backup copies yet, so keep a copy of your own."
-                 : "Aletheia does not make its own backup copies yet. Time Machine includes the data folder by default.")
+                 ? "Your data folder is kept out of Time Machine and iCloud backups. Use Back up now to save an encrypted copy to a folder on this Mac or an external disk."
+                 : "Time Machine includes the data folder by default. You can also use Back up now to save an encrypted copy to a folder of your choice.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.text.color)
                 .fixedSize(horizontal: false, vertical: true)
@@ -897,6 +898,7 @@ struct SettingsView: View {
             )
             .padding(.vertical, 12)
         }
+        BackupNowView()
         SettingsCaption("Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder.")
         Button("Show backups folder in Finder", action: showBackupsFolder)
             .buttonStyle(.themed)
@@ -910,7 +912,7 @@ struct SettingsView: View {
             Text("Export all records").eyebrowStyle()
             SettingsCaption("Copies every patient's notes, transcripts, comments and kept recordings into a folder of ordinary files that open without Aletheia. This never needs a license key. The copy isn't encrypted by Aletheia, so save it to this Mac with FileVault on or to an encrypted external drive.")
             HStack(spacing: 8) {
-                Button("Export All Records…", action: chooseExportAllFolder)
+                Button("Export All Records…") { requireAuth(.exportAllRecords) { chooseExportAllFolder() } }
                     .buttonStyle(.themed)
                     .disabled(appModel.store == nil || exports.isRunning)
                 if case let .running(_, label) = exports.state {
@@ -947,6 +949,8 @@ struct SettingsView: View {
                 .recordExported,
                 detail: "All records, folder of \(outcome.patientCount ?? 0) patients, \(outcome.sessionCount) sessions"
             )
+        }, onFailed: {
+            model.recordAudit(.exportFailed, detail: "All records, folder")
         }) { progress, isCancelled in
             progress(0, "Listing patients")
             let source = try StoreAllRecordsSource(store: store)
@@ -970,7 +974,7 @@ struct SettingsView: View {
         SettingsSwitchRow(
             title: "App lock",
             detail: "Require Touch ID or your Mac password to open. Aletheia locks after 15 minutes of inactivity by default, when the display sleeps, or when your Mac locks or switches user.",
-            isOn: $settings.appLockEnabled
+            isOn: appLockSelection
         )
         SettingsSwitchRow(
             title: "Lock when Aletheia is hidden",
@@ -1002,8 +1006,8 @@ struct SettingsView: View {
             isOn: $settings.allowScreenSharingThisSession
         )
         SettingsSwitchRow(
-            title: "Show patient names in notifications",
-            detail: "Off by default. Notifications appear on the lock screen and stay in Notification Center, so they just say that a session is ready. Turn this on to include the patient's name and the session date.",
+            title: "Show patient names in notifications and the menu bar",
+            detail: "Off by default. Notifications appear on the lock screen and stay in Notification Center, so they show only the patient's initials, as does the menu bar. Turn this on to include the full name and the session date. Names stay hidden while Aletheia is locked.",
             isOn: $settings.notificationsShowPatientNames
         )
         SettingsRow(
@@ -1019,7 +1023,7 @@ struct SettingsView: View {
             SecurityPostureView()
         }
         NetworkAccessView()
-        AuditLogSection(exportResult: $exportResult)
+        AuditLogSection(exportResult: $exportResult, requireAuth: requireAuth)
     }
 
     private func disableEncryption() {
@@ -1068,8 +1072,36 @@ struct SettingsView: View {
     private var idleAutoLockSelection: Binding<IdleAutoLockTimeout> {
         Binding(
             get: { IdleAutoLockTimeout(rawValue: settings.idleAutoLockMinutes) ?? .defaultTimeout },
-            set: { settings.idleAutoLockMinutes = $0.rawValue }
+            set: { newValue in
+                if IdleLockChange.weakens(from: IdleAutoLockTimeout(rawValue: settings.idleAutoLockMinutes) ?? .defaultTimeout, to: newValue) {
+                    requireAuth(.weakenIdleLock) { settings.idleAutoLockMinutes = newValue.rawValue }
+                } else {
+                    settings.idleAutoLockMinutes = newValue.rawValue
+                }
+            }
         )
+    }
+
+    /// Turning the app lock on is free; turning it off needs a fresh check.
+    private var appLockSelection: Binding<Bool> {
+        Binding(
+            get: { settings.appLockEnabled },
+            set: { on in
+                if on {
+                    settings.appLockEnabled = true
+                } else {
+                    requireAuth(.turnOffAppLock) { settings.appLockEnabled = false }
+                }
+            }
+        )
+    }
+
+    /// Runs `body` only after a fresh Touch ID / password check. On cancel or
+    /// failure nothing changes, and the control is redrawn from the stored value.
+    private func requireAuth(_ action: SensitiveAction, _ body: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            if !(await gate.perform(action, body)) { settings.objectWillChange.send() }
+        }
     }
 
     private func legalAcceptanceStamp(version: String, at date: Date) -> String {

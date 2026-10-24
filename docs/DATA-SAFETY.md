@@ -89,9 +89,9 @@ The Device KEK is the request "recoverable unless they fully reset the machine":
 
 ### Non-hostile onboarding rules
 
-1. **Default to two paths.** First-run's opt-out encryption sets a passphrase
-   *and* enables the device path ("Remember on this Mac", default on) — one
-   silent, one portable, from the very first launch.
+1. **Passphrase first, device path opt-in.** First-run's opt-out encryption sets a passphrase
+   *and* offers the device path ("Remember on this Mac", default off) — the
+   passphrase is the only path unless the clinician opts in.
 2. **Prove the passphrase is saved before it can matter.** After set-up, ask the
    clinician to re-enter it once (confirm they recorded it), and link the exact
    copy for a password manager. Never let a *single* device-only path exist
@@ -162,8 +162,7 @@ and attested it is correct.**
 | **Snapshot-before-migrate** (DB via `VACUUM INTO`) — refuse to migrate if the pre-image can't be written | **in place** (dormant until a v2+ migration ships: v1 is the baseline, so no pre-image is taken today) | `MigrationBackup` (pure policy) + `SQLitePersistenceCore` |
 | **Snapshot before an encryption on/off conversion** (rolling window of 5); on a successful *enable* the plaintext pre-image is deleted, on failure it is kept as the way back | **in place** | `DatabaseSnapshotManager` + `DataMigrator` |
 | **One backup home** (`.backups/`, a sub-folder per kind) and one-shot adoption of the older locations | **in place** | `BackupLayout` |
-| **Local end-to-end-encrypted archive** (sealed with the user's key) | service and coordinator built and tested; **not yet invoked from app code** (no "Back up now" UI, no schedule) | `LocalEncryptedBackupService`, `BackupCoordinator`, `EncryptedBackupArchive` |
-| **iCloud encrypted archive** | staged; reports "not configured" until the CloudKit capability is provisioned | `ICloudEncryptedBackupService` |
+| **Local end-to-end-encrypted archive** (sealed with the user's key) | **in place** via Settings › Backups › Back up now (user-chosen local folder; no schedule) | `LocalEncryptedBackupService`, `BackupCoordinator`, `EncryptedBackupArchive` |
 | **Attest-then-prune** UX + **Restore previous version** | next | `MigrationBackup.prunable` ready; needs Settings + a post-update banner. Nothing prunes migration pre-images today. |
 | **Snapshot the small JSON** (patient/session) alongside the DB | next | copy referenced JSON into the same pre-image set |
 | **Whole-folder atomicity** across DB + files | not covered | The archive covers only the SQLite database; transcripts, notes and `digest.json` are covered only through the data folder (for example Time Machine) |

@@ -47,16 +47,18 @@ and managed. The search index (`search.sqlite`) stays plaintext. Full design in
 
 **Backups.** The data folder backs up with zero configuration via macOS Time
 Machine (keep those backups on an encrypted disk — the folder can hold
-unencrypted data; Settings › Backups can exclude it if you prefer). Aletheia
-does not make or upload backup copies of its own, but Settings › Backups ›
+unencrypted data; Settings › Backups can exclude it if you prefer). Settings › Backups ›
 Export All Records copies every patient's notes, transcripts, comments and kept
 recordings into a folder you choose as ordinary files that open without
 Aletheia. That export is not encrypted by Aletheia: save it to a disk with
 FileVault on or an encrypted drive, and avoid synced folders (Aletheia warns
-about both). An end-to-end-encrypted
-archive (`.aletheiabackup`, sealed with your key) for a local
-`.backups/archives/` folder and an encrypted iCloud destination are built but
-not connected to the app. Point-in-time database snapshots
+about both). Settings › Backups › **Back Up Now** writes an end-to-end-encrypted
+copy of the database (`.aletheiabackup`, sealed with your encryption key) to a
+folder you choose. It needs encryption to be on and unlocked, refuses synced
+folders (iCloud Drive, Dropbox and similar), network locations and unencrypted
+removable disks, and never uploads the copy. It backs up the database only, not
+recordings or other files, and there is no restore screen yet. Each successful
+run is recorded once in the audit log. Nothing is backed up to iCloud. Point-in-time database snapshots
 (`.backups/snapshots/` and `.backups/migrations/`, via SQLite's `VACUUM INTO`)
 protect schema migrations and encryption on/off changes against a mid-write
 failure. All of these live in the single hidden `.backups/` folder inside your
@@ -90,6 +92,8 @@ prompt in marked blocks, with any look-alike markers broken, so that text can't
 pass for instructions.
 
 ## Threat model, briefly
+
+The full model, by trust boundary, is in [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
 
 | Scenario | FileVault | App lock | At-rest encryption |
 | --- | --- | --- | --- |
