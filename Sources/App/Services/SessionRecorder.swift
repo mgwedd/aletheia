@@ -204,6 +204,15 @@ final class SessionRecorder: ObservableObject {
 
     init(stagingDirectoryURL: URL = Store.stagingDirectoryURL) {
         self.stagingDirectoryURL = stagingDirectoryURL
+        // Runs on the audio thread; hop to the main actor to raise the notice.
+        mic.onRestartFailed = { [weak self] in
+            Task { @MainActor [weak self] in self?.micRestartFailed() }
+        }
+    }
+
+    /// The microphone changed mid-recording and capture couldn't be restarted.
+    func micRestartFailed() {
+        onNotice?(.microphoneRestartFailed)
     }
 
     /// The Stop under way, so a second Stop (or the quit) waits for its seal

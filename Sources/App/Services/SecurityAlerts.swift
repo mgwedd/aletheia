@@ -35,12 +35,14 @@ enum SecurityAlert: Equatable, Identifiable {
     case repeatedUnlockFailures(attempts: Int, minutes: Int)
     case auditLogBroken(entry: Int64)
     case recordingEncryptionDeferred
+    case microphoneRestartFailed
 
     var id: String {
         switch self {
         case .repeatedUnlockFailures: return "repeatedUnlockFailures"
         case .auditLogBroken: return "auditLogBroken"
         case .recordingEncryptionDeferred: return "recordingEncryptionDeferred"
+        case .microphoneRestartFailed: return "microphoneRestartFailed"
         }
     }
 
@@ -52,6 +54,8 @@ enum SecurityAlert: Equatable, Identifiable {
             return "The activity log doesn't pass its integrity check (it first breaks at entry #\(entry)). It may have been edited or damaged. Open Settings > Security to review it."
         case .recordingEncryptionDeferred:
             return "Your recording was saved, but it couldn't be encrypted yet. Aletheia will encrypt it and add it to the session the next time it opens."
+        case .microphoneRestartFailed:
+            return "The microphone changed during the recording and Aletheia couldn't restart it, so the microphone is no longer being recorded. Stop the recording, check your microphone, and start again."
         }
     }
 }

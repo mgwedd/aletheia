@@ -233,6 +233,28 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertTrue(notices.isEmpty)
     }
 
+    func testAMicrophoneThatCannotRestartRaisesANotice() {
+        let recorder = SessionRecorder()
+        var notices: [SecurityAlert] = []
+        recorder.onNotice = { notices.append($0) }
+        recorder.micRestartFailed()
+        XCTAssertEqual(notices, [.microphoneRestartFailed])
+        XCTAssertTrue(SecurityAlert.microphoneRestartFailed.message.contains("couldn't restart"))
+    }
+
+    func testAFailedMicRestartIsReportedEvenAfterAnEarlierWriteFailure() {
+        struct Boom: Error {}
+        let mic = MicRecorder()
+        var reports = 0
+        mic.onRestartFailed = { reports += 1 }
+        mic.health.recordWriteFailure("earlier")
+        mic.restartCapture { throw Boom() }
+        mic.restartCapture { throw Boom() }
+        XCTAssertEqual(reports, 2)
+        mic.restartCapture { }
+        XCTAssertEqual(reports, 2, "a restart that works reports nothing")
+    }
+
     func testStartingAgainPutsAnEarlierStagedRecordingInPlaceFirst() async throws {
         let (recorder, tempRoot, stagingRoot, dest) = makeStagingRecorder()
         defer { try? FileManager.default.removeItem(at: tempRoot) }

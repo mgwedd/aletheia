@@ -214,9 +214,11 @@ final class AuditWiringTests: XCTestCase {
     func testRecordingProblemsShowAsDismissibleAlerts() {
         makeModel()
         appModel.noteRecordingProblem(.recordingEncryptionDeferred)
-        XCTAssertEqual(appModel.securityAlerts, [.recordingEncryptionDeferred])
+        appModel.noteRecordingProblem(.microphoneRestartFailed)
+        appModel.noteRecordingProblem(.microphoneRestartFailed)
+        XCTAssertEqual(appModel.securityAlerts, [.recordingEncryptionDeferred, .microphoneRestartFailed])
         appModel.dismissSecurityAlert(.recordingEncryptionDeferred)
-        XCTAssertTrue(appModel.securityAlerts.isEmpty)
+        XCTAssertEqual(appModel.securityAlerts, [.microphoneRestartFailed])
     }
 
     func testThreeFailedUnlocksRaisesAlertAndOneEntry() {
