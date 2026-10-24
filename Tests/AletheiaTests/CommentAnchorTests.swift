@@ -43,4 +43,33 @@ final class CommentAnchorTests: XCTestCase {
         let comments = store.comments(sessionID: session)
         XCTAssertEqual(comments.map(\.quoteStart), [8, 83, nil])
     }
+
+    func testNoteCommentOrderingByQuoteStartWithoutTimestamps() {
+        let t0 = Date(timeIntervalSince1970: 1000)
+        let early = SessionComment(id: "1", quotedText: "Intro", body: "first paragraph", createdAt: t0.addingTimeInterval(10), updatedAt: t0, quoteStart: 15, format: .soap)
+        let late = SessionComment(id: "2", quotedText: "Conclusion", body: "last paragraph", createdAt: t0, updatedAt: t0, quoteStart: 250, format: .soap)
+        let unanchored = SessionComment(id: "3", quotedText: "", body: "general remark", createdAt: t0.addingTimeInterval(5), updatedAt: t0, format: .soap)
+
+        let sorted = [late, unanchored, early].sorted(by: CommentsRailView.byTranscriptPosition)
+        XCTAssertEqual(sorted.map(\.id), ["1", "2", "3"])
+    }
+
+    /// A note comment is anchored in the note as the reader shows it: a passage
+    /// selected under a heading and after bold text is quoted as selected,
+    /// highlighted where it was selected, and counted as placed.
+    func testNoteCommentsAnchorInTheRenderedNote() throws {
+        let note = "## Subjective\nClient reports **low mood** and poor sleep.\n\n## Plan\n- Review poor sleep"
+        let rendered = NoteReaderView.rendered(note).string
+        XCTAssertFalse(rendered.contains("**"), "the reader shows the note without its markup")
+        let selection = (rendered as NSString).range(of: "poor sleep")
+        let trimmed = try XCTUnwrap(TranscriptHighlighter.trimmed(selection, in: rendered))
+        let quote = (rendered as NSString).substring(with: trimmed)
+        XCTAssertEqual(quote, "poor sleep")
+
+        let anchors: [TranscriptHighlighter.Anchor] = [(id: "c", quote: quote, start: trimmed.location)]
+        XCTAssertEqual(TranscriptHighlighter.spans(in: rendered, comments: anchors).first?.range, selection,
+                       "the first of two \"poor sleep\"s, the one selected")
+        XCTAssertTrue(TranscriptHighlighter.unplacedIDs(in: rendered, comments: anchors).isEmpty)
+        XCTAssertNotEqual((note as NSString).substring(with: trimmed), quote, "offsets in the Markdown would quote something else")
+    }
 }

@@ -227,6 +227,11 @@ struct AssistantService {
     static func formatComments(_ comments: [SessionComment]) -> [String] {
         comments.filter { !$0.resolved }.map { comment in
             let quote = comment.quotedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let format = comment.format {
+                return quote.isEmpty
+                    ? "- [On \(format.shortName) note]: \(comment.body)"
+                    : "- [On \(format.shortName) note “\(quote)”]: \(comment.body)"
+            }
             return quote.isEmpty ? "- \(comment.body)" : "- On “\(quote)”: \(comment.body)"
         }
     }

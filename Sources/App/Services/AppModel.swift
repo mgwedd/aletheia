@@ -237,13 +237,16 @@ final class AppModel: ObservableObject {
     }
 
     /// Adds an inline comment, surfacing a failure (see `attemptSave`).
-    func addComment(sessionID: UUID, quotedText: String, body: String, anchorSeconds: Double?, quoteStart: Int?) -> SessionComment? {
+    func addComment(
+        sessionID: UUID, quotedText: String, body: String, anchorSeconds: Double?, quoteStart: Int?,
+        format: ProgressNoteFormat? = nil
+    ) -> SessionComment? {
         var added: SessionComment?
         attemptSave("comment") {
             guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
             added = commentStore.addComment(
                 sessionID: sessionID, quotedText: quotedText, body: body,
-                anchorSeconds: anchorSeconds, quoteStart: quoteStart
+                anchorSeconds: anchorSeconds, quoteStart: quoteStart, format: format
             )
             guard added != nil else { throw DatabaseWriteError.writeFailed }
         }

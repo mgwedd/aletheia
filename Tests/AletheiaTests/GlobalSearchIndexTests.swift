@@ -199,6 +199,29 @@ final class GlobalSearchIndexTests: XCTestCase {
         XCTAssertEqual(search("sertraline").section(.comment)?.hits.first?.commentID, comment.id)
     }
 
+    /// A comment on a generated note is found, and opens that note at the comment.
+    func testNoteCommentsOpenTheirNote() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        let session = try store.createSession(for: patient)
+        let onNote = try XCTUnwrap(comments.addComment(
+            sessionID: session.id, quotedText: "low mood", body: "Clarify the lithium plan.", quoteStart: 4, format: .dap))
+        let onTranscript = try XCTUnwrap(comments.addComment(
+            sessionID: session.id, quotedText: "", body: "Ask about lithium side effects."))
+        store.syncSearchIndex()
+
+        let hits = try XCTUnwrap(search("lithium").section(.comment)?.hits)
+        let note = try XCTUnwrap(hits.first { $0.commentID == onNote.id })
+        XCTAssertEqual(note.noteFormat, .dap)
+        let toNote = SearchHitDestination(note)
+        XCTAssertEqual(toNote.tab, .notes)
+        XCTAssertEqual(toNote.noteFormat, .dap)
+        XCTAssertEqual(toNote.commentID, onNote.id)
+
+        let transcript = try XCTUnwrap(hits.first { $0.commentID == onTranscript.id })
+        XCTAssertNil(transcript.noteFormat)
+        XCTAssertEqual(SearchHitDestination(transcript).tab, .transcript)
+    }
+
     // MARK: Only current text
 
     func testVersionsAChatSearchStoredAreNotShown() throws {

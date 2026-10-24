@@ -125,23 +125,12 @@ private struct OptionalLineSpacing: ViewModifier {
 struct MarkdownMessageView: View {
     let text: String
     var style: MarkdownTextStyle = .reading
-    /// A block (by index) shown briefly highlighted, e.g. the one a search match
-    /// is in. Each block is also tagged with its index for `ScrollViewProxy.scrollTo`.
-    var flashedBlock: Int? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: style.blockSpacing) {
             let blocks = MarkdownParser.parse(style.prepared(text))
-            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 view(for: block)
-                    .background {
-                        if index == flashedBlock {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Theme.accentTint.color)
-                                .padding(-4)
-                        }
-                    }
-                    .id(index)
             }
         }
         .selectablePatientText()

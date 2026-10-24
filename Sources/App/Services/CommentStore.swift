@@ -25,6 +25,9 @@ struct SessionComment: Identifiable, Equatable {
     /// false, and older payloads written before this field simply decode as
     /// unresolved.
     var resolved: Bool
+    /// The progress note format this comment is anchored to (e.g. .soap, .summary),
+    /// or nil if anchored to the session transcript.
+    var format: ProgressNoteFormat?
 
     init(
         id: String,
@@ -34,7 +37,8 @@ struct SessionComment: Identifiable, Equatable {
         updatedAt: Date,
         anchorSeconds: Double? = nil,
         quoteStart: Int? = nil,
-        resolved: Bool = false
+        resolved: Bool = false,
+        format: ProgressNoteFormat? = nil
     ) {
         self.id = id
         self.quotedText = quotedText
@@ -44,6 +48,7 @@ struct SessionComment: Identifiable, Equatable {
         self.anchorSeconds = anchorSeconds
         self.quoteStart = quoteStart
         self.resolved = resolved
+        self.format = format
     }
 }
 
@@ -135,9 +140,30 @@ final class CommentStore {
         annotations.comments(sessionID: sessionID)
     }
 
+    /// Comments for one specific note format, or transcript comments when `format == nil`.
+    func comments(sessionID: UUID, format: ProgressNoteFormat?) -> [SessionComment] {
+        annotations.comments(sessionID: sessionID).filter { $0.format == format }
+    }
+
     @discardableResult
-    func addComment(sessionID: UUID, quotedText: String, body: String, anchorSeconds: Double? = nil, quoteStart: Int? = nil, now: Date = Date()) -> SessionComment? {
-        let added = annotations.addComment(sessionID: sessionID, quotedText: quotedText, body: body, anchorSeconds: anchorSeconds, quoteStart: quoteStart, now: now)
+    func addComment(
+        sessionID: UUID,
+        quotedText: String,
+        body: String,
+        anchorSeconds: Double? = nil,
+        quoteStart: Int? = nil,
+        format: ProgressNoteFormat? = nil,
+        now: Date = Date()
+    ) -> SessionComment? {
+        let added = annotations.addComment(
+            sessionID: sessionID,
+            quotedText: quotedText,
+            body: body,
+            anchorSeconds: anchorSeconds,
+            quoteStart: quoteStart,
+            format: format,
+            now: now
+        )
         if added != nil { onSessionAnnotationsChanged?(sessionID) }
         return added
     }

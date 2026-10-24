@@ -98,11 +98,24 @@ final class ProgressNotePromptTests: XCTestCase {
     func testProgressNoteIncludesCommentsWhenProvidedAndOmitsWhenEmpty() {
         let comments = ["- Client reported new medication side effect"]
         let withComments = Prompts.progressNote(format: .soap, transcript: transcript, comments: comments)
-        XCTAssertTrue(withComments.contains("Therapist's margin comments on the transcript:"))
+        XCTAssertTrue(withComments.contains(Prompts.commentsHeading))
         XCTAssertTrue(withComments.contains("Client reported new medication side effect"))
 
         let withoutComments = Prompts.progressNote(format: .soap, transcript: transcript, comments: [])
         XCTAssertFalse(withoutComments.contains("Therapist's margin comments"))
+    }
+
+    func testProgressNoteIncludesFormattedNoteComments() {
+        let noteComment = SessionComment(
+            id: "1", quotedText: "Treatment goals", body: "Focus on sleep hygiene",
+            createdAt: Date(), updatedAt: Date(), format: .soap
+        )
+        let formatted = AssistantService.formatComments([noteComment])
+        let prompt = Prompts.progressNote(format: .soap, transcript: transcript, comments: formatted)
+        XCTAssertTrue(prompt.contains("- [On SOAP note “Treatment goals”]: Focus on sleep hygiene"))
+        // The quoted passage is drafted-note text, so the heading says it isn't hers.
+        XCTAssertTrue(prompt.contains("drafted notes"))
+        XCTAssertTrue(prompt.contains("not the therapist's words"))
     }
 
     func testSessionChatAndSummarizeIncludePatientBackground() {

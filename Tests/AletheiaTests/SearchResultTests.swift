@@ -87,4 +87,24 @@ final class SearchResultTests: XCTestCase {
         XCTAssertEqual(commentHit.commentSeconds, 45)
         XCTAssertNil(commentHit.noteFormat)
     }
+
+    func testSearchHitForNoteCommentHasBothNoteFormatAndCommentID() {
+        let patient = Patient(id: UUID(), name: "Jane Doe", slug: "Jane-Doe")
+        let session = SessionRecord(patientId: patient.id, folderName: "2026-10-01_Session")
+        let noteCommentHit = SearchHit(
+            id: "comment-note-1",
+            kind: .comment,
+            patient: patient,
+            session: session,
+            noteLabel: "SOAP",
+            noteFormat: ProgressNoteFormat.soap,
+            commentID: "comment-abc",
+            snippet: "switch meds"
+        )
+        XCTAssertEqual(noteCommentHit.kind, .comment)
+        XCTAssertEqual(noteCommentHit.noteFormat, .soap)
+        XCTAssertEqual(noteCommentHit.noteLabel, "SOAP")
+        XCTAssertEqual(noteCommentHit.commentID, "comment-abc")
+        XCTAssertNil(noteCommentHit.commentSeconds)
+    }
 }

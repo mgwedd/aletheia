@@ -32,15 +32,13 @@ final class BoundedScrollTests: XCTestCase {
         XCTAssertEqual(host.fittingSize.height, 700, accuracy: 1)
     }
 
-    /// The note tab uses it, rather than a bare ScrollView.
-    func testNoteBodyUsesBoundedScroll() throws {
-        let file = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/App/Views/SessionDetailView.swift")
-        let source = try String(contentsOf: file, encoding: .utf8)
-        let marker = try XCTUnwrap(source.range(of: "MarkdownMessageView(text: summaryText, style: .note"))
-        let before = source[..<marker.lowerBound].suffix(200)
-        XCTAssertTrue(before.contains("BoundedScroll {"), "the note body should sit in a BoundedScroll")
+    /// The note tab's reader is an AppKit scroll view, which, like
+    /// BoundedScroll, doesn't ask for its text's height.
+    func testTheNoteReaderDoesNotAskForItsTextsHeight() {
+        let note = (0..<400).map { "Line \($0) of a long note." }.joined(separator: "\n\n")
+        let host = NSHostingView(rootView: NoteReaderView(
+            text: note, comments: [], selection: .constant(""), selectionRange: .constant(nil)))
+        XCTAssertLessThan(host.fittingSize.height, 2_000)
     }
 
     /// A long conversation in the Ask tab has the same problem as a long note.

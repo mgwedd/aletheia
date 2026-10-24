@@ -199,6 +199,7 @@ enum GlobalSearchEngine {
                 let shown = inBody != 0 ? comment.body : comment.quotedText
                 comments.append(SearchHit(
                     id: "comment-\(key)-\(comment.id)", kind: .comment, patient: place.patient, session: place.session,
+                    noteLabel: comment.format?.shortName, noteFormat: comment.format,
                     commentID: comment.id, commentSeconds: comment.anchorSeconds,
                     snippet: GlobalSearchText.snippet(shown, terms: terms)))
             }

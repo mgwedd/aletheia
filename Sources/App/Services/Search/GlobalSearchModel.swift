@@ -115,8 +115,10 @@ struct SearchHitDestination: Equatable {
             commentID = nil
             matchPassage = nil
         case .comment:
-            tab = .transcript
-            noteFormat = nil
+            // A comment on a generated note opens that note; one on the
+            // transcript opens the transcript.
+            tab = hit.noteFormat == nil ? .transcript : .notes
+            noteFormat = hit.noteFormat
             showingMyNotes = false
             commentID = hit.commentID
             matchPassage = nil
