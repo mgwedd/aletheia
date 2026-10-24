@@ -44,10 +44,9 @@ of it.
 
 Recordings, transcripts, summaries, notes, comments, medications, clinical
 history, and patient information are stored in the data folder you choose. The
-folder picker opens in iCloud Drive when it is available and suggests it, but you
-can pick any folder. A folder in iCloud Drive or another synced location is
-copied by that provider. Choose a local folder if you want the data to remain on
-this Mac. Production builds do not offer at-rest encryption for new data
+folder must be on this Mac. The App defaults to its standard location and refuses
+folders in iCloud Drive or another cloud-synced location, network locations and
+unencrypted removable drives, so no sync provider copies the data. Production builds do not offer at-rest encryption for new data
 folders, so use FileVault and encrypted backup media. The App checks whether the
 disk holding the folder is encrypted and does not add new patients, sessions, or
 recordings while that disk is known to be unencrypted.
