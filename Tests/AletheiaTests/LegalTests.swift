@@ -217,6 +217,58 @@ final class LegalTests: XCTestCase {
         }
     }
 
+    /// Ollama was removed; no document may offer it.
+    func testConsentDocsMentionNoOllama() throws {
+        let docsDir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("docs")
+        let extra = try FileManager.default.contentsOfDirectory(atPath: docsDir.path)
+            .filter { $0.hasSuffix(".md") }.map { "docs/\($0)" }
+        for path in ["CONSENT.md", "Sources/App/Views/ConsentGuideView.swift"] + extra {
+            XCTAssertFalse(try doc(path).localizedCaseInsensitiveContains("ollama"), path)
+        }
+    }
+
+    func testConsentGuideAvoidsAbsoluteClaims() throws {
+        let text = try doc("Sources/App/Views/ConsentGuideView.swift")
+        XCTAssertFalse(text.contains("100%"))
+        XCTAssertFalse(text.lowercased().contains("strictly"))
+        XCTAssertFalse(text.contains("never sent"))
+        XCTAssertTrue(text.contains("Time Machine"))
+    }
+
+    private let consentKeyPhrases = [
+        "California Penal Code §632",
+        "Washington RCW 9.73.030",
+        "Connecticut Gen. Stat. §52-570d",
+        "not a complete list",
+        "Before we start, I would like to record today's session so that I can write my clinical notes.",
+        "The recording is stored on my computer and is used only for documentation.",
+        "Do you agree to be recorded?",
+        "you can ask me to pause or stop at any time",
+    ]
+
+    func testConsentDocsListExampleAllPartyStatutes() throws {
+        for path in ["CONSENT.md", "Sources/App/Views/ConsentGuideView.swift"] {
+            let text = try doc(path)
+            for phrase in consentKeyPhrases.prefix(4) {
+                XCTAssertTrue(text.contains(phrase), "\(path) lacks \"\(phrase)\"")
+            }
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("examples"), path)
+        }
+    }
+
+    func testConsentGuideMatchesConsentMd() throws {
+        let md = try doc("CONSENT.md").replacingOccurrences(of: "\n> ", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "  ", with: " ")
+        let view = try doc("Sources/App/Views/ConsentGuideView.swift")
+        for phrase in consentKeyPhrases {
+            XCTAssertTrue(view.contains(phrase), "ConsentGuideView lacks \"\(phrase)\"")
+            XCTAssertTrue(md.contains(phrase), "CONSENT.md lacks \"\(phrase)\"")
+        }
+    }
+
     /// Statements that used to be true and are not any more.
     func testDocsHaveNoStaleClaims() throws {
         for path in ["PRIVACY.md", "SECURITY.md", "docs/HIPAA-SAFEGUARDS.md", "docs/ENCRYPTION.md", "docs/SETUP-GUIDE.md"] {
