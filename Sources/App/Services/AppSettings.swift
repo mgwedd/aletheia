@@ -85,6 +85,7 @@ final class AppSettings: ObservableObject {
 
     private enum Keys {
         static let dataRootBookmark = "dataRootBookmark"
+        static let usesStandardDataRoot = "usesStandardDataRoot"
         static let whisperModel = "whisperModel"
         static let assistantBackend = "assistantBackend"
         static let llamaModel = "llamaModel"
@@ -130,6 +131,7 @@ final class AppSettings: ObservableObject {
     private let defaults: UserDefaults
 
     @Published var dataRootURL: URL?
+    @Published private(set) var dataRootVerdict: DataFolderPolicy.Verdict = .ok
     @Published var whisperModel: WhisperModel {
         didSet { defaults.set(whisperModel.rawValue, forKey: Keys.whisperModel) }
     }
@@ -502,7 +504,14 @@ final class AppSettings: ObservableObject {
         } else {
             dismissedDamagedRecordIDs = []
         }
-        dataRootURL = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark)
+        if let bookmarked = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark) {
+            dataRootURL = bookmarked
+        } else if defaults.bool(forKey: Keys.usesStandardDataRoot) {
+            dataRootURL = Self.standardDataRoot
+        }
+        if let root = dataRootURL {
+            dataRootVerdict = DataFolderPolicy.verdict(for: root)
+        }
         // Re-assert the backup-exclusion policy on the resolved folder each launch
         // (best-effort: the folder may not be accessible yet this early).
         applyBackupExclusion()
@@ -523,8 +532,29 @@ final class AppSettings: ObservableObject {
     /// Persists a security-scoped bookmark so the sandboxed app can keep
     /// reading/writing that folder on future launches without re-prompting.
     func setDataRoot(_ url: URL) throws {
+        let verdict = DataFolderPolicy.verdict(for: url)
+        guard verdict == .ok else { throw DataFolderSelectionError.rejected(verdict.explanation) }
         try SecurityScopedBookmark.save(url: url, key: Keys.dataRootBookmark)
+        defaults.set(false, forKey: Keys.usesStandardDataRoot)
         dataRootURL = url
+        dataRootVerdict = .ok
+        applyBackupExclusion()
+    }
+
+    static var standardDataRoot: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Aletheia/Data", isDirectory: true)
+    }
+
+    func useStandardDataRoot() throws {
+        let root = Self.standardDataRoot
+        let verdict = DataFolderPolicy.verdict(for: root)
+        guard verdict == .ok else { throw DataFolderSelectionError.rejected(verdict.explanation) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defaults.removeObject(forKey: Keys.dataRootBookmark)
+        defaults.set(true, forKey: Keys.usesStandardDataRoot)
+        dataRootURL = root
+        dataRootVerdict = .ok
         applyBackupExclusion()
     }
 

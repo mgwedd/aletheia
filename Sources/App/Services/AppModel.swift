@@ -98,6 +98,20 @@ final class AppModel: ObservableObject {
     var isEncryptionUnlocked: Bool { encryption.isUnlocked }
 
     func rebuildStore() {
+        searchSync?.cancel()
+        searchSync = nil
+        if let root = settings.dataRootURL, DataFolderPolicy.verdict(for: root) != .ok {
+            store = nil
+            commentStore = nil
+            audit = nil
+            searchIndex = nil
+            SessionSearch.index = SearchIndex()
+            databaseState = .noDataFolder
+            patients = []
+            unreadablePatients = []
+            schemaWarning = nil
+            return
+        }
         // Recompute encryption state first (the data folder may have just
         // changed), then build the stores around the resulting protector.
         encryption.refreshState()
@@ -275,6 +289,15 @@ final class AppModel: ObservableObject {
 
     /// Prompts the user with a folder chooser panel to pick another data folder,
     /// sets it as the active data root, and rebuilds the store.
+    /// The data folder was copied to a new location. The held key belongs to the
+    /// old location, so it's dropped on rebuild; a key remembered on this Mac
+    /// unlocks the copy again (it carries the same keystore) instead of asking
+    /// for the passphrase.
+    func dataFolderMoved() {
+        rebuildStore()
+        encryption.autoUnlockFromDevice()
+    }
+
     @discardableResult
     func chooseDataFolder() -> Bool {
         guard let url = FolderPicker.choose() else { return false }
