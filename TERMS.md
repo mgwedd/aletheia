@@ -1,22 +1,24 @@
-# Terms of Service
+# End User License Agreement and Terms of Service
 
-_Last updated: 2026-10-23_
+_Last updated: 2026-10-24_
 
-> This document is a template provided for transparency. It is **not legal
-> advice**. Aletheia is used with protected health information (PHI); have your
-> own counsel review these Terms, your practice's policies, and your patient
-> consent process before relying on them.
+> This document is **not legal advice**. Aletheia is used with protected health
+> information (PHI); have your own counsel review your practice's policies and
+> your patient consent process.
 
 ## 1. Acceptance
 
+This is an agreement between you and
+Astrea Labs LLC, a Wyoming limited liability company ("Astrea Labs", "we", "us").
 By installing, opening, or using the Aletheia macOS application ("the App") you
-agree to these Terms of Service ("Terms") and to the [Privacy Policy](PRIVACY.md).
+agree to this End User License Agreement and Terms of Service ("Terms") and to
+the [Privacy Policy](PRIVACY.md).
 If you do not agree, do not use the App.
 
 The App records your acceptance **on your own Mac** — the version of these Terms
 you accepted and the date and time you accepted them, both in the App's settings
 and in an `legal-acceptance.log` file in your data folder that you can open and
-read. It does not send that record, or anything else, to the developer. You
+read. It does not send that record, or anything else, to Astrea Labs. You
 cannot use the App without first accepting; the setup screen will not let you
 continue until you do.
 
@@ -45,22 +47,34 @@ relying on it or entering it into a record.
 You are solely responsible for:
 
 - **Consent.** Obtaining each patient's informed consent to record before you
-  start recording, as required by your jurisdiction and licensing board. See
-  [CONSENT.md](CONSENT.md).
+  start recording, as required by your jurisdiction and licensing board. Where
+  the law requires the consent of every party to a recording, you are
+  responsible for getting consent from every party, including every person on a
+  video call or in the room. See [CONSENT.md](CONSENT.md).
 - **Compliance.** Your use of the App under HIPAA, state law, and the rules of
   your licensing board, including lawful collection, retention, and disclosure
-  of patient data. You are the data controller / covered entity; the developer
+  of patient data. You are the data controller / covered entity; Astrea Labs
   never receives PHI and is not your business associate.
 - **Device security.** Protecting the Mac the App runs on — FileVault, the App's
   Touch ID / password lock, account security, and physical access. See
   [SECURITY.md](SECURITY.md).
+- **Keys and passphrase.** If you turn on data-folder encryption, keeping the
+  passphrase (at least 12 characters) and the 24-word recovery key safe and
+  separate from the Mac. Astrea Labs cannot recover them, and without them
+  encrypted data cannot be recovered.
+- **Exports.** Exports the App writes (PDF and Markdown notes, calendar files,
+  and Export All Records) are plaintext files that the App does not encrypt.
+  Once an export is written, protecting it, sharing it only as the law allows,
+  and eventually deleting it is your responsibility.
+- **Supported macOS and updates.** Running the App on macOS 14 or later, and
+  installing App updates and macOS security updates. Earlier macOS versions are
+  not supported, and an App version you have not updated may lack fixes.
 - **Backups.** Backing up your data folder. The App does not back up your data
   automatically. Settings › Backups › Back Up Now saves an encrypted copy of the
   database (not recordings or other files) to a folder you choose, so keep your
   own backups of the whole data folder too. Settings › Backups ›
   Export All Records can export every record to a folder you choose; that export is not
-  encrypted by the App, so protecting and eventually deleting it is also your
-  responsibility.
+  encrypted by the App (see Exports above).
 - **Third-party software.** Any model files you download to use with the App,
   under their own licenses and terms.
 
@@ -76,28 +90,29 @@ misrepresents the App's output as reviewed clinical advice it has not received.
 THE APP IS PROVIDED "AS IS" AND "AS AVAILABLE," WITHOUT WARRANTY OF ANY KIND,
 EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
 MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, ACCURACY, AND
-NON-INFRINGEMENT. The developer does not warrant that the App will be
+NON-INFRINGEMENT. Astrea Labs does not warrant that the App will be
 error-free, that transcription or summaries will be accurate, or that the App
 will meet your regulatory obligations.
 
 ## 7. Limitation of liability
 
-To the maximum extent permitted by law, the developer will not be liable for any
+To the maximum extent permitted by law, Astrea Labs will not be liable for any
 indirect, incidental, special, consequential, exemplary, or punitive damages, or
 for any loss of data, loss of profits, business interruption, or regulatory
 penalties, arising out of or relating to your use of the App.
 
-Because the App runs entirely on your systems and the developer never receives
+Because the App runs entirely on your systems and Astrea Labs never receives
 or has access to your data, **you are responsible for any breach, loss,
 exposure, or exfiltration of data from your own devices, accounts, or backups**,
-and the developer is not liable for it. To the maximum extent permitted by law,
-the developer's total liability for any claim relating to the App will not
-exceed the amount you paid the developer for the App (which may be zero).
+and Astrea Labs is not liable for it. To the maximum extent permitted by law,
+the total liability of Astrea Labs for any claim relating to the App will not
+exceed the fees you paid Astrea Labs for the App in the 12 months before the
+claim arose (which may be zero).
 
 ## 8. Indemnification
 
 To the maximum extent permitted by law, you agree to indemnify and hold harmless
-the developer from any claim, loss, liability, or expense (including reasonable
+Astrea Labs from any claim, loss, liability, or expense (including reasonable
 legal fees) arising out of your use of the App, your data, your recordings, your
 patients, or your violation of these Terms or applicable law.
 
@@ -116,7 +131,7 @@ termination.
 
 ## 11. Changes
 
-The developer may update these Terms. Material changes are published here with a
+Astrea Labs may update these Terms. Material changes are published here with a
 new "Last updated" date and a new acceptance version; continuing to use the App
 after an update requires accepting the updated Terms in the App.
 

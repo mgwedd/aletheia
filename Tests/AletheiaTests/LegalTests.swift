@@ -217,6 +217,30 @@ final class LegalTests: XCTestCase {
         }
     }
 
+    func testTermsNameTheEntity() throws {
+        let terms = try doc("TERMS.md")
+        XCTAssertTrue(terms.contains("Astrea Labs LLC, a Wyoming limited liability company"))
+        XCTAssertFalse(terms.localizedCaseInsensitiveContains("the developer"))
+        XCTAssertTrue(terms.contains("12 months"))
+        XCTAssertTrue(terms.contains("AS IS"))
+        XCTAssertTrue(terms.contains("State of Wyoming"))
+        XCTAssertFalse(terms.localizedCaseInsensitiveContains("arbitration"))
+    }
+
+    func testTermsCoverRecordingConsentAndExports() throws {
+        let terms = try doc("TERMS.md")
+        for phrase in ["consent of every party", "24-word recovery key", "at least 12 characters",
+                       "plaintext files", "macOS 14 or later", "installing App updates"] {
+            XCTAssertTrue(terms.contains(phrase), "TERMS.md lacks \"\(phrase)\"")
+        }
+        for phrase in ["PDF", "Markdown", "calendar", "Export All Records"] {
+            XCTAssertTrue(terms.contains(phrase), phrase)
+        }
+        for banned in ["pending counsel", "draft", "template"] {
+            XCTAssertFalse(terms.localizedCaseInsensitiveContains(banned), banned)
+        }
+    }
+
     /// Ollama was removed; no document may offer it.
     func testConsentDocsMentionNoOllama() throws {
         let docsDir = URL(fileURLWithPath: #filePath)
