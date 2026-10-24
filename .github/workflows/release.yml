@@ -139,6 +139,12 @@ jobs:
           echo "SIGN_IDENTITY=$SIGN_IDENTITY" >> "$GITHUB_ENV"
           echo "SIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 
+      # A build with an empty production keyring rejects every license, so a tagged
+      # release must not go out without keys. PR CI and untagged runs are unaffected.
+      - name: Check production license keys
+        if: env.IS_TAG == 'true'
+        run: ./scripts/check-license-keys.sh
+
       - name: Build Release app
         run: |
           set -euo pipefail

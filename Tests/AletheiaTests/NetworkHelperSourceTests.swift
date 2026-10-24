@@ -35,6 +35,10 @@ final class NetworkHelperSourceTests: XCTestCase {
 
         let funcs = declaration.split(separator: "\n").filter { $0.contains("func ") }
         XCTAssertEqual(funcs.count, 3, "the helper's command set is exactly three calls")
+        // The two fetches take nothing but their reply.
+        for name in ["checkForUpdates", "fetchRevocations"] {
+            XCTAssertTrue(declaration.contains("func \(name)(reply: @escaping (Data?, NSError?) -> Void)"), name)
+        }
         for line in funcs {
             // Drop the reply closure: what comes back may carry Data.
             let request = line.components(separatedBy: "reply:")[0]
@@ -53,11 +57,13 @@ final class NetworkHelperSourceTests: XCTestCase {
         }
     }
 
-    /// The revocation endpoint is unconfigured and adds no host to the allowlist.
-    func testRevocationEndpointIsUnsetAndNoHostWasAdded() throws {
-        let catalog = try source("Sources/NetworkHelper/AssetCatalog.swift")
-        XCTAssertTrue(catalog.contains("static let revocations: URL? = nil"))
-        XCTAssertEqual(HelperAllowlist.hosts, ["github.com", "githubusercontent.com", "huggingface.co", "hf.co"])
+    /// The revocation list adds only our own hosts, matched exactly.
+    func testRevocationEndpointAddsOnlyOurOwnExactHosts() {
+        XCTAssertEqual(HelperAllowlist.hosts, [
+            "github.com", "githubusercontent.com", "huggingface.co", "hf.co",
+            "astrealabs.com", "aletheia.astrealabs.com",
+        ])
+        XCTAssertEqual(HelperAllowlist.exactOnly, ["astrealabs.com", "aletheia.astrealabs.com"])
     }
 
     /// Only the helper (and the shared protocol file, which names no network

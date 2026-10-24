@@ -196,6 +196,36 @@ final class HelperFetcherTests: XCTestCase {
         }
     }
 
+    func testRevocationListIsFetchedFromItsFixedURL() async throws {
+        let body = Data("ALETR1.e30.AAAA".utf8)
+        StubProtocol.reset { _ in .ok(body) }
+        let data = try await makeFetcher().fetchRevocations()
+        XCTAssertEqual(data, body)
+        XCTAssertEqual(StubProtocol.seen.map(\.url), [HelperEndpoints.revocations])
+    }
+
+    func testRevocationListMustCarryItsPrefix() async throws {
+        StubProtocol.reset { _ in .ok(Data("<html>404</html>".utf8)) }
+        do {
+            _ = try await makeFetcher().fetchRevocations()
+            XCTFail("a page that is not a revocation list must fail")
+        } catch let error as HelperError {
+            XCTAssertEqual(error, .badRevocationList)
+        }
+    }
+
+    func testRevocationListOverTheSizeCapIsRejected() async throws {
+        var body = Data("ALETR1.".utf8)
+        body.append(Data(repeating: 0x41, count: HelperFetcher.maxDataBytes))
+        StubProtocol.reset { _ in .ok(body) }
+        do {
+            _ = try await makeFetcher().fetchRevocations()
+            XCTFail("an oversized list must fail")
+        } catch let error as HelperError {
+            XCTAssertEqual(error, .tooLarge)
+        }
+    }
+
     func testUpdateArchiveURLComesFromTheAppcastAndMustBeThisRepo() async throws {
         let good = #"{"downloadURL":"https://github.com/mgwedd/aletheia/releases/download/v9/Aletheia.dmg"}"#
         StubProtocol.reset { _ in .ok(Data(good.utf8)) }
@@ -215,9 +245,8 @@ final class HelperFetcherTests: XCTestCase {
 
     func testRevocationsWithNoEndpointFailsNotConfiguredAndMakesNoRequest() async throws {
         StubProtocol.reset { _ in .ok(Data("x".utf8)) }
-        XCTAssertNil(HelperEndpoints.revocations, "the shipped endpoint is unset until the domain is decided")
         do {
-            _ = try await makeFetcher().fetchRevocations()
+            _ = try await makeFetcher().fetchRevocations(from: nil)
             XCTFail("must not succeed without an endpoint")
         } catch let error as HelperError {
             XCTAssertEqual(error, .notConfigured)
@@ -227,9 +256,9 @@ final class HelperFetcherTests: XCTestCase {
     }
 
     func testRevocationsFetchIsAPlainGETAndReturnsTheBytes() async throws {
-        StubProtocol.reset { _ in .ok(Data("list".utf8)) }
+        StubProtocol.reset { _ in .ok(Data("ALETR1.list".utf8)) }
         let data = try await makeFetcher().fetchRevocations(from: URL(string: "https://github.com/r/revocations.json")!)
-        XCTAssertEqual(data, Data("list".utf8))
+        XCTAssertEqual(data, Data("ALETR1.list".utf8))
         let request = try XCTUnwrap(StubProtocol.seen.first)
         XCTAssertEqual(request.httpMethod, "GET")
         XCTAssertNil(request.httpBody)
@@ -263,7 +292,9 @@ final class HelperFetcherTests: XCTestCase {
     }
 
     func testRevocationsAtExactlyTheCapAreAccepted() async throws {
-        StubProtocol.reset { _ in .ok(Data(repeating: 0x20, count: HelperFetcher.maxDataBytes)) }
+        var body = Data("ALETR1.".utf8)
+        body.append(Data(repeating: 0x20, count: HelperFetcher.maxDataBytes - body.count))
+        StubProtocol.reset { _ in .ok(body) }
         let data = try await makeFetcher().fetchRevocations(from: URL(string: "https://github.com/r/revocations.json")!)
         XCTAssertEqual(data.count, 256 * 1024)
     }

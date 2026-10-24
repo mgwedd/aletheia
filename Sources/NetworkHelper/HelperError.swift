@@ -11,6 +11,7 @@ enum HelperError: Error, Equatable {
     case tooLarge
     case transport(String)
     case notConfigured
+    case badRevocationList
 
     var code: Int {
         switch self {
@@ -22,6 +23,7 @@ enum HelperError: Error, Equatable {
         case .tooLarge: return 6
         case .transport: return 7
         case .notConfigured: return 8
+        case .badRevocationList: return 9
         }
     }
 
@@ -35,6 +37,7 @@ enum HelperError: Error, Equatable {
         case .tooLarge: return "The response was larger than the helper allows."
         case .transport(let detail): return detail
         case .notConfigured: return "The license revocation list isn't configured yet."
+        case .badRevocationList: return "The license revocation list wasn't in the expected format."
         }
     }
 }

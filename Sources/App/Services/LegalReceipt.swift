@@ -22,17 +22,26 @@ enum LegalReceipt {
         let acceptedVersion: String
         let acceptedAt: String   // ISO 8601, UTC
         let appVersion: String
+        /// The license the acceptance was made under (`lid`) and its licensee
+        /// (`sub`); absent when accepted without one.
+        var licenseID: String?
+        var licensee: String?
     }
 
     /// Append one acceptance line to `<root>/legal-acceptance.log`. No-op if
     /// there's no data folder yet. Never throws — a write failure just means no
     /// file receipt this time (the UserDefaults record still stands).
-    static func append(version: String, at date: Date, root: URL?, appVersion: String) {
+    static func append(
+        version: String, at date: Date, root: URL?, appVersion: String,
+        licenseID: String? = nil, licensee: String? = nil
+    ) {
         guard let root else { return }
         let entry = Entry(
             acceptedVersion: version,
             acceptedAt: Self.isoFormatter.string(from: date),
-            appVersion: appVersion
+            appVersion: appVersion,
+            licenseID: licenseID,
+            licensee: licensee
         )
         guard let line = encodeLine(entry) else { return }
         write(line, to: root.appendingPathComponent(fileName))

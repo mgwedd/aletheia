@@ -209,6 +209,9 @@ final class SessionRecorder: ObservableObject {
     /// but `onStopped` doesn't fire, so no transcription starts on the way out.
     private var isQuitting = false
 
+    /// Why a new recording may not start because of the license, or nil. Set by the app.
+    var licenseRefusal: (() -> String?)?
+
     /// Files are open (recording, paused, stopped by a capture error, or
     /// still being finalized by a Stop).
     var hasOpenRecording: Bool { stagingMicURL != nil || micURL != nil }
@@ -218,6 +221,9 @@ final class SessionRecorder: ObservableObject {
     /// start (also left in `state`).
     @discardableResult
     func start(micURL: URL, callURL: URL, context: ActiveRecording, protector: FileProtector = .passthrough) async -> String? {
+        // A lapsed license stops a *new* recording only; stopping, transcribing and
+        // reading what exists never ask. Unset (nil) allows everything.
+        if let refusal = licenseRefusal?() { return refusal }
         if let refusal = RecordingStartPolicy.refusal(
             isRecording: isRecording, isStarting: isStarting, activePatientName: active?.patientName
         ) {
