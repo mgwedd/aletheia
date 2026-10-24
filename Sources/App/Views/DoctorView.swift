@@ -50,6 +50,7 @@ struct DoctorView: View {
         .frame(minWidth: 560, minHeight: 480)
         .background(Theme.window.color)
         .task { await run() }
+        .dismissOnLock { showReviewRecords = false }
         .sheet(isPresented: $showReviewRecords) {
             let entries = appModel.store?.scanForUnreadableEntries() ?? []
             VStack(alignment: .leading, spacing: 16) {

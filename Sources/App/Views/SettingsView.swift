@@ -102,6 +102,13 @@ struct SettingsView: View {
             .environmentObject(integrations)
             .onDisappear { Task { await runHealthChecks() } }
         }
+        .dismissOnLock {
+            showSetup = false
+            showEncryptionSetup = false
+            showChangePassphraseSheet = false
+            showNewRecoveryKeySheet = false
+            showConsentGuide = false
+        }
         .sheet(isPresented: $showEncryptionSetup) {
             EncryptionSetupSheet()
                 .environmentObject(encryption)

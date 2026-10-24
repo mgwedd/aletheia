@@ -371,6 +371,7 @@ private struct LockCover: ViewModifier {
         )
         let interactive = LockCoverPolicy.contentInteractionEnabled(isLocked: appLock.isLocked)
         return content
+            .environment(\.lockGeneration, appLock.lockGeneration)
             // While locked the cover is only a picture: take away hit testing,
             // keyboard focus and Accessibility from what is underneath it.
             .allowsHitTesting(interactive)
