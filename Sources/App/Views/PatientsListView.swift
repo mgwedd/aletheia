@@ -146,28 +146,8 @@ private struct PatientRow: View {
     let meta: Store.PatientSessionMeta?
     let isSelected: Bool
 
-    private static let sessionDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("MMM d")
-        return formatter
-    }()
-
-    private static let addedFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("MMM yyyy")
-        return formatter
-    }()
-
     private var subtitleText: String {
-        let count = meta?.count ?? 0
-        if count > 0 {
-            let sessionWord = count == 1 ? "1 session" : "\(count) sessions"
-            if let newest = meta?.newestDate {
-                return "\(sessionWord) · \(Self.sessionDateFormatter.string(from: newest))"
-            }
-            return sessionWord
-        }
-        return "Added \(Self.addedFormatter.string(from: patient.createdAt))"
+        PatientSessionText.rowSubtitle(patient: patient, count: meta?.count ?? 0, newest: meta?.newestDate)
     }
 
     var body: some View {

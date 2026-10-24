@@ -312,11 +312,7 @@ struct PatientDetailView: View {
     }
 
     private var sessionSummary: String {
-        switch sessions.count {
-        case 0: return "No sessions"
-        case 1: return "1 session"
-        default: return "\(sessions.count) sessions"
-        }
+        PatientSessionText.summary(count: sessions.count)
     }
 
     private func refresh() {
