@@ -37,7 +37,7 @@ The app is not notarized by Apple, so macOS will hesitate. **Right-click Alethei
 
 On first launch Aletheia shows a checklist. Work down it:
 
-1. **Data folder:** click **Choose Folder…** and pick where everything is stored (iCloud Drive or any folder you back up).
+1. **Data folder:** click **Use the standard location** (the default), or **Choose another folder…**. The folder must be on this Mac: iCloud Drive, other cloud-synced folders, network locations and unencrypted removable drives are refused.
 2. **Microphone:** click **Allow Microphone**.
 3. **Call audio capture:** click **Allow**. macOS calls this "Screen Recording", but Aletheia only uses it to hear your video call. It does not capture the screen.
 4. **Transcription model:** click **Download**.

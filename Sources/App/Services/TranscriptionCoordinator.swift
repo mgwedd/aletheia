@@ -107,14 +107,14 @@ final class TranscriptionCoordinator: ObservableObject {
                 await self.integrations.makeNotifier().post(
                     SessionNotifications.transcriptionProblem(
                         patientName: patient.name, date: session.date,
-                        showsName: self.settings.notificationsShowPatientNames
+                        policy: .current(showFullName: self.settings.notificationsShowPatientNames)
                     )
                 )
             case .completedAudioKept:
                 await self.integrations.makeNotifier().post(
                     SessionNotifications.recordingNotDeleted(
                         patientName: patient.name, date: session.date,
-                        showsName: self.settings.notificationsShowPatientNames
+                        policy: .current(showFullName: self.settings.notificationsShowPatientNames)
                     )
                 )
             case .completed, .cancelled:
@@ -254,7 +254,7 @@ final class TranscriptionCoordinator: ObservableObject {
             await integrations.makeNotifier().post(
                 SessionNotifications.transcriptionComplete(
                     patientName: patient.name, date: session.date,
-                    showsName: settings.notificationsShowPatientNames
+                    policy: .current(showFullName: settings.notificationsShowPatientNames)
                 )
             )
             if let audioNotice { return .completedAudioKept(notice: audioNotice) }

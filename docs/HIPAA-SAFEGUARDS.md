@@ -12,9 +12,9 @@ record-keeping rules reviewed before relying on any of this.
 
 Aletheia is a **single-user** application. PHI (session audio,
 transcripts, summaries, notes, comments, session digests) is created and stored
-in a data folder the clinician chooses. The folder picker opens in iCloud Drive
-when it is available and suggests it, so the practice must deliberately choose a
-local location to keep PHI on the Mac.
+in a data folder on the clinician's Mac. The App defaults to its standard
+location and refuses folders in iCloud Drive or other cloud-synced locations,
+network locations and unencrypted removable drives.
 The developer runs **no servers,
 accounts, analytics, or telemetry** and never receives, transmits, stores, or can
 access any of that data.
@@ -40,8 +40,8 @@ administrative and physical safeguards the practice owns; the app's job is the
 ## Data flow & local asset inventory
 
 Use this inventory when documenting the practice's Security Risk Analysis.
-Paths are relative to the data folder selected at first run; the picker opens in
-iCloud Drive when it is available, and any synced folder can be selected. Confirm the chosen folder and
+Paths are relative to the data folder selected at first run; the App defaults to
+its standard location and refuses synced, network and unencrypted removable folders. Confirm the chosen folder and
 the destination and encryption of any system backup.
 
 | Asset | Location and handling |

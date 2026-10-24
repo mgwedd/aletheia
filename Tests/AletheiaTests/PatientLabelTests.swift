@@ -43,6 +43,94 @@ final class PatientLabelTests: XCTestCase {
         XCTAssertTrue(SpotlightIndexerFactory.make(environment: [:]) is SpotlightIndexer)
     }
 
+    // MARK: - Surface and policy
+
+    func testInAppAlwaysShowsTheFullName() {
+        for showFull in [true, false] {
+            for locked in [true, false] {
+                let policy = PatientLabel.Policy(showFullName: showFull, isLocked: locked)
+                XCTAssertEqual(PatientLabel.text(forName: " Jane Doe ", surface: .inApp, policy: policy), "Jane Doe")
+            }
+        }
+    }
+
+    func testSurfaceByPolicyMatrix() {
+        for surface in PatientLabel.Surface.allCases where surface != .inApp {
+            for showFull in [true, false] {
+                for locked in [true, false] {
+                    let policy = PatientLabel.Policy(showFullName: showFull, isLocked: locked)
+                    let expected = (showFull && !locked) ? "Jane Doe" : "J.D."
+                    XCTAssertEqual(PatientLabel.text(forName: "Jane Doe", surface: surface, policy: policy), expected,
+                                   "\(surface) full=\(showFull) locked=\(locked)")
+                }
+            }
+        }
+    }
+
+    func testLockForcesInitialsOnMenuBarIntentAndNotification() {
+        let policy = PatientLabel.Policy(showFullName: true, isLocked: true)
+        for surface in [PatientLabel.Surface.menuBar, .intent, .notification] {
+            XCTAssertEqual(PatientLabel.text(forName: "Jane Doe", surface: surface, policy: policy), "J.D.")
+        }
+    }
+
+    func testBlankNamesFallBackToClient() {
+        for surface in PatientLabel.Surface.allCases {
+            for showFull in [true, false] {
+                let policy = PatientLabel.Policy(showFullName: showFull, isLocked: false)
+                XCTAssertEqual(PatientLabel.text(forName: "", surface: surface, policy: policy), "Client")
+                XCTAssertEqual(PatientLabel.text(forName: " \n ", surface: surface, policy: policy), "Client")
+            }
+        }
+    }
+
+    func testPatientOverloadMatchesName() {
+        let id = UUID()
+        let patient = Patient(id: id, name: "Jane Doe", slug: id.uuidString)
+        let policy = PatientLabel.Policy(showFullName: false, isLocked: false)
+        XCTAssertEqual(PatientLabel.text(for: patient, surface: .menuBar, policy: policy), "J.D.")
+    }
+
+    // MARK: - Menu bar
+
+    func testMenuBarLabelIsInitialsUnlessOptedInAndUnlocked() {
+        XCTAssertEqual(MenuBarContentPolicy.patientLabel(name: "Jane Doe", showFullName: false, isLocked: false), "J.D.")
+        XCTAssertEqual(MenuBarContentPolicy.patientLabel(name: "Jane Doe", showFullName: true, isLocked: false), "Jane Doe")
+        XCTAssertEqual(MenuBarContentPolicy.patientLabel(name: "Jane Doe", showFullName: true, isLocked: true), "J.D.")
+    }
+
+    func testPickerDisambiguatesCollidingInitialsWithoutTheName() {
+        let a = UUID(), b = UUID(), c = UUID(), d = UUID()
+        let day1 = Date(timeIntervalSince1970: 1_700_000_000)
+        let day2 = day1.addingTimeInterval(86_400 * 30)
+        let labels = MenuBarContentPolicy.pickerLabels(
+            [(a, "Jane Doe", day1), (b, "John Day", day2), (c, "Amy Lee", day1), (d, "Jack Dole", day2)],
+            showFullName: false, isLocked: false)
+        XCTAssertEqual(labels[c], "A.L.")
+        XCTAssertNotEqual(labels[a], labels[b])
+        XCTAssertNotEqual(labels[b], labels[d])
+        for label in labels.values {
+            for forbidden in ["Jane", "John", "Amy", "Jack", "Doe", "Day", "Lee", "Dole"] {
+                XCTAssertFalse(label.contains(forbidden), label)
+            }
+        }
+        XCTAssertTrue(labels[a]!.hasPrefix("J.D. · added"))
+    }
+
+    func testPickerNumbersRowsThatStillCollide() {
+        let day = Date(timeIntervalSince1970: 1_700_000_000)
+        let a = UUID(), b = UUID()
+        let labels = MenuBarContentPolicy.pickerLabels([(a, "Jane Doe", day), (b, "John Day", day)],
+                                                       showFullName: false, isLocked: false)
+        XCTAssertNotEqual(labels[a], labels[b])
+    }
+
+    func testPickerShowsFullNamesWhenOptedIn() {
+        let a = UUID()
+        let labels = MenuBarContentPolicy.pickerLabels([(a, "Jane Doe", Date())], showFullName: true, isLocked: false)
+        XCTAssertEqual(labels[a], "Jane Doe")
+    }
+
     // MARK: - Source scan
 
     private func source(_ relative: String) throws -> String {
@@ -71,6 +159,22 @@ final class PatientLabelTests: XCTestCase {
                 .joined(separator: "\n")
             let range = NSRange(code.startIndex..., in: code)
             XCTAssertNil(banned.firstMatch(in: code, range: range), "\(file) reads a patient name; use PatientLabel")
+        }
+    }
+
+    /// Notifications and the menu bar name patients only through `PatientLabel`.
+    func testNotificationsAndMenuBarNeverInterpolateAName() throws {
+        var files = try swiftFiles(under: "Sources/App/Services/Notifications")
+        files.append("Sources/App/Views/RecordingMenuBar.swift")
+        XCTAssertGreaterThanOrEqual(files.count, 2)
+        let banned = try NSRegularExpression(
+            pattern: #"\\\(\s*(\w+\.)*(name|patientName|displayName)\b|\bText\(\s*(\w+\.)*(name|patientName|displayName)\s*\)"#)
+        for file in files {
+            let code = try source(file).split(separator: "\n", omittingEmptySubsequences: false)
+                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+                .joined(separator: "\n")
+            let range = NSRange(code.startIndex..., in: code)
+            XCTAssertNil(banned.firstMatch(in: code, range: range), "\(file) shows a name directly; use PatientLabel")
         }
     }
 }

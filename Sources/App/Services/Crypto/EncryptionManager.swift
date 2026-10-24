@@ -71,6 +71,10 @@ final class EncryptionManager: ObservableObject {
     /// whenever the key or on/off state changes.
     var onProtectionChanged: (() -> Void)?
 
+    /// Set by `AppModel` to write key and key-storage changes to the activity
+    /// log. Notes are fixed text; nothing about the key itself is passed.
+    var recordAudit: (AuditAction, String) -> Void = { _, _ in }
+
     /// Called after a passphrase change has been swapped in, never on a refusal.
     var onPassphraseChanged: (() -> Void)?
 
@@ -200,8 +204,12 @@ final class EncryptionManager: ObservableObject {
     /// the folder to be unlocked.
     func rememberOnDevice() throws {
         do {
+            let wasRemembered = isRememberedOnDevice
             try storeKeyOnDevice()
             rememberError = nil
+            if !wasRemembered {
+                recordAudit(.securitySettingChanged, AuditedSettings.rememberKeyOnMac.detail(for: true))
+            }
         } catch {
             rememberError = error.localizedDescription
             throw error
@@ -226,7 +234,11 @@ final class EncryptionManager: ObservableObject {
     /// encrypted and will ask for the passphrase next launch.
     func forgetOnDevice() {
         guard let root = dataRoot, let id = Keystore.load(from: root)?.id else { return }
+        let wasRemembered = deviceKeys.load(for: id) != nil
         deviceKeys.delete(for: id)
+        if wasRemembered {
+            recordAudit(.securitySettingChanged, AuditedSettings.rememberKeyOnMac.detail(for: false))
+        }
     }
 
     // MARK: - Transitions
@@ -277,7 +289,9 @@ final class EncryptionManager: ObservableObject {
         guard dek != nil else { throw ManagerError.locked }
         let result = DataMigrator.migrate(root: root, from: protector, to: .passthrough)
         guard result.isComplete else { throw ManagerError.decryptionIncomplete(result.failures) }
-        forgetOnDevice() // drop the keychain copy before the keystore (which holds its id) is gone
+        // Drop the keychain copy before the keystore (which holds its id) is gone. Not
+        // `forgetOnDevice()`: the disable is recorded as one event.
+        if let id = Keystore.load(from: root)?.id { deviceKeys.delete(for: id) }
         clearMarker(at: root) // before the keystore goes, so a half-finished disable never looks like a lost keystore
         try FileManager.default.removeItem(at: root.appendingPathComponent(Keystore.fileName))
         dek = nil
@@ -354,6 +368,7 @@ final class EncryptionManager: ObservableObject {
             keystore = try keystore.removingWrapping(id: old.id)
         }
         try keystore.write(to: root)
+        recordAudit(.encryptionKeyChanged, "Recovery key replaced")
         return key
     }
 
@@ -408,5 +423,6 @@ final class EncryptionManager: ObservableObject {
         guard let dek else { throw FileProtector.ProtectorError.locked }
         let updated = try keystore.addingPassphraseWrapping(dek: dek, passphrase: passphrase, iterations: iterations)
         try updated.write(to: root)
+        recordAudit(.encryptionKeyChanged, "Recovery passphrase added")
     }
 }
