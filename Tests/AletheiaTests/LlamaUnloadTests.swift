@@ -110,4 +110,45 @@ final class LlamaUnloadTests: XCTestCase {
         }
     }
 }
+
+final class LlamaLoadSizeCheckTests: XCTestCase {
+    private func tempModel(bytes: Int) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("size-\(UUID().uuidString).gguf")
+        try Data(count: bytes).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return url
+    }
+
+    func testLlamaLoadRejectsWrongSizedModel() async throws {
+        let url = try tempModel(bytes: 99)
+        var loaderCalls = 0
+        let engine = LlamaEngine(
+            modelURL: url, adapterURL: nil, expectedModelBytes: 100,
+            sampling: LocalLLMSampling(maxTokens: 32),
+            modelLoader: { _ in loaderCalls += 1; return nil })
+        do {
+            try await engine.load()
+            XCTFail("expected a size error")
+        } catch let error as LocalLLMEngineError {
+            XCTAssertTrue(error.errorDescription?.contains("damaged or incomplete") == true, "\(error)")
+        }
+        XCTAssertEqual(loaderCalls, 0, "a wrong-sized file must never reach the loader")
+    }
+
+    func testRightSizedModelReachesTheLoader() async throws {
+        let url = try tempModel(bytes: 100)
+        var loadedURL: URL?
+        let engine = LlamaEngine(
+            modelURL: url, adapterURL: nil, expectedModelBytes: 100,
+            sampling: LocalLLMSampling(maxTokens: 32),
+            modelLoader: { loadedURL = $0; return nil })
+        do {
+            try await engine.load()
+            XCTFail("the stub loader returns nil")
+        } catch let error as LocalLLMEngineError {
+            XCTAssertTrue(error.errorDescription?.contains("Couldn't load") == true, "\(error)")
+        }
+        XCTAssertEqual(loadedURL, url)
+    }
+}
 #endif

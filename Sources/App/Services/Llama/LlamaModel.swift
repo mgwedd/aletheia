@@ -78,6 +78,15 @@ enum LlamaModel: String, CaseIterable, Identifiable, Codable, Hashable {
         }
     }
 
+    /// Exact size in bytes of the pinned GGUF asset (its Hugging Face LFS size);
+    /// checked on every load so a truncated file is refused without a re-hash.
+    var expectedBytes: Int64 {
+        switch self {
+        case .llama31_8b: return 6_036_116_480
+        case .gemma4_e2b: return 2_841_481_184
+        }
+    }
+
     var downloadURL: URL {
         URL(string: "https://huggingface.co/ggml-org/\(repo)/resolve/\(revision)/\(fileName)")!
     }
@@ -111,6 +120,20 @@ enum LlamaModel: String, CaseIterable, Identifiable, Codable, Hashable {
         switch self {
         case .llama31_8b: return "Built with Llama"
         case .gemma4_e2b: return nil
+        }
+    }
+}
+
+enum LlamaModelFile {
+    /// Cheap load-time check that the stored model is the pinned size
+    /// (the counterpart of `WhisperModelFile.verifySize`).
+    static func verifySize(at url: URL, expectedBytes: Int64) throws {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let actual = (attributes[.size] as? NSNumber)?.int64Value ?? -1
+        guard actual == expectedBytes else {
+            throw LocalLLMEngineError.loadFailed(
+                "The AI model file is damaged or incomplete. Open Settings › AI and models and download it again."
+            )
         }
     }
 }
