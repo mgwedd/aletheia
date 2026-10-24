@@ -6,9 +6,8 @@ import Foundation
 /// The archive is the database file sealed with the streaming `ChunkedCipher`
 /// (AES-256-GCM) under a key the *user* holds — the same recovery-passphrase key
 /// machinery as the at-rest `FileProtector`, which never leaves the Mac. So the
-/// resulting blob is opaque: it's safe to sit in a Time Machine backup, on an
-/// external drive, or — the point of the CloudKit path — uploaded to the user's
-/// private iCloud, where the server only ever stores ciphertext it cannot read.
+/// resulting blob is opaque: it's safe to sit in a Time Machine backup or on an
+/// external drive.
 ///
 /// Streaming (not the one-shot cipher) keeps memory flat regardless of database
 /// size. This type is deliberately key-agnostic and destination-agnostic: it

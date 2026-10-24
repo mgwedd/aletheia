@@ -18,7 +18,7 @@ import Foundation
 struct BackupCoordinator {
     /// The live, open store the backup is taken from.
     let store: CommentStore
-    /// Where the sealed archive goes (local folder today; iCloud once #60 lands).
+    /// Where the sealed archive goes (a folder on this Mac).
     let destination: BackupService
     private let fileManager = FileManager.default
 
