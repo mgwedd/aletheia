@@ -599,11 +599,8 @@ final class SearchIndex {
             return nil
         }
         if let url {
-            var excluded = URLResourceValues()
-            excluded.isExcludedFromBackup = true
             for suffix in ["", "-journal", "-wal", "-shm"] {
-                var target = URL(fileURLWithPath: url.path + suffix)
-                try? target.setResourceValues(excluded)   // fails harmlessly for a sidecar that doesn't exist
+                BackupExclusion.markExcluded(URL(fileURLWithPath: url.path + suffix))   // fails harmlessly for a sidecar that doesn't exist
             }
         }
         return db
