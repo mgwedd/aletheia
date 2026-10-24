@@ -36,6 +36,7 @@ final class AppModelPatientUpdateTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        SessionSearch.index = SearchIndex()   // AppModel pointed it at this test's folder
         appModel = nil
         AppSettings.shared.dataRootURL = originalDataRoot
         try? FileManager.default.removeItem(at: tempRoot)

@@ -66,6 +66,7 @@ final class SidebarVisibilityTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        SessionSearch.index = SearchIndex()   // AppModel pointed it at this test's folder
         window.orderOut(nil)
         window = nil
         AppSettings.shared.dataRootURL = originalDataRoot

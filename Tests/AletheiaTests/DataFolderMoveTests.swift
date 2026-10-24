@@ -15,6 +15,11 @@ private struct NoopSpotlight: SpotlightIndexing {
 }
 
 final class DataFolderMoveTests: XCTestCase {
+    override func tearDown() {
+        SessionSearch.index = SearchIndex()   // AppModel pointed it at this test's folder
+        super.tearDown()
+    }
+
     func testCopyVerifiesAndRebindsWithoutDeletingSource() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let source = base.appendingPathComponent("source")
