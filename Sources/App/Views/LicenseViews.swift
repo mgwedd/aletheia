@@ -164,6 +164,7 @@ struct LicenseBanner: View {
 /// Settings > License key: who the license is for, when it ends, and a field to replace it.
 struct LicensePane: View {
     @EnvironmentObject private var license: LicenseState
+    @EnvironmentObject private var settings: AppSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -193,6 +194,43 @@ struct LicensePane: View {
                             .foregroundStyle(Theme.text.color)
                     }
                     .padding(.vertical, 12)
+                    if let terms = license.termsSummary {
+                        ForEach(terms.rows, id: \.document) { row in
+                            SettingsHairline()
+                            SettingsRow(title: row.document.title) {
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text(row.text)
+                                        .font(Theme.Typography.body)
+                                        .foregroundStyle(Theme.text.color)
+                                    if row.matchesThisVersion {
+                                        Text(LicenseTermsSummary.matchText)
+                                            .font(Theme.Typography.caption)
+                                            .foregroundStyle(Theme.muted.color)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 12)
+                        }
+                        if !terms.licenseCoversCurrentTerms {
+                            SettingsHairline()
+                            SettingsRow(title: "In this app") {
+                                Text(LicenseTermsSummary.inAppText(
+                                    acceptedVersion: settings.acceptedLegalVersion, acceptedAt: settings.acceptedLegalDate))
+                                    .font(Theme.Typography.body)
+                                    .foregroundStyle(Theme.text.color)
+                            }
+                            .padding(.vertical, 12)
+                        }
+                        ForEach(terms.clauseTexts, id: \.self) { text in
+                            SettingsHairline()
+                            SettingsRow(title: "Note") {
+                                Text(text)
+                                    .font(Theme.Typography.body)
+                                    .foregroundStyle(Theme.text.color)
+                            }
+                            .padding(.vertical, 12)
+                        }
+                    }
                 }
             }
             if let text = LicenseBanner.text(for: license.status) {

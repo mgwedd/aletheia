@@ -377,7 +377,7 @@ struct AletheiaApp: App {
             get: {
                 settings.dataRootURL == nil
                     || !settings.hasCompletedFirstRun
-                    || !settings.hasAcceptedCurrentLegal
+                    || !(settings.hasAcceptedCurrentLegal || license.licenseCoversCurrentTerms)
             },
             set: { _ in }
         )
