@@ -53,7 +53,7 @@ struct LocalEncryptedBackupService: BackupService {
     func backUp(databaseURL: URL, reason: String, at date: Date) async -> BackupOutcome {
         BackupLayout.adoptLegacy(dataRoot: root, fileManager: fileManager)
         do {
-            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try SecureFS.createDirectory(at: directory)
             let name = "\(Self.stamp(date))-\(Self.slug(reason)).\(EncryptedBackupArchive.fileExtension)"
             let destination = directory.appendingPathComponent(name)
             try EncryptedBackupArchive.create(from: databaseURL, to: destination, using: key)

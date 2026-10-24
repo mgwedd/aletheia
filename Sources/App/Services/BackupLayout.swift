@@ -133,7 +133,7 @@ enum BackupLayout {
             }
             if !destinationReady {
                 do {
-                    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+                    try SecureFS.createDirectory(at: destination)
                     destinationReady = true
                 } catch {
                     result.failed.append(relative)

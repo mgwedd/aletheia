@@ -195,23 +195,34 @@ private struct PatientRow: View {
     }
 }
 
-private struct AddPatientSheet: View {
+struct AddPatientSheet: View {
     @Binding var name: String
     let onAdd: () -> Void
     let onCancel: () -> Void
 
+    /// A name is submittable only if it has something besides whitespace.
+    static func canSubmit(_ name: String) -> Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// The single submit path for both Return in the field and the Add button.
+    static func submit(name: String, onAdd: () -> Void) {
+        guard canSubmit(name) else { return }
+        onAdd()
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("New Patient").font(.title2.bold())
-            ThemeTextField(placeholder: "Patient name", text: $name, onSubmit: onAdd)
+            ThemeTextField(placeholder: "Patient name", text: $name, onSubmit: { Self.submit(name: name, onAdd: onAdd) })
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)
                     .buttonStyle(.themed)
-                Button("Add", action: onAdd)
+                Button("Add") { Self.submit(name: name, onAdd: onAdd) }
                     .buttonStyle(.themePrimary)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!Self.canSubmit(name))
             }
             .controlSize(.large)
         }

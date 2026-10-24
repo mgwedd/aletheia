@@ -63,7 +63,7 @@ enum LegalReceipt {
             try? handle.write(contentsOf: data)
         } else {
             // No file yet (or it couldn't be opened): create it with this line.
-            try? data.write(to: url, options: .atomic)
+            try? SecureFS.write(data, to: url)
         }
     }
 

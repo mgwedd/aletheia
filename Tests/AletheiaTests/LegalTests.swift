@@ -204,6 +204,16 @@ final class LegalTests: XCTestCase {
         XCTAssertFalse(try doc("docs/ENCRYPTION.md").contains("audit.log`, which"))
     }
 
+    /// The threat model exists, SECURITY.md links it, and it names the
+    /// boundaries the code enforces.
+    func testThreatModelExistsAndSecurityLinksIt() throws {
+        XCTAssertTrue(try doc("SECURITY.md").contains("docs/THREAT-MODEL.md"))
+        let text = try doc("docs/THREAT-MODEL.md")
+        for needle in ["Sources/NetworkHelper", "no network entitlement", "SHA-256", "FileVault", "Out of scope"] {
+            XCTAssertTrue(text.contains(needle), needle)
+        }
+    }
+
     /// The data folder must be on this Mac, so no document may say the picker
     /// opens in or suggests iCloud Drive.
     func testDocsDoNotSuggestICloudForTheDataFolder() throws {

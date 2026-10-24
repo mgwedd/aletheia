@@ -23,7 +23,11 @@ final class ProtectionKey: @unchecked Sendable {
 
     init(_ key: SymmetricKey) { stored = key }
 
+    /// Runs before each read of the key. Tests use it to lock at an exact read.
+    var onRead: (@Sendable () -> Void)?
+
     var key: SymmetricKey? {
+        onRead?()
         lock.lock()
         defer { lock.unlock() }
         return stored
@@ -102,10 +106,10 @@ struct FileProtector: Sendable {
         return try data(contentsOf: url)
     }
 
-    /// Writes `data`, sealing it first when a key is held. `options` defaults to
-    /// atomic, matching the stores' existing writes.
-    func write(_ data: Data, to url: URL, options: Data.WritingOptions = .atomic) throws {
-        try seal(data).write(to: url, options: options)
+    /// Writes `data`, sealing it first when a key is held. The write is atomic
+    /// and the file is owner-only (0600).
+    func write(_ data: Data, to url: URL) throws {
+        try SecureFS.write(seal(data), to: url)
     }
 
     /// Seals in memory when a key is held, otherwise returns the bytes
@@ -137,8 +141,8 @@ struct FileProtector: Sendable {
         return String(decoding: data, as: UTF8.self)
     }
 
-    func write(_ string: String, to url: URL, options: Data.WritingOptions = .atomic) throws {
-        try write(Data(string.utf8), to: url, options: options)
+    func write(_ string: String, to url: URL) throws {
+        try write(Data(string.utf8), to: url)
     }
 
     // MARK: - Large files (audio)
@@ -168,7 +172,7 @@ struct FileProtector: Sendable {
         if requiresKey && key == nil { throw ProtectorError.locked }
         guard FileManager.default.fileExists(atPath: src.path) else { return }
         let parent = dst.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        try SecureFS.createDirectory(at: parent)
 
         guard let key else {
             if FileManager.default.fileExists(atPath: dst.path) {

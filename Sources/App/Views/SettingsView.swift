@@ -299,7 +299,7 @@ struct SettingsView: View {
                 .padding(.vertical, 12)
                 SettingsHairline()
                 HStack {
-                    Link("View Releases on GitHub", destination: URL(string: "https://github.com/mgwedd/aletheia/releases")!)
+                    Link("View Downloads", destination: ReleaseLink.downloadsPage)
                         .font(Theme.Typography.body)
                     Spacer()
                 }

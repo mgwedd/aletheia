@@ -30,6 +30,11 @@ import llama
 final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     private let modelURL: URL
     private let adapterURL: URL?
+    /// The pinned size of `modelURL`, checked before the weights are loaded.
+    /// `nil` skips the check (tests, files with no pin).
+    private let expectedModelBytes: Int64?
+    /// Loads the weights; replaceable so tests can stop short of the real load.
+    private let modelLoader: (URL) -> OpaquePointer?
     /// The sampling this engine was constructed with. Every `generate`/
     /// `stream` call carries its own `LocalLLMRequest.sampling`, which is
     /// what actually drives decoding — this value only sizes the context
@@ -97,14 +102,25 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     init(modelURL: URL, sampling: LocalLLMSampling, budget: ContextBudget = .current) {
         self.modelURL = modelURL
         self.adapterURL = nil
+        self.expectedModelBytes = nil
+        self.modelLoader = Self.loadModelFromFile
         self.defaultSampling = sampling
         self.budget = budget
     }
 
     /// A base model with an optional LoRA adapter layered on it at load time.
-    init(modelURL: URL, adapterURL: URL?, sampling: LocalLLMSampling, budget: ContextBudget = .current) {
+    init(
+        modelURL: URL,
+        adapterURL: URL?,
+        expectedModelBytes: Int64? = nil,
+        sampling: LocalLLMSampling,
+        budget: ContextBudget = .current,
+        modelLoader: @escaping (URL) -> OpaquePointer? = LlamaEngine.loadModelFromFile
+    ) {
         self.modelURL = modelURL
         self.adapterURL = adapterURL
+        self.expectedModelBytes = expectedModelBytes
+        self.modelLoader = modelLoader
         self.defaultSampling = sampling
         self.budget = budget
     }
@@ -112,7 +128,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     /// From a `ModelLoadPlan` — base + optional adapter, already validated
     /// compatible (see `FineTunedModel.swift`) before this is ever built.
     convenience init(plan: ModelLoadPlan, sampling: LocalLLMSampling) {
-        self.init(modelURL: plan.baseURL, adapterURL: plan.adapterURL, sampling: sampling)
+        self.init(modelURL: plan.baseURL, adapterURL: plan.adapterURL, expectedModelBytes: plan.base.expectedBytes, sampling: sampling)
     }
 
     deinit {
@@ -247,6 +263,10 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
 
     // MARK: - Load / unload (queue-confined)
 
+    static let loadModelFromFile: (URL) -> OpaquePointer? = { url in
+        llama_model_load_from_file(url.path, llama_model_default_params())
+    }
+
     /// Loads weights (and the adapter, if any) unless already `.ready`.
     /// Must only run on `queue`.
     private func ensureLoadedOnQueue() throws {
@@ -260,8 +280,11 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
             // that init is thread-safe.
             _ = Self.backendInitialized
 
-            let modelParams = llama_model_default_params()
-            guard let loadedModel = llama_model_load_from_file(modelURL.path, modelParams) else {
+            if let expectedModelBytes {
+                try LlamaModelFile.verifySize(at: modelURL, expectedBytes: expectedModelBytes)
+            }
+
+            guard let loadedModel = modelLoader(modelURL) else {
                 throw LocalLLMEngineError.loadFailed(
                     "Couldn't load the built-in model at \(modelURL.lastPathComponent)."
                 )

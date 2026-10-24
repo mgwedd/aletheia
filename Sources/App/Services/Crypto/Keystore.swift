@@ -246,7 +246,7 @@ struct Keystore: Codable, Equatable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         do {
-            try encoder.encode(self).write(to: staging, options: .atomic)
+            try SecureFS.write(try encoder.encode(self), to: staging)
             let reread = try JSONDecoder().decode(Keystore.self, from: Data(contentsOf: staging))
             guard reread == self,
                   let opened = try? reread.unlock(passphrase: passphrase),
@@ -273,8 +273,8 @@ struct Keystore: Codable, Equatable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(self)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try data.write(to: root.appendingPathComponent(Self.fileName), options: .atomic)
+        try SecureFS.createDirectory(at: root)
+        try SecureFS.write(data, to: root.appendingPathComponent(Self.fileName))
     }
 
     // MARK: - Internals

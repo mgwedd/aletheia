@@ -49,7 +49,7 @@ final class Integrations: ObservableObject {
 
     private func builtInAssistant() -> Assistant {
         #if canImport(llama)
-        return LlamaAssistant(modelURL: llamaModelURL)
+        return LlamaAssistant(modelURL: llamaModelURL, expectedModelBytes: settings.llamaModel.expectedBytes)
         #else
         return UnavailableAssistant()
         #endif

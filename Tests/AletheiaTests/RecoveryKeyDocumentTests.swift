@@ -74,8 +74,47 @@ final class RecoveryKeyDocumentTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: inside.path))
 
         let outside = tempRoot.appendingPathComponent("key.pdf")
-        XCTAssertEqual(RecoveryKeyDocument.write(data, to: outside, dataRoot: root), .saved(outside))
+        XCTAssertEqual(RecoveryKeyDocument.write(data, to: outside, dataRoot: root, verdict: { _ in .ok }), .saved(outside))
         XCTAssertEqual(try Data(contentsOf: outside), data)
+    }
+
+    func testWriteRefusesSyncedDestination() {
+        let data = Data("pdf".utf8)
+        let destination = tempRoot.appendingPathComponent("key.pdf")
+        let refused: [DataFolderPolicy.Verdict] = [
+            .iCloudDrive, .iCloudDesktopDocuments, .thirdPartyCloud("Dropbox"), .networkVolume, .removableUnencrypted
+        ]
+        for placement in refused {
+            let outcome = RecoveryKeyDocument.write(data, to: destination, dataRoot: nil, verdict: { _ in placement })
+            XCTAssertEqual(outcome, .failed("The recovery key can't be saved here. \(placement.explanation)"))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+        }
+    }
+
+    func testWriteClassifiesTheFolderTheFileGoesIn() {
+        let destination = tempRoot.appendingPathComponent("Sub/key.pdf")
+        var asked: URL?
+        _ = RecoveryKeyDocument.write(Data(), to: destination, dataRoot: nil, verdict: { asked = $0; return .iCloudDrive })
+        XCTAssertEqual(asked?.path, tempRoot.appendingPathComponent("Sub").standardizedFileURL.path)
+    }
+
+    func testWriteRefusesICloudFolderUnderRealPolicy() {
+        let home = tempRoot.appendingPathComponent("Home", isDirectory: true)
+        let iCloud = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/key.pdf")
+        let outcome = RecoveryKeyDocument.write(Data(), to: iCloud, dataRoot: nil, verdict: {
+            DataFolderPolicy.verdict(for: $0, realHome: home, facts: { _ in nil })
+        })
+        XCTAssertEqual(outcome, .failed("The recovery key can't be saved here. \(DataFolderPolicy.Verdict.iCloudDrive.explanation)"))
+    }
+
+    func testWriteAllowsLocalDestination() throws {
+        let data = Data("pdf".utf8)
+        let destination = tempRoot.appendingPathComponent("key.pdf")
+        XCTAssertEqual(
+            RecoveryKeyDocument.write(data, to: destination, dataRoot: nil, verdict: { _ in .ok }),
+            .saved(destination)
+        )
+        XCTAssertEqual(try Data(contentsOf: destination), data)
     }
 
     func testCopyMarksPasteboardConcealedAndTransient() throws {

@@ -37,7 +37,7 @@ struct DatabaseSnapshotManager {
     func makeSnapshot(of store: CommentStore, reason: String, at date: Date = Date()) -> URL? {
         BackupLayout.adoptLegacy(dataRoot: root, fileManager: fileManager)
         do {
-            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try SecureFS.createDirectory(at: directory)
         } catch {
             return nil
         }

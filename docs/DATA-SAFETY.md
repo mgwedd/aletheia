@@ -89,9 +89,9 @@ The Device KEK is the request "recoverable unless they fully reset the machine":
 
 ### Non-hostile onboarding rules
 
-1. **Default to two paths.** First-run's opt-out encryption sets a passphrase
-   *and* enables the device path ("Remember on this Mac", default on) — one
-   silent, one portable, from the very first launch.
+1. **Passphrase first, device path opt-in.** First-run's opt-out encryption sets a passphrase
+   *and* offers the device path ("Remember on this Mac", default off) — the
+   passphrase is the only path unless the clinician opts in.
 2. **Prove the passphrase is saved before it can matter.** After set-up, ask the
    clinician to re-enter it once (confirm they recorded it), and link the exact
    copy for a password manager. Never let a *single* device-only path exist
