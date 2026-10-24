@@ -46,9 +46,6 @@ enum SecurityPosture {
         /// The log's integrity check found a break in the chain.
         auditChainBroken: Bool = false,
         localEncryptedBackup: Bool,
-        localBackupActive: Bool,
-        iCloudBackupEnabled: Bool,
-        iCloudBackupConfigured: Bool,
         networkOnline: Bool?,
         /// Whether the data folder's volume reports as encrypted; nil = unknown.
         diskEncrypted: Bool? = nil
@@ -117,25 +114,12 @@ enum SecurityPosture {
             level: auditLevel,
             detail: auditDetail))
 
-        // Backups Aletheia makes itself. Listed only once something actually
-        // writes them: a row about a copy this build can't make would be advice
-        // or a claim about a feature that isn't there, and a saved preference
-        // must never read as a protection that exists.
-        if localBackupActive {
-            items.append(PostureItem(id: "encryptedBackup", title: "Encrypted backup",
-                level: localEncryptedBackup ? .secure : .informational,
-                detail: localEncryptedBackup
-                    ? "An end-to-end-encrypted backup copy is kept, sealed with your key."
-                    : "Consider keeping an encrypted backup copy, safe to sit in Time Machine. Keep Time Machine backups on an encrypted disk."))
-        }
-
-        // Off-device copy in the user's private iCloud (CloudKit): only when it is
-        // on and provisioned. Only ciphertext leaves the Mac.
-        let cloudBackupActive = iCloudBackupEnabled && iCloudBackupConfigured
-        if cloudBackupActive {
-            items.append(PostureItem(id: "cloudBackup", title: "Encrypted iCloud backup", level: .secure,
-                detail: "An end-to-end-encrypted copy syncs to your private iCloud. It's sealed with your key first, so only ciphertext ever leaves this Mac."))
-        }
+        // Backups Aletheia makes itself ("Back up now" in Settings > Backups).
+        items.append(PostureItem(id: "encryptedBackup", title: "Encrypted backup",
+            level: localEncryptedBackup ? .secure : .informational,
+            detail: localEncryptedBackup
+                ? "An encrypted backup copy has been made, sealed with your key."
+                : "No encrypted backup copy yet. Use Back up now in Settings > Backups to save one to a local folder, or keep Time Machine backups on an encrypted disk."))
 
         // FileVault: read in-process from the data folder's volume
         // (`DiskEncryptionProbe`). Unknown stays a standing recommendation.
@@ -154,15 +138,14 @@ enum SecurityPosture {
         // Network activity: connectivity itself is never a problem to fix here —
         // PHI never traverses the network whatever the state — so this stays
         // informational and only phrases what (if anything) leaves.
-        let leaving = cloudBackupActive ? " Only end-to-end-encrypted backups leave." : ""
         let networkDetail: String
         switch networkOnline {
         case .some(true):
-            networkDetail = "This Mac is online, but no patient data is sent. Transcription and AI run locally." + leaving
+            networkDetail = "This Mac is online, but no patient data is sent. Transcription and AI run locally."
         case .some(false):
             networkDetail = "This Mac is offline. Aletheia is fully functional without a network."
         case .none:
-            networkDetail = "No patient data is sent over the network. Transcription and AI run locally." + leaving
+            networkDetail = "No patient data is sent over the network. Transcription and AI run locally."
         }
         items.append(PostureItem(id: "network", title: "Network activity", level: .informational,
             detail: networkDetail))

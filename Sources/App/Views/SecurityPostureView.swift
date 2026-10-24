@@ -27,9 +27,6 @@ struct SecurityPostureView: View {
             auditWriteFailed: appModel.auditWriteFailed,
             auditChainBroken: appModel.securityAlerts.contains { $0.id == "auditLogBroken" },
             localEncryptedBackup: settings.localEncryptedBackupEnabled,
-            localBackupActive: LocalEncryptedBackupService.isWired,
-            iCloudBackupEnabled: settings.iCloudEncryptedBackupEnabled,
-            iCloudBackupConfigured: ICloudEncryptedBackupService.isProvisioned,
             networkOnline: reachability.isOnline,
             diskEncrypted: appModel.diskEncrypted
         )

@@ -31,13 +31,14 @@ final class AuditLogCopyTests: XCTestCase {
         XCTAssertEqual(captioned, wired, "Update AuditLogCopy.recorded when an action is wired or unwired")
     }
 
-    func testCaptionDoesNotClaimUnrecordedBackupsOrDeletions() {
+    func testCaptionNamesBackupsAndDeletionsAsRecorded() {
         let caption = AuditLogCopy.caption
         XCTAssertTrue(caption.contains("deletions"))
-        XCTAssertTrue(caption.contains("Backups and viewing records are not recorded yet"))
-        XCTAssertFalse(caption.contains("Deletions and backups are not recorded"))
+        XCTAssertTrue(caption.contains("backups"))
+        XCTAssertTrue(caption.contains("Viewing records is not recorded yet"))
+        XCTAssertFalse(caption.localizedCaseInsensitiveContains("backups are not recorded"))
         XCTAssertTrue(caption.contains("§164.312(b)"), "keeps the audit-control note")
-        XCTAssertTrue(AuditLogCopy.notRecordedActions.contains(.backupRun))
+        XCTAssertFalse(AuditLogCopy.notRecordedActions.contains(.backupRun))
         XCTAssertFalse(AuditLogCopy.notRecordedActions.contains(.recordDeleted))
     }
 

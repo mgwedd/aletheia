@@ -44,8 +44,8 @@ final class LegalTests: XCTestCase {
         }
     }
 
-    /// The security and encryption docs must match what the app does: no
-    /// archive backup is offered, the app lock does not engage on hide, the
+    /// The security and encryption docs must match what the app does: backups
+    /// are local only (Back Up Now), the app lock does not engage on hide, the
     /// encryption pane is titled "Encryption", and the plaintext search index
     /// is disclosed.
     func testSecurityAndEncryptionDocsMatchShippedBehavior() throws {
@@ -67,12 +67,30 @@ final class LegalTests: XCTestCase {
         }
         XCTAssertEqual(SettingsPane.encryption.title, "Encryption")
         XCTAssertEqual(SettingsPane.backups.title, "Backups")
-        XCTAssertFalse(LocalEncryptedBackupService.isWired)
-        XCTAssertFalse(ICloudEncryptedBackupService.isProvisioned)
         for path in ["SECURITY.md", "docs/ENCRYPTION.md", "docs/HIPAA-SAFEGUARDS.md"] {
             let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
             XCTAssertTrue(text.contains("search.sqlite"), path)
         }
+    }
+
+    /// The legal documents describe backups as local-only: no iCloud backup is offered.
+    func testDocumentsDoNotOfferAnICloudBackup() throws {
+        for name in ["PRIVACY.md", "TERMS.md", "SECURITY.md"] {
+            let text = try doc(name).lowercased()
+            XCTAssertFalse(text.contains("icloud backup"), "\(name) must not offer an iCloud backup")
+            XCTAssertFalse(text.contains("backup to your own"), "\(name) must not describe an upload")
+        }
+        XCTAssertFalse(try doc("TERMS.md").contains("does not back up your data on its own"))
+    }
+
+    /// The docs describe the local Back Up Now feature and its limits.
+    func testDocsDescribeLocalBackUpNow() throws {
+        for path in ["PRIVACY.md", "SECURITY.md", "TERMS.md", "docs/HIPAA-SAFEGUARDS.md"] {
+            let text = try doc(path)
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("Back Up Now"), path)
+        }
+        XCTAssertFalse(try doc("SECURITY.md").contains("not connected to the app"))
+        XCTAssertFalse(try doc("docs/HIPAA-SAFEGUARDS.md").contains("not connected to the user interface"))
     }
 
     /// Support questions go to a private address, never a public issue tracker,

@@ -5,6 +5,12 @@ import XCTest
 /// The consistent-backup path: "Back up now" snapshots the live database and
 /// seals the snapshot (not the live file), and the sealed archive restores to a
 /// working store with its records intact.
+private struct UnconfiguredDestination: BackupService {
+    var isConfigured: Bool { false }
+    func backUp(databaseURL: URL, reason: String) async -> BackupOutcome { XCTFail("must not be called"); return .notConfigured }
+    func restoreLatest(to databaseURL: URL) async -> BackupOutcome { .notConfigured }
+}
+
 final class BackupCoordinatorTests: XCTestCase {
     private var tempRoot: URL!
     private var originalScratchRoot: URL!
@@ -73,7 +79,7 @@ final class BackupCoordinatorTests: XCTestCase {
 
     func testUnconfiguredDestinationReportsNotConfiguredWithoutSnapshotting() async throws {
         let (store, _) = try makeStore("live3")
-        let service = ICloudEncryptedBackupService(key: SymmetricKey(size: .bits256))
+        let service = UnconfiguredDestination()
         let outcome = await BackupCoordinator(store: store, destination: service).backUpNow(reason: "manual")
         XCTAssertEqual(outcome, .notConfigured)
     }
