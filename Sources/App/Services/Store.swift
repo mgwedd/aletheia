@@ -648,7 +648,10 @@ final class Store {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
             do { try FileManager.default.removeItem(at: url); removed = true } catch { failed = true }
         }
-        try? FileManager.default.removeItem(at: Store.stagingDir(for: session.id))
+        let staging = Store.stagingDir(for: session.id)
+        if FileManager.default.fileExists(atPath: staging.path) {
+            do { try FileManager.default.removeItem(at: staging) } catch { failed = true }
+        }
         if removed { onAudit?(.recordDeleted, session.id.uuidString, "audio recording") }
         if failed { throw StoreError.recordingNotDeleted }
     }
@@ -1100,8 +1103,9 @@ final class Store {
         let coverageURL = noteSidecarURL(.coverage, patient: patient, session: session, format: format)
         if let coverage, !coverage.isEmpty {
             try protector.write(coverage, to: coverageURL)
-        } else {
-            try? FileManager.default.removeItem(at: coverageURL)
+        } else if FileManager.default.fileExists(atPath: coverageURL.path) {
+            // A stale "written from part of the transcript" line would mislabel the new note.
+            try FileManager.default.removeItem(at: coverageURL)
         }
     }
 

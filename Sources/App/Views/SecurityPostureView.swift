@@ -12,7 +12,7 @@ struct SecurityPostureView: View {
 
     private var postureItems: [PostureItem] {
         SecurityPosture.evaluate(
-            appLockEnabled: settings.appLockEnabled,
+            appLockEnabled: settings.appLockEnabled || encryption.requiresAppLock,
             canAuthenticate: AppLock.canAuthenticate(),
             idleAutoLockMinutes: settings.idleAutoLockMinutes,
             encryptionEnabled: encryption.isEnabled,

@@ -80,10 +80,11 @@ struct AletheiaApp: App {
     init() {
         let settings = AppSettings.shared
         _settings = StateObject(wrappedValue: settings)
-        let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL })
+        let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL }, autoUnlockAtLaunch: false)
         _encryption = StateObject(wrappedValue: encryption)
-        let appLock = AppLock(settings: settings)
-        if appLock.isLocked { encryption.lock() }
+        let appLock = AppLock(settings: settings, lockRequired: { [weak encryption] in encryption?.requiresAppLock ?? false })
+        // The key comes off the keychain only when the app is not locked at launch.
+        if !appLock.isLocked { encryption.autoUnlockFromDevice() }
         SessionSearch.setAppLocked(appLock.isLocked)   // before AppModel builds the index: it starts closed behind the lock
         let appModel = AppModel(settings: settings, encryption: encryption)
         _appModel = StateObject(wrappedValue: appModel)
