@@ -274,7 +274,7 @@ final class EncryptionManagerTests: XCTestCase {
 
         // Break the sealed note row so it no longer authenticates.
         let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
-        var record = try XCTUnwrap(core.record(kind: "note", id: session.id.uuidString))
+        var record = try XCTUnwrap(core.record(kind: "psychotherapyNote", id: session.id.uuidString))
         var envelope = try XCTUnwrap(Data(base64Encoded: String(decoding: record.payload, as: UTF8.self)))
         envelope[envelope.count - 1] ^= 0xFF
         record.payload = Data(envelope.base64EncodedString().utf8)
@@ -292,7 +292,7 @@ final class EncryptionManagerTests: XCTestCase {
             "the encrypted marker stays")
         XCTAssertEqual(m.state, .unlocked)
         XCTAssertTrue(m.isEnabled)
-        XCTAssertEqual(core.record(kind: "note", id: session.id.uuidString)?.payload, record.payload,
+        XCTAssertEqual(core.record(kind: "psychotherapyNote", id: session.id.uuidString)?.payload, record.payload,
                        "the unreadable row is left exactly as it was")
 
         let relaunched = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: defaults)
