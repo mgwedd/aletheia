@@ -29,6 +29,8 @@ struct RecordingMenuBar: View {
     @State private var selectedPatientID: UUID?
     /// Why the last Start didn't begin recording, shown under the button.
     @State private var startProblem: String?
+    /// Ticked in the menu for a patient who hasn't been attested yet.
+    @State private var consentTicked = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -219,6 +221,13 @@ struct RecordingMenuBar: View {
                 .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            if let patient = selectedPatient, !RecordingConsent.allowsRecording(patient) {
+                Toggle(RecordingConsent.attestationText, isOn: $consentTicked)
+                    .toggleStyle(.checkbox)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Button {
                 if let patient = selectedPatient { Task { await start(for: patient) } }
             } label: {
@@ -227,7 +236,8 @@ struct RecordingMenuBar: View {
             }
             .buttonStyle(.themePrimary)
             .controlSize(.large)
-            .disabled(selectedPatient == nil || !MenuBarContentPolicy.canStartRecording(isLocked: appLock.isLocked, isStarting: recorder.isStarting))
+            .disabled(selectedPatient == nil || !MenuBarContentPolicy.canStartRecording(isLocked: appLock.isLocked, isStarting: recorder.isStarting)
+                || !(RecordingConsent.allowsRecording(selectedPatient) || consentTicked))
             if let startProblem {
                 Text(startProblem)
                     .font(Theme.Typography.caption)
@@ -248,7 +258,7 @@ struct RecordingMenuBar: View {
     private var patientSelection: Binding<UUID> {
         Binding(
             get: { selectedPatient?.id ?? UUID() },
-            set: { selectedPatientID = $0 }
+            set: { selectedPatientID = $0; consentTicked = false }
         )
     }
 
@@ -262,6 +272,12 @@ struct RecordingMenuBar: View {
         appModel.refreshDiskEncryption()
         guard PHIEntryGate.allowsNewPHI(diskEncrypted: appModel.diskEncrypted) else {
             startProblem = PHIEntryGate.blockedMessage
+            return
+        }
+        // Before creating a session, so a refused start leaves no empty one behind.
+        guard appModel.hasRecordingConsent(patientID: patient.id)
+                || (consentTicked && appModel.attestRecordingConsent(patientID: patient.id)) else {
+            startProblem = "Confirm you have this patient's consent before recording."
             return
         }
         guard let store = appModel.store,
