@@ -47,6 +47,10 @@ final class MicRecorder {
     /// `SystemAudioCapture.onError`.
     var onDisruption: ((String) -> Void)?
 
+    /// Called (on the thread that noticed) when the input changed mid-recording
+    /// and the engine could not be restarted, so capture has stopped.
+    var onRestartFailed: (() -> Void)?
+
     /// Observer for `AVAudioEngineConfigurationChange`, so an input-device swap or
     /// unplug mid-session is detected rather than silently ending capture.
     private var configObserver: NSObjectProtocol?
@@ -100,14 +104,9 @@ final class MicRecorder {
                 self.installTap(format: current)
             }
             if self.isRunning && !self.engine.isRunning {
-                do {
+                self.restartCapture {
                     self.engine.prepare()
                     try self.engine.start()
-                } catch {
-                    if self.health.recordWriteFailure(error.localizedDescription) {
-                        let msg = "Microphone input changed and couldn't restart: \(error.localizedDescription)"
-                        Task { @MainActor [weak self] in self?.onDisruption?(msg) }
-                    }
                 }
             }
         }
@@ -115,6 +114,21 @@ final class MicRecorder {
         engine.prepare()
         try engine.start()
         isRunning = true
+    }
+
+    /// Runs the engine restart after an input change. A failure is recorded and
+    /// reported through `onRestartFailed` every time, even when a write failure
+    /// was already counted, because the user needs to know capture has stopped.
+    func restartCapture(_ restart: () throws -> Void) {
+        do {
+            try restart()
+        } catch {
+            if health.recordWriteFailure(error.localizedDescription) {
+                let msg = "Microphone input changed and couldn't restart: \(error.localizedDescription)"
+                Task { @MainActor [weak self] in self?.onDisruption?(msg) }
+            }
+            onRestartFailed?()
+        }
     }
 
     /// Format the tap is currently installed with.

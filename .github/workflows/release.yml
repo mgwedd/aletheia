@@ -333,11 +333,25 @@ jobs:
       - name: Launch the packaged app
         run: ./scripts/launch-smoke.sh "${{ steps.package.outputs.dmg }}"
 
+      # The inventory of what the app ships and builds with (frameworks,
+      # bundled assets, model pins, workflow actions). It is published next to
+      # the DMG and covered by the same provenance attestation.
+      - name: Generate the SBOM
+        id: sbom
+        run: |
+          set -euo pipefail
+          SBOM="dist/Aletheia-${{ steps.package.outputs.version }}.sbom.cdx.json"
+          ./scripts/sbom.sh "$SBOM"
+          test -s "$SBOM"
+          echo "path=$SBOM" >> "$GITHUB_OUTPUT"
+
       - name: Attest build provenance
         if: env.IS_TAG == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: ${{ steps.package.outputs.dmg }}
+          subject-path: |
+            ${{ steps.package.outputs.dmg }}
+            ${{ steps.sbom.outputs.path }}
 
       - name: Create GitHub Release
         if: env.IS_TAG == 'true'
@@ -362,6 +376,7 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             "${{ steps.package.outputs.dmg }}" \
             "dist/appcast.json" \
+            "${{ steps.sbom.outputs.path }}" \
             --title "Aletheia ${{ steps.package.outputs.version }}" \
             --notes-file dist/release-body.md \
             --verify-tag
@@ -371,5 +386,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: aletheia-dryrun-dmg
-          path: ${{ steps.package.outputs.dmg }}
+          path: |
+            ${{ steps.package.outputs.dmg }}
+            ${{ steps.sbom.outputs.path }}
           retention-days: 3

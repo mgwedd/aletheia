@@ -138,7 +138,7 @@ does not reload it. A successful app unlock can explicitly load the remembered
 key again. It's a convenience/security
 trade-off — anything running as the logged-in user can then reach the key, the
 same "malware while unlocked" surface already excluded above — so the toggle is
-shown and pre-selected when turning encryption on, off by default at the unlock
+shown, off by default, both when turning encryption on and at the unlock
 gate, and can be turned off at any time; the passphrase is always the fallback. Turning encryption off, or
 toggling remember off, deletes the keychain copy.
 

@@ -16,7 +16,8 @@
 #   - no third-party marketplace actions (only `actions/*`).
 #   - hardening rules in scripts/check-workflow-hardening.py (permissions,
 #     persist-credentials, pinned tools before the signing import, no unsigned
-#     override on a tag, provenance attestation, no package cache in cd.yml).
+#     override on a tag, provenance attestation, the SBOM generated, uploaded and
+#     attested, no package cache in cd.yml).
 #   - auto-release.yml always dispatches release.yml against the new tag (its
 #     tag points at a [skip ci] commit, so the tag push starts nothing).
 # and that scripts/ci-changes.sh maps changed files to the right answer.

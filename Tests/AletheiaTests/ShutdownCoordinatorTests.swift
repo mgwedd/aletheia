@@ -284,7 +284,11 @@ final class ShutdownCoordinatorTests: XCTestCase {
         let settings = AppSettings.shared
         let originalRoot = settings.dataRootURL
         settings.dataRootURL = root
+        // Keep AppModel's background sweep from opening the stand-in file below:
+        // it would find it isn't a database and delete it before quit runs.
+        SessionSearch.setAppLocked(true)
         defer {
+            SessionSearch.setAppLocked(false)
             settings.dataRootURL = originalRoot
             SessionSearch.index = SearchIndex()
         }

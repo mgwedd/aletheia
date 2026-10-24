@@ -30,6 +30,7 @@ struct PatientProfileEditor: View {
     private let original: Patient
     private let showsMedications: Bool
     private let initialFocus: ProfileField
+    private let onLockDraft: (Patient?) -> Void
 
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -42,15 +43,33 @@ struct PatientProfileEditor: View {
     @State private var showDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
 
-    init(patient: Patient, showsMedications: Bool, initialFocus: ProfileField = .name) {
+    /// `draft` carries unsaved edits kept when the app locked closed this sheet;
+    /// `onLockDraft` receives the edits if it closes that way again, and nil once
+    /// a draft has been taken up.
+    init(
+        patient: Patient, showsMedications: Bool, initialFocus: ProfileField = .name,
+        draft: Patient? = nil, onLockDraft: @escaping (Patient?) -> Void = { _ in }
+    ) {
         self.initialFocus = initialFocus
+        self.onLockDraft = onLockDraft
         patientID = patient.id
         original = patient
         self.showsMedications = showsMedications
-        _name = State(initialValue: patient.name)
-        _clinicalHistory = State(initialValue: patient.clinicalHistory)
-        _notes = State(initialValue: patient.notes)
-        _medications = State(initialValue: patient.medications)
+        let shown = draft ?? patient
+        _name = State(initialValue: shown.name)
+        _clinicalHistory = State(initialValue: shown.clinicalHistory)
+        _notes = State(initialValue: shown.notes)
+        _medications = State(initialValue: shown.medications)
+    }
+
+    /// The fields as currently typed, on top of the saved patient.
+    private var currentDraft: Patient {
+        var patient = original
+        patient.name = name
+        patient.clinicalHistory = clinicalHistory
+        patient.notes = notes
+        patient.medications = medications
+        return patient
     }
 
     private var cleanedName: String? { Patient.normalizedName(name) }
@@ -117,6 +136,13 @@ struct PatientProfileEditor: View {
         .background(Theme.panel.color)
         .tint(Theme.accent.color)
         .interactiveDismissDisabled(hasChanges)
+        .onAppear { onLockDraft(nil) }
+        // Locking closes the editor. Unsaved edits are kept in memory (not written)
+        // so reopening this patient's editor does not lose them.
+        .dismissOnLock {
+            onLockDraft(hasChanges ? currentDraft : nil)
+            dismiss()
+        }
         .confirmationDialog("Discard your changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Discard Changes", role: .destructive) { dismiss() }
             Button("Keep Editing", role: .cancel) {}

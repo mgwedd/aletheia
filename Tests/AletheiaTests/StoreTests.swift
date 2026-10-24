@@ -100,8 +100,10 @@ final class StoreTests: XCTestCase {
         XCTAssertFalse(patient.slug.contains("Mary"))
     }
 
-    func testBlankPatientNameStillGetsAUsableFolder() throws {
-        let patient = try store.createPatient(name: "   ")
+    func testBlankPatientNameIsRefusedAndASymbolOnlyNameGetsAUsableFolder() throws {
+        XCTAssertThrowsError(try store.createPatient(name: "   "))
+        XCTAssertTrue(try store.listPatients().isEmpty)
+        let patient = try store.createPatient(name: "???")
         XCTAssertEqual(patient.slug, patient.id.uuidString)
     }
 

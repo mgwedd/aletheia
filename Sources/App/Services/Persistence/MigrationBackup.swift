@@ -170,11 +170,11 @@ enum MigrationBackup {
         let relativePaths = structuredJSONFiles(inDataRoot: dataRoot, fileManager: fileManager)
         var currentFile: String?
         do {
-            try fileManager.createDirectory(at: bundle, withIntermediateDirectories: true)
+            try SecureFS.createDirectory(at: bundle)
             for relative in relativePaths {
                 currentFile = URL(fileURLWithPath: relative).lastPathComponent
                 let destination = bundle.appendingPathComponent(relative)
-                try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try SecureFS.createDirectory(at: destination.deletingLastPathComponent())
                 try fileManager.copyItem(at: dataRoot.appendingPathComponent(relative), to: destination)
             }
         } catch {

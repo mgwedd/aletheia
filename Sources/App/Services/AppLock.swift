@@ -146,6 +146,9 @@ enum UnlockAuthenticatorFactory {
 final class AppLock: ObservableObject {
     /// True while the lock screen should cover the app.
     @Published private(set) var isLocked: Bool
+    /// Goes up each time the lock engages. Sheets presented earlier close when
+    /// it changes (see `LockSheetPolicy`).
+    @Published private(set) var lockGeneration = 0
     /// Set when an unlock attempt fails, for the lock screen to show.
     @Published var lastError: String?
 
@@ -268,6 +271,7 @@ final class AppLock: ObservableObject {
         if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: canAuthenticateProvider()) {
             guard !isLocked else { return }
             isLocked = true
+            lockGeneration += 1
             dropKeyUnlessWriting()
             SessionSearch.setAppLocked(true)
             // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
