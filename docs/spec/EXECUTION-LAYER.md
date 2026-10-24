@@ -92,16 +92,20 @@ CI) fails the build when any layer drifts from the one above it:
   reference item rolls up (a promise with no recorded detail);
 - a reference `evidence:` path that no longer exists, or a line range past the
   end of the file — the usual sign a behavior moved or was deleted;
-- a `Copy` entry no test uses.
+- a `Copy` entry no test uses;
+- an `XCTExpectFailure` anywhere in the acceptance suite.
 
-A known bug is written as the intended behavior and tagged `⚠ DEFECT` in the
-reference; its fitness function wraps the check in `XCTExpectFailure`, so the
-suite stays green until the fix lands and then fails until the tag is removed.
-Tests never lock a bug in.
+The test checks start once `Tests/AletheiaAcceptance` exists; until then the
+script checks the two docs and reports the suite as not started.
+
+Fitness functions are written to the expectation, never to the current code. A
+known bug is written as the intended behavior and tagged `⚠ DEFECT` in the
+reference, and its fitness function simply fails until the fix lands. A red
+acceptance run is an honest result, not something to mask or tune away.
 
 `try pending("reason")` is allowed so coverage can grow journey by journey; the
-script prints a per-journey table of passing / pending / missing. Because the
-sentence and its test are tied by ID, editing one without the other shows up
+script prints a per-journey table of checks / tests / pending / missing. Because
+the sentence and its test are tied by ID, editing one without the other shows up
 together in review.
 
 ## Layout
@@ -122,5 +126,6 @@ and an `AletheiaUITests` UI-testing bundle. No Cucumber/Gherkin: the spec stays
 Markdown and the DSL is plain Swift, per the first-party-only rule.
 
 The existing unit tests can be rewritten, merged or deleted as internals change;
-the acceptance suite is what must stay green. Unit tests that only restate an
+the acceptance suite is the product's report card, and its failures are the bug
+list. Unit tests that only restate an
 acceptance check can be dropped over time.

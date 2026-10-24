@@ -60,6 +60,12 @@ jobs:
         run: ./scripts/check-ci-gating.sh --self-test
       - name: Check CI gating
         run: ./scripts/check-ci-gating.sh
+      # The acceptance pyramid (docs/spec) stays tied together: checks, reference
+      # items, evidence lines and fitness functions.
+      - name: Self-test the spec coverage gate
+        run: ./scripts/check-spec-coverage.sh --self-test
+      - name: Check spec coverage
+        run: ./scripts/check-spec-coverage.sh
 
   # Is this more than a docs change? Cheap Ubuntu job; build-and-test reads it.
   changes:
