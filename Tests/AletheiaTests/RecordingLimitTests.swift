@@ -19,13 +19,13 @@ final class RecordingLimitTests: XCTestCase {
     }
 
     func testLongRecordingNotificationMentionsPatientWhenOptedIn() {
-        let content = SessionNotifications.longRecordingReminder(patientName: "Jane Doe", showsName: true)
+        let content = SessionNotifications.longRecordingReminder(patientName: "Jane Doe", policy: .init(showFullName: true, isLocked: false))
         XCTAssertTrue(content.body.contains("Jane Doe"))
         XCTAssertTrue(content.body.contains("90 minutes"))
     }
 
     func testLongRecordingNotificationIsGenericByDefault() {
-        let content = SessionNotifications.longRecordingReminder(patientName: "Jane Doe", showsName: false)
+        let content = SessionNotifications.longRecordingReminder(patientName: "Jane Doe", policy: .init(showFullName: false, isLocked: false))
         XCTAssertFalse(content.body.contains("Jane"))
         XCTAssertTrue(content.body.contains("90 minutes"))
     }

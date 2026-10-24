@@ -238,7 +238,7 @@ final class SessionRecorder: ObservableObject {
                 try protector.sealLargeFile(from: stage, to: dest)
             }
             try PrivateStaging.ensurePrivateDirectory(stagingDir)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stagingDirectoryURL.path)
+            try? PrivateStaging.ensureBackupExcludedRoot(stagingDirectoryURL)
         } catch {
             stagingSessionID = nil
             let message = "Couldn't prepare the recording folder: \(error.localizedDescription)"

@@ -949,6 +949,8 @@ struct SettingsView: View {
                 .recordExported,
                 detail: "All records, folder of \(outcome.patientCount ?? 0) patients, \(outcome.sessionCount) sessions"
             )
+        }, onFailed: {
+            model.recordAudit(.exportFailed, detail: "All records, folder")
         }) { progress, isCancelled in
             progress(0, "Listing patients")
             let source = try StoreAllRecordsSource(store: store)
@@ -1004,8 +1006,8 @@ struct SettingsView: View {
             isOn: $settings.allowScreenSharingThisSession
         )
         SettingsSwitchRow(
-            title: "Show patient names in notifications",
-            detail: "Off by default. Notifications appear on the lock screen and stay in Notification Center, so they just say that a session is ready. Turn this on to include the patient's name and the session date.",
+            title: "Show patient names in notifications and the menu bar",
+            detail: "Off by default. Notifications appear on the lock screen and stay in Notification Center, so they show only the patient's initials, as does the menu bar. Turn this on to include the full name and the session date. Names stay hidden while Aletheia is locked.",
             isOn: $settings.notificationsShowPatientNames
         )
         SettingsRow(

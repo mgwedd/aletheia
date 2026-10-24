@@ -672,6 +672,8 @@ struct SessionDetailView: View {
         let outcome = ExportRenderer.save(document, as: format, baseName: base)
         if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
+        } else if case .failed = outcome {
+            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
         }
         exportResult = outcome.shown
     }
@@ -689,6 +691,8 @@ struct SessionDetailView: View {
         let outcome = ExportRenderer.save(document, as: format, baseName: base)
         if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
+        } else if case .failed = outcome {
+            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
         }
         exportResult = outcome.shown
     }
@@ -1770,7 +1774,7 @@ struct SessionDetailView: View {
                     await integrations.makeNotifier().post(
                         SessionNotifications.summaryReady(
                             patientName: patient.name, date: session.date,
-                            showsName: settings.notificationsShowPatientNames
+                            policy: .current(showFullName: settings.notificationsShowPatientNames)
                         )
                     )
                 }

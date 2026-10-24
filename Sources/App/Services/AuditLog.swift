@@ -31,6 +31,12 @@ enum AuditAction: String, Codable, CaseIterable {
     case recordingRecovered
     case retentionWarningOverridden
     case part2FlagChanged
+    case securitySettingChanged
+    case dataFolderChanged
+    case encryptionKeyChanged
+    case exportFailed
+    case integrityCheckFailed
+    case repeatedUnlockFailures
 
     /// Human-readable label for the log viewer.
     var displayName: String {
@@ -59,6 +65,12 @@ enum AuditAction: String, Codable, CaseIterable {
         case .recordingRecovered: return "Recording recovered"
         case .retentionWarningOverridden: return "Retention warning overridden"
         case .part2FlagChanged: return "Part 2 flag changed"
+        case .securitySettingChanged: return "Security setting changed"
+        case .dataFolderChanged: return "Data folder changed"
+        case .encryptionKeyChanged: return "Recovery key or passphrase changed"
+        case .exportFailed: return "Export failed"
+        case .integrityCheckFailed: return "Integrity check failed"
+        case .repeatedUnlockFailures: return "Repeated failed unlocks"
         }
     }
 }
@@ -232,6 +244,27 @@ final class AuditLog {
     private let keyProvider: () -> SymmetricKey?
     private let dekProvider: (() -> SymmetricKey?)?
     private let queue = DispatchQueue(label: "com.aletheia.auditlog")
+    private let writeStateLock = NSLock()
+    private var writeFailed = false
+
+    /// True while the most recent attempt to record an entry failed; the next
+    /// successful write clears it. Surfaced in the security overview and as a
+    /// banner so a broken log is never silent.
+    var lastWriteFailed: Bool {
+        writeStateLock.lock(); defer { writeStateLock.unlock() }
+        return writeFailed
+    }
+
+    /// Called (on whichever thread wrote) when `lastWriteFailed` changes.
+    var onWriteStateChanged: ((Bool) -> Void)?
+
+    private func noteWrite(failed: Bool) {
+        writeStateLock.lock()
+        let changed = writeFailed != failed
+        writeFailed = failed
+        writeStateLock.unlock()
+        if changed { onWriteStateChanged?(failed) }
+    }
 
     static var currentActor: String {
         "\(NSUserName()):\(getuid())"
@@ -301,7 +334,14 @@ final class AuditLog {
             detail: detail,
             appVersion: appVersion
         )
-        let written = try append([row])
+        let written: [SQLitePersistenceCore.AuditRow]
+        do {
+            written = try append([row])
+        } catch {
+            noteWrite(failed: true)
+            throw error
+        }
+        noteWrite(failed: false)
         return Self.event(from: written[0])
     }
 

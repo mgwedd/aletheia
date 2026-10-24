@@ -129,6 +129,10 @@ final class Store {
     /// this build understands, computed once when the store opens.
     let schemaCompatibility: SchemaCompatibility
 
+    /// Receives an activity-log entry (action, record id, note) for each
+    /// recording deleted. Never carries text.
+    var onAudit: ((AuditAction, String?, String?) -> Void)?
+
     /// - Parameter openDatabaseIfMissing: when `commentStore` is nil, whether to
     ///   try opening the database here. `AppModel` passes `false` because it has
     ///   already tried (and recorded *why* it failed); a second attempt here could
@@ -635,11 +639,13 @@ final class Store {
     /// audio is still on disk.
     func deleteRecordings(for patient: Patient, session: SessionRecord) throws {
         var failed = false
+        var removed = false
         for url in [micRecordingURL(for: patient, session: session), callRecordingURL(for: patient, session: session)] {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            do { try FileManager.default.removeItem(at: url) } catch { failed = true }
+            do { try FileManager.default.removeItem(at: url); removed = true } catch { failed = true }
         }
         try? FileManager.default.removeItem(at: Store.stagingDir(for: session.id))
+        if removed { onAudit?(.recordDeleted, session.id.uuidString, "audio recording") }
         if failed { throw StoreError.recordingNotDeleted }
     }
 

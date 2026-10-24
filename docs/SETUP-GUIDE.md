@@ -82,7 +82,7 @@ Start with the built-in checks. They are faster than guessing:
 |---|---|
 | Wrong folder chosen | Change it in Settings. Existing data is not moved for you; copy the folder in Finder if you want it at the new location. |
 | "Database cannot be opened" banner | Open Aletheia Doctor from the banner or the Help menu. It names the cause (permissions, a locked or damaged file, a missing key). Pre-migration copies and snapshots live in `<data folder>/.backups/`. |
-| Folder is in iCloud Drive and files seem missing | iCloud may be offloading files. Keep the folder downloaded (Finder → right-click → Keep Downloaded) or use a local folder. See [DATA-SAFETY.md](DATA-SAFETY.md) for how backups treat the data folder. |
+| Folder is refused (iCloud Drive, Dropbox or other synced folder, network location, unencrypted removable drive) | The data folder must be on this Mac. Click **Use the standard location**, or choose a folder on the Mac's internal disk or an encrypted external drive. If files in an existing folder seem missing, it was probably synced before this check existed: move it to a local folder. See [DATA-SAFETY.md](DATA-SAFETY.md) for how backups treat the data folder. |
 | Moved or renamed the data folder | Pick the new location again in Settings. |
 
 ### Security and app lock

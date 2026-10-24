@@ -17,7 +17,7 @@ the cases FileVault doesn't:
 
 - the data folder living on an **external / USB drive**,
 - a **Time Machine or other backup** copy of it,
-- a folder placed inside a **synced directory** (iCloud Drive, Dropbox),
+- a folder placed inside a **synced directory** (iCloud Drive, Dropbox), which the App refuses for new data folders but cannot stop for a copy made outside it,
 - a Mac **logged in and unlocked** but with FileVault never enabled.
 
 In these cases, selected PHI content can leave FileVault's protection. Tier 2
