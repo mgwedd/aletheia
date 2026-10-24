@@ -65,4 +65,38 @@ final class PatientChatWindowTests: XCTestCase {
         XCTAssertEqual(LockCoverPolicy.cover(appLocked: true, hasDataFolder: true, encryption: .keystoreMissing), [.appLock, .keystoreMissing])
         XCTAssertEqual(LockCoverPolicy.cover(appLocked: false, hasDataFolder: false, encryption: .keystoreMissing), [])
     }
+
+    func testContentInteractionDisabledWhileLocked() {
+        XCTAssertFalse(LockCoverPolicy.contentInteractionEnabled(isLocked: true))
+        XCTAssertTrue(LockCoverPolicy.resignsFirstResponder(onLockChangingTo: true))
+    }
+
+    func testContentInteractiveWhenUnlocked() {
+        XCTAssertTrue(LockCoverPolicy.contentInteractionEnabled(isLocked: false))
+        XCTAssertFalse(LockCoverPolicy.resignsFirstResponder(onLockChangingTo: false))
+    }
+
+    func testOnlyCommandsThatOpenContentAreDisabledWhileLocked() {
+        let disabled = LockCoverPolicy.MenuCommand.allCases.filter { LockCoverPolicy.commandDisabled($0, isLocked: true) }
+        XCTAssertEqual(disabled, [.openDoctor])
+        for command in LockCoverPolicy.MenuCommand.allCases {
+            XCTAssertFalse(LockCoverPolicy.commandDisabled(command, isLocked: false))
+        }
+    }
+
+    func testLockCoverSiteAppliesThePolicy() throws {
+        let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/AletheiaApp.swift"), encoding: .utf8)
+        guard let start = source.range(of: "private struct LockCover: ViewModifier") else { return XCTFail("LockCover missing") }
+        let body = String(source[start.lowerBound...])
+        for needle in [
+            "LockCoverPolicy.contentInteractionEnabled(isLocked: appLock.isLocked)",
+            ".allowsHitTesting(interactive)", ".accessibilityHidden(!interactive)", ".disabled(!interactive)",
+            "LockCoverPolicy.resignsFirstResponder(", "makeFirstResponder(nil)",
+        ] {
+            XCTAssertTrue(body.contains(needle), "LockCover must apply: \(needle)")
+        }
+        XCTAssertTrue(source.contains("LockCoverPolicy.commandDisabled(.openDoctor, isLocked: appLock.isLocked)"))
+    }
 }
