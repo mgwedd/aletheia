@@ -316,6 +316,7 @@ struct SessionDetailView: View {
         .background(Theme.window.color)
         .selectablePatientText()
         .onAppear {
+            appModel.access.viewedSession(session.id)
             if initialShowingMyNotes {
                 showingMyNotes = true
             } else if let initialNoteFormat {
@@ -704,9 +705,9 @@ struct SessionDetailView: View {
         let base = FileSaver.exportFileName(forPatientNamed: patient.name, String(session.folderName.prefix(10)))
         let outcome = ExportRenderer.save(document, as: format, baseName: base)
         if case .saved = outcome {
-            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
+            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: .exportedSession(format))
         } else if case .failed = outcome {
-            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
+            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: .exportedSession(format))
         }
         exportResult = outcome.shown
     }
@@ -731,9 +732,9 @@ struct SessionDetailView: View {
         let base = FileSaver.exportFileName(forPatientNamed: patient.name, dateStr, noteFormat)
         let outcome = ExportRenderer.save(document, as: format, baseName: base)
         if case .saved = outcome {
-            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
+            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: .exportedNote(settings.progressNoteFormat, format))
         } else if case .failed = outcome {
-            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
+            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: .exportedNote(settings.progressNoteFormat, format))
         }
         exportResult = outcome.shown
     }
@@ -749,7 +750,7 @@ struct SessionDetailView: View {
     }
 
     private func savePsychotherapyNote(as format: ExportFormat) {
-        let detail = "Psychotherapy note, \(format.title), authorization confirmed"
+        let detail = AuditDetail.exportedPsychotherapyNote(format)
         guard let document = try? PsychotherapyExport.sessionDocument(
             patientName: patient.name, date: session.date, note: sessionNote, authorized: true) else { return }
         let outcome = ExportRenderer.save(

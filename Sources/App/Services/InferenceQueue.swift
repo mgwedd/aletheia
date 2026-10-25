@@ -32,6 +32,9 @@ final class InferenceQueue: ObservableObject {
     }
 
     /// The job currently generating, if any.
+    /// Told the kind of each job as it starts running, for the activity log.
+    var onJobStarted: ((Kind) -> Void)?
+
     @Published private(set) var running: JobInfo?
     /// Jobs waiting their turn, oldest first.
     @Published private(set) var waiting: [JobInfo] = []
@@ -131,6 +134,7 @@ final class InferenceQueue: ObservableObject {
         let next = pending.remove(at: nextIndex)
         waiting = pending.map { $0.info }
         running = next.info
+        onJobStarted?(next.info.kind)
         runningTask = Task { [weak self] in
             _ = try? await next.body()
             self?.finish(next.info.id)

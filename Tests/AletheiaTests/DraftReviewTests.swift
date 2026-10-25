@@ -15,7 +15,7 @@ final class DraftReviewTests: XCTestCase {
             .appendingPathComponent("DraftReviewTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         store = Store(root: root, protector: .passthrough)
-        store.onAudit = { [unowned self] action, id, detail in audits.append((action, id, detail)) }
+        store.onAudit = { [unowned self] action, id, detail in audits.append((action, id, detail?.text)) }
         patient = try store.createPatient(name: "Dana Cole")
         session = try store.createSession(for: patient)
     }

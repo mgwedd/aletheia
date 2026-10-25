@@ -31,7 +31,7 @@ extension AppModel {
             try? encryption.unlock(recoveryKey: passphrase)
         }
         rebuildStore()
-        recordAudit(.backupRestored, detail: archive.lastPathComponent)
+        recordAudit(.backupRestored)
         return .success(folder)
     }
 }
