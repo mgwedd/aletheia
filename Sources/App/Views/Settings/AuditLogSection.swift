@@ -8,14 +8,15 @@ enum AuditLogCopy {
         ("app locks and unlocks (when app lock is on)", [.appUnlocked, .appUnlockFailed, .appLocked]),
         ("encryption changes", [.encryptionEnabled, .encryptionDisabled, .encryptionUnlocked]),
         ("exports", [.recordExported, .auditLogExported]),
-        ("deletions", [.recordDeleted]),
+        ("creation and edits of patients, sessions, transcripts, notes and comments", [.phiCreated, .phiAmended]),
+        ("deletions", [.recordDeleted, .phiDeleted]),
         ("changes to security settings", [.securitySettingChanged]),
         ("changes to the data folder", [.dataFolderChanged]),
         ("recovery key and passphrase changes", [.encryptionKeyChanged, .encryptionPassphraseChanged]),
         ("repeated failed unlocks", [.repeatedUnlockFailures]),
         ("failed exports", [.exportFailed]),
         ("failed integrity checks", [.integrityCheckFailed]),
-        ("backups", [.backupRun]),
+        ("backups and restores", [.backupRun, .backupRestored]),
         ("recovered recordings", [.recordingRecovered]),
     ]
 
