@@ -1,7 +1,6 @@
 # Acceptance criteria
 
-Walk through the app from a fresh install, using a Release build and a throwaway data folder, and tick each check as you go. Each check is one line: what you do, then what you see.
-Every check has a fitness function named `test_<ID>` in the acceptance suite, so a check and its test share one ID.
+Each check is one line: what you do, then what you see. Every check is proven by a fitness function, `test_<ID>`, which drives the real app in CI against a fixed, repeatable setup. A check counts as accepted only when its test passes in CI. A pending test is not accepted, and neither is a failing one. The run's ledger lists each check as passed, failed or pending and leads with "Accepted: N of M checks".
 Exact wording, every option and every edge case live in BEHAVIOR-REFERENCE.md, where each item rolls up to one check here.
 Checks marked (dev build) need a Debug or developer build and are skipped on a Release build.
 

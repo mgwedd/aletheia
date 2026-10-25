@@ -1,8 +1,8 @@
 # Aletheia behavior reference
 
-The detailed layer under [ACCEPTANCE-CRITERIA.md](ACCEPTANCE-CRITERIA.md): every observable behavior, edge case and exact on-screen message, by theme, with evidence paths into the source. Read the QA walkthrough first; come here when writing or debugging a fitness function.
+The detailed layer under [ACCEPTANCE-CRITERIA.md](ACCEPTANCE-CRITERIA.md): every observable behavior, edge case and exact on-screen message, by theme, with pointers into the source. Read the QA walkthrough first; come here when writing or debugging a fitness function.
 
-IDs are a theme prefix plus a three-digit number (for example EXP-029) and never change once assigned. Each item carries `surface` (ui, background or invariant), `evidence` (repo paths, checked by `scripts/check-spec-coverage.sh`) and `qa` (the walkthrough check that rolls it up). A `TODO` marks a doc/code conflict or an unclear point, collected under Open questions.
+IDs are a theme prefix plus a three-digit number (for example EXP-029) and never change once assigned. Each item carries `surface` (ui, background or invariant), `evidence` (repo paths, a pointer for readers and not checked by any gate) and `qa` (the walkthrough check that rolls it up; the acceptance suite's coverage test requires it to name a real check). A `TODO` marks a doc/code conflict or an unclear point, collected under Open questions.
 
 | Theme | Count |
 |---|---|
