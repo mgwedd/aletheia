@@ -27,6 +27,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // never flashes the system one first.
         AppSettings.shared.appearance.apply()
         HelpTipsStore.configure()
+        // `aletheia://` links (the key page's "Open in Aletheia"). Handled here, not
+        // by SwiftUI, so a link never opens a second main window.
+        NSAppleEventManager.shared().setEventHandler(
+            self, andSelector: #selector(handleGetURL(_:withReply:)),
+            forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
+    }
+
+    @MainActor @objc func handleGetURL(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        guard let text = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+              let url = URL(string: text),
+              AppNavigator.shared.offerLicenseKey(from: url)
+        else { return }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Quitting (⌘Q, the menu-bar Quit, logout or restart) waits for the
@@ -70,6 +83,10 @@ struct AletheiaApp: App {
     @StateObject private var transcription: TranscriptionCoordinator
     /// Patient-records exports run in the background and report through this.
     @StateObject private var exports: ExportJobCenter
+    /// The offline license check. Gates only new recording and AI.
+    @StateObject private var license: LicenseState
+    /// Fetches the signed revocation list once a day while update checks are on.
+    private let revocations: RevocationRefresher
     /// Keeps every app window out of screen sharing per the setting, and hides
     /// sheets, alerts and popovers while the app is locked.
     private let windowShield: WindowShield
@@ -112,6 +129,10 @@ struct AletheiaApp: App {
         }
         let integrations = Integrations(settings: settings)
         _integrations = StateObject(wrappedValue: integrations)
+        let license = LicenseState(settings: settings)
+        _license = StateObject(wrappedValue: license)
+        revocations = RevocationRefresher(settings: settings, license: license)
+        integrations.inferenceQueue.licenseRefusal = { [weak license] in license?.newWorkRefusal }
         integrations.inferenceQueue.onJobStarted = { [weak appModel] kind in appModel?.access.aiUsed(kind) }
         PHIPasteboard.onCopy = { [weak appModel] kind in appModel?.recordAudit(.phiCopied, detail: kind) }
         let transcription = TranscriptionCoordinator(
@@ -121,6 +142,7 @@ struct AletheiaApp: App {
         )
         _transcription = StateObject(wrappedValue: transcription)
         let recorder = SessionRecorder()
+        recorder.licenseRefusal = { [weak license] in license?.newWorkRefusal }
         recorder.onStopped = { [weak transcription] in transcription?.startAfterRecording($0) }
         recorder.onNotice = { [weak appModel] in appModel?.noteRecordingProblem($0) }
         // Also a system notification, so it's noticed when the app isn't
@@ -208,6 +230,7 @@ struct AletheiaApp: App {
                 .environmentObject(transcription)
                 .environmentObject(encryption)
                 .environmentObject(exports)
+                .environmentObject(license)
                 .sheet(isPresented: showFirstRun) {
                     FirstRunView()
                         .noWritingTools()
@@ -218,6 +241,7 @@ struct AletheiaApp: App {
                         // objects FirstRunView (and the encryption setup sheet it
                         // presents) reads must be injected here explicitly.
                         .environmentObject(encryption)
+                        .environmentObject(license)
                 }
                 .sheet(isPresented: Binding(
                     get: { DataFolderPolicy.presentsMoveSheet(requested: showDataFolderMove, appLocked: appLock.isLocked) },
@@ -234,15 +258,26 @@ struct AletheiaApp: App {
                     showDataFolderMove = settings.dataRootURL != nil && settings.dataRootVerdict != .ok
                 }
                 .task {
+                    // Separate from the update check, so a slow one doesn't hold it up.
+                    Task { await revocations.refreshIfDue() }
                     if settings.autoCheckForUpdates {
                         await updateService.checkForUpdates()
                     }
                 }
+                .onChange(of: license.licenseCoversCurrentTerms, initial: true) { _, covers in
+                    FirstRunGate.recordAcceptanceCoveredByLicense(
+                        settings: settings, covers: covers, token: license.status.token)
+                }
                 .onChange(of: scenePhase) { _, phase in
+                    // An expiry that passed while the app was open takes effect now.
+                    if phase == .active { license.refresh() }
                     // Activation can trigger another update check. AppLock
                     // handles hide (when enabled), idle, sleep, and screen lock.
                     if phase == .active, settings.autoCheckForUpdates {
                         Task { await updateService.checkForUpdates() }
+                    }
+                    if phase == .active {
+                        Task { await revocations.refreshIfDue() }
                     }
                 }
                 .spotlightContinuation(enabled: appModel.featureRegistry.contains(id: SpotlightFeatureModule.id))
@@ -337,6 +372,7 @@ struct AletheiaApp: App {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(encryption)
+                .environmentObject(license)
                 .environmentObject(exports)
                 .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
         }
@@ -361,7 +397,7 @@ struct AletheiaApp: App {
     }
 
     private var showFirstRun: Binding<Bool> {
-        FirstRunGate.presentation(settings: settings)
+        FirstRunGate.presentation(settings: settings, licenseCoversCurrentTerms: { license.licenseCoversCurrentTerms })
     }
 }
 

@@ -9,6 +9,7 @@ struct RootView: View {
     @EnvironmentObject private var recorder: SessionRecorder
     @EnvironmentObject private var transcription: TranscriptionCoordinator
     @EnvironmentObject private var exports: ExportJobCenter
+    @EnvironmentObject private var license: LicenseState
     @ObservedObject private var navigator = AppNavigator.shared
     @ObservedObject private var setAside = SetAsideRecordings.shared
     @Environment(\.openWindow) private var openWindow
@@ -77,6 +78,7 @@ struct RootView: View {
                 .environmentObject(integrations)
                 .environmentObject(updateService)
                 .environmentObject(encryption)
+                .environmentObject(license)
                 .environmentObject(exports)
         }
         .sheet(item: $editingProfile) { patient in
@@ -153,6 +155,8 @@ struct RootView: View {
         }
         .onChange(of: navigator.pendingPatientID) { _, _ in navigateToPendingPatient() }
         .onAppear { navigateToPendingPatient() }
+        .onChange(of: navigator.offeredLicenseKey) { _, _ in showOfferedLicenseKey() }
+        .onAppear { showOfferedLicenseKey() }
         .modifier(SearchActivityReporting(
             appModel: appModel, recorder: recorder, transcription: transcription, inferenceQueue: integrations.inferenceQueue))
     }
@@ -228,6 +232,17 @@ struct RootView: View {
             ForEach(appModel.securityAlerts) { alert in
                 SecurityAlertStrip(message: alert.message) { appModel.dismissSecurityAlert(alert) }
             }
+            LicenseBanner(
+                status: license.status,
+                onOpenSettings: {
+                    navigator.requestSettings(.license)
+                    showSettings = true
+                },
+                onExportRecords: {
+                    navigator.requestSettings(.exportAllRecords)
+                    showSettings = true
+                }
+            )
             if !setAside.items.isEmpty {
                 SetAsideRecordingsStrip(count: setAside.items.count) {
                     navigator.requestSettings(.setAsideRecordings)
@@ -235,6 +250,14 @@ struct RootView: View {
                 }
             }
         }
+    }
+
+    /// A key from a license link: Settings > License key shows it. During first run
+    /// the license step does instead.
+    private func showOfferedLicenseKey() {
+        guard navigator.offeredLicenseKey != nil, settings.hasCompletedFirstRun else { return }
+        navigator.requestSettings(.license)
+        showSettings = true
     }
 
     /// Honors a navigation request from an App Intent (Siri/Shortcuts).

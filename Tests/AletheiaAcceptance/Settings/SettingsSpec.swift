@@ -5,7 +5,7 @@ final class SettingsSpec: AcceptanceCase {
         given.buildIs(.release)
 
         then(when.openSettings())
-            .listsPanes(["General", "AI and models", "Note format", "Backups", "Security", "Licenses"])
+            .listsPanes(["General", "AI and models", "Note format", "Backups", "Security", "License key", "Licenses"])
         try pending("UI driver: ⌘, opening the Settings window")
     }
 

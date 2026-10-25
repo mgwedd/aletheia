@@ -29,7 +29,8 @@ enum NetworkHelperConstants {
     func checkForUpdates(reply: @escaping (Data?, NSError?) -> Void)
 
     /// Fetches the signed license revocation list and replies with its bytes.
-    /// Argument-free: the address is compiled into the helper.
+    /// Argument-free: the address is compiled into the helper. The app verifies
+    /// the signature; the helper only fetches.
     func fetchRevocations(reply: @escaping (Data?, NSError?) -> Void)
 
     /// Streams the asset named by `asset` (an `AssetID` raw value) into `file`,

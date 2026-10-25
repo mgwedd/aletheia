@@ -1964,7 +1964,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 ## Settings (SET)
 
-- **SET-001** When the user opens Settings, a sidebar lists General, AI and models, Formats, Backups, Privacy & Security and Licenses & Legal, and Set-aside recordings only when there are some.
+- **SET-001** When the user opens Settings, a sidebar lists General, AI and models, Formats, Backups, Privacy & Security, License key and Licenses & Legal, and Set-aside recordings only when there are some.
   `surface: ui` · `evidence: Sources/App/Views/Settings/SettingsComponents.swift:9, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-01`
 - **SET-002** When the user reopens Settings, it opens to the pane last used, and Up and Down arrow keys move between panes.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Views/Settings/SettingsComponents.swift:119` · `qa: SETTINGS-01`

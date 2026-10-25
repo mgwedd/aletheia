@@ -13,6 +13,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case encryption
     case backups
     case security
+    case license
     case licenses
     case setAsideRecordings
 
@@ -28,6 +29,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .encryption: return "Encryption"
         case .backups: return "Backups"
         case .security: return "Security"
+        case .license: return "License key"
         case .licenses: return "Licenses"
         case .setAsideRecordings: return "Set-aside recordings"
         }

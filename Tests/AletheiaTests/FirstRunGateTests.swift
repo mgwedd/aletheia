@@ -26,6 +26,16 @@ final class FirstRunGateTests: XCTestCase {
         XCTAssertTrue(FirstRunGate(settings: settings).sheetShows, "older terms")
     }
 
+    func testALicenseUnderTheCurrentTermsCountsAsAcceptingThem() {
+        let (settings, cleanUp) = makeSettings()
+        defer { cleanUp() }
+        settings.dataRootURL = FileManager.default.temporaryDirectory
+        settings.hasCompletedFirstRun = true
+        XCTAssertTrue(FirstRunGate(settings: settings).sheetShows)
+        XCTAssertFalse(FirstRunGate(settings: settings, licenseCoversCurrentTerms: true).sheetShows)
+        XCTAssertFalse(FirstRunGate.presentation(settings: settings, licenseCoversCurrentTerms: { true }).wrappedValue)
+    }
+
     func testAskingToDismissLeavesTheSheetUp() {
         let (settings, cleanUp) = makeSettings()
         defer { cleanUp() }
@@ -46,6 +56,44 @@ final class FirstRunGateTests: XCTestCase {
         XCTAssertEqual(
             FirstRunFinish.hint(hasDataFolder: true, agreedToTerms: false),
             "Accept the Terms of Service and Privacy Policy to continue.")
+    }
+
+    func testFinishDoesNotNeedALicense() {
+        // A clinician with a lapsed or revoked license can still get past setup to
+        // their existing records; only new work is refused elsewhere.
+        XCTAssertTrue(FirstRunFinish.isEnabled(hasDataFolder: true, agreedToTerms: true))
+        XCTAssertEqual(
+            FirstRunFinish.hint(hasDataFolder: true, agreedToTerms: true),
+            "You can finish the rest of the checklist now or any time from Settings.")
+    }
+
+    func testLicenseCoveredTermsAreRecordedSoALaterLapseKeepsTheSheetAway() {
+        let (settings, cleanUp) = makeSettings()
+        defer { cleanUp() }
+        settings.dataRootURL = FileManager.default.temporaryDirectory
+        settings.hasCompletedFirstRun = true
+        XCTAssertFalse(settings.hasAcceptedCurrentLegal)
+
+        FirstRunGate.recordAcceptanceCoveredByLicense(settings: settings, covers: true, token: nil)
+        XCTAssertTrue(settings.hasAcceptedCurrentLegal)
+        // The license then lapses or is revoked: it no longer covers the terms.
+        XCTAssertFalse(FirstRunGate(settings: settings, licenseCoversCurrentTerms: false).sheetShows)
+    }
+
+    func testNothingIsRecordedWhenTheLicenseDoesNotCoverTheTerms() {
+        let (settings, cleanUp) = makeSettings()
+        defer { cleanUp() }
+        FirstRunGate.recordAcceptanceCoveredByLicense(settings: settings, covers: false, token: nil)
+        XCTAssertFalse(settings.hasAcceptedCurrentLegal)
+    }
+
+    func testAnExistingAcceptanceIsNotOverwritten() {
+        let (settings, cleanUp) = makeSettings()
+        defer { cleanUp() }
+        let earlier = Date(timeIntervalSince1970: 1)
+        settings.recordLegalAcceptance(at: earlier)
+        FirstRunGate.recordAcceptanceCoveredByLicense(settings: settings, covers: true, token: nil)
+        XCTAssertEqual(settings.acceptedLegalDate, earlier)
     }
 
     func testEncryptionStepIsOfferedWithoutBlockingFinish() {

@@ -4,6 +4,7 @@ struct FirstRunView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var encryption: EncryptionManager
+    @EnvironmentObject private var license: LicenseState
 
     /// Set once the user ticks the acceptance box. Not persisted until they
     /// press "Finish setup" — that's the moment acceptance is recorded on disk.
@@ -36,6 +37,10 @@ struct FirstRunView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: 600, alignment: .leading)
                     }
+
+                    licenseSection
+
+                    hairline
 
                     if settings.dataRootURL == nil {
                         VStack(alignment: .leading, spacing: 10) {
@@ -150,7 +155,7 @@ struct FirstRunView: View {
     private func finish() {
         // Record acceptance locally (version + timestamp) at the exact moment
         // the user proceeds, then unlock the app.
-        settings.recordLegalAcceptance()
+        settings.recordLegalAcceptance(license: license.status.token)
         settings.hasCompletedFirstRun = true
     }
 
@@ -201,6 +206,29 @@ struct FirstRunView: View {
         }
     }
 
+    /// Step 1: the license key, checked on this Mac. It comes before the terms, so
+    /// the acceptance below is recorded against a named licensee. It is offered, not
+    /// required: without a current license the records stay open and only new
+    /// recording and AI are refused.
+    private var licenseSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("License")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
+            if license.status.isActive, let token = license.status.token {
+                Label(token.expiresAt.map { "Licensed to \(token.sub), valid until \($0.licenseText)." } ?? "Licensed to \(token.sub).", systemImage: "checkmark.seal.fill")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.accent.color)
+            } else {
+                Text("Paste the license key from your email. It is checked on this Mac and never sent anywhere.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.muted.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                LicenseEntryView()
+            }
+        }
+    }
+
     private var legalSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Terms & Privacy")
@@ -226,18 +254,20 @@ struct FirstRunView: View {
             .toggleStyle(.checkbox)
             .onChange(of: agreedToLegal) { _, agreed in
                 if agreed {
-                    settings.recordLegalAcceptance()
+                    settings.recordLegalAcceptance(license: license.status.token)
                 }
             }
         }
     }
 
     private var canContinue: Bool {
-        FirstRunFinish.isEnabled(hasDataFolder: settings.dataRootURL != nil, agreedToTerms: agreedToLegal)
+        FirstRunFinish.isEnabled(
+            hasDataFolder: settings.dataRootURL != nil, agreedToTerms: agreedToLegal)
     }
 
     private var footerHint: String {
-        FirstRunFinish.hint(hasDataFolder: settings.dataRootURL != nil, agreedToTerms: agreedToLegal)
+        FirstRunFinish.hint(
+            hasDataFolder: settings.dataRootURL != nil, agreedToTerms: agreedToLegal)
     }
 }
 

@@ -55,7 +55,7 @@ final class NetworkAccessStatusTests: XCTestCase {
 
     func testDisclosureListsEveryDownload() {
         let lines = NetworkHelperDisclosure.downloads
-        XCTAssertEqual(lines.count, 1 + WhisperModel.allCases.count + LlamaModel.allCases.count)
+        XCTAssertEqual(lines.count, 2 + WhisperModel.allCases.count + LlamaModel.allCases.count)
     }
 
     func testVerifyCommandNamesTheRunningBundle() {

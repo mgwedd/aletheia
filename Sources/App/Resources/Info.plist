@@ -36,6 +36,17 @@
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Aletheia adds a next-session event to your Calendar only when you ask it to.</string>
 #endif
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.aletheia.license-link</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>aletheia</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>LSApplicationSecondaryCategoryType</key>

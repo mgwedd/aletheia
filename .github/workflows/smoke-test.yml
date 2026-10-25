@@ -60,6 +60,10 @@ jobs:
         run: ./scripts/check-ci-gating.sh --self-test
       - name: Check CI gating
         run: ./scripts/check-ci-gating.sh
+      # The release workflow runs the real check on tags; PR CI only proves the checker works.
+      - name: Self-test the license keyring guard
+        run: ./scripts/check-license-keys.sh --self-test
+
       # Fixture self-test only: the live check needs an admin token, so CI never runs it.
       - name: Self-test the repository settings guard
         run: ./scripts/check-repo-settings.sh --self-test

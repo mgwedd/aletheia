@@ -7,7 +7,8 @@ import Foundation
 /// to an https URL on `HelperAllowlist`, and a redirect is followed only when
 /// it stays on that list.
 final class HelperFetcher {
-    /// The largest response `fetchData` accepts (the appcast is a few KB).
+    /// The largest response `fetchData` accepts (the appcast is a few KB; the
+    /// revocation list is capped at 256 KB by its contract).
     static let maxDataBytes = 256 * 1024
 
     private let configuration: URLSessionConfiguration
@@ -42,11 +43,14 @@ final class HelperFetcher {
         return data
     }
 
-    /// The license revocation list's bytes (at most `maxDataBytes`). Makes no
-    /// request when no endpoint is configured. `endpoint` is injectable for tests.
+    /// The license revocation list's bytes (at most `maxDataBytes`), checked only
+    /// for its prefix; the app verifies the signature. Makes no request when no
+    /// endpoint is configured. `endpoint` is injectable for tests.
     func fetchRevocations(from endpoint: URL? = HelperEndpoints.revocations) async throws -> Data {
         guard let endpoint else { throw HelperError.notConfigured }
-        return try await fetchData(from: endpoint, maxBytes: Self.maxDataBytes)
+        let data = try await fetchData(from: endpoint, maxBytes: Self.maxDataBytes)
+        guard data.starts(with: Data("ALETR1.".utf8)) else { throw HelperError.badRevocationList }
+        return data
     }
 
     /// The release archive's URL, read from the appcast this helper fetched.

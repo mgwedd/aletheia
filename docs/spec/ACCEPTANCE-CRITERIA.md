@@ -221,7 +221,7 @@ Before you start: some patients and sessions in the data folder, and a copy of i
 
 ## 15. Settings (SETTINGS)
 Before you start: setup finished.
-- **SETTINGS-01** Press ⌘, in a Release build → Settings opens with General, AI and models, Formats, Backups, Privacy & Security and Licenses & Legal panes.
+- **SETTINGS-01** Press ⌘, in a Release build → Settings opens with General, AI and models, Formats, Backups, Privacy & Security, License key and Licenses & Legal panes.
 - **SETTINGS-02** Look at the data folder in **General** → its path shows with **Choose…**, and the same folder is in use after relaunch.
 - **SETTINGS-03** Pick Light, then Dark under Appearance → the whole app changes at once and stays that way after relaunch.
 - **SETTINGS-04** Look at the defaults on a fresh install → automatic transcription is on, keeping data out of backups is on, raw audio kept is off, and notification names are off.

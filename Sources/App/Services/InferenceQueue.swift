@@ -50,6 +50,15 @@ final class InferenceQueue: ObservableObject {
     /// Set once the app has started quitting: jobs enqueued after that never run.
     private(set) var isShutDown = false
 
+    /// Why AI may not run because of the license, or nil. Set by the app; unset allows all.
+    var licenseRefusal: (() -> String?)?
+
+    /// Throws `LicenseBlockedError` when a lapsed license stops AI. Every caller that
+    /// starts AI work asks this before it enqueues.
+    func authorize() throws {
+        if let message = licenseRefusal?() { throw LicenseBlockedError(message: message) }
+    }
+
     /// Adds a job to the back of the queue; it starts as soon as nothing is
     /// ahead of it. A body that throws is treated as finished (the caller owns
     /// its own error reporting), so the queue never stalls on a failure.

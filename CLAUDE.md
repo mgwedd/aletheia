@@ -31,7 +31,8 @@ Concise, non-obvious rules for this repo. (Obvious stuff omitted on purpose.)
 - **PHI never leaves the Mac.** No analytics/telemetry/servers. The main app
   has **no network entitlement**; the only outbound calls are made by the bundled
   network helper (`Sources/NetworkHelper`, a sandboxed XPC service): the update
-  check and opt-in model downloads — neither carries PHI. The app asks it for
+  check, the daily signed license revocation list (only while update checks
+  are on) and opt-in model downloads — none carries PHI or a license key. The app asks it for
   fixed assets by integer ID; it takes no URL, string or data. Don't add
   `network.client` to the app or `URLSession`/sockets outside the helper
   (`scripts/check-entitlements.sh` and `NetworkHelperSourceTests` enforce it).

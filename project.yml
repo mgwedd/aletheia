@@ -65,6 +65,13 @@ targets:
       # exactly this file (ThirdPartyNoticesTests compares the two).
       - path: THIRD-PARTY-NOTICES.md
         buildPhase: resources
+      # The terms and privacy policy, copied into the app so their SHA-256 can be
+      # compared with the hashes recorded in a license (LicenseTermsTests compares
+      # the bundled bytes with the repo files).
+      - path: TERMS.md
+        buildPhase: resources
+      - path: PRIVACY.md
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.app

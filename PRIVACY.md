@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-10-24_
+_Last updated: 2026-10-25_
 
 **Plain-language summary:** Aletheia keeps clinical data in a folder you choose.
 A cloud-synced folder may be copied by its provider. Back Up Now saves an
@@ -24,10 +24,16 @@ govern model files you choose to download; those are covered by their providers'
 
 ## 2. What Astrea Labs collects
 
-The App has no analytics, crash reporting, usage tracking, accounts, or Astrea Labs
-backend. Astrea Labs cannot see who uses the App or what it is used for.
-Update requests to GitHub and model downloads from Hugging Face may expose an IP
-address and app version to those hosts.
+The App has no analytics, crash reporting, usage tracking or accounts, and it
+never tells Astrea Labs how or when it is used.
+Update requests to GitHub, model downloads from Hugging Face and the license
+revocation list from `astrealabs.com` may expose an IP address and app version
+to those hosts.
+
+If you applied for a license key, Astrea Labs keeps the application you
+submitted (your name, contact and professional details, and a record of the key
+issued to you), as described on the application form. The App itself never
+sends Astrea Labs anything, including your key.
 
 The App also keeps an audit log on your Mac (see section 3). It never leaves
 your Mac.
@@ -96,6 +102,10 @@ your files. Its network paths are:
 - **Update download** — when you choose to install an available update, the
   helper downloads the release disk image from this project's GitHub releases and
   the App checks it against the digest in the version file before opening it.
+- **License revocation list** — while update checks are on, the helper
+  downloads a signed list of revoked license keys from `astrealabs.com`, at most
+  once a day. The request contains no license key or other identifier; your IP
+  address and the App version are visible to the host.
 - **Model downloads** — when you ask to download a speech-to-text or language
   model, the helper downloads the file from Hugging Face. No patient data is
   uploaded by these requests.

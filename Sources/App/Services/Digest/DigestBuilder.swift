@@ -256,6 +256,7 @@ final class DigestBuilder: ObservableObject {
         if inline {
             return try await runStage(prompt, read: stage, write: Self.writeTitle, service: service, live: live)
         }
+        try queue.authorize()
         let waiter = JobWaiter()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in

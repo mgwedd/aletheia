@@ -165,7 +165,7 @@ struct SettingsView: View {
         selectedPaneRaw = request.pane.rawValue
         switch request {
         case .setupAssistant: showSetup = true
-        case .setAsideRecordings: break
+        case .setAsideRecordings, .license, .exportAllRecords: break
         }
     }
 
@@ -178,6 +178,7 @@ struct SettingsView: View {
         case .encryption: encryptionPane
         case .backups: backupsPane
         case .security: securityPane
+        case .license: LicensePane()
         case .licenses: LicensesPane()
         case .setAsideRecordings:
             SetAsideRecordingsPane(model: setAside) { selectedPaneRaw = SettingsPane.general.rawValue }

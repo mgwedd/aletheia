@@ -1,6 +1,6 @@
 # End User License Agreement and Terms of Service
 
-_Last updated: 2026-10-24_
+_Last updated: 2026-10-25_
 
 > This document is **not legal advice**. Aletheia is used with protected health
 > information (PHI); have your own counsel review your practice's policies and
@@ -32,6 +32,26 @@ independent legal evidence.
 The App is proprietary and source-available. Your use is governed by the
 [LICENSE](LICENSE). These Terms do not grant any ownership or rights beyond
 what that license allows.
+
+**License key.** Using the App requires a license key issued to you by
+Astrea Labs. The key is personal to you: do not share, transfer, or publish it. A
+key may have an expiry date, shown in Settings → License key, and can be
+renewed. Astrea Labs may revoke a key that is shared or used in breach of
+these Terms; the App learns of revocations from a signed list it downloads while
+update checks are on, at most once a day, so a revocation takes effect when the
+App next receives the list. When a key expires, recording and AI work continue
+for a 14-day grace period and then stop; a revoked key has no grace period.
+
+**Your records stay yours.** Opening, reading, searching, exporting and deleting
+your existing records never require a license key, with no time limit. After a
+key expires or is revoked you can keep using the App for these, and you can
+export all of your records at once (Settings → Backups → Export All Records), so
+you can always open, read, search, export, and
+delete your existing records.
+
+**Pre-release versions.** Beta and other pre-release versions are provided for
+evaluation, may contain more errors than a final release, and may change
+without notice.
 
 ## 3. Not medical advice; not a medical device
 
@@ -126,7 +146,9 @@ under Settings › Licenses.
 ## 10. Termination
 
 These Terms apply for as long as you use the App. You may stop using the App at
-any time. The disclaimers, limitation of liability, and indemnification survive
+any time. Astrea Labs may end your right to record and use the AI by revoking
+your license key; your access to your existing records continues as described
+in section 2. The disclaimers, limitation of liability, and indemnification survive
 termination.
 
 ## 11. Changes
