@@ -39,7 +39,8 @@ final class InProcessDriver {
         root: URL, tier: BuildTier, defaults: UserDefaults, deviceKeys: DeviceKeyStoring, disk: FixtureDisk
     ) -> (settings: AppSettings, encryption: EncryptionManager, model: AppModel) {
         let settings = AppSettings(defaults: defaults)
-        settings.dataRootURL = root
+        // A relaunch keeps the folder the app resolved from its saved choice.
+        if settings.dataRootURL == nil { settings.dataRootURL = root }
         let encryption = EncryptionManager(
             dataRootProvider: { root }, deviceKeys: deviceKeys, defaults: defaults)
         let model = AppModel(
