@@ -33,6 +33,10 @@ enum AppLifecycle {
             ledger: { settings.dataRootURL.map(InterruptedWorkLedger.init) },
             stagingSessionID: { [weak recorder] in recorder?.stagingSessionID },
             transcribesAfterRecording: { settings.autoTranscribeAfterRecording },
+            discardsAudioAfterTranscription: { [unowned appModel] in
+                AudioRetentionPolicy.discardsAudioAfterTranscription(
+                    optedIn: settings.keepAudioRecordings, encryptionEnabled: appModel.isEncryptionEnabled)
+            },
             transcribe: { [weak transcription] in transcription?.start(patient: $0.patient, session: $0.session) },
             summarize: { [weak integrations] in
                 integrations?.digestScheduler.sessionOpened(patient: $0.patient, session: $0.session)
@@ -88,6 +92,7 @@ final class InterruptedWorkLauncher {
         stagingRoot: URL = Store.stagingDirectoryURL,
         scratchRoot: URL = PrivateStaging.root,
         temporaryDirectory: URL = PrivateStaging.legacyTemporaryDirectory,
+        discardsAudioAfterTranscription: @escaping () -> Bool = { false },
         transcribe: @escaping (InterruptedWorkResumer.Target) -> Void,
         summarize: @escaping (InterruptedWorkResumer.Target) -> Void
     ) {
@@ -105,6 +110,7 @@ final class InterruptedWorkLauncher {
                     ledger: ledgerInstance,
                     activeSessionID: stagingSessionID(),
                     queuesTranscription: transcribesAfterRecording(),
+                    discardsAudioAfterTranscription: discardsAudioAfterTranscription(),
                     stagingRoot: stagingRoot,
                     scratchRoot: scratchRoot,
                     temporaryDirectory: temporaryDirectory
