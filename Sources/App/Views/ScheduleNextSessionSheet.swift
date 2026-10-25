@@ -38,6 +38,40 @@ enum ScheduleQuickPick: CaseIterable, Identifiable {
     }
 }
 
+/// The wording and choices around scheduling, kept out of the views so they can
+/// be unit-tested.
+enum ScheduleNextSession {
+    static let lengthOptions = [30, 45, 50, 60, 90]
+
+    /// The standard lengths, plus the current one if it is somehow not among them.
+    static func lengthChoices(including current: Int) -> [Int] {
+        lengthOptions.contains(current) ? lengthOptions : (lengthOptions + [current]).sorted()
+    }
+
+    static func footerText(exportICS: Bool) -> String {
+        exportICS
+            ? "Adds an event to your calendar and saves an .ics file."
+            : "Adds an event to your calendar."
+    }
+
+    /// What the user is told once scheduling finishes.
+    enum Outcome: Equatable {
+        case confirmation(String)
+        case error(String)
+    }
+
+    /// A calendar failure is still reported, and a saved .ics file is still
+    /// mentioned, so the user always knows what did and did not happen.
+    static func outcome(eventTitle: String, calendarFailure: String?, icsSaved: Bool) -> Outcome {
+        switch (calendarFailure, icsSaved) {
+        case (nil, true): return .confirmation("Added “\(eventTitle)” to your Calendar and saved .ics file.")
+        case (nil, false): return .confirmation("Added “\(eventTitle)” to your Calendar.")
+        case let (failure?, true): return .confirmation("Saved .ics file. Could not add to Calendar: \(failure)")
+        case let (failure?, false): return .error(failure)
+        }
+    }
+}
+
 /// The "Schedule next session" sheet: quick date shortcuts, a date, a time and
 /// a length. The owner turns the chosen start and length into a calendar event.
 ///
@@ -73,14 +107,7 @@ struct ScheduleNextSessionSheet: View {
         self.onSchedule = onSchedule
     }
 
-    private static let lengthOptions = [30, 45, 50, 60, 90]
-
-    /// The standard lengths, plus the current one if it is somehow not among them.
-    private var lengthChoices: [Int] {
-        Self.lengthOptions.contains(durationMinutes)
-            ? Self.lengthOptions
-            : (Self.lengthOptions + [durationMinutes]).sorted()
-    }
+    private var lengthChoices: [Int] { ScheduleNextSession.lengthChoices(including: durationMinutes) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -182,11 +209,7 @@ struct ScheduleNextSessionSheet: View {
         }
     }
 
-    private var footerText: String {
-        exportICS
-            ? "Adds an event to your calendar and saves an .ics file."
-            : "Adds an event to your calendar."
-    }
+    private var footerText: String { ScheduleNextSession.footerText(exportICS: exportICS) }
 
     private var footer: some View {
         HStack(spacing: 8) {
