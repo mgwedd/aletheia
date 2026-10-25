@@ -227,7 +227,8 @@ final class SessionNoteModel: ObservableObject {
     }
 
     func generate() {
-        guard let store = appModel.store else { return }
+        // A signed note is never regenerated, whichever button asked.
+        guard let store = appModel.store, !noteLocked else { return }
         // One note per session at a time, even across leaving and reopening the session.
         let jobLabel = "progress note \(session.id.uuidString)"
         guard !integrations.inferenceQueue.hasJob(labelled: jobLabel) else {

@@ -1765,4 +1765,3 @@ private struct InlineCommentComposerCard: View {
         .frame(height: 84)
     }
 }
-
