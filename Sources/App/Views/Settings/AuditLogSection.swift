@@ -17,6 +17,7 @@ enum AuditLogCopy {
         ("failed integrity checks", [.integrityCheckFailed]),
         ("backups", [.backupRun]),
         ("recovered recordings", [.recordingRecovered]),
+        ("recording consent attestations", [.recordingConsentAttested]),
     ]
 
     static var recordedActions: Set<AuditAction> {
