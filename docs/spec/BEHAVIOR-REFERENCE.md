@@ -598,6 +598,18 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/Notifications/SessionNotifications.swift` · `qa: RECORD-08`
 - **LCK-023** When the user clicks a window whose hidden sheet blocks it while locked, an unlock is requested.
   `surface: ui` · `evidence: Sources/App/Services/WindowSharingPolicy.swift` · `qa: LOCK-04`
+- **LCK-024** When the encrypted folder's key is kept on this Mac, App lock is on whatever the saved setting says, so the key is never reachable without Touch ID or the password.
+  `surface: background` · `evidence: Sources/App/Services/AppLock.swift, Sources/App/Services/Crypto/EncryptionManager.swift` · `qa: LOCK-09`
+- **LCK-025** When the key is kept on this Mac, Settings shows App lock on and unchangeable, and says why.
+  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: LOCK-10`
+- **LCK-026** When the key is not kept on this Mac, App lock can be turned off, after a fresh Touch ID or password check.
+  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/SensitiveActionGate.swift` · `qa: LOCK-11`
+- **LCK-027** When the app opens locked, the folder key is not loaded and no patient data is readable; a successful Touch ID or password check opens it with no passphrase.
+  `surface: background` · `evidence: Sources/App/AletheiaApp.swift, Sources/App/Services/AppLock.swift` · `qa: LOCK-12`
+- **LCK-028** When the app is installed fresh, "Lock when Aletheia is hidden" is on; an install that saved it as off keeps it off.
+  `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Views/SettingsView.swift` · `qa: LOCK-13`
+- **LCK-029** When deleting a recording leaves any audio behind, including in the temporary audio folder, the app reports that it wasn't deleted instead of reporting success.
+  `surface: background` · `evidence: Sources/App/Services/Store.swift` · `qa: LOCK-14`
 
 ## Audit log (AUD)
 

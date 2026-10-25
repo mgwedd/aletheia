@@ -162,4 +162,42 @@ enum SecurityPosture {
     static func overall(_ items: [PostureItem]) -> PostureLevel {
         items.contains { $0.level == .actionRecommended } ? .actionRecommended : .secure
     }
+
+    /// The headline over the overview.
+    static func headline(for level: PostureLevel) -> String {
+        switch level {
+        case .actionRecommended: return "Some protections could be stronger"
+        case .secure: return "Your data is well protected on this Mac"
+        case .informational: return "Security overview"
+        }
+    }
+
+    /// The overview for the app as it is now: what the Security pane lists.
+    static func current(
+        settings: AppSettings,
+        appModel: AppModel,
+        encryption: EncryptionManager,
+        canAuthenticate: Bool,
+        networkOnline: Bool?
+    ) -> [PostureItem] {
+        evaluate(
+            appLockEnabled: settings.appLockEnabled,
+            canAuthenticate: canAuthenticate,
+            idleAutoLockMinutes: settings.idleAutoLockMinutes,
+            encryptionEnabled: encryption.isEnabled,
+            encryptionUnlocked: encryption.isUnlocked,
+            encryptionKeystoreMissing: encryption.isKeystoreMissing,
+            encryptionOffered: SettingsAvailability.encryptionOffered(
+                isEnabled: encryption.isEnabled,
+                moduleInBuild: appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
+            ),
+            auditLogActive: appModel.audit != nil,
+            auditLogVerifiable: appModel.audit?.isVerifiable ?? true,
+            auditWriteFailed: appModel.auditWriteFailed,
+            auditChainBroken: appModel.securityAlerts.contains { $0.id == "auditLogBroken" },
+            localEncryptedBackup: settings.localEncryptedBackupEnabled,
+            networkOnline: networkOnline,
+            diskEncrypted: appModel.diskEncrypted
+        )
+    }
 }

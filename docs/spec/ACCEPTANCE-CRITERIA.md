@@ -182,11 +182,17 @@ Before you start: a Mac that can authenticate with Touch ID or a password.
 - **LOCK-06** Lock the app while a recording runs → the recording keeps going.
 - **LOCK-07** Copy a patient's text and paste it elsewhere → it pastes, but clipboard history doesn't keep it.
 - **LOCK-08** Select transcript text and open the right-click menu → macOS Writing Tools isn't offered.
+- **LOCK-09** With the encrypted folder's key kept on this Mac and App lock saved as off, quit and reopen → the lock screen still covers the window.
+- **LOCK-10** In that state, open **Settings** > **Security** → App lock shows on and can't be changed.
+- **LOCK-11** With the key not kept on this Mac, turn App lock off → it asks for Touch ID or your password first, and the app stops locking at launch.
+- **LOCK-12** Quit and reopen with the key kept, then unlock with Touch ID → patients appear with no passphrase asked, and none showed before.
+- **LOCK-13** On a fresh install, open **Settings** > **Security** → "Lock when Aletheia is hidden" is on; an install that turned it off keeps it off.
+- **LOCK-14** Delete a session's recording whose temporary audio folder can't be removed → the app says the recording wasn't deleted.
 
 ## 13. Encryption at rest (ENCRYPT)
 Before you start: a developer build, or a data folder that is already encrypted; Settings > Encryption appears only then.
 - **ENCRYPT-01** In a Release build with an unencrypted folder, look for encryption controls → none are offered.
-- **ENCRYPT-02** Click **Turn On…** with a passphrase under 12 characters (dev build) → **Continue** is disabled and a strength meter shows "Weak".
+- **ENCRYPT-02** Type a passphrase under 12 characters in **Turn On…** (dev build) → **Continue** stays disabled, and under 8 characters the strength meter reads "Weak".
 - **ENCRYPT-03** Reach the recovery key step (dev build) → 24 words show, with **Copy Words**, **Save as PDF…** and **Print…**.
 - **ENCRYPT-04** Reach the last step (dev build) → **Encrypt my data** stays unavailable until both acknowledgement boxes are ticked.
 - **ENCRYPT-05** Open data folder files in Terminal after encrypting (dev build) → transcripts, notes and recordings are unreadable while folder names stay readable.
@@ -231,7 +237,7 @@ Before you start: a data folder with some activity (unlock, export, delete a pat
 - **SECURITY-03** Click **Copy** under "Verify it yourself" → the button reads "Copied" and the clipboard holds the codesign command.
 - **SECURITY-04** Open the activity log after unlocking, exporting and deleting a patient → each adds a dated entry with no patient names.
 - **SECURITY-05** Click **Verify integrity & export audit report** → "Integrity verified" appears and a report is saved.
-- **SECURITY-06** Edit audit.log in Terminal, reopen and verify → "Integrity check failed" appears with the entry number.
+- **SECURITY-06** Change an activity log entry outside Aletheia, then click **Verify integrity & export audit report** → "Integrity check failed" appears with the entry number.
 - **SECURITY-07** Choose **Help** > **Aletheia Doctor…** → checks are grouped and each shows OK, Warning or Problem.
 - **SECURITY-08** Click **Copy report** in Doctor → the button reads "Copied" and the report holds no patient names.
 

@@ -132,7 +132,7 @@ final class AppModel: ObservableObject {
         let dataRoot = settings.dataRootURL
         let previousAudit = audit
         attachAudit(dataRoot.map { root in
-            AuditLog(root: root, dekProvider: { [weak self] in self?.encryption.protector.heldKey })
+            AuditLog(root: root, keyProvider: auditKeyProvider, dekProvider: { [weak self] in self?.encryption.protector.heldKey })
         })
         logDataFolderChangeIfNeeded(from: previousAudit, to: dataRoot)
         logEncryptionTransitionIfNeeded()
@@ -591,6 +591,27 @@ final class AppModel: ObservableObject {
         recordAudit(.recordDeleted, subjectID: patient.id.uuidString, detail: "patient")
         refreshPatients()
         reindexSpotlight()
+    }
+
+    /// Supplies the key that signs the activity log's entries. Defaults to the
+    /// Keychain key; tests swap it (then call `rebuildStore()`) so the log is
+    /// signed and verifiable without touching the real Keychain.
+    var auditKeyProvider: AuditKeyProvider = AuditKeyManager.loadOrCreateKeychainKey
+
+    /// What "Verify integrity & export audit report" shows and saves: the
+    /// chain check's one-line result and the full report. A broken chain is
+    /// recorded and raised first, so the report lists it.
+    struct AuditVerification: Equatable {
+        let message: String
+        let report: String
+    }
+
+    func verifyAuditLog() -> AuditVerification? {
+        guard let audit else { return nil }
+        let result = audit.verifyIntegrity()
+        let message = result.statusMessage
+        applyIntegrityResult(result)
+        return AuditVerification(message: message, report: audit.generateReport(status: message))
     }
 }
 

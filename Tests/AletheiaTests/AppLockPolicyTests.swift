@@ -226,4 +226,24 @@ final class AppLockPolicyTests: XCTestCase {
         XCTAssertTrue(code.contains("RunLoop.main.add(timer, forMode: .common)"))
         XCTAssertFalse(code.contains("Timer.scheduledTimer"), "scheduledTimer uses the default mode and stalls during menu tracking")
     }
+
+    @MainActor
+    func testIdleLockFollowsTheInjectedClock() {
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "idle-clock-\(UUID().uuidString)")!)
+        settings.appLockEnabled = true
+        settings.idleAutoLockMinutes = 1
+        var now = Date()
+        let appLock = AppLock(
+            settings: settings, canAuthenticate: { true }, isAppActive: { true },
+            spotlight: SpotlightSpy(), now: { now })
+        appLock.simulateUnlockedForTesting()
+
+        now.addTimeInterval(59)
+        appLock.checkIdleTimeout()
+        XCTAssertFalse(appLock.isLocked, "locked before a minute of idle time")
+
+        now.addTimeInterval(1)
+        appLock.checkIdleTimeout()
+        XCTAssertTrue(appLock.isLocked, "did not lock after a minute of idle time")
+    }
 }

@@ -648,7 +648,10 @@ final class Store {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
             do { try FileManager.default.removeItem(at: url); removed = true } catch { failed = true }
         }
-        try? FileManager.default.removeItem(at: Store.stagingDir(for: session.id))
+        let staging = Store.stagingDir(for: session.id)
+        if FileManager.default.fileExists(atPath: staging.path) {
+            do { try FileManager.default.removeItem(at: staging); removed = true } catch { failed = true }
+        }
         if removed { onAudit?(.recordDeleted, session.id.uuidString, "audio recording") }
         if failed { throw StoreError.recordingNotDeleted }
     }
