@@ -282,6 +282,7 @@ final class SessionRecorder: ObservableObject {
                 let started = Date()
                 clock = RecordingClock(startedAt: started)
                 state = .recording(startedAt: started)
+                startReminderTimer()
                 return nil
             } catch {
                 try? FileManager.default.removeItem(at: stagingDir)
