@@ -35,6 +35,13 @@ final class ExportRun {
         afterSettling()
     }
 
+    /// Waits until nothing is left in the destination's parent (a cancelled export cleans up after itself).
+    /// Gives up at the deadline; the checks then report what is still there.
+    fileprivate func untilFolderIsClear(timeout: TimeInterval = 5) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !leftInParent().isEmpty && Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
+    }
+
     /// Waits for `count` notifications to have been posted.
     fileprivate func untilNotified(_ count: Int = 1, timeout: TimeInterval = 5) async {
         let deadline = Date().addingTimeInterval(timeout)
@@ -255,7 +262,7 @@ extension When {
         run.center.cancel()
         gate.open()
         await run.untilDone()
-        try await Task.sleep(nanoseconds: 300_000_000)
+        await run.untilFolderIsClear()
         return run
     }
 
