@@ -120,6 +120,14 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertEqual(redactor.redact("Annual check for Ann"), "Annual check for <redacted>")
     }
 
+    func testEnvironmentDoesNotRedactTheSandboxContainerFolderName() {
+        let env = DoctorEnvironment.current(dataRoot: nil)
+        XCTAssertFalse(env.knownTerms.contains("Data"), "the container's `Data` folder would blank out \"Data folder\"")
+        let check = DoctorCheck(id: "a", category: .dataFolder, title: "Data folder present", status: .ok, detail: "Found.")
+        let text = DoctorReport(checks: [check], generatedAt: Date(), environment: env).plainText()
+        XCTAssertTrue(text.contains("[OK] Data folder present"), text)
+    }
+
     func testDoctorEnvironmentCarriesPatientNamesFromTheLiveProbes() {
         let patients = [Patient(name: "Jane Doe", slug: "jane-doe-4f2a")]
         let probes = LiveDoctorProbes(
