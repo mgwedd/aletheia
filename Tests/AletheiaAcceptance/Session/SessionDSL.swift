@@ -82,10 +82,8 @@ extension When {
     /// Waits until the clock has moved on to a later second than `session` began in,
     /// as it has between two human clicks. Waits on the condition, up to a deadline.
     func waitUntilALaterSecondThan(_ session: SessionRecord) async throws {
-        let deadline = Date().addingTimeInterval(5)
-        while Date().timeIntervalSince1970.rounded(.down) <= session.date.timeIntervalSince1970.rounded(.down) {
-            if Date() > deadline { return XCTFail("the clock did not advance past \(session.date) within 5s") }
-            try await Task.sleep(nanoseconds: 20_000_000)
+        try await eventually(within: 5, "the clock to pass the second \(session.date) began in") {
+            Date().timeIntervalSince1970.rounded(.down) > session.date.timeIntervalSince1970.rounded(.down)
         }
     }
 

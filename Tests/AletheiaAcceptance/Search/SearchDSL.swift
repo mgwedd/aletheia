@@ -114,10 +114,9 @@ extension When {
     func waitForSearchToCatchUp() async {
         let index = SessionSearch.index
         index.flush()
-        for _ in 0..<80 {
+        try? await eventually(within: 4, "the search index to catch up") {
             let snapshot = index.progress.snapshot()
-            if snapshot.checked && snapshot.pendingSessions == 0 { break }
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            return snapshot.checked && snapshot.pendingSessions == 0
         }
         app.appModel.store?.syncSearchIndex()
         index.flush()
