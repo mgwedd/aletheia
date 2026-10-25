@@ -17,12 +17,21 @@ enum Legal {
     /// it is exactly what gets stored as the accepted version. **Bump this
     /// whenever TERMS.md or PRIVACY.md change materially** — users are then
     /// required to re-accept, and the new version + timestamp are recorded.
-    static let currentVersion = "2026-10-23"
+    static let currentVersion = "2026-10-24"
 
     /// Canonical, human-readable copies in the repository. Shown as links in the
     /// first-run acceptance step and in Settings.
     static let termsURL = URL(string: "https://github.com/mgwedd/aletheia/blob/main/TERMS.md")!
     static let privacyURL = URL(string: "https://github.com/mgwedd/aletheia/blob/main/PRIVACY.md")!
+
+    /// The two documents, in the order the app lists them.
+    enum Document: CaseIterable, Identifiable {
+        case terms, privacy
+
+        var id: Self { self }
+        var title: String { self == .terms ? "Terms of Service" : "Privacy Policy" }
+        var url: URL { self == .terms ? Legal.termsURL : Legal.privacyURL }
+    }
 
     /// Whether a recorded acceptance satisfies the current terms version.
     /// An empty record (never accepted) or an older version (terms changed

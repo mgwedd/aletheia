@@ -163,7 +163,7 @@ final class AnnotationRepositoryTests: XCTestCase {
         XCTAssertTrue(repository.saveNote(sessionID: session, text: "second"))
 
         XCTAssertEqual(repository.note(sessionID: session), "second")
-        XCTAssertEqual(core.records(kind: "note", itemID: session).count, 1, "upsert, not a second row")
+        XCTAssertEqual(core.records(kind: AnnotationRepository.noteKind, itemID: session).count, 1, "upsert, not a second row")
     }
 
     func testNotesAreIsolatedBySession() {
@@ -225,7 +225,7 @@ final class AnnotationRepositoryTests: XCTestCase {
 
     private func putRaw(_ payload: String, sessionID: UUID) {
         XCTAssertTrue(core.put(PersistedRecord(
-            id: sessionID.uuidString, kind: "note", itemID: sessionID,
+            id: sessionID.uuidString, kind: AnnotationRepository.noteKind, itemID: sessionID,
             payload: Data(payload.utf8), createdAt: Date(), updatedAt: Date())))
     }
 
@@ -238,7 +238,7 @@ final class AnnotationRepositoryTests: XCTestCase {
         XCTAssertEqual(repository.note(sessionID: session), "")
         XCTAssertEqual(reports, 1)
         XCTAssertFalse(repository.saveNote(sessionID: session, text: "typed over the empty field"))
-        XCTAssertEqual(core.record(kind: "note", id: session.uuidString)?.payload, Data("not json".utf8))
+        XCTAssertEqual(core.record(kind: AnnotationRepository.noteKind, id: session.uuidString)?.payload, Data("not json".utf8))
     }
 
     func testLockedNoteIsNotReportedAsDamaged() {

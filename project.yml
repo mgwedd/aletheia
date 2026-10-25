@@ -169,7 +169,40 @@ targets:
       - target: WhisperEngine
         embed: false
 
+  # The acceptance suite: one fitness function per check in
+  # docs/spec/ACCEPTANCE-CRITERIA.md, written against the domain DSL (see
+  # docs/spec/EXECUTION-LAYER.md). Hosted by the app like AletheiaTests, but run
+  # through its own scheme so the unit-test runs stay as they are.
+  AletheiaAcceptance:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests/AletheiaAcceptance
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.appAcceptance
+        GENERATE_INFOPLIST_FILE: YES
+        # XCTest creates this class when the bundle loads; it registers the
+        # ledger observer (Tests/AletheiaAcceptance/Ledger).
+        INFOPLIST_KEY_NSPrincipalClass: AcceptanceLedgerPrincipal
+    dependencies:
+      - target: Aletheia
+      - target: WhisperEngine
+        embed: false
+
 schemes:
+  AletheiaAcceptance:
+    build:
+      targets:
+        Aletheia: all
+        AletheiaNetworkHelper: all
+        AletheiaAcceptance: [test]
+    test:
+      targets:
+        - AletheiaAcceptance
+    run:
+      config: Debug
   Aletheia:
     build:
       targets:

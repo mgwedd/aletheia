@@ -35,7 +35,7 @@ final class SessionChatContextTests: XCTestCase {
         XCTAssertFalse(prompt.contains(Prompts.commentsHeading))
     }
 
-    func testAnswerAboutSessionForwardsNotesAndComments() async throws {
+    func testAnswerAboutSessionForwardsCommentsButNotThePsychotherapyNote() async throws {
         let fake = CapturingAssistant()
         let service = AssistantService(assistant: fake, model: "m")
         let comments = [SessionComment(id: "1", quotedText: "meds", body: "titrate up", createdAt: .init(), updatedAt: .init())]
@@ -49,8 +49,31 @@ final class SessionChatContextTests: XCTestCase {
         )
 
         let prompt = try XCTUnwrap(fake.lastPrompt)
-        XCTAssertTrue(prompt.contains("note text"))
+        XCTAssertFalse(prompt.contains("note text"), "the psychotherapy note never reaches the prompt")
         XCTAssertTrue(prompt.contains("titrate up"))
         XCTAssertTrue(prompt.contains("meds"))
+    }
+
+    @MainActor
+    func testSessionChatStreamNeverCarriesThePsychotherapyNote() async throws {
+        let fake = CapturingAssistant()
+        let service = AssistantService(assistant: fake, model: "m")
+        let stream = LongSessionChat.stream(
+            transcript: "Patient discussed sleep.",
+            notes: "PRIVATE-PROCESS-NOTE",
+            history: [],
+            question: "How was her mood?",
+            sessionID: UUID(),
+            service: service,
+            builder: DigestBuilder(queue: InferenceQueue()),
+            loadDigest: { nil },
+            saveDigest: { _ in },
+            live: { _, _ in },
+            coverage: { _ in }
+        )
+        for try await _ in stream {}
+        let prompt = try XCTUnwrap(fake.lastPrompt)
+        XCTAssertTrue(prompt.contains("Patient discussed sleep."))
+        XCTAssertFalse(prompt.contains("PRIVATE-PROCESS-NOTE"))
     }
 }

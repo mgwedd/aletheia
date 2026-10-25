@@ -96,7 +96,8 @@ enum PatientFolderMigration {
                 let updated = Patient(
                     id: old.id, name: old.name, notes: old.notes,
                     createdAt: old.createdAt, slug: old.id.uuidString,
-                    clinicalHistory: old.clinicalHistory, medications: old.medications)
+                    clinicalHistory: old.clinicalHistory, medications: old.medications,
+                    recordingConsentAttestedAt: old.recordingConsentAttestedAt)
                 try protector.write(JSONEncoder.aletheia.encode(updated),
                                     to: move.destination.appendingPathComponent("patient.json"))
             }

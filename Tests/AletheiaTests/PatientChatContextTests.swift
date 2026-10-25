@@ -71,15 +71,15 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertTrue(newest.contains("March transcript text."))
         XCTAssertTrue(newest.contains("Generated progress note (SOAP):"))
         XCTAssertTrue(newest.contains("March generated body."))
-        XCTAssertTrue(newest.contains("Therapist's session notes:"))
-        XCTAssertTrue(newest.contains("She seemed brighter today."))
+        XCTAssertFalse(newest.contains("Therapist's session notes:"), "psychotherapy notes stay out of the patient chat")
+        XCTAssertFalse(newest.contains("She seemed brighter today."))
         XCTAssertTrue(newest.contains(Prompts.commentsHeading))
         XCTAssertTrue(newest.contains("revisit next week"))
         XCTAssertFalse(newest.contains("January"), "another session's material must not leak under this header")
 
         let oldest = section(context.text, tag: "S2")
         XCTAssertTrue(oldest.contains("January transcript text."))
-        XCTAssertTrue(oldest.contains("January therapist note."))
+        XCTAssertFalse(oldest.contains("January therapist note."))
         XCTAssertFalse(oldest.contains("March generated body."))
         XCTAssertFalse(oldest.contains("revisit next week"))
     }
@@ -126,7 +126,7 @@ final class PatientChatContextTests: XCTestCase {
         let patient = try store.createPatient(name: "Jane Doe")
         let session = try store.createSession(for: patient, on: date(2026, 3, 5))
         let annotations = try XCTUnwrap(CommentStore(root: tempRoot))
-        annotations.saveNote(sessionID: session.id, text: "Phone check-in, no recording.")
+        _ = annotations.addComment(sessionID: session.id, quotedText: "q", body: "Phone check-in, no recording.")
 
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "x")
         XCTAssertEqual(context.sources.map(\.folderName), [session.folderName])
@@ -151,7 +151,7 @@ final class PatientChatContextTests: XCTestCase {
         let patient = try store.createPatient(name: "Jane Doe")
         let (jan, _, _) = try makeRankedHistory(patient)
         let annotations = try XCTUnwrap(CommentStore(root: tempRoot))
-        annotations.saveNote(sessionID: jan.id, text: "January therapist note.")
+        _ = annotations.addComment(sessionID: jan.id, quotedText: "q", body: "January therapist note.")
         try store.saveNote("January generated body.", for: patient, session: jan, format: .dap)
 
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking", characterBudget: Self.tight)
@@ -168,7 +168,7 @@ final class PatientChatContextTests: XCTestCase {
         let patient = try store.createPatient(name: "Jane Doe")
         let (jan, feb, mar) = try makeRankedHistory(patient)
         let annotations = try XCTUnwrap(CommentStore(root: tempRoot))
-        annotations.saveNote(sessionID: jan.id, text: "January therapist note.")
+        _ = annotations.addComment(sessionID: jan.id, quotedText: "q", body: "January therapist note.")
 
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking", characterBudget: Self.tight)
 
@@ -189,7 +189,7 @@ final class PatientChatContextTests: XCTestCase {
         let patient = try store.createPatient(name: "Jane Doe")
         let (jan, _, _) = try makeRankedHistory(patient)
         let annotations = try XCTUnwrap(CommentStore(root: tempRoot))
-        annotations.saveNote(sessionID: jan.id, text: "January therapist note.")
+        _ = annotations.addComment(sessionID: jan.id, quotedText: "q", body: "January therapist note.")
 
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "kayaking", characterBudget: Self.tight)
 
@@ -287,7 +287,7 @@ final class PatientChatContextTests: XCTestCase {
         let session = try store.createSession(for: patient, on: date(2026, 3, 5))
         try store.saveTranscript("Transcript line stays.", for: patient, session: session)
         let annotations = try XCTUnwrap(CommentStore(root: tempRoot))
-        annotations.saveNote(sessionID: session.id, text: String(repeating: "n", count: 10_000))
+        _ = annotations.addComment(sessionID: session.id, quotedText: "q", body: String(repeating: "n", count: 10_000))
         try store.saveNote("Generated body after a long note.", for: patient, session: session, format: .soap)
 
         let text = section(store.gatherCitedPatientContext(for: patient, relevantTo: "x").text, tag: "S1")
@@ -507,7 +507,7 @@ final class PatientChatContextTests: XCTestCase {
         let session = try store.createSession(for: patient, on: date(2026, 3, 5))
         try store.saveTranscript("Short.", for: patient, session: session)
         let annotations = try XCTUnwrap(CommentStore(root: tempRoot))
-        annotations.saveNote(sessionID: session.id, text: String(repeating: "n", count: 10_000))
+        _ = annotations.addComment(sessionID: session.id, quotedText: "q", body: String(repeating: "n", count: 10_000))
 
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "x", characterBudget: 50_000)
 

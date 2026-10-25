@@ -9,15 +9,20 @@ import Foundation
 ///
 ///   comment — kind "comment", a collection scoped by `itemID = sessionID`,
 ///             a fresh UUID id per comment.
-///   note    — kind "note", a singleton per session keyed by
-///             `sessionID.uuidString`, `itemID = sessionID`.
+///   note    — kind "psychotherapyNote", the therapist's private process note:
+///             a singleton per session keyed by `sessionID.uuidString`,
+///             `itemID = sessionID`. Kept apart from the clinical record (see
+///             `AIContextPolicy` and `PsychotherapyExport`). Rows saved before
+///             the split carry kind "note" and are moved by
+///             `migrateLegacyNotes()`.
 ///
 /// Encoding/encryption is handled by `RecordPayloadCodec`, not this type: a
 /// comment or note is JSON-encoded then field-sealed into the record's opaque
 /// `payload`, and opened the same way on read.
 final class AnnotationRepository {
     private static let commentKind = "comment"
-    private static let noteKind = "note"
+    static let noteKind = "psychotherapyNote"
+    static let legacyNoteKind = "note"
 
     private let core: PersistenceCore
     private let protector: FileProtector
@@ -142,6 +147,28 @@ final class AnnotationRepository {
     }
 
     // MARK: - Notes
+
+    /// Moves every row of the old "note" kind to the psychotherapy-note kind,
+    /// payload untouched (so it works while the folder is locked). Safe to run
+    /// again: with no old rows it does nothing. A row whose new-kind twin
+    /// already exists (an interrupted earlier run) is just dropped. Returns
+    /// the number of rows moved, or nil when a storage error left some behind.
+    @discardableResult
+    func migrateLegacyNotes() -> Int? {
+        var moved = 0
+        for old in core.allRecords(kind: Self.legacyNoteKind) {
+            if core.record(kind: Self.noteKind, id: old.id) == nil {
+                let migrated = PersistedRecord(
+                    id: old.id, kind: Self.noteKind, ownerID: old.ownerID, itemID: old.itemID,
+                    payload: old.payload, createdAt: old.createdAt, updatedAt: old.updatedAt
+                )
+                guard core.put(migrated) else { return nil }
+            }
+            guard core.remove(kind: Self.legacyNoteKind, id: old.id) else { return nil }
+            moved += 1
+        }
+        return moved
+    }
 
     func note(sessionID: UUID) -> String {
         guard let record = core.record(kind: Self.noteKind, id: sessionID.uuidString) else { return "" }

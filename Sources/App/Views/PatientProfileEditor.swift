@@ -28,17 +28,13 @@ enum ProfileField: Equatable {
 struct PatientProfileEditor: View {
     private let patientID: UUID
     private let original: Patient
-    private let showsMedications: Bool
     private let initialFocus: ProfileField
     private let onLockDraft: (Patient?) -> Void
 
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name: String
-    @State private var clinicalHistory: String
-    @State private var notes: String
-    @State private var medications: [Medication]
+    @State private var draft: PatientProfileDraft
     @State private var confirmDiscard = false
     @State private var showDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
@@ -54,35 +50,7 @@ struct PatientProfileEditor: View {
         self.onLockDraft = onLockDraft
         patientID = patient.id
         original = patient
-        self.showsMedications = showsMedications
-        let shown = draft ?? patient
-        _name = State(initialValue: shown.name)
-        _clinicalHistory = State(initialValue: shown.clinicalHistory)
-        _notes = State(initialValue: shown.notes)
-        _medications = State(initialValue: shown.medications)
-    }
-
-    /// The fields as currently typed, on top of the saved patient.
-    private var currentDraft: Patient {
-        var patient = original
-        patient.name = name
-        patient.clinicalHistory = clinicalHistory
-        patient.notes = notes
-        patient.medications = medications
-        return patient
-    }
-
-    private var cleanedName: String? { Patient.normalizedName(name) }
-
-    private var cleanedMedications: [Medication] {
-        medications.filter { !($0.name.trimmingCharacters(in: .whitespaces).isEmpty
-            && $0.dose.trimmingCharacters(in: .whitespaces).isEmpty) }
-    }
-
-    private var hasChanges: Bool {
-        if let cleanedName, cleanedName != original.name { return true }
-        if clinicalHistory != original.clinicalHistory || notes != original.notes { return true }
-        return showsMedications && cleanedMedications != original.medications
+        _draft = State(initialValue: PatientProfileDraft(patient: patient, showsMedications: showsMedications, edits: draft))
     }
 
     var body: some View {
@@ -92,10 +60,10 @@ struct PatientProfileEditor: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     field("Name") {
-                        ProfileTextField(placeholder: "Patient name", label: "Name", text: $name, autofocus: initialFocus == .name)
+                        ProfileTextField(placeholder: "Patient name", label: "Name", text: $draft.name, autofocus: initialFocus == .name)
                             .frame(height: 40)
-                        if cleanedName == nil {
-                            Text("A name is required.")
+                        if let problem = draft.nameProblem {
+                            Text(problem)
                                 .font(Theme.Typography.caption)
                                 .foregroundStyle(Theme.recording.color)
                         }
@@ -103,7 +71,7 @@ struct PatientProfileEditor: View {
 
                     field("Patient notes") {
                         EditorField(
-                            text: $notes,
+                            text: $draft.notes,
                             placeholder: "Anything worth remembering about this patient…",
                             minHeight: 84,
                             autofocus: initialFocus == .notes
@@ -113,7 +81,7 @@ struct PatientProfileEditor: View {
 
                     field("Clinical history") {
                         EditorField(
-                            text: $clinicalHistory,
+                            text: $draft.clinicalHistory,
                             placeholder: "Presenting concerns, diagnoses, prior treatment…",
                             minHeight: 100,
                             autofocus: initialFocus == .clinicalHistory
@@ -121,7 +89,7 @@ struct PatientProfileEditor: View {
                         infoCaption("A short summary of the background. Saved with the patient and available to the AI.")
                     }
 
-                    if showsMedications { medicationsField }
+                    if draft.showsMedications { medicationsField }
 
                     removePatientSection
                 }
@@ -135,12 +103,12 @@ struct PatientProfileEditor: View {
         .frame(width: 560, height: 640)
         .background(Theme.panel.color)
         .tint(Theme.accent.color)
-        .interactiveDismissDisabled(hasChanges)
+        .interactiveDismissDisabled(draft.hasChanges)
         .onAppear { onLockDraft(nil) }
         // Locking closes the editor. Unsaved edits are kept in memory (not written)
         // so reopening this patient's editor does not lose them.
         .dismissOnLock {
-            onLockDraft(hasChanges ? currentDraft : nil)
+            onLockDraft(draft.hasChanges ? draft.edited : nil)
             dismiss()
         }
         .confirmationDialog("Discard your changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
@@ -148,7 +116,10 @@ struct PatientProfileEditor: View {
             Button("Keep Editing", role: .cancel) {}
         }
         .sheet(isPresented: $showDeleteConfirmation) {
-            DeletePatientConfirmationView(patient: original) {
+            DeletePatientConfirmationView(
+                patient: original,
+                sessionDates: ((try? appModel.store?.listSessions(for: original)) ?? []).map(\.date)
+            ) {
                 showDeleteConfirmation = false
                 do {
                     try appModel.deletePatient(original)
@@ -199,7 +170,7 @@ struct PatientProfileEditor: View {
             Button("Save changes", action: save)
                 .buttonStyle(.themePrimary)
                 .keyboardShortcut(.defaultAction)
-                .disabled(!canSave)
+                .disabled(!draft.canSave)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 14)
@@ -209,30 +180,21 @@ struct PatientProfileEditor: View {
         .background {
             Button("Save", action: save)
                 .keyboardShortcut(AppHotkey.saveEdits)
-                .disabled(!canSave)
+                .disabled(!draft.canSave)
                 .opacity(0)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
     }
 
-    private var canSave: Bool { cleanedName != nil && hasChanges }
-
     private func requestClose() {
-        if hasChanges { confirmDiscard = true } else { dismiss() }
+        if draft.needsDiscardConfirmation { confirmDiscard = true } else { dismiss() }
     }
 
     private func save() {
-        guard let cleanedName else { return }
-        let meds = cleanedMedications
-        appModel.updatePatient(id: patientID) { patient in
-            patient.name = cleanedName
-            patient.clinicalHistory = clinicalHistory
-            patient.notes = notes
-            // Without the medications module the table isn't shown, so what is
-            // stored stays untouched.
-            if showsMedications { patient.medications = meds }
-        }
+        guard draft.cleanedName != nil else { return }
+        let draft = draft
+        appModel.updatePatient(id: patientID) { draft.apply(to: &$0) }
         dismiss()
     }
 
@@ -267,30 +229,30 @@ struct PatientProfileEditor: View {
             HStack {
                 Text("Medications").eyebrowStyle()
                 Spacer()
-                Button { medications.append(Medication()) } label: {
+                Button { draft.addMedication() } label: {
                     Label("Add medication", systemImage: "plus")
                 }
                 .buttonStyle(.themeIcon)
                 .controlSize(.small)
                 .help("Add a medication")
             }
-            if medications.isEmpty {
-                Text("None recorded.")
+            if draft.medications.isEmpty {
+                Text(PatientProfileDraft.noMedicationsMessage)
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.muted.color)
             } else {
-                ForEach($medications) { $med in
+                ForEach($draft.medications) { $med in
                     HStack(spacing: 8) {
                         ProfileTextField(
                             placeholder: "Medication",
                             label: "Medication name",
                             text: $med.name,
-                            autofocus: initialFocus.medicationToFocus(in: medications) == med.id
+                            autofocus: initialFocus.medicationToFocus(in: draft.medications) == med.id
                         )
                         ProfileTextField(placeholder: "Dose", label: "Dose", text: $med.dose)
                             .frame(width: 130)
                         Button {
-                            medications.removeAll { $0.id == med.id }
+                            draft.removeMedication(id: med.id)
                         } label: {
                             Label("Remove medication", systemImage: "trash")
                         }
@@ -343,27 +305,33 @@ struct PatientProfileEditor: View {
 /// Requires typing the patient's name to confirm.
 struct DeletePatientConfirmationView: View {
     let patient: Patient
+    let sessionDates: [Date]
     let onDelete: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var typedName = ""
     @FocusState private var isFieldFocused: Bool
 
+    private var confirmation: DeletePatientConfirmation {
+        DeletePatientConfirmation(patientName: patient.name, sessionDates: sessionDates)
+    }
+
     private var matches: Bool {
-        typedName.trimmingCharacters(in: .whitespaces)
-            .localizedCaseInsensitiveCompare(patient.name) == .orderedSame
+        PatientDeletionConfirmation.matches(typed: typedName, patientName: patient.name)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Delete \(patient.name)?")
+                    Text(confirmation.title)
                         .font(Theme.Typography.title)
                         .foregroundStyle(Theme.text.color)
-                    Text("This will permanently delete this patient and all of their recorded sessions, clinical notes, transcripts, audio, and AI conversations from disk.")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.muted.color)
-                        .fixedSize(horizontal: false, vertical: true)
+                    ForEach(confirmation.paragraphs, id: \.self) { paragraph in
+                        Text(paragraph)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.muted.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer()
                 Image(systemName: "exclamationmark.triangle.fill")

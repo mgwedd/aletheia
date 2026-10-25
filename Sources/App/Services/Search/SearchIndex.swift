@@ -9,7 +9,7 @@ import SQLite3
 /// rebuilt from the transcripts, so it must never share a schema version,
 /// migration backup or snapshot with the records that can't be rebuilt.
 ///
-/// Michael accepted that this holds a plaintext copy of the searchable text
+/// By design this holds a plaintext copy of the searchable text
 /// (stemmed words, not the original lines; FileVault covers it at rest). The
 /// file is excluded from Time Machine, zeroes freed pages, and its connection
 /// is closed when the app or the data folder locks. When per-folder encryption

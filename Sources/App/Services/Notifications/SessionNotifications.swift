@@ -5,7 +5,7 @@ import Foundation
 /// UserNotifications framework.
 ///
 /// Banners show on the lock screen and are kept by macOS, so by default they
-/// show the patient's initials and no session date. The full name and date
+/// say only "your session": no name, no initials, no session date. The full name and date
 /// appear only when the user turns on "Show patient names in notifications" and
 /// the app is unlocked; `PatientLabel` makes that call. Identifiers never carry
 /// a name, whatever the setting.
@@ -25,7 +25,7 @@ enum SessionNotifications {
 
     private static func sessionPhrase(_ name: String, date: Date, _ policy: PatientLabel.Policy) -> String {
         let l = label(name, policy)
-        return l.full ? "\(l.text)'s session from \(dateFormatter.string(from: date))" : "\(l.text)'s session"
+        return l.full ? "\(l.text)'s session from \(dateFormatter.string(from: date))" : "Your session"
     }
 
     static func transcriptionComplete(patientName: String, date: Date, policy: PatientLabel.Policy) -> AppNotificationContent {
@@ -60,7 +60,7 @@ enum SessionNotifications {
         AppNotificationContent(
             identifier: "summary-\(date.timeIntervalSince1970)",
             title: "Summary ready",
-            body: "The AI summary for \(sessionPhrase(patientName, date: date, policy)) is ready to review in Aletheia."
+            body: "The AI summary for \(label(patientName, policy).full ? sessionPhrase(patientName, date: date, policy) : "your session") is ready to review in Aletheia."
         )
     }
 
@@ -68,7 +68,7 @@ enum SessionNotifications {
         AppNotificationContent(
             identifier: "long-recording",
             title: "Still recording",
-            body: "\(label(patientName, policy).text)'s session has been recording for over 90 minutes. Did you forget to end it?"
+            body: "\(label(patientName, policy).full ? "\(label(patientName, policy).text)'s session" : "Your session") has been recording for over 90 minutes. Did you forget to end it?"
         )
     }
 

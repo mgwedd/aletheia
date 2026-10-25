@@ -59,6 +59,11 @@ enum DataFolderMove {
         }
     }
 
+    /// Removes the folder that was copied from, once the user chooses to.
+    static func deleteOriginal(_ original: URL) throws {
+        try FileManager.default.removeItem(at: original)
+    }
+
     static func verifyCopy(_ source: URL, _ copy: URL) throws -> Bool {
         let original = try manifest(at: source)
         let duplicate = try manifest(at: copy)

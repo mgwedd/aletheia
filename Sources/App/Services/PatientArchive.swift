@@ -9,7 +9,6 @@ struct ArchiveSession: Equatable, Sendable {
     var notes: [ArchiveNote]
     /// The latest-note file, used only when no per-format note exists (older sessions).
     var summary: String
-    var comments: [ArchiveComment]
 }
 
 struct ArchiveNote: Equatable, Sendable {
@@ -44,7 +43,9 @@ struct ArchiveFile: Equatable {
 ///         2026-09-16 14.30/
 ///           Transcript.txt
 ///           Note - SOAP.txt
-///           Comments.txt
+///
+/// The therapist's psychotherapy notes and private margin comments are not part
+/// of this archive; `PsychotherapyExport` writes them separately.
 enum PatientArchive {
     static func files(
         patientName: String, background: String, sessions: [ArchiveSession], exportedOn: Date,
@@ -79,9 +80,6 @@ enum PatientArchive {
             let summary = session.summary.trimmingCharacters(in: .whitespacesAndNewlines)
             if session.notes.isEmpty, !summary.isEmpty {
                 files.append(ArchiveFile(path: "\(folder)/Summary.txt", text: summary + "\n", modified: session.date))
-            }
-            if let comments = commentsText(session.comments) {
-                files.append(ArchiveFile(path: "\(folder)/Comments.txt", text: comments, modified: session.date))
             }
             if files.count == before, !hasRecording(index) { empty += 1 }
         }
@@ -168,12 +166,12 @@ enum PatientArchive {
             "\(patientName.isEmpty ? "Patient" : patientName): records",
             "Exported on \(longFormatter.string(from: exportedOn)).",
             "",
-            "The Sessions folder has one folder per session, oldest first. Each holds that session's transcript, notes and comments as plain text files that open in any text editor.",
+            "The Sessions folder has one folder per session, oldest first. Each holds that session's transcript and notes as plain text files that open in any text editor.",
             "",
             "Sessions in this export: \(sessionCount)",
         ]
         if emptyCount > 0 {
-            lines.append("Sessions with no transcript, note or comment (left out): \(emptyCount)")
+            lines.append("Sessions with no transcript or note (left out): \(emptyCount)")
         }
         return lines.joined(separator: "\n") + "\n"
     }
@@ -211,17 +209,11 @@ enum ArchiveLoader {
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             return ArchiveNote(formatName: format.shortName, text: PatientArchive.plainText(fromMarkdown: text))
         }
-        let comments = store.comments(for: session).map {
-            ArchiveComment(
-                anchorSeconds: $0.anchorSeconds, quotedText: $0.quotedText, body: $0.body,
-                resolved: $0.resolved, noteLabel: $0.format?.shortName)
-        }
         return ArchiveSession(
             date: session.date,
             transcript: try store.readTranscript(for: patient, session: session) ?? "",
             notes: notes,
-            summary: store.summary(for: patient, session: session).map(PatientArchive.plainText(fromMarkdown:)) ?? "",
-            comments: comments
+            summary: store.summary(for: patient, session: session).map(PatientArchive.plainText(fromMarkdown:)) ?? ""
         )
     }
 }

@@ -128,18 +128,19 @@ struct GlobalSearchHotkey: NSViewRepresentable {
         func attach(to view: NSView) {
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak view] event in
                 guard let self, let window = view?.window, event.window === window else { return event }
-                if GlobalSearchShortcut.isGlobalSearch(event) {
-                    self.focusSearch()
-                    return nil
-                }
                 // Local monitors run on the main thread.
-                let showedFindBar = MainActor.assumeIsolated {
-                    guard GlobalSearchShortcut.isFindInText(event),
-                          let textView = GlobalSearchShortcut.findableTextView(window.firstResponder) else { return false }
-                    GlobalSearchShortcut.showFindBar(in: textView)
-                    return true
+                return MainActor.assumeIsolated {
+                    switch GlobalSearchShortcut.route(event, firstResponder: window.firstResponder) {
+                    case .focusSearch:
+                        self.focusSearch()
+                        return nil
+                    case .showFindBar(let textView):
+                        GlobalSearchShortcut.showFindBar(in: textView)
+                        return nil
+                    case .passThrough:
+                        return event
+                    }
                 }
-                return showedFindBar ? nil : event
             }
         }
 

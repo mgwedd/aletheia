@@ -147,7 +147,9 @@ struct DoctorEnvironment: Equatable {
             supportedSchemaVersion: SchemaMigrator.latestVersion,
             homeDirectory: NSHomeDirectory(),
             dataRoot: dataRoot?.path,
-            knownTerms: [NSUserName(), (NSHomeDirectory() as NSString).lastPathComponent] + knownTerms
+            // The account's real home folder name, not NSHomeDirectory(): in the sandbox that is
+            // the app container ending in "Data", which would blank out "Data folder" in the report.
+            knownTerms: [NSUserName(), DataFolderPolicy.realHome.lastPathComponent] + knownTerms
         )
     }
 }

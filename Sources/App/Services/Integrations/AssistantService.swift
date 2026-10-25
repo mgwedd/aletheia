@@ -92,7 +92,7 @@ struct AssistantService {
             prompt: Prompts.progressNote(
                 format: format,
                 transcript: transcript,
-                notes: notes,
+                notes: AIContextPolicy.notes(notes, for: .noteGeneration),
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
                 verbosity: verbosity,
@@ -119,7 +119,7 @@ struct AssistantService {
             prompt: Prompts.progressNote(
                 format: format,
                 transcript: transcript,
-                notes: notes,
+                notes: AIContextPolicy.notes(notes, for: .noteGeneration),
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
                 verbosity: verbosity,
@@ -143,7 +143,7 @@ struct AssistantService {
             turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
-                notes: notes,
+                notes: AIContextPolicy.notes(notes, for: .sessionChat),
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
                 history: history,
@@ -179,7 +179,7 @@ struct AssistantService {
             turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
-                notes: notes,
+                notes: AIContextPolicy.notes(notes, for: .sessionChat),
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
                 history: history,

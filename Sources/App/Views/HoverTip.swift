@@ -27,8 +27,8 @@ struct HelpTip: Tip, Equatable {
 enum HelpTips {
     static let myNotes = HelpTip(
         id: "notes.mine",
-        heading: "My notes",
-        text: "Your own notes for this session — jot things down during or after the session. Kept separate from the transcript, and included when you ask about this session."
+        heading: "Psychotherapy note",
+        text: NoteKind.psychotherapyHelp
     )
 
     static let compact = HelpTip(

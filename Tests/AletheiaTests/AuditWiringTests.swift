@@ -76,13 +76,13 @@ final class AuditWiringTests: XCTestCase {
         let store = try XCTUnwrap(appModel.store)
 
         try store.deleteRecordings(for: patient, session: session)
-        XCTAssertTrue(entries(.recordDeleted).isEmpty, "nothing was on disk, so nothing was deleted")
+        XCTAssertTrue(entries(.phiDeleted).isEmpty, "nothing was on disk, so nothing was deleted")
 
         let mic = store.micRecordingURL(for: patient, session: session)
         try Data("audio".utf8).write(to: mic)
         try store.deleteRecordings(for: patient, session: session)
 
-        let recorded = entries(.recordDeleted)
+        let recorded = entries(.phiDeleted)
         XCTAssertEqual(recorded.count, 1)
         XCTAssertEqual(recorded.first?.subjectID, session.id.uuidString)
         XCTAssertEqual(recorded.first?.detail, "audio recording")
@@ -94,11 +94,11 @@ final class AuditWiringTests: XCTestCase {
         let store = try XCTUnwrap(appModel.store)
         let thread = ChatThread(title: "Private question")
         try store.saveChatThread(thread, for: patient)
-        XCTAssertTrue(entries(.recordDeleted).isEmpty)
+        XCTAssertTrue(entries(.phiDeleted).isEmpty)
 
         try store.deleteChatThread(id: thread.id, for: patient)
 
-        let recorded = entries(.recordDeleted)
+        let recorded = entries(.phiDeleted)
         XCTAssertEqual(recorded.count, 1)
         XCTAssertEqual(recorded.first?.subjectID, thread.id.uuidString)
         XCTAssertEqual(recorded.first?.detail, "chat thread")
@@ -112,7 +112,7 @@ final class AuditWiringTests: XCTestCase {
 
         XCTAssertTrue(comments.deleteComment(id: comment.id))
 
-        let recorded = entries(.recordDeleted)
+        let recorded = entries(.phiDeleted)
         XCTAssertEqual(recorded.count, 1)
         XCTAssertEqual(recorded.first?.subjectID, sessionID.uuidString)
         XCTAssertEqual(recorded.first?.detail, "comment")

@@ -151,6 +151,22 @@ enum GlobalSearchShortcut {
         isF(event, modifiers: .command)
     }
 
+    /// What a key press does while `firstResponder` holds the cursor: ⌘F focuses the
+    /// sidebar search wherever the cursor is; ⌥⌘F opens the find bar of a transcript
+    /// or note; anything else is left alone.
+    @MainActor
+    static func route(_ event: NSEvent, firstResponder: NSResponder?) -> Route {
+        if isGlobalSearch(event) { return .focusSearch }
+        if isFindInText(event), let textView = findableTextView(firstResponder) { return .showFindBar(textView) }
+        return .passThrough
+    }
+
+    enum Route {
+        case focusSearch
+        case showFindBar(NSTextView)
+        case passThrough
+    }
+
     /// ⌥⌘F.
     static func isFindInText(_ event: NSEvent) -> Bool {
         isF(event, modifiers: [.command, .option])

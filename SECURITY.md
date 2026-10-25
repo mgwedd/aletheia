@@ -56,9 +56,10 @@ about both). Settings › Backups › **Back Up Now** writes an end-to-end-encry
 copy of the database (`.aletheiabackup`, sealed with your encryption key) to a
 folder you choose. It needs encryption to be on and unlocked, refuses synced
 folders (iCloud Drive, Dropbox and similar), network locations and unencrypted
-removable disks, and never uploads the copy. It backs up the database only, not
-recordings or other files, and there is no restore screen yet. Each successful
-run is recorded once in the audit log. Nothing is backed up to iCloud. Point-in-time database snapshots
+removable disks, and never uploads the copy. It backs up the whole data folder.
+Restore from backup unpacks a backup into a new, empty folder, never over
+existing data, and refuses a wrong passphrase or an archive that has been
+altered. Each successful backup and restore is recorded once in the audit log. Nothing is backed up to iCloud. Point-in-time database snapshots
 (`.backups/snapshots/` and `.backups/migrations/`, via SQLite's `VACUUM INTO`)
 protect schema migrations and encryption on/off changes against a mid-write
 failure. All of these live in the single hidden `.backups/` folder inside your
@@ -130,3 +131,18 @@ Please report security problems privately, not in a public issue or pull
 request. On the repository page open the **Security** tab, choose **Report a
 vulnerability**, and describe what you found and how to reproduce it. Do not
 include real patient data in a report.
+
+## Support without patient data
+
+Astrea Labs support never asks for patient data. Do not send database files,
+recordings, transcripts, notes, or screenshots or logs that show client details,
+and do not paste any of them into an email or a feedback form.
+
+To report a problem, run **Help → Aletheia Doctor**, copy the report, and email it
+to support@astrealabs.com with a short description of what you were doing. The
+Doctor report is built to be safe to share: it redacts patient and session names,
+identifiers and file paths, and records only checks and error causes. Read it
+before you send it.
+
+If patient data reaches us by accident, tell us at the same address and we will
+delete it.

@@ -12,7 +12,7 @@ final class AuditLogCopyTests: XCTestCase {
     /// Every action passed to `record(` / `recordAudit(` anywhere in the app.
     private func actionsRecordedInSource() throws -> Set<String> {
         let files = try XCTUnwrap(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
-        let regex = try NSRegularExpression(pattern: #"(?:recordAudit|\.record)\(\s*\.(\w+)"#)
+        let regex = try NSRegularExpression(pattern: #"(?:recordAudit|\.record|onAudit\?)\(\s*\.(\w+)"#)
         var found = Set<String>()
         for case let url as URL in files where url.pathExtension == "swift" {
             let text = try String(contentsOf: url, encoding: .utf8)
@@ -34,7 +34,7 @@ final class AuditLogCopyTests: XCTestCase {
     func testCaptionNamesBackupsAndDeletionsAsRecorded() {
         let caption = AuditLogCopy.caption
         XCTAssertTrue(caption.contains("deletions"))
-        XCTAssertTrue(caption.contains("backups"))
+        XCTAssertTrue(caption.contains("backups and restores"))
         XCTAssertTrue(caption.contains("Viewing records is not recorded yet"))
         XCTAssertFalse(caption.localizedCaseInsensitiveContains("backups are not recorded"))
         XCTAssertTrue(caption.contains("§164.312(b)"), "keeps the audit-control note")

@@ -7,9 +7,9 @@ private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 9, _ minu
 }
 
 private func session(
-    _ date: Date, transcript: String = "", notes: [ArchiveNote] = [], summary: String = "", comments: [ArchiveComment] = []
+    _ date: Date, transcript: String = "", notes: [ArchiveNote] = [], summary: String = ""
 ) -> ArchiveSession {
-    ArchiveSession(date: date, transcript: transcript, notes: notes, summary: summary, comments: comments)
+    ArchiveSession(date: date, transcript: transcript, notes: notes, summary: summary)
 }
 
 /// A reader for what `ZipArchive` writes, independent of the writer: it follows the
@@ -223,6 +223,19 @@ final class PatientArchiveTests: XCTestCase {
         XCTAssertTrue(legacy.contains { $0.path.hasSuffix("/Summary.txt") && $0.text == "An older summary.\n" })
     }
 
+    func testDefaultExportOmitsPsychotherapyNotes() {
+        let result = files([session(date(2026, 1, 5), transcript: "Talk.", notes: [ArchiveNote(formatName: "SOAP", text: "S: ok")])])
+        XCTAssertFalse(result.contains { $0.path.contains("Psychotherapy") || $0.path.contains("Comments") })
+    }
+
+    func testPsychotherapyExportRequiresAuthorizationFlag() {
+        let entry = PsychotherapyNoteEntry(date: date(2026, 1, 5), note: "x", comments: [])
+        XCTAssertThrowsError(try PsychotherapyExport.archiveFiles(
+            patientName: "Jane Doe", entries: [entry], exportedOn: date(2026, 1, 6), authorized: false))
+        XCTAssertNoThrow(try PsychotherapyExport.archiveFiles(
+            patientName: "Jane Doe", entries: [entry], exportedOn: date(2026, 1, 6), authorized: true))
+    }
+
     func testCommentsReadAsPlainText() throws {
         let text = try XCTUnwrap(PatientArchive.commentsText([
             ArchiveComment(anchorSeconds: 754, quotedText: "I can't sleep", body: "Ask about caffeine.", resolved: false),
@@ -359,7 +372,7 @@ final class PatientArchiveWriterTests: XCTestCase {
 
     // MARK: Reading from a real store
 
-    func testTheLoaderReadsTranscriptNotesAndCommentsFromAStore() throws {
+    func testTheLoaderReadsTranscriptAndNotesButNotCommentsFromAStore() throws {
         let dataRoot = root.appendingPathComponent("data", isDirectory: true)
         try FileManager.default.createDirectory(at: dataRoot, withIntermediateDirectories: true)
         let commentStore = try XCTUnwrap(CommentStore(root: dataRoot))
@@ -377,9 +390,11 @@ final class PatientArchiveWriterTests: XCTestCase {
         XCTAssertEqual(loaded.notes.map(\.formatName), ["SOAP"])
         XCTAssertTrue(loaded.notes[0].text.contains("Slept poorly."))
         XCTAssertFalse(loaded.notes[0].text.contains("**"))
-        XCTAssertEqual(loaded.comments.map(\.body), ["Open question.", "Ask how long."])
-        XCTAssertEqual(loaded.comments.first?.anchorSeconds, 5)
-        XCTAssertEqual(loaded.comments.map(\.noteLabel), [nil, "SOAP"])
+        // Private comments belong to the separate psychotherapy export.
+        let entry = PsychotherapyExport.load(store: store, session: record)
+        XCTAssertEqual(entry.comments.map(\.body), ["Open question.", "Ask how long."])
+        XCTAssertEqual(entry.comments.first?.anchorSeconds, 5)
+        XCTAssertEqual(entry.comments.map(\.noteLabel), [nil, "SOAP"])
     }
 }
 
