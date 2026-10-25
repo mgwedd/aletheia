@@ -177,6 +177,12 @@ Before you start: a Mac that can authenticate with Touch ID or a password.
 - **LOCK-06** Lock the app while a recording runs → the recording keeps going.
 - **LOCK-07** Copy a patient's text and paste it elsewhere → it pastes, but clipboard history doesn't keep it.
 - **LOCK-08** Select transcript text and open the right-click menu → macOS Writing Tools isn't offered.
+- **LOCK-09** With the encrypted folder's key kept on this Mac and App lock saved as off, quit and reopen → the lock screen still covers the window.
+- **LOCK-10** In that state, open **Settings** > **Security** → App lock shows on and can't be changed.
+- **LOCK-11** With the key not kept on this Mac, turn App lock off → it asks for Touch ID or your password first, and the app stops locking at launch.
+- **LOCK-12** Quit and reopen with the key kept, then unlock with Touch ID → patients appear with no passphrase asked, and none showed before.
+- **LOCK-13** On a fresh install, open **Settings** > **Security** → "Lock when Aletheia is hidden" is on; an install that turned it off keeps it off.
+- **LOCK-14** Delete a session's recording whose temporary audio folder can't be removed → the app says the recording wasn't deleted.
 
 ## 13. Encryption at rest (ENCRYPT)
 Before you start: a developer build, or a data folder that is already encrypted; Settings > Encryption appears only then.
