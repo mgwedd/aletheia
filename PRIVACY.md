@@ -24,8 +24,8 @@ govern model files you choose to download; those are covered by their providers'
 
 ## 2. What Astrea Labs collects
 
-The App has no analytics, crash reporting, usage tracking, accounts, or Astrea Labs
-backend. Astrea Labs cannot see who uses the App or what it is used for.
+The App has no analytics, crash reporting, usage tracking or accounts, and it
+never tells Astrea Labs how or when it is used.
 Update requests to GitHub, model downloads from Hugging Face and the license
 revocation list from `astrealabs.com` may expose an IP address and app version
 to those hosts.
