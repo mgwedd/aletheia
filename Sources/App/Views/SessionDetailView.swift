@@ -247,6 +247,7 @@ struct SessionDetailView: View {
     @State private var confirmationMessage: String?
     @State private var showScheduleSheet = false
     @State private var showRecordingConsent = false
+    @State private var pendingExport: ExportConfirmation?
     @State private var scheduleStart = Date()
     @State private var scheduleDurationMinutes = SessionEventBuilder.defaultDurationMinutes
     @State private var scheduleRecurrence: EventRecurrence = .never
@@ -377,7 +378,7 @@ struct SessionDetailView: View {
         } message: {
             Text(confirmationMessage ?? "")
         }
-        .dismissOnLock { showScheduleSheet = false; editingInstructions = false }
+        .dismissOnLock { showScheduleSheet = false; editingInstructions = false; pendingExport = nil; showRecordingConsent = false }
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
         .sheet(isPresented: $showRecordingConsent) {
             RecordingConsentSheet(
@@ -390,6 +391,7 @@ struct SessionDetailView: View {
                 }
             )
         }
+        .exportConfirmation($pendingExport, settings: settings)
         .exportResultAlert($exportResult)
     }
 
@@ -644,7 +646,7 @@ struct SessionDetailView: View {
         if scheduleExportICS {
             let icsText = ICSExporter.generate(for: draft)
             let dateStr = draft.startDate.formatted(date: .abbreviated, time: .omitted)
-            let suggestedName = FileSaver.fileName(patient.name, "Session", dateStr) + ".ics"
+            let suggestedName = FileSaver.exportFileName(forPatientNamed: patient.name, "Session", dateStr) + ".ics"
             icsSaved = FileSaver.saveICS(icsText, suggestedName: suggestedName)
         }
         do {
@@ -679,9 +681,18 @@ struct SessionDetailView: View {
     }
 
     private func exportSession(as format: ExportFormat) {
+        guard appModel.store != nil else { return }
+        ExportConfirmation(
+            patientName: patient.name, noun: "session (note and transcript)", count: 1, fileType: format.title,
+            scope: .session
+        ) { saveSession(as: format) }
+        .begin(skipSingleNote: settings.skipSingleNoteExportConfirmation) { pendingExport = $0 }
+    }
+
+    private func saveSession(as format: ExportFormat) {
         guard let store = appModel.store else { return }
         let document = ExportDocument(markdown: store.exportSessionMarkdown(patient: patient, session: session))
-        let base = FileSaver.fileName(patient.name, String(session.folderName.prefix(10)))
+        let base = FileSaver.exportFileName(forPatientNamed: patient.name, String(session.folderName.prefix(10)))
         let outcome = ExportRenderer.save(document, as: format, baseName: base)
         if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
@@ -693,6 +704,13 @@ struct SessionDetailView: View {
 
     /// Saves the note on screen in `format`, after the usual save panel.
     private func exportNote(as format: ExportFormat) {
+        ExportConfirmation(
+            patientName: patient.name, noun: "note", count: 1, fileType: format.title, scope: .singleNote
+        ) { saveNote(as: format) }
+        .begin(skipSingleNote: settings.skipSingleNoteExportConfirmation) { pendingExport = $0 }
+    }
+
+    private func saveNote(as format: ExportFormat) {
         let noteFormat = settings.progressNoteFormat.shortName
         let dateStr = String(session.folderName.prefix(10))
         let document = ExportDocument(
@@ -700,7 +718,7 @@ struct SessionDetailView: View {
             subtitle: "\(noteFormat) · \(Self.dateFormatter.string(from: session.date))",
             markdown: summaryText
         )
-        let base = FileSaver.fileName(patient.name, dateStr, noteFormat)
+        let base = FileSaver.exportFileName(forPatientNamed: patient.name, dateStr, noteFormat)
         let outcome = ExportRenderer.save(document, as: format, baseName: base)
         if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
