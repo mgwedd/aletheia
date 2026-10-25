@@ -23,7 +23,7 @@ enum NotesPane: Hashable, Identifiable {
 
     var label: String {
         switch self {
-        case .mine: return "My Notes"
+        case .mine: return NoteKind.psychotherapy.title
         case .format(let format): return format.shortName
         }
     }
@@ -240,6 +240,9 @@ struct SessionDetailView: View {
     @State private var errorMessage: String?
     /// How the last export ended, shown until dismissed.
     @State private var exportResult: SaveOutcome?
+    /// The format chosen for a psychotherapy note export, while the
+    /// authorization confirmation is showing.
+    @State private var psychotherapyExportFormat: ExportFormat?
     /// Set when note generation or a chat answer failed because the local AI
     /// engine is down; `engineRetries` re-runs whatever failed after the fix.
     @State private var engineIncident: AIEngineIncident?
@@ -393,6 +396,21 @@ struct SessionDetailView: View {
         }
         .exportConfirmation($pendingExport, settings: settings)
         .exportResultAlert($exportResult)
+        .confirmationDialog(
+            PsychotherapyExport.confirmationTitle,
+            isPresented: Binding(
+                get: { psychotherapyExportFormat != nil },
+                set: { if !$0 { psychotherapyExportFormat = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button(PsychotherapyExport.confirmButton) {
+                if let format = psychotherapyExportFormat { exportPsychotherapyNote(as: format) }
+                psychotherapyExportFormat = nil
+            }
+            Button("Cancel", role: .cancel) { psychotherapyExportFormat = nil }
+        } message: {
+            Text(PsychotherapyExport.confirmationMessage)
+        }
     }
 
     private var header: some View {
@@ -719,6 +737,23 @@ struct SessionDetailView: View {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
         } else if case .failed = outcome {
             appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
+        }
+        exportResult = outcome.shown
+    }
+
+    /// Saves the psychotherapy note on its own, after the authorization
+    /// confirmation. Never part of a progress-note export.
+    private func exportPsychotherapyNote(as format: ExportFormat) {
+        let detail = "Psychotherapy note, \(format.title), authorization confirmed"
+        guard let document = try? PsychotherapyExport.sessionDocument(
+            patientName: patient.name, date: session.date, note: sessionNote, authorized: true) else { return }
+        let outcome = ExportRenderer.save(
+            document, as: format,
+            baseName: PsychotherapyExport.sessionFileBase(patientName: patient.name, date: session.date))
+        if case .saved = outcome {
+            appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: detail)
+        } else if case .failed = outcome {
+            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: detail)
         }
         exportResult = outcome.shown
     }
@@ -1107,13 +1142,24 @@ struct SessionDetailView: View {
 
     private var myNotesView: some View {
         VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                PsychotherapyNoteBanner()
+                Spacer(minLength: 8)
+                ExportButton(
+                    title: "Export psychotherapy note…",
+                    help: "Save this note on its own, apart from the clinical record. You'll confirm you have authorization first."
+                ) { psychotherapyExportFormat = $0 }
+                    .buttonStyle(.themed)
+                    .disabled(sessionNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.horizontal, 20)
             RichNoteEditor(
                 markdown: $sessionNote,
-                placeholder: "Jot things down during or after the session…",
+                placeholder: "Your private process notes for this session…",
                 fonts: .sans,
                 minHeight: 160,
                 fills: true,
-                label: "My notes"
+                label: NoteKind.psychotherapy.title
             )
             .padding([.horizontal, .bottom], 20)
             .onChange(of: sessionNote) { _, newValue in
@@ -1168,7 +1214,7 @@ struct SessionDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 // Adapts to the pane's width instead of widening it.
                 AdaptiveActionRow {
-                    EmptyView()
+                    Text(NoteKind.progress.title).eyebrowStyle()
                 } actions: {
                     if noteRunner.isStreaming {
                         Button(role: .destructive) { noteStopping = true; noteRunner.stop() } label: {
@@ -1229,7 +1275,7 @@ struct SessionDetailView: View {
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 10)
                         }
-                        ExportButton(help: "Save this note as a PDF, Word or Markdown file") { exportNote(as: $0) }
+                        ExportButton(title: "Export progress note…", help: "Save this progress note as a PDF, Word or Markdown file. Your psychotherapy note is never included.") { exportNote(as: $0) }
                     }
                 }
                 if let status = noteRunner.queuedStatus {
