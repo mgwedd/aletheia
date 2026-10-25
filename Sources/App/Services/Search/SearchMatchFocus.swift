@@ -27,23 +27,32 @@ struct SearchMatchFocus: Equatable {
         return firstMatch(in: text).map { NSRange($0, in: text) }
     }
 
-    /// The rendered block of a note (`blocks`, as parsed from what is shown)
-    /// that holds the hit's paragraph of `note`: of the blocks with a match, the
-    /// one whose words are most nearly all in that paragraph, the first of those.
-    /// Rendering splits and tidies paragraphs, so blocks are matched by their
-    /// words rather than by position. nil when no block matches.
-    func noteBlock(in blocks: [MarkdownBlock], note: String) -> Int? {
+    /// The match to flash in a note as the reader shows it (`rendered`, the
+    /// Markdown of `note` rendered to text; UTF-16): the first match in the
+    /// rendered line whose words are most nearly all in the hit's paragraph of
+    /// `note`, the first such line on a tie. Rendering drops markup and splits
+    /// paragraphs, so lines are matched by their words rather than by position.
+    /// nil when nothing matches.
+    func noteRange(in rendered: String, note: String) -> NSRange? {
         let paragraphs = GlobalSearchText.paragraphs(note)
         let passageWords = passage < paragraphs.count ? Set(TextSearch.queryTerms(paragraphs[passage])) : []
-        var best: (index: Int, share: Double)?
-        for (index, block) in blocks.enumerated() {
-            let text = block.plainText
-            guard firstMatch(in: text) != nil else { continue }
-            let words = Set(TextSearch.queryTerms(text))
-            let share = words.isEmpty ? 0 : Double(words.intersection(passageWords).count) / Double(words.count)
-            if best == nil || share > best!.share { best = (index, share) }
+        var best: (range: NSRange, share: Double)?
+        var lineStart = rendered.startIndex
+        while lineStart <= rendered.endIndex {
+            let lineEnd = rendered[lineStart...].firstIndex(of: "\n") ?? rendered.endIndex
+            let line = String(rendered[lineStart..<lineEnd])
+            if let match = firstMatch(in: line) {
+                let words = Set(TextSearch.queryTerms(line))
+                let share = words.isEmpty ? 0 : Double(words.intersection(passageWords).count) / Double(words.count)
+                if best == nil || share > best!.share {
+                    let inner = NSRange(match, in: line)
+                    best = (NSRange(location: lineStart.utf16Offset(in: rendered) + inner.location, length: inner.length), share)
+                }
+            }
+            guard lineEnd < rendered.endIndex else { break }
+            lineStart = rendered.index(after: lineEnd)
         }
-        return best?.index
+        return best?.range
     }
 
     /// The first word the search matched in `text`; where none does (a word
@@ -73,18 +82,5 @@ struct SearchMatchFocus: Equatable {
     /// shown: once per token, so re-rendering doesn't flash again.
     static func isNewRequest(token: Int, lastHandledToken: Int?) -> Bool {
         token != lastHandledToken
-    }
-}
-
-extension MarkdownBlock {
-    /// The block's text as written (inline markup left in), for matching words.
-    var plainText: String {
-        switch self {
-        case let .heading(_, text): return text
-        case let .paragraph(text): return text
-        case let .bulleted(items), let .numbered(items), let .quote(items): return items.joined(separator: "\n")
-        case let .code(_, code): return code
-        case .rule: return ""
-        }
     }
 }

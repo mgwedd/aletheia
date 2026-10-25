@@ -61,43 +61,51 @@ final class SearchMatchFocusTests: XCTestCase {
 
     // MARK: Note
 
-    func testPicksTheRenderedBlockOfTheHitsParagraph() throws {
+    private func rendered(_ note: String) -> String {
+        NoteReaderView.rendered(note).string
+    }
+
+    private func flashedInNote(_ query: String, passage: Int, in note: String) -> String? {
+        let text = rendered(note)
+        return SearchMatchFocus(query: query, passage: passage).noteRange(in: text, note: note)
+            .map { (text as NSString).substring(with: $0) }
+    }
+
+    func testFlashesTheMatchInTheRenderedLineOfTheHitsParagraph() throws {
         let note = """
         ## Subjective
-        Client reports sleeping poorly and feeling anxious.
+        Client reports sleeping poorly and feeling **anxious**.
 
         ## Plan
         Continue sleep hygiene work; review anxious thoughts next session.
         """
-        let blocks = MarkdownParser.parse(note)
+        let text = rendered(note)
         let paragraphs = GlobalSearchText.paragraphs(note)
         let plan = try XCTUnwrap(paragraphs.firstIndex { $0.contains("hygiene") })
-        let block = SearchMatchFocus(query: "anxious", passage: plan).noteBlock(in: blocks, note: note)
-        XCTAssertEqual(block.map { blocks[$0].plainText }, "Continue sleep hygiene work; review anxious thoughts next session.")
-        let first = SearchMatchFocus(query: "anxious", passage: 0).noteBlock(in: blocks, note: note)
-        XCTAssertEqual(first.map { blocks[$0].plainText }, "Client reports sleeping poorly and feeling anxious.")
+        let range = try XCTUnwrap(SearchMatchFocus(query: "anxious", passage: plan).noteRange(in: text, note: note))
+        XCTAssertEqual((text as NSString).substring(with: range), "anxious")
+        let planLine = (text as NSString).range(of: "Continue sleep hygiene")
+        XCTAssertGreaterThan(range.location, planLine.location, "the match in the Plan line, not the first one")
+
+        let subjective = try XCTUnwrap(paragraphs.firstIndex { $0.contains("sleeping poorly") })
+        let first = try XCTUnwrap(SearchMatchFocus(query: "anxious", passage: subjective).noteRange(in: text, note: note))
+        XCTAssertLessThan(first.location, planLine.location)
     }
 
     func testNoteMatchingIgnoresCaseAndDiacritics() {
-        let note = "Intro paragraph.\n\nMet at the Café."
-        let blocks = MarkdownParser.parse(note)
-        XCTAssertEqual(SearchMatchFocus(query: "CAFE", passage: 1).noteBlock(in: blocks, note: note), 1)
+        XCTAssertEqual(flashedInNote("CAFE", passage: 1, in: "Intro paragraph.\n\nMet at the Café."), "Café")
     }
 
-    func testNoteFallsBackToTheFirstMatchingBlockAndIsNilWithoutOne() {
+    func testNoteFallsBackToTheFirstMatchingLineAndIsNilWithoutOne() {
         let note = "First about gardens.\n\nThen about gardens again."
-        let blocks = MarkdownParser.parse(note)
-        XCTAssertEqual(SearchMatchFocus(query: "garden", passage: 7).noteBlock(in: blocks, note: note), 0)
-        XCTAssertNil(SearchMatchFocus(query: "lake", passage: 0).noteBlock(in: blocks, note: note))
+        let text = rendered(note)
+        XCTAssertEqual(SearchMatchFocus(query: "garden", passage: 7).noteRange(in: text, note: note)?.location,
+                       (text as NSString).range(of: "gardens").location)
+        XCTAssertNil(SearchMatchFocus(query: "lake", passage: 0).noteRange(in: text, note: note))
     }
 
-    func testListAndQuoteBlocksAreMatchedByTheirItems() {
-        XCTAssertEqual(MarkdownBlock.bulleted(["a", "b"]).plainText, "a\nb")
-        XCTAssertEqual(MarkdownBlock.heading(level: 2, text: "Plan").plainText, "Plan")
-        XCTAssertEqual(MarkdownBlock.rule.plainText, "")
-        let note = "Intro.\n\n- sleep hygiene\n- review worries"
-        let blocks = MarkdownParser.parse(note)
-        XCTAssertEqual(SearchMatchFocus(query: "worried", passage: 1).noteBlock(in: blocks, note: note), 1)
+    func testListItemsAreMatchedInTheRenderedText() {
+        XCTAssertEqual(flashedInNote("worried", passage: 1, in: "Intro.\n\n- sleep hygiene\n- review worries"), "worries")
     }
 
     // MARK: Once per request

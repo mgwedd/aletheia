@@ -130,7 +130,8 @@ enum PsychotherapyExport {
             date: session.date,
             note: store.psychotherapyNote(for: session),
             comments: store.comments(for: session).map {
-                ArchiveComment(anchorSeconds: $0.anchorSeconds, quotedText: $0.quotedText, body: $0.body, resolved: $0.resolved)
+                ArchiveComment(anchorSeconds: $0.anchorSeconds, quotedText: $0.quotedText, body: $0.body, resolved: $0.resolved,
+                    noteLabel: $0.format?.shortName)
             }
         )
     }

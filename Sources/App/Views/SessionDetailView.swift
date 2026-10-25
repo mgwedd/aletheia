@@ -153,9 +153,17 @@ struct SessionDetailView: View {
         get { material.myNotes }
         nonmutating set { material.myNotes = newValue }
     }
-    private var comments: [SessionComment] {
+    /// Every comment on the session: the transcript's, and those on each
+    /// format's note.
+    private var allComments: [SessionComment] {
         get { material.comments }
         nonmutating set { material.comments = newValue }
+    }
+    /// The comments on the transcript.
+    private var comments: [SessionComment] { allComments.filter { $0.format == nil } }
+    /// The comments on the note shown for the chosen format.
+    private var noteComments: [SessionComment] {
+        allComments.filter { $0.format == settings.progressNoteFormat }
     }
     private var summaryText: String {
         get { note.summaryText }
@@ -215,6 +223,23 @@ struct SessionDetailView: View {
     @State private var composerAnchor: CGRect?
     @State private var composerHeight: CGFloat = 230
     @State private var inlineCommentBody = ""
+    @State private var noteSelection = ""
+    @State private var noteSelectionRange: NSRange?
+    @State private var showNoteComposer = false
+    @State private var notePendingQuote = ""
+    @State private var notePendingQuoteStart: Int?
+    @State private var noteComposerAnchor: CGRect?
+    @State private var noteComposerHeight: CGFloat = 230
+    @State private var noteInlineCommentBody = ""
+    @State private var focusedNoteCommentID: String?
+    /// Bumped on every note focus request (a comment, or a search match), so
+    /// the note scrolls to and flashes it each time.
+    @State private var noteFocusToken = 0
+    /// Bumped for comment focus only, so a collapsed note comments pane opens
+    /// for a comment but not for a search match.
+    @State private var noteCommentRevealToken = 0
+    /// Which side of the note / comments split the reader folded away.
+    @State private var noteSplitCollapsed: TranscriptSplit.Side?
     @State private var selectedTab: SessionTab = .transcript
     /// Whether the Notes tab shows the therapist's own notes instead of a drafted note.
     @State private var showingMyNotes = false
@@ -231,13 +256,9 @@ struct SessionDetailView: View {
     /// The search match the transcript scrolls to and flashes, when no comment
     /// is focused (see `transcriptFocus`).
     @State private var searchMatchRange: NSRange?
-    /// The search match to scroll to and flash in the drafted note, and its
-    /// request token (bumped per opened hit); the last token shown, so it shows
-    /// once per request; and the rendered block currently flashed.
+    /// The search match to scroll to and flash in the drafted note. Shown on
+    /// the next `noteFocusToken`, like a focused note comment.
     @State private var noteSearchFocus: SearchMatchFocus?
-    @State private var noteFocusToken = 0
-    @State private var lastNoteFocusToken: Int?
-    @State private var flashedNoteBlock: Int?
     /// Set when the last transcription came back blank and the recording was
     /// kept (see `AudioRetentionPolicy.decision`); shown inline, not as an alert.
     @State private var noSpeechNotice: String?
@@ -328,7 +349,11 @@ struct SessionDetailView: View {
             load()
 
             if let initialFocusedCommentID {
-                focusComment(initialFocusedCommentID)
+                if initialTab == .notes {
+                    focusNoteComment(initialFocusedCommentID)
+                } else {
+                    focusComment(initialFocusedCommentID)
+                }
             }
             applySearchFocus()
             ensureDigest()
@@ -362,6 +387,8 @@ struct SessionDetailView: View {
         // My Notes) is showing still swaps the note.
         .onChange(of: settings.progressNoteFormat) { _, newFormat in
             note.showSaved(for: newFormat)
+            // Note comments belong to one format.
+            reloadNoteComments()
         }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -1028,7 +1055,7 @@ struct SessionDetailView: View {
             anchorSeconds: anchorSecs.map { Double($0) },
             quoteStart: pendingQuoteStart
         )
-        comments = commentStore.comments(sessionID: session.id)
+        allComments = commentStore.comments(sessionID: session.id)
         // Keep the composer (and the typed comment) open when the save failed.
         guard let created else { return }
         showInlineComposer = false
@@ -1065,6 +1092,7 @@ struct SessionDetailView: View {
             searchMatchRange = range
             focusToken += 1
         case .notes:
+            focusedNoteCommentID = nil
             noteSearchFocus = initialSearchFocus
             noteFocusToken += 1
         case .ask:
@@ -1072,25 +1100,16 @@ struct SessionDetailView: View {
         }
     }
 
-    /// Scrolls the drafted note to the block holding the search match and
-    /// flashes it, once per request. Runs when the note appears and when a new
-    /// request comes in while it is shown.
-    private func showNoteSearchFocus(_ proxy: ScrollViewProxy) async {
-        guard let noteSearchFocus,
-              SearchMatchFocus.isNewRequest(token: noteFocusToken, lastHandledToken: lastNoteFocusToken) else { return }
-        lastNoteFocusToken = noteFocusToken
-        let blocks = MarkdownParser.parse(MarkdownTextStyle.note.prepared(summaryText))
-        guard let block = noteSearchFocus.noteBlock(in: blocks, note: summaryText) else { return }
-        // Let the note lay out before scrolling to one of its blocks.
-        try? await Task.sleep(nanoseconds: 50_000_000)
-        guard !Task.isCancelled else { return }
-        withAnimation(.snappy) { proxy.scrollTo(block, anchor: .center) }
-        flashedNoteBlock = block
-        try? await Task.sleep(nanoseconds: 1_200_000_000)
-        withAnimation(.easeOut(duration: 0.3)) {
-            if flashedNoteBlock == block { flashedNoteBlock = nil }
-        }
+    /// What the note scrolls to and flashes on the next `noteFocusToken`: the
+    /// focused comment, or else the search match it was opened at (in the
+    /// rendered note, where the reader's offsets are).
+    private var noteFocus: TranscriptFocus? {
+        if let focusedNoteCommentID { return .comment(focusedNoteCommentID) }
+        return noteSearchFocus?.noteRange(in: renderedNote, note: summaryText).map { .range($0) }
     }
+
+    /// The note's text as the reader shows it (see `NoteReaderView.rendered`).
+    private var renderedNote: String { NoteReaderView.rendered(summaryText).string }
 
     /// Clicking a highlighted passage focuses its card in the margin rail (and
     /// scrolls it into view) — no tab change, since the rail is right there.
@@ -1106,10 +1125,15 @@ struct SessionDetailView: View {
             showingMyNotes = false
             settings.progressNoteFormat = initialNoteFormat
             note.showSaved(for: initialNoteFormat)
+            reloadNoteComments()
         }
         selectedTab = initialTab
         if let initialFocusedCommentID {
-            focusComment(initialFocusedCommentID)
+            if initialTab == .notes {
+                focusNoteComment(initialFocusedCommentID)
+            } else {
+                focusComment(initialFocusedCommentID)
+            }
         }
         applySearchFocus()
     }
@@ -1117,7 +1141,7 @@ struct SessionDetailView: View {
     private func resolveComment(_ comment: SessionComment, _ resolved: Bool) {
         guard let commentStore = appModel.commentStore else { return }
         appModel.setCommentResolved(id: comment.id, resolved: resolved)
-        comments = commentStore.comments(sessionID: session.id)
+        allComments = commentStore.comments(sessionID: session.id)
         // A resolved comment loses its highlight; don't keep focusing it.
         if resolved, focusedCommentID == comment.id { focusedCommentID = nil }
     }
@@ -1213,6 +1237,7 @@ struct SessionDetailView: View {
                 case .format(let format):
                     showingMyNotes = false
                     settings.progressNoteFormat = format
+                    reloadNoteComments()
                 }
             }
         )
@@ -1262,6 +1287,15 @@ struct SessionDetailView: View {
                             }
                             .help("Make this signed note editable again. This is recorded in the activity log.")
                         } else if !isEditingNote {
+                            Button {
+                                beginNoteInlineComment()
+                            } label: {
+                                Label("Comment", systemImage: "text.bubble")
+                            }
+                            .disabled(noteSelection.isEmpty || noteRunner.isQueued)
+                            .help(noteSelection.isEmpty
+                                  ? "Select a passage in the note to comment on it"
+                                  : "Add a comment on the selected passage in this note")
                             Button {
                                 note.beginEditing()
                             } label: {
@@ -1343,15 +1377,37 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.muted.color)
                         .padding(.horizontal, 20)
                 }
-                ScrollViewReader { proxy in
-                    BoundedScroll {
-                        MarkdownMessageView(text: summaryText, style: .note, flashedBlock: flashedNoteBlock)
-                            .frame(maxWidth: 680, alignment: .leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 20)
-                    }
-                    .task(id: noteFocusToken) { await showNoteSearchFocus(proxy) }
+                TranscriptSplitView(
+                    hasComments: !noteComments.isEmpty,
+                    commentCount: noteComments.filter { !$0.resolved }.count,
+                    ratio: $settings.transcriptSplitRatio,
+                    collapsed: $noteSplitCollapsed,
+                    revealToken: noteCommentRevealToken
+                ) {
+                    NoteReaderView(
+                        text: summaryText,
+                        comments: activeNoteAnchors,
+                        selection: $noteSelection,
+                        selectionRange: $noteSelectionRange,
+                        onOpenComment: focusNoteComment,
+                        focus: noteFocus,
+                        focusToken: noteFocusToken,
+                        composingRange: noteComposingRange,
+                        onComposingRectChange: { noteComposerAnchor = $0 }
+                    )
+                    .overlay { noteComposerOverlay }
+                } comments: {
+                    CommentsRailView(
+                        comments: noteComments,
+                        focusedCommentID: $focusedNoteCommentID,
+                        unplacedIDs: TranscriptHighlighter.unplacedIDs(in: renderedNote, comments: activeNoteAnchors),
+                        focusToken: noteFocusToken,
+                        onFocus: focusNoteComment,
+                        onResolve: resolveNoteComment,
+                        onDelete: deleteNoteComment,
+                        onEdit: editNoteComment
+                    )
+                    .textSelection(.disabled)
                 }
             }
         }
@@ -1373,6 +1429,123 @@ struct SessionDetailView: View {
         } message: {
             Text("You edited this \(settings.progressNoteFormat.shortName) note. Regenerating replaces it; your edited version is kept and can be brought back with Restore Previous.")
         }
+        .onChange(of: summaryText) { _, _ in showNoteComposer = false }
+        .onChange(of: isEditingNote) { _, editing in if editing { showNoteComposer = false } }
+    }
+
+    private var activeNoteAnchors: [TranscriptHighlighter.Anchor] {
+        noteComments.filter { !$0.resolved }.map { (id: $0.id, quote: $0.quotedText, start: $0.quoteStart) }
+    }
+
+    private var noteComposingRange: NSRange? {
+        guard showNoteComposer, let start = notePendingQuoteStart else { return nil }
+        let length = (notePendingQuote as NSString).length
+        return length > 0 ? NSRange(location: start, length: length) : nil
+    }
+
+    private func beginNoteInlineComment() {
+        // The selection is a range in the rendered note, not in the Markdown.
+        let rendered = renderedNote
+        if let range = noteSelectionRange,
+           let trimmed = TranscriptHighlighter.trimmed(range, in: rendered) {
+            notePendingQuote = (rendered as NSString).substring(with: trimmed)
+            notePendingQuoteStart = trimmed.location
+        } else {
+            notePendingQuote = noteSelection.trimmingCharacters(in: .whitespacesAndNewlines)
+            notePendingQuoteStart = nil
+        }
+        noteInlineCommentBody = ""
+        noteComposerAnchor = nil
+        showNoteComposer = true
+    }
+
+    private func saveNoteInlineComment() {
+        let quote = notePendingQuote
+        let body = noteInlineCommentBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !quote.isEmpty, !body.isEmpty else { return }
+        let format = settings.progressNoteFormat
+        let created = appModel.addComment(
+            sessionID: session.id,
+            quotedText: quote,
+            body: body,
+            anchorSeconds: nil,
+            quoteStart: notePendingQuoteStart,
+            format: format
+        )
+        // Keep the composer (and the typed comment) open when the save failed.
+        guard let created else { return }
+        reloadNoteComments()
+        showNoteComposer = false
+        focusNoteComment(created.id)
+    }
+
+    private func focusNoteComment(_ id: String) {
+        focusedNoteCommentID = id
+        noteSearchFocus = nil
+        noteFocusToken &+= 1
+        noteCommentRevealToken &+= 1
+    }
+
+    private func reloadNoteComments() {
+        if let commentStore = appModel.commentStore {
+            allComments = commentStore.comments(sessionID: session.id)
+        }
+        showNoteComposer = false
+        noteSelection = ""
+        noteSelectionRange = nil
+    }
+
+    private func resolveNoteComment(_ comment: SessionComment, _ resolved: Bool) {
+        appModel.setCommentResolved(id: comment.id, resolved: resolved)
+        reloadNoteComments()
+        if resolved, focusedNoteCommentID == comment.id { focusedNoteCommentID = nil }
+    }
+
+    private func editNoteComment(_ comment: SessionComment, _ body: String) {
+        guard CommentsRailView.canSaveEdit(draft: body, original: comment.body) else { return }
+        appModel.updateComment(id: comment.id, body: body)
+        reloadNoteComments()
+    }
+
+    private func deleteNoteComment(_ comment: SessionComment) {
+        guard let commentStore = appModel.commentStore else { return }
+        commentStore.deleteComment(id: comment.id)
+        reloadNoteComments()
+    }
+
+    @ViewBuilder
+    private var noteComposerOverlay: some View {
+        if showNoteComposer {
+            GeometryReader { proxy in
+                InlineCommentComposerCard(
+                    timeLabel: nil,
+                    quote: notePendingQuote,
+                    text: $noteInlineCommentBody,
+                    onCancel: { showNoteComposer = false },
+                    onSave: saveNoteInlineComment
+                )
+                .frame(width: max(300, proxy.size.width - Self.composerLeading - Self.composerTrailing))
+                .background(
+                    GeometryReader { card in
+                        Color.clear.preference(key: ComposerHeightKey.self, value: card.size.height)
+                    }
+                )
+                .opacity(noteComposerAnchor == nil && noteComposingRange != nil ? 0 : 1)
+                .offset(x: Self.composerLeading, y: noteComposerY(in: proxy.size.height))
+            }
+            .onPreferenceChange(ComposerHeightKey.self) { noteComposerHeight = $0 }
+        }
+    }
+
+    private func noteComposerY(in paneHeight: CGFloat) -> CGFloat {
+        let margin = Self.composerMargin
+        let gap = Self.composerGap
+        guard let anchor = noteComposerAnchor else { return margin }
+        let below = anchor.maxY + gap
+        if below + noteComposerHeight <= paneHeight - margin { return max(margin, below) }
+        let above = anchor.minY - gap - noteComposerHeight
+        if above >= margin { return above }
+        return max(margin, paneHeight - noteComposerHeight - margin)
     }
 
     /// Length for every format, effort for long sessions, and the per-format
@@ -1638,13 +1811,13 @@ struct SessionDetailView: View {
         guard let commentStore = appModel.commentStore,
               CommentsRailView.canSaveEdit(draft: body, original: comment.body) else { return }
         appModel.updateComment(id: comment.id, body: body)
-        comments = commentStore.comments(sessionID: session.id)
+        allComments = commentStore.comments(sessionID: session.id)
     }
 
     private func deleteComment(_ comment: SessionComment) {
         guard let commentStore = appModel.commentStore else { return }
         commentStore.deleteComment(id: comment.id)
-        comments = commentStore.comments(sessionID: session.id)
+        allComments = commentStore.comments(sessionID: session.id)
     }
 
     private func showAlert(_ alert: AIAlert) {
@@ -1685,7 +1858,7 @@ struct SessionDetailView: View {
             let storedNote = commentStore.note(sessionID: session.id)
             persistedSessionNote = storedNote
             sessionNote = storedNote
-            comments = commentStore.comments(sessionID: session.id)
+            allComments = commentStore.comments(sessionID: session.id)
         }
     }
 }

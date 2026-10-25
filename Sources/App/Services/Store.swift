@@ -1677,7 +1677,7 @@ final class Store {
                         } else {
                             continue
                         }
-                        hits.append(hit(.comment, "-\(comment.id)", text: text, commentID: comment.id, seconds: comment.anchorSeconds))
+                        hits.append(hit(.comment, "-\(comment.id)", text: text, noteLabel: comment.format?.shortName, noteFormat: comment.format, commentID: comment.id, seconds: comment.anchorSeconds))
                     }
                 }
             }

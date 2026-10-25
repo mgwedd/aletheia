@@ -44,6 +44,17 @@ final class AppModelCommentSaveTests: XCTestCase {
         XCTAssertNil(appModel.saveFailureSubject)
     }
 
+    func testANoteCommentKeepsItsFormat() throws {
+        let sessionID = UUID()
+        let added = try XCTUnwrap(appModel.addComment(
+            sessionID: sessionID, quotedText: "Objective: stable", body: "body", anchorSeconds: nil, quoteStart: 0,
+            format: .soap
+        ))
+        XCTAssertEqual(appModel.commentStore?.comments(sessionID: sessionID, format: .soap).map(\.id), [added.id])
+        XCTAssertEqual(appModel.commentStore?.comments(sessionID: sessionID, format: nil).map(\.id), [])
+        XCTAssertNil(appModel.saveFailureSubject)
+    }
+
     func testRefusedCommentEditRaisesTheNotice() {
         XCTAssertFalse(appModel.updateComment(id: UUID().uuidString, body: "edited"))
         XCTAssertEqual(appModel.saveFailureSubject, "comment")

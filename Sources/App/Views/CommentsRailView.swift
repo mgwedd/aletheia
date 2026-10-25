@@ -58,7 +58,13 @@ struct CommentsRailView: View {
         case let (x?, y?): return x != y ? x < y : a.createdAt < b.createdAt
         case (_?, nil): return true
         case (nil, _?): return false
-        case (nil, nil): return a.createdAt < b.createdAt
+        case (nil, nil):
+            switch (a.quoteStart, b.quoteStart) {
+            case let (x?, y?): return x != y ? x < y : a.createdAt < b.createdAt
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return a.createdAt < b.createdAt
+            }
         }
     }
 

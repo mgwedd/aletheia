@@ -268,7 +268,10 @@ final class SessionNoteModel: ObservableObject {
         let service = integrations.makeAssistantService(report: runner.reporter, clientName: patient.name)
         let transcript = material.transcriptText
         let notes = material.myNotes
-        let sessionComments = settings.includeCommentsInDrafts ? material.comments : []
+        // The transcript's comments, and those on this format's note: a comment
+        // on another format's note quotes text this draft doesn't have.
+        let sessionComments = settings.includeCommentsInDrafts
+            ? material.comments.filter { $0.format == nil || $0.format == format } : []
         let patientBackground = settings.includePatientBackground ? patient.aiBackgroundBlock : ""
         let effort = settings.noteEffort
         let riskPhrases = settings.riskPhrases

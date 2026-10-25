@@ -73,7 +73,7 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertTrue(newest.contains("March generated body."))
         XCTAssertFalse(newest.contains("Therapist's session notes:"), "psychotherapy notes stay out of the patient chat")
         XCTAssertFalse(newest.contains("She seemed brighter today."))
-        XCTAssertTrue(newest.contains("Therapist's margin comments on the transcript:"))
+        XCTAssertTrue(newest.contains(Prompts.commentsHeading))
         XCTAssertTrue(newest.contains("revisit next week"))
         XCTAssertFalse(newest.contains("January"), "another session's material must not leak under this header")
 

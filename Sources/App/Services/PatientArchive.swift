@@ -22,6 +22,8 @@ struct ArchiveComment: Equatable, Sendable {
     var quotedText: String
     var body: String
     var resolved: Bool
+    /// The drafted note this comment is on (e.g. "SOAP"), nil for the transcript.
+    var noteLabel: String? = nil
 }
 
 struct ArchiveFile: Equatable {
@@ -124,6 +126,7 @@ enum PatientArchive {
             var lines: [String] = []
             var head = ""
             if let seconds = comment.anchorSeconds { head = "[\(TranscriptTimeline.format(Int(seconds)))] " }
+            if let label = comment.noteLabel { head = "[\(label) note] " }
             let quote = comment.quotedText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !quote.isEmpty { head += "\u{201C}\(quote)\u{201D}" }
             if !head.isEmpty { lines.append(head) }
