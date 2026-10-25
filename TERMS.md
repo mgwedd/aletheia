@@ -33,10 +33,10 @@ The App is proprietary and source-available. Your use is governed by the
 [LICENSE](LICENSE). These Terms do not grant any ownership or rights beyond
 what that license allows.
 
-**License key.** Using the App requires a license key issued to you by the
-developer. The key is personal to you: do not share, transfer, or publish it. A
+**License key.** Using the App requires a license key issued to you by
+Astrea Labs. The key is personal to you: do not share, transfer, or publish it. A
 key may have an expiry date, shown in Settings → License key, and can be
-renewed. The developer may revoke a key that is shared or used in breach of
+renewed. Astrea Labs may revoke a key that is shared or used in breach of
 these Terms; the App learns of revocations from a signed list it downloads while
 update checks are on, at most once a day, so a revocation takes effect when the
 App next receives the list. When a key expires, recording and AI work continue
@@ -146,7 +146,7 @@ under Settings › Licenses.
 ## 10. Termination
 
 These Terms apply for as long as you use the App. You may stop using the App at
-any time. The developer may end your right to record and use the AI by revoking
+any time. Astrea Labs may end your right to record and use the AI by revoking
 your license key; your access to your existing records continues as described
 in section 2. The disclaimers, limitation of liability, and indemnification survive
 termination.
