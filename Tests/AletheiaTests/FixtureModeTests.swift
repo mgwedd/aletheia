@@ -13,6 +13,12 @@ final class FixtureScenarioTests: XCTestCase {
         XCTAssertEqual(scenario.aiReplies, ["a", "b"])
     }
 
+    func testTheAppLockIsOffUnlessTheScenarioAsksForIt() throws {
+        XCTAssertFalse(try FixtureScenario.parse("{}").appLockOn)
+        XCTAssertFalse(try FixtureScenario.parse(#"{"appLock":"off"}"#).appLockOn)
+        XCTAssertTrue(try FixtureScenario.parse(#"{"appLock":"on"}"#).appLockOn)
+    }
+
     func testEmptyObjectIsTheDefaultScenario() throws {
         let scenario = try FixtureScenario.parse("{}")
         XCTAssertNil(scenario.patients)

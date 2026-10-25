@@ -19,11 +19,15 @@ struct FixtureScenario: Decodable, Equatable {
     var fileVault: String?
     /// "dev" (default) or "production".
     var tier: String?
+    /// "off" (default) or "on". Off by default: the unlock sheet is the
+    /// system's, which a UI test cannot answer, so it would cover the app.
+    var appLock: String?
 
     /// Replies the scripted AI engine gives, in order; the last repeats.
     var aiReplies: [String]?
 
     var buildTier: BuildTier { tier == "production" ? .production : .dev }
+    var appLockOn: Bool { appLock == "on" }
 
     struct Malformed: Error, CustomStringConvertible {
         let detail: String
@@ -100,6 +104,8 @@ enum FixtureMode {
         settings.dataRootURL = root
         settings.hasCompletedFirstRun = true
         if !settings.hasAcceptedCurrentLegal { settings.recordLegalAcceptance() }
+        // Only on a run's first launch, so a relaunch keeps what the test changed.
+        if isFirstLaunchOfRun { settings.appLockEnabled = scenario?.appLockOn ?? false }
     }
 
     /// Builds the scenario's data once per run, before the first window exists.
