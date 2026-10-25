@@ -214,7 +214,7 @@ enum AllRecordsExport {
             "Aletheia records",
             "Exported on \(longFormatter.string(from: exportedOn)).",
             "",
-            "There is one folder per patient. Each holds a Sessions folder with one folder per session, oldest first: the transcript, notes and comments as plain text files that open in any text editor, and any kept recordings as audio files that open in QuickTime Player.",
+            "There is one folder per patient. Each holds a Sessions folder with one folder per session, oldest first: the transcript and notes as plain text files that open in any text editor, and any kept recordings as audio files that open in QuickTime Player.",
             "",
             "These files are not encrypted by Aletheia. Keep them on an encrypted disk, and delete them when your record-keeping rules allow.",
             "",
