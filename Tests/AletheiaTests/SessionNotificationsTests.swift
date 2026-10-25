@@ -10,35 +10,41 @@ final class SessionNotificationsTests: XCTestCase {
 
     // MARK: Private by default (lock-screen banners)
 
-    func testDefaultBannersShowInitialsOnly() {
-        let all = [
-            SessionNotifications.transcriptionComplete(patientName: "Jane Doe", date: date, policy: standard),
-            SessionNotifications.transcriptionProblem(patientName: "Jane Doe", date: date, policy: standard),
-            SessionNotifications.recordingNotDeleted(patientName: "Jane Doe", date: date, policy: standard),
-            SessionNotifications.summaryReady(patientName: "Jane Doe", date: date, policy: standard),
-            SessionNotifications.longRecordingReminder(patientName: "Jane Doe", policy: standard),
+    private func everyNotification(_ policy: PatientLabel.Policy, name: String = "Jane Doe") -> [AppNotificationContent] {
+        [
+            SessionNotifications.transcriptionComplete(patientName: name, date: date, policy: policy),
+            SessionNotifications.transcriptionProblem(patientName: name, date: date, policy: policy),
+            SessionNotifications.recordingNotDeleted(patientName: name, date: date, policy: policy),
+            SessionNotifications.summaryReady(patientName: name, date: date, policy: policy),
+            SessionNotifications.longRecordingReminder(patientName: name, policy: policy),
+            SessionNotifications.exportReady(),
+            SessionNotifications.exportFailed(),
         ]
-        for content in all {
-            XCTAssertFalse(content.title.contains("Jane"), content.title)
-            XCTAssertFalse(content.body.contains("Jane"), content.body)
-            XCTAssertFalse(content.body.contains("2026"), content.body)
-            XCTAssertFalse(content.body.contains("Sep"), content.body)
+    }
+
+    private func assertIdentifiesNobody(_ content: AppNotificationContent, file: StaticString = #filePath, line: UInt = #line) {
+        let text = [content.identifier, content.title, content.body].joined(separator: "\n")
+        for token in ["Jane", "Doe", "J.D.", "J. D.", "JD", "2026", "Sep"] {
+            XCTAssertFalse(text.contains(token), "\"\(content.title)\" contains \(token): \(text)", file: file, line: line)
         }
-        XCTAssertTrue(all[0].body.hasPrefix("J.D.'s session"), all[0].body)
-        XCTAssertTrue(all[4].body.hasPrefix("J.D.'s session"), all[4].body)
     }
 
-    func testLockedAppShowsInitialsEvenWhenOptedIn() {
-        let content = SessionNotifications.transcriptionComplete(patientName: "Jane Doe", date: date, policy: locked)
-        XCTAssertFalse(content.body.contains("Jane"), content.body)
-        XCTAssertFalse(content.body.contains("2026"), content.body)
-        XCTAssertTrue(content.body.contains("J.D."), content.body)
-        let reminder = SessionNotifications.longRecordingReminder(patientName: "Jane Doe", policy: locked)
-        XCTAssertFalse(reminder.body.contains("Jane"), reminder.body)
+    func testDefaultBannersNameNobodyNotEvenByInitials() {
+        for content in everyNotification(standard) { assertIdentifiesNobody(content) }
     }
 
-    func testBlankNameReadsAsClient() {
-        let content = SessionNotifications.summaryReady(patientName: "  ", date: date, policy: standard)
+    func testTranscriptReadyCarriesNoInitialsByDefault() {
+        let content = SessionNotifications.transcriptionComplete(patientName: "Jane Doe", date: date, policy: standard)
+        XCTAssertEqual(content.title, "Transcript ready")
+        XCTAssertEqual(content.body, "Your session has finished transcribing.")
+    }
+
+    func testLockedAppNamesNobodyEvenWhenOptedIn() {
+        for content in everyNotification(locked) { assertIdentifiesNobody(content) }
+    }
+
+    func testBlankNameReadsAsClientWhenNamesAreOn() {
+        let content = SessionNotifications.summaryReady(patientName: "  ", date: date, policy: optedIn)
         XCTAssertTrue(content.body.contains("Client"), content.body)
     }
 
