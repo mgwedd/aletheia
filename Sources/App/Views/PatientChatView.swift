@@ -190,8 +190,8 @@ struct PatientChatView: View {
                                 chat.select(thread.id)
                             }
                             .contextMenu {
-                                Button("Rename") { beginRename(thread) }
-                                Button("Delete", role: .destructive) { chat.delete(thread) }
+                                Button(ChatWords.renameThread) { beginRename(thread) }
+                                Button(ChatWords.deleteThread, role: .destructive) { chat.delete(thread) }
                             }
                         }
                     }

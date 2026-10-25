@@ -17,6 +17,8 @@ final class PatientChatModel: ObservableObject {
     @Published private(set) var searchingNotice: String?
     /// When the current Ask began searching: the status line counts from here.
     @Published private(set) var searchingSince: Date?
+    /// What the last answer read ("Read: ..."), shown under it.
+    @Published private(set) var coverage: String?
 
     var alert: (AIAlert) -> Void = { _ in }
 
@@ -46,6 +48,7 @@ final class PatientChatModel: ObservableObject {
     /// Caveats about the last answer, shown above the composer.
     var notices: [String] {
         var lines: [String] = []
+        if let coverage { lines.append(coverage) }
         if runner.progress.stats?.possiblyTruncated == true && !isSending {
             lines.append(AIRunStats.truncationNotice)
         }
@@ -120,6 +123,7 @@ final class PatientChatModel: ObservableObject {
         let userMessage = ChatMessage(role: .user, text: question)
         messages.append(userMessage)
         isSending = true
+        coverage = nil
         let assistantID = UUID()
         // Snapshot everything the prompt needs now; the request itself is only
         // made when the queue starts this job.
@@ -218,7 +222,7 @@ final class PatientChatModel: ObservableObject {
                     service: service,
                     builder: integrations.digests,
                     live: { started, change in runner.update(started: started, change) },
-                    onCoverage: { _ in },
+                    onCoverage: { [self] in coverage = $0.label },
                     onSources: { answerSources = $0 }
                 )
             },

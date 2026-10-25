@@ -187,7 +187,6 @@ struct SessionDetailView: View {
     /// changed" sync below replace it.
     @State private var restoredDraft = false
     @State private var showDiscardConfirm = false
-    @State private var noteCopied = false
     @State private var editingInstructions = false
     /// The note text as last read from / written to the store. `load()` assigns
     /// `sessionNote` programmatically, which fires `onChange`; comparing against
@@ -1183,18 +1182,13 @@ struct SessionDetailView: View {
                             .help("Edit this note before it goes in the record")
                         }
                         Button {
-                            RichClipboard.write(RichClipboard.payload(markdown: summaryText))
-                            noteCopied = true
-                            Task {
-                                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                                noteCopied = false
-                            }
+                            note.copyNote()
                         } label: {
                             Label("Copy", systemImage: "doc.on.doc")
                         }
                         .help("Copy the note, with its formatting, to paste into your EHR or a document")
-                        .popover(isPresented: $noteCopied, arrowEdge: .bottom) {
-                            Label("Copied", systemImage: "checkmark.circle.fill")
+                        .popover(isPresented: Binding(get: { note.copyFeedback.justCopied }, set: { if !$0 { note.copyFeedback.dismiss() } }), arrowEdge: .bottom) {
+                            Label(CardWords.copied, systemImage: "checkmark.circle.fill")
                                 .font(Theme.Typography.control)
                                 .foregroundStyle(Theme.text.color)
                                 .padding(.horizontal, 14)
@@ -1275,7 +1269,7 @@ struct SessionDetailView: View {
                 onCancel: { editingInstructions = false }
             )
         }
-        .alert("Replace your edited note?", isPresented: $note.confirmRegenerate) {
+        .alert(NoteWords.replaceEditedTitle, isPresented: $note.confirmRegenerate) {
             Button("Regenerate", role: .destructive) { note.generate() }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -1289,7 +1283,7 @@ struct SessionDetailView: View {
         let format = settings.progressNoteFormat
         let customized = settings.noteInstructions[format.rawValue] != nil
         return Menu {
-            Picker("Length", selection: $settings.summaryVerbosity) {
+            Picker(NoteWords.lengthTitle, selection: $settings.summaryVerbosity) {
                 ForEach(SummaryVerbosity.allCases) { level in
                     Text(level.displayName).tag(level)
                 }
@@ -1303,13 +1297,13 @@ struct SessionDetailView: View {
             }
             .pickerStyle(.inline)
             Divider()
-            Button("Edit \(format.shortName) Prompt…\(customized ? " (customized)" : "")") {
+            Button(NoteWords.editPromptItem(format: format, customized: customized)) {
                 editingInstructions = true
             }
         } label: {
             // AdaptiveLabel, not Label: a Menu's label ignores .labelStyle(.iconOnly).
             AdaptiveLabel(
-                title: "Length: \(settings.summaryVerbosity.displayName) · \(settings.noteEffort.displayName)",
+                title: NoteWords.lengthLabel(length: settings.summaryVerbosity, effort: settings.noteEffort),
                 systemImage: "text.alignleft"
             )
         }
@@ -1334,7 +1328,7 @@ struct SessionDetailView: View {
             Image(systemName: "doc.text")
                 .font(.system(size: 22))
                 .foregroundStyle(Theme.muted.color)
-            Text("No \(format) note yet")
+            Text(NoteWords.emptyTitle(format: settings.progressNoteFormat))
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.text.color)
             Text(transcriptText.isEmpty
@@ -1348,7 +1342,7 @@ struct SessionDetailView: View {
                 note.requestGenerate()
             } label: {
                 HStack(spacing: 8) {
-                    Label("Generate \(format) note", systemImage: "sparkles")
+                    Label(NoteWords.generateButton(format: settings.progressNoteFormat), systemImage: "sparkles")
                     ShortcutHint(AppHotkey.generateNote, onAccent: true)
                 }
             }
@@ -1369,7 +1363,7 @@ struct SessionDetailView: View {
 
     private var chatTab: some View {
         ChatPaneView(
-            title: "this session",
+            title: ChatWords.thisSession,
             messages: $chat.messages,
             isSending: isChatSending,
             suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [],

@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -7,6 +8,8 @@ import Foundation
 @MainActor
 final class SessionNoteModel: ObservableObject {
     let runner = ChatStreamRunner()
+    /// The Copy button's "Copied" feedback.
+    let copyFeedback = CopyFeedback()
 
     /// The note shown for the chosen format.
     @Published var summaryText = ""
@@ -40,6 +43,7 @@ final class SessionNoteModel: ObservableObject {
 
     init() {
         runner.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &bag)
+        copyFeedback.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &bag)
     }
 
     func configure(
@@ -89,6 +93,12 @@ final class SessionNoteModel: ObservableObject {
     var noteIsOutdated: Bool {
         !summaryText.isEmpty && !runner.isStreaming && !runner.isQueued
             && NoteFreshness.isOutdated(recorded: noteFingerprint, transcript: material.transcriptText)
+    }
+
+    /// Copy: the shown note with its formatting, to paste into an EHR or a document.
+    func copyNote(to pasteboard: NSPasteboard = PHIPasteboard.general) {
+        RichClipboard.write(RichClipboard.payload(markdown: summaryText), to: pasteboard)
+        copyFeedback.flash()
     }
 
     // MARK: - Editing
