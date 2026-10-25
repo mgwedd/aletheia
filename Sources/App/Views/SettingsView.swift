@@ -938,6 +938,10 @@ struct SettingsView: View {
             prompt: "Export Here",
             message: "Choose where to put a folder with all your records. Pick an encrypted disk that doesn't sync to the cloud."
         ) else { return }
+        if AllRecordsExport.isSyncedFolder(folder) {
+            errorMessage = AllRecordsExport.SyncedFolderRefusal().localizedDescription
+            return
+        }
         let warnings = ExportDestinationInspector().warnings(for: folder)
         if warnings.isEmpty {
             startExportAll(into: folder)
