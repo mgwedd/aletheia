@@ -18,11 +18,12 @@ struct LicenseKeyring {
     }
 
     // BEGIN PRODUCTION KEYS (scripts/check-license-keys.sh reads this block)
-    // TODO(owner): production public keys. Replace `[:]` with a dictionary literal holding
-    // one `"<kid>": "<base64 raw Ed25519 public key>",` line per key (the current key and
-    // the next one). Until then a production build rejects every license, so a tagged
-    // release is blocked (see scripts/check-license-keys.sh).
-    static let productionPublicKeys: [String: String] = [:]
+    // The current signing key and the next one, so the site can rotate to `prod-2` without
+    // locking anyone out. Their private seeds are held by the owner, never in this repo.
+    static let productionPublicKeys: [String: String] = [
+        "prod-1": "OJ3lF6ssIkFSvc2sLNx6HYfo0l/bvWOg6iK42xV9K+w=",
+        "prod-2": "VlzGFej0dahg8Z4BGGRMHgU+RN2Gd+qgYHLlS34yS5E=",
+    ]
     // END PRODUCTION KEYS
 
     /// Production keys only. Never contains the dev key.
