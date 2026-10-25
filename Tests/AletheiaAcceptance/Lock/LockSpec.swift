@@ -43,7 +43,7 @@ final class LockSpec: AcceptanceCase {
         await when.unlock(mac)
         given.autoLockAfter(minutes: 1)
 
-        let result = await when.leaveAlone(mac, upTo: 90)
+        let result = await when.leaveAloneForAMinute(mac)
 
         then(result).lockedAboutAMinuteLater()
     }

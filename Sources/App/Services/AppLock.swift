@@ -174,7 +174,9 @@ final class AppLock: ObservableObject {
 
     /// The last time the user interacted with the app (mouse/keyboard event
     /// delivered to one of its own windows), for the idle auto-lock clock.
-    private var lastActivity = Date()
+    private var lastActivity: Date
+    /// The clock the idle auto-lock reads; tests move it instead of waiting.
+    private let now: () -> Date
     /// Ticks periodically while idle auto-lock is armed; nil whenever it isn't
     /// (app lock off, or timeout is "Never") so there's nothing to invalidate.
     private var idleTimer: Timer?
@@ -202,9 +204,12 @@ final class AppLock: ObservableObject {
         canAuthenticate: @escaping () -> Bool = AppLock.canAuthenticate,
         authenticator: UnlockAuthenticator = UnlockAuthenticatorFactory.make(),
         isAppActive: @escaping () -> Bool = { NSApp.isActive },
-        spotlight: SpotlightIndexing = SpotlightIndexerFactory.make()
+        spotlight: SpotlightIndexing = SpotlightIndexerFactory.make(),
+        now: @escaping () -> Date = Date.init
     ) {
         self.settings = settings
+        self.now = now
+        self.lastActivity = now()
         self.authenticator = authenticator
         self.isAppActive = isAppActive
         self.spotlight = spotlight
@@ -349,7 +354,7 @@ final class AppLock: ObservableObject {
                 // Otherwise the next idle check would see a stale (very old)
                 // `lastActivity` from before the app was locked and put the
                 // lock screen right back up.
-                lastActivity = Date()
+                lastActivity = now()
                 // The sheet can leave no window key; hand focus back.
                 if NSApp.isActive { MainWindow.makeKey() }
             }
@@ -384,7 +389,7 @@ final class AppLock: ObservableObject {
     /// event monitor above; exposed so other activity signals could call it
     /// too if a need for one ever comes up.
     func recordActivity() {
-        lastActivity = Date()
+        lastActivity = now()
     }
 
     /// The Mac or display sleeping, its screen locking, or a switch to another user
@@ -416,7 +421,7 @@ final class AppLock: ObservableObject {
             return
         }
         guard idleTimer == nil else { return }
-        lastActivity = Date()
+        lastActivity = now()
         // `.common` modes, so the check still fires during menu tracking and scrolling.
         let timer = Timer(timeInterval: Self.idleCheckInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.checkIdleTimeout() }
@@ -425,9 +430,13 @@ final class AppLock: ObservableObject {
         idleTimer = timer
     }
 
-    private func checkIdleTimeout() {
+    /// Whether the idle timer is running, i.e. auto-lock is armed.
+    var isWatchingForIdle: Bool { idleTimer != nil }
+
+    /// One tick of the idle timer: locks when the idle time has reached the timeout.
+    func checkIdleTimeout() {
         guard !isLocked else { return }
-        if AppLockPolicy.shouldAutoLock(lastActivity: lastActivity, timeoutMinutes: settings.idleAutoLockMinutes, now: Date()) {
+        if AppLockPolicy.shouldAutoLock(lastActivity: lastActivity, timeoutMinutes: settings.idleAutoLockMinutes, now: now()) {
             lockIfEnabled()
         }
     }

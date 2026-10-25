@@ -63,6 +63,7 @@ final class LockedMac {
             authenticator: authenticator,
             isAppActive: { true },
             spotlight: SilentSpotlight(),
+            now: { [clock = app.clock] in clock.now },
             lockRequired: { [weak encryption] in encryption?.requiresAppLock ?? false })
         #else
         let lock = AppLock(
@@ -70,7 +71,8 @@ final class LockedMac {
             canAuthenticate: { switches.canAuthenticate },
             authenticator: authenticator,
             isAppActive: { true },
-            spotlight: SilentSpotlight())
+            spotlight: SilentSpotlight(),
+            now: { [clock = app.clock] in clock.now })
         #endif
         self.lock = lock
         mainWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
@@ -139,8 +141,8 @@ struct NamedClipboard {
 
 /// How long the app took to lock, in seconds.
 struct IdleLockResult {
-    let lockedAfterSeconds: TimeInterval?
-    let lockedEarly: Bool
+    let lockedBeforeAMinute: Bool
+    let lockedAfterAMinute: Bool
 }
 
 /// The Auto-lock choices as Settings lists them.
@@ -236,13 +238,16 @@ extension When {
         return RelockResult(missed: missed)
     }
 
-    /// Leaves the app alone after setting Auto-lock, until it locks or `limit` runs out.
-    func leaveAlone(_ mac: LockedMac, upTo limit: TimeInterval) async -> IdleLockResult {
-        let start = Date()
-        let didLock = await mac.eventually(upTo: limit) { mac.lock.isLocked }
-        let locked: TimeInterval? = didLock ? Date().timeIntervalSince(start) : nil
-        let early = locked.map { $0 < 55 } ?? false
-        return IdleLockResult(lockedAfterSeconds: locked, lockedEarly: early)
+    /// Leaves the app alone for a minute, one second at a time, as the idle timer sees it.
+    func leaveAloneForAMinute(_ mac: LockedMac) async -> IdleLockResult {
+        await mac.eventually { mac.lock.isWatchingForIdle }
+        app.clock.advance(by: 59)
+        mac.lock.checkIdleTimeout()
+        let early = mac.lock.isLocked
+        app.clock.advance(by: 1)
+        mac.lock.checkIdleTimeout()
+        await mac.eventually { mac.lock.isLocked }
+        return IdleLockResult(lockedBeforeAMinute: early, lockedAfterAMinute: mac.lock.isLocked)
     }
 
     func lookAtAutoLockChoices() -> AutoLockChoices {
@@ -393,9 +398,8 @@ extension Then where Subject == LockedMac {
 
 extension Then where Subject == IdleLockResult {
     func lockedAboutAMinuteLater() {
-        guard let seconds = subject.lockedAfterSeconds else { return fail("expected the app to lock after about a minute, it never did") }
-        expect(!subject.lockedEarly, "expected no lock before a minute, locked after \(Int(seconds)) seconds")
-        expect(seconds <= 80, "expected the app to lock after about a minute, it took \(Int(seconds)) seconds")
+        expect(!subject.lockedBeforeAMinute, "expected no lock before a minute of idle time")
+        expect(subject.lockedAfterAMinute, "expected the app to lock after a minute of idle time, it never did")
     }
 }
 
