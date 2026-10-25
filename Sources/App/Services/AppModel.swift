@@ -105,6 +105,7 @@ final class AppModel: ObservableObject {
     /// this so kept recordings are only ever stored as ciphertext
     /// (`AudioRetentionPolicy.keepsAudio`).
     var isEncryptionEnabled: Bool { encryption.isEnabled }
+    var encryptionRequiresAppLock: Bool { encryption.requiresAppLock }
 
     /// Whether at-rest encryption is set up *and* unlocked this session. Read by
     /// Doctor to describe the keystore's state.
@@ -132,7 +133,7 @@ final class AppModel: ObservableObject {
         let dataRoot = settings.dataRootURL
         let previousAudit = audit
         attachAudit(dataRoot.map { root in
-            AuditLog(root: root, dekProvider: { [weak self] in self?.encryption.protector.heldKey })
+            AuditLog(root: root, keyProvider: auditKeyProvider, dekProvider: { [weak self] in self?.encryption.protector.heldKey })
         })
         logDataFolderChangeIfNeeded(from: previousAudit, to: dataRoot)
         logEncryptionTransitionIfNeeded()
@@ -582,6 +583,23 @@ final class AppModel: ObservableObject {
         savePatientNotes(current)
     }
 
+    /// Whether the clinician has attested consent to record this patient.
+    func hasRecordingConsent(patientID: UUID) -> Bool {
+        patients.first { $0.id == patientID }?.recordingConsentAttestedAt != nil
+    }
+
+    /// Stores the clinician's attestation that the patient agreed to be recorded
+    /// and to AI processing, and logs it. Asked once per patient: an existing
+    /// attestation is kept. Returns whether the patient is now attested.
+    @discardableResult
+    func attestRecordingConsent(patientID: UUID, at date: Date = Date()) -> Bool {
+        if hasRecordingConsent(patientID: patientID) { return true }
+        updatePatient(id: patientID) { $0.recordingConsentAttestedAt = date }
+        guard hasRecordingConsent(patientID: patientID) else { return false }
+        recordAudit(.recordingConsentAttested, subjectID: patientID.uuidString)
+        return true
+    }
+
     /// Deletes a patient and all of their associated records from disk and the
     /// database, writes an audit log entry (HIPAA §164.312(b)), refreshes the
     /// patient list, and reindexes Spotlight.
@@ -590,6 +608,27 @@ final class AppModel: ObservableObject {
         try store.deletePatient(patient)
         refreshPatients()
         reindexSpotlight()
+    }
+
+    /// Supplies the key that signs the activity log's entries. Defaults to the
+    /// Keychain key; tests swap it (then call `rebuildStore()`) so the log is
+    /// signed and verifiable without touching the real Keychain.
+    var auditKeyProvider: AuditKeyProvider = AuditKeyManager.loadOrCreateKeychainKey
+
+    /// What "Verify integrity & export audit report" shows and saves: the
+    /// chain check's one-line result and the full report. A broken chain is
+    /// recorded and raised first, so the report lists it.
+    struct AuditVerification: Equatable {
+        let message: String
+        let report: String
+    }
+
+    func verifyAuditLog() -> AuditVerification? {
+        guard let audit else { return nil }
+        let result = audit.verifyIntegrity()
+        let message = result.statusMessage
+        applyIntegrityResult(result)
+        return AuditVerification(message: message, report: audit.generateReport(status: message))
     }
 }
 

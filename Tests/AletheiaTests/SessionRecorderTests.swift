@@ -168,6 +168,22 @@ final class SessionRecorderTests: XCTestCase {
         .init(sessionID: id, patientID: UUID(), patientName: "P", patientSlug: "p", sessionFolder: "s")
     }
 
+    func testTheLongRecordingReminderFiresWhenCaptureStartsThroughTheOverride() async {
+        let (recorder, tempRoot, _, dest) = makeStagingRecorder()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        recorder.reminderThreshold = 0.05
+        let error = await recorder.start(
+            micURL: dest.appendingPathComponent("mic.caf"), callURL: dest.appendingPathComponent("call.caf"),
+            context: context(UUID()))
+        XCTAssertNil(error)
+        let deadline = Date().addingTimeInterval(5)
+        while !recorder.longRunningReminder, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(recorder.longRunningReminder)
+        await recorder.stop()
+    }
+
     func testTheStagingSessionIsClaimedWhileRecordingAndReleasedAfterStop() async {
         let (recorder, tempRoot, _, dest) = makeStagingRecorder()
         defer { try? FileManager.default.removeItem(at: tempRoot) }

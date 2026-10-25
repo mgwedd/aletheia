@@ -3,6 +3,5 @@
 phiViewed
 aiInference
 phiCopied
-recordingConsentAttested
 retentionWarningOverridden
 part2FlagChanged

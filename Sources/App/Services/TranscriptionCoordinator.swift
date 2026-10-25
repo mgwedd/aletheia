@@ -36,11 +36,13 @@ final class TranscriptionCoordinator: ObservableObject {
     private let appModel: AppModel
     private let integrations: Integrations
     private let settings: AppSettings
+    private let now: () -> Date
 
-    init(appModel: AppModel, integrations: Integrations, settings: AppSettings) {
+    init(appModel: AppModel, integrations: Integrations, settings: AppSettings, now: @escaping () -> Date = Date.init) {
         self.appModel = appModel
         self.integrations = integrations
         self.settings = settings
+        self.now = now
     }
 
     func job(for sessionID: UUID) -> TranscriptionJob? {
@@ -94,7 +96,7 @@ final class TranscriptionCoordinator: ObservableObject {
         }
         running = (patient, session)
         jobs[sessionID] = TranscriptionJob(
-            startedAt: Date(),
+            startedAt: now(),
             modelName: "Whisper \(settings.whisperModel.rawValue)"
         )
         let protector = appModel.currentProtector
@@ -167,7 +169,7 @@ final class TranscriptionCoordinator: ObservableObject {
 
     private func apply(_ progress: TranscriptionProgress, to sessionID: UUID) {
         guard var job = jobs[sessionID] else { return }
-        job.apply(progress, now: Date())
+        job.apply(progress, now: now())
         jobs[sessionID] = job
     }
 

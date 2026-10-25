@@ -154,6 +154,8 @@ final class ExportJobCenter: ObservableObject {
         switch error {
         case ZipArchive.Failure.tooLarge, ZipArchive.Failure.tooManyEntries:
             return "These records are too large to save as one zip file."
+        case let refusal as AllRecordsExport.SyncedFolderRefusal:
+            return refusal.localizedDescription
         default:
             return "The export couldn't be finished: \(error.localizedDescription)"
         }

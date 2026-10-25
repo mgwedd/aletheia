@@ -49,14 +49,14 @@ final class BackupExclusionTests: XCTestCase {
         return suite
     }
 
-    func testDefaultPolicyIsNotExcluded() {
-        XCTAssertFalse(BackupExclusion.defaultExcluded)
+    func testDefaultPolicyIsExcluded() {
+        XCTAssertTrue(BackupExclusion.defaultExcluded)
     }
 
-    func testUnsetKeyResolvesToDefaultNotExcluded() {
+    func testUnsetKeyResolvesToDefaultExcluded() {
         let defaults = makeDefaults()
         XCTAssertFalse(BackupExclusion.hasExplicitChoice(in: defaults))
-        XCTAssertFalse(BackupExclusion.resolvedExclusion(in: defaults))
+        XCTAssertTrue(BackupExclusion.resolvedExclusion(in: defaults))
     }
 
     func testExplicitTrueIsRespected() {
@@ -78,7 +78,7 @@ final class BackupExclusionTests: XCTestCase {
         defaults.set(true, forKey: BackupExclusion.defaultsKey)
         defaults.removeObject(forKey: BackupExclusion.defaultsKey)
         XCTAssertFalse(BackupExclusion.hasExplicitChoice(in: defaults))
-        XCTAssertFalse(BackupExclusion.resolvedExclusion(in: defaults))
+        XCTAssertTrue(BackupExclusion.resolvedExclusion(in: defaults))
     }
 
     func testDefaultsKeyIsStable() {
@@ -117,5 +117,43 @@ final class BackupExclusionTests: XCTestCase {
             usleep(50_000) // 50ms
         } while Date() < deadline
         return BackupExclusion.isExcluded(at: dir) == expected
+    }
+}
+
+/// The Settings switches that default on, and the data folder that persists.
+@MainActor
+final class AppSettingsDefaultsTests: XCTestCase {
+    private func makeDefaults() -> UserDefaults {
+        let name = "AppSettingsDefaultsTests-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        addTeardownBlock { suite.removePersistentDomain(forName: name) }
+        return suite
+    }
+
+    func testFreshInstallKeepsDataOutOfBackupsAndLocksWhenHidden() {
+        let settings = AppSettings(defaults: makeDefaults())
+        XCTAssertTrue(settings.keepDataOutOfSystemBackups)
+        XCTAssertTrue(settings.lockWhenHidden)
+    }
+
+    func testExplicitOffChoicesStayOff() {
+        let defaults = makeDefaults()
+        let first = AppSettings(defaults: defaults)
+        first.keepDataOutOfSystemBackups = false
+        first.lockWhenHidden = false
+        let second = AppSettings(defaults: defaults)
+        XCTAssertFalse(second.keepDataOutOfSystemBackups)
+        XCTAssertFalse(second.lockWhenHidden)
+    }
+
+    func testChosenDataFolderIsInUseAfterRelaunch() throws {
+        let defaults = makeDefaults()
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("chosen-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        try AppSettings(defaults: defaults).setDataRoot(folder)
+        let relaunched = AppSettings(defaults: defaults)
+        XCTAssertEqual(relaunched.dataRootURL?.resolvingSymlinksInPath().path, folder.resolvingSymlinksInPath().path)
     }
 }

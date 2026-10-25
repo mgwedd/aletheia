@@ -134,6 +134,18 @@ final class AllRecordsExportTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: original.path), "the original recording is untouched")
     }
 
+    @MainActor
+    func testASyncedFolderIsRefusedAndNothingIsWritten() throws {
+        let synced = root.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+        try FileManager.default.createDirectory(at: synced, withIntermediateDirectories: true)
+        let source = FakeSource([("Jane", [ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "")])])
+        XCTAssertThrowsError(try AllRecordsExport.write(
+            from: source, to: synced.appendingPathComponent("out"), progress: { _, _ in }, isCancelled: { false })
+        ) { XCTAssertEqual($0 as? AllRecordsExport.SyncedFolderRefusal, AllRecordsExport.SyncedFolderRefusal()) }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: synced.path), [])
+        XCTAssertTrue(ExportJobCenter.message(for: AllRecordsExport.SyncedFolderRefusal()).contains("Nothing was exported"))
+    }
+
     func testAFailureRemovesThePartialFolder() throws {
         let sample = ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "")
         let source = FakeSource([("A", [sample]), ("B", [sample, sample])])

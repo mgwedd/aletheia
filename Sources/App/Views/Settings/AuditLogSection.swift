@@ -19,6 +19,7 @@ enum AuditLogCopy {
         ("backups and restores", [.backupRun, .backupRestored]),
         ("recovered recordings", [.recordingRecovered]),
         ("signed progress notes", [.noteSigned, .aiNoteVerified]),
+        ("recording consent attestations", [.recordingConsentAttested]),
     ]
 
     static var recordedActions: Set<AuditAction> {
@@ -177,21 +178,10 @@ struct AuditLogSection: View {
     }
 
     private func verifyIntegrityAndExportReport() {
-        guard let audit = appModel.audit else { return }
-        let status: String
-        let result = audit.verifyIntegrity()
-        switch result {
-        case .verified(let count):
-            status = "Integrity verified: all \(count) entries intact."
-        case .broken(let seq, let reason):
-            status = "Integrity check failed at entry #\(seq): \(reason)"
-        case .unverifiable(let reason):
-            status = "Audit log unverifiable: \(reason)"
-        }
-        verificationMessage = status
-        appModel.applyIntegrityResult(result)
+        guard let verification = appModel.verifyAuditLog() else { return }
+        verificationMessage = verification.message
         let name = FileSaver.fileName("Aletheia Audit Report", Self.fileStamp())
-        let outcome = FileSaver.saveText(audit.generateReport(status: status), suggestedName: "\(name).txt")
+        let outcome = FileSaver.saveText(verification.report, suggestedName: "\(name).txt")
         finishExport(outcome)
     }
 

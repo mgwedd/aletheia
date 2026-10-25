@@ -14,13 +14,13 @@ enum SecurityScopedBookmark {
     /// Currently-open resource, kept so we can balance start/stop calls.
     private static var accessedURL: URL?
 
-    static func save(url: URL, key: String) throws {
+    static func save(url: URL, key: String, defaults: UserDefaults = .standard) throws {
         let bookmark = try url.bookmarkData(
             options: .withSecurityScope,
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
-        UserDefaults.standard.set(bookmark, forKey: key)
+        defaults.set(bookmark, forKey: key)
         stopAccessing()
         _ = url.startAccessingSecurityScopedResource()
         accessedURL = url

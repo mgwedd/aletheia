@@ -17,6 +17,7 @@ Before you start: a Release build and a throwaway data folder, with no earlier A
 - **SETUP-09** Look at the speech model and AI rows → each offers a download with its size, then shows ready once installed.
 - **SETUP-10** Click **Finish setup**, quit and reopen → the sheet doesn't appear again.
 - **SETUP-11** Look for "Protect your data" (dev build) → it recommends encryption with a button that doesn't block **Finish setup**.
+- **SETUP-12** Finish setup, then open a build with newer terms → the **Set up Aletheia** sheet returns until the new terms are accepted, and each acceptance is dated on this Mac.
 
 ## 2. Add a patient (PATIENT)
 Before you start: setup finished, a data folder chosen, and the disk encrypted with FileVault.
@@ -43,6 +44,7 @@ Before you start: a patient with no sessions.
 - **SESSION-06** Schedule a repeating next session with "Save an .ics file" ticked (dev build) → Calendar gains an event with no patient name and the file is saved.
 - **SESSION-07** Choose **Remind Me** > Tomorrow (dev build) → Reminders gains a "Follow up" item that names no patient.
 - **SESSION-08** Run the Shortcuts action "Show Today's Sessions" (dev build) → sessions are listed by initials, and when locked it refuses.
+- **SESSION-09** With FileVault off, click **New session** → an alert asks you to turn on FileVault and no session is created.
 
 ## 4. Record a session (RECORD)
 Before you start: a session with no transcript, a Mac that can play some audio, and microphone and call-audio permissions not yet decided.
@@ -54,11 +56,12 @@ Before you start: a session with no transcript, a Mac that can play some audio, 
 - **RECORD-06** Deny microphone access and click **Record Session** → no recording starts and an alert says how to allow it in System Settings.
 - **RECORD-07** Click **Record Session** on a Mac with FileVault off → recording doesn't start and a "Turn on FileVault" alert appears.
 - **RECORD-08** Let a recording run past 90 minutes → a "Still recording" alert asks whether you forgot, with **Keep Recording** and **Stop Now**.
-- **RECORD-09** Click **Stop Recording** → the microphone and call audio are saved as two files with the session, and transcription starts by itself.
+- **RECORD-09** Click **Stop Recording** → the microphone and call audio are saved as two files with the session, no audio is left anywhere else, and transcription starts by itself.
 - **RECORD-10** Force-quit Aletheia mid-recording and reopen → the audio up to that moment is recovered into its session.
 - **RECORD-11** Force-quit mid-recording, delete that patient's folder in Finder and reopen → a warning strip says a recording is set aside, naming no patient.
 - **RECORD-12** Click **Review in Settings…** and recover the item into a session → its audio is added to that session and leaves the list.
 - **RECORD-13** Click **Delete…** on a set-aside recording and confirm → the audio is gone for good.
+- **RECORD-14** Click **Pause**, speak, then **Resume** and **Stop Recording** → nothing said while paused is in the saved audio.
 
 
 ## 5. Transcribe (TRANSCRIBE)
@@ -76,7 +79,11 @@ Before you start: a session that has a recording and no transcript.
 - **TRANSCRIBE-11** Edit the transcript, then click another session → "Save your transcript edits?" offers **Save**, **Discard Edits** and **Cancel**.
 - **TRANSCRIBE-12** Turn on "Keep raw audio after transcription" with encryption on (dev build) → the recording is kept after the transcript is saved.
 - **TRANSCRIBE-13** Damage the downloaded speech model, then click **Transcribe** → a "Something went wrong" alert gives the reason and a "Transcription needs attention" notification arrives.
-- **TRANSCRIBE-14** Transcribe a recording for the first time with raw audio not kept → a one-time notice says the recording was deleted after transcription, and it is not shown again.
+- **TRANSCRIBE-14** Transcription fails partway (the audio can't be read) → no transcript is written, the recording is kept, and a "Transcription needs attention" notification arrives.
+- **TRANSCRIBE-15** Transcribe with encryption on → the transcript is saved, and its text can't be read from the data folder without the passphrase.
+- **TRANSCRIBE-16** Turn on "Keep raw audio after transcription" with encryption off → the recording is still deleted once the transcript is saved, so audio is never left readable on disk.
+- **TRANSCRIBE-17** Re-transcribe a silent recording that already has a transcript → the earlier transcript and the recording are kept, and the tab says no speech was detected.
+- **TRANSCRIBE-18** Transcribe a recording for the first time with raw audio not kept → a one-time notice says the recording was deleted after transcription, and it is not shown again.
 
 ## 6. Comment on the transcript (COMMENT)
 Before you start: a session with a saved transcript and no comments.
@@ -87,6 +94,7 @@ Before you start: a session with a saved transcript and no comments.
 - **COMMENT-05** Drag the divider between transcript and comments → the split is remembered, and dragging far enough folds a side away.
 - **COMMENT-06** Edit a card, then click **Resolve** → it moves into a collapsed "Resolved (N)" section, and **Reopen** brings it back.
 - **COMMENT-07** Click **Delete** on a card → it disappears at once with no confirmation.
+- **COMMENT-08** Delete a patient → her comments are gone and no longer listed for any session.
 
 ## 7. Draft and edit progress notes (NOTE)
 Before you start: a session with a transcript, the AI model downloaded, and a comment and patient background containing a distinctive fact.
@@ -140,7 +148,7 @@ Before you start: a patient whose sessions have transcripts too long for this Ma
 Before you start: two patients with transcripts, notes and comments, one of them named like "Joanne Fox".
 - **SEARCH-01** Press ⌘F while the cursor is in a transcript → the sidebar search field takes focus.
 - **SEARCH-02** Type a word from a transcript into the sidebar field → results cover the detail pane.
-- **SEARCH-03** Look at the results → they are grouped Patients, Sessions, My notes, Progress notes, Comments and Transcripts, with highlighted snippets.
+- **SEARCH-03** Look at the results → they are grouped Patients, Sessions, Psychotherapy notes, Progress notes, Comments and Transcripts, with highlighted snippets.
 - **SEARCH-04** Search a word that appears in many places → each group shows its best five and a "Show more" row.
 - **SEARCH-05** Press ↓ then Return on a result → it opens and the search clears; Esc clears a query.
 - **SEARCH-06** Open a transcript result → that session opens on the Transcript tab, scrolled to the matching line.
@@ -152,6 +160,7 @@ Before you start: two patients with transcripts, notes and comments, one of them
 - **SEARCH-12** Turn on "Find patients in Spotlight" (dev build) → Spotlight lists patients by initials, never names.
 - **SEARCH-13** Search a transcript word in capitals, then in lowercase → both return the same results, and accents are ignored.
 - **SEARCH-14** Type "Joanne" plus a topic word from her notes → only her sessions mentioning the topic appear, and adding a date word narrows them to that date.
+- **SEARCH-15** Delete a patient, then search a word from her transcript → no result mentions her.
 
 ## 11. Export and archive (EXPORT)
 Before you start: two patients with transcripts, notes and comments, one session with a kept recording, and one with nothing in it.
@@ -159,13 +168,14 @@ Before you start: two patients with transcripts, notes and comments, one session
 - **EXPORT-02** Click **Cancel** during an export → the toast goes away and nothing is left in the destination.
 - **EXPORT-03** Let an export finish → a toast reads "Export ready" with counts and **Show in Finder**.
 - **EXPORT-04** Export to a destination that can't be written to → a toast reads "Export didn't finish".
-- **EXPORT-05** Pick an iCloud Drive folder → a "This folder syncs to the cloud" warning appears before anything is written.
+- **EXPORT-05** Export All Records to an iCloud Drive or other synced folder → the export is refused and nothing is written to the folder.
 - **EXPORT-06** Open the export folder → "Read me.txt" gives the counts, and each patient has a folder with one dated folder per session.
-- **EXPORT-07** Open a session's folder → it holds the transcript, one text file per note, any comments and recordings that play normally.
+- **EXPORT-07** Open a session's folder → it holds the transcript, one text file per note and recordings that play normally, but no comments or psychotherapy notes.
 - **EXPORT-08** Export a patient whose name has slashes or colons → illegal characters in the folder name become "-".
 - **EXPORT-09** Click **Export all records** on a patient's page → a single zip of text files appears, one folder per session.
 - **EXPORT-10** Click **Export** on a note and choose PDF, Word or Markdown → a save panel suggests a name and the file opens correctly.
 - **EXPORT-11** Export a whole session from its header → the file holds the patient's name, date, Summary and Transcript.
+- **EXPORT-12** Pick a folder on a disk that isn't encrypted → a "This disk isn't encrypted" warning appears and nothing has been written to the folder.
 
 ## 12. Lock and privacy shield (LOCK)
 Before you start: a Mac that can authenticate with Touch ID or a password.
@@ -177,11 +187,17 @@ Before you start: a Mac that can authenticate with Touch ID or a password.
 - **LOCK-06** Lock the app while a recording runs → the recording keeps going.
 - **LOCK-07** Copy a patient's text and paste it elsewhere → it pastes, but clipboard history doesn't keep it.
 - **LOCK-08** Select transcript text and open the right-click menu → macOS Writing Tools isn't offered.
+- **LOCK-09** With the encrypted folder's key kept on this Mac and App lock saved as off, quit and reopen → the lock screen still covers the window.
+- **LOCK-10** In that state, open **Settings** > **Security** → App lock shows on and can't be changed.
+- **LOCK-11** With the key not kept on this Mac, turn App lock off → it asks for Touch ID or your password first, and the app stops locking at launch.
+- **LOCK-12** Quit and reopen with the key kept, then unlock with Touch ID → patients appear with no passphrase asked, and none showed before.
+- **LOCK-13** On a fresh install, open **Settings** > **Security** → "Lock when Aletheia is hidden" is on; an install that turned it off keeps it off.
+- **LOCK-14** Delete a session's recording whose temporary audio folder can't be removed → the app says the recording wasn't deleted.
 
 ## 13. Encryption at rest (ENCRYPT)
 Before you start: a developer build, or a data folder that is already encrypted; Privacy & Security shows the encryption controls only then.
 - **ENCRYPT-01** In a Release build with an unencrypted folder, look for encryption controls → none are offered.
-- **ENCRYPT-02** Click **Turn On…** with a passphrase under 12 characters (dev build) → **Continue** is disabled and a strength meter shows "Weak".
+- **ENCRYPT-02** Type a passphrase under 12 characters in **Turn On…** (dev build) → **Continue** stays disabled, and under 8 characters the strength meter reads "Weak".
 - **ENCRYPT-03** Reach the recovery key step (dev build) → 24 words show, with **Copy Words**, **Save as PDF…** and **Print…**.
 - **ENCRYPT-04** Reach the last step (dev build) → **Encrypt my data** stays unavailable until both acknowledgement boxes are ticked.
 - **ENCRYPT-05** Open data folder files in Terminal after encrypting (dev build) → transcripts, notes and recordings are unreadable while folder names stay readable.
@@ -199,8 +215,9 @@ Before you start: some patients and sessions in the data folder, and a copy of i
 - **BACKUP-04** Delete a patient and open the backups folder → a database snapshot taken just before is there.
 - **BACKUP-05** Open a data folder written by an older version → it opens and upgrades in place with patients and sessions intact.
 - **BACKUP-06** Open a data folder written by a newer version → an "Update Aletheia" alert appears and the files are left untouched.
-- **BACKUP-07** Corrupt one patient.json in a copy of the data folder and open it → the sidebar says one record couldn't be read and everything else opens.
-- **BACKUP-08** Restore a backup archive on this Mac → it unlocks with Touch ID or your passphrase; on a new Mac, your recovery key unlocks it.
+- **BACKUP-07** Corrupt one patient.json in a data folder copy and open it → the sidebar says one record couldn't be read, everything else opens and the damaged file is unchanged.
+- **BACKUP-08** With encryption on, click **Back up now** and pick another folder → an archive is written there and no session text is readable in it.
+- **BACKUP-09** Restore a backup archive on this Mac → it unlocks with Touch ID or your passphrase; on a new Mac, your recovery key unlocks it.
 
 ## 15. Settings (SETTINGS)
 Before you start: setup finished.
@@ -216,7 +233,7 @@ Before you start: setup finished.
 - **SETTINGS-10** Open **Formats** → you can set the default format and summary length and toggle what drafts include.
 - **SETTINGS-11** Turn on "Show recording diagnostics" and record → the recording pane gains a call-audio diagnostics readout.
 - **SETTINGS-12** Open **Licenses & Legal** → the Terms of Use and Privacy Policy links, **Consent Guide…** and third-party notices are there.
-- **SETTINGS-13** Choose a folder inside iCloud Drive as the data folder → it is refused with a message to pick a folder that stays on this Mac.
+- **SETTINGS-13** Choose an iCloud Drive or cloud-synced folder as the data folder → it is refused, asking for a folder that stays on this Mac; the current folder is kept.
 - **SETTINGS-14** Open Aletheia with its data folder now synced → a **Move data to this Mac** sheet offers to copy and verify it, then keep or delete the old one.
 
 ## 16. Security panel, activity log and Doctor (SECURITY)
@@ -226,7 +243,7 @@ Before you start: a data folder with some activity (unlock, export, delete a pat
 - **SECURITY-03** Click **Copy** under "Verify it yourself" → the button reads "Copied" and the clipboard holds the codesign command.
 - **SECURITY-04** Open the activity log after unlocking, exporting and deleting a patient → each adds a dated entry with no patient names.
 - **SECURITY-05** Click **Verify integrity & export audit report** → "Integrity verified" appears and a report is saved.
-- **SECURITY-06** Edit audit.log in Terminal, reopen and verify → "Integrity check failed" appears with the entry number.
+- **SECURITY-06** Change an activity log entry outside Aletheia, then click **Verify integrity & export audit report** → "Integrity check failed" appears with the entry number.
 - **SECURITY-07** Choose **Help** > **Aletheia Doctor…** → checks are grouped and each shows OK, Warning or Problem.
 - **SECURITY-08** Click **Copy report** in Doctor → the button reads "Copied" and the report holds no patient names.
 
@@ -235,21 +252,24 @@ Before you start: a Release build of Aletheia and an internet connection; to see
 - **UPDATE-01** Open **Settings** > **General** > **Software update** → it shows the version, a Notarization row and the automatic-check switch.
 - **UPDATE-02** Click **Check for updates** when up to date → a "You're Up to Date" alert appears and Settings says you are up to date.
 - **UPDATE-03** Turn off Wi-Fi and click **Check for updates** → a "Couldn't Check for Updates" alert appears.
-- **UPDATE-04** Run an older build against a newer release → a prompt offers **View on GitHub**, **Skip this version**, **Remind me later** and **Download update**.
+- **UPDATE-04** Run an older build against a newer release → a prompt offers **View downloads**, **Skip this version**, **Remind me later** and **Download update**.
 - **UPDATE-05** Click **Remind me later** → the prompt closes and the same version is offered at a later check.
 - **UPDATE-06** Click **Skip this version** → automatic checks don't offer it again.
 - **UPDATE-07** Click **Download update** → the disk image downloads, is verified and opens, and Aletheia stays open.
-- **UPDATE-08** Click **Download update** for a release with a mismatched checksum → the file is deleted and the generic releases page opens instead.
+- **UPDATE-08** Click **Download update** for a release with a mismatched checksum → the file is deleted, nothing is opened, and the generic releases page opens instead.
 - **UPDATE-09** Switch away from and back to Aletheia repeatedly → at most one automatic check runs every 30 minutes.
+- **UPDATE-10** Click **Download update** for a release that lists no checksum → nothing is downloaded and the downloads page opens instead.
 
 ## 18. Notifications (NOTIFY)
 Before you start: allow Aletheia notifications in System Settings, and put Aletheia in the background.
 - **NOTIFY-01** Start a transcription for the first time → macOS asks for notification permission.
-- **NOTIFY-02** Let a transcription finish → a "Transcript ready" notification appears with no patient name.
+- **NOTIFY-02** Let a transcription finish → a "Transcript ready" notification appears that shows no patient name or initials.
 - **NOTIFY-03** Transcribe a silent recording → a "Transcription needs attention" notification appears.
 - **NOTIFY-04** Finish generating a note → a "Summary ready" notification appears.
-- **NOTIFY-05** Finish an export → an "Export ready" notification appears that names no patient.
+- **NOTIFY-05** Finish an export → an "Export ready" notification appears that shows no patient name or initials.
 - **NOTIFY-06** Turn on "Show patient names in notifications" and transcribe → the notification names the patient in full.
+- **NOTIFY-07** With "Show patient names in notifications" off, finish a transcript, a transcription problem, a note and an export → none of the four notifications shows a name or initials.
+- **NOTIFY-08** Turn on "Show patient names in notifications", lock the app and let a transcription finish → the notification shows no patient name or initials.
 
 ## 19. Menu bar item, menus and shortcuts (MENUBAR)
 Before you start: at least one patient and the app unlocked.
@@ -261,12 +281,13 @@ Before you start: at least one patient and the app unlocked.
 - **MENUBAR-06** Click **Stop and save** → the recording is saved and the panel returns to "Not recording".
 - **MENUBAR-07** Delete every patient and open the panel → it asks you to add a patient in the main window first.
 - **MENUBAR-08** Make **Start recording** fail, such as with FileVault off → the reason appears under the button and the panel stays open.
-- **MENUBAR-09** Lock the app and open the panel → it shows "Aletheia is locked" with **Unlock**.
+- **MENUBAR-09** Lock the app and open the panel → it shows "Aletheia is locked" with **Unlock**, and no patient name or recording detail.
 - **MENUBAR-10** Press ⌘/ → a Keyboard Shortcuts window lists three groups.
 - **MENUBAR-11** Press ⌘N, ⌘G and Esc in their places → a patient is added, a note is generated and a sheet closes.
-- **MENUBAR-12** Choose **Help** > **Report a Bug…** → your browser opens the feedback page.
+- **MENUBAR-12** Choose **Help** > **Report a Bug…** → your browser opens the feedback page, with no patient information in the address.
 - **MENUBAR-13** Rest the pointer for two seconds on a control with a help tip → a "how this works" popover appears once.
 - **MENUBAR-14** Quit with work running → no alert appears and interrupted work is saved for the next launch.
+- **MENUBAR-15** While a recording is running, open the panel and try to start another → no second recording starts and the first keeps recording.
 
 ## 20. Build and privacy checks from Terminal (BUILD)
 Before you start: the Release app at /Applications/Aletheia.app and the repository checked out.
@@ -283,3 +304,4 @@ Before you start: the Release app at /Applications/Aletheia.app and the reposito
 - **BUILD-11** Start a recording and run `ls -la` on the session folder → no audio is there until you click **Stop Recording**.
 - **BUILD-12** Run `cat legal-acceptance.log` in the data folder after accepting terms → one line holds the accepted version, a UTC time and the app version.
 - **BUILD-13** Run `bash scripts/scan-secrets.sh` and `bash scripts/check-entitlements.sh` in the repository → both pass.
+- **BUILD-14** Search the app's source for network calls such as `URLSession` → none outside the network helper.
