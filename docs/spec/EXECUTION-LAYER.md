@@ -126,8 +126,22 @@ into the summary. Only first-party, SHA-pinned actions are used.
 
 ## Flake policy
 
-No sleeps and no retries. Wait on elements with a timeout. A flaky test is a bug
-in the fixture or the app; fix the root cause.
+No fixed delays and no retries. A fixed delay (`Task.sleep`, `Thread.sleep`, a
+"settle" pause) is never a wait: it is either too short, so flaky, or too long,
+so slow. Everything that waits goes through one helper in `DSL/Eventually.swift`:
+
+```swift
+func eventually(
+    within timeout: TimeInterval = 5,
+    _ what: String,
+    _ condition: @MainActor () async throws -> Bool
+) async throws
+```
+
+It polls about every 10 ms and throws, naming `what`, if the condition has not
+held after `within` seconds. The coverage test rejects a fixed delay anywhere in
+`DSL/` or `Drivers/` other than that file. In UI code, wait on an element with
+a timeout. A flaky test is a bug in the fixture or the app; fix the root cause.
 
 ## Layout
 
@@ -135,7 +149,7 @@ in the fixture or the app; fix the root cause.
 docs/spec/ACCEPTANCE-CRITERIA.md          the checks (source of truth)
 docs/spec/BEHAVIOR-REFERENCE.md           detail, each item tagged qa:
 Tests/AletheiaAcceptance/
-  DSL/        Given.swift When.swift Then.swift Copy.swift
+  DSL/        Given.swift When.swift Then.swift Copy.swift Eventually.swift
   Ledger/     SpecCoverageTests.swift AcceptanceLedger.swift
   <Journey>/  <Journey>Spec.swift          one file per walkthrough section
 ```
