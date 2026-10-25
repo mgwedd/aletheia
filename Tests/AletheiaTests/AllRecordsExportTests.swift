@@ -65,9 +65,9 @@ final class AllRecordsExportTests: XCTestCase {
 
     func testEveryPatientGetsAFolderWithTextAndRecordings() throws {
         let source = FakeSource([
-            ("Jane Doe", [ArchiveSession(date: Self.date(2), transcript: "Hello.", notes: [], summary: "", comments: []),
-                          ArchiveSession(date: Self.date(1), transcript: "", notes: [], summary: "", comments: [])]),
-            ("Sam Roe", [ArchiveSession(date: Self.date(5), transcript: "Hi.", notes: [ArchiveNote(formatName: "SOAP", text: "S: ok")], summary: "", comments: [])]),
+            ("Jane Doe", [ArchiveSession(date: Self.date(2), transcript: "Hello.", notes: [], summary: ""),
+                          ArchiveSession(date: Self.date(1), transcript: "", notes: [], summary: "")]),
+            ("Sam Roe", [ArchiveSession(date: Self.date(5), transcript: "Hi.", notes: [ArchiveNote(formatName: "SOAP", text: "S: ok")], summary: "")]),
         ])
         // The audio-only session (index 1, the older one) still gets its recording.
         source.audio["0/1"] = [AllRecordsRecording(name: AllRecordsExport.micRecordingName, url: try makeAudio("mic", bytes: 100))]
@@ -98,9 +98,20 @@ final class AllRecordsExportTests: XCTestCase {
         XCTAssertEqual(leftovers, [])
     }
 
+    func testAllRecordsExportHasNoPsychotherapyNotesOrPrivateComments() throws {
+        let source = FakeSource([("Jane Doe", [ArchiveSession(
+            date: Self.date(2), transcript: "Hello.", notes: [ArchiveNote(formatName: "SOAP", text: "S: ok")], summary: "")])])
+        let destination = root.appendingPathComponent("Aletheia records")
+        _ = try AllRecordsExport.write(from: source, to: destination, progress: { _, _ in }, isCancelled: { false })
+
+        let names = (FileManager.default.enumerator(atPath: destination.path)?.allObjects as? [String]) ?? []
+        XCTAssertFalse(names.isEmpty)
+        XCTAssertFalse(names.contains { $0.contains("Psychotherapy") || $0.contains("Comments") }, "\(names)")
+    }
+
     func testPatientsWithTheSameNameGetSeparateFolders() throws {
-        let one = ArchiveSession(date: Self.date(1), transcript: "First.", notes: [], summary: "", comments: [])
-        let two = ArchiveSession(date: Self.date(1), transcript: "Second.", notes: [], summary: "", comments: [])
+        let one = ArchiveSession(date: Self.date(1), transcript: "First.", notes: [], summary: "")
+        let two = ArchiveSession(date: Self.date(1), transcript: "Second.", notes: [], summary: "")
         let source = FakeSource([("Jane Doe", [one]), ("jane doe", [two]), ("", [])])
         let destination = root.appendingPathComponent("out")
         _ = try AllRecordsExport.write(from: source, to: destination, progress: { _, _ in }, isCancelled: { false })
@@ -111,7 +122,7 @@ final class AllRecordsExportTests: XCTestCase {
     }
 
     func testADecryptedTemporaryCopyIsMovedNotLeftBehind() throws {
-        let source = FakeSource([("Jane", [ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "", comments: [])])])
+        let source = FakeSource([("Jane", [ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "")])])
         let original = try makeAudio("mic")
         source.audio["0/0"] = [AllRecordsRecording(name: AllRecordsExport.micRecordingName, url: original)]
         source.readsDecryptToTemporary = true
@@ -136,7 +147,7 @@ final class AllRecordsExportTests: XCTestCase {
     }
 
     func testAFailureRemovesThePartialFolder() throws {
-        let sample = ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "", comments: [])
+        let sample = ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "")
         let source = FakeSource([("A", [sample]), ("B", [sample, sample])])
         source.failOn = (1, 1)
         let destination = root.appendingPathComponent("out")
@@ -145,7 +156,7 @@ final class AllRecordsExportTests: XCTestCase {
     }
 
     func testCancellingRemovesThePartialFolder() throws {
-        let sample = ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "", comments: [])
+        let sample = ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "")
         let source = FakeSource([("A", [sample, sample, sample])])
         var reads = 0
         let destination = root.appendingPathComponent("out")
@@ -156,7 +167,7 @@ final class AllRecordsExportTests: XCTestCase {
     }
 
     func testProgressCountsPatientsAndSessionsAndNeverGoesBack() throws {
-        let sample = ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "", comments: [])
+        let sample = ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "")
         let source = FakeSource([("A", [sample]), ("B", [sample, sample])])
         var updates: [(Double, String)] = []
         _ = try AllRecordsExport.write(
@@ -188,7 +199,7 @@ final class AllRecordsExportTests: XCTestCase {
     }
 
     func testAnAudioOnlySessionIsNotReportedAsLeftOut() throws {
-        let source = FakeSource([("Jane", [ArchiveSession(date: Self.date(1), transcript: "", notes: [], summary: "", comments: [])])])
+        let source = FakeSource([("Jane", [ArchiveSession(date: Self.date(1), transcript: "", notes: [], summary: "")])])
         source.audio["0/0"] = [AllRecordsRecording(name: AllRecordsExport.micRecordingName, url: try makeAudio("mic"))]
         let destination = root.appendingPathComponent("out")
         _ = try AllRecordsExport.write(from: source, to: destination, progress: { _, _ in }, isCancelled: { false })
