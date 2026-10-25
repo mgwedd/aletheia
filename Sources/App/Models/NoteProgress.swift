@@ -1,5 +1,24 @@
 import Foundation
 
+/// The Notes pane's own wording, in one place so screens and tests agree.
+enum NoteWords {
+    static func emptyTitle(format: ProgressNoteFormat) -> String { "No \(format.shortName) note yet" }
+    static func generateButton(format: ProgressNoteFormat) -> String { "Generate \(format.shortName) note" }
+    /// The Length menu's button: "Length: Natural · Normal".
+    static func lengthLabel(length: SummaryVerbosity, effort: AnswerEffort) -> String {
+        "Length: \(length.displayName) \u{00B7} \(effort.displayName)"
+    }
+    /// What the Length menu offers: the lengths, then the AI effort levels.
+    static var lengthChoices: [String] { SummaryVerbosity.allCases.map(\.displayName) }
+    static var effortChoices: [String] { AnswerEffort.allCases.map(\.displayName) }
+    static let lengthTitle = "Length"
+    static let outdatedMessage = "Outdated: the transcript has changed since this note was generated."
+    static let replaceEditedTitle = "Replace your edited note?"
+    static func editPromptItem(format: ProgressNoteFormat, customized: Bool) -> String {
+        "Edit \(format.shortName) Prompt…\(customized ? " (customized)" : "")"
+    }
+}
+
 /// The note pane's progress while a note is generated: one status line
 /// and a bar, worked out from the run's live `AIRunProgress`. Pure functions,
 /// so they can be tested without a clock or a view.

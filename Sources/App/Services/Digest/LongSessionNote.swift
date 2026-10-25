@@ -70,6 +70,7 @@ enum LongSessionNote {
         live: @escaping DigestBuilder.Live,
         coverage: @escaping (String) -> Void
     ) -> AsyncThrowingStream<String, Error> {
+        let notes = AIContextPolicy.notes(notes, for: .noteGeneration)
         let fields: TherapistFields
         do {
             fields = try TherapistFields(

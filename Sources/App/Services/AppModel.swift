@@ -65,10 +65,10 @@ final class AppModel: ObservableObject {
     // `nil` until the first build, so launching the app isn't logged as a change.
     private var lastEncryptionEnabled: Bool?
     private var lastEncryptionUnlocked: Bool?
-    private let settings: AppSettings
+    let settings: AppSettings
     /// Supplies the `FileProtector` the stores read/write through. When
     /// encryption is locked it rejects access, including writes.
-    private let encryption: EncryptionManager
+    let encryption: EncryptionManager
     private let spotlightIndexer: SpotlightIndexing
     /// The feature modules this build ships, composed once at launch from the
     /// full catalog. See `FeatureRegistry`.
@@ -105,6 +105,7 @@ final class AppModel: ObservableObject {
     /// this so kept recordings are only ever stored as ciphertext
     /// (`AudioRetentionPolicy.keepsAudio`).
     var isEncryptionEnabled: Bool { encryption.isEnabled }
+    var encryptionRequiresAppLock: Bool { encryption.requiresAppLock }
 
     /// Whether at-rest encryption is set up *and* unlocked this session. Read by
     /// Doctor to describe the keystore's state.
@@ -132,7 +133,7 @@ final class AppModel: ObservableObject {
         let dataRoot = settings.dataRootURL
         let previousAudit = audit
         attachAudit(dataRoot.map { root in
-            AuditLog(root: root, dekProvider: { [weak self] in self?.encryption.protector.heldKey })
+            AuditLog(root: root, keyProvider: auditKeyProvider, dekProvider: { [weak self] in self?.encryption.protector.heldKey })
         })
         logDataFolderChangeIfNeeded(from: previousAudit, to: dataRoot)
         logEncryptionTransitionIfNeeded()
@@ -341,7 +342,9 @@ final class AppModel: ObservableObject {
     /// Writes an encrypted archive of the database into `folder` (a folder the
     /// user chose), sealed with the folder key, and records the backup once on
     /// success. Nothing is recorded when the backup is refused or fails.
-    func backUpNow(to folder: URL) async -> BackupOutcome {
+    /// Runs on the main actor: it updates published settings, which the menu
+    /// bar and windows observe; the archive itself is written off the main thread.
+    @MainActor func backUpNow(to folder: URL) async -> BackupOutcome {
         guard let root = settings.dataRootURL, let comments = commentStore else {
             return .failed("Choose a data folder first.")
         }
@@ -357,7 +360,7 @@ final class AppModel: ObservableObject {
         }
         var service = LocalEncryptedBackupService(root: root, key: key)
         service.destinationOverride = folder
-        let outcome = await BackupCoordinator(store: comments, destination: service).backUpNow(reason: "manual")
+        let outcome = await BackupCoordinator(store: comments, destination: service).backUpFolderNow(dataRoot: root, reason: "manual")
         if case .success = outcome {
             // The key wrapper is passphrase-protected; keeping it beside the
             // archive lets the backup be opened without the original data folder.
@@ -586,9 +589,29 @@ final class AppModel: ObservableObject {
     func deletePatient(_ patient: Patient) throws {
         guard let store else { throw StoreError.noDataRoot }
         try store.deletePatient(patient)
-        recordAudit(.recordDeleted, subjectID: patient.id.uuidString, detail: "patient")
         refreshPatients()
         reindexSpotlight()
+    }
+
+    /// Supplies the key that signs the activity log's entries. Defaults to the
+    /// Keychain key; tests swap it (then call `rebuildStore()`) so the log is
+    /// signed and verifiable without touching the real Keychain.
+    var auditKeyProvider: AuditKeyProvider = AuditKeyManager.loadOrCreateKeychainKey
+
+    /// What "Verify integrity & export audit report" shows and saves: the
+    /// chain check's one-line result and the full report. A broken chain is
+    /// recorded and raised first, so the report lists it.
+    struct AuditVerification: Equatable {
+        let message: String
+        let report: String
+    }
+
+    func verifyAuditLog() -> AuditVerification? {
+        guard let audit else { return nil }
+        let result = audit.verifyIntegrity()
+        let message = result.statusMessage
+        applyIntegrityResult(result)
+        return AuditVerification(message: message, report: audit.generateReport(status: message))
     }
 }
 

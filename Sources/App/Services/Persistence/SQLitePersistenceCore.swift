@@ -22,6 +22,7 @@ final class SQLitePersistenceCore: PersistenceCore {
     /// The database file, retained so a pre-migration snapshot can be written
     /// beside it before a schema upgrade transforms the data.
     private let url: URL
+    private let migrations: [SchemaMigrator.Migration]
 
     // SQLite needs to know whether a bound value outlives the call; TRANSIENT
     // tells it to copy, which is always safe here.
@@ -40,8 +41,12 @@ final class SQLitePersistenceCore: PersistenceCore {
     /// Opens (creating and migrating if needed) the database at `url`, or throws a
     /// `DatabaseOpenFailure` saying why it couldn't: a newer schema, a refused or
     /// failed migration, a corrupt file, or a locked/full/unreadable one.
-    init(opening url: URL) throws {
+    ///
+    /// `migrations` is the schema history to apply; it is only ever anything but
+    /// the shipped list in tests, which need a step that fails.
+    init(opening url: URL, migrations: [SchemaMigrator.Migration] = SchemaMigrator.migrations) throws {
         self.url = url
+        self.migrations = migrations
         do {
             try SecureFS.createDirectory(at: url.deletingLastPathComponent())
         } catch {
@@ -95,7 +100,7 @@ final class SQLitePersistenceCore: PersistenceCore {
         guard let current = read.version else {
             return failure(code: read.code, fallback: .cannotOpen)
         }
-        switch SchemaMigrator.plan(current: current) {
+        switch SchemaMigrator.plan(current: current, migrations: migrations) {
         case .upToDate:
             return nil
         case .needsNewerApp(let dataVersion, let appVersion):

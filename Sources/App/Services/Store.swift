@@ -1,5 +1,20 @@
 import Foundation
 
+/// The only notes the activity log gets for a change to a record: the kind of
+/// record, never a name or any text.
+enum PHIAuditDetail {
+    static let patient = "patient"
+    static let session = "session"
+    static let transcript = "transcript"
+    static let note = "note"
+    static let therapistNote = "therapist note"
+    static let comment = "comment"
+    static let audioRecording = "audio recording"
+    static let chatThread = "chat thread"
+
+    static let all: Set<String> = [patient, session, transcript, note, therapistNote, comment, audioRecording, chatThread]
+}
+
 enum StoreError: LocalizedError {
     case noDataRoot
     case patientNotFound
@@ -132,8 +147,9 @@ final class Store {
     /// this build understands, computed once when the store opens.
     let schemaCompatibility: SchemaCompatibility
 
-    /// Receives an activity-log entry (action, record id, note) for each
-    /// recording deleted. Never carries text.
+    /// Receives an activity-log entry (action, record id, note) for each record
+    /// created, saved or deleted. The note is one of `PHIAuditDetail`; it never
+    /// carries a name or text.
     var onAudit: ((AuditAction, String?, String?) -> Void)?
 
     /// - Parameter openDatabaseIfMissing: when `commentStore` is nil, whether to
@@ -326,6 +342,7 @@ final class Store {
         let patient = Patient(id: id, name: name, slug: id.uuidString)
         try SecureFS.createDirectory(at: patientDir(for: patient))
         try save(patient)
+        onAudit?(.phiCreated, patient.id.uuidString, PHIAuditDetail.patient)
         return patient
     }
 
@@ -404,6 +421,7 @@ final class Store {
 
         // Remove unreadable records cache entries matching this patient or its folder
         recordUnreadable([], replacing: { $0.patientId == patient.id || $0.folder.path.hasPrefix(dir.path) })
+        onAudit?(.phiDeleted, patient.id.uuidString, PHIAuditDetail.patient)
     }
 
     // MARK: - Sessions
@@ -457,6 +475,8 @@ final class Store {
         var unreadable: [UnreadableEntry] = []
         for folder in entries {
             guard let isDir = try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory, isDir else { continue }
+            // A hidden folder is a session still being created.
+            guard !folder.lastPathComponent.hasPrefix(".") else { continue }
             // A session folder is one carrying a `session.json` identity record,
             // or (legacy / manually created) one named "…_Session". The latter
             // is minted an id on sight so it becomes stable from here on.
@@ -525,17 +545,35 @@ final class Store {
     func createSession(for patient: Patient, on date: Date = Date()) throws -> SessionRecord {
         let dir = patientDir(for: patient)
         let dayString = dateFolderFormatter.string(from: date)
+        // Build the folder, identity file included, under a hidden name and then
+        // rename it into place. A listing running at the same time (background
+        // sweeps list sessions) never sees a session folder without its
+        // `session.json`, which it would otherwise give a second id.
+        let meta = SessionMetadata(id: UUID(), date: date)
+        let staged = dir.appendingPathComponent(".new-session-\(meta.id.uuidString)", isDirectory: true)
+        try SecureFS.createDirectory(at: staged)
+        do {
+            try writeSessionMetadata(meta, to: sessionMetadataURL(for: staged))
+        } catch {
+            try? fileManager.removeItem(at: staged)
+            throw error
+        }
         var folderName = "\(dayString)_Session"
         var suffix = 2
-        while fileManager.fileExists(atPath: dir.appendingPathComponent(folderName).path) {
+        while true {
+            if !fileManager.fileExists(atPath: dir.appendingPathComponent(folderName).path) {
+                // rename(2) fails rather than replace a folder that appeared meanwhile.
+                if rename(staged.path, dir.appendingPathComponent(folderName).path) == 0 { break }
+                if errno != EEXIST && errno != ENOTEMPTY {
+                    let code = errno
+                    try? fileManager.removeItem(at: staged)
+                    throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+                }
+            }
             folderName = "\(dayString)_Session-\(suffix)"
             suffix += 1
         }
-        let sessionDir = dir.appendingPathComponent(folderName, isDirectory: true)
-        try SecureFS.createDirectory(at: sessionDir)
-        // Assign the session's stable identity at creation and persist it.
-        let meta = SessionMetadata(id: UUID(), date: date)
-        try writeSessionMetadata(meta, to: sessionMetadataURL(for: sessionDir))
+        onAudit?(.phiCreated, meta.id.uuidString, PHIAuditDetail.session)
         return SessionRecord(id: meta.id, patientId: patient.id, date: date, folderName: folderName)
     }
 
@@ -648,8 +686,11 @@ final class Store {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
             do { try FileManager.default.removeItem(at: url); removed = true } catch { failed = true }
         }
-        try? FileManager.default.removeItem(at: Store.stagingDir(for: session.id))
-        if removed { onAudit?(.recordDeleted, session.id.uuidString, "audio recording") }
+        let staging = Store.stagingDir(for: session.id)
+        if FileManager.default.fileExists(atPath: staging.path) {
+            do { try FileManager.default.removeItem(at: staging); removed = true } catch { failed = true }
+        }
+        if removed { onAudit?(.phiDeleted, session.id.uuidString, PHIAuditDetail.audioRecording) }
         if failed { throw StoreError.recordingNotDeleted }
     }
 
@@ -668,6 +709,7 @@ final class Store {
     func saveTranscript(_ text: String, for patient: Patient, session: SessionRecord) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
         try protector.write(text, to: url)
+        onAudit?(.phiAmended, session.id.uuidString, PHIAuditDetail.transcript)
         // Index in the background; the save itself never waits on it.
         if let index = searchIndex {
             let item = Store.indexItem(SessionSearch.Document(
@@ -808,7 +850,7 @@ final class Store {
     /// stored), plus resolved comments, which the chat leaves out but global
     /// search finds.
     private func searchMaterial(for patient: Patient, session: SessionRecord) -> [SessionSearch.Document] {
-        var parts = sessionMaterialParts(for: patient, session: session)
+        var parts = sessionMaterialParts(for: patient, session: session, forAI: false)
         if let resolved = Store.resolvedCommentsText(commentStore?.comments(sessionID: session.id) ?? []) {
             parts.append((kind: .comment, text: resolved))
         }
@@ -979,6 +1021,7 @@ final class Store {
             let record = try NoteFreshness.encode(fingerprint: NoteFreshness.fingerprint(of: transcript))
             try protector.write(record, to: dir.appendingPathComponent(Store.noteMetaFileName(for: format)))
         }
+        onAudit?(.phiAmended, session.id.uuidString, PHIAuditDetail.note)
     }
 
     // MARK: - Session digests
@@ -1100,8 +1143,9 @@ final class Store {
         let coverageURL = noteSidecarURL(.coverage, patient: patient, session: session, format: format)
         if let coverage, !coverage.isEmpty {
             try protector.write(coverage, to: coverageURL)
-        } else {
-            try? FileManager.default.removeItem(at: coverageURL)
+        } else if FileManager.default.fileExists(atPath: coverageURL.path) {
+            // A stale "written from part of the transcript" line would mislabel the new note.
+            try FileManager.default.removeItem(at: coverageURL)
         }
     }
 
@@ -1498,6 +1542,12 @@ final class Store {
     /// The therapist's comments on a session's transcript (none when the database isn't open).
     func comments(for session: SessionRecord) -> [SessionComment] {
         commentStore?.comments(sessionID: session.id) ?? []
+    }
+
+    /// The therapist's private psychotherapy note for a session. Only the
+    /// separate psychotherapy export and the note editor read it.
+    func psychotherapyNote(for session: SessionRecord) -> String {
+        commentStore?.note(sessionID: session.id) ?? ""
     }
 
     func exportSessionMarkdown(patient: Patient, session: SessionRecord) -> String {
@@ -1959,7 +2009,7 @@ final class Store {
             } catch {
                 unreadable = true
             }
-            let notes = commentStore?.note(sessionID: session.id) ?? ""
+            let notes = AIContextPolicy.notes(commentStore?.note(sessionID: session.id) ?? "", for: .patientChat)
             let comments = AssistantService.formatComments(commentStore?.comments(sessionID: session.id) ?? [])
             let generated = generatedNotes(for: patient, session: session)
                 .map { "Generated progress note (\($0.0)):\n\($0.1)" }
@@ -1996,10 +2046,13 @@ final class Store {
     /// comments, as the single-session chat renders them), then generated
     /// notes, so a long generated note is what gets cut. Unreadable notes are
     /// skipped. Each block's kind says what it is, for search.
-    private func sessionMaterialParts(for patient: Patient, session: SessionRecord) -> [(kind: SessionSearch.Kind, text: String)] {
+    private func sessionMaterialParts(
+        for patient: Patient, session: SessionRecord, forAI: Bool = true
+    ) -> [(kind: SessionSearch.Kind, text: String)] {
         var blocks: [(kind: SessionSearch.Kind, text: String)] = []
 
-        let notes = commentStore?.note(sessionID: session.id) ?? ""
+        let storedNote = commentStore?.note(sessionID: session.id) ?? ""
+        let notes = forAI ? AIContextPolicy.notes(storedNote, for: .patientChat) : storedNote
         let comments = AssistantService.formatComments(commentStore?.comments(sessionID: session.id) ?? [])
         let therapistSections: [(SessionSearch.Kind, String)] = [
             (.sessionNotes, Prompts.therapistMaterial(notes: notes, comments: [])),

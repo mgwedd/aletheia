@@ -8,14 +8,15 @@ enum AuditLogCopy {
         ("app locks and unlocks (when app lock is on)", [.appUnlocked, .appUnlockFailed, .appLocked]),
         ("encryption changes", [.encryptionEnabled, .encryptionDisabled, .encryptionUnlocked]),
         ("exports", [.recordExported, .auditLogExported]),
-        ("deletions", [.recordDeleted]),
+        ("creation and edits of patients, sessions, transcripts, notes and comments", [.phiCreated, .phiAmended]),
+        ("deletions", [.recordDeleted, .phiDeleted]),
         ("changes to security settings", [.securitySettingChanged]),
         ("changes to the data folder", [.dataFolderChanged]),
         ("recovery key and passphrase changes", [.encryptionKeyChanged, .encryptionPassphraseChanged]),
         ("repeated failed unlocks", [.repeatedUnlockFailures]),
         ("failed exports", [.exportFailed]),
         ("failed integrity checks", [.integrityCheckFailed]),
-        ("backups", [.backupRun]),
+        ("backups and restores", [.backupRun, .backupRestored]),
         ("recovered recordings", [.recordingRecovered]),
     ]
 
@@ -175,21 +176,10 @@ struct AuditLogSection: View {
     }
 
     private func verifyIntegrityAndExportReport() {
-        guard let audit = appModel.audit else { return }
-        let status: String
-        let result = audit.verifyIntegrity()
-        switch result {
-        case .verified(let count):
-            status = "Integrity verified: all \(count) entries intact."
-        case .broken(let seq, let reason):
-            status = "Integrity check failed at entry #\(seq): \(reason)"
-        case .unverifiable(let reason):
-            status = "Audit log unverifiable: \(reason)"
-        }
-        verificationMessage = status
-        appModel.applyIntegrityResult(result)
+        guard let verification = appModel.verifyAuditLog() else { return }
+        verificationMessage = verification.message
         let name = FileSaver.fileName("Aletheia Audit Report", Self.fileStamp())
-        let outcome = FileSaver.saveText(audit.generateReport(status: status), suggestedName: "\(name).txt")
+        let outcome = FileSaver.saveText(verification.report, suggestedName: "\(name).txt")
         finishExport(outcome)
     }
 

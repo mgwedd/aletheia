@@ -40,6 +40,21 @@ struct BackupCoordinator {
         return await destination.backUp(databaseURL: temp, reason: reason)
     }
 
+    /// Like `backUpNow`, but the archive holds the whole data folder `dataRoot`
+    /// (the database as a consistent snapshot, everything else as it is).
+    func backUpFolderNow(dataRoot: URL, reason: String) async -> BackupOutcome {
+        guard destination.isConfigured else { return .notConfigured }
+        guard let temp = try? PrivateStaging.scratchFile(prefix: "aletheia-backup", ext: "sqlite") else {
+            return .failed("Couldn't prepare a private folder for the snapshot.")
+        }
+        defer { PrivateStaging.remove(temp) }
+        PrivateStaging.remove(temp)
+        guard store.snapshot(to: temp) else {
+            return .failed("Couldn't take a consistent snapshot of the database.")
+        }
+        return await destination.backUpFolder(root: dataRoot, databaseURL: temp, reason: reason)
+    }
+
     /// Restore the most recent archive over `databaseURL`.
     /// PRECONDITION: no store may be open on `databaseURL` — the caller closes it
     /// first and rebuilds afterwards.

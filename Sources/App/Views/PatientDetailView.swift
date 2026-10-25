@@ -17,6 +17,7 @@ struct PatientDetailView: View {
     /// Carries a session chosen in global search to this patient's view.
     @ObservedObject private var navigator = AppNavigator.shared
     @State private var sessions: [SessionRecord] = []
+    @State private var pendingExport: ExportConfirmation?
     /// Session folders whose `session.json` couldn't be read (left untouched).
     @State private var damagedSessions: [UnreadableEntry] = []
     private var visibleDamagedSessions: [UnreadableEntry] {
@@ -34,6 +35,7 @@ struct PatientDetailView: View {
     /// Save / Discard / Cancel prompt is up.
     @State private var pendingSelection: SessionSelection?
     @State private var showUnsavedPrompt = false
+    @State private var confirmingPsychotherapyExport = false
     @State private var sessionInitialTab: SessionTab = .transcript
     @State private var sessionInitialNoteFormat: ProgressNoteFormat?
     @State private var sessionInitialShowingMyNotes = false
@@ -78,10 +80,12 @@ struct PatientDetailView: View {
                         HStack(spacing: 8) {
                             askAllButton
                             exportButton
+                            psychotherapyExportButton
                         }
                         VStack(alignment: .leading, spacing: 8) {
                             askAllButton
                             exportButton
+                            psychotherapyExportButton
                         }
                     }
                     SummaryStatusRow(scheduler: integrations.digestScheduler, patientID: patient.id)
@@ -165,10 +169,20 @@ struct PatientDetailView: View {
         // A transcription finishing changes which sessions have a transcript or
         // recording, even when it isn't the session currently on screen.
         .onChange(of: transcription.outcomes) { _, _ in refresh() }
+        .exportConfirmation($pendingExport, settings: settings)
+        .dismissOnLock { pendingExport = nil }
         .alert("Something went wrong", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
+        }
+        .confirmationDialog(
+            PsychotherapyExport.confirmationTitle, isPresented: $confirmingPsychotherapyExport, titleVisibility: .visible
+        ) {
+            Button(PsychotherapyExport.confirmButton) { exportPsychotherapyNotes() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(PsychotherapyExport.confirmationMessage)
         }
         .confirmationDialog("Save your transcript edits?", isPresented: $showUnsavedPrompt, titleVisibility: .visible) {
             Button("Save") {
@@ -246,7 +260,18 @@ struct PatientDetailView: View {
         .disabled(sessions.isEmpty || exports.isRunning)
         .help(exports.isRunning
             ? "An export is already running"
-            : "Save every transcript, note and comment as a zip of text files. It's prepared in the background and you'll be told when it's ready.")
+            : "Save every transcript and progress note as a zip of text files. Psychotherapy notes are not included. It's prepared in the background and you'll be told when it's ready.")
+    }
+
+    private var psychotherapyExportButton: some View {
+        Button {
+            confirmingPsychotherapyExport = true
+        } label: {
+            Label("Export psychotherapy notes…", systemImage: "lock.doc")
+        }
+        .buttonStyle(.themed)
+        .disabled(sessions.isEmpty || exports.isRunning)
+        .help("Save your psychotherapy notes and private comments on their own, apart from the clinical record. You'll confirm you have authorization first.")
     }
 
     /// The session list. Selection is by id and goes through `guardedSelection`,
@@ -271,13 +296,13 @@ struct PatientDetailView: View {
         // column's gutter and the selected fill lines up with the fields above.
         .padding(.horizontal, -8)
         .overlay {
-            if sessions.isEmpty {
+            if SessionListEmptyState.isShown(sessionCount: sessions.count) {
                 ContentUnavailableView {
-                    Label("No Sessions Yet", systemImage: "waveform")
+                    Label(SessionListEmptyState.title, systemImage: "waveform")
                 } description: {
-                    Text("Start a session to record, transcribe, and summarize it.")
+                    Text(SessionListEmptyState.detail)
                 } actions: {
-                    Button("New session") { newSession() }
+                    Button(SessionListEmptyState.newSessionButton) { newSession() }
                         .buttonStyle(.themePrimary)
                 }
             }
@@ -367,10 +392,46 @@ struct PatientDetailView: View {
     /// Asks where to save, then builds the zip in the background. A whole patient's
     /// history is far too long for one PDF, so this is text files in a zip; PDF, Word
     /// and Markdown are per session and per note.
-    private func exportRecords() {
+    /// Writes the psychotherapy notes and private comments as their own zip,
+    /// after the authorization confirmation. Never part of "Export all records".
+    private func exportPsychotherapyNotes() {
         guard let store = appModel.store, !exports.isRunning else { return }
         guard let destination = FileSaver.chooseDestination(
-            suggestedName: FileSaver.fileName(patient.name, "Records") + ".zip",
+            suggestedName: FileSaver.fileName(PatientLabel(patient).text, "Psychotherapy notes") + ".zip",
+            type: .zip
+        ) else { return }
+        let patient = patient
+        let sessions = sessions
+        let model = appModel
+        let detail = "Psychotherapy notes, zip, authorization confirmed"
+        exports.start(destination: destination, onFinished: { _ in
+            model.recordAudit(.recordExported, subjectID: patient.id.uuidString, detail: detail)
+        }, onFailed: {
+            model.recordAudit(.exportFailed, subjectID: patient.id.uuidString, detail: detail)
+        }) { progress, isCancelled in
+            try PsychotherapyExport.write(
+                patientName: patient.name,
+                sessionCount: sessions.count,
+                loadEntry: { PsychotherapyExport.load(store: store, session: sessions[$0]) },
+                to: destination,
+                authorized: true,
+                progress: progress,
+                isCancelled: isCancelled
+            )
+        }
+    }
+
+    private func exportRecords() {
+        guard appModel.store != nil, !exports.isRunning else { return }
+        pendingExport = ExportConfirmation(
+            patientName: patient.name, noun: "session", count: sessions.count, fileType: "zip", scope: .patientWide
+        ) { saveRecords() }
+    }
+
+    private func saveRecords() {
+        guard let store = appModel.store, !exports.isRunning else { return }
+        guard let destination = FileSaver.chooseDestination(
+            suggestedName: FileSaver.exportFileName(forPatientNamed: patient.name, "Records") + ".zip",
             type: .zip
         ) else { return }
         let patient = patient

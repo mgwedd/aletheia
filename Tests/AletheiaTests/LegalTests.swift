@@ -91,6 +91,11 @@ final class LegalTests: XCTestCase {
         }
         XCTAssertFalse(try doc("SECURITY.md").contains("not connected to the app"))
         XCTAssertFalse(try doc("docs/HIPAA-SAFEGUARDS.md").contains("not connected to the user interface"))
+        for path in ["PRIVACY.md", "SECURITY.md", "docs/HIPAA-SAFEGUARDS.md"] {
+            let text = try doc(path)
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("Restore from backup"), path)
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("no restore screen"), path)
+        }
     }
 
     /// Support questions go to a private address, never a public issue tracker,
@@ -166,9 +171,8 @@ final class LegalTests: XCTestCase {
     /// The audit-log description names the ledger, not the old text file, and
     /// does not promise events the app never records.
     func testAuditLogDocsMatchTheLedger() throws {
-        let never: [AuditAction] = [.phiViewed, .phiCreated, .phiAmended, .phiDeleted, .aiInference,
-                                    .phiCopied, .backupRun, .backupRestored, .noteSigned]
-        XCTAssertEqual(never.count, 9)
+        let never: [AuditAction] = [.phiViewed, .aiInference, .phiCopied, .backupRestored, .noteSigned]
+        XCTAssertEqual(never.count, 5)
         for path in ["SECURITY.md", "docs/HIPAA-SAFEGUARDS.md"] {
             let text = try doc(path)
             XCTAssertTrue(text.contains("audit_events") || text.localizedCaseInsensitiveContains("tamper-evident"), path)
@@ -214,6 +218,102 @@ final class LegalTests: XCTestCase {
         for path in ["Sources/App/Resources/Aletheia.entitlements", "Sources/App/Resources/AletheiaDev.entitlements"] {
             let text = try doc(path).lowercased()
             XCTAssertFalse(text.contains("icloud"), path)
+        }
+    }
+
+    func testTermsNameTheEntity() throws {
+        let terms = try doc("TERMS.md")
+        XCTAssertTrue(terms.contains("Astrea Labs LLC, a Wyoming limited liability company"))
+        XCTAssertFalse(terms.localizedCaseInsensitiveContains("the developer"))
+        XCTAssertTrue(terms.contains("12 months"))
+        XCTAssertTrue(terms.contains("AS IS"))
+        XCTAssertTrue(terms.contains("State of Wyoming"))
+        XCTAssertFalse(terms.localizedCaseInsensitiveContains("arbitration"))
+    }
+
+    /// The company, not a person, owns the app and is the party in every legal text.
+    func testTheCompanyIsTheOwnerEverywhere() throws {
+        XCTAssertTrue(try doc("LICENSE").contains("Copyright (c) 2026 Astrea Labs LLC."))
+        XCTAssertTrue(try doc("PRIVACY.md").contains("Astrea Labs LLC,\na Wyoming limited liability company"))
+        XCTAssertTrue(try doc("Sources/App/Resources/Info.plist").contains("Astrea Labs LLC"))
+        for path in ["LICENSE", "TERMS.md", "PRIVACY.md", "SECURITY.md", "docs/HIPAA-SAFEGUARDS.md",
+                     "Sources/App/Resources/Info.plist"] {
+            let text = try doc(path)
+            XCTAssertFalse(text.contains("Michael"), path)
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("the developer"), path)
+        }
+    }
+
+    func testTermsCoverRecordingConsentAndExports() throws {
+        let terms = try doc("TERMS.md")
+        for phrase in ["consent of every party", "24-word recovery key", "at least 12 characters",
+                       "plaintext files", "macOS 14 or later", "installing App updates"] {
+            XCTAssertTrue(terms.contains(phrase), "TERMS.md lacks \"\(phrase)\"")
+        }
+        for phrase in ["PDF", "Markdown", "calendar", "Export All Records"] {
+            XCTAssertTrue(terms.contains(phrase), phrase)
+        }
+        for banned in ["pending counsel", "draft", "template"] {
+            XCTAssertFalse(terms.localizedCaseInsensitiveContains(banned), banned)
+        }
+    }
+
+    /// Ollama was removed; no document may offer it.
+    func testConsentDocsMentionNoOllama() throws {
+        let docsDir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("docs")
+        let extra = try FileManager.default.contentsOfDirectory(atPath: docsDir.path)
+            .filter { $0.hasSuffix(".md") }.map { "docs/\($0)" }
+        for path in ["CONSENT.md"] + consentGuidePaths + extra {
+            XCTAssertFalse(try doc(path).localizedCaseInsensitiveContains("ollama"), path)
+        }
+    }
+
+    /// The consent guide's screen and the text it shows.
+    private let consentGuidePaths = ["Sources/App/Views/ConsentGuideView.swift", "Sources/App/Services/ConsentGuideContent.swift"]
+
+    private func consentGuide() throws -> String {
+        try consentGuidePaths.map { try doc($0) }.joined(separator: "\n")
+    }
+
+    func testConsentGuideAvoidsAbsoluteClaims() throws {
+        let text = try consentGuide()
+        XCTAssertFalse(text.contains("100%"))
+        XCTAssertFalse(text.lowercased().contains("strictly"))
+        XCTAssertFalse(text.contains("never sent"))
+        XCTAssertTrue(text.contains("Time Machine"))
+    }
+
+    private let consentKeyPhrases = [
+        "California Penal Code §632",
+        "Washington RCW 9.73.030",
+        "Connecticut Gen. Stat. §52-570d",
+        "not a complete list",
+        "Before we start, I would like to record today's session so that I can write my clinical notes.",
+        "The recording is stored on my computer and is used only for documentation.",
+        "Do you agree to be recorded?",
+        "you can ask me to pause or stop at any time",
+    ]
+
+    func testConsentDocsListExampleAllPartyStatutes() throws {
+        let texts = [("CONSENT.md", try doc("CONSENT.md")), ("the consent guide", try consentGuide())]
+        for (path, text) in texts {
+            for phrase in consentKeyPhrases.prefix(4) {
+                XCTAssertTrue(text.contains(phrase), "\(path) lacks \"\(phrase)\"")
+            }
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("examples"), path)
+        }
+    }
+
+    func testConsentGuideMatchesConsentMd() throws {
+        let md = try doc("CONSENT.md").replacingOccurrences(of: "\n> ", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "  ", with: " ")
+        let view = try consentGuide()
+        for phrase in consentKeyPhrases {
+            XCTAssertTrue(view.contains(phrase), "The consent guide lacks \"\(phrase)\"")
+            XCTAssertTrue(md.contains(phrase), "CONSENT.md lacks \"\(phrase)\"")
         }
     }
 

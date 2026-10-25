@@ -83,14 +83,16 @@ struct AletheiaApp: App {
         #if DEBUG
         let encryption = FixtureMode.isActive
             ? EncryptionManager(dataRootProvider: { settings.dataRootURL },
-                                deviceKeys: FixtureMode.deviceKeys, defaults: FixtureMode.defaults)
-            : EncryptionManager(dataRootProvider: { settings.dataRootURL })
+                                deviceKeys: FixtureMode.deviceKeys, defaults: FixtureMode.defaults,
+                                autoUnlockAtLaunch: false)
+            : EncryptionManager(dataRootProvider: { settings.dataRootURL }, autoUnlockAtLaunch: false)
         #else
-        let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL })
+        let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL }, autoUnlockAtLaunch: false)
         #endif
         _encryption = StateObject(wrappedValue: encryption)
-        let appLock = AppLock(settings: settings)
-        if appLock.isLocked { encryption.lock() }
+        let appLock = AppLock(settings: settings, lockRequired: { [weak encryption] in encryption?.requiresAppLock ?? false })
+        // The key comes off the keychain only when the app is not locked at launch.
+        if !appLock.isLocked { encryption.autoUnlockFromDevice() }
         SessionSearch.setAppLocked(appLock.isLocked)   // before AppModel builds the index: it starts closed behind the lock
         #if DEBUG
         let appModel = FixtureMode.isActive
@@ -352,23 +354,11 @@ struct AletheiaApp: App {
     /// The menu-bar icon reflects recording state at a glance: a filled red dot
     /// while recording, paused while paused, and a neutral waveform when idle.
     private var menuBarSymbol: String {
-        guard recorder.isRecording else { return "waveform" }
-        return recorder.isPaused ? "pause.circle.fill" : "record.circle.fill"
+        MenuBarPanel.iconSymbol(isRecording: recorder.isRecording, isPaused: recorder.isPaused)
     }
 
     private var showFirstRun: Binding<Bool> {
-        Binding(
-            // The sheet can't be dismissed by the user (set is a no-op), so the
-            // app is unusable until the data folder is chosen, first run is
-            // done, AND the current Terms/Privacy version has been accepted —
-            // re-appearing if the terms version changes.
-            get: {
-                settings.dataRootURL == nil
-                    || !settings.hasCompletedFirstRun
-                    || !settings.hasAcceptedCurrentLegal
-            },
-            set: { _ in }
-        )
+        FirstRunGate.presentation(settings: settings)
     }
 }
 

@@ -949,6 +949,7 @@ enum LongSessionChat {
         live: @escaping DigestBuilder.Live,
         coverage: @escaping (String?) -> Void
     ) -> AsyncThrowingStream<String, Error> {
+        let notes = AIContextPolicy.notes(notes, for: .sessionChat)
         let fields: TherapistFields
         do {
             fields = try TherapistFields(
