@@ -480,7 +480,7 @@ final class AppSettings: ObservableObject {
         } else {
             dismissedDamagedRecordIDs = []
         }
-        if let bookmarked = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark) {
+        if let bookmarked = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark, defaults: defaults) {
             dataRootURL = bookmarked
         } else if defaults.bool(forKey: Keys.usesStandardDataRoot) {
             dataRootURL = Self.standardDataRoot
@@ -510,7 +510,7 @@ final class AppSettings: ObservableObject {
     func setDataRoot(_ url: URL) throws {
         let verdict = DataFolderPolicy.verdict(for: url)
         guard verdict == .ok else { throw DataFolderSelectionError.rejected(verdict.explanation) }
-        try SecurityScopedBookmark.save(url: url, key: Keys.dataRootBookmark)
+        try SecurityScopedBookmark.save(url: url, key: Keys.dataRootBookmark, defaults: defaults)
         defaults.set(false, forKey: Keys.usesStandardDataRoot)
         dataRootURL = url
         dataRootVerdict = .ok

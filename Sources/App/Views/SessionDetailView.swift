@@ -561,9 +561,7 @@ struct SessionDetailView: View {
             } else if recorder.callAudioSilent, !recorder.isPaused {
                 callAudioNotice("No call audio detected. Only your microphone is being recorded. If the other person is speaking, make sure the call plays through this Mac, and that Aletheia is allowed under Screen & System Audio Recording.")
             }
-            if settings.debugDiagnosticsEnabled {
-                CallAudioDebugView(recorder: recorder)
-            }
+            CallAudioDebugView(enabled: settings.debugDiagnosticsEnabled, recorder: recorder)
             Text(recorder.isPaused
                  ? "Paused. Nothing is being recorded until you resume."
                  : "Stop when the session ends, then transcribe.")

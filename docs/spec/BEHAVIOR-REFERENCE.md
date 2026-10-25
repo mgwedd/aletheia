@@ -1723,7 +1723,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-03`
 - **UPD-008** When a newer version exists, a prompt titled "Aletheia X is available" says "You have Y.", and shows a "What is new" section from the release notes only if the notes contain text beyond headings and list markers.
   `surface: ui` · `evidence: Sources/App/Views/UpdatePromptView.swift` · `qa: UPDATE-04`
-- **UPD-009** When the update prompt appears, it offers "View on GitHub", "Skip this version", "Remind me later" and "Download update", with Download update as the default.
+- **UPD-009** When the update prompt appears, it offers "View downloads", "Skip this version", "Remind me later" and "Download update", with Download update as the default.
   `surface: ui` · `evidence: Sources/App/Views/UpdatePromptView.swift` · `qa: UPDATE-04`
 - **UPD-010** When the user chooses "Skip this version", that version is remembered and not offered again by automatic checks.
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-06`
@@ -1731,9 +1731,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/UpdatePromptView.swift` · `qa: UPDATE-04`
 - **UPD-012** When the release lists a checksum and the user chooses Download update, the disk image downloads to the app's Caches/Updates folder as "Aletheia-update.dmg", is verified, and then opens.
   `surface: background` · `evidence: Sources/App/Services/Updates/UpdateInstalling.swift, Sources/App/Services/NetworkHelper/AssetID.swift` · `qa: UPDATE-07`
-- **UPD-013** When the release lists no checksum, Download update opens the release page in the browser instead of downloading.
+- **UPD-013** When the release lists no checksum, Download update opens the downloads page in the browser instead of downloading.
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateInstalling.swift` · `qa: UPDATE-08`
-- **UPD-014** When a downloaded update's checksum does not match, the file is deleted and never opened, and the release page opens in the browser instead.
+- **UPD-014** When a downloaded update's checksum does not match, the file is deleted and never opened, and the downloads page opens in the browser instead.
   `surface: background` · `evidence: Sources/App/Services/Updates/UpdateInstalling.swift, Sources/App/Services/NetworkHelper/ModelFileInstaller.swift` · `qa: UPDATE-08`
 - **UPD-015** The update archive is only accepted from a github.com/mgwedd/aletheia releases download address with no "." or ".." segments.
   `surface: invariant` · `evidence: Sources/NetworkHelper/AssetCatalog.swift` · `qa: UPDATE-07`
@@ -1749,7 +1749,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-06`
 - **UPD-021** When the user chooses Download update, the prompt closes and Aletheia stays open so unsaved work can be finished.
   `surface: ui` · `evidence: Sources/App/Views/UpdatePromptView.swift, Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-07`
-- **UPD-022** When the verified download fails for any reason (network error, bad checksum), Download update opens the release page in the browser instead.
+- **UPD-022** When the verified download fails for any reason (network error, bad checksum), Download update opens the downloads page in the browser instead.
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateInstalling.swift` · `qa: UPDATE-08`
 - **UPD-023** The Notarization row reads "Developer ID signed and notarized by Apple" for any Developer ID signature without checking the notarization ticket; other builds read "Ad-hoc signed (development build; not notarized)", "Development build", "Unsigned build" or "Signed (name)".
   `surface: ui` · `evidence: Sources/App/Services/Updates/CodeSigningStatus.swift, Sources/App/Views/SettingsView.swift` · `qa: UPDATE-01` · ⚠ TODO: README says the app is not notarized while the Notarization row can say it is
@@ -1757,12 +1757,14 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-05`
 - **UPD-025** When the user has already downloaded an update during this run, the same version is not offered again until Aletheia is relaunched.
   `surface: background` · `evidence: Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-07`
-- **UPD-026** When the user chooses "View on GitHub" in the update prompt, the release page opens in the browser (the feed's release page, or the GitHub tag page for that version).
+- **UPD-026** When the user chooses "View downloads" in the update prompt, the downloads page on astrealabs.com opens in the browser; links from the update feed are never opened.
   `surface: ui` · `evidence: Sources/App/Views/UpdatePromptView.swift, Sources/App/Services/Updates/UpdateInstalling.swift` · `qa: UPDATE-04`
 - **UPD-027** When a version string is not numeric, it is treated as not newer, so no prompt appears for it.
   `surface: invariant` · `evidence: Sources/App/Services/Updates/SemanticVersion.swift` · `qa: UPDATE-04`
 - **UPD-028** When an automatic check fails, any previously shown available update is cleared and nothing is shown.
   `surface: background` · `evidence: Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-03`
+- **UPD-029** When the user asks to download an update whose release lists no checksum, nothing is downloaded and the downloads page opens instead.
+  `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-10`
 
 ## OS integrations (OSI)
 
@@ -1947,6 +1949,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/FirstRunView.swift:194` · `qa: SETUP-11`
 - **STP-027** When the AI model is ready, its row says "<name> is ready, built into Aletheia."
   `surface: ui` · `evidence: Sources/App/Services/ToolHealth.swift` · `qa: SETUP-09`
+- **STP-028** When the terms version changes after setup was finished, the setup sheet returns until the new terms are accepted, and every acceptance is kept with its date in the data folder.
+  `surface: ui` · `evidence: Sources/App/AletheiaApp.swift, Sources/App/Services/Legal.swift` · `qa: SETUP-12`
 
 ## Settings (SET)
 

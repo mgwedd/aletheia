@@ -31,7 +31,7 @@ struct SetupChecklistView: View {
                     .frame(maxWidth: 280)
                     .accessibilityLabel("Setup progress")
                 if progress.total > 0 {
-                    Text("\(progress.done) of \(progress.total) done")
+                    Text(progress.label)
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.muted.color)
                         .monospacedDigit()
@@ -195,57 +195,19 @@ struct SetupChecklistView: View {
         if latest.map(\.check) != items.map(\.check) { items = latest }
     }
 
-    /// After sending the therapist to grant Screen Recording, watch for the grant
-    /// and refresh the checklist the moment it lands — so the row turns green on
-    /// its own, with no "quit and relaunch" step. Gives up quietly after a while;
-    /// the Refresh button and the next `.task` still catch it later.
-    private func pollForScreenRecordingGrant() async {
-        for _ in 0..<60 { // ~30s at 0.5s intervals
-            if Task.isCancelled { return }
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            // Non-prompting check only; the activation refresh runs the one live
-            // probe (see `ScreenAccessProbeGate`).
-            if SystemAudioCapture.checkPermission() {
+    private func perform(_ action: SetupAction) async {
+        let runner = SetupActionRunner(system: LiveSetupSystem(), settings: settings, rebuildStore: { appModel.rebuildStore() })
+        do {
+            if try await runner.perform(action) {
                 await refresh()
                 return
             }
+        } catch {
+            errorMessage = error.localizedDescription
+            await refresh()
+            return
         }
-    }
-
-    private func perform(_ action: SetupAction) async {
         switch action {
-        case .chooseFolder:
-            if let url = FolderPicker.choose() {
-                do {
-                    try settings.setDataRoot(url)
-                    appModel.rebuildStore()
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
-        case .requestMicrophone:
-            _ = await MicRecorder.requestPermission()
-        case .openMicrophoneSettings:
-            SystemSettingsLinks.openMicrophoneSettings()
-        case .requestScreenRecording:
-            // One explicit system prompt. If already granted or the user grants
-            // it now, we're done and the live poll flips the row green without a
-            // relaunch. If macOS won't prompt (previously denied), send them to
-            // the exact Settings pane instead. `requestPermission()` is async
-            // because the underlying system call blocks until the user responds
-            // to the dialog — awaiting it here keeps that wait off the main
-            // thread instead of freezing the wizard step.
-            let granted = await SystemAudioCapture.requestPermission()
-            if granted { CallAudioGrantStore.standard.confirm() }
-            if !granted {
-                ScreenAccessProbeGate.arm()
-                SystemSettingsLinks.openScreenRecordingSettings()
-                await pollForScreenRecordingGrant()
-            }
-        case .openScreenRecordingSettings:
-            ScreenAccessProbeGate.arm()
-            SystemSettingsLinks.openScreenRecordingSettings()
-            await pollForScreenRecordingGrant()
         case .downloadTranscriptionModel:
             do {
                 try await whisperDownloader.download(settings.whisperModel, to: settings.whisperModelPath)
@@ -273,6 +235,8 @@ struct SetupChecklistView: View {
             }
         case .reviewTerms:
             NSWorkspace.shared.open(Legal.termsURL)
+        default:
+            break
         }
         await refresh()
     }

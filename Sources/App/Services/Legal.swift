@@ -24,6 +24,15 @@ enum Legal {
     static let termsURL = URL(string: "https://github.com/mgwedd/aletheia/blob/main/TERMS.md")!
     static let privacyURL = URL(string: "https://github.com/mgwedd/aletheia/blob/main/PRIVACY.md")!
 
+    /// The two documents, in the order the app lists them.
+    enum Document: CaseIterable, Identifiable {
+        case terms, privacy
+
+        var id: Self { self }
+        var title: String { self == .terms ? "Terms of Service" : "Privacy Policy" }
+        var url: URL { self == .terms ? Legal.termsURL : Legal.privacyURL }
+    }
+
     /// Whether a recorded acceptance satisfies the current terms version.
     /// An empty record (never accepted) or an older version (terms changed
     /// since) both count as not accepted, so the gate re-appears.

@@ -338,18 +338,7 @@ struct AletheiaApp: App {
     }
 
     private var showFirstRun: Binding<Bool> {
-        Binding(
-            // The sheet can't be dismissed by the user (set is a no-op), so the
-            // app is unusable until the data folder is chosen, first run is
-            // done, AND the current Terms/Privacy version has been accepted —
-            // re-appearing if the terms version changes.
-            get: {
-                settings.dataRootURL == nil
-                    || !settings.hasCompletedFirstRun
-                    || !settings.hasAcceptedCurrentLegal
-            },
-            set: { _ in }
-        )
+        FirstRunGate.presentation(settings: settings)
     }
 }
 
