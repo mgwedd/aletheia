@@ -56,14 +56,14 @@ final class UpdateSpec: AcceptanceCase {
     }
 
     func test_UPDATE_07() async throws {
-        let outcome = await when.downloadUpdate(checksumListed: true, checksumMatches: true)
+        let outcome = try await when.downloadUpdate(checksumListed: true, checksumMatches: true)
         defer { outcome.rig.cleanUp() }
 
         then(outcome).downloadedAndOpenedDiskImage()
     }
 
     func test_UPDATE_08() async throws {
-        let outcome = await when.downloadUpdate(checksumListed: true, checksumMatches: false)
+        let outcome = try await when.downloadUpdate(checksumListed: true, checksumMatches: false)
         defer { outcome.rig.cleanUp() }
 
         then(outcome).openedReleasePage()
@@ -80,7 +80,7 @@ final class UpdateSpec: AcceptanceCase {
     }
 
     func test_UPDATE_10() async throws {
-        let outcome = await when.downloadUpdate(checksumListed: false)
+        let outcome = try await when.downloadUpdate(checksumListed: false)
         defer { outcome.rig.cleanUp() }
 
         then(outcome).downloadedNothingAndOpenedReleasePage()

@@ -156,7 +156,7 @@ extension When {
     func skipVersion(_ rig: UpdateRig) { rig.service.skipAvailableVersion() }
 
     /// Clicks Download update with a network helper and browser that are fakes.
-    func downloadUpdate(checksumListed: Bool, checksumMatches: Bool = true) async -> UpdateDownload {
+    func downloadUpdate(checksumListed: Bool, checksumMatches: Bool = true) async throws -> UpdateDownload {
         let rig = UpdateRig(
             feed: .success(Self.release("1.1.0", sha256: checksumListed ? sha256Hex(Self.diskImage) : nil)),
             interval: 0)
@@ -164,17 +164,12 @@ extension When {
         await rig.service.checkForUpdates(force: true)
         rig.service.installAvailableUpdate()
         // The download runs in the background; wait for it to open something.
-        await eventually { !rig.opened.isEmpty }
+        try await eventually("the update to open something") { !rig.opened.isEmpty }
         return UpdateDownload(rig: rig)
     }
 
     static let diskImage = Data("pretend disk image bytes".utf8)
 
-    /// Polls until `condition` holds or two seconds pass.
-    fileprivate func eventually(_ condition: @MainActor () -> Bool) async {
-        let deadline = Date().addingTimeInterval(2)
-        while !condition(), Date() < deadline { try? await Task.sleep(nanoseconds: 10_000_000) }
-    }
 
     /// The Software update card's rows, top to bottom.
     var softwareUpdateRows: [String] { SoftwareUpdateRow.allCases.map(\.title) }

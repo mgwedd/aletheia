@@ -167,7 +167,7 @@ extension When {
             installed: false, isDownloading: true, progress: 0.5, sizeMB: model.approximateSizeMB)
         try await downloader.download(model, to: target)
         // Progress reaches the main queue a beat after the download returns.
-        await eventually { downloader.progress == 1.0 }
+        try await eventually("the speech model bar to read 100%") { downloader.progress == 1.0 }
         let finished = ModelCardPresentation(
             installed: FileManager.default.fileExists(atPath: target.path),
             isDownloading: downloader.isDownloading, progress: downloader.progress,
@@ -175,11 +175,6 @@ extension When {
         return DownloadProgress(midway: midway, finished: finished, finishedFraction: downloader.progress)
     }
 
-    /// Polls until `condition` holds or two seconds pass.
-    fileprivate func eventually(_ condition: @MainActor () -> Bool) async {
-        let deadline = Date().addingTimeInterval(2)
-        while !condition(), Date() < deadline { try? await Task.sleep(nanoseconds: 10_000_000) }
-    }
 
     /// The data folder row, and the folder in use after the app is quit and reopened.
     func chooseDataFolderThenRelaunch() throws -> DataFolderRow {
