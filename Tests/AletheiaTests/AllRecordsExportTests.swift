@@ -138,7 +138,7 @@ final class AllRecordsExportTests: XCTestCase {
     func testASyncedFolderIsRefusedAndNothingIsWritten() throws {
         let synced = root.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
         try FileManager.default.createDirectory(at: synced, withIntermediateDirectories: true)
-        let source = FakeSource([("Jane", [ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "", comments: [])])])
+        let source = FakeSource([("Jane", [ArchiveSession(date: Self.date(1), transcript: "x", notes: [], summary: "")])])
         XCTAssertThrowsError(try AllRecordsExport.write(
             from: source, to: synced.appendingPathComponent("out"), progress: { _, _ in }, isCancelled: { false })
         ) { XCTAssertEqual($0 as? AllRecordsExport.SyncedFolderRefusal, AllRecordsExport.SyncedFolderRefusal()) }
