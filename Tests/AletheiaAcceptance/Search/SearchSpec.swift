@@ -2,7 +2,12 @@ import XCTest
 
 final class SearchSpec: AcceptanceCase {
     func test_SEARCH_01() async throws {
-        try pending("UI driver: the command-F shortcut moving focus to the sidebar field is a window responder-chain effect with no seam")
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try given.session(for: jane, on: searchDay(2026, 3, 4), transcript: "Some words.")
+
+        let press = when.pressCommandF(withCursorInTranscriptOf: session)
+
+        then(press).movesTheCursorToTheSearchField()
     }
 
     func test_SEARCH_02() async throws {

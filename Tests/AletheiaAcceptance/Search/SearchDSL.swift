@@ -1,4 +1,5 @@
 @testable import Aletheia
+import AppKit
 import Foundation
 import XCTest
 
@@ -25,6 +26,12 @@ struct OpenedResult {
     let destination: SearchHitDestination
     let transcript: String?
     let query: String
+}
+
+/// What a key press did while the cursor was in a transcript.
+@MainActor
+struct KeyPress {
+    let route: GlobalSearchShortcut.Route
 }
 
 /// A hold on the search index's background work, as when a transcript was only just saved.
@@ -156,6 +163,16 @@ extension When {
         await box.model.run(store: box.store)
     }
 
+    /// Presses command-F with the cursor in the session's transcript.
+    func pressCommandF(withCursorInTranscriptOf session: SessionRecord) -> KeyPress {
+        let transcript = NSTextView()
+        transcript.usesFindBar = true
+        let event = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: 0,
+            context: nil, characters: "f", charactersIgnoringModifiers: "f", isARepeat: false, keyCode: 3)!
+        return KeyPress(route: GlobalSearchShortcut.route(event, firstResponder: transcript))
+    }
+
     func pressEscape(in box: SearchBox) { box.model.clear() }
 
     func quitDeleteTheSearchFileAndReopen() async {
@@ -206,7 +223,7 @@ private struct AlwaysUnlocks: UnlockAuthenticator {
 
 // MARK: - Then
 
-extension Then where Subject == SearchBox {
+@MainActor extension Then where Subject == SearchBox {
     func showsResultsOverThePage(including kind: String) {
         expect(subject.model.hasQuery, "typing \u{201C}\(subject.query)\u{201D} did not start a search")
         expect(!subject.hits(in: kind).isEmpty, "no \(kind) result for \u{201C}\(subject.query)\u{201D}")
@@ -301,6 +318,13 @@ extension Then where Subject == SearchBox {
             !subject.hits.contains { $0.patient.name == name || $0.title.contains(name) || $0.snippet.contains(name) },
             "a result still mentions \(name)")
         expectEqual(subject.hits.count, 0, "number of results")
+    }
+}
+
+@MainActor extension Then where Subject == KeyPress {
+    func movesTheCursorToTheSearchField() {
+        if case .focusSearch = subject.route { return }
+        fail("command-F with the cursor in a transcript did not focus the search field; it was \(subject.route)")
     }
 }
 

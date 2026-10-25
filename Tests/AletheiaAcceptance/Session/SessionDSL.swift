@@ -10,6 +10,13 @@ struct SessionList {
     var folderNames: [String] { sessions.map(\.folderName) }
 }
 
+/// What the session list on a patient's page shows.
+struct SessionListPage {
+    let showsEmptyState: Bool
+    let title: String
+    let button: String
+}
+
 /// The result of clicking **New session**.
 struct NewSessionAttempt {
     let session: SessionRecord?
@@ -72,8 +79,24 @@ extension When {
         try XCTUnwrap(app.appModel.startNewSession(for: patient), "New session did not create a session")
     }
 
-    /// Lets a moment pass, as it does between two human clicks.
-    func waitABeat() async throws { try await Task.sleep(nanoseconds: 1_100_000_000) }
+    /// Waits until the clock has moved on to a later second than `session` began in,
+    /// as it has between two human clicks. Waits on the condition, up to a deadline.
+    func waitUntilALaterSecondThan(_ session: SessionRecord) async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while Date().timeIntervalSince1970.rounded(.down) <= session.date.timeIntervalSince1970.rounded(.down) {
+            if Date() > deadline { return XCTFail("the clock did not advance past \(session.date) within 5s") }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
+    /// Opens a patient page and reads what the empty session list says.
+    func openPatientPage(of patient: Patient) throws -> SessionListPage {
+        let count = try XCTUnwrap(app.appModel.store).listSessions(for: patient).count
+        return SessionListPage(
+            showsEmptyState: SessionListEmptyState.isShown(sessionCount: count),
+            title: SessionListEmptyState.title,
+            button: SessionListEmptyState.newSessionButton)
+    }
 
     func tryNewSession(for patient: Patient) -> NewSessionAttempt {
         app.appModel.fileVaultNotice = nil
@@ -142,6 +165,14 @@ extension When {
 }
 
 // MARK: - Then
+
+extension Then where Subject == SessionListPage {
+    func saysNoSessionsYetWithANewSessionButton() {
+        expect(subject.showsEmptyState, "the empty state is not shown for a patient with no sessions")
+        expectEqual(subject.title, "No Sessions Yet", "the empty state title")
+        expectEqual(subject.button, "New session", "the button")
+    }
+}
 
 extension Then where Subject == SessionList {
     func hasSessions(_ count: Int) { expectEqual(subject.sessions.count, count, "sessions listed") }

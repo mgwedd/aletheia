@@ -136,6 +136,27 @@ final class GlobalSearchModelTests: XCTestCase {
     // MARK: The model, against a real store
 
     @MainActor
+    func testCommandFFocusesSearchEvenWithTheCursorInATranscript() {
+        let transcript = NSTextView()
+        transcript.usesFindBar = true
+        func key(_ flags: NSEvent.ModifierFlags) -> NSEvent {
+            NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0,
+                context: nil, characters: "f", charactersIgnoringModifiers: "f", isARepeat: false, keyCode: 3)!
+        }
+        guard case .focusSearch = GlobalSearchShortcut.route(key(.command), firstResponder: transcript) else {
+            return XCTFail("command-F did not focus the search")
+        }
+        guard case .showFindBar(let found) = GlobalSearchShortcut.route(key([.command, .option]), firstResponder: transcript) else {
+            return XCTFail("option-command-F did not open the find bar")
+        }
+        XCTAssertTrue(found === transcript)
+        guard case .passThrough = GlobalSearchShortcut.route(key([.command, .option]), firstResponder: NSView()) else {
+            return XCTFail("option-command-F outside a text view should pass through")
+        }
+    }
+
+    @MainActor
     func testTypingSearchesAndSelectsTheFirstResult() async throws {
         let (store, _, patient) = try makeStore(sessions: 2)
         let model = GlobalSearchModel(debounceNanoseconds: 0)
@@ -220,7 +241,7 @@ final class GlobalSearchModelTests: XCTestCase {
         XCTAssertTrue(field.contains("ShortcutHint(AppHotkey.search)"))
         XCTAssertTrue(field.contains("if large {\n                ShortcutHint(AppHotkey.search)"),
                       "the keycaps only show on the large field; in the sidebar they squeeze the placeholder")
-        XCTAssertTrue(field.contains("GlobalSearchShortcut.isGlobalSearch(event)"))
+        XCTAssertTrue(field.contains("GlobalSearchShortcut.route(event"))
         let list = try source("Sources/App/Views/PatientsListView.swift")
         XCTAssertTrue(list.contains("GlobalSearchField("), "the field is in the sidebar")
         XCTAssertFalse(try source("Sources/App/Views/RootView.swift").contains("GlobalSearchField("), "and not in the toolbar")

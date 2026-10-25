@@ -2,14 +2,16 @@ import XCTest
 
 final class SessionSpec: AcceptanceCase {
     func test_SESSION_01() async throws {
-        try pending("UI driver: the \"No Sessions Yet\" empty state and New session button are view text with no seam")
+        let jane = try await given.patient(named: "Jane Doe")
+
+        then(try when.openPatientPage(of: jane)).saysNoSessionsYetWithANewSessionButton()
     }
 
     func test_SESSION_02() async throws {
         let jane = try await given.patient(named: "Jane Doe")
 
         let first = try when.clickNewSession(for: jane)
-        try await when.waitABeat()
+        try await when.waitUntilALaterSecondThan(first)
         let second = try when.clickNewSession(for: jane)
 
         let list = try when.listSessions(of: jane)
