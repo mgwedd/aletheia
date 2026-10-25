@@ -8,7 +8,7 @@ final class ExportSpec: AcceptanceCase {
         try given.exportSession(for: sam)
 
         let run = try when.exportAllRecords()
-        await when.waitForExport(run)
+        try await when.waitForExport(run)
 
         then(run).producedFolderOfPatients(["Jane Doe", "Sam Lee"])
     }
@@ -29,7 +29,7 @@ final class ExportSpec: AcceptanceCase {
         try given.exportSession(for: jane, day: 1)
 
         let run = try when.exportAllRecords()
-        await when.waitForExport(run)
+        try await when.waitForExport(run)
 
         then(run).finishedAndNotifiedAsReady()
         let toast = when.lookAtToast(run)
@@ -42,7 +42,7 @@ final class ExportSpec: AcceptanceCase {
         try given.exportSession(for: jane)
 
         let run = try when.exportAllRecords(to: .folderThatCannotBeWritten)
-        await when.waitForExport(run)
+        try await when.waitForExport(run)
 
         then(run).failedWithDidntFinish()
     }
@@ -52,7 +52,7 @@ final class ExportSpec: AcceptanceCase {
         try given.exportSession(for: jane)
 
         let run = try when.exportAllRecords(to: .iCloudDrive)
-        await when.waitForExport(run)
+        try await when.waitForExport(run)
 
         then(run).refusedWithNothingWritten()
     }
@@ -65,7 +65,7 @@ final class ExportSpec: AcceptanceCase {
         try given.exportSession(for: sam)
 
         let run = try when.exportAllRecords()
-        await when.waitForExport(run)
+        try await when.waitForExport(run)
 
         let export = when.openExportFolder(run)
         then(export).readMeCounts(patients: 2, sessions: 3, recordings: 2)
@@ -81,7 +81,7 @@ final class ExportSpec: AcceptanceCase {
             comment: "Revisit this", recordings: true)
 
         let run = try when.exportAllRecords()
-        await when.waitForExport(run)
+        try await when.waitForExport(run)
 
         let patientFolder = when.openPatientFolder("Jane Doe", in: when.openExportFolder(run))
         let folder = try when.openSessionFolder(in: patientFolder)
@@ -99,7 +99,7 @@ final class ExportSpec: AcceptanceCase {
         try given.exportSession(for: smith)
 
         let run = try when.exportAllRecords()
-        await when.waitForExport(run)
+        try await when.waitForExport(run)
 
         let export = when.openExportFolder(run)
         then(export).hasPatientFolder("AC-DC- Live records")
@@ -113,7 +113,7 @@ final class ExportSpec: AcceptanceCase {
 
         then(when.askToSavePatientZip(jane)).suggestsName("Jane Doe - Records.zip")
         let run = try when.exportPatientZip(jane)
-        await when.waitForExport(run)
+        try await when.waitForExport(run)
 
         let zip = try when.openZip(of: run)
         then(zip).holdsOnlyTextFiles()

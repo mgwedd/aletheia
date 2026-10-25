@@ -50,7 +50,7 @@ extension When {
     /// Runs a real export to completion and returns what it asked the system to show.
     func exportFinishes() async throws -> ShownNotification {
         let run = try exportAllRecords()
-        await waitForExport(run)
+        try await waitForExport(run)
         return ShownNotification(content: try XCTUnwrap(run.postedNotifications.first, "no notification was posted"))
     }
 }

@@ -29,23 +29,19 @@ final class ExportRun {
     var postedNotifications: [AppNotificationContent] { notifier.posted }
 
     /// Waits until the job is no longer running.
-    fileprivate func untilDone(timeout: TimeInterval = 20) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while center.isRunning && Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
+    fileprivate func untilDone(timeout: TimeInterval = 20) async throws {
+        try await eventually(within: timeout, "the export to stop running") { !self.center.isRunning }
         afterSettling()
     }
 
     /// Waits until nothing is left in the destination's parent (a cancelled export cleans up after itself).
-    /// Gives up at the deadline; the checks then report what is still there.
-    fileprivate func untilFolderIsClear(timeout: TimeInterval = 5) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !leftInParent().isEmpty && Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
+    fileprivate func untilFolderIsClear(timeout: TimeInterval = 5) async throws {
+        try await eventually(within: timeout, "the export folder to be clear") { self.leftInParent().isEmpty }
     }
 
     /// Waits for `count` notifications to have been posted.
-    fileprivate func untilNotified(_ count: Int = 1, timeout: TimeInterval = 5) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while notifier.posted.count < count && Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
+    fileprivate func untilNotified(_ count: Int = 1, timeout: TimeInterval = 5) async throws {
+        try await eventually(within: timeout, "\(count) notification(s) to be posted") { self.notifier.posted.count >= count }
     }
 
     /// Everything inside the destination's parent, hidden staging folders included.
@@ -261,8 +257,8 @@ extension When {
         await gate.waitUntilEntered()
         run.center.cancel()
         gate.open()
-        await run.untilDone()
-        await run.untilFolderIsClear()
+        try await run.untilDone()
+        try await run.untilFolderIsClear()
         return run
     }
 
@@ -288,9 +284,9 @@ extension When {
     }
 
     /// Waits for the export to finish (or fail) and for its notification, if any.
-    func waitForExport(_ run: ExportRun) async {
-        await run.untilDone()
-        await run.untilNotified(run.state == .idle ? 0 : 1)
+    func waitForExport(_ run: ExportRun) async throws {
+        try await run.untilDone()
+        try await run.untilNotified(run.state == .idle ? 0 : 1)
     }
 
     /// Export all records on a patient's page, as it starts the zip.
