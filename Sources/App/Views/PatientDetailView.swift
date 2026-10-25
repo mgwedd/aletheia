@@ -161,6 +161,7 @@ struct PatientDetailView: View {
         }
         .navigationTitle(storedPatient.name)
         .onAppear {
+            appModel.access.viewedPatient(patient.id)
             refresh()
             openPendingSession()
             integrations.digestScheduler.patientOpened(patient)
@@ -403,7 +404,7 @@ struct PatientDetailView: View {
         let patient = patient
         let sessions = sessions
         let model = appModel
-        let detail = "Psychotherapy notes, zip, authorization confirmed"
+        let detail = AuditDetail.exportedPsychotherapyNotes
         exports.start(destination: destination, onFinished: { _ in
             model.recordAudit(.recordExported, subjectID: patient.id.uuidString, detail: detail)
         }, onFailed: {
@@ -446,7 +447,7 @@ struct PatientDetailView: View {
         ) { outcome in
             model.recordAudit(
                 .recordExported, subjectID: patient.id.uuidString,
-                detail: "Patient records, zip of \(outcome.sessionCount) sessions"
+                detail: .exportedPatientRecords(sessions: outcome.sessionCount)
             )
         } onFailed: {
             model.recordAudit(.exportFailed, subjectID: patient.id.uuidString, detail: "Patient records, zip")

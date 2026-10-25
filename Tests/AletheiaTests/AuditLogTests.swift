@@ -233,7 +233,7 @@ final class AuditLogTests: XCTestCase {
         let other = AuditLog(root: root, keyProvider: { [weak self] in self?.testKey })
         let logs: [AuditLog] = [log, other]
         DispatchQueue.concurrentPerform(iterations: 60) { i in
-            _ = try? logs[i % 2].record(.appUnlocked, detail: "n\(i)")
+            _ = try? logs[i % 2].record(.appUnlocked, detail: "n")
         }
         XCTAssertEqual(log.entries().count, 60)
         XCTAssertEqual(log.verifyIntegrity(), .verified(count: 60))
@@ -252,7 +252,7 @@ final class AuditLogTests: XCTestCase {
         XCTAssertNotNil(first.mac)
         XCTAssertNotEqual(
             AuditLog.computeMAC(key: testKey, prevMac: nil, row: .init(
-                at: first.at, actor: first.actor, action: first.action.rawValue,
+                at: first.at, actor: first.actor, action: first.actionName,
                 subjectID: nil, detail: nil, appVersion: first.appVersion)),
             first.mac, "first row should be signed with the DEK-derived key")
         XCTAssertEqual(second.prevMac, first.mac)

@@ -114,6 +114,8 @@ struct AletheiaApp: App {
         _license = StateObject(wrappedValue: license)
         revocations = RevocationRefresher(settings: settings, license: license)
         integrations.inferenceQueue.licenseRefusal = { [weak license] in license?.newWorkRefusal }
+        integrations.inferenceQueue.onJobStarted = { [weak appModel] kind in appModel?.access.aiUsed(kind) }
+        PHIPasteboard.onCopy = { [weak appModel] kind in appModel?.recordAudit(.phiCopied, detail: kind) }
         let transcription = TranscriptionCoordinator(
             appModel: appModel,
             integrations: integrations,
@@ -171,6 +173,7 @@ struct AletheiaApp: App {
             appModel?.noteUnlockFailure(reason)
         }
         appLock.onLocked = { [weak appModel] in
+            appModel?.access.reset()
             appModel?.recordAudit(.appLocked)
         }
         _appLock = StateObject(wrappedValue: appLock)
