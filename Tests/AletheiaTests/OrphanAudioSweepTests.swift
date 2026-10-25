@@ -364,6 +364,81 @@ final class OrphanAudioSweepTests: XCTestCase {
         XCTAssertEqual(ledger.load().map(\.sessionFolder), [on.folderName])
     }
 
+    // MARK: Retrying a failed discard
+
+    private func transcribedSessionWithAudio(transcribed: Bool = true) throws -> (Patient, SessionRecord, URL) {
+        let patient = try store.createPatient(name: "Test Patient")
+        var session = try store.createSession(for: patient)
+        if transcribed {
+            try store.saveTranscript("done", for: patient, session: session)
+            session = try XCTUnwrap(store.locateSession(id: session.id)).session
+        }
+        let mic = store.micRecordingURL(for: patient, session: session)
+        try Data("audio".utf8).write(to: mic)
+        return (patient, session, mic)
+    }
+
+    func testSweepRetriesFailedDiscard() throws {
+        let (patient, session, mic) = try transcribedSessionWithAudio()
+        let dir = mic.deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dir.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.path) }
+
+        let notice = TranscriptionCoordinator.discardAudio(
+            store: store, patient: patient, session: session, stagingRoot: stagingRoot)
+        XCTAssertNotNil(notice)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mic.path))
+
+        // Still not deletable: the sweep keeps the audio and the marker.
+        var result = OrphanAudioSweep.sweep(
+            store: store, protector: protector, discardsAudioAfterTranscription: true,
+            stagingRoot: stagingRoot, temporaryDirectory: tempCafDir)
+        XCTAssertEqual(result.audioDiscardsRetried, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mic.path))
+        XCTAssertTrue(OrphanAudioSweep.isDiscardPending(for: session.id, stagingRoot: stagingRoot))
+
+        // Once deletable, the next sweep removes it and clears the marker.
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.path)
+        result = OrphanAudioSweep.sweep(
+            store: store, protector: protector, discardsAudioAfterTranscription: true,
+            stagingRoot: stagingRoot, temporaryDirectory: tempCafDir)
+        XCTAssertEqual(result.audioDiscardsRetried, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: mic.path))
+        XCTAssertFalse(OrphanAudioSweep.isDiscardPending(for: session.id, stagingRoot: stagingRoot))
+    }
+
+    func testSweepKeepsAudioWhenRetentionKeeps() throws {
+        let (_, session, mic) = try transcribedSessionWithAudio()
+        OrphanAudioSweep.markDiscardPending(for: session.id, stagingRoot: stagingRoot)
+
+        let result = OrphanAudioSweep.sweep(
+            store: store, protector: protector, discardsAudioAfterTranscription: false,
+            stagingRoot: stagingRoot, temporaryDirectory: tempCafDir)
+        XCTAssertEqual(result.audioDiscardsRetried, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mic.path))
+        XCTAssertFalse(OrphanAudioSweep.isDiscardPending(for: session.id, stagingRoot: stagingRoot))
+    }
+
+    func testSweepKeepsAudioForUntranscribedSession() throws {
+        let (_, session, mic) = try transcribedSessionWithAudio(transcribed: false)
+        OrphanAudioSweep.markDiscardPending(for: session.id, stagingRoot: stagingRoot)
+
+        let result = OrphanAudioSweep.sweep(
+            store: store, protector: protector, discardsAudioAfterTranscription: true,
+            stagingRoot: stagingRoot, temporaryDirectory: tempCafDir)
+        XCTAssertEqual(result.audioDiscardsRetried, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mic.path))
+    }
+
+    func testSweepDoesNotDiscardAudioThatWasNeverMarked() throws {
+        let (_, _, mic) = try transcribedSessionWithAudio()
+        let result = OrphanAudioSweep.sweep(
+            store: store, protector: protector, discardsAudioAfterTranscription: true,
+            stagingRoot: stagingRoot, temporaryDirectory: tempCafDir)
+        XCTAssertEqual(result.audioDiscardsRetried, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mic.path))
+    }
+
     func testSealLargeFileRefusesWhileLockedAndLeavesTheSource() throws {
         let src = tempDir.appendingPathComponent("src.caf")
         let dst = tempDir.appendingPathComponent("dst.caf")

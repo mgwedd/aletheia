@@ -170,6 +170,15 @@ final class DoctorRunnerTests: XCTestCase {
 
     // MARK: Snapshots
 
+    /// The next step names the switch and the pane as Settings shows them.
+    func testTimeMachineStepNamesTheBackupsPaneAndSwitch() throws {
+        let step = try XCTUnwrap(DoctorRunner.timeMachineChecks(true).first?.nextStep)
+        XCTAssertTrue(step.contains("Settings > Backups."))
+        XCTAssertTrue(step.contains("“Keep my data out of Time Machine & iCloud backups”"))
+        XCTAssertFalse(step.contains("Snapshots"))
+        XCTAssertEqual(SettingsPane.backups.title, "Backups")
+    }
+
     func testSnapshotAgeIsDescribed() async {
         var probes = StubProbes()
         let threeDaysAgo = probes.date.addingTimeInterval(-3 * 86_400 - 60)

@@ -377,6 +377,7 @@ struct SessionDetailView: View {
         } message: {
             Text(confirmationMessage ?? "")
         }
+        .dismissOnLock { showScheduleSheet = false; editingInstructions = false }
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
         .exportResultAlert($exportResult)
     }

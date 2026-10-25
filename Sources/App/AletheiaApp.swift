@@ -259,6 +259,7 @@ struct AletheiaApp: App {
                     Button("Aletheia Doctor…") {
                         openWindow(id: DoctorFeatureModule.windowID)
                     }
+                    .disabled(LockCoverPolicy.commandDisabled(.openDoctor, isLocked: appLock.isLocked))
                 }
                 Divider()
                 // The feedback form on astrealabs.com, in the browser.
@@ -371,7 +372,18 @@ private struct LockCover: ViewModifier {
             hasDataFolder: settings.dataRootURL != nil,
             encryption: encryption.state
         )
+        let interactive = LockCoverPolicy.contentInteractionEnabled(isLocked: appLock.isLocked)
         return content
+            .environment(\.lockGeneration, appLock.lockGeneration)
+            // While locked the cover is only a picture: take away hit testing,
+            // keyboard focus and Accessibility from what is underneath it.
+            .allowsHitTesting(interactive)
+            .accessibilityHidden(!interactive)
+            .disabled(!interactive)
+            .onChange(of: appLock.isLocked) { _, locked in
+                guard LockCoverPolicy.resignsFirstResponder(onLockChangingTo: locked) else { return }
+                for window in NSApp.windows { window.makeFirstResponder(nil) }
+            }
             // Tier-2: an encrypted folder needs its passphrase once per launch
             // before its notes can be read or written. Added first so Tier-1
             // (added last) draws above it when both covers apply.

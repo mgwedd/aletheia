@@ -178,6 +178,7 @@ struct MermaidCard: View {
                 }
             }
         }
+        .dismissOnLock { isExpanded = false }
         .sheet(isPresented: $isExpanded) {
             if let layout, let diagram {
                 MermaidExpandedSheet(source: source, layout: layout, summary: diagram.accessibilityDescription)
