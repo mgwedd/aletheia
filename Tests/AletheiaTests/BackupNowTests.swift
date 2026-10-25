@@ -1,3 +1,4 @@
+import Combine
 import CryptoKit
 import XCTest
 @testable import Aletheia
@@ -81,6 +82,17 @@ final class BackupNowTests: XCTestCase {
         XCTAssertEqual(backupRuns(), 1)
         XCTAssertTrue(AppSettings.shared.localEncryptedBackupEnabled)
         XCTAssertTrue(Keystore.exists(at: destination), "the wrapped key is kept beside the archive")
+    }
+
+    /// The app's windows and menus observe these settings; changing one off the
+    /// main thread makes AppKit abort.
+    func testSuccessUpdatesSettingsOnTheMainThread() async throws {
+        try enableEncryption()
+        var threads: [Bool] = []
+        let watch = AppSettings.shared.$localEncryptedBackupEnabled.dropFirst().sink { _ in threads.append(Thread.isMainThread) }
+        defer { watch.cancel() }
+        _ = await appModel.backUpNow(to: destination)
+        XCTAssertEqual(threads, [true])
     }
 
     func testRepeatedSuccessfulBackupsRecordOneRunEach() async throws {

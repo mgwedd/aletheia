@@ -295,7 +295,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-014** When the user leaves the session screen during a transcription, it keeps running and the menu bar panel shows "Transcribing…" with a percentage.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift, Sources/App/Views/RecordingMenuBar.swift:85` · `qa: TRANSCRIBE-04`
 - **TRN-015** When the app is locked during a transcription, the transcription keeps running.
-  `surface: background` · `evidence: Sources/App/Services/AppLock.swift:156, 282, Sources/App/Views/HoverTip.swift:43` · `qa: TRANSCRIBE-04`
+  `surface: background` · `evidence: Sources/App/Services/AppLock.swift:156,282, Sources/App/Views/HoverTip.swift:43` · `qa: TRANSCRIBE-04`
 - **TRN-016** When Aletheia is quit while a transcription is running or waiting, that session is recorded as interrupted in a hidden file in the data folder and is transcribed again at the next launch once the sessions can be read.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:244, Sources/App/Services/Shutdown/ShutdownCoordinator.swift:20-70` · `qa: TRANSCRIBE-06`
 - **TRN-017** When a transcription finishes, a notification says it is ready, naming the patient only if notification names are enabled.
@@ -349,7 +349,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-041** When the user presses Save in the edit bar, the edited text becomes the saved transcript.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:1061-1076` · `qa: TRANSCRIBE-10`
 - **TRN-042** When the user presses Discard, a confirmation asks "Discard your unsaved edits?" and confirming restores the last saved transcript.
-  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:812-816, 1074` · `qa: TRANSCRIBE-11`
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:812-816,1074` · `qa: TRANSCRIBE-11`
 - **TRN-043** When the user tries to switch sessions with unsaved transcript edits, the app asks "Save your transcript edits?" with Save, Discard Edits and Cancel before leaving.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift:171-185, 206-215, Sources/App/Views/UnsavedTranscriptGuard.swift` · `qa: TRANSCRIBE-11`
 - **TRN-044** When the transcript view goes away by a route that cannot ask, the unsaved edits are held in memory and restored, still unsaved, when the session is opened again.
@@ -403,7 +403,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-068** When the transcript is shown on screen, the "(overlapping)" mark is hidden.
   `surface: ui` · `evidence: Sources/App/Views/TranscriptTextView.swift:245, Sources/App/Services/TranscriptStyler.swift:15-20` · `qa: TRANSCRIBE-07`
 - **TRN-069** When a later line from the same speaker opens with a hyphen turn marker, it stays a separate line instead of being merged into the previous one.
-  `surface: background` · `evidence: Sources/App/Services/TranscriptCleaner.swift:159-186, 200-205` · `qa: TRANSCRIBE-07`
+  `surface: background` · `evidence: Sources/App/Services/TranscriptCleaner.swift:159-186,200-205` · `qa: TRANSCRIBE-07`
 - **TRN-070** When saving edited transcript text fails, the edits stay on screen and an alert says "Couldn't save the transcript. Your edits are still here and nothing was lost."
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:1061-1070` · `qa: TRANSCRIBE-10`
 - **TRN-071** When a drafted note is produced from a transcript, any leaked speaker codes at the start of lines or before speech verbs are replaced with "You" or the patient's first name ("the client" if unknown).
@@ -413,7 +413,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-073** When a session has both recordings, "Preparing audio" is shown again before the call track is transcribed, so the stage label can go back to Preparing audio while the percentage keeps rising.
   `surface: ui` · `evidence: Sources/App/Services/WhisperTranscriber.swift:104-110, Sources/App/Services/TranscriptionProgress.swift:16` · `qa: TRANSCRIBE-02`
 - **TRN-074** When the user cancels a running transcription, the band reads "Cancelling… finishing the current step" and the Cancel button is unavailable once the Saving stage has begun.
-  `surface: ui` · `evidence: Sources/App/Views/TranscriptionProgressView.swift:58-60, 100, Sources/App/Services/TranscriptionProgress.swift:186-196` · `qa: TRANSCRIBE-05`
+  `surface: ui` · `evidence: Sources/App/Views/TranscriptionProgressView.swift:58-60,100, Sources/App/Services/TranscriptionProgress.swift:186-196` · `qa: TRANSCRIBE-05`
 - **TRN-075** When the user cancels a session that is waiting in the queue, it leaves the queue, the running transcription is not affected and the recordings are kept.
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:144, Sources/App/Views/TranscriptionProgressView.swift:3-31` · `qa: TRANSCRIBE-05`
 - **TRN-076** When the auto-transcribe setting is on (the default) and a recording is saved successfully, ending it starts transcription of that session, or queues it behind one already running.
@@ -421,7 +421,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-077** When the finished transcript cannot be saved, the transcription is reported as failed and the recordings are not deleted.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:243-247` · `qa: TRANSCRIBE-08`
 - **TRN-078** When the app is locked during a transcription, the folder key is dropped once that transcription finishes.
-  `surface: background` · `evidence: Sources/App/Services/AppLock.swift:156, 282-300` · `qa: TRANSCRIBE-04`
+  `surface: background` · `evidence: Sources/App/Services/AppLock.swift:156,282-300` · `qa: TRANSCRIBE-04`
 - **TRN-079** When a transcription interrupted by a quit is picked up at the next launch, it runs only if the session's recording still exists and is dropped if the patient or session is gone.
   `surface: background` · `evidence: Sources/App/Services/Shutdown/ShutdownCoordinator.swift:183-215` · `qa: TRANSCRIBE-06`
 - **TRN-080** When the app quits with unsaved transcript edits held in memory, they are lost and the saved transcript is what reopens.
@@ -429,7 +429,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-081** When the user presses ⌘S with unsaved transcript edits, the edits are saved.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:755-757, Sources/App/Services/ShortcutCatalog.swift:19` · `qa: TRANSCRIBE-10`
 - **TRN-082** When a no-speech or recording-kept notice is showing on the Transcript tab, it has a Dismiss button and is cleared when Transcribe is pressed again.
-  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:477-480, 707-722` · `qa: TRANSCRIBE-09`
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:477-480,707-722` · `qa: TRANSCRIBE-09`
 - **TRN-083** When a transcription finds no speech, a "Transcription needs attention" notification tells the user.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:90-100, Sources/App/Services/Notifications/SessionNotifications.swift:41` · `qa: NOTIFY-03`
 - **TRN-084** When only one of the two recording files exists, only that track is transcribed and the percentage still runs from 0 to 100.
@@ -1202,11 +1202,11 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **PAT-016** When the therapist saves a profile, the name, patient notes and clinical history (and the medications, when that table is shown) are saved together in a single update.
   `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift, Sources/App/Services/AppModel.swift` · `qa: PATIENT-05`
 - **PAT-017** When the medications feature is not in the build (it is a preview-tier feature), the medications table is hidden and any stored medications are kept untouched on save.
-  `surface: invariant` · `evidence: Sources/App/Views/PatientProfileEditor.swift:84, Sources/App/Services/PatientMedicationsFeatureModule.swift` · `qa: PATIENT-12`
+  `surface: invariant` · `evidence: Sources/App/Views/PatientProfileEditor.swift:105, Sources/App/Services/PatientMedicationsFeatureModule.swift` · `qa: PATIENT-12`
 - **PAT-018** When medications are edited, the therapist can add rows (Add medication) with a name and a dose and remove rows (Remove medication), and the table reads "None recorded." when empty.
-  `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift:214, Sources/App/Views/PatientProfileEditor.swift:221, Sources/App/Views/PatientProfileEditor.swift:236` · `qa: PATIENT-10`
+  `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift:244, Sources/App/Views/PatientProfileEditor.swift:251, Sources/App/Views/PatientProfileEditor.swift:266` · `qa: PATIENT-10`
 - **PAT-046** When medications are saved, rows with both name and dose blank (after trimming) are dropped.
-  `surface: ui` · `evidence: Sources/App/Models/PatientProfileDraft.swift:35` · `qa: PATIENT-11`
+  `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift:58` · `qa: PATIENT-11`
 - **PAT-047** When a patient has medications, the profile card lists each one with a name as "name dose", separated by commas, and leaves out any row with no name.
   `surface: ui` · `evidence: Sources/App/Models/Patient.swift:113` · `qa: PATIENT-11`
 - **PAT-019** When "Include patient background" is on (the default), the clinical history, the therapist's patient notes and the current medications (those with a name) are supplied as a "Patient background" block when drafting notes, in session chat and in patient chat, and the block is left out when the patient has entered none.
@@ -1238,7 +1238,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **PAT-032** When a patient name is typed into any patient text field, macOS Writing Tools is kept off for that text.
   `surface: invariant` · `evidence: CLAUDE.md, Sources/App/Views/Theme` · `qa: LOCK-08`
 - **PAT-033** When Return is pressed in the New Patient field with a blank name, no patient is created, matching the disabled Add button.
-  `surface: ui` · `evidence: Sources/App/Views/PatientsListView.swift:184-192, Sources/App/Services/AppModel.swift:530-531` · `qa: PATIENT-02`
+  `surface: ui` · `evidence: Sources/App/Views/PatientsListView.swift:204-212, Sources/App/Services/AppModel.swift:530-531` · `qa: PATIENT-02`
 - **PAT-034** When a patient is added, the name is stored exactly as typed; trimming and whitespace collapsing happen only when the profile editor renames.
   `surface: invariant` · `evidence: Sources/App/Services/Store.swift, Sources/App/Models/Patient.swift` · `qa: PATIENT-03`
 - **PAT-035** When a patient has no profile details, the profile card reads "Nothing recorded yet. Edit to add clinical history or notes; both are available to the AI." with an Edit button.
@@ -1281,9 +1281,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **SES-007** When the session list is shown, sessions appear newest first, each with the medium date, then the time and "Audio" when call.caf or mic.caf exists.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Services/Store.swift` · `qa: SESSION-02`
 - **SES-008** When a session has a transcript (transcript.txt) or a saved summary (summary.txt), its row shows a "Transcript" or "Note" chip, and "Recording" while it is being recorded.
-  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift:443, Sources/App/Views/PatientDetailView.swift:444, Sources/App/Views/PatientDetailView.swift:445, Sources/App/Models/SessionRecord.swift` · `qa: SESSION-03`
+  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift:447, Sources/App/Views/PatientDetailView.swift:448, Sources/App/Views/PatientDetailView.swift:449, Sources/App/Models/SessionRecord.swift` · `qa: SESSION-03`
 - **SES-009** When a session is being recorded, transcribed or waiting to be transcribed, its row says "Recording in progress", "Transcribing…" or "Waiting to transcribe" with a spinner while transcribing.
-  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift:416, Sources/App/Views/PatientDetailView.swift:417, Sources/App/Views/PatientDetailView.swift:418` · `qa: SESSION-03`
+  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift:420, Sources/App/Views/PatientDetailView.swift:421, Sources/App/Views/PatientDetailView.swift:422` · `qa: SESSION-03`
 - **SES-010** When a transcription finishes for any of the patient's sessions, the list refreshes so the chips and recording state update even if that session is not open.
   `surface: background` · `evidence: Sources/App/Views/PatientDetailView.swift` · `qa: SESSION-03`
 - **SES-011** When the therapist clicks the empty space of the session list, the open session stays open.

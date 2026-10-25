@@ -32,7 +32,7 @@ final class ProcessMemoryDeviceKeyStore: DeviceKeyStoring {
 extension KeychainDeviceKeyStore {
     private static let testStore = ProcessMemoryDeviceKeyStore()
 
-    /// The Keychain store, or a shared in-memory one under XCTest without opt-in.
+    /// The Keychain store, or a shared in-memory one under XCTest.
     static func makeDefault(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> DeviceKeyStoring {
