@@ -33,9 +33,9 @@ struct RecordingMenuBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if appLock.isLocked {
-                Label("Aletheia is locked", systemImage: "lock.fill")
+                Label(MenuBarPanel.Strings.locked, systemImage: "lock.fill")
                     .font(Theme.Typography.control)
-                Button("Unlock") {
+                Button(MenuBarPanel.Strings.unlock) {
                     MainWindow.show(openWindow: openWindow)
                     appLock.requestUnlock()
                 }
@@ -118,9 +118,9 @@ struct RecordingMenuBar: View {
     private func recordingControls(_ active: SessionRecorder.ActiveRecording) -> some View {
         HStack(alignment: .center, spacing: 8) {
             if recorder.isPaused {
-                Chip("Paused", tone: .warn)
+                Chip(MenuBarPanel.Strings.pausedChip, tone: .warn)
             } else {
-                Chip("Recording", tone: .recording, showsDot: true)
+                Chip(MenuBarPanel.Strings.recordingChip, tone: .recording, showsDot: true)
             }
             Spacer(minLength: 8)
             Text(MenuBarContentPolicy.patientLabel(
@@ -144,14 +144,14 @@ struct RecordingMenuBar: View {
         HStack(spacing: 8) {
             if recorder.isPaused {
                 Button { recorder.resume() } label: {
-                    Label("Resume", systemImage: "play.fill")
+                    Label(MenuBarPanel.Strings.resume, systemImage: "play.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.themePrimary)
                 .help("Resume recording")
             } else {
                 Button { recorder.pause() } label: {
-                    Label("Pause", systemImage: "pause.fill")
+                    Label(MenuBarPanel.Strings.pause, systemImage: "pause.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.themed)
@@ -160,7 +160,7 @@ struct RecordingMenuBar: View {
             Button(role: .destructive) {
                 Task { await recorder.stop() }
             } label: {
-                Label("Stop and save", systemImage: "stop.fill")
+                Label(MenuBarPanel.Strings.stopAndSave, systemImage: "stop.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.themeRecording)
@@ -194,23 +194,23 @@ struct RecordingMenuBar: View {
     private var startControls: some View {
         HStack(spacing: 8) {
             Circle().fill(Theme.muted.color).frame(width: 8, height: 8)
-            Text("Not recording")
+            Text(MenuBarPanel.Strings.notRecording)
                 .font(Theme.Typography.control.weight(.semibold))
                 .foregroundStyle(Theme.text.color)
         }
         .accessibilityElement(children: .combine)
         if appModel.patients.isEmpty {
-            Text("Add a patient in the main window first.")
+            Text(MenuBarPanel.Strings.noPatients)
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Patient").eyebrowStyle()
+                Text(MenuBarPanel.Strings.patientPicker).eyebrowStyle()
                 let labels = MenuBarContentPolicy.pickerLabels(
                     appModel.patients.map { ($0.id, $0.name, $0.createdAt) },
                     showFullName: settings.notificationsShowPatientNames, isLocked: appLock.isLocked)
-                Picker("Patient", selection: patientSelection) {
+                Picker(MenuBarPanel.Strings.patientPicker, selection: patientSelection) {
                     ForEach(appModel.patients) { patient in
                         Text(labels[patient.id] ?? PatientLabel.blankFallback).tag(patient.id)
                     }
@@ -222,7 +222,7 @@ struct RecordingMenuBar: View {
             Button {
                 if let patient = selectedPatient { Task { await start(for: patient) } }
             } label: {
-                Label("Start recording", systemImage: "record.circle")
+                Label(MenuBarPanel.Strings.startRecording, systemImage: "record.circle")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.themePrimary)

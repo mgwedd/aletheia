@@ -200,8 +200,11 @@ extension When {
 
 @MainActor extension Then where Subject == BundleContents {
     func holdsOnlySpeechAndLanguageRuntimes() {
+        // The test host injects XCTest and Swift Testing into the app's Frameworks folder; a shipped build never has them.
+        let harness: (String) -> Bool = { $0.hasPrefix("XC") || $0.hasPrefix("libXCTest") || $0.hasPrefix("Testing.") || $0.hasPrefix("lib_Testing") }
         let frameworks = Set(subject.paths.filter { $0.hasPrefix("Frameworks/") }
-            .compactMap { $0.split(separator: "/").dropFirst().first.map(String.init) })
+            .compactMap { $0.split(separator: "/").dropFirst().first.map(String.init) }
+            .filter { !harness($0) })
         let allowed: Set<String> = ["WhisperEngine.framework", "llama.framework", "whisper.framework"]
         expect(frameworks.isSubset(of: allowed), "unexpected frameworks: \(frameworks.subtracting(allowed).sorted())")
     }

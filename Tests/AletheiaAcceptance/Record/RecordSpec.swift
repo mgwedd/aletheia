@@ -98,10 +98,18 @@ final class RecordSpec: AcceptanceCase {
     }
 
     func test_RECORD_08() async throws {
-        // Partial: the 90-minute rule. The alert and its buttons are drawn by
-        // the root view; the timer that raises it runs in real time.
+        // The threshold is shortened from 90 minutes; the rule itself is pinned too.
         then(bench).remindsAtNinetyMinutes()
-        try pending("seam: the reminder timer sleeps 90 real minutes (no injectable clock), and the alert needs a UI driver")
+        let visit = try await given.aPatientWithASession()
+        await when.recordWithReminderAfter(0.1, on: bench, visit)
+
+        let alert = try await when.waitForStillRecordingAlert(on: bench)
+
+        then(alert).asksWhetherYouForgot()
+        when.keepRecording(on: bench)
+        then(bench).stillRecording(visit)
+        await when.stopNow(on: bench)
+        then(bench).isNotRecording()
     }
 
     func test_RECORD_09() async throws {

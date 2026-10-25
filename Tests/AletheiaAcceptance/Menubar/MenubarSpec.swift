@@ -16,11 +16,19 @@ final class MenubarSpec: AcceptanceCase {
     }
 
     func test_MENUBAR_01() async throws {
-        try pending("seam: the icon symbol is a private computed property of AletheiaApp (menuBarSymbol), not reachable without a UI driver")
+        let jane = try await given.patient(named: "Jane Doe")
+
+        then(when.menuBarIcon(on: bench)).isTheSymbol("waveform")
+        _ = try await when.startFromMenuBar(jane, on: bench)
+        then(when.menuBarIcon(on: bench)).isTheSymbol("record.circle.fill")
+        when.pauseFromMenuBar(on: bench)
+        then(when.menuBarIcon(on: bench)).isTheSymbol("pause.circle.fill")
     }
 
     func test_MENUBAR_02() async throws {
-        try pending("UI driver: the panel's \"Not recording\" line, Patient picker and Start recording button are drawn by RecordingMenuBar")
+        _ = try await given.patient(named: "Jane Doe")
+
+        then(when.openMenuBarPanel(on: bench)).showsNotRecordingWithPickerAndStart()
     }
 
     func test_MENUBAR_03() async throws {
@@ -81,7 +89,9 @@ final class MenubarSpec: AcceptanceCase {
     }
 
     func test_MENUBAR_09() async throws {
-        try pending("seam: the locked panel is drawn from AppLock inside RecordingMenuBar; the driver has no AppLock or view host")
+        _ = try await given.patient(named: "Jane Doe")
+
+        then(when.openMenuBarPanel(on: bench, locked: true)).showsOnlyLockedAndUnlock()
     }
 
     func test_MENUBAR_10() async throws {

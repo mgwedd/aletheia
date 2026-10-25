@@ -103,6 +103,21 @@ extension When {
             name: patient.name, showFullName: app.settings.notificationsShowPatientNames, isLocked: false)
     }
 
+    /// The menu bar icon's symbol under the recorder's state now.
+    func menuBarIcon(on bench: RecordingBench) -> String {
+        MenuBarPanel.iconSymbol(isRecording: bench.recorder.isRecording, isPaused: bench.recorder.isPaused)
+    }
+
+    /// Pause from the panel's Pause button.
+    func pauseFromMenuBar(on bench: RecordingBench) { bench.recorder.pause() }
+
+    /// What the panel shows when opened, with the app locked or not.
+    func openMenuBarPanel(on bench: RecordingBench, locked: Bool = false) -> MenuBarPanel.Content {
+        let state = MenuBarPanel.state(
+            isLocked: locked, isRecording: bench.recorder.isRecording, isPaused: bench.recorder.isPaused)
+        return MenuBarPanel.content(state, hasPatients: !app.appModel.patients.isEmpty)
+    }
+
     func patientsOfferedInPanel() -> [Patient] { app.appModel.patients }
 
     func openKeyboardShortcuts() -> ShortcutsWindow {
@@ -153,7 +168,24 @@ extension When {
     }
 }
 
+@MainActor extension Then where Subject == MenuBarPanel.Content {
+    func showsNotRecordingWithPickerAndStart() {
+        expectEqual(subject.status, "Not recording", "the panel's status")
+        expectEqual(subject.controls, ["Patient", "Start recording"], "the panel's controls")
+    }
+
+    func showsOnlyLockedAndUnlock() {
+        expectEqual(subject.status, "Aletheia is locked", "the panel's status")
+        expectEqual(subject.controls, ["Unlock"], "the panel's controls")
+        expect(!subject.showsSessionDetail, "the locked panel shows recording or patient detail")
+    }
+}
+
 @MainActor extension Then where Subject == String {
+    func isTheSymbol(_ symbol: String) {
+        expectEqual(subject, symbol, "the menu bar icon")
+    }
+
     func readsAsName(_ name: String) {
         expectEqual(subject, name, "the patient shown in the panel")
     }

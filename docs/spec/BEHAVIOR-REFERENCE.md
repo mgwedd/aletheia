@@ -80,7 +80,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **REC-020** When the user presses Pause, the timer holds still, the chip changes to Paused and the pane says "Paused. Nothing is being recorded until you resume."
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:391, Sources/App/Views/SessionDetailView.swift:566, Sources/App/Services/SessionRecorder.swift:372` · `qa: RECORD-04`
 - **REC-021** When the user presses Resume after pausing, recording continues in the same session and the paused span is not present in the audio.
-  `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:372, Sources/App/Services/MicRecorder.swift:144` · `qa: RECORD-04`
+  `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:372, Sources/App/Services/MicRecorder.swift:144` · `qa: RECORD-14`
 - **REC-022** When the user presses Stop Recording, the recording ends, the audio is saved with the session, and the session screen leaves the recording pane.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:1540, Sources/App/Services/SessionRecorder.swift:413` · `qa: RECORD-09`
 - **REC-023** When the user stops a recording and "Transcribe automatically when a recording ends" is on (the default), transcription starts by itself.
@@ -685,7 +685,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **SEC-001** When the app runs, the main app has no permission to make network connections.
   `surface: invariant` · `evidence: project.yml, scripts/check-entitlements.sh` · `qa: BUILD-01`
 - **SEC-002** When the app runs, only the sandboxed helper can reach the network, and it is asked for fixed items by number and is never given patient data.
-  `surface: invariant` · `evidence: project.yml, CLAUDE.md` · `qa: BUILD-02`
+  `surface: invariant` · `evidence: project.yml, CLAUDE.md` · `qa: BUILD-14`
 - **SEC-003** When the app is built, it requests only sandboxing, microphone input and user-selected file access, with calendar access added only in the development tier.
   `surface: invariant` · `evidence: project.yml, scripts/check-entitlements.sh` · `qa: BUILD-01`
 - **SEC-004** When a build adds an analytics, telemetry, crash-reporting or advertising component, the build fails.
@@ -1803,7 +1803,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **OSI-028** When no patients exist, the idle menu-bar item says "Add a patient in the main window first."
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift` · `qa: MENUBAR-07`
 - **OSI-029** When no patient is selected or a recording is starting, the menu-bar "Start recording" button is disabled.
-  `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift, Sources/App/Services/MenuBarContentPolicy.swift` · `qa: MENUBAR-02`
+  `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift, Sources/App/Services/MenuBarContentPolicy.swift` · `qa: MENUBAR-15`
 - **OSI-030** When starting from the menu bar fails, the reason appears as a line under the button, for example "Couldn't create a session. Check the data folder in Settings."
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift` · `qa: MENUBAR-08`
 - **OSI-031** When a recording is running or paused, the menu-bar item shows a "Recording" or "Paused" chip, the patient name, an HH:MM:SS timer, Mic and Call level bars, Pause or Resume, and "Stop and save".

@@ -119,6 +119,11 @@ extension Given {
 
 // MARK: - When
 
+struct ReminderAlert {
+    let title: String
+    let buttons: [String]
+}
+
 extension When {
     func files(of session: SessionRecord, patient: Patient, bench: RecordingBench) -> RecordedFiles {
         RecordedFiles(
@@ -157,6 +162,24 @@ extension When {
     func readMeters(on bench: RecordingBench) -> (mic: Float, call: Float) {
         (mic: bench.recorder.levels.mic, call: bench.recorder.levels.call)
     }
+
+    /// Records with the reminder set to fire after `seconds` instead of 90 minutes.
+    func recordWithReminderAfter(_ seconds: TimeInterval, on bench: RecordingBench, _ visit: PatientSession) async {
+        bench.recorder.reminderThreshold = seconds
+        await bench.pressRecord(patient: visit.patient, session: visit.session)
+    }
+
+    /// Waits for the alert to be raised, then reads what it offers.
+    func waitForStillRecordingAlert(on bench: RecordingBench) async throws -> ReminderAlert {
+        try await eventually(within: 5, "the Still recording alert is raised") { bench.recorder.longRunningReminder }
+        return ReminderAlert(title: RecordingLimit.Alert.title, buttons: [RecordingLimit.Alert.keep, RecordingLimit.Alert.stop])
+    }
+
+    /// Keep Recording: the alert closes and the recording goes on.
+    func keepRecording(on bench: RecordingBench) { bench.recorder.longRunningReminder = false }
+
+    /// Stop Now.
+    func stopNow(on bench: RecordingBench) async { await bench.recorder.stop() }
 
     func pause(on bench: RecordingBench) { bench.recorder.pause() }
     func resume(on bench: RecordingBench) { bench.recorder.resume() }
@@ -265,6 +288,13 @@ extension When {
     func startedTranscriptionOnItsOwn(for session: SessionRecord) {
         expectEqual(subject.stopped.map(\.sessionID), [session.id], "sessions reported as finished")
         expect(subject.app.settings.autoTranscribeAfterRecording, "automatic transcription is off by default")
+    }
+}
+
+@MainActor extension Then where Subject == ReminderAlert {
+    func asksWhetherYouForgot() {
+        expectEqual(subject.title, "Still recording", "the alert's title")
+        expectEqual(subject.buttons, ["Keep Recording", "Stop Now"], "the alert's buttons")
     }
 }
 
