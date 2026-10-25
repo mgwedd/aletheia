@@ -65,10 +65,10 @@ final class AppModel: ObservableObject {
     // `nil` until the first build, so launching the app isn't logged as a change.
     private var lastEncryptionEnabled: Bool?
     private var lastEncryptionUnlocked: Bool?
-    private let settings: AppSettings
+    let settings: AppSettings
     /// Supplies the `FileProtector` the stores read/write through. When
     /// encryption is locked it rejects access, including writes.
-    private let encryption: EncryptionManager
+    let encryption: EncryptionManager
     private let spotlightIndexer: SpotlightIndexing
     /// The feature modules this build ships, composed once at launch from the
     /// full catalog. See `FeatureRegistry`.
@@ -359,7 +359,7 @@ final class AppModel: ObservableObject {
         }
         var service = LocalEncryptedBackupService(root: root, key: key)
         service.destinationOverride = folder
-        let outcome = await BackupCoordinator(store: comments, destination: service).backUpNow(reason: "manual")
+        let outcome = await BackupCoordinator(store: comments, destination: service).backUpFolderNow(dataRoot: root, reason: "manual")
         if case .success = outcome {
             // The key wrapper is passphrase-protected; keeping it beside the
             // archive lets the backup be opened without the original data folder.
@@ -588,7 +588,6 @@ final class AppModel: ObservableObject {
     func deletePatient(_ patient: Patient) throws {
         guard let store else { throw StoreError.noDataRoot }
         try store.deletePatient(patient)
-        recordAudit(.recordDeleted, subjectID: patient.id.uuidString, detail: "patient")
         refreshPatients()
         reindexSpotlight()
     }

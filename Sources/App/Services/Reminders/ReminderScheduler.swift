@@ -20,15 +20,45 @@ enum ReminderSchedulerError: LocalizedError {
     }
 }
 
+/// Where reminders actually land: the user's Reminders in production, a fake
+/// in tests.
+protocol ReminderStore {
+    /// Whether the user has let Aletheia add reminders (asking if undecided).
+    func requestAccess() async -> Bool
+    /// Adds the reminder; throws `ReminderSchedulerError.unavailable` if there
+    /// is nowhere to put it.
+    func add(_ draft: ReminderDraft) throws
+}
+
+final class EventKitReminderScheduler: ReminderScheduling {
+    private let store: ReminderStore
+
+    init(store: ReminderStore = EventKitReminderStore()) {
+        self.store = store
+    }
+
+    func schedule(_ draft: ReminderDraft) async throws {
+        guard await store.requestAccess() else { throw ReminderSchedulerError.accessDenied }
+        try store.add(draft)
+    }
+}
+
 #if canImport(EventKit)
 import EventKit
 
-final class EventKitReminderScheduler: ReminderScheduling {
+final class EventKitReminderStore: ReminderStore {
     private let store = EKEventStore()
 
-    func schedule(_ draft: ReminderDraft) async throws {
-        try await requestAccess()
+    func requestAccess() async -> Bool {
+        if #available(macOS 14.0, *) {
+            return (try? await store.requestFullAccessToReminders()) ?? false
+        }
+        return await withCheckedContinuation { continuation in
+            store.requestAccess(to: .reminder) { ok, _ in continuation.resume(returning: ok) }
+        }
+    }
 
+    func add(_ draft: ReminderDraft) throws {
         guard let calendar = store.defaultCalendarForNewReminders() else {
             throw ReminderSchedulerError.unavailable
         }
@@ -47,23 +77,10 @@ final class EventKitReminderScheduler: ReminderScheduling {
 
         try store.save(reminder, commit: true)
     }
-
-    private func requestAccess() async throws {
-        let granted: Bool
-        if #available(macOS 14.0, *) {
-            granted = (try? await store.requestFullAccessToReminders()) ?? false
-        } else {
-            granted = await withCheckedContinuation { continuation in
-                store.requestAccess(to: .reminder) { ok, _ in continuation.resume(returning: ok) }
-            }
-        }
-        guard granted else { throw ReminderSchedulerError.accessDenied }
-    }
 }
 #else
-final class EventKitReminderScheduler: ReminderScheduling {
-    func schedule(_ draft: ReminderDraft) async throws {
-        throw ReminderSchedulerError.unavailable
-    }
+final class EventKitReminderStore: ReminderStore {
+    func requestAccess() async -> Bool { false }
+    func add(_ draft: ReminderDraft) throws { throw ReminderSchedulerError.unavailable }
 }
 #endif
