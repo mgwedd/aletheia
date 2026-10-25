@@ -183,6 +183,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.appAcceptance
         GENERATE_INFOPLIST_FILE: YES
+        # XCTest creates this class when the bundle loads; it registers the
+        # ledger observer (Tests/AletheiaAcceptance/Ledger).
+        INFOPLIST_KEY_NSPrincipalClass: AcceptanceLedgerPrincipal
     dependencies:
       - target: Aletheia
       - target: WhisperEngine
