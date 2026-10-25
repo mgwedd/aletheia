@@ -1,55 +1,42 @@
 # Acceptance execution layer
 
-How each check in [ACCEPTANCE-CRITERIA.md](ACCEPTANCE-CRITERIA.md) gets an
-executable fitness function that survives refactors and can't quietly go stale.
+How each check in [ACCEPTANCE-CRITERIA.md](ACCEPTANCE-CRITERIA.md) is proven, and
+how "accepted" is decided: a check is accepted when its fitness function passes
+in CI. Nothing else counts, and a pending test is not accepted.
 
 ## The pyramid
 
 ```
-                 ACCEPTANCE-CRITERIA.md       QA walkthrough · ~200 checks · product words
+                 ACCEPTANCE-CRITERIA.md       one line per check · product words · stable IDs
                 ─────────────────────────
-               BEHAVIOR-REFERENCE.md          edge cases · exact copy · evidence paths
+               BEHAVIOR-REFERENCE.md          edge cases · exact copy · pointers into the source
              ─────────────────────────────
-            Tests/AletheiaAcceptance          fitness functions · DSL only · 1 per check
+            Tests/AletheiaAcceptance          fitness functions · DSL only · one per check
           ─────────────────────────────────
          Tests/AletheiaTests                  unit tests · free to change with internals
 ```
 
-Each layer says something the one above doesn't, and nothing is written twice:
+Each fact lives in one place and everything else refers to it by ID:
 
-| Fact | Lives only in | Everything else refers to it by |
+| Fact | Lives only in | Referred to by |
 |---|---|---|
-| What a check promises (the sentence) | ACCEPTANCE-CRITERIA.md | its ID (`EXPORT-03`) |
-| Edge cases, exact copy, where in the source | BEHAVIOR-REFERENCE.md | its ID (`EXP-029`) |
-| Which edge cases a check rolls up | BEHAVIOR-REFERENCE.md (`qa:` tag on each item) | — |
-| How a check is exercised | the fitness function | — |
-| How the app is driven | the drivers | — |
+| What a check promises | ACCEPTANCE-CRITERIA.md | its ID (`EXPORT-03`) |
+| Edge cases, exact copy | BEHAVIOR-REFERENCE.md | its ID (`EXP-029`) |
+| Which edge cases a check rolls up | BEHAVIOR-REFERENCE.md (`qa:` tag on each item) | |
+| How a check is exercised | the fitness function | |
 
-So a fitness function has no doc comment restating its check. `AcceptanceCase`
-reads the sentence from ACCEPTANCE-CRITERIA.md at run time and puts it in the
-failure message, so a red test reads like the QA line it broke.
+A fitness function has no comment restating its check. `AcceptanceCase` reads
+the sentence from ACCEPTANCE-CRITERIA.md at run time and puts it in the failure
+message, so a red test reads like the QA line it broke.
 
 ## The rule
 
-A fitness function may only talk to the **domain DSL**. It never names an app
-type, view, file layout or function. When internals change, only a **driver**
-changes; the QA line and its fitness function stay the same. The DSL grows
-only when a new product behavior needs a new verb.
-
-## Example
+A fitness function talks only to the domain DSL (Given, When, Then). It never
+names an app type, view, file layout or function. When internals change, only
+what sits under the DSL changes; the QA line and its test stay the same.
 
 ```swift
-// Tests/AletheiaAcceptance/Export/ExportSpec.swift
 final class ExportSpec: AcceptanceCase {
-    func test_EXPORT_03() async throws {
-        try await given.patients(3, eachWith: .sessions(2), .notes)
-        let destination = try given.emptyFolder()
-
-        try await when.exportAllRecords(to: destination, cancellingAfter: .firstFile)
-
-        try then(destination).isEmpty()
-    }
-
     func test_EXPORT_07() async throws {
         try await given.encryptionIsOn()
         try await given.patients(1, eachWith: .sessions(1))
@@ -62,73 +49,96 @@ final class ExportSpec: AcceptanceCase {
         try then(destination).isEmpty()
     }
 }
-// Failure: "EXPORT-07 Lock the app, then try Export All Records → it refuses and writes nothing.
-//           expected destination to be empty, found 2 files"
 ```
 
-## Drivers
+## One subject: the real app
 
-| Driver | Backs | How | Lane |
-|---|---|---|---|
-| **InProcess** | most checks | The real app graph (settings, encryption, stores, coordinators) over a throwaway data folder, with hardware swapped for fixtures: scripted `LocalLLMEngine`, fixture `Transcribing`, synthetic audio, injectable clock, in-memory keychain. Drives the same model actions the views call. | every PR |
-| **UI** | checks whose promise *is* the UI (a button exists, a lock covers the window) | XCUITest against the Debug app with a fixture data folder. Accessibility identifiers on the controls the DSL touches are part of the driver contract. | every PR (small set), full nightly |
-| **Artifact** | promises about the shipped build | Inspects the Release `.app`: entitlements, signature, linked frameworks, bundled assets, helper allow-list. Absorbs the `scripts/check-*.sh` gates. | every PR + release |
-| **Probes** | side effects | Read-only observers the other drivers attach: data-folder watcher (what was written, plaintext or not), network observer, notification / Spotlight / pasteboard capture, audit-log reader. | with their driver |
+Every fitness function runs through XCUITest against the Debug `Aletheia.app`.
+Unit tests remain the fast layer for internals.
 
-A nightly real-model lane runs small pinned Whisper and GGUF models on fixture
-audio for checks about AI output. Those check properties (sections present,
-citations resolve, no names absent from the transcript), never exact text.
+**Hermetic fixture mode.** The app has a fixture mode, compiled in Debug only; a
+Release guard test fails if any fixture symbol or launch key is reachable in
+Release. In it every nondeterministic input is pinned:
 
-On-screen text is matched through one DSL copy table (`Copy.exportReady`, …),
-so a wording change is one DSL line plus the reference entry.
+| Input | Fixture |
+|---|---|
+| Time | A fixed clock the test can advance |
+| Microphone and call audio | A named synthetic clip |
+| Transcription | The clip's paired transcript |
+| AI engine | A scripted engine that also records the context it received |
+| Keychain, Touch ID, FileVault | In-memory keychain; biometric result and FileVault state set per scenario |
+| Data folder, defaults | Fresh for every launch, inside the app's own container |
+| Locale, time zone, appearance, animations | Pinned; animations off |
+| Network | None (the app has no network entitlement) |
 
-## Staleness gate
+**Given is a seed scenario.** The test passes a JSON scenario in the launch
+environment (patients, sessions, notes, encryption, locked, and so on) and the
+app builds that state before its first window appears. When steps go through the
+real UI only. A step that ends "on next launch" terminates and relaunches the
+app on the same data folder.
 
-`scripts/check-spec-coverage.sh` (bash + Python, runs in the Linux sandbox and
-CI) fails the build when any layer drifts from the one above it:
-
-- a QA check with no `test_<ID>`, a `test_<ID>` with no QA check, or a duplicate;
-- a reference item whose `qa:` tag names no QA check, or a QA check no
-  reference item rolls up (a promise with no recorded detail);
-- a reference item with no `evidence:` tag, an `evidence:` path that no longer
-  exists, a line range past the end of the file, or a cited start line that is
-  now blank or a lone closing brace — the usual signs a behavior moved or was
-  deleted;
-- a malformed check line, or a check filed under another journey's heading;
-- a `Copy` entry no test uses;
-- an `XCTExpectFailure` anywhere in the acceptance suite.
-
-The test checks start once `Tests/AletheiaAcceptance` exists; until then the
-script checks the two docs and reports the suite as not started.
+**Then is UI assertions plus a probe.** Outcomes on screen are asserted through
+accessibility identifiers, which are part of the driver contract. Outcomes that
+are not on screen (files written, plaintext or not, audit rows, audio cleaned
+up, what the AI engine received) are read from an invisible, Debug-only
+accessibility element whose value is a JSON snapshot of probe facts. The test
+reads the probe through XCUITest and never reads the app's container directly.
 
 Fitness functions are written to the expectation, never to the current code. A
-known bug is written as the intended behavior and tagged `⚠ DEFECT` in the
-reference, and its fitness function simply fails until the fix lands. A red
-acceptance run is an honest result, not something to mask or tune away.
+known bug is written as the intended behavior and its test simply fails until
+the fix lands. `XCTExpectFailure` is not allowed. `try pending("reason")` is
+allowed, so coverage can grow journey by journey.
 
-`try pending("reason")` is allowed so coverage can grow journey by journey; the
-script prints a per-journey table of checks / tests / pending / missing. Because
-the sentence and its test are tied by ID, editing one without the other shows up
-together in review.
+## Coverage test and ledger
+
+Both live inside the test run, in Swift, in `Tests/AletheiaAcceptance/Ledger/`.
+
+**`SpecCoverageTests`** parses the two docs and enumerates the test methods that
+exist at runtime (the `AcceptanceCase` subclasses and their `test_` selectors).
+It fails on:
+
+- a check with no test, a test with no check, or a duplicate ID;
+- a reference item whose `qa:` tag names no check, or a check with no reference item;
+- a check under another journey's heading, or a check line without exactly one `→`;
+- a `Copy` entry no test uses;
+- `XCTExpectFailure` anywhere in the suite.
+
+Its parser is unit-tested with small good and bad doc fixtures in the same bundle.
+
+**The ledger.** An `XCTestObservation` observer writes `acceptance-ledger.md`
+and `acceptance-ledger.json` when the bundle finishes, into the directory named
+by `ACCEPTANCE_LEDGER_DIR` (a temp directory when unset). Each check is passed,
+failed or pending, with its sentence and any failure message. The headline is
+"Accepted: N of M checks", counting passed only, with pending and failed checks
+listed by ID under it. CI appends the Markdown to the job summary and uploads
+both files.
+
+Pending does not fail the job; the ledger keeps it visible. Whether pending
+blocks a release is a separate call.
+
+## CI
+
+One `acceptance` job on a standard `macos-15` runner, sharded by journey with a
+matrix, each shard selecting its specs with `-only-testing`. The coverage test
+runs in its own shard and finishes in seconds. Docs-only changes still run it,
+because the docs are what it checks. A final cheap job merges the shard ledgers
+into the summary. Only first-party, SHA-pinned actions are used.
+
+## Flake policy
+
+No sleeps and no retries. Wait on elements with a timeout. A flaky test is a bug
+in the fixture or the app; fix the root cause.
 
 ## Layout
 
 ```
-docs/spec/ACCEPTANCE-CRITERIA.md          QA walkthrough (source of truth)
-docs/spec/BEHAVIOR-REFERENCE.md           detail + evidence, each item tagged qa:
+docs/spec/ACCEPTANCE-CRITERIA.md          the checks (source of truth)
+docs/spec/BEHAVIOR-REFERENCE.md           detail, each item tagged qa:
 Tests/AletheiaAcceptance/
-  DSL/        Given.swift When.swift Then.swift Copy.swift Fixtures/
-  Drivers/    InProcessDriver.swift UIDriver.swift ArtifactDriver.swift Probes/
-  <Journey>/  <Journey>Spec.swift                one file per walkthrough section
-Tests/AletheiaUITests/                    XCUITest host for the UI driver
-scripts/check-spec-coverage.sh
+  DSL/        Given.swift When.swift Then.swift Copy.swift
+  Ledger/     SpecCoverageTests.swift AcceptanceLedger.swift
+  <Journey>/  <Journey>Spec.swift          one file per walkthrough section
 ```
 
-`project.yml` gains an `AletheiaAcceptance` unit-test bundle (hosted by the app)
-and an `AletheiaUITests` UI-testing bundle. No Cucumber/Gherkin: the spec stays
-Markdown and the DSL is plain Swift, per the first-party-only rule.
-
-The existing unit tests can be rewritten, merged or deleted as internals change;
-the acceptance suite is the product's report card, and its failures are the bug
-list. Unit tests that only restate an
-acceptance check can be dropped over time.
+`project.yml` is the source of truth for the targets. No Cucumber or Gherkin:
+the spec is Markdown and the DSL is plain Swift, per the first-party-only rule.
