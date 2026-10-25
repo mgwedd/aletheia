@@ -233,4 +233,8 @@ final class TranscribeSpec: AcceptanceCase {
         then(result).keptTheExistingTranscript(earlier)
         then(result).keptTheRecording()
     }
+
+    func test_TRANSCRIBE_18() async throws {
+        try pending("the one-time notice that raw audio was deleted after transcription isn't built yet (TRN-092)")
+    }
 }

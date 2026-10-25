@@ -208,9 +208,12 @@ extension When {
 // MARK: - Then
 
 extension Then where Subject == BackupProtection {
+    func leavesFolderOutOfBackupsByDefault() {
+        expect(subject.settingIsOn, "expected the keep-out-of-backups option to be on by default")
+        expect(subject.folderIsExcluded, "expected the data folder to be left out of Time Machine and iCloud backups by default")
+    }
     func leavesFolderInBackups() {
-        expect(!subject.folderIsExcluded, "expected the data folder to be included in Time Machine by default")
-        expect(!subject.settingIsOn, "expected the keep-out-of-backups option to be off by default")
+        expect(!subject.folderIsExcluded, "expected the data folder to be included in Time Machine while the keep-out option is off")
     }
     func leavesFolderOutOfBackups() {
         expect(subject.folderIsExcluded, "expected the data folder to be left out of Time Machine and iCloud backups (option on: \(subject.settingIsOn))")

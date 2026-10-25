@@ -2,12 +2,14 @@ import XCTest
 
 final class BackupSpec: AcceptanceCase {
     func test_BACKUP_01() async throws {
-        then(when.lookAtBackupProtection()).leavesFolderInBackups()
+        then(when.lookAtBackupProtection()).leavesFolderOutOfBackupsByDefault()
     }
 
     func test_BACKUP_02() async throws {
-        when.keepDataOutOfBackups(true)
+        when.keepDataOutOfBackups(false)
+        then(when.lookAtBackupProtection()).leavesFolderInBackups()
 
+        when.keepDataOutOfBackups(true)
         then(when.lookAtBackupProtection()).leavesFolderOutOfBackups()
     }
 
@@ -69,5 +71,9 @@ final class BackupSpec: AcceptanceCase {
 
         then(result).wroteAnArchive()
         then(result).holdsNoReadableSessionText()
+    }
+
+    func test_BACKUP_09() async throws {
+        try pending("restoring a backup archive isn't built yet (BAK-010); there is no restore path to drive")
     }
 }
