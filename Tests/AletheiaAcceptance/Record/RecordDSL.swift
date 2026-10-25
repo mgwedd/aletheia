@@ -17,6 +17,7 @@ final class RecordingBench {
     let tempRoot: URL
     private(set) var stopped: [SessionRecorder.ActiveRecording] = []
     private(set) var lastRefusal: String?
+    var lastSweep: OrphanAudioSweep.Result?
 
     static let micBytes = Data("mic-audio".utf8)
     static let callBytes = Data("call-audio".utf8)
@@ -74,6 +75,12 @@ final class RecordingBench {
     }
 }
 
+/// A patient and one of their sessions.
+struct PatientSession {
+    let patient: Patient
+    let session: SessionRecord
+}
+
 /// The files a session folder holds for one recording.
 struct RecordedFiles {
     let mic: URL
@@ -87,6 +94,17 @@ struct RecordedFiles {
 
 extension Given {
     func recordingBench() throws -> RecordingBench { try RecordingBench(app: app) }
+
+    /// A patient with one empty session, ready to record.
+    func aPatientWithASession(named name: String = "Jane Doe") async throws -> PatientSession {
+        let patient = try await patient(named: name)
+        return PatientSession(patient: patient, session: try aSession(for: patient))
+    }
+
+    /// Another empty session for the same patient.
+    func anotherSession(for visit: PatientSession) throws -> PatientSession {
+        PatientSession(patient: visit.patient, session: try aSession(for: visit.patient))
+    }
 
     func aSession(for patient: Patient) throws -> SessionRecord {
         try XCTUnwrap(app.appModel.store).createSession(
@@ -122,10 +140,55 @@ extension When {
         }
     }
 
-    /// Force-quit: the recorder is dropped with its files still staged, and the
-    /// app opens again over the same data folder.
-    func forceQuitAndReopen() {
+    /// Force-quit: the recorder is dropped with its files still staged, the
+    /// app opens again over the same data folder and runs its launch sweep.
+    func forceQuitAndReopen(_ bench: RecordingBench) {
         app.relaunch(tier: app.tier)
+        bench.lastSweep = bench.sweepAtLaunch()
+    }
+
+    /// What the Record Session button does.
+    @discardableResult
+    func pressRecord(on bench: RecordingBench, _ visit: PatientSession) async -> String? {
+        await bench.pressRecord(patient: visit.patient, session: visit.session)
+    }
+
+    /// What the two level bars show right now.
+    func readMeters(on bench: RecordingBench) -> (mic: Float, call: Float) {
+        (mic: bench.recorder.levels.mic, call: bench.recorder.levels.call)
+    }
+
+    func pause(on bench: RecordingBench) { bench.recorder.pause() }
+    func resume(on bench: RecordingBench) { bench.recorder.resume() }
+    func stop(on bench: RecordingBench) async { await bench.recorder.stop() }
+
+    func files(of visit: PatientSession, bench: RecordingBench) -> RecordedFiles {
+        files(of: visit.session, patient: visit.patient, bench: bench)
+    }
+
+    /// Deletes the patient's folder from the data folder, as Finder would.
+    func deleteFolder(of patient: Patient, bench: RecordingBench) throws {
+        try FileManager.default.removeItem(at: bench.store.patientDir(for: patient))
+    }
+
+    /// The list under Settings that holds recordings with nowhere to go.
+    func openSetAsideRecordings(on bench: RecordingBench) -> SetAsideRecordings {
+        SetAsideRecordings(stagingRoot: bench.stagingRoot)
+    }
+
+    /// Review in Settings, then recover the first item into `visit`.
+    func recoverFirstSetAside(_ list: SetAsideRecordings, into visit: PatientSession, bench: RecordingBench) throws {
+        let item = try XCTUnwrap(list.items.first, "nothing was set aside")
+        try OrphanAudioSweep.recoverSetAside(
+            item.folder, into: visit.patient, session: visit.session, store: bench.store,
+            protector: app.appModel.currentProtector, stagingRoot: bench.stagingRoot)
+    }
+
+    /// Delete…, then confirm, on the first set-aside recording.
+    func deleteFirstSetAside(_ list: SetAsideRecordings) throws -> URL {
+        let item = try XCTUnwrap(list.items.first, "nothing was set aside")
+        try list.delete(item, audit: nil)
+        return item.folder
     }
 }
 
@@ -150,6 +213,11 @@ extension When {
         let levels = subject.recorder.levels
         expect(levels.mic > 0, "the microphone bar did not move (\(levels.mic))")
         expect(levels.call > 0, "the call audio bar did not move (\(levels.call))")
+    }
+
+    func metersAreSilent() {
+        let levels = subject.recorder.levels
+        expect(levels.mic == 0 && levels.call == 0, "the bars moved with no sound (\(levels.mic), \(levels.call))")
     }
 
     func metersAreLouder(than before: (mic: Float, call: Float)) {
@@ -217,7 +285,8 @@ extension When {
         expectEqual(subject.items.count, count, "set-aside recordings listed")
     }
 
-    func warningNames(nobody names: [String]) {
+    func warningDoesNotNamePatient(of visit: PatientSession) {
+        let names = [visit.patient.name, visit.patient.slug] + visit.patient.name.split(separator: " ").map(String.init)
         let text = SetAsideRecordings.warningText(count: max(1, subject.items.count))
         for name in names {
             expect(!text.localizedCaseInsensitiveContains(name), "the warning names \(name): \(text)")
@@ -229,5 +298,48 @@ extension When {
 @MainActor extension Then where Subject == RecordingBench {
     func showsTurnOnFileVaultAlert() {
         expectEqual(subject.app.appModel.fileVaultNotice?.title, Copy.turnOnFileVault, "the FileVault alert")
+    }
+}
+
+@MainActor extension Then where Subject == RecordingBench {
+    func isRecording(_ visit: PatientSession) { isRecording(visit.session) }
+    func stillRecording(_ visit: PatientSession) { stillRecording(visit.session) }
+    func leftNothingStaged(for visit: PatientSession) { leftNothingStaged(for: visit.session) }
+    func startedTranscriptionOnItsOwn(for visit: PatientSession) { startedTranscriptionOnItsOwn(for: visit.session) }
+
+    /// The timer stands still while paused, however long the Mac waits.
+    func timerHolds() {
+        let soon = subject.recorder.elapsed(at: Date().addingTimeInterval(10))
+        let later = subject.recorder.elapsed(at: Date().addingTimeInterval(600))
+        expect(subject.recorder.isPaused, "the recording is not paused")
+        expect(abs(soon - later) < 0.001, "the timer kept running while paused")
+    }
+
+    /// The reminder is due at 90 minutes and not a second before.
+    func remindsAtNinetyMinutes() {
+        expectEqual(RecordingLimit.reminderThreshold, 90 * 60, "the reminder threshold in seconds")
+        expect(!RecordingLimit.shouldRemind(elapsed: 90 * 60 - 1), "reminded early")
+        expect(RecordingLimit.shouldRemind(elapsed: 90 * 60), "no reminder at 90 minutes")
+    }
+
+    /// The launch sweep put one interrupted recording back into its session.
+    func recoveredOneInterruptedSession() {
+        expectEqual(subject.lastSweep?.stagedSessionsRecovered, 1, "interrupted sessions recovered")
+    }
+
+    func setAsideOneRecording() {
+        expectEqual(subject.lastSweep?.quarantinedUnknownDirs, 1, "recordings set aside")
+    }
+}
+
+@MainActor extension Then where Subject == URL {
+    func isGone() {
+        expect(!FileManager.default.fileExists(atPath: subject.path), "the audio is still on disk")
+    }
+}
+
+@MainActor extension Then where Subject == String? {
+    func isNoRefusal() {
+        expect(subject == nil, "the recording was refused: \(subject ?? "")")
     }
 }
