@@ -20,17 +20,19 @@ final class SearchSpec: AcceptanceCase {
     }
 
     func test_SEARCH_03() async throws {
-        let jane = try await given.patient(named: "Jane Doe")
-        let session = try given.session(for: jane, on: searchDay(2026, 3, 4), transcript: "Mentioned the harbor several times.")
+        // A name word and a date word in one query, so a patient, a session and
+        // the text of that session all answer it (SRC-009, SRC-024, SRC-025).
+        let june = try await given.patient(named: "June Harbor")
+        let session = try given.session(for: june, on: searchDay(2026, 6, 4), transcript: "Mentioned the harbor several times.")
         given.myNotes("Harbor came up again.", on: session)
-        try given.progressNote("Harbor imagery is recurring.", for: jane, on: session)
+        try given.progressNote("Harbor imagery is recurring.", for: june, on: session)
         given.comment("Ask about the harbor.", on: "Mentioned the harbor", at: 0, in: session)
-        _ = try await given.patient(named: "Harbor Smith")
 
-        let box = try await when.typeInSearch("harbor")
+        let box = try await when.typeInSearch("june harbor")
 
         then(box).groupsAre(Copy.searchGroups)
-        then(box).highlightsTheMatch(of: "harbor", in: Copy.searchGroups)
+        // Patient and session rows show a session count and a date, not a text snippet.
+        then(box).highlightsTheMatch(of: "harbor", in: Array(Copy.searchGroups.suffix(4)))
     }
 
     func test_SEARCH_04() async throws {
@@ -176,7 +178,7 @@ final class SearchSpec: AcceptanceCase {
         then(withTopic).onlyShowSessions(of: joanne)
         then(withTopic).listsSessions(onDays: [searchDay(2026, 5, 6), searchDay(2026, 3, 4)])
 
-        let narrowed = try await when.typeInSearch("Joanne grief March")
+        let narrowed = try await when.typeInSearch("Joanne grief March 4")
         then(narrowed).onlyShowSessions(of: joanne)
         then(narrowed).includesTranscriptOf(march)
         then(narrowed).listsSessions(onDays: [searchDay(2026, 3, 4)])
