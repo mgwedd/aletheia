@@ -95,10 +95,13 @@ private final class SteeredTranscriber: Transcribing, @unchecked Sendable {
     private let lock = NSLock()
     private var steps: [Step] = []
     private var consumed = 0
+    private var delivered = 0
     var isReady: Bool { true }
 
     func push(_ step: Step) { lock.lock(); steps.append(step); lock.unlock() }
-    var consumedCount: Int { lock.lock(); defer { lock.unlock() }; return consumed }
+    /// Steps whose effect (a progress report) has been handed to the app.
+    var deliveredCount: Int { lock.lock(); defer { lock.unlock() }; return delivered }
+    private func didDeliver() { lock.lock(); delivered += 1; lock.unlock() }
 
     private func next() -> Step? {
         lock.lock(); defer { lock.unlock() }
@@ -113,7 +116,9 @@ private final class SteeredTranscriber: Transcribing, @unchecked Sendable {
         while true {
             try Task.checkCancellation()
             switch next() {
-            case .report(let progress)?: onProgress(progress)
+            case .report(let progress)?:
+                onProgress(progress)
+                didDeliver()
             case .finish(let text)?: return text
             case .fail(let message)?: throw SpeechFailure(message: message)
             case nil: try await Task.sleep(nanoseconds: 5_000_000)
@@ -229,10 +234,12 @@ final class TranscriptionDesk {
 
     /// The model reports being at `fraction` of `stage`.
     func modelReports(_ fraction: Double, in step: ModelStep = .microphone) async throws {
-        let before = steered.consumedCount
+        let before = steered.deliveredCount
         steered.push(.report(TranscriptionProgress(stage: step.stage, fraction: fraction)))
-        try await eventually("the progress report") { self.steered.consumedCount > before }
-        try await Task.sleep(nanoseconds: 30_000_000)
+        try await eventually("the progress report") { self.steered.deliveredCount > before }
+        // The app applies a report in a main-actor task queued while it was delivered;
+        // this one queues behind it, so the report has been applied once it runs.
+        await Task { @MainActor in }.value
     }
 
     func modelFails(saying message: String) { steered.push(.fail(message)) }
@@ -241,7 +248,6 @@ final class TranscriptionDesk {
     func waitForResult(of recorded: RecordedSession) async throws -> TranscriptionResult {
         try await eventually("the transcription to end") { self.coordinator.outcomes[recorded.session.id] != nil }
         let outcome = try XCTUnwrap(coordinator.takeOutcome(for: recorded.session.id))
-        try await Task.sleep(nanoseconds: 30_000_000)
         return TranscriptionResult(
             outcome: outcome, notificationTitles: notifier.titles, onDisk: try onDisk(recorded))
     }
