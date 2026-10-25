@@ -244,9 +244,6 @@ struct SessionDetailView: View {
     @State private var errorMessage: String?
     /// How the last export ended, shown until dismissed.
     @State private var exportResult: SaveOutcome?
-    /// The format chosen for a psychotherapy note export, while the
-    /// authorization confirmation is showing.
-    @State private var psychotherapyExportFormat: ExportFormat?
     /// Set when note generation or a chat answer failed because the local AI
     /// engine is down; `engineRetries` re-runs whatever failed after the fix.
     @State private var engineIncident: AIEngineIncident?
@@ -376,6 +373,23 @@ struct SessionDetailView: View {
         }, discard: {
             engineRetries.clear()
         })
+        .alert("Not signed yet", isPresented: Binding(get: { note.reviewBlock != nil }, set: { if !$0 { note.reviewBlock = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(note.reviewBlock ?? "")
+        }
+        .confirmationDialog(NoteLifecycle.signTitle, isPresented: $note.confirmingSign, titleVisibility: .visible) {
+            Button("Sign note") { note.sign() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(NoteLifecycle.signMessage)
+        }
+        .confirmationDialog(NoteLifecycle.reopenTitle, isPresented: $note.confirmingReopen, titleVisibility: .visible) {
+            Button("Reopen as draft") { note.reopen() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(NoteLifecycle.reopenMessage)
+        }
         .alert("Done", isPresented: Binding(get: { confirmationMessage != nil }, set: { if !$0 { confirmationMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -396,21 +410,6 @@ struct SessionDetailView: View {
         }
         .exportConfirmation($pendingExport, settings: settings)
         .exportResultAlert($exportResult)
-        .confirmationDialog(
-            PsychotherapyExport.confirmationTitle,
-            isPresented: Binding(
-                get: { psychotherapyExportFormat != nil },
-                set: { if !$0 { psychotherapyExportFormat = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button(PsychotherapyExport.confirmButton) {
-                if let format = psychotherapyExportFormat { exportPsychotherapyNote(as: format) }
-                psychotherapyExportFormat = nil
-            }
-            Button("Cancel", role: .cancel) { psychotherapyExportFormat = nil }
-        } message: {
-            Text(PsychotherapyExport.confirmationMessage)
-        }
     }
 
     private var header: some View {
@@ -715,6 +714,7 @@ struct SessionDetailView: View {
 
     /// Saves the note on screen in `format`, after the usual save panel.
     private func exportNote(as format: ExportFormat) {
+        guard note.mayLeave(message: NoteLifecycle.reviewToExport) else { return }
         ExportConfirmation(
             patientName: patient.name, noun: "note", count: 1, fileType: format.title, scope: .singleNote
         ) { saveNote(as: format) }
@@ -742,6 +742,14 @@ struct SessionDetailView: View {
     /// Saves the psychotherapy note on its own, after the authorization
     /// confirmation. Never part of a progress-note export.
     private func exportPsychotherapyNote(as format: ExportFormat) {
+        ExportConfirmation(
+            patientName: patient.name, noun: "session", count: 1, fileType: format.title,
+            scope: .psychotherapy
+        ) { savePsychotherapyNote(as: format) }
+        .begin(skipSingleNote: false) { pendingExport = $0 }
+    }
+
+    private func savePsychotherapyNote(as format: ExportFormat) {
         let detail = AuditDetail.exportedPsychotherapyNote(format)
         guard let document = try? PsychotherapyExport.sessionDocument(
             patientName: patient.name, date: session.date, note: sessionNote, authorized: true) else { return }
@@ -800,6 +808,12 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.text.color)
                         .padding([.horizontal, .top], 20)
                 }
+                if note.sessionHasSigned {
+                    Label("A note for this session is signed, so the transcript is read-only. Reopen the note as a draft to change it.", systemImage: "lock")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
+                        .padding([.horizontal, .top], 20)
+                }
                 if TranscriptEditBar.showsEditControls(isDirty: transcriptIsDirty) {
                     HStack(spacing: 10) {
                         Spacer(minLength: 12)
@@ -834,7 +848,7 @@ struct SessionDetailView: View {
                 ) {
                     TranscriptTextView(
                         text: $transcriptDraft,
-                        isEditable: transcriptReadError == nil,
+                        isEditable: transcriptReadError == nil && !note.sessionHasSigned,
                         comments: activeAnchors,
                         selection: $transcriptSelection,
                         selectionRange: $transcriptSelectionRange,
@@ -1115,7 +1129,7 @@ struct SessionDetailView: View {
     /// and the error is shown; nothing is lost. Returns whether it was saved.
     @discardableResult
     private func saveTranscriptDraft() -> Bool {
-        guard transcriptReadError == nil else { return false }
+        guard transcriptReadError == nil, !note.sessionHasSigned else { return false }
         guard let store = appModel.store else { return false }
         let text = transcriptDraft
         do {
@@ -1143,7 +1157,7 @@ struct SessionDetailView: View {
                 ExportButton(
                     title: "Export psychotherapy note…",
                     help: "Save this note on its own, apart from the clinical record. You'll confirm you have authorization first."
-                ) { psychotherapyExportFormat = $0 }
+                ) { exportPsychotherapyNote(as: $0) }
                     .buttonStyle(.themed)
                     .disabled(sessionNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -1221,7 +1235,7 @@ struct SessionDetailView: View {
                         Button(role: .cancel) { note.stop() } label: {
                             Label("Cancel", systemImage: "xmark")
                         }
-                    } else if !summaryText.isEmpty {
+                    } else if !summaryText.isEmpty && !note.noteLocked {
                         // With no note yet, the empty-state card below holds the
                         // Generate button (and ⌘G).
                         Button {
@@ -1232,17 +1246,22 @@ struct SessionDetailView: View {
                         .disabled(transcriptText.isEmpty || isEditingNote)
                         .shortcut(AppHotkey.generateNote, help: "Regenerate the note")
                     }
-                    if !noteRunner.isStreaming && !noteRunner.isQueued && !isEditingNote {
+                    if !noteRunner.isStreaming && !noteRunner.isQueued && !isEditingNote && !note.noteLocked {
                         noteLengthMenu
                     }
                     if !summaryText.isEmpty && !noteRunner.isStreaming {
-                        if hasPreviousNote && !isEditingNote && !noteRunner.isQueued {
+                        if hasPreviousNote && !isEditingNote && !noteRunner.isQueued && !note.noteLocked {
                             Button { note.restorePrevious() } label: {
                                 Label("Restore Previous", systemImage: "arrow.uturn.backward")
                             }
                             .help("Swap back to the version you edited before the last regenerate")
                         }
-                        if !isEditingNote {
+                        if note.noteLocked {
+                            Button { note.confirmingReopen = true } label: {
+                                Label("Reopen as draft…", systemImage: "lock.open")
+                            }
+                            .help("Make this signed note editable again. This is recorded in the activity log.")
+                        } else if !isEditingNote {
                             Button {
                                 note.beginEditing()
                             } label: {
@@ -1250,6 +1269,11 @@ struct SessionDetailView: View {
                             }
                             .disabled(noteRunner.isQueued)
                             .help("Edit this note before it goes in the record")
+                            Button { note.confirmingSign = true } label: {
+                                Label(NoteLifecycle.signButton, systemImage: "signature")
+                            }
+                            .disabled(noteRunner.isQueued)
+                            .help("Confirm you have reviewed this note. A signed note is read-only.")
                         }
                         Button {
                             note.copyNote()
@@ -1275,6 +1299,10 @@ struct SessionDetailView: View {
             }
             .buttonStyle(.themed)
             .padding(.horizontal, 20)
+
+            if !summaryText.isEmpty && !noteRunner.isStreaming && !isEditingNote {
+                noteStatusRow
+            }
 
             if note.noteIsOutdated {
                 OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: { note.generate() })
@@ -1431,6 +1459,28 @@ struct SessionDetailView: View {
         .padding(.top, 8)
     }
 
+    /// The draft badge, or who signed the note and when.
+    private var noteStatusRow: some View {
+        HStack(spacing: 8) {
+            switch note.noteStatus {
+            case .draft:
+                if note.noteIsAI { Chip(NoteLifecycle.draftBadge, tone: .warn) }
+            case .signed(let record):
+                Chip("Signed", tone: .ok)
+                Text(NoteLifecycle.signedLine(record))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+            case .altered:
+                Chip("Altered after signing", tone: .warn)
+                Text(NoteLifecycle.alteredNotice)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+    }
+
     private var chatTab: some View {
         ChatPaneView(
             title: ChatWords.thisSession,
@@ -1524,7 +1574,10 @@ struct SessionDetailView: View {
     }
 
     private var transcribeBlocker: String? {
-        SessionActionPolicy.transcribeBlocker(
+        if note.sessionHasSigned {
+            return "A note for this session is signed. Reopen it as a draft before transcribing again."
+        }
+        return SessionActionPolicy.transcribeBlocker(
             isRecordingThisSession: isRecordingThisSession,
             isRecordingElsewhere: recorder.isBusy && !isRecordingThisSession,
             isTranscribing: isTranscribing,
@@ -1713,4 +1766,3 @@ private struct InlineCommentComposerCard: View {
         .frame(height: 84)
     }
 }
-

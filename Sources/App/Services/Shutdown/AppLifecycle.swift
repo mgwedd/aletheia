@@ -82,7 +82,8 @@ final class SearchSweepShutdownJob: ShutdownJob {
 @MainActor
 final class InterruptedWorkLauncher {
     private var watcher: AnyCancellable?
-    private var hasRunSweep = false
+    /// Whether the launch sweep has run to the end (nothing left staged for another try).
+    private(set) var hasRunSweep = false
 
     func start(
         appModel: AppModel,
@@ -102,8 +103,7 @@ final class InterruptedWorkLauncher {
             let ledgerInstance = ledger()
             // Not while an encrypted folder is locked: it runs once the unlock reloads the patients.
             if !self.hasRunSweep, OrphanAudioSweep.canRun(with: appModel.currentProtector) {
-                self.hasRunSweep = true
-                OrphanAudioSweep.sweep(
+                let result = OrphanAudioSweep.sweep(
                     store: store,
                     protector: appModel.currentProtector,
                     audit: appModel.audit,
@@ -115,6 +115,8 @@ final class InterruptedWorkLauncher {
                     scratchRoot: scratchRoot,
                     temporaryDirectory: temporaryDirectory
                 )
+                // A recording whose session couldn't be ruled out is tried again on the next change.
+                self.hasRunSweep = result.stagedLeftForLater == 0
             }
             guard let ledger = ledgerInstance else { return }
             let items = ledger.load()

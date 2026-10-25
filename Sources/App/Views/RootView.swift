@@ -67,6 +67,9 @@ struct RootView: View {
         // single failed save. Non-blocking, but pinned above everything so it's
         // never missed. See DatabaseUnavailableBanner / DoctorFeatureModule.
         .safeAreaInset(edge: .top, spacing: 0) { dataSafetyNotices }
+        #if DEBUG
+        .overlay(alignment: .topLeading) { if FixtureMode.isActive { FixtureProbeOverlay() } }
+        #endif
         .dismissOnLock { showSettings = false }
         .sheet(isPresented: $showSettings) {
             SettingsView()

@@ -253,6 +253,8 @@ final class AccessAuditTests: XCTestCase {
         XCTAssertEqual(AuditDetail.chainBroken(entry: 7).text, "Chain broken at entry #7")
         XCTAssertEqual(AuditDetail.exportedSession(.pdf).text, "Session, PDF")
         XCTAssertEqual(AuditDetail.exportedNote(.soap, .word).text, "Note SOAP, Word")
+        XCTAssertEqual(AuditDetail.signedNote(.soap).text, "Progress note SOAP")
+        XCTAssertEqual(AuditDetail.reopenedSignedNote(.soap).text, "Signed progress note SOAP reopened as a draft")
         XCTAssertEqual(AuditDetail.exportedPatientRecords(sessions: 4).text, "Patient records, zip of 4 sessions")
         XCTAssertEqual(AuditDetail.exportedAllRecords(patients: 2, sessions: 9).text,
                        "All records, folder of 2 patients, 9 sessions")

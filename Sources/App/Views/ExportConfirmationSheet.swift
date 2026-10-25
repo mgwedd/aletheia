@@ -45,7 +45,7 @@ struct ExportConfirmationSheet: View {
                 Button("Cancel") { onResolve(false, false) }
                     .buttonStyle(.themed)
                     .keyboardShortcut(.cancelAction)
-                Button(ExportConfirmation.confirmTitle) { onResolve(true, dontAskAgain) }
+                Button(confirmation.confirmButtonTitle) { onResolve(true, dontAskAgain) }
                     .buttonStyle(.themePrimary)
                     .keyboardShortcut(.defaultAction)
             }

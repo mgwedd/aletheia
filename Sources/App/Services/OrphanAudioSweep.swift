@@ -10,7 +10,8 @@ private let log = Logger(subsystem: "com.aletheia", category: "OrphanAudioSweep"
 /// 1. Scans the private staging directory (`Staging/<sessionUUID>/`). For known sessions, seals (or moves)
 ///    staged audio into the session folder and records `.recordingRecovered` in the audit log.
 ///    Unknown UUIDs are moved into `Staging/quarantine/<uuid>/` without deletion, and recovered from
-///    there on a later launch once their session can be found. A recording that can't be sealed stays staged.
+///    there on a later launch once their session can be found. A recording that can't be sealed stays staged,
+///    and so does one whose session can't be ruled out because part of the folder couldn't be read.
 ///    Skips the session being recorded, and doesn't run at all while an encrypted folder is locked.
 /// 2. Scans encrypted session folders for any legacy plaintext `.caf` files and seals them in place,
 ///    recording `.recordingRecovered`.
@@ -31,6 +32,16 @@ enum OrphanAudioSweep {
         var audioDiscardsRetried: Int = 0
         /// The folder is encrypted but locked: nothing was touched, run again once unlocked.
         var skippedLocked = false
+        /// Staged recordings left in place because part of the data folder couldn't be read.
+        var stagedLeftForLater: Int = 0
+    }
+
+    /// Looks a staged recording's session up, asking twice before calling it
+    /// unknown: setting audio aside on one miss would hide it until a later launch.
+    private static func lookUp(_ id: UUID, in store: Store) -> Store.SessionLookup {
+        let first = store.lookUpSession(id: id)
+        if case .found = first { return first }
+        return store.lookUpSession(id: id)
     }
 
     /// Whether the sweep can run with `protector`: not while an encrypted folder
@@ -79,7 +90,13 @@ enum OrphanAudioSweep {
                 let sessionUUID = UUID(uuidString: isQuarantined ? String(name.prefix(36)) : name)
                 if let sessionUUID, sessionUUID == activeSessionID { continue }
 
-                guard let sessionUUID, let found = store.locateSession(id: sessionUUID) else {
+                let lookup = sessionUUID.map { lookUp($0, in: store) } ?? .absent
+                guard case let .found(patient, session) = lookup else {
+                    // Part of the folder couldn't be read: the session may be there. Leave it staged for the next try.
+                    if case .unsure = lookup, !isQuarantined {
+                        result.stagedLeftForLater += 1
+                        continue
+                    }
                     // Unknown here (another data folder, or a deleted session): keep it, never delete.
                     if !isQuarantined {
                         try? fm.createDirectory(at: quarantineDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -94,7 +111,6 @@ enum OrphanAudioSweep {
                 }
 
                 // Known session: recover the staged audio into its folder.
-                let (patient, session) = found
                 // A set-aside take never replaces a recording the session has since gained.
                 if recover(item, into: patient, session: session, store: store, protector: protector, overwrites: !isQuarantined) {
                     result.stagedSessionsRecovered += 1

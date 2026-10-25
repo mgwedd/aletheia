@@ -22,6 +22,16 @@ final class SessionNoteModel: ObservableObject {
     @Published var noteDraft = ""
     @Published var confirmRegenerate = false
     @Published var hasPreviousNote = false
+    /// Where the displayed format's note stands: draft, signed or altered.
+    @Published var noteStatus: NoteLifecycle.Status = .draft
+    /// Whether the displayed note started as AI output.
+    @Published var noteIsAI = false
+    /// Whether any format's note in this session is signed (the transcript is then read-only).
+    @Published var sessionHasSigned = false
+    @Published var confirmingSign = false
+    @Published var confirmingReopen = false
+    /// Why a note was not exported or copied; shown until dismissed.
+    @Published var reviewBlock: String?
 
     /// Set when the person pressed Stop or Cancel; read when the run ends.
     var noteStopping = false
@@ -86,6 +96,55 @@ final class SessionNoteModel: ObservableObject {
     func refreshHasPreviousNote() {
         guard let store = appModel.store else { hasPreviousNote = false; return }
         hasPreviousNote = store.previousNote(for: patient, session: session, format: settings.progressNoteFormat) != nil
+        refreshNoteStatus()
+    }
+
+    // MARK: - Signing
+
+    /// A signed (or altered-after-signing) note is read-only until reopened.
+    var noteLocked: Bool { !noteStatus.isDraft }
+
+    func refreshNoteStatus() {
+        guard let store = appModel.store else { return }
+        let format = settings.progressNoteFormat
+        sessionHasSigned = store.hasSignedNote(for: patient, session: session)
+        do {
+            noteStatus = try store.noteLifecycle(for: patient, session: session, format: format)
+        } catch {
+            // A signature that can't be read keeps the note locked.
+            noteStatus = .altered(SignedNote(signedAt: .distantPast, signer: "unknown", sha256: "", aiGenerated: true))
+        }
+        noteIsAI = NoteLifecycle.isAIGenerated(store.noteEditState(for: patient, session: session, format: format))
+    }
+
+    /// Whether the displayed note may be exported or copied; if not, says why.
+    func mayLeave(message: String) -> Bool {
+        if NoteLifecycle.allowsLeaving(noteStatus, aiGenerated: noteIsAI) { return true }
+        reviewBlock = message
+        return false
+    }
+
+    func sign() {
+        guard let store = appModel.store else { return }
+        do {
+            try store.signNote(for: patient, session: session, format: settings.progressNoteFormat)
+            refreshNoteStatus()
+            sessionUpdated()
+        } catch {
+            alert(.message(error.localizedDescription))
+        }
+    }
+
+    func reopen() {
+        guard let store = appModel.store else { return }
+        do {
+            try store.reopenSignedNote(for: patient, session: session, format: settings.progressNoteFormat)
+            refreshNoteStatus()
+            refreshHasPreviousNote()
+            sessionUpdated()
+        } catch {
+            alert(.message(error.localizedDescription))
+        }
     }
 
     /// The shown note was generated from an earlier version of the saved
@@ -97,6 +156,7 @@ final class SessionNoteModel: ObservableObject {
 
     /// Copy: the shown note with its formatting, to paste into an EHR or a document.
     func copyNote(to pasteboard: NSPasteboard = PHIPasteboard.general) {
+        guard mayLeave(message: NoteLifecycle.reviewToCopy) else { return }
         RichClipboard.write(RichClipboard.payload(markdown: summaryText), to: pasteboard)
         copyFeedback.flash()
     }
@@ -143,7 +203,7 @@ final class SessionNoteModel: ObservableObject {
     /// untouched generated note is replaced straight away. (The Store keeps the
     /// edited text as the previous version either way.)
     func requestGenerate() {
-        guard let store = appModel.store else { return }
+        guard let store = appModel.store, !noteLocked else { return }
         let state = store.noteEditState(for: patient, session: session, format: settings.progressNoteFormat)
         if state == .unreadable {
             alert(.message(StoreError.noteUnreadable.localizedDescription))
@@ -167,7 +227,8 @@ final class SessionNoteModel: ObservableObject {
     }
 
     func generate() {
-        guard let store = appModel.store else { return }
+        // A signed note is never regenerated, whichever button asked.
+        guard let store = appModel.store, !noteLocked else { return }
         // One note per session at a time, even across leaving and reopening the session.
         let jobLabel = "progress note \(session.id.uuidString)"
         guard !integrations.inferenceQueue.hasJob(labelled: jobLabel) else {
