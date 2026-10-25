@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-10-24_
+_Last updated: 2026-10-25_
 
 **Plain-language summary:** Aletheia keeps clinical data in a folder you choose.
 A cloud-synced folder may be copied by its provider. Back Up Now saves an

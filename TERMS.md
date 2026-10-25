@@ -1,6 +1,6 @@
 # End User License Agreement and Terms of Service
 
-_Last updated: 2026-10-24_
+_Last updated: 2026-10-25_
 
 > This document is **not legal advice**. Aletheia is used with protected health
 > information (PHI); have your own counsel review your practice's policies and
