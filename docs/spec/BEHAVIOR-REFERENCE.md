@@ -1352,6 +1352,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Views/ScheduleNextSessionSheet.swift` · `qa: SESSION-06`
 - **SES-035** When refreshing a patient's sessions fails, an alert titled "Something went wrong" shows the error.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift` · `qa: SESSION-03`
+- **SES-037** When the therapist presses New session while the disk is known to be unencrypted, no session is created and the "Turn on FileVault" alert is shown.
+  `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:548, Sources/App/Services/DiskEncryption.swift:47` · `qa: SESSION-09`
 
 ## Search (SRC)
 
@@ -1469,6 +1471,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/Crypto/EncryptionManager.swift` · `qa: ENCRYPT-09`
 - **SRC-057** When the app or folder is unlocked, the index is reopened and the background sweep runs again.
   `surface: background` · `evidence: Sources/App/Services/AppLock.swift, Sources/App/Services/Crypto/EncryptionManager.swift` · `qa: SEARCH-11`
+- **SRC-058** When a patient is deleted, their documents are removed from the search index, so no later search returns them.
+  `surface: background` · `evidence: Sources/App/Services/Store.swift:362, Sources/App/Services/AppModel.swift:586` · `qa: SEARCH-15`
 
 ## Comments (CMT)
 
@@ -1536,6 +1540,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Views/SessionDetailView.swift:1678, Sources/App/Views/SettingsView.swift:706` · `qa: NOTE-04` · ⚠ TODO: the composer note ignores the setting, and the session chat sends comments regardless of it; confirm intent.
 - **CMT-032** When the transcript text changes or becomes edited while the composer is open, the composer closes.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift` · `qa: COMMENT-02`
+- **CMT-033** When a patient is deleted, the comments on all of their sessions are purged from the database.
+  `surface: background` · `evidence: Sources/App/Services/Store.swift:390, Sources/App/Services/CommentStore.swift:229` · `qa: COMMENT-08`
 
 ## Export & archive (EXP)
 
