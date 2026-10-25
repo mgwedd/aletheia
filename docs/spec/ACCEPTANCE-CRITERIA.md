@@ -18,6 +18,7 @@ Before you start: a Release build and a throwaway data folder, with no earlier A
 - **SETUP-09** Look at the speech model and AI rows → each offers a download with its size, then shows ready once installed.
 - **SETUP-10** Click **Finish setup**, quit and reopen → the sheet doesn't appear again.
 - **SETUP-11** Look for "Protect your data" (dev build) → it recommends encryption with a button that doesn't block **Finish setup**.
+- **SETUP-12** Finish setup, then open a build with newer terms → the **Set up Aletheia** sheet returns until the new terms are accepted, and each acceptance is dated on this Mac.
 
 ## 2. Add a patient (PATIENT)
 Before you start: setup finished, a data folder chosen, and the disk encrypted with FileVault.
@@ -215,7 +216,7 @@ Before you start: setup finished.
 - **SETTINGS-10** Open **Note format** → you can set the default format and summary length and toggle what drafts include.
 - **SETTINGS-11** Turn on "Show recording diagnostics" and record → the recording pane gains a call-audio diagnostics readout.
 - **SETTINGS-12** Open **General** > **Legal** and **Licenses** → the terms links, **Consent Guide…** and third-party notices are there.
-- **SETTINGS-13** Choose a folder inside iCloud Drive as the data folder → it is refused with a message to pick a folder that stays on this Mac.
+- **SETTINGS-13** Choose an iCloud Drive or cloud-synced folder as the data folder → it is refused, asking for a folder that stays on this Mac; the current folder is kept.
 - **SETTINGS-14** Open Aletheia with its data folder now synced → a **Move data to this Mac** sheet offers to copy and verify it, then keep or delete the old one.
 
 ## 16. Security panel, activity log and Doctor (SECURITY)
@@ -234,12 +235,13 @@ Before you start: a Release build of Aletheia and an internet connection; to see
 - **UPDATE-01** Open **Settings** > **General** > **Software update** → it shows the version, a Notarization row and the automatic-check switch.
 - **UPDATE-02** Click **Check for updates** when up to date → a "You're Up to Date" alert appears and Settings says you are up to date.
 - **UPDATE-03** Turn off Wi-Fi and click **Check for updates** → a "Couldn't Check for Updates" alert appears.
-- **UPDATE-04** Run an older build against a newer release → a prompt offers **View on GitHub**, **Skip this version**, **Remind me later** and **Download update**.
+- **UPDATE-04** Run an older build against a newer release → a prompt offers **View downloads**, **Skip this version**, **Remind me later** and **Download update**.
 - **UPDATE-05** Click **Remind me later** → the prompt closes and the same version is offered at a later check.
 - **UPDATE-06** Click **Skip this version** → automatic checks don't offer it again.
 - **UPDATE-07** Click **Download update** → the disk image downloads, is verified and opens, and Aletheia stays open.
-- **UPDATE-08** Click **Download update** for a release with a mismatched checksum → the file is deleted and the release page opens instead.
+- **UPDATE-08** Click **Download update** for a release with a mismatched checksum → the file is deleted, nothing is opened, and the downloads page opens instead.
 - **UPDATE-09** Switch away from and back to Aletheia repeatedly → at most one automatic check runs every 30 minutes.
+- **UPDATE-10** Click **Download update** for a release that lists no checksum → nothing is downloaded and the downloads page opens instead.
 
 ## 18. Notifications (NOTIFY)
 Before you start: allow Aletheia notifications in System Settings, and put Aletheia in the background.
