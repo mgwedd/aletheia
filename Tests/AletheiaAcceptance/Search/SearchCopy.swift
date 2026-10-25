@@ -1,6 +1,6 @@
 extension Copy {
     /// The groups of results, in the order they are shown.
-    static let searchGroups = ["Patients", "Sessions", "My notes", "Progress notes", "Comments", "Transcripts"]
+    static let searchGroups = ["Patients", "Sessions", "Psychotherapy notes", "Progress notes", "Comments", "Transcripts"]
 
     /// What the results say when nothing matched a finished search.
     static func noResults(for typed: String) -> String { "No results for \u{201C}\(typed)\u{201D}" }

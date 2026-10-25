@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Global search results, shown over the detail pane while the search field
-/// has a query. One list, grouped: Patients, Sessions, My notes, Progress
+/// has a query. One list, grouped: Patients, Sessions, Psychotherapy notes, Progress
 /// notes, Comments, Transcripts, each best first with a "Show more" row. A
 /// line at the top says when the index is still being built, so partial
 /// results never pass for complete ones.

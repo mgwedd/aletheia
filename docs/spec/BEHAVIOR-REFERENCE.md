@@ -1247,7 +1247,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/PatientFolderMigration.swift` · `qa: BACKUP-05`
 - **PAT-026** When a patient folder's patient file cannot be read, the sidebar shows "1 record couldn't be read" (or "N records couldn't be read") as a dismissible notice, and the folder is left untouched.
   `surface: ui` · `evidence: Sources/App/Views/PatientsListView.swift, Sources/App/Views/DamagedRecordsNotice.swift, Sources/App/Services/AppModel.swift` · `qa: BACKUP-07`
-- **PAT-027** When the patient's records are exported, a zip is built in the background containing a "<Name> records" folder with "Read me.txt", the patient notes, and a "Sessions" folder with one folder per session (oldest first, named by date and time) holding Transcript.txt, a "Note - <format>.txt" per saved format (Summary.txt only when there are no per-format notes) and Comments.txt.
+- **PAT-027** When the patient's records are exported, a zip is built in the background containing a "<Name> records" folder with "Read me.txt", the patient notes, and a "Sessions" folder with one folder per session (oldest first, named by date and time) holding Transcript.txt and a "Note - <format>.txt" per saved format (Summary.txt only when there are no per-format notes); comments and psychotherapy notes are left out.
   `surface: background` · `evidence: Sources/App/Services/PatientArchive.swift, Sources/App/Views/PatientDetailView.swift` · `qa: EXPORT-09`
 - **PAT-028** When a patient has no sessions, "Ask about this patient" and "Export all records" are disabled, and Export is also disabled while another export is running.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift` · `qa: PATIENT-07`
@@ -1383,7 +1383,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/GlobalSearchResultsView.swift, Sources/App/Views/SearchHomeView.swift` · `qa: SEARCH-02`
 - **SRC-008** When the therapist types in the sidebar or home search field, the search runs after a brief pause once typing stops, off the main thread, and a newer query cancels the older one.
   `surface: background` · `evidence: Sources/App/Services/Search/GlobalSearchModel.swift, Sources/App/Views/RootView.swift` · `qa: SEARCH-02`
-- **SRC-009** When results are shown, they are grouped as Patients, Sessions, My notes, Progress notes, Comments and Transcripts, in that order, with empty groups left out and each group's match count in a chip beside its heading.
+- **SRC-009** When results are shown, they are grouped as Patients, Sessions, Psychotherapy notes, Progress notes, Comments and Transcripts, in that order, with empty groups left out and each group's match count in a chip beside its heading.
   `surface: ui` · `evidence: Sources/App/Models/SearchHit.swift, Sources/App/Views/GlobalSearchResultsView.swift` · `qa: SEARCH-03`
 - **SRC-010** When a group has more than five matches, only the best five show and a "Show 25 more of N" row (or "Show N more" for the last few) reveals further matches, up to 200 per group, after which a note reads "Showing the first 200 of N. Add a word to narrow the search."
   `surface: ui` · `evidence: Sources/App/Services/Search/GlobalSearch.swift, Sources/App/Views/GlobalSearchResultsView.swift` · `qa: SEARCH-04`
@@ -1405,7 +1405,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/GlobalSearchResultsView.swift` · `qa: SEARCH-08`
 - **SRC-019** When results change, VoiceOver is told the number of results and groups, and whether they may be incomplete, once per change.
   `surface: ui` · `evidence: Sources/App/Views/GlobalSearchResultsView.swift, Sources/App/Services/Search/GlobalSearchModel.swift` · `qa: SEARCH-08`
-- **SRC-020** When a result is a patient, opening it selects that patient; a session or anything inside one opens that session on the tab (transcript, a note format, My notes, or a comment) where the match is.
+- **SRC-020** When a result is a patient, opening it selects that patient; a session or anything inside one opens that session on the tab (transcript, a note format, the psychotherapy note, or a comment) where the match is.
   `surface: ui` · `evidence: Sources/App/Services/Search/GlobalSearchModel.swift, Sources/App/Services/AppNavigator.swift` · `qa: SEARCH-06`
 - **SRC-021** When a transcript or note result is opened, the session scrolls to the matching line or paragraph and flashes the matching word, once per opening.
   `surface: ui` · `evidence: Sources/App/Services/Search/SearchMatchFocus.swift, Sources/App/Services/Search/GlobalSearchModel.swift` · `qa: SEARCH-06`
@@ -1575,7 +1575,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/PatientArchive.swift, Sources/App/Services/AllRecordsExport.swift` · `qa: EXPORT-08`
 - **EXP-010** When two sessions for a patient start in the same minute, the later folder names end with " (2)", " (3)" and so on in date order, and sessions are listed oldest first.
   `surface: invariant` · `evidence: Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-06`
-- **EXP-011** When an all-records export includes a session that has no transcript, note, summary or comment and no kept recording, it is left out and the patient's own "Read me.txt" says how many sessions were left out ("Sessions with no transcript, note or comment (left out): N").
+- **EXP-011** When an all-records export includes a session that has no transcript, note or summary and no kept recording, it is left out and the patient's own "Read me.txt" says how many sessions were left out ("Sessions with no transcript or note (left out): N").
   `surface: invariant` · `evidence: Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-06`
 - **EXP-012** When an all-records export runs, a toast titled "Exporting records" shows a progress bar, a stage label ("Starting", "Listing patients", "Patient N of M · session X of Y", then "Done") and a Cancel button.
   `surface: ui` · `evidence: Sources/App/Views/ExportStatusToast.swift, Sources/App/Services/AllRecordsExport.swift, Sources/App/Services/ExportJobCenter.swift` · `qa: EXPORT-02`
@@ -1591,7 +1591,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/AllRecordsExport.swift` · `qa: EXPORT-05`
 - **EXP-018** When an all-records export finishes, the activity log gains a "Record exported" entry with the detail "All records, folder of N patients, N sessions".
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: EXPORT-03`
-- **EXP-019** When the user clicks "Export all records" on a patient's page and picks a location (suggested name "<Patient> - Records.zip"), they get a single zip of text files with a "Read me.txt" and, under a "Sessions" folder, one folder for each session that has a transcript, note or comment.
+- **EXP-019** When the user clicks "Export all records" on a patient's page and picks a location (suggested name "<Patient> - Records.zip"), they get a single zip of text files with a "Read me.txt" and, under a "Sessions" folder, one folder for each session that has a transcript or note.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Services/PatientArchive.swift, Sources/App/Services/ZipArchive.swift` · `qa: EXPORT-09`
 - **EXP-020** When the user clicks Export on a note or summary, a popover offers PDF (selected each time it opens), Word and Markdown, with Cancel and Export buttons, and choosing Export opens a save panel.
   `surface: ui` · `evidence: Sources/App/Views/ExportButton.swift, Sources/App/Services/ExportFormat.swift` · `qa: EXPORT-10`
@@ -1607,9 +1607,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, PRIVACY.md, SECURITY.md, README.md` · `qa: BACKUP-03` · ⚠ TODO: README line 20 says Aletheia has "no backup feature of its own", which conflicts with the Backups pane and PRIVACY.md/SECURITY.md
 - **EXP-026** When a session has saved notes, its exported folder contains one "Note - <format name>.txt" per note, as plain text with Markdown formatting removed.
   `surface: invariant` · `evidence: Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-07`
-- **EXP-027** When a session has comments, its exported folder contains "Comments.txt"; when it has none, that file is absent.
+- **EXP-027** When a session has comments or a psychotherapy note, its all-records folder still holds neither: they stay out of the clinical record and are exported only on their own.
   `surface: invariant` · `evidence: Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-07`
-- **EXP-028** When "Comments.txt" is written, each comment is a block starting with its timestamp in [M:SS] (H:MM:SS past an hour) and the quoted passage in curly quotes, then the comment text, then "(Resolved)" if it was resolved.
+- **EXP-028** When psychotherapy notes are exported on their own, each session folder holds "Psychotherapy note.txt" and "Private comments.txt"; in "Private comments.txt" each comment is a block starting with its timestamp in [M:SS] (H:MM:SS past an hour) and the quoted passage in curly quotes, then the comment text, then "(Resolved)" if it was resolved.
   `surface: invariant` · `evidence: Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-07`
 - **EXP-029** When an all-records export includes a session with kept audio, the session folder holds "Recording - microphone.caf" and "Recording - call.caf" only for the recordings that exist, and a session with only a recording is still exported.
   `surface: invariant` · `evidence: Sources/App/Services/AllRecordsExport.swift, Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-07`
