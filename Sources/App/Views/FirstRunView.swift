@@ -216,7 +216,7 @@ struct FirstRunView: View {
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.text.color)
             if license.status.isActive, let token = license.status.token {
-                Label("Licensed to \(token.sub), valid until \(token.expiresAt.licenseText).", systemImage: "checkmark.seal.fill")
+                Label(token.expiresAt.map { "Licensed to \(token.sub), valid until \($0.licenseText)." } ?? "Licensed to \(token.sub).", systemImage: "checkmark.seal.fill")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.accent.color)
             } else {

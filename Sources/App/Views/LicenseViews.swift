@@ -63,7 +63,8 @@ struct LicenseEntryView: View {
     static func offerText(_ result: Result<LicenseToken, LicenseError>, buttonTitle: String) -> String {
         switch result {
         case .success(let token):
-            return "Key from your browser, licensed to \(token.sub) until \(token.expiresAt.licenseText). Click \u{201C}\(buttonTitle)\u{201D} to use it."
+            let until = token.expiresAt.map { " until \($0.licenseText)" } ?? ""
+            return "Key from your browser, licensed to \(token.sub)\(until). Click \u{201C}\(buttonTitle)\u{201D} to use it."
         case .failure(let error):
             return "Key from your browser: \(error.errorDescription ?? "it was not accepted.")"
         }
@@ -143,12 +144,12 @@ struct LicenseBanner: View {
             return nil
         case .expiringSoon(let token, let days):
             let when = days == 1 ? "tomorrow" : "in \(days) days"
-            return "Your license expires \(when) (\(token.expiresAt.licenseText)). A renewed key is emailed to you before then: paste it in Settings > License key."
+            return "Your license expires \(when) (\(token.expiresAt?.licenseText ?? "soon")). A renewed key is emailed to you before then: paste it in Settings > License key."
         case .gracePeriod(let token, let days):
             let left = days == 1 ? "1 more day" : "\(days) more days"
-            return "Your license expired on \(token.expiresAt.licenseText). Recording and the AI keep working for \(left) (until \(token.graceEndsAt.licenseText)); add a new key in Settings > License key before then."
+            return "Your license expired on \(token.expiresAt?.licenseText ?? "an earlier date"). Recording and the AI keep working for \(left) (until \(token.graceEndsAt?.licenseText ?? "the grace period ends")); add a new key in Settings > License key before then."
         case .expired(let token):
-            return "Your license expired on \(token.expiresAt.licenseText). New recordings and the AI are paused; everything you have already recorded stays open, searchable and exportable."
+            return "Your license expired on \(token.expiresAt?.licenseText ?? "an earlier date"). New recordings and the AI are paused; everything you have already recorded stays open, searchable and exportable."
         case .revoked:
             return "Your license is no longer valid. New recordings and the AI are paused; everything you have already recorded stays open, searchable and exportable."
         case .grandfathered:
@@ -186,13 +187,15 @@ struct LicensePane: View {
                             .foregroundStyle(Theme.text.color)
                     }
                     .padding(.vertical, 12)
-                    SettingsHairline()
-                    SettingsRow(title: expiryTitle) {
-                        Text(token.expiresAt.licenseText)
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.text.color)
+                    if let expiresAt = token.expiresAt {
+                        SettingsHairline()
+                        SettingsRow(title: expiryTitle) {
+                            Text(expiresAt.licenseText)
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.text.color)
+                        }
+                        .padding(.vertical, 12)
                     }
-                    .padding(.vertical, 12)
                 }
             }
             if let text = LicenseBanner.text(for: license.status) {

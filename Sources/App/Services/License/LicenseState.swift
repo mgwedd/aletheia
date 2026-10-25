@@ -161,7 +161,7 @@ final class LicenseState: ObservableObject {
         case .invalid(let error):
             return "\(error.errorDescription ?? "The license key could not be verified.") Add a valid key in Settings > License key. Your existing records are untouched."
         case .expired(let token):
-            return "Your license expired on \(token.expiresAt.licenseText) and its 14-day grace period has ended, so new recordings and the AI are paused. Add a new key in Settings > License key. Your existing records are untouched."
+            return "Your license expired on \((token.expiresAt ?? now()).licenseText) and its 14-day grace period has ended, so new recordings and the AI are paused. Add a new key in Settings > License key. Your existing records are untouched."
         case .revoked:
             return "This license is no longer valid, so new recordings and the AI are paused. Add a new key in Settings > License key. Your existing records are untouched."
         }

@@ -5,6 +5,11 @@ import XCTest
 /// (`Fixtures/license-backend-fixtures.json`, copied from the backend's
 /// `apps/web/tests/fixtures/licensing/fixtures.json`). They prove the app reads
 /// exactly what the backend writes. The clock is pinned to the file's `now`.
+///
+/// The fixture file must stay byte-for-byte identical to the site repo's
+/// `apps/web/tests/fixtures/licensing/fixtures.json` (astrea-labs-ui). Update it by
+/// copying that file over, never by editing it here. It covers the token kinds
+/// valid, expired, badSignature, unknownKid, revoked and perpetual (no `exp`).
 @MainActor
 final class LicenseBackendFixtureTests: XCTestCase {
     private struct Fixtures: Decodable {
@@ -55,14 +60,49 @@ final class LicenseBackendFixtureTests: XCTestCase {
         XCTAssertEqual(license.kid, "test-1")
         XCTAssertEqual(license.sub, "valid@example.com")
         XCTAssertEqual(license.tier, "beta")
-        XCTAssertEqual(license.lid, "9ccdc12e-54d8-4bd1-842b-3ff33a44545e")
-        XCTAssertGreaterThan(license.expiresAt, now)
+        XCTAssertEqual(license.lid, "54317e8e-ae1b-47ad-8176-7b6b5a257f07")
+        XCTAssertGreaterThan(try XCTUnwrap(license.expiresAt), now)
     }
 
     func testValidTokenInstallsAndAllowsNewWork() throws {
         let state = makeState()
         guard case .success = state.install(try token("valid")) else { return XCTFail("valid token was refused") }
         XCTAssertNil(state.newWorkRefusal)
+    }
+
+    func testTheFixtureCoversEveryTokenKind() {
+        XCTAssertEqual(Set(fixtures.tokens.keys),
+                       ["valid", "expired", "badSignature", "unknownKid", "revoked", "perpetual"])
+    }
+
+    func testPerpetualTokenHasNoExpiryAndNeverLapses() throws {
+        let license = try LicenseVerifier.verify(token("perpetual"), keyring: ring, now: now)
+        XCTAssertEqual(license.sub, "perpetual@example.com")
+        XCTAssertNil(license.expiresAt)
+        XCTAssertFalse(license.isExpired(at: now))
+        XCTAssertNil(license.daysRemaining(at: now))
+        XCTAssertFalse(license.isExpiringSoon(at: now))
+        XCTAssertFalse(license.isInGracePeriod(at: now))
+        // Still a good license a century later.
+        let later = now.addingTimeInterval(100 * 365 * 86_400)
+        guard case .valid = LicenseState.evaluate(token: try token("perpetual"), keyring: ring, now: later, revoked: [])
+        else { return XCTFail("perpetual token lapsed") }
+    }
+
+    func testPerpetualTokenInstallsWithNoBannerAndAllowsNewWork() throws {
+        let state = makeState()
+        guard case .success = state.install(try token("perpetual")) else { return XCTFail("perpetual token was refused") }
+        guard case .valid = state.status else { return XCTFail("status is \(state.status)") }
+        XCTAssertNil(state.newWorkRefusal)
+        XCTAssertNil(LicenseBanner.text(for: state.status))
+    }
+
+    func testPerpetualTokenCanStillBeRevoked() throws {
+        let lid = try LicenseVerifier.verify(token("perpetual"), keyring: ring, now: now).lid
+        guard case .revoked(let revoked) = LicenseState.evaluate(
+            token: try token("perpetual"), keyring: ring, now: now, revoked: [lid])
+        else { return XCTFail("a revoked perpetual token stayed valid") }
+        XCTAssertNotNil(LicenseBanner.text(for: .revoked(revoked)))
     }
 
     func testExpiredTokenIsRefused() throws {
