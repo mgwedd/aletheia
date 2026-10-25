@@ -131,7 +131,7 @@ struct ExportToast {
 }
 
 /// A session set up for a patient, as the verbs refer to it.
-struct RecordedSession {
+struct SessionToExport {
     fileprivate let patient: Patient
     fileprivate let record: SessionRecord
     /// "2026-09-16"
@@ -190,7 +190,7 @@ extension Given {
         for patient: Patient, day: Int = 0, transcript: String = "Therapist: hello.\nClient: hi.",
         notes: [String: String] = [:], summary: String? = nil,
         comment: String? = nil, recordings: Bool = false
-    ) throws -> RecordedSession {
+    ) throws -> SessionToExport {
         let store = try XCTUnwrap(app.appModel.store)
         var parts = DateComponents(year: 2026, month: 9, day: 16 + day, hour: 14, minute: 30)
         parts.calendar = Calendar.current
@@ -209,7 +209,7 @@ extension Given {
             _ = comments.addComment(sessionID: session.id, quotedText: "hello", body: comment)
         }
         app.appModel.refreshPatients()
-        return RecordedSession(patient: patient, record: session)
+        return SessionToExport(patient: patient, record: session)
     }
 
     fileprivate static func writeSilence(to url: URL) throws {
@@ -350,7 +350,7 @@ extension When {
     }
 
     /// Export a note as `type`, save it, and read it back.
-    func exportNote(_ text: String, noteFormat: String = "SOAP", of session: RecordedSession, as type: NoteFileType) async throws -> SavedNoteFile {
+    func exportNote(_ text: String, noteFormat: String = "SOAP", of session: SessionToExport, as type: NoteFileType) async throws -> SavedNoteFile {
         let patient = session.patient
         let format = type.format
         let base = FileSaver.fileName(patient.name, session.day, noteFormat)
@@ -375,7 +375,7 @@ extension When {
     }
 
     /// Export a whole session from its header.
-    func exportWholeSession(_ session: RecordedSession, as type: NoteFileType) async throws -> SavedNoteFile {
+    func exportWholeSession(_ session: SessionToExport, as type: NoteFileType) async throws -> SavedNoteFile {
         let store = try XCTUnwrap(app.appModel.store)
         let format = type.format
         let base = FileSaver.fileName(session.patient.name, session.day)

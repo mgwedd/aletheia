@@ -164,7 +164,7 @@ struct CaptureView {
 }
 
 /// How patient names read in the menu bar panel and whether it can record.
-struct MenuBarPanel {
+struct LockedMenuBarPanel {
     let label: String
     let canStartRecording: Bool
 }
@@ -243,11 +243,11 @@ extension When {
             newInstallDefaultMinutes: fresh.idleAutoLockMinutes)
     }
 
-    func lockWithSheetPopoverAndMenuBarPanelOpen(_ mac: LockedMac) async throws -> MenuBarPanel {
+    func lockWithSheetPopoverAndMenuBarPanelOpen(_ mac: LockedMac) async throws -> LockedMenuBarPanel {
         mac.putSheetAndPopoverOnScreen()
         mac.lock.lockIfEnabled()
         try await eventually("the sheet and popover to be hidden") { mac.shield.isHidden(mac.sheet) && mac.shield.isHidden(mac.popover) }
-        return MenuBarPanel(
+        return LockedMenuBarPanel(
             label: MenuBarContentPolicy.patientLabel(name: "Jane Doe", showFullName: true, isLocked: mac.lock.isLocked),
             canStartRecording: MenuBarContentPolicy.canStartRecording(isLocked: mac.lock.isLocked, isStarting: false))
     }
@@ -400,7 +400,7 @@ extension Then where Subject == AutoLockChoices {
     }
 }
 
-extension Then where Subject == MenuBarPanel {
+extension Then where Subject == LockedMenuBarPanel {
     func hidesPatientNameAndRecording() {
         expect(!subject.label.contains("Jane"), "expected the menu bar not to show the patient's name, found \(subject.label)")
         expect(!subject.canStartRecording, "expected recording not to start from the menu bar while locked")
