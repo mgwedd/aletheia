@@ -174,7 +174,9 @@ final class AppLock: ObservableObject {
 
     /// The last time the user interacted with the app (mouse/keyboard event
     /// delivered to one of its own windows), for the idle auto-lock clock.
-    private var lastActivity = Date()
+    private var lastActivity: Date
+    /// The clock the idle auto-lock reads; tests move it instead of waiting.
+    private let now: () -> Date
     /// Ticks periodically while idle auto-lock is armed; nil whenever it isn't
     /// (app lock off, or timeout is "Never") so there's nothing to invalidate.
     private var idleTimer: Timer?
@@ -190,6 +192,12 @@ final class AppLock: ObservableObject {
     private var backgroundWorkCancellable: AnyCancellable?
     /// The lock engaged while background work was writing; `onLock` runs once it ends.
     private(set) var keyDropPending = false
+    /// True when something outside the preferences (an encrypted folder whose key is
+    /// kept on this Mac) means the lock cannot be switched off.
+    private let lockRequired: () -> Bool
+
+    /// The preference, or the stored-key rule when the preference has been turned off.
+    var isLockEnabled: Bool { settings.appLockEnabled || lockRequired() }
 
     /// How often the idle timer checks elapsed time against the configured
     /// timeout. Coarse on purpose: auto-lock only needs to notice idleness
@@ -202,15 +210,20 @@ final class AppLock: ObservableObject {
         canAuthenticate: @escaping () -> Bool = AppLock.canAuthenticate,
         authenticator: UnlockAuthenticator = UnlockAuthenticatorFactory.make(),
         isAppActive: @escaping () -> Bool = { NSApp.isActive },
-        spotlight: SpotlightIndexing = SpotlightIndexerFactory.make()
+        spotlight: SpotlightIndexing = SpotlightIndexerFactory.make(),
+        now: @escaping () -> Date = Date.init,
+        lockRequired: @escaping () -> Bool = { false }
     ) {
         self.settings = settings
+        self.lockRequired = lockRequired
+        self.now = now
+        self.lastActivity = now()
         self.authenticator = authenticator
         self.isAppActive = isAppActive
         self.spotlight = spotlight
         self.canAuthenticateProvider = canAuthenticate
         self.isLocked = AppLockPolicy.shouldLock(
-            enabled: settings.appLockEnabled,
+            enabled: settings.appLockEnabled || lockRequired(),
             canAuthenticate: canAuthenticate()
         )
         // A lock that happened (or a launch) while another app was frontmost
@@ -268,14 +281,15 @@ final class AppLock: ObservableObject {
     /// Re-lock now (e.g. when the Mac sleeps or locks), so
     /// stepping away re-requires authentication. No-op when the lock is off.
     func lockIfEnabled() {
-        if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: canAuthenticateProvider()) {
+        if AppLockPolicy.shouldLock(enabled: isLockEnabled, canAuthenticate: canAuthenticateProvider()) {
+            // A lock that was already up (launch with the lock on) still keeps the
+            // search index shut: SQLite's page cache holds indexed text.
+            SessionSearch.setAppLocked(true)
+            SessionSearch.closeIndex()
             guard !isLocked else { return }
             isLocked = true
             lockGeneration += 1
             dropKeyUnlessWriting()
-            SessionSearch.setAppLocked(true)
-            // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
-            SessionSearch.closeIndex()
             // Names must not stay findable behind the lock; unlock re-indexes.
             spotlight.clear()
             LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript
@@ -349,7 +363,7 @@ final class AppLock: ObservableObject {
                 // Otherwise the next idle check would see a stale (very old)
                 // `lastActivity` from before the app was locked and put the
                 // lock screen right back up.
-                lastActivity = Date()
+                lastActivity = now()
                 // The sheet can leave no window key; hand focus back.
                 if NSApp.isActive { MainWindow.makeKey() }
             }
@@ -384,7 +398,7 @@ final class AppLock: ObservableObject {
     /// event monitor above; exposed so other activity signals could call it
     /// too if a need for one ever comes up.
     func recordActivity() {
-        lastActivity = Date()
+        lastActivity = now()
     }
 
     /// The Mac or display sleeping, its screen locking, or a switch to another user
@@ -410,13 +424,13 @@ final class AppLock: ObservableObject {
     /// on init and whenever settings change, so the timer only ever runs
     /// while it could actually do something.
     private func refreshIdleMonitoring() {
-        guard settings.appLockEnabled, settings.idleAutoLockMinutes > 0 else {
+        guard isLockEnabled, settings.idleAutoLockMinutes > 0 else {
             idleTimer?.invalidate()
             idleTimer = nil
             return
         }
         guard idleTimer == nil else { return }
-        lastActivity = Date()
+        lastActivity = now()
         // `.common` modes, so the check still fires during menu tracking and scrolling.
         let timer = Timer(timeInterval: Self.idleCheckInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.checkIdleTimeout() }
@@ -425,9 +439,13 @@ final class AppLock: ObservableObject {
         idleTimer = timer
     }
 
-    private func checkIdleTimeout() {
+    /// Whether the idle timer is running, i.e. auto-lock is armed.
+    var isWatchingForIdle: Bool { idleTimer != nil }
+
+    /// One tick of the idle timer: locks when the idle time has reached the timeout.
+    func checkIdleTimeout() {
         guard !isLocked else { return }
-        if AppLockPolicy.shouldAutoLock(lastActivity: lastActivity, timeoutMinutes: settings.idleAutoLockMinutes, now: Date()) {
+        if AppLockPolicy.shouldAutoLock(lastActivity: lastActivity, timeoutMinutes: settings.idleAutoLockMinutes, now: now()) {
             lockIfEnabled()
         }
     }

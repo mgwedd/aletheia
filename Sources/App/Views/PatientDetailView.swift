@@ -297,13 +297,13 @@ struct PatientDetailView: View {
         // column's gutter and the selected fill lines up with the fields above.
         .padding(.horizontal, -8)
         .overlay {
-            if sessions.isEmpty {
+            if SessionListEmptyState.isShown(sessionCount: sessions.count) {
                 ContentUnavailableView {
-                    Label("No Sessions Yet", systemImage: "waveform")
+                    Label(SessionListEmptyState.title, systemImage: "waveform")
                 } description: {
-                    Text("Start a session to record, transcribe, and summarize it.")
+                    Text(SessionListEmptyState.detail)
                 } actions: {
-                    Button("New session") { newSession() }
+                    Button(SessionListEmptyState.newSessionButton) { newSession() }
                         .buttonStyle(.themePrimary)
                 }
             }
@@ -338,11 +338,7 @@ struct PatientDetailView: View {
     }
 
     private var sessionSummary: String {
-        switch sessions.count {
-        case 0: return "No sessions"
-        case 1: return "1 session"
-        default: return "\(sessions.count) sessions"
-        }
+        PatientSessionText.summary(count: sessions.count)
     }
 
     private func refresh() {

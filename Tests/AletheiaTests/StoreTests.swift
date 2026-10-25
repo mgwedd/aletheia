@@ -77,6 +77,31 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(firstList.first?.id, secondList.first?.id)
     }
 
+    /// A new session's folder appears with its identity file already inside, so
+    /// a listing running at the same moment can't give it a second id.
+    func testNewSessionFolderAppearsWithItsIdentityAndLeavesNothingBehind() throws {
+        let patient = try store.createPatient(name: "Test Patient")
+        let created = try store.createSession(for: patient)
+        let folder = store.sessionDir(for: patient, session: created)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("session.json").path))
+        let siblings = try FileManager.default.contentsOfDirectory(atPath: folder.deletingLastPathComponent().path)
+        XCTAssertFalse(siblings.contains { $0.hasPrefix(".new-session-") }, "\(siblings)")
+    }
+
+    func testAHalfCreatedSessionFolderIsNotListed() throws {
+        let patient = try store.createPatient(name: "Test Patient")
+        let created = try store.createSession(for: patient)
+        let patientDir = store.sessionDir(for: patient, session: created).deletingLastPathComponent()
+        let staged = patientDir.appendingPathComponent(".new-session-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: staged, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(
+            at: store.sessionDir(for: patient, session: created).appendingPathComponent("session.json"),
+            to: staged.appendingPathComponent("session.json"))
+
+        XCTAssertEqual(try store.listSessions(for: patient).map(\.id), [created.id])
+    }
+
     func testTranscriptAndSummaryRoundTrip() throws {
         let patient = try store.createPatient(name: "Test Patient")
         let session = try store.createSession(for: patient)

@@ -265,13 +265,20 @@ final class LegalTests: XCTestCase {
             .appendingPathComponent("docs")
         let extra = try FileManager.default.contentsOfDirectory(atPath: docsDir.path)
             .filter { $0.hasSuffix(".md") }.map { "docs/\($0)" }
-        for path in ["CONSENT.md", "Sources/App/Views/ConsentGuideView.swift"] + extra {
+        for path in ["CONSENT.md"] + consentGuidePaths + extra {
             XCTAssertFalse(try doc(path).localizedCaseInsensitiveContains("ollama"), path)
         }
     }
 
+    /// The consent guide's screen and the text it shows.
+    private let consentGuidePaths = ["Sources/App/Views/ConsentGuideView.swift", "Sources/App/Services/ConsentGuideContent.swift"]
+
+    private func consentGuide() throws -> String {
+        try consentGuidePaths.map { try doc($0) }.joined(separator: "\n")
+    }
+
     func testConsentGuideAvoidsAbsoluteClaims() throws {
-        let text = try doc("Sources/App/Views/ConsentGuideView.swift")
+        let text = try consentGuide()
         XCTAssertFalse(text.contains("100%"))
         XCTAssertFalse(text.lowercased().contains("strictly"))
         XCTAssertFalse(text.contains("never sent"))
@@ -290,8 +297,8 @@ final class LegalTests: XCTestCase {
     ]
 
     func testConsentDocsListExampleAllPartyStatutes() throws {
-        for path in ["CONSENT.md", "Sources/App/Views/ConsentGuideView.swift"] {
-            let text = try doc(path)
+        let texts = [("CONSENT.md", try doc("CONSENT.md")), ("the consent guide", try consentGuide())]
+        for (path, text) in texts {
             for phrase in consentKeyPhrases.prefix(4) {
                 XCTAssertTrue(text.contains(phrase), "\(path) lacks \"\(phrase)\"")
             }
@@ -303,9 +310,9 @@ final class LegalTests: XCTestCase {
         let md = try doc("CONSENT.md").replacingOccurrences(of: "\n> ", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "  ", with: " ")
-        let view = try doc("Sources/App/Views/ConsentGuideView.swift")
+        let view = try consentGuide()
         for phrase in consentKeyPhrases {
-            XCTAssertTrue(view.contains(phrase), "ConsentGuideView lacks \"\(phrase)\"")
+            XCTAssertTrue(view.contains(phrase), "The consent guide lacks \"\(phrase)\"")
             XCTAssertTrue(md.contains(phrase), "CONSENT.md lacks \"\(phrase)\"")
         }
     }

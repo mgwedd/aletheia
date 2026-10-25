@@ -242,7 +242,7 @@ private struct CodeCard: View {
     let language: String?
     let code: String
 
-    @State private var copied = false
+    @StateObject private var feedback = CopyFeedback()
 
     private var caption: String {
         language?.capitalized ?? "Code"
@@ -256,9 +256,9 @@ private struct CodeCard: View {
                     .foregroundStyle(Theme.muted.color)
                 Spacer()
                 Button {
-                    copy()
+                    feedback.copy(code, kind: .copiedChat)
                 } label: {
-                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    Label(feedback.title, systemImage: feedback.justCopied ? "checkmark" : "doc.on.doc")
                         .font(.caption2)
                 }
                 .buttonStyle(.plain)
@@ -287,16 +287,5 @@ private struct CodeCard: View {
             RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                 .strokeBorder(Theme.line.color, lineWidth: 1)
         )
-    }
-
-    private func copy() {
-        #if canImport(AppKit)
-        PHIPasteboard.writeString(code, kind: .copiedChat)
-        #endif
-        copied = true
-        Task {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            copied = false
-        }
     }
 }

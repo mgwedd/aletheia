@@ -56,10 +56,14 @@ final class DigestScheduler: ObservableObject {
     private var poller: Task<Void, Never>?
     private var watchers: [AnyCancellable] = []
 
-    init(builder: DigestBuilder, queue: InferenceQueue, settings: AppSettings) {
+    /// The clock for the scan interval and failure back-off.
+    private let now: () -> Date
+
+    init(builder: DigestBuilder, queue: InferenceQueue, settings: AppSettings, now: @escaping () -> Date = Date.init) {
         self.builder = builder
         self.queue = queue
         self.settings = settings
+        self.now = now
     }
 
     /// Connects the scheduler to the app and starts it: it looks again whenever
@@ -171,7 +175,7 @@ final class DigestScheduler: ObservableObject {
         // The setting lifts only the battery pause; Low Power Mode still pauses.
         if settings.prepareSummariesOnBattery { now.onBattery = false }
         now.preparingNow = preparingNow
-        now.recentFailure = lastFailure.map { Date().timeIntervalSince($0) < DigestSchedulePolicy.failureBackoff } ?? false
+        now.recentFailure = lastFailure.map { self.now().timeIntervalSince($0) < DigestSchedulePolicy.failureBackoff } ?? false
         let running = queue.running.map { $0.kind != .digest } ?? false
         now.modelBusy = running || queue.waiting.contains { $0.kind != .digest }
         if wasLocked && !now.locked { needsScan = true }
@@ -183,7 +187,7 @@ final class DigestScheduler: ObservableObject {
         // Looking for work reads and decrypts transcripts but asks nothing of the
         // model, so it runs even while paused, except while locked, recording or transcribing.
         let mayScan = !now.locked && !now.recording && !now.transcribing
-        if mayScan, scanning == nil, needsScan || (work.isEmpty && loop == nil && Date() >= nextScanAt) {
+        if mayScan, scanning == nil, needsScan || (work.isEmpty && loop == nil && self.now() >= nextScanAt) {
             startScan()
         }
         if reason != nil {
@@ -213,7 +217,7 @@ final class DigestScheduler: ObservableObject {
             self.apply(result)
             if self.work.isEmpty {
                 self.preparingNow = false
-                self.nextScanAt = Date().addingTimeInterval(DigestSchedulePolicy.rescanInterval)
+                self.nextScanAt = self.now().addingTimeInterval(DigestSchedulePolicy.rescanInterval)
             }
             self.evaluate()
         }
@@ -242,7 +246,7 @@ final class DigestScheduler: ObservableObject {
             guard let next = work.first else {
                 // Everything that needs a summary has one; look again later.
                 preparingNow = false
-                nextScanAt = Date().addingTimeInterval(DigestSchedulePolicy.rescanInterval)
+                nextScanAt = self.now().addingTimeInterval(DigestSchedulePolicy.rescanInterval)
                 return
             }
             guard let patient = patientsByID[next.patientID], let session = sessionsByID[next.sessionID] else {
@@ -275,7 +279,7 @@ final class DigestScheduler: ObservableObject {
             if builder.failures[session.id] != nil {
                 // Try again after a pause; this one goes last.
                 work.append(next)
-                lastFailure = Date()
+                lastFailure = self.now()
                 evaluate()
                 return
             }

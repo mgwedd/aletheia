@@ -174,11 +174,23 @@ struct AuditEvent: Codable, Equatable {
     }
 }
 
+/// Supplies the key that signs activity-log entries.
+typealias AuditKeyProvider = () -> SymmetricKey?
+
 /// Result of checking the audit ledger's HMAC hash chain.
 enum IntegrityVerificationResult: Equatable {
     case verified(count: Int)
     case broken(seq: Int64, reason: String)
     case unverifiable(reason: String)
+
+    /// The one-line result shown after "Verify integrity".
+    var statusMessage: String {
+        switch self {
+        case .verified(let count): return "Integrity verified: all \(count) entries intact."
+        case .broken(let seq, let reason): return "Integrity check failed at entry #\(seq): \(reason)"
+        case .unverifiable(let reason): return "Audit log unverifiable: \(reason)"
+        }
+    }
 }
 
 /// Keychain and key derivation management for the HMAC ledger key.

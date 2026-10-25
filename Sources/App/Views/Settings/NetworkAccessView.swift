@@ -65,7 +65,7 @@ struct NetworkAccessView: View {
                             .padding(.vertical, 8)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Theme.field.color, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        Button(copied ? "Copied" : "Copy") { copy(command) }
+                        Button(copied ? "Copied" : "Copy") { copyCommand() }
                             .buttonStyle(.themed)
                     }
                     Text("To watch for connections as they happen, use a firewall such as LuLu or Little Snitch, or run nettop in Terminal.")
@@ -79,8 +79,8 @@ struct NetworkAccessView: View {
         .onAppear { facts = EntitlementReader.current() }
     }
 
-    private func copy(_ text: String) {
-        PHIPasteboard.writeString(text)
+    private func copyCommand() {
+        NetworkHelperDisclosure.copyVerifyCommand()
         copied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
     }

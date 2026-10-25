@@ -138,9 +138,42 @@ struct SessionDetailView: View {
     // App-level so a transcription survives leaving this screen.
     @EnvironmentObject private var transcription: TranscriptionCoordinator
 
+    /// The transcript as saved on disk, the therapist's notes and the margin
+    /// comments: what notes and answers are written from.
+    @StateObject private var material = SessionInputs()
+    @StateObject private var note = SessionNoteModel()
+    @StateObject private var chat = SessionChatModel()
     /// The transcript as saved on disk. Generated notes, chat and staleness all
     /// key off this, never off the draft.
-    @State private var transcriptText: String = ""
+    private var transcriptText: String {
+        get { material.transcriptText }
+        nonmutating set { material.transcriptText = newValue }
+    }
+    private var sessionNote: String {
+        get { material.myNotes }
+        nonmutating set { material.myNotes = newValue }
+    }
+    private var comments: [SessionComment] {
+        get { material.comments }
+        nonmutating set { material.comments = newValue }
+    }
+    private var summaryText: String {
+        get { note.summaryText }
+        nonmutating set { note.summaryText = newValue }
+    }
+    private var noteCoverage: String? { note.noteCoverage }
+    private var isEditingNote: Bool {
+        get { note.isEditingNote }
+        nonmutating set { note.isEditingNote = newValue }
+    }
+    private var hasPreviousNote: Bool { note.hasPreviousNote }
+    private var noteRunner: ChatStreamRunner { note.runner }
+    private var chatRunner: ChatStreamRunner { chat.runner }
+    private var isChatSending: Bool { chat.isSending }
+    private var chatMessages: [ChatMessage] {
+        get { chat.messages }
+        nonmutating set { chat.messages = newValue }
+    }
     /// What the transcript view shows and edits. Differs from `transcriptText`
     /// until the user presses Save (or Discard).
     @State private var transcriptDraft = ""
@@ -154,37 +187,11 @@ struct SessionDetailView: View {
     /// changed" sync below replace it.
     @State private var restoredDraft = false
     @State private var showDiscardConfirm = false
-    /// Fingerprint of the transcript the displayed format's note was generated
-    /// from, if one was recorded. See `NoteFreshness`.
-    @State private var noteFingerprint: String?
-    /// What the displayed format's note was written from, when it was not the
-    /// whole transcript (a long session).
-    @State private var noteCoverage: String?
-    /// What the last session chat answer was written from when the session was too long to send whole.
-    @State private var sessionChatCoverage: String?
-    /// Stop was pressed and the stopped note's job may still be unwinding.
-    @State private var noteStopping = false
-    /// The format of the note being generated, for its progress line.
-    @State private var generatingFormat: ProgressNoteFormat = .default
-    /// Keeps that progress bar from moving backwards; a new one per run.
-    @State private var noteHighWater = ProgressHighWater()
-    /// Waits for a stopped note's job to unwind before starting the next one.
-    @State private var noteWaiter: Task<Void, Never>?
-    @State private var summaryText: String = ""
-    @State private var chatMessages: [ChatMessage] = []
-    @State private var sessionNote: String = ""
-    // Editing the generated note (selected format only; Save/Cancel, no autosave).
-    @State private var isEditingNote = false
-    @State private var noteDraft = ""
-    @State private var confirmRegenerate = false
-    @State private var hasPreviousNote = false
-    @State private var noteCopied = false
     @State private var editingInstructions = false
     /// The note text as last read from / written to the store. `load()` assigns
     /// `sessionNote` programmatically, which fires `onChange`; comparing against
     /// this keeps that echo (and any no-op change) from being saved back.
     @State private var persistedSessionNote: String = ""
-    @State private var comments: [SessionComment] = []
     /// The passage currently selected in the transcript view (empty = just a
     /// caret), driving the floating comment button.
     @State private var transcriptSelection = ""
@@ -234,9 +241,6 @@ struct SessionDetailView: View {
     /// Set when the last transcription came back blank and the recording was
     /// kept (see `AudioRetentionPolicy.decision`); shown inline, not as an alert.
     @State private var noSpeechNotice: String?
-    @State private var isChatSending = false
-    @StateObject private var chatRunner = ChatStreamRunner()
-    @StateObject private var noteRunner = ChatStreamRunner()
     @State private var errorMessage: String?
     /// How the last export ended, shown until dismissed.
     @State private var exportResult: SaveOutcome?
@@ -345,8 +349,7 @@ struct SessionDetailView: View {
             UnsavedTranscriptDrafts.stash(transcriptDraft, saved: transcriptText, for: session.id)
             editGuard?.detach()
             // A note must not start after the user has left.
-            noteWaiter?.cancel()
-            noteWaiter = nil
+            note.cancelWaiter()
         }
         .onChange(of: transcriptText) { old, new in
             if !new.isEmpty { hasTranscript = true; transcriptReadError = nil }
@@ -361,11 +364,7 @@ struct SessionDetailView: View {
         // rather than on the Notes pane so a change made while another tab (or
         // My Notes) is showing still swaps the note.
         .onChange(of: settings.progressNoteFormat) { _, newFormat in
-            isEditingNote = false
-            summaryText = savedNote(for: newFormat)
-            noteFingerprint = savedFingerprint(for: newFormat)
-            noteCoverage = savedCoverage(for: newFormat)
-            refreshHasPreviousNote()
+            note.showSaved(for: newFormat)
         }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -594,9 +593,7 @@ struct SessionDetailView: View {
             } else if recorder.callAudioSilent, !recorder.isPaused {
                 callAudioNotice("No call audio detected. Only your microphone is being recorded. If the other person is speaking, make sure the call plays through this Mac, and that Aletheia is allowed under Screen & System Audio Recording.")
             }
-            if settings.debugDiagnosticsEnabled {
-                CallAudioDebugView(recorder: recorder)
-            }
+            CallAudioDebugView(enabled: settings.debugDiagnosticsEnabled, recorder: recorder)
             Text(recorder.isPaused
                  ? "Paused. Nothing is being recorded until you resume."
                  : "Stop when the session ends, then transcribe.")
@@ -1094,10 +1091,7 @@ struct SessionDetailView: View {
         } else if let initialNoteFormat {
             showingMyNotes = false
             settings.progressNoteFormat = initialNoteFormat
-            summaryText = savedNote(for: initialNoteFormat)
-            noteFingerprint = savedFingerprint(for: initialNoteFormat)
-            noteCoverage = savedCoverage(for: initialNoteFormat)
-            refreshHasPreviousNote()
+            note.showSaved(for: initialNoteFormat)
         }
         selectedTab = initialTab
         if let initialFocusedCommentID {
@@ -1155,7 +1149,7 @@ struct SessionDetailView: View {
             }
             .padding(.horizontal, 20)
             RichNoteEditor(
-                markdown: $sessionNote,
+                markdown: $material.myNotes,
                 placeholder: "Your private process notes for this session…",
                 fonts: .sans,
                 minHeight: 160,
@@ -1218,20 +1212,20 @@ struct SessionDetailView: View {
                     Text(NoteKind.progress.title).eyebrowStyle()
                 } actions: {
                     if noteRunner.isStreaming {
-                        Button(role: .destructive) { noteStopping = true; noteRunner.stop() } label: {
+                        Button(role: .destructive) { note.stop() } label: {
                             Label("Stop", systemImage: "stop.fill")
                         }
                     } else if noteRunner.isQueued {
                         // Waiting behind another generation: offer to back out
                         // rather than a Generate button that looks stuck.
-                        Button(role: .cancel) { noteStopping = true; noteRunner.stop() } label: {
+                        Button(role: .cancel) { note.stop() } label: {
                             Label("Cancel", systemImage: "xmark")
                         }
                     } else if !summaryText.isEmpty {
                         // With no note yet, the empty-state card below holds the
                         // Generate button (and ⌘G).
                         Button {
-                            requestGenerateNote()
+                            note.requestGenerate()
                         } label: {
                             Label("Regenerate", systemImage: "sparkles")
                         }
@@ -1243,15 +1237,14 @@ struct SessionDetailView: View {
                     }
                     if !summaryText.isEmpty && !noteRunner.isStreaming {
                         if hasPreviousNote && !isEditingNote && !noteRunner.isQueued {
-                            Button { restorePreviousNote() } label: {
+                            Button { note.restorePrevious() } label: {
                                 Label("Restore Previous", systemImage: "arrow.uturn.backward")
                             }
                             .help("Swap back to the version you edited before the last regenerate")
                         }
                         if !isEditingNote {
                             Button {
-                                noteDraft = summaryText
-                                isEditingNote = true
+                                note.beginEditing()
                             } label: {
                                 Label("Edit", systemImage: "pencil")
                             }
@@ -1259,18 +1252,13 @@ struct SessionDetailView: View {
                             .help("Edit this note before it goes in the record")
                         }
                         Button {
-                            RichClipboard.write(RichClipboard.payload(markdown: summaryText))
-                            noteCopied = true
-                            Task {
-                                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                                noteCopied = false
-                            }
+                            note.copyNote()
                         } label: {
                             Label("Copy", systemImage: "doc.on.doc")
                         }
                         .help("Copy the note, with its formatting, to paste into your EHR or a document")
-                        .popover(isPresented: $noteCopied, arrowEdge: .bottom) {
-                            Label("Copied", systemImage: "checkmark.circle.fill")
+                        .popover(isPresented: Binding(get: { note.copyFeedback.justCopied }, set: { if !$0 { note.copyFeedback.dismiss() } }), arrowEdge: .bottom) {
+                            Label(CardWords.copied, systemImage: "checkmark.circle.fill")
                                 .font(Theme.Typography.control)
                                 .foregroundStyle(Theme.text.color)
                                 .padding(.horizontal, 14)
@@ -1288,8 +1276,8 @@ struct SessionDetailView: View {
             .buttonStyle(.themed)
             .padding(.horizontal, 20)
 
-            if noteIsOutdated {
-                OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: generateNote)
+            if note.noteIsOutdated {
+                OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: { note.generate() })
             }
 
             if summaryText.isEmpty && !noteRunner.isStreaming {
@@ -1304,13 +1292,13 @@ struct SessionDetailView: View {
                     Spacer()
                     Button("Cancel") { isEditingNote = false }
                         .buttonStyle(.themed)
-                    Button("Save") { saveEditedNote() }
+                    Button("Save") { note.saveEdited() }
                         .buttonStyle(.themePrimary)
                         .keyboardShortcut(.defaultAction)
-                        .disabled(!NoteEditing.canSave(draft: noteDraft, original: summaryText))
+                        .disabled(!note.canSaveEdit)
                 }
                 .padding(.horizontal, 20)
-                RichNoteEditor(markdown: $noteDraft, fonts: .serif, minHeight: 200, fills: true, label: "Edit note")
+                RichNoteEditor(markdown: $note.noteDraft, fonts: .serif, minHeight: 200, fills: true, label: "Edit note")
                     .padding([.horizontal, .bottom], 20)
             } else {
                 if noteRunner.isStreaming {
@@ -1351,8 +1339,8 @@ struct SessionDetailView: View {
                 onCancel: { editingInstructions = false }
             )
         }
-        .alert("Replace your edited note?", isPresented: $confirmRegenerate) {
-            Button("Regenerate", role: .destructive) { generateNote() }
+        .alert(NoteWords.replaceEditedTitle, isPresented: $note.confirmRegenerate) {
+            Button("Regenerate", role: .destructive) { note.generate() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You edited this \(settings.progressNoteFormat.shortName) note. Regenerating replaces it; your edited version is kept and can be brought back with Restore Previous.")
@@ -1365,7 +1353,7 @@ struct SessionDetailView: View {
         let format = settings.progressNoteFormat
         let customized = settings.noteInstructions[format.rawValue] != nil
         return Menu {
-            Picker("Length", selection: $settings.summaryVerbosity) {
+            Picker(NoteWords.lengthTitle, selection: $settings.summaryVerbosity) {
                 ForEach(SummaryVerbosity.allCases) { level in
                     Text(level.displayName).tag(level)
                 }
@@ -1379,13 +1367,13 @@ struct SessionDetailView: View {
             }
             .pickerStyle(.inline)
             Divider()
-            Button("Edit \(format.shortName) Prompt…\(customized ? " (customized)" : "")") {
+            Button(NoteWords.editPromptItem(format: format, customized: customized)) {
                 editingInstructions = true
             }
         } label: {
             // AdaptiveLabel, not Label: a Menu's label ignores .labelStyle(.iconOnly).
             AdaptiveLabel(
-                title: "Length: \(settings.summaryVerbosity.displayName) · \(settings.noteEffort.displayName)",
+                title: NoteWords.lengthLabel(length: settings.summaryVerbosity, effort: settings.noteEffort),
                 systemImage: "text.alignleft"
             )
         }
@@ -1396,8 +1384,8 @@ struct SessionDetailView: View {
     /// Shown while a note is generated: one line and a bar.
     private var noteWorkingRow: some View {
         NoteProgressRow(
-            title: NoteProgress.title(for: generatingFormat),
-            progress: noteRunner.progress, speed: integrations.modelSpeed, highWater: noteHighWater)
+            title: NoteProgress.title(for: note.generatingFormat),
+            progress: noteRunner.progress, speed: integrations.modelSpeed, highWater: note.noteHighWater)
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1410,7 +1398,7 @@ struct SessionDetailView: View {
             Image(systemName: "doc.text")
                 .font(.system(size: 22))
                 .foregroundStyle(Theme.muted.color)
-            Text("No \(format) note yet")
+            Text(NoteWords.emptyTitle(format: settings.progressNoteFormat))
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.text.color)
             Text(transcriptText.isEmpty
@@ -1421,10 +1409,10 @@ struct SessionDetailView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
-                requestGenerateNote()
+                note.requestGenerate()
             } label: {
                 HStack(spacing: 8) {
-                    Label("Generate \(format) note", systemImage: "sparkles")
+                    Label(NoteWords.generateButton(format: settings.progressNoteFormat), systemImage: "sparkles")
                     ShortcutHint(AppHotkey.generateNote, onAccent: true)
                 }
             }
@@ -1443,75 +1431,17 @@ struct SessionDetailView: View {
         .padding(.top, 8)
     }
 
-    private func saveEditedNote() {
-        guard let store = appModel.store else { return }
-        guard NoteEditing.canSave(draft: noteDraft, original: summaryText) else { return }
-        do {
-            try store.saveEditedNote(noteDraft, for: patient, session: session, format: settings.progressNoteFormat)
-            summaryText = noteDraft
-            isEditingNote = false
-            onSessionUpdated()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    /// Regenerate asks first when it would replace the user's edits; an
-    /// untouched generated note is replaced straight away. (The Store keeps the
-    /// edited text as the previous version either way.)
-    private func requestGenerateNote() {
-        guard let store = appModel.store else { return }
-        let state = store.noteEditState(for: patient, session: session, format: settings.progressNoteFormat)
-        if state == .unreadable {
-            errorMessage = StoreError.noteUnreadable.localizedDescription
-        } else if NoteEditing.shouldArchiveBeforeReplacing(state) {
-            confirmRegenerate = true
-        } else {
-            generateNote()
-        }
-    }
-
-    private func restorePreviousNote() {
-        guard let store = appModel.store else { return }
-        do {
-            if let restored = try store.restorePreviousNote(for: patient, session: session, format: settings.progressNoteFormat) {
-                summaryText = restored
-                onSessionUpdated()
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func savedCoverage(for format: ProgressNoteFormat) -> String? {
-        appModel.store?.noteCoverage(for: patient, session: session, format: format)
-    }
-
-    private func refreshHasPreviousNote() {
-        guard let store = appModel.store else { hasPreviousNote = false; return }
-        hasPreviousNote = store.previousNote(for: patient, session: session, format: settings.progressNoteFormat) != nil
-    }
-
-    private var sessionChatNotices: [String] {
-        var list: [String] = []
-        if let sessionChatCoverage { list.append(sessionChatCoverage) }
-        if chatRunner.progress.stats?.possiblyTruncated == true && !isChatSending {
-            list.append(AIRunStats.truncationNotice)
-        }
-        return list
-    }
-
     private var chatTab: some View {
         ChatPaneView(
-            title: "this session",
-            messages: $chatMessages,
+            title: ChatWords.thisSession,
+            messages: $chat.messages,
             isSending: isChatSending,
             suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.session : [],
-            onSend: sendChat,
-            onStop: { chatRunner.stop() },
+            onSend: chat.send,
+            onStop: { chat.stop() },
             queuedStatus: chatRunner.queuedStatus,
-            notices: sessionChatNotices,
-            onCompact: { compactChat($0) },
+            notices: chat.notices,
+            onCompact: { chat.compact($0) },
             progress: chatRunner.progress,
             effort: $settings.sessionChatEffort,
             isSessionRecording: recorder.isRecording
@@ -1526,62 +1456,6 @@ struct SessionDetailView: View {
         integrations.digestScheduler.sessionOpened(patient: patient, session: session)
     }
 
-    private func load() {
-        guard let store = appModel.store else { return }
-        reloadTranscript()
-        transcriptDraft = transcriptText
-        if transcriptReadError == nil, let restored = UnsavedTranscriptDrafts.take(for: session.id) {
-            transcriptDraft = restored
-            restoredDraft = true
-        }
-        editGuard?.attach(
-            dirty: { transcriptIsDirty },
-            save: { saveTranscriptDraft() },
-            discard: { discardTranscriptEdits() }
-        )
-        summaryText = savedNote(for: settings.progressNoteFormat)
-        noteFingerprint = savedFingerprint(for: settings.progressNoteFormat)
-        noteCoverage = savedCoverage(for: settings.progressNoteFormat)
-        isEditingNote = false
-        refreshHasPreviousNote()
-        chatMessages = store.loadSessionChat(for: patient, session: session)
-        if let commentStore = appModel.commentStore {
-            let storedNote = commentStore.note(sessionID: session.id)
-            persistedSessionNote = storedNote
-            sessionNote = storedNote
-            comments = commentStore.comments(sessionID: session.id)
-        }
-    }
-
-    /// The saved note for `format` (empty if that format has none yet).
-    private func savedNote(for format: ProgressNoteFormat) -> String {
-        appModel.store?.note(for: patient, session: session, format: format) ?? ""
-    }
-
-    /// The fingerprint recorded when `format`'s note was generated, if any.
-    private func savedFingerprint(for format: ProgressNoteFormat) -> String? {
-        appModel.store?.noteTranscriptFingerprint(for: patient, session: session, format: format)
-    }
-
-    /// The displayed note was generated from an earlier version of the saved
-    /// transcript. Hidden while a (re)generation is running.
-    private var noteIsOutdated: Bool {
-        !summaryText.isEmpty && !noteRunner.isStreaming && !noteRunner.isQueued
-            && NoteFreshness.isOutdated(recorded: noteFingerprint, transcript: transcriptText)
-    }
-
-    private func editComment(_ comment: SessionComment, _ body: String) {
-        guard let commentStore = appModel.commentStore,
-              CommentsRailView.canSaveEdit(draft: body, original: comment.body) else { return }
-        appModel.updateComment(id: comment.id, body: body)
-        comments = commentStore.comments(sessionID: session.id)
-    }
-
-    private func deleteComment(_ comment: SessionComment) {
-        guard let commentStore = appModel.commentStore else { return }
-        commentStore.deleteComment(id: comment.id)
-        comments = commentStore.comments(sessionID: session.id)
-    }
 
     /// Whether the app-wide recorder is recording *this* session (vs. another
     /// one started from the menu bar).
@@ -1706,278 +1580,60 @@ struct SessionDetailView: View {
         }
     }
 
-    /// Streams a clinical progress note (in the selected format) into the
-    /// summary view as it writes, then persists the finished note under that
-    /// format. Reuses the same calm word-by-word reveal as chat, with a working
-    /// Stop. The format is captured up front so a picker change mid-stream can't
-    /// misfile the result into another format's note.
-    private func generateNote() {
-        guard let store = appModel.store else { return }
-        // One note per session at a time, even across leaving and reopening the session.
-        let jobLabel = "progress note \(session.id.uuidString)"
-        guard !integrations.inferenceQueue.hasJob(labelled: jobLabel) else {
-            if noteStopping {
-                // Just stopped: start again once the old job has unwound, with no alert.
-                // Only the first waiter goes on; a second click finds the flag already cleared.
-                guard noteWaiter == nil else { return }
-                noteWaiter = Task { @MainActor in
-                    let deadline = Date().addingTimeInterval(10)
-                    while integrations.inferenceQueue.hasJob(labelled: jobLabel), !Task.isCancelled, Date() < deadline {
-                        try? await Task.sleep(nanoseconds: 100_000_000)
-                    }
-                    // A cancelled waiter may already have been replaced; leave the new one alone.
-                    if !Task.isCancelled { noteWaiter = nil }
-                    guard !Task.isCancelled, noteStopping else { return }
-                    noteStopping = false
-                    // Still running after the wait: say so, as for any second Generate.
-                    if integrations.inferenceQueue.hasJob(labelled: jobLabel) {
-                        errorMessage = "A note for this session is already being written."
-                    } else {
-                        generateNote()
-                    }
-                }
-            } else {
-                errorMessage = "A note for this session is already being written."
-            }
-            return
-        }
-        noteStopping = false
-        let format = settings.progressNoteFormat
-        generatingFormat = format
-        noteHighWater = ProgressHighWater()
-        let verbosity = settings.summaryVerbosity
-        let instructions = settings.noteInstructions[format.rawValue]
-        // Snapshot the inputs now; the request itself is only made when the
-        // queue starts this job (it may be waiting behind a chat answer).
-        let service = integrations.makeAssistantService(report: noteRunner.reporter, clientName: patient.name)
-        let transcript = transcriptText
-        let notes = sessionNote
-        let sessionComments = settings.includeCommentsInDrafts ? comments : []
-        let patientBackground = settings.includePatientBackground ? patient.aiBackgroundBlock : ""
-        let effort = settings.noteEffort
-        let riskPhrases = settings.riskPhrases
-        let model = service.model
-        let produced = CoverageBox()
-        noteRunner.start(
-            queue: integrations.inferenceQueue,
-            kind: .note,
-            label: jobLabel,
-            readTitle: "Reading the session",
-            writeTitle: "Writing the note",
-            makeStream: {
-                // The job has started: drop the old note so the pane can show
-                // progress until the first token.
-                if settings.progressNoteFormat == format { summaryText = ""; noteCoverage = nil }
-                return LongSessionNote.stream(
-                    format: format,
-                    transcript: transcript,
-                    notes: notes,
-                    comments: sessionComments,
-                    patientBackground: patientBackground,
-                    verbosity: verbosity,
-                    instructions: instructions,
-                    effort: effort,
-                    riskPhrases: riskPhrases,
-                    service: service,
-                    builder: integrations.digests,
-                    sessionID: session.id,
-                    loadDigest: { [patient, session] in
-                        await Task.detached { store.digest(for: patient, session: session, model: model) }.value
-                    },
-                    saveDigest: { [patient, session] in try store.saveDigest($0, for: patient, session: session) },
-                    sectionCache: .store(store, patient: patient, session: session),
-                    live: { started, change in noteRunner.update(started: started, change) },
-                    coverage: {
-                        produced.text = $0
-                        if settings.progressNoteFormat == format { noteCoverage = $0 }
-                    }
-                )
-            },
-            onReveal: { text in
-                if settings.progressNoteFormat == format { summaryText = text }
-            },
-            onError: { error in
-                if let incident = AIEngineIncident.from(error: error) {
-                    engineRetries.set({ generateNote() }, for: .note)
-                    engineIncident = incident
-                } else {
-                    errorMessage = error.localizedDescription
-                }
-                // The reveal blanked the pane; put back what is actually saved.
-                if settings.progressNoteFormat == format {
-                    summaryText = savedNote(for: format)
-                    noteCoverage = savedCoverage(for: format)
-                }
-            },
-            onFinish: { raw in
-                // Save the tidied text, so copy, export and edit see the same
-                // paragraphs and labels the pane shows.
-                let final = SpeakerCodes.scrub(NoteMarkdown.tidy(raw), clientName: patient.name)
-                // Stopped part-way: say the saved note is only what was written so far.
-                if noteStopping, !final.isEmpty, !(produced.text ?? "").contains(LongSessionNote.CheckOutcome.stopped.text) {
-                    produced.text = [produced.text, LongSessionNote.stoppedEarlyText].compactMap { $0 }.joined(separator: " ")
-                    if settings.progressNoteFormat == format { noteCoverage = produced.text }
-                }
-                guard !final.isEmpty else {
-                    // Stopped before the first token, or empty output: the pane
-                    // was cleared at start, so put back what is saved.
-                    if settings.progressNoteFormat == format {
-                        summaryText = savedNote(for: format)
-                        noteCoverage = savedCoverage(for: format)
-                    }
-                    return
-                }
-                if settings.progressNoteFormat == format { summaryText = final }
-                do {
-                    try store.saveGeneratedNote(final, for: patient, session: session, format: format, generatedFromTranscript: transcript, coverage: produced.text)
-                } catch {
-                    errorMessage = error.localizedDescription
-                    if settings.progressNoteFormat == format {
-                        summaryText = savedNote(for: format)
-                        noteCoverage = savedCoverage(for: format)
-                    }
-                    return
-                }
-                // Record which transcript this note came from (the snapshot the
-                // request used, not whatever the transcript is by now).
-                if settings.progressNoteFormat == format {
-                    refreshHasPreviousNote()
-                    noteFingerprint = NoteFreshness.fingerprint(of: transcript)
-                    // The format may have been switched away and back during the run.
-                    noteCoverage = savedCoverage(for: format)
-                }
-                onSessionUpdated()
-                Task {
-                    await integrations.makeNotifier().post(
-                        SessionNotifications.summaryReady(
-                            patientName: patient.name, date: session.date,
-                            policy: .current(showFullName: settings.notificationsShowPatientNames)
-                        )
-                    )
-                }
-            }
-        )
+
+    private func editComment(_ comment: SessionComment, _ body: String) {
+        guard let commentStore = appModel.commentStore,
+              CommentsRailView.canSaveEdit(draft: body, original: comment.body) else { return }
+        appModel.updateComment(id: comment.id, body: body)
+        comments = commentStore.comments(sessionID: session.id)
     }
 
-    private func sendChat(_ question: String) {
-        guard let store = appModel.store else { return }
-        // Past ChatMemory's budget, compact first so the answer still has the
-        // whole conversation, the earlier part in summary.
-        if ChatMemory.needsCompaction(chatMessages) {
-            compactChat("") { sendChat(question) }
-            return
-        }
-        let userMessage = ChatMessage(role: .user, text: question)
-        chatMessages.append(userMessage)
-        isChatSending = true
-        let assistantID = UUID()
-        // Snapshot the inputs now; the request itself is only made when the
-        // queue starts this job (it may be waiting behind the note).
-        let service = integrations.makeAssistantService(report: chatRunner.reporter, clientName: patient.name)
-        let transcript = transcriptText
-        let notes = sessionNote
-        let sessionComments = comments
-        let patientBackground = settings.includePatientBackground ? patient.aiBackgroundBlock : ""
-        let history = chatMessages
-        let effort = settings.sessionChatEffort
-        let model = service.model
-        let patient = patient
-        let session = session
-        sessionChatCoverage = nil
-        chatRunner.start(
-            queue: integrations.inferenceQueue,
-            kind: .sessionChat,
-            label: "session question",
-            readTitle: "Reading the session",
-            writeTitle: "Writing the answer",
-            makeStream: {
-                LongSessionChat.stream(
-                    transcript: transcript,
-                    notes: notes,
-                    comments: sessionComments,
-                    patientBackground: patientBackground,
-                    history: history,
-                    question: question,
-                    effort: effort,
-                    sessionID: session.id,
-                    sessionDate: session.date,
-                    folderName: session.folderName,
-                    service: service,
-                    builder: integrations.digests,
-                    loadDigest: {
-                        await Task.detached { store.digest(for: patient, session: session, model: model) }.value
-                    },
-                    saveDigest: { try store.saveDigest($0, for: patient, session: session) },
-                    sectionCache: .store(store, patient: patient, session: session),
-                    live: { started, change in chatRunner.update(started: started, change) },
-                    coverage: { sessionChatCoverage = $0 }
-                )
-            },
-            onReveal: { text in chatMessages.upsert(id: assistantID, role: .assistant, text: text) },
-            onError: { error in
-                isChatSending = false
-                if let incident = AIEngineIncident.from(error: error) {
-                    // The question stays in the conversation (nothing is lost if the
-                    // alert is cancelled); a retry takes the unanswered turn out
-                    // first so the question is asked once.
-                    engineRetries.set({
-                        chatMessages.removeTurn(startingAt: userMessage.id)
-                        sendChat(question)
-                    }, for: .chat)
-                    engineIncident = incident
-                } else {
-                    errorMessage = error.localizedDescription
-                }
-            },
-            onFinish: { _ in
-                isChatSending = false
-                appModel.attemptSave("chat") { try store.saveSessionChat(chatMessages, for: patient, session: session) }
-            },
-            // Cancelled while waiting: the question never ran, so take it back
-            // out of the conversation rather than leave it unanswered.
-            onCancelledWhileQueued: {
-                chatMessages.removeAll { $0.id == userMessage.id }
-                isChatSending = false
-            }
-        )
+    private func deleteComment(_ comment: SessionComment) {
+        guard let commentStore = appModel.commentStore else { return }
+        commentStore.deleteComment(id: comment.id)
+        comments = commentStore.comments(sessionID: session.id)
     }
-}
 
-extension SessionDetailView {
-    /// Replaces the conversation so far with the model's summary of it
-    /// (`/compact`, the Compact button, or a send past the budget), then runs
-    /// `next`. A stopped or failed summary is discarded: a partial one would
-    /// stand in for messages it doesn't cover.
-    fileprivate func compactChat(_ focus: String, then next: (() -> Void)? = nil) {
-        guard let store = appModel.store, !chatMessages.isEmpty else { return }
-        isChatSending = true
-        let summaryID = UUID()
-        let service = integrations.makeAssistantService(report: chatRunner.reporter, clientName: patient.name)
-        let history = chatMessages
-        chatRunner.start(
-            queue: integrations.inferenceQueue,
-            kind: .sessionChat,
-            label: "conversation summary",
-            readTitle: "Reading the conversation",
-            writeTitle: "Summarizing the conversation",
-            makeStream: { service.streamCompaction(history: history, focus: focus) },
-            onReveal: { text in chatMessages.upsert(id: summaryID, role: .summary, text: text) },
-            onError: { error in
-                isChatSending = false
-                chatMessages.removeAll { $0.id == summaryID }
-                errorMessage = error.localizedDescription
-            },
-            onFinish: { text in
-                isChatSending = false
-                guard !chatRunner.wasStopped, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    chatMessages.removeAll { $0.id == summaryID }
-                    return
-                }
-                appModel.attemptSave("chat") { try store.saveSessionChat(chatMessages, for: patient, session: session) }
-                next?()
-            },
-            onCancelledWhileQueued: { isChatSending = false }
+    private func showAlert(_ alert: AIAlert) {
+        switch alert {
+        case .message(let text):
+            errorMessage = text
+        case .engine(let incident, let kind, let retry):
+            engineRetries.set(retry, for: kind)
+            engineIncident = incident
+        }
+    }
+
+    private func load() {
+        guard let store = appModel.store else { return }
+        reloadTranscript()
+        transcriptDraft = transcriptText
+        if transcriptReadError == nil, let restored = UnsavedTranscriptDrafts.take(for: session.id) {
+            transcriptDraft = restored
+            restoredDraft = true
+        }
+        editGuard?.attach(
+            dirty: { transcriptIsDirty },
+            save: { saveTranscriptDraft() },
+            discard: { discardTranscriptEdits() }
         )
+        note.configure(
+            appModel: appModel, integrations: integrations, settings: settings,
+            patient: patient, session: session, material: material)
+        note.sessionUpdated = onSessionUpdated
+        note.alert = showAlert
+        chat.configure(
+            appModel: appModel, integrations: integrations, settings: settings,
+            patient: patient, session: session, material: material)
+        chat.alert = showAlert
+        note.showSaved(for: settings.progressNoteFormat)
+        chat.load()
+        if let commentStore = appModel.commentStore {
+            let storedNote = commentStore.note(sessionID: session.id)
+            persistedSessionNote = storedNote
+            sessionNote = storedNote
+            comments = commentStore.comments(sessionID: session.id)
+        }
     }
 }
 
@@ -2058,8 +1714,3 @@ private struct InlineCommentComposerCard: View {
     }
 }
 
-/// Holds what a long-session note says it was written from, between the run's
-/// first report and the save, whatever the picker shows meanwhile.
-private final class CoverageBox {
-    var text: String?
-}
