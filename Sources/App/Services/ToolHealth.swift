@@ -43,6 +43,20 @@ struct ToolHealthCheck: Identifiable, Equatable {
 /// these tools are.
 @MainActor
 enum ToolHealth {
+    /// The system facts the checks read. Live by default; tests substitute fakes
+    /// so the whole run can be checked without real permissions.
+    @MainActor struct Probes {
+        var microphoneStatus: () -> AVAuthorizationStatus = { MicRecorder.permissionStatus }
+        var eventKitStatus: (EventKitAccess.Feature) -> EventKitAccess.Status = { EventKitAccess.status($0) }
+        var appleIntelligenceAvailable: () -> Bool = { Integrations.appleIntelligenceAvailable }
+        /// Whether call-audio capture is granted; `authoritative` as for `runAllChecks`.
+        var screenRecording: (_ authoritative: Bool) async -> ToolHealthCheck = {
+            await ToolHealth.screenRecordingCheck(authoritative: $0)
+        }
+
+        static let live = Probes()
+    }
+
     /// - Parameter authoritative: when true (an explicit refresh, first appear,
     ///   or an app-activation refresh), the Screen Recording check confirms a
     ///   live grant with `SCShareableContent` so a permission just toggled on is
@@ -53,23 +67,26 @@ enum ToolHealth {
         backend: AssistantBackend,
         assistant: Assistant,
         authoritative: Bool = true,
-        includeScheduling: Bool = true
+        includeScheduling: Bool = true,
+        probes: Probes = .live
     ) async -> [ToolHealthCheck] {
         // The AI check hits the network; run it concurrently with the (also
         // async) screen-recording probe. The rest are cheap local reads.
-        async let ai = assistantCheck(settings: settings, backend: backend, assistant: assistant)
+        async let ai = assistantCheck(
+            settings: settings, backend: backend, assistant: assistant,
+            appleIntelligenceAvailable: probes.appleIntelligenceAvailable())
         let terms = termsAndPrivacyCheck(settings: settings)
-        let mic = microphoneCheck()
+        let mic = microphoneCheck(status: probes.microphoneStatus())
         let whisperModel = whisperModelCheck(settings: settings)
         let dataFolder = dataFolderCheck(settings: settings)
-        let screen = await screenRecordingCheck(authoritative: authoritative)
+        let screen = await probes.screenRecording(authoritative)
         var checks = await [terms, dataFolder, mic, screen, whisperModel, ai]
         // Calendar/Reminders belong to the `.dev`-tier EventKit scheduling
         // module. When that module isn't in the build, don't surface (or ask
         // for) their permissions at all. See `EventKitSchedulingFeatureModule`.
         if includeScheduling {
-            checks.append(calendarCheck())
-            checks.append(remindersCheck())
+            checks.append(calendarCheck(status: probes.eventKitStatus(.calendar)))
+            checks.append(remindersCheck(status: probes.eventKitStatus(.reminders)))
         }
         return checks
     }
@@ -102,8 +119,8 @@ enum ToolHealth {
         return ToolHealthCheck(kind: .dataFolder, title: "Data folder", status: .failed, detail: "No folder chosen yet. Open Settings to pick one.")
     }
 
-    static func microphoneCheck() -> ToolHealthCheck {
-        classifyMicrophone(MicRecorder.permissionStatus)
+    static func microphoneCheck(status: AVAuthorizationStatus = MicRecorder.permissionStatus) -> ToolHealthCheck {
+        classifyMicrophone(status)
     }
 
     /// Pure mapping from the raw microphone authorization to a check row, split
@@ -157,34 +174,34 @@ enum ToolHealth {
     /// and "Remind Me"). They never block readiness — an unmet one is a warning,
     /// not a failure — but surfacing them in setup lets the therapist grant
     /// access once, up front, instead of being interrupted mid-task later.
-    static func calendarCheck() -> ToolHealthCheck {
+    static func calendarCheck(status: EventKitAccess.Status = EventKitAccess.status(.calendar)) -> ToolHealthCheck {
         optionalAccessCheck(
+            status: status,
             kind: .calendar,
             title: "Calendar (optional)",
-            feature: .calendar,
             grantedDetail: "Can add “Schedule Next Session” events to your calendar.",
             featureName: "Schedule Next Session"
         )
     }
 
-    static func remindersCheck() -> ToolHealthCheck {
+    static func remindersCheck(status: EventKitAccess.Status = EventKitAccess.status(.reminders)) -> ToolHealthCheck {
         optionalAccessCheck(
+            status: status,
             kind: .reminders,
             title: "Reminders (optional)",
-            feature: .reminders,
             grantedDetail: "Can add session follow-ups to your Reminders.",
             featureName: "Remind Me"
         )
     }
 
-    private static func optionalAccessCheck(
+    static func optionalAccessCheck(
+        status: EventKitAccess.Status,
         kind: ToolHealthCheck.Kind,
         title: String,
-        feature: EventKitAccess.Feature,
         grantedDetail: String,
         featureName: String
     ) -> ToolHealthCheck {
-        switch EventKitAccess.status(feature) {
+        switch status {
         case .granted:
             return ToolHealthCheck(kind: kind, title: title, status: .ok, detail: grantedDetail)
         case .unavailable:
@@ -214,10 +231,15 @@ enum ToolHealth {
     /// `Integrations.effectiveAssistantBackend`), so the guidance matches what
     /// the user needs to do — nothing at all on Apple Intelligence, or the
     /// built-in model download otherwise.
-    static func assistantCheck(settings: AppSettings, backend: AssistantBackend, assistant: Assistant) async -> ToolHealthCheck {
+    static func assistantCheck(
+        settings: AppSettings,
+        backend: AssistantBackend,
+        assistant: Assistant,
+        appleIntelligenceAvailable: Bool? = nil
+    ) async -> ToolHealthCheck {
         switch backend {
         case .appleIntelligence:
-            if Integrations.appleIntelligenceAvailable {
+            if appleIntelligenceAvailable ?? Integrations.appleIntelligenceAvailable {
                 return ToolHealthCheck(kind: .appleIntelligence, title: "AI summaries & chat", status: .ok, detail: "Apple Intelligence is ready — nothing to install.")
             }
             // Shouldn't normally happen (the backend only resolves to Apple

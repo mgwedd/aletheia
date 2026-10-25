@@ -637,21 +637,16 @@ struct SessionDetailView: View {
             let suggestedName = FileSaver.exportFileName(forPatientNamed: patient.name, "Session", dateStr) + ".ics"
             icsSaved = FileSaver.saveICS(icsText, suggestedName: suggestedName)
         }
+        var calendarFailure: String?
         do {
             try await integrations.makeCalendarScheduler().schedule(draft)
-            showScheduleSheet = false
-            if scheduleExportICS && icsSaved {
-                confirmationMessage = "Added “\(draft.title)” to your Calendar and saved .ics file."
-            } else {
-                confirmationMessage = "Added “\(draft.title)” to your Calendar."
-            }
         } catch {
-            showScheduleSheet = false
-            if scheduleExportICS && icsSaved {
-                confirmationMessage = "Saved .ics file. Could not add to Calendar: \(error.localizedDescription)"
-            } else {
-                errorMessage = error.localizedDescription
-            }
+            calendarFailure = error.localizedDescription
+        }
+        showScheduleSheet = false
+        switch ScheduleNextSession.outcome(eventTitle: draft.title, calendarFailure: calendarFailure, icsSaved: icsSaved) {
+        case let .confirmation(message): confirmationMessage = message
+        case let .error(message): errorMessage = message
         }
     }
 
