@@ -82,7 +82,7 @@ final class LongSessionNoteTests: XCTestCase {
     private func run(
         transcript: String, effort: AnswerEffort = .normal, stored: SessionDigest? = nil, tokens: Int = 8192,
         format: ProgressNoteFormat = .soap, phrases: [String] = defaultPhrases, sectionCache: SectionCacheAccess? = nil,
-        configure: (StubModel) -> Void = { _ in }
+        notes: String = "", configure: (StubModel) -> Void = { _ in }
     ) async throws -> Run {
         let stub = StubModel()
         configure(stub)
@@ -90,13 +90,20 @@ final class LongSessionNoteTests: XCTestCase {
         service.budget = ContextBudget(tokens: tokens)
         var coverage: [String] = []
         let stream = LongSessionNote.stream(
-            format: format, transcript: transcript, effort: effort, riskPhrases: phrases, service: service,
+            format: format, transcript: transcript, notes: notes, effort: effort, riskPhrases: phrases, service: service,
             builder: DigestBuilder(queue: InferenceQueue()), sessionID: UUID(),
             loadDigest: { stored }, saveDigest: { _ in }, sectionCache: sectionCache,
             live: { _, _ in }, coverage: { coverage.append($0) })
         var snapshots: [String] = []
         for try await snapshot in stream { snapshots.append(snapshot) }
         return Run(snapshots: snapshots, coverage: coverage, prompts: stub.prompts)
+    }
+
+    func testPsychotherapyNoteTextIsNeverInTheGenerationPrompt() async throws {
+        let whole = try await run(transcript: syntheticTranscript(minutes: 5), notes: "PRIVATE-PROCESS-NOTE")
+        XCTAssertFalse(whole.prompts.contains { $0.contains("PRIVATE-PROCESS-NOTE") })
+        let long = try await run(transcript: syntheticTranscript(minutes: 120), notes: "PRIVATE-PROCESS-NOTE")
+        XCTAssertFalse(long.prompts.contains { $0.contains("PRIVATE-PROCESS-NOTE") })
     }
 
     // MARK: - Paths

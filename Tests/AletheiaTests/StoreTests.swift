@@ -356,14 +356,14 @@ final class StoreTests: XCTestCase {
         let sessionID = UUID()
         let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
         XCTAssertTrue(core.put(PersistedRecord(
-            id: sessionID.uuidString, kind: "note", itemID: sessionID,
+            id: sessionID.uuidString, kind: AnnotationRepository.noteKind, itemID: sessionID,
             payload: Data("not json".utf8), createdAt: Date(), updatedAt: Date())))
         let reporting = Store(root: tempRoot, commentStore: comments)
         XCTAssertTrue(reporting.unreadableEntries.isEmpty)
 
         XCTAssertEqual(comments.note(sessionID: sessionID), "")
         XCTAssertEqual(reporting.unreadableEntries.map(\.kind), [.storedRecord])
-        XCTAssertNotNil(core.record(kind: "note", id: sessionID.uuidString), "the record is left in place")
+        XCTAssertNotNil(core.record(kind: AnnotationRepository.noteKind, id: sessionID.uuidString), "the record is left in place")
     }
 
     func testUndecodableLegacyChatIsReportedAndKept() throws {

@@ -50,7 +50,7 @@ final class CommentStoreTests: XCTestCase {
         XCTAssertEqual(store.note(sessionID: session), "")
 
         let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
-        XCTAssertTrue(core.allRecords(kind: "note").isEmpty, "a read must not upsert an empty note")
+        XCTAssertTrue(core.allRecords(kind: "psychotherapyNote").isEmpty, "a read must not upsert an empty note")
     }
 
     func testReadingAnExistingNoteLeavesItUntouched() throws {
@@ -62,7 +62,7 @@ final class CommentStoreTests: XCTestCase {
         XCTAssertEqual(store.note(sessionID: session), "kept")
 
         let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
-        let record = try XCTUnwrap(core.allRecords(kind: "note").first)
+        let record = try XCTUnwrap(core.allRecords(kind: "psychotherapyNote").first)
         XCTAssertEqual(record.updatedAt, t0, "reading must not bump updatedAt")
     }
 
@@ -123,7 +123,7 @@ final class CommentStoreTests: XCTestCase {
 
         let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
         XCTAssertTrue(core.allRecords(kind: "comment").isEmpty)
-        XCTAssertTrue(core.allRecords(kind: "note").isEmpty)
+        XCTAssertTrue(core.allRecords(kind: "psychotherapyNote").isEmpty)
     }
 
     func testBadEnvelopeIsReportedAndNeverShownAsCiphertext() throws {
@@ -151,11 +151,11 @@ final class CommentStoreTests: XCTestCase {
         let sessionID = UUID()
         XCTAssertTrue(store.saveNote(sessionID: sessionID, text: "private"))
         let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
-        let before = try XCTUnwrap(core.record(kind: "note", id: sessionID.uuidString)?.payload)
+        let before = try XCTUnwrap(core.record(kind: "psychotherapyNote", id: sessionID.uuidString)?.payload)
 
         let invalidKey = SymmetricKey(data: Data([0x01]))
         XCTAssertFalse(store.reencrypt(to: FileProtector(key: invalidKey)))
-        XCTAssertEqual(core.record(kind: "note", id: sessionID.uuidString)?.payload, before)
+        XCTAssertEqual(core.record(kind: "psychotherapyNote", id: sessionID.uuidString)?.payload, before)
     }
 
     /// Flips the last envelope byte of a stored row so it no longer authenticates.
@@ -177,11 +177,11 @@ final class CommentStoreTests: XCTestCase {
         let store = try XCTUnwrap(CommentStore(root: tempRoot, protector: FileProtector(key: SymmetricKey(size: .bits256))))
         let sessionID = UUID()
         XCTAssertTrue(store.saveNote(sessionID: sessionID, text: "original"))
-        let damaged = try damage(kind: "note", id: sessionID.uuidString)
+        let damaged = try damage(kind: "psychotherapyNote", id: sessionID.uuidString)
 
         XCTAssertEqual(store.note(sessionID: sessionID), "")
         XCTAssertFalse(store.saveNote(sessionID: sessionID, text: "replacement"))
-        XCTAssertEqual(try storedPayload(kind: "note", id: sessionID.uuidString), damaged)
+        XCTAssertEqual(try storedPayload(kind: "psychotherapyNote", id: sessionID.uuidString), damaged)
     }
 
     func testUnreadableSessionChatIsNotOverwrittenOrCleared() throws {
@@ -215,12 +215,12 @@ final class CommentStoreTests: XCTestCase {
         let keyed = try XCTUnwrap(CommentStore(root: tempRoot, protector: FileProtector(key: key)))
         let damagedSession = UUID()
         XCTAssertTrue(keyed.saveNote(sessionID: damagedSession, text: "damaged"))
-        let damaged = try damage(kind: "note", id: damagedSession.uuidString)
+        let damaged = try damage(kind: "psychotherapyNote", id: damagedSession.uuidString)
         let readableSession = UUID()
         XCTAssertTrue(keyed.saveNote(sessionID: readableSession, text: "readable"))
 
         XCTAssertFalse(keyed.reencrypt(to: .passthrough))
-        XCTAssertEqual(try storedPayload(kind: "note", id: damagedSession.uuidString), damaged)
+        XCTAssertEqual(try storedPayload(kind: "psychotherapyNote", id: damagedSession.uuidString), damaged)
         let plain = try XCTUnwrap(CommentStore(root: tempRoot))
         XCTAssertEqual(plain.note(sessionID: readableSession), "readable")
     }
@@ -232,6 +232,6 @@ final class CommentStoreTests: XCTestCase {
         let sessionID = UUID()
         XCTAssertFalse(store.saveNote(sessionID: sessionID, text: "private"))
         XCTAssertNil(store.addComment(sessionID: sessionID, quotedText: "private", body: "private"))
-        XCTAssertNil(try storedPayload(kind: "note", id: sessionID.uuidString))
+        XCTAssertNil(try storedPayload(kind: "psychotherapyNote", id: sessionID.uuidString))
     }
 }
