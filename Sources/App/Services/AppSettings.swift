@@ -124,7 +124,11 @@ final class AppSettings: ObservableObject {
 
     private let defaults: UserDefaults
 
-    @Published var dataRootURL: URL?
+    @Published var dataRootURL: URL? {
+        // Re-assert the backup-exclusion policy whenever the folder in use changes
+        // (not run for the assignments made inside `init`).
+        didSet { applyBackupExclusion() }
+    }
     @Published private(set) var dataRootVerdict: DataFolderPolicy.Verdict = .ok
     @Published var whisperModel: WhisperModel {
         didSet { defaults.set(whisperModel.rawValue, forKey: Keys.whisperModel) }
@@ -342,9 +346,8 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(debugDiagnosticsEnabled, forKey: Keys.debugDiagnosticsEnabled) }
     }
     /// Keep the data folder out of Time Machine and iCloud's device backup (via
-    /// `isExcludedFromBackup`). Off by default: the app writes no backup of its
-    /// own unless opted in, so Time Machine is the baseline copy and excluding
-    /// the folder would leave exactly one copy of everything. The key is only
+    /// `isExcludedFromBackup`). On by default (the app keeps its own encrypted
+    /// backup archives). The key is only
     /// written when the user flips the toggle, so an unset key means "use the
     /// default" (`BackupExclusion.resolvedExclusion`). Applied to the folder
     /// whenever this changes, at launch, or when the data root is set.
@@ -442,7 +445,7 @@ final class AppSettings: ObservableObject {
         debugDiagnosticsEnabled = defaults.bool(forKey: Keys.debugDiagnosticsEnabled)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         appLockEnabled = defaults.object(forKey: Keys.appLockEnabled) as? Bool ?? true
-        lockWhenHidden = defaults.object(forKey: Keys.lockWhenHidden) as? Bool ?? false
+        lockWhenHidden = defaults.object(forKey: Keys.lockWhenHidden) as? Bool ?? true
         hideFromScreenSharing = defaults.object(forKey: Keys.hideFromScreenSharing) as? Bool ?? true
         if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,
            IdleAutoLockTimeout.allCases.map(\.rawValue).contains(stored) {
@@ -538,9 +541,8 @@ final class AppSettings: ObservableObject {
     /// so it's kept out of (or allowed back into) Time Machine and iCloud's device
     /// backup. Best-effort — a failure to write the flag never blocks the app.
     ///
-    /// For an install that never chose (key absent) the default applies, so a
-    /// folder excluded under the previous "on by default" policy is cleared back
-    /// into Time Machine; an explicit stored choice is always respected.
+    /// For an install that never chose (key absent) the default applies (excluded);
+    /// an explicit stored choice is always respected.
     private func applyBackupExclusion() {
         guard let root = dataRootURL else { return }
         // Skip the write when the folder already matches the policy.
