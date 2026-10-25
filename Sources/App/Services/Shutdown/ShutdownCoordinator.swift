@@ -34,15 +34,38 @@ struct InterruptedWorkLedger {
         url = dataRoot.appendingPathComponent(Self.fileName)
     }
 
+    /// An unreadable list yields nothing to resume, but is left where it is.
     func load() -> [InterruptedWork] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         return (try? JSONDecoder().decode([InterruptedWork].self, from: data)) ?? []
+    }
+
+    /// Where a list that couldn't be read is kept when the ledger has to be
+    /// rewritten, so the entries in it aren't lost to the overwrite.
+    var unreadableCopyURL: URL {
+        url.deletingLastPathComponent().appendingPathComponent(".interrupted-work.unreadable.json")
+    }
+
+    /// Moves an unreadable list aside before anything replaces or removes it.
+    private func setAsideIfUnreadable() {
+        let fm = FileManager.default
+        guard let data = try? Data(contentsOf: url),
+              (try? JSONDecoder().decode([InterruptedWork].self, from: data)) == nil else { return }
+        var target = unreadableCopyURL
+        if fm.fileExists(atPath: target.path) {
+            target = target.deletingLastPathComponent()
+                .appendingPathComponent(".interrupted-work.unreadable-\(UUID().uuidString).json")
+        }
+        do { try fm.moveItem(at: url, to: target) } catch {
+            log.error("Couldn't set aside the unreadable interrupted-work list: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Adds `items` to what is already listed (an earlier launch may not have
     /// been able to resume everything yet), without duplicates.
     func record(_ items: [InterruptedWork]) {
         guard !items.isEmpty else { return }
+        setAsideIfUnreadable()
         var merged = load()
         for item in items where !merged.contains(item) { merged.append(item) }
         save(merged)
@@ -50,6 +73,7 @@ struct InterruptedWorkLedger {
 
     /// Replaces the list; an empty list removes the file.
     func save(_ items: [InterruptedWork]) {
+        setAsideIfUnreadable()
         guard !items.isEmpty else {
             try? FileManager.default.removeItem(at: url)
             return

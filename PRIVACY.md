@@ -69,12 +69,13 @@ files that open without the App. The copy is not encrypted by the App, and the
 App warns when the destination is on an unencrypted disk or a synced folder.
 Keep it on an encrypted disk. The export is written only to the folder you pick.
 
-Settings > Backups > Back Up Now writes an encrypted copy of the database (not
-recordings or other files) to a folder you choose. It needs encryption to be on and
+Settings > Backups > Back Up Now writes an encrypted copy of your whole data
+folder (database, notes, transcripts and recordings) to a folder you choose. It needs encryption to be on and
 unlocked, refuses synced folders (iCloud Drive, Dropbox and similar), network
 locations and unencrypted removable disks, and never uploads the copy. Each
-successful run is recorded once in the audit log. There is no restore screen in
-the App yet. The App does not upload backups of its own. App
+successful run is recorded once in the audit log. Restore from backup (Settings >
+Backups) restores a backup into a new, empty folder (never over existing data) and
+opens it; it needs your passphrase and the key file kept beside the backup. The App does not upload backups of its own. App
 settings, downloaded models, and an optional remembered encryption key are
 stored separately in the app container or login Keychain; the audit log's
 signing key is in the login Keychain. Your data is not sent to the developer or a

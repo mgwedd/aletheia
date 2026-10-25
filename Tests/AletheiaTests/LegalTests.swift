@@ -91,6 +91,11 @@ final class LegalTests: XCTestCase {
         }
         XCTAssertFalse(try doc("SECURITY.md").contains("not connected to the app"))
         XCTAssertFalse(try doc("docs/HIPAA-SAFEGUARDS.md").contains("not connected to the user interface"))
+        for path in ["PRIVACY.md", "SECURITY.md", "docs/HIPAA-SAFEGUARDS.md"] {
+            let text = try doc(path)
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("Restore from backup"), path)
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("no restore screen"), path)
+        }
     }
 
     /// Support questions go to a private address, never a public issue tracker,
