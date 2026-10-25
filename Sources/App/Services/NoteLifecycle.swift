@@ -68,6 +68,27 @@ enum NoteLifecycle {
         state == .generated || state == .edited
     }
 
+    /// Whether the note may leave the app (export, copy). An unsigned AI note
+    /// may not; a signed one may. An altered one may not, since it's no longer
+    /// what was signed.
+    static func allowsLeaving(_ status: Status, aiGenerated: Bool) -> Bool {
+        if case .signed = status { return true }
+        return !aiGenerated && status.isDraft
+    }
+
+    /// Put above an unsigned AI note when it goes out inside a larger export
+    /// (a session or a whole record), where the note can't simply be blocked.
+    static let exportDraftStamp = "DRAFT - not clinician-verified"
+
+    /// `text` with the draft stamp above it unless the note is signed.
+    static func stamped(_ text: String, status: Status?) -> String {
+        if case .signed = status { return text }
+        return exportDraftStamp + "\n\n" + text
+    }
+
+    static let reviewToExport = "Review and sign to export"
+    static let reviewToCopy = "Review and sign to copy"
+    static let draftBadge = "Draft — needs clinician review"
     static let signButton = "Sign note…"
 
     static func signedLine(_ record: SignedNote) -> String {

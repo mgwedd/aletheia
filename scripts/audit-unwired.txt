@@ -7,6 +7,5 @@ aiInference
 phiCopied
 backupRestored
 recordingConsentAttested
-aiNoteVerified
 retentionWarningOverridden
 part2FlagChanged

@@ -1198,8 +1198,9 @@ final class Store {
     }
 
     /// Signs the saved `format` note: stores the signature record (hash, signer,
-    /// time) and records `.noteSigned` in the activity log. The note must be a
-    /// readable draft with text; signing twice is refused.
+    /// time) and records `.noteSigned` in the activity log, plus `.aiNoteVerified`
+    /// when the note started as AI output. The note must be a readable draft with
+    /// text; signing twice is refused.
     @discardableResult
     func signNote(
         for patient: Patient, session: SessionRecord, format: ProgressNoteFormat,
@@ -1216,6 +1217,9 @@ final class Store {
         encoder.dateEncodingStrategy = .iso8601
         try protector.write(try encoder.encode(record), to: signatureURL(patient: patient, session: session, format: format))
         onAudit?(.noteSigned, session.id.uuidString, "Progress note \(format.shortName)")
+        if record.aiGenerated {
+            onAudit?(.aiNoteVerified, session.id.uuidString, "Progress note \(format.shortName)")
+        }
         return record
     }
 
@@ -1637,13 +1641,28 @@ final class Store {
     }
 
     func exportSessionMarkdown(patient: Patient, session: SessionRecord) -> String {
-        let summary = summary(for: patient, session: session)
+        var summary = summary(for: patient, session: session)
+        if let text = summary, !NoteEditing.normalized(text).isEmpty {
+            summary = NoteLifecycle.stamped(text, status: signedStatus(ofText: text, patient: patient, session: session))
+        }
         return MarkdownExporter.session(
             date: session.date,
             patientName: patient.name,
             transcript: transcript(for: patient, session: session),
             summary: summary
         )
+    }
+
+    /// The signed status of the note in whichever format holds exactly `text`
+    /// (the session summary mirrors the latest note); nil when none is signed.
+    func signedStatus(ofText text: String, patient: Patient, session: SessionRecord) -> NoteLifecycle.Status? {
+        for format in ProgressNoteFormat.allCases {
+            guard note(for: patient, session: session, format: format) == text,
+                  let status = try? noteLifecycle(for: patient, session: session, format: format),
+                  case .signed = status else { continue }
+            return status
+        }
+        return nil
     }
 
     // MARK: - Cross-session context (the RAG swap-point)

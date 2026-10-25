@@ -182,11 +182,13 @@ struct SessionDetailView: View {
     /// Where the displayed format's note stands: draft, signed or altered.
     @State private var noteStatus: NoteLifecycle.Status = .draft
     /// Whether the displayed note started as AI output.
+    @State private var noteIsAI = false
     /// Whether any format's note in this session is signed (the transcript is then read-only).
     @State private var sessionHasSigned = false
     @State private var confirmingSign = false
     @State private var confirmingReopen = false
     /// Why a note was not exported or copied; shown until dismissed.
+    @State private var reviewBlock: String?
     @State private var editingInstructions = false
     /// The note text as last read from / written to the store. `load()` assigns
     /// `sessionNote` programmatically, which fires `onChange`; comparing against
@@ -380,6 +382,11 @@ struct SessionDetailView: View {
         }, discard: {
             engineRetries.clear()
         })
+        .alert("Not signed yet", isPresented: Binding(get: { reviewBlock != nil }, set: { if !$0 { reviewBlock = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(reviewBlock ?? "")
+        }
         .confirmationDialog(NoteLifecycle.signTitle, isPresented: $confirmingSign, titleVisibility: .visible) {
             Button("Sign note") { signNote() }
             Button("Cancel", role: .cancel) {}
@@ -712,6 +719,7 @@ struct SessionDetailView: View {
 
     /// Saves the note on screen in `format`, after the usual save panel.
     private func exportNote(as format: ExportFormat) {
+        guard noteMayLeave(message: NoteLifecycle.reviewToExport) else { return }
         ExportConfirmation(
             patientName: patient.name, noun: "note", count: 1, fileType: format.title, scope: .singleNote
         ) { saveNote(as: format) }
@@ -1277,6 +1285,7 @@ struct SessionDetailView: View {
                             .help("Confirm you have reviewed this note. A signed note is read-only.")
                         }
                         Button {
+                            guard noteMayLeave(message: NoteLifecycle.reviewToCopy) else { return }
                             RichClipboard.write(RichClipboard.payload(markdown: summaryText))
                             noteCopied = true
                             Task {
@@ -1472,7 +1481,7 @@ struct SessionDetailView: View {
         HStack(spacing: 8) {
             switch noteStatus {
             case .draft:
-                EmptyView()
+                if noteIsAI { Chip(NoteLifecycle.draftBadge, tone: .warn) }
             case .signed(let record):
                 Chip("Signed", tone: .ok)
                 Text(NoteLifecycle.signedLine(record))
@@ -1489,6 +1498,13 @@ struct SessionDetailView: View {
         .padding(.horizontal, 20)
     }
 
+    /// Whether the displayed note may be exported or copied; if not, says why.
+    private func noteMayLeave(message: String) -> Bool {
+        if NoteLifecycle.allowsLeaving(noteStatus, aiGenerated: noteIsAI) { return true }
+        reviewBlock = message
+        return false
+    }
+
     private func refreshNoteStatus() {
         guard let store = appModel.store else { return }
         let format = settings.progressNoteFormat
@@ -1499,6 +1515,7 @@ struct SessionDetailView: View {
             // A signature that can't be read keeps the note locked.
             noteStatus = .altered(SignedNote(signedAt: .distantPast, signer: "unknown", sha256: "", aiGenerated: true))
         }
+        noteIsAI = NoteLifecycle.isAIGenerated(store.noteEditState(for: patient, session: session, format: format))
     }
 
     private func signNote() {
