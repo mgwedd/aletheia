@@ -208,6 +208,6 @@ final class SignedNoteTests: XCTestCase {
         XCTAssertTrue(source.contains("NoteLifecycle.signButton"))
         XCTAssertTrue(source.contains("confirmationDialog(NoteLifecycle.signTitle"))
         XCTAssertTrue(source.contains("Chip(\"Signed\", tone: .ok)"))
-        XCTAssertTrue(source.contains("isEditable: transcriptReadError == nil && !sessionHasSigned"))
+        XCTAssertTrue(source.contains("isEditable: transcriptReadError == nil && !note.sessionHasSigned"))
     }
 }

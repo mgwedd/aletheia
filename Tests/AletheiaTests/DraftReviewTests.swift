@@ -128,8 +128,9 @@ final class DraftReviewTests: XCTestCase {
 
     func testTheViewGatesExportAndCopyAndShowsTheBadgeFromTheTheme() throws {
         let view = try source("Sources/App/Views/SessionDetailView.swift")
-        XCTAssertTrue(view.contains("noteMayLeave(message: NoteLifecycle.reviewToExport)"))
-        XCTAssertTrue(view.contains("noteMayLeave(message: NoteLifecycle.reviewToCopy)"))
+        let model = try source("Sources/App/Services/SessionAI/SessionNoteModel.swift")
+        XCTAssertTrue(view.contains("note.mayLeave(message: NoteLifecycle.reviewToExport)"))
+        XCTAssertTrue(model.contains("mayLeave(message: NoteLifecycle.reviewToCopy)"))
         XCTAssertTrue(view.contains("Chip(NoteLifecycle.draftBadge, tone: .warn)"))
         XCTAssertFalse(view.contains("Color.orange"))
     }
