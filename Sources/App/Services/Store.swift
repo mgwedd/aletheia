@@ -24,9 +24,14 @@ enum StoreError: LocalizedError {
     case recordingNotDeleted
     /// A patient name that is empty once whitespace is trimmed.
     case blankPatientName
+    /// The note (or the transcript it was written from) is signed, so it can't be
+    /// replaced. Reopen the note as a new draft first.
+    case noteSigned
 
     var errorDescription: String? {
         switch self {
+        case .noteSigned:
+            return "This note is signed and can't be changed. Reopen it as a new draft to edit it."
         case .noDataRoot: return "No data folder has been chosen yet. Open Settings to pick one."
         case .patientNotFound: return "That patient couldn't be found on disk."
         case .patientFolderMigrationIncomplete: return "The patient folder upgrade must finish before records can be changed. Reopen Aletheia after resolving the folder issue."
@@ -666,6 +671,7 @@ final class Store {
     }
 
     func saveTranscript(_ text: String, for patient: Patient, session: SessionRecord) throws {
+        if hasSignedNote(for: patient, session: session) { throw StoreError.noteSigned }
         let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
         try protector.write(text, to: url)
         // Index in the background; the save itself never waits on it.
@@ -682,6 +688,39 @@ final class Store {
                 index.progress.endWrite(session: key)
             }
         }
+    }
+
+    // MARK: - Raw transcript
+
+    /// Saves what the transcriber produced, then makes it the working transcript.
+    /// The raw text goes to `transcript.raw.txt` the first time and to
+    /// `transcript.raw.<n>.txt` after that, so the original is never overwritten
+    /// by a later transcription or by the clinician's edits. Refused (before
+    /// anything is written) once a note is signed.
+    func saveTranscribedText(_ text: String, for patient: Patient, session: SessionRecord) throws {
+        if hasSignedNote(for: patient, session: session) { throw StoreError.noteSigned }
+        let dir = sessionDir(for: patient, session: session)
+        let existing = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        try protector.write(text, to: dir.appendingPathComponent(NoteLifecycle.nextRawTranscriptName(existing: existing)))
+        try saveTranscript(text, for: patient, session: session)
+    }
+
+    /// The raw transcript files kept for a session, oldest first (the original
+    /// first), as `(file name, text)`.
+    func rawTranscripts(for patient: Patient, session: SessionRecord) -> [(name: String, text: String)] {
+        let dir = sessionDir(for: patient, session: session)
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+            .filter(NoteLifecycle.isRawTranscriptName)
+            .sorted { Store.rawIndex($0) < Store.rawIndex($1) }
+        return names.compactMap { name in
+            guard let text = (try? protector.stringIfPresent(at: dir.appendingPathComponent(name))) ?? nil else { return nil }
+            return (name, text)
+        }
+    }
+
+    private static func rawIndex(_ name: String) -> Int {
+        let middle = name.dropFirst("transcript.raw.".count).dropLast(".txt".count)
+        return Int(middle) ?? 1
     }
 
     // MARK: - Search index
@@ -930,6 +969,16 @@ final class Store {
         return NoteSidecar(rawValue: String(stem[stem.index(after: dot)...])) != nil
     }
 
+    /// The signature record beside a signed note (`note.<format>.signed.json`).
+    static func noteSignatureFileName(for format: ProgressNoteFormat) -> String {
+        "note.\(format.rawValue).signed.json"
+    }
+
+    /// Whether `name` is a note signature record. Matched by shape, like `isNoteFileName`.
+    static func isNoteSignatureFileName(_ name: String) -> Bool {
+        name.hasPrefix("note.") && name.hasSuffix(".signed.json") && name.count > "note..signed.json".count
+    }
+
     /// The sidecar recording which transcript a generated note came from
     /// (`note.<format>.meta.json`). See `NoteFreshness`.
     static func noteMetaFileName(for format: ProgressNoteFormat) -> String {
@@ -973,6 +1022,7 @@ final class Store {
         generatedFromTranscript transcript: String? = nil
     ) throws {
         let dir = sessionDir(for: patient, session: session)
+        try requireDraft(for: patient, session: session, format: format)
         try protector.write(text, to: dir.appendingPathComponent(Store.noteFileName(for: format)))
         try saveSummary(text, for: patient, session: session)
         if let transcript {
@@ -1088,6 +1138,7 @@ final class Store {
         coverage: String? = nil
     ) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
+        try requireDraft(for: patient, session: session, format: format)
         let state = noteEditState(for: patient, session: session, format: format)
         if state == .unreadable { throw StoreError.noteUnreadable }
         if NoteEditing.shouldArchiveBeforeReplacing(state),
@@ -1103,6 +1154,84 @@ final class Store {
         } else {
             try? FileManager.default.removeItem(at: coverageURL)
         }
+    }
+
+    // MARK: - Signing
+
+    private func signatureURL(patient: Patient, session: SessionRecord, format: ProgressNoteFormat) -> URL {
+        sessionDir(for: patient, session: session).appendingPathComponent(Store.noteSignatureFileName(for: format))
+    }
+
+    /// The stored signature for `format`, nil when the note was never signed.
+    /// A record that exists but can't be read or decoded throws, so nothing is
+    /// ever saved over a note that might be signed.
+    func signatureRecord(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) throws -> SignedNote? {
+        let url = signatureURL(patient: patient, session: session, format: format)
+        let data: Data?
+        do { data = try protector.dataIfPresent(at: url) } catch { throw StoreError.noteUnreadable }
+        guard let data else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let record = try? decoder.decode(SignedNote.self, from: data) else { throw StoreError.noteUnreadable }
+        return record
+    }
+
+    /// Draft, signed, or altered. Read-only. Older sessions have no record and
+    /// read as drafts.
+    func noteLifecycle(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) throws -> NoteLifecycle.Status {
+        guard let record = try signatureRecord(for: patient, session: session, format: format) else { return .draft }
+        let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
+        let current: String?
+        do { current = try protector.stringIfPresent(at: url) } catch { throw StoreError.noteUnreadable }
+        return NoteLifecycle.status(record: record, currentText: current)
+    }
+
+    private func requireDraft(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) throws {
+        if try signatureRecord(for: patient, session: session, format: format) != nil { throw StoreError.noteSigned }
+    }
+
+    /// Whether any format's note in this session is signed.
+    func hasSignedNote(for patient: Patient, session: SessionRecord) -> Bool {
+        let dir = sessionDir(for: patient, session: session)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        return names.contains(where: Store.isNoteSignatureFileName)
+    }
+
+    /// Signs the saved `format` note: stores the signature record (hash, signer,
+    /// time) and records `.noteSigned` in the activity log. The note must be a
+    /// readable draft with text; signing twice is refused.
+    @discardableResult
+    func signNote(
+        for patient: Patient, session: SessionRecord, format: ProgressNoteFormat,
+        signer: String = AuditLog.currentActor, at date: Date = Date()
+    ) throws -> SignedNote {
+        try requireDraft(for: patient, session: session, format: format)
+        let state = noteEditState(for: patient, session: session, format: format)
+        if state == .unreadable { throw StoreError.noteUnreadable }
+        guard let text = note(for: patient, session: session, format: format),
+              !NoteEditing.normalized(text).isEmpty else { throw StoreError.noteUnreadable }
+        let record = NoteLifecycle.sign(
+            text: text, signer: signer, at: date, aiGenerated: NoteLifecycle.isAIGenerated(state))
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try protector.write(try encoder.encode(record), to: signatureURL(patient: patient, session: session, format: format))
+        onAudit?(.noteSigned, session.id.uuidString, "Progress note \(format.shortName)")
+        return record
+    }
+
+    /// Makes a signed note a draft again, on the clinician's explicit request.
+    /// The note text at that moment is kept as the previous version first, then
+    /// the signature record is removed, and the activity log records it.
+    func reopenSignedNote(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) throws {
+        guard try signatureRecord(for: patient, session: session, format: format) != nil else { return }
+        let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
+        let current: String?
+        do { current = try protector.stringIfPresent(at: url) } catch { throw StoreError.noteUnreadable }
+        if let current {
+            try protector.write(current, to: noteSidecarURL(.previous, patient: patient, session: session, format: format))
+        }
+        try FileManager.default.removeItem(at: signatureURL(patient: patient, session: session, format: format))
+        onAudit?(.phiAmended, session.id.uuidString, "Signed progress note \(format.shortName) reopened as a draft")
     }
 
     /// What the saved `format` note was written from, if it was not the whole transcript.
@@ -1122,6 +1251,7 @@ final class Store {
     /// version.
     @discardableResult
     func restorePreviousNote(for patient: Patient, session: SessionRecord, format: ProgressNoteFormat) throws -> String? {
+        try requireDraft(for: patient, session: session, format: format)
         guard let previous = previousNote(for: patient, session: session, format: format),
               !NoteEditing.normalized(previous).isEmpty else { return nil }
         let url = sessionDir(for: patient, session: session).appendingPathComponent(Store.noteFileName(for: format))
@@ -1507,11 +1637,12 @@ final class Store {
     }
 
     func exportSessionMarkdown(patient: Patient, session: SessionRecord) -> String {
-        MarkdownExporter.session(
+        let summary = summary(for: patient, session: session)
+        return MarkdownExporter.session(
             date: session.date,
             patientName: patient.name,
             transcript: transcript(for: patient, session: session),
-            summary: summary(for: patient, session: session)
+            summary: summary
         )
     }
 

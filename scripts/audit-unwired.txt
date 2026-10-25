@@ -2,13 +2,11 @@
 # Remove a line when its call site lands; the guard fails on a stale entry.
 phiViewed
 phiCreated
-phiAmended
 phiDeleted
 aiInference
 phiCopied
 backupRestored
 recordingConsentAttested
-noteSigned
 aiNoteVerified
 retentionWarningOverridden
 part2FlagChanged

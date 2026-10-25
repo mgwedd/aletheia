@@ -233,7 +233,7 @@ final class TranscriptionCoordinator: ObservableObject {
                     encryptionEnabled: appModel.isEncryptionEnabled
                 ))
             }
-            try store.saveTranscript(text, for: patient, session: session)
+            try store.saveTranscribedText(text, for: patient, session: session)
             integrations.digestScheduler.transcriptSaved(patient: patient, session: session)
             // Transcript-only by default: discard the raw audio now that the
             // transcript (the document of record) is saved. Audio is kept only

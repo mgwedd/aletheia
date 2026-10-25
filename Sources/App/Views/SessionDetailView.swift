@@ -179,6 +179,14 @@ struct SessionDetailView: View {
     @State private var confirmRegenerate = false
     @State private var hasPreviousNote = false
     @State private var noteCopied = false
+    /// Where the displayed format's note stands: draft, signed or altered.
+    @State private var noteStatus: NoteLifecycle.Status = .draft
+    /// Whether the displayed note started as AI output.
+    /// Whether any format's note in this session is signed (the transcript is then read-only).
+    @State private var sessionHasSigned = false
+    @State private var confirmingSign = false
+    @State private var confirmingReopen = false
+    /// Why a note was not exported or copied; shown until dismissed.
     @State private var editingInstructions = false
     /// The note text as last read from / written to the store. `load()` assigns
     /// `sessionNote` programmatically, which fires `onChange`; comparing against
@@ -372,6 +380,18 @@ struct SessionDetailView: View {
         }, discard: {
             engineRetries.clear()
         })
+        .confirmationDialog(NoteLifecycle.signTitle, isPresented: $confirmingSign, titleVisibility: .visible) {
+            Button("Sign note") { signNote() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(NoteLifecycle.signMessage)
+        }
+        .confirmationDialog(NoteLifecycle.reopenTitle, isPresented: $confirmingReopen, titleVisibility: .visible) {
+            Button("Reopen as draft") { reopenNote() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(NoteLifecycle.reopenMessage)
+        }
         .alert("Done", isPresented: Binding(get: { confirmationMessage != nil }, set: { if !$0 { confirmationMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -785,6 +805,12 @@ struct SessionDetailView: View {
                         .foregroundStyle(Theme.text.color)
                         .padding([.horizontal, .top], 20)
                 }
+                if sessionHasSigned {
+                    Label("A note for this session is signed, so the transcript is read-only. Reopen the note as a draft to change it.", systemImage: "lock")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
+                        .padding([.horizontal, .top], 20)
+                }
                 if TranscriptEditBar.showsEditControls(isDirty: transcriptIsDirty) {
                     HStack(spacing: 10) {
                         Spacer(minLength: 12)
@@ -819,7 +845,7 @@ struct SessionDetailView: View {
                 ) {
                     TranscriptTextView(
                         text: $transcriptDraft,
-                        isEditable: transcriptReadError == nil,
+                        isEditable: transcriptReadError == nil && !sessionHasSigned,
                         comments: activeAnchors,
                         selection: $transcriptSelection,
                         selectionRange: $transcriptSelectionRange,
@@ -1103,7 +1129,7 @@ struct SessionDetailView: View {
     /// and the error is shown; nothing is lost. Returns whether it was saved.
     @discardableResult
     private func saveTranscriptDraft() -> Bool {
-        guard transcriptReadError == nil else { return false }
+        guard transcriptReadError == nil, !sessionHasSigned else { return false }
         guard let store = appModel.store else { return false }
         let text = transcriptDraft
         do {
@@ -1209,7 +1235,7 @@ struct SessionDetailView: View {
                         Button(role: .cancel) { noteStopping = true; noteRunner.stop() } label: {
                             Label("Cancel", systemImage: "xmark")
                         }
-                    } else if !summaryText.isEmpty {
+                    } else if !summaryText.isEmpty && !noteLocked {
                         // With no note yet, the empty-state card below holds the
                         // Generate button (and ⌘G).
                         Button {
@@ -1220,17 +1246,22 @@ struct SessionDetailView: View {
                         .disabled(transcriptText.isEmpty || isEditingNote)
                         .shortcut(AppHotkey.generateNote, help: "Regenerate the note")
                     }
-                    if !noteRunner.isStreaming && !noteRunner.isQueued && !isEditingNote {
+                    if !noteRunner.isStreaming && !noteRunner.isQueued && !isEditingNote && !noteLocked {
                         noteLengthMenu
                     }
                     if !summaryText.isEmpty && !noteRunner.isStreaming {
-                        if hasPreviousNote && !isEditingNote && !noteRunner.isQueued {
+                        if hasPreviousNote && !isEditingNote && !noteRunner.isQueued && !noteLocked {
                             Button { restorePreviousNote() } label: {
                                 Label("Restore Previous", systemImage: "arrow.uturn.backward")
                             }
                             .help("Swap back to the version you edited before the last regenerate")
                         }
-                        if !isEditingNote {
+                        if noteLocked {
+                            Button { confirmingReopen = true } label: {
+                                Label("Reopen as draft…", systemImage: "lock.open")
+                            }
+                            .help("Make this signed note editable again. This is recorded in the activity log.")
+                        } else if !isEditingNote {
                             Button {
                                 noteDraft = summaryText
                                 isEditingNote = true
@@ -1239,6 +1270,11 @@ struct SessionDetailView: View {
                             }
                             .disabled(noteRunner.isQueued)
                             .help("Edit this note before it goes in the record")
+                            Button { confirmingSign = true } label: {
+                                Label(NoteLifecycle.signButton, systemImage: "signature")
+                            }
+                            .disabled(noteRunner.isQueued)
+                            .help("Confirm you have reviewed this note. A signed note is read-only.")
                         }
                         Button {
                             RichClipboard.write(RichClipboard.payload(markdown: summaryText))
@@ -1269,6 +1305,10 @@ struct SessionDetailView: View {
             }
             .buttonStyle(.themed)
             .padding(.horizontal, 20)
+
+            if !summaryText.isEmpty && !noteRunner.isStreaming && !isEditingNote {
+                noteStatusRow
+            }
 
             if noteIsOutdated {
                 OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: generateNote)
@@ -1425,6 +1465,65 @@ struct SessionDetailView: View {
         .padding(.top, 8)
     }
 
+    private var noteLocked: Bool { !noteStatus.isDraft }
+
+    /// The draft badge, or who signed the note and when.
+    private var noteStatusRow: some View {
+        HStack(spacing: 8) {
+            switch noteStatus {
+            case .draft:
+                EmptyView()
+            case .signed(let record):
+                Chip("Signed", tone: .ok)
+                Text(NoteLifecycle.signedLine(record))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+            case .altered:
+                Chip("Altered after signing", tone: .warn)
+                Text(NoteLifecycle.alteredNotice)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private func refreshNoteStatus() {
+        guard let store = appModel.store else { return }
+        let format = settings.progressNoteFormat
+        sessionHasSigned = store.hasSignedNote(for: patient, session: session)
+        do {
+            noteStatus = try store.noteLifecycle(for: patient, session: session, format: format)
+        } catch {
+            // A signature that can't be read keeps the note locked.
+            noteStatus = .altered(SignedNote(signedAt: .distantPast, signer: "unknown", sha256: "", aiGenerated: true))
+        }
+    }
+
+    private func signNote() {
+        guard let store = appModel.store else { return }
+        do {
+            try store.signNote(for: patient, session: session, format: settings.progressNoteFormat)
+            refreshNoteStatus()
+            onSessionUpdated()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func reopenNote() {
+        guard let store = appModel.store else { return }
+        do {
+            try store.reopenSignedNote(for: patient, session: session, format: settings.progressNoteFormat)
+            refreshNoteStatus()
+            refreshHasPreviousNote()
+            onSessionUpdated()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func saveEditedNote() {
         guard let store = appModel.store else { return }
         guard NoteEditing.canSave(draft: noteDraft, original: summaryText) else { return }
@@ -1442,7 +1541,7 @@ struct SessionDetailView: View {
     /// untouched generated note is replaced straight away. (The Store keeps the
     /// edited text as the previous version either way.)
     private func requestGenerateNote() {
-        guard let store = appModel.store else { return }
+        guard let store = appModel.store, !noteLocked else { return }
         let state = store.noteEditState(for: patient, session: session, format: settings.progressNoteFormat)
         if state == .unreadable {
             errorMessage = StoreError.noteUnreadable.localizedDescription
@@ -1472,6 +1571,7 @@ struct SessionDetailView: View {
     private func refreshHasPreviousNote() {
         guard let store = appModel.store else { hasPreviousNote = false; return }
         hasPreviousNote = store.previousNote(for: patient, session: session, format: settings.progressNoteFormat) != nil
+        refreshNoteStatus()
     }
 
     private var sessionChatNotices: [String] {
@@ -1628,7 +1728,10 @@ struct SessionDetailView: View {
     }
 
     private var transcribeBlocker: String? {
-        SessionActionPolicy.transcribeBlocker(
+        if sessionHasSigned {
+            return "A note for this session is signed. Reopen it as a draft before transcribing again."
+        }
+        return SessionActionPolicy.transcribeBlocker(
             isRecordingThisSession: isRecordingThisSession,
             isRecordingElsewhere: recorder.isBusy && !isRecordingThisSession,
             isTranscribing: isTranscribing,
