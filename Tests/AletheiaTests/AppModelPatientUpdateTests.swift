@@ -154,7 +154,7 @@ final class AppModelPatientUpdateTests: XCTestCase {
         XCTAssertFalse(appModel.patients.contains(where: { $0.id == created.id }))
 
         let auditEntries = appModel.audit?.entries() ?? []
-        let deleteEvent = auditEntries.first { $0.action == .recordDeleted }
+        let deleteEvent = auditEntries.first { $0.action == .phiDeleted }
         XCTAssertNotNil(deleteEvent)
         XCTAssertEqual(deleteEvent?.subjectID, created.id.uuidString)
         XCTAssertEqual(deleteEvent?.detail, "patient")

@@ -588,7 +588,6 @@ final class AppModel: ObservableObject {
     func deletePatient(_ patient: Patient) throws {
         guard let store else { throw StoreError.noDataRoot }
         try store.deletePatient(patient)
-        recordAudit(.recordDeleted, subjectID: patient.id.uuidString, detail: "patient")
         refreshPatients()
         reindexSpotlight()
     }

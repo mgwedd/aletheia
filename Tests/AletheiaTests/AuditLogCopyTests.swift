@@ -12,7 +12,7 @@ final class AuditLogCopyTests: XCTestCase {
     /// Every action passed to `record(` / `recordAudit(` anywhere in the app.
     private func actionsRecordedInSource() throws -> Set<String> {
         let files = try XCTUnwrap(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
-        let regex = try NSRegularExpression(pattern: #"(?:recordAudit|\.record)\(\s*\.(\w+)"#)
+        let regex = try NSRegularExpression(pattern: #"(?:recordAudit|\.record|onAudit\?)\(\s*\.(\w+)"#)
         var found = Set<String>()
         for case let url as URL in files where url.pathExtension == "swift" {
             let text = try String(contentsOf: url, encoding: .utf8)
