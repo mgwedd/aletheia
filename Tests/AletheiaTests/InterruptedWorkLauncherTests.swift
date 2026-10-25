@@ -88,6 +88,15 @@ final class InterruptedWorkLauncherTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 50_000_000)
     }
 
+    /// Where a staged recording ended up, for a failure message.
+    private func whereIs(_ recording: SessionRecord) -> String {
+        let fm = FileManager.default
+        let staged = stagingRoot.appendingPathComponent(recording.id.uuidString).path
+        let setAside = OrphanAudioSweep.quarantineDirectory(stagingRoot: stagingRoot)
+            .appendingPathComponent(recording.id.uuidString).path
+        return "sweep done: \(launcher.hasRunSweep), staged: \(fm.fileExists(atPath: staged)), set aside: \(fm.fileExists(atPath: setAside))"
+    }
+
     private func session(withRecording: Bool = true) throws -> (Patient, SessionRecord) {
         let store = try XCTUnwrap(appModel.store)
         let patient = try store.createPatient(name: "Test Patient")
@@ -137,9 +146,7 @@ final class InterruptedWorkLauncherTests: XCTestCase {
         await settle { FileManager.default.fileExists(atPath: mic.path) }
         await settle { !self.transcribed.isEmpty }
 
-        let setAside = OrphanAudioSweep.quarantineDirectory(stagingRoot: stagingRoot).path
-        XCTAssertTrue(FileManager.default.fileExists(atPath: mic.path),
-                      "the recording is back in its session (set aside: \(FileManager.default.fileExists(atPath: setAside)))")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mic.path), "the recording is back in its session (\(whereIs(recording)))")
         XCTAssertFalse(FileManager.default.fileExists(atPath: staged.path), "and no longer staged")
         XCTAssertEqual(transcribed, [recording.folderName])
     }
@@ -152,7 +159,8 @@ final class InterruptedWorkLauncherTests: XCTestCase {
         start(transcribesAfterRecording: false)
         await settle { FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: recording).path) }
 
-        XCTAssertTrue(FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: recording).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: recording).path),
+                      whereIs(recording))
         XCTAssertEqual(transcribed, [])
     }
 
@@ -218,7 +226,7 @@ final class InterruptedWorkLauncherTests: XCTestCase {
         await settle { FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: recording).path) }
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: recording).path),
-                      "the sweep still recovers the audio")
+                      "the sweep still recovers the audio (\(whereIs(recording)))")
         XCTAssertEqual(transcribed, [recording.folderName], "and its transcription is listed afresh")
         XCTAssertEqual(try Data(contentsOf: ledger.unreadableCopyURL), damaged, "the damaged list is kept")
     }

@@ -170,12 +170,12 @@ final class AppSettings: ObservableObject {
     }
     /// Receives the note for each change to a security-relevant setting; set by
     /// the composition root to write it to the activity log.
-    var onAuditedChange: ((String) -> Void)?
+    var onAuditedChange: ((AuditDetail) -> Void)?
 
     /// The one route a security-relevant setting's `didSet` takes to the log.
     func audited<Value: Equatable>(_ setting: AuditedSetting<Value>, from old: Value, to new: Value) {
         guard old != new else { return }
-        onAuditedChange?(setting.detail(for: new))
+        onAuditedChange?(.setting(setting, new))
     }
 
     /// Require Touch ID / the login password to open the app (see `AppLock`).
@@ -311,10 +311,14 @@ final class AppSettings: ObservableObject {
     /// the default removes the override.
     func setNoteInstructions(_ text: String, for format: ProgressNoteFormat) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let previous = noteInstructions[format.rawValue]
         if trimmed.isEmpty || trimmed == Prompts.defaultInstructions(for: format) {
             noteInstructions[format.rawValue] = nil
         } else {
             noteInstructions[format.rawValue] = trimmed
+        }
+        if noteInstructions[format.rawValue] != previous {
+            onAuditedChange?(.noteInstructions(format, customized: noteInstructions[format.rawValue] != nil))
         }
     }
     /// Set once "Back up now" has written an end-to-end-encrypted archive. Shown
@@ -406,7 +410,16 @@ final class AppSettings: ObservableObject {
         for key in retiredKeys { defaults.removeObject(forKey: key) }
     }
 
-    private convenience init() { self.init(defaults: .standard) }
+    private convenience init() {
+        #if DEBUG
+        if FixtureMode.isActive {
+            self.init(defaults: FixtureMode.defaults)
+            FixtureMode.prepare(self)
+            return
+        }
+        #endif
+        self.init(defaults: .standard)
+    }
 
     /// Test seam: the shared instance uses `UserDefaults.standard`.
     init(defaults: UserDefaults) {

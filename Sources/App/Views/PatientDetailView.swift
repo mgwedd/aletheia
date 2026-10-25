@@ -35,7 +35,6 @@ struct PatientDetailView: View {
     /// Save / Discard / Cancel prompt is up.
     @State private var pendingSelection: SessionSelection?
     @State private var showUnsavedPrompt = false
-    @State private var confirmingPsychotherapyExport = false
     @State private var sessionInitialTab: SessionTab = .transcript
     @State private var sessionInitialNoteFormat: ProgressNoteFormat?
     @State private var sessionInitialShowingMyNotes = false
@@ -161,6 +160,7 @@ struct PatientDetailView: View {
         }
         .navigationTitle(storedPatient.name)
         .onAppear {
+            appModel.access.viewedPatient(patient.id)
             refresh()
             openPendingSession()
             integrations.digestScheduler.patientOpened(patient)
@@ -175,14 +175,6 @@ struct PatientDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
-        }
-        .confirmationDialog(
-            PsychotherapyExport.confirmationTitle, isPresented: $confirmingPsychotherapyExport, titleVisibility: .visible
-        ) {
-            Button(PsychotherapyExport.confirmButton) { exportPsychotherapyNotes() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(PsychotherapyExport.confirmationMessage)
         }
         .confirmationDialog("Save your transcript edits?", isPresented: $showUnsavedPrompt, titleVisibility: .visible) {
             Button("Save") {
@@ -265,7 +257,11 @@ struct PatientDetailView: View {
 
     private var psychotherapyExportButton: some View {
         Button {
-            confirmingPsychotherapyExport = true
+            guard appModel.store != nil, !exports.isRunning else { return }
+            pendingExport = ExportConfirmation(
+                patientName: patient.name, noun: "session", count: sessions.count, fileType: "zip",
+                scope: .psychotherapy
+            ) { exportPsychotherapyNotes() }
         } label: {
             Label("Export psychotherapy notes…", systemImage: "lock.doc")
         }
@@ -397,13 +393,13 @@ struct PatientDetailView: View {
     private func exportPsychotherapyNotes() {
         guard let store = appModel.store, !exports.isRunning else { return }
         guard let destination = FileSaver.chooseDestination(
-            suggestedName: FileSaver.fileName(PatientLabel(patient).text, "Psychotherapy notes") + ".zip",
+            suggestedName: FileSaver.exportFileName(forPatientNamed: patient.name, "Psychotherapy notes") + ".zip",
             type: .zip
         ) else { return }
         let patient = patient
         let sessions = sessions
         let model = appModel
-        let detail = "Psychotherapy notes, zip, authorization confirmed"
+        let detail = AuditDetail.exportedPsychotherapyNotes
         exports.start(destination: destination, onFinished: { _ in
             model.recordAudit(.recordExported, subjectID: patient.id.uuidString, detail: detail)
         }, onFailed: {
@@ -446,7 +442,7 @@ struct PatientDetailView: View {
         ) { outcome in
             model.recordAudit(
                 .recordExported, subjectID: patient.id.uuidString,
-                detail: "Patient records, zip of \(outcome.sessionCount) sessions"
+                detail: .exportedPatientRecords(sessions: outcome.sessionCount)
             )
         } onFailed: {
             model.recordAudit(.exportFailed, subjectID: patient.id.uuidString, detail: "Patient records, zip")

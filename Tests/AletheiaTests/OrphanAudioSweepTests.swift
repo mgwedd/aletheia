@@ -75,6 +75,36 @@ final class OrphanAudioSweepTests: XCTestCase {
         XCTAssertTrue(entries.contains { $0.action == .recordingRecovered && $0.subjectID == session.id.uuidString && $0.detail == "staged" })
     }
 
+    func testAudioStaysStagedWhenPartOfTheFolderCannotBeRead() throws {
+        // A patient record that can't be read may be the one this recording belongs to.
+        let damaged = storeRoot.appendingPathComponent("Patients", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: damaged, withIntermediateDirectories: true)
+        try Data("{broken".utf8).write(to: damaged.appendingPathComponent("patient.json"))
+        let id = UUID()
+        let staged = stagingRoot.appendingPathComponent(id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: staged, withIntermediateDirectories: true)
+        try Data("audio".utf8).write(to: staged.appendingPathComponent("mic.caf"))
+
+        let result = OrphanAudioSweep.sweep(
+            store: store, protector: protector, stagingRoot: stagingRoot, temporaryDirectory: tempCafDir)
+
+        XCTAssertEqual(result.stagedLeftForLater, 1)
+        XCTAssertEqual(result.quarantinedUnknownDirs, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: staged.appendingPathComponent("mic.caf").path), "left staged for the next try")
+    }
+
+    func testLookUpTellsAMissingSessionFromAnUnreadableFolder() throws {
+        let patient = try store.createPatient(name: "Test Patient")
+        let session = try store.createSession(for: patient)
+        guard case .found(_, let found) = store.lookUpSession(id: session.id) else { return XCTFail("session not found") }
+        XCTAssertEqual(found.id, session.id)
+        guard case .absent = store.lookUpSession(id: UUID()) else { return XCTFail("a clean folder rules a session out") }
+
+        try Data("{broken".utf8).write(to: store.patientDir(for: patient).appendingPathComponent("patient.json"))
+        guard case .unsure = store.lookUpSession(id: UUID()) else { return XCTFail("an unreadable patient can't rule it out") }
+    }
+
     func testUnknownUUIDIsQuarantinedNotDeleted() throws {
         let unknownUUID = UUID()
         let unknownStagingDir = stagingRoot.appendingPathComponent(unknownUUID.uuidString, isDirectory: true)

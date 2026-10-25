@@ -207,13 +207,20 @@ enum ArchiveLoader {
         let notes: [ArchiveNote] = ProgressNoteFormat.allCases.compactMap { format in
             guard let text = store.note(for: patient, session: session, format: format),
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-            return ArchiveNote(formatName: format.shortName, text: PatientArchive.plainText(fromMarkdown: text))
+            let status = try? store.noteLifecycle(for: patient, session: session, format: format)
+            return ArchiveNote(
+                formatName: format.shortName,
+                text: NoteLifecycle.stamped(PatientArchive.plainText(fromMarkdown: text), status: status))
         }
         return ArchiveSession(
             date: session.date,
             transcript: try store.readTranscript(for: patient, session: session) ?? "",
             notes: notes,
-            summary: store.summary(for: patient, session: session).map(PatientArchive.plainText(fromMarkdown:)) ?? ""
+            summary: store.summary(for: patient, session: session).map { text in
+                guard !NoteEditing.normalized(text).isEmpty else { return "" }
+                let status = store.signedStatus(ofText: text, patient: patient, session: session)
+                return NoteLifecycle.stamped(PatientArchive.plainText(fromMarkdown: text), status: status)
+            } ?? ""
         )
     }
 }

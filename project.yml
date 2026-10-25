@@ -191,7 +191,32 @@ targets:
       - target: WhisperEngine
         embed: false
 
+  AletheiaUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests/AletheiaUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.appUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Aletheia
+    dependencies:
+      - target: Aletheia
+
 schemes:
+  AletheiaUITests:
+    build:
+      targets:
+        Aletheia: all
+        AletheiaNetworkHelper: all
+        AletheiaUITests: [test]
+    test:
+      targets:
+        - AletheiaUITests
+    run:
+      config: Debug
   AletheiaAcceptance:
     build:
       targets:

@@ -50,7 +50,7 @@ enum PsychotherapyExport {
 
     /// File name (without extension): initials and date, never the full name.
     static func sessionFileBase(patientName: String, date: Date) -> String {
-        FileSaver.fileName(PatientLabel(name: patientName).text, dayStamp.string(from: date), "Psychotherapy note")
+        FileSaver.exportFileName(forPatientNamed: patientName, dayStamp.string(from: date), "Psychotherapy note")
     }
 
     // MARK: Whole patient

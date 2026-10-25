@@ -80,19 +80,40 @@ struct AletheiaApp: App {
     init() {
         let settings = AppSettings.shared
         _settings = StateObject(wrappedValue: settings)
+        #if DEBUG
+        let encryption = FixtureMode.isActive
+            ? EncryptionManager(dataRootProvider: { settings.dataRootURL },
+                                deviceKeys: FixtureMode.deviceKeys, defaults: FixtureMode.defaults,
+                                autoUnlockAtLaunch: false)
+            : EncryptionManager(dataRootProvider: { settings.dataRootURL }, autoUnlockAtLaunch: false)
+        #else
         let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL }, autoUnlockAtLaunch: false)
+        #endif
         _encryption = StateObject(wrappedValue: encryption)
         let appLock = AppLock(settings: settings, lockRequired: { [weak encryption] in encryption?.requiresAppLock ?? false })
         // The key comes off the keychain only when the app is not locked at launch.
         if !appLock.isLocked { encryption.autoUnlockFromDevice() }
         SessionSearch.setAppLocked(appLock.isLocked)   // before AppModel builds the index: it starts closed behind the lock
+        #if DEBUG
+        let appModel = FixtureMode.isActive
+            ? AppModel(settings: settings, encryption: encryption, spotlightIndexer: FixtureSpotlight(),
+                       featureRegistry: .compose(tier: FixtureMode.scenario?.buildTier ?? .dev, from: FeatureRegistry.allModules))
+            : AppModel(settings: settings, encryption: encryption)
+        if FixtureMode.isActive {
+            appModel.diskProbe = FixtureMode.disk
+            FixtureMode.seed(appModel)
+        }
+        #else
         let appModel = AppModel(settings: settings, encryption: encryption)
+        #endif
         _appModel = StateObject(wrappedValue: appModel)
         settings.onAuditedChange = { [weak appModel] detail in
             appModel?.recordAudit(.securitySettingChanged, detail: detail)
         }
         let integrations = Integrations(settings: settings)
         _integrations = StateObject(wrappedValue: integrations)
+        integrations.inferenceQueue.onJobStarted = { [weak appModel] kind in appModel?.access.aiUsed(kind) }
+        PHIPasteboard.onCopy = { [weak appModel] kind in appModel?.recordAudit(.phiCopied, detail: kind) }
         let transcription = TranscriptionCoordinator(
             appModel: appModel,
             integrations: integrations,
@@ -149,6 +170,7 @@ struct AletheiaApp: App {
             appModel?.noteUnlockFailure(reason)
         }
         appLock.onLocked = { [weak appModel] in
+            appModel?.access.reset()
             appModel?.recordAudit(.appLocked)
         }
         _appLock = StateObject(wrappedValue: appLock)

@@ -7,19 +7,26 @@ enum PHIPasteboard {
     static let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
     static let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
 
-    static func writeString(_ string: String, to pasteboard: NSPasteboard = .general) {
+    /// Told the kind of patient text each time it is copied (never the text).
+    /// Set by the composition root to write it to the activity log.
+    static var onCopy: ((AuditDetail) -> Void)?
+
+    /// `kind` names what was copied when it is patient text; nil for anything
+    /// else (diagnostics, a recovery key), which is not logged.
+    static func writeString(_ string: String, kind: AuditDetail? = nil, to pasteboard: NSPasteboard = .general) {
         let item = NSPasteboardItem()
         item.setString(string, forType: .string)
-        write([item], to: pasteboard)
+        write([item], kind: kind, to: pasteboard)
     }
 
-    static func write(_ items: [NSPasteboardItem], to pasteboard: NSPasteboard = .general) {
+    static func write(_ items: [NSPasteboardItem], kind: AuditDetail? = nil, to pasteboard: NSPasteboard = .general) {
         pasteboard.prepareForNewContents(with: .currentHostOnly)
         for item in items {
             item.setData(Data(), forType: concealed)
             item.setData(Data(), forType: transient)
         }
         pasteboard.writeObjects(items)
+        if let kind { onCopy?(kind) }
     }
 
     /// NSTextView may clear its destination before writing, which would remove
@@ -27,6 +34,7 @@ enum PHIPasteboard {
     /// freshly prepared protected pasteboard.
     static func writeSelection(
         to pasteboard: NSPasteboard,
+        kind: AuditDetail? = nil,
         using write: (NSPasteboard) -> Bool
     ) -> Bool {
         let staging = NSPasteboard(name: .init("aletheia-selection-\(UUID().uuidString)"))
@@ -41,7 +49,7 @@ enum PHIPasteboard {
             }
             return item
         }
-        PHIPasteboard.write(items, to: pasteboard)
+        PHIPasteboard.write(items, kind: kind, to: pasteboard)
         return true
     }
 }

@@ -26,7 +26,13 @@ enum TestHost {
     static func runsInBackground(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Bool {
-        isHostingTests(environment: environment) && environment["ALETHEIA_FOREGROUND_TESTS"] != "1"
+        guard isHostingTests(environment: environment), environment["ALETHEIA_FOREGROUND_TESTS"] != "1" else { return false }
+        #if DEBUG
+        // A UI-test launch (fixture scenario) is driven through the real
+        // window, so the app must be a normal foreground app.
+        if environment[FixtureMode.environmentKey] != nil { return false }
+        #endif
+        return true
     }
 
     /// `.prohibited` while hosting tests in the background: the app can't

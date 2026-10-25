@@ -167,7 +167,7 @@ final class AppModel: ObservableObject {
             ))
         }
         commentStore = newCommentStore
-        let auditSink: (AuditAction, String?, String?) -> Void = { [weak self] action, subject, detail in
+        let auditSink: (AuditAction, String?, AuditDetail?) -> Void = { [weak self] action, subject, detail in
             self?.recordAudit(action, subjectID: subject, detail: detail)
         }
         newCommentStore?.onAudit = auditSink
@@ -374,9 +374,14 @@ final class AppModel: ObservableObject {
         return outcome
     }
 
+    /// Views of, and AI use on, patient records (see `AccessAudit`).
+    lazy var access = AccessAudit { [weak self] action, subject, detail in
+        self?.recordAudit(action, subjectID: subject, detail: detail)
+    }
+
     /// Record an ePHI-affecting action, if a data folder (and thus a log) exists.
     /// The thin seam call sites use so they don't reach into `audit` directly.
-    func recordAudit(_ action: AuditAction, subjectID: String? = nil, detail: String? = nil) {
+    func recordAudit(_ action: AuditAction, subjectID: String? = nil, detail: AuditDetail? = nil) {
         _ = try? audit?.record(action, subjectID: subjectID, detail: detail)
     }
 
@@ -407,12 +412,13 @@ final class AppModel: ObservableObject {
     // MARK: - Alerts
 
     /// A failed unlock attempt: recorded, and counted toward a repeated-failure alert.
+    /// `reason` is the system's wording, shown to the user elsewhere; it isn't recorded.
     func noteUnlockFailure(_ reason: String, now: Date = Date()) {
-        recordAudit(.appUnlockFailed, detail: reason)
+        recordAudit(.appUnlockFailed, detail: "Authentication failed")
         guard failedUnlocks.recordFailure(at: now) else { return }
         let attempts = failedUnlocks.threshold
         let minutes = Int(failedUnlocks.window / 60)
-        recordAudit(.repeatedUnlockFailures, detail: "\(attempts) failed unlocks within \(minutes) minutes")
+        recordAudit(.repeatedUnlockFailures, detail: .failedUnlocks(attempts: attempts, minutes: minutes))
         raise(.repeatedUnlockFailures(attempts: attempts, minutes: minutes))
     }
 
@@ -433,8 +439,8 @@ final class AppModel: ObservableObject {
     /// A broken chain is recorded (once per break) and raised as an alert.
     func applyIntegrityResult(_ result: IntegrityVerificationResult) {
         guard case let .broken(seq, _) = result else { return }
-        let detail = "Chain broken at entry #\(seq)"
-        let alreadyRecorded = audit?.entries().last { $0.action == .integrityCheckFailed }?.detail == detail
+        let detail = AuditDetail.chainBroken(entry: seq)
+        let alreadyRecorded = audit?.entries().last { $0.action == .integrityCheckFailed }?.detail == detail.text
         if !alreadyRecorded { recordAudit(.integrityCheckFailed, detail: detail) }
         raise(.auditLogBroken(entry: seq))
     }
