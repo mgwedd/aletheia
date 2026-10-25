@@ -9,21 +9,21 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 | Recording (REC) | 77 |
 | Set-aside recordings (SAR) | 15 |
 | Voice input (VOI) | 17 |
-| Transcription (TRN) | 89 |
+| Transcription (TRN) | 91 |
 | Encryption at rest (ENC) | 50 |
 | App lock and privacy shield (LCK) | 23 |
 | Audit log (AUD) | 14 |
 | Data format and upgrades (DAT) | 12 |
 | Doctor and security posture (DOC) | 11 |
 | Security guarantees (SEC) | 9 |
-| Backups (BAK) | 9 |
+| Backups (BAK) | 10 |
 | Progress notes (NOT) | 69 |
-| Digests (DIG) | 30 |
+| Digests (DIG) | 31 |
 | Harness/eval (HAR) | 1 |
 | Chat & Q&A (CHT) | 69 |
 | AI engine & models (AIE) | 45 |
 | Patients (PAT) | 47 |
-| Sessions (SES) | 36 |
+| Sessions (SES) | 37 |
 | Search (SRC) | 57 |
 | Comments (CMT) | 32 |
 | Export & archive (EXP) | 48 |
@@ -31,11 +31,11 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 | Updates (UPD) | 28 |
 | OS integrations (OSI) | 62 |
 | Onboarding & setup (STP) | 27 |
-| Settings (SET) | 46 |
+| Settings (SET) | 47 |
 | Appearance, accessibility & shortcuts (UX) | 21 |
 | Legal & consent (LEG) | 11 |
 | Build tiers (BLD) | 17 |
-| **Total** | **1002** |
+| **Total** | **1008** |
 
 ## Recording (REC)
 
@@ -175,7 +175,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift:291` · `qa: MENUBAR-08`
 - **REC-068** When a recording fails to start from the session screen, a "Something went wrong" alert shows the reason.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:364, Sources/App/Views/SessionDetailView.swift:1526` · `qa: RECORD-06`
-- **REC-069** When a recording is running, the menu bar panel shows a Recording chip, the patient name, an HH:MM:SS timer, Mic and Call level bars, a Pause button and a Stop and save button.
+- **REC-069** When a recording is running, the menu bar panel shows a Recording chip, the patient's initials (the full name only when "Show patient names in notifications and the menu bar" is on), an HH:MM:SS timer, Mic and Call level bars, a Pause button and a Stop and save button.
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift:130` · `qa: MENUBAR-04`
 - **REC-070** When a recording is paused, the menu bar panel shows a Paused chip, a muted timer, the note "Nothing is being captured. Resume to continue the same session." and a Resume button, and hides the level bars.
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift:141` · `qa: MENUBAR-05`
@@ -288,7 +288,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift, Sources/App/Views/TranscriptionProgressView.swift:1-35` · `qa: TRANSCRIBE-03`
 - **TRN-011** When several sessions are queued, they run one at a time in the order they were queued.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift` · `qa: TRANSCRIBE-03`
-- **TRN-012** When the user cancels a transcription while it is preparing or transcribing, no new transcript is written.
+- **TRN-012** When the user cancels a transcription while it is preparing or transcribing, no new transcript is written and any partial transcript is discarded.
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:210-225, Sources/App/Views/SessionDetailView.swift:1588` · `qa: TRANSCRIBE-05`
 - **TRN-013** When a transcription is running, the Mac is kept from going to idle sleep until it finishes.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:198` · `qa: TRANSCRIBE-04`
@@ -444,6 +444,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionProgress.swift:150-166, Sources/App/Views/SessionDetailView.swift:1575-1582` · `qa: TRANSCRIBE-03`
 - **TRN-089** When this session is being transcribed or is waiting in the queue, its Transcribe button is disabled with the tooltip "This session is being transcribed" or "Waiting for another transcription to finish".
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionProgress.swift:150-166` · `qa: TRANSCRIBE-03`
+- **TRN-090** When a transcription is aborted, the recording is kept, the partial transcript is discarded, and the session shows a warning icon until it is transcribed or deleted.
+  `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:210-225, Sources/App/Views/SessionDetailView.swift:1588` · `qa: TRANSCRIBE-05`
+- **TRN-091** When a successful transcription deletes a raw audio recording for the first time, a one-time notice tells the user it was deleted after transcription, and the notice is not shown again.
+  `surface: ui` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:44-60` · `qa: TRANSCRIBE-14`
 
 ## Encryption at rest (ENC)
 
@@ -703,8 +707,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 ## Backups (BAK)
 
-- **BAK-001** When the user opens Settings → Backups with "Keep my data out of Time Machine & iCloud backups" off (the default), a banner says "Aletheia does not make its own backup copies yet. Time Machine includes the data folder by default."; with the toggle on, it says the folder is kept out of Time Machine and iCloud backups and to keep a copy of your own.
-  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01`
+- **BAK-001** When the user opens Settings → Backups, a banner says whether the data folder is kept out of Time Machine and iCloud backups (on by default).
+  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01` · ⚠ TODO: the banner text still says Aletheia makes no backup copies of its own, which conflicts with BACKUP-01 and BAK-007; wording to confirm
 - **BAK-002** When the user turns on "Keep my data out of Time Machine & iCloud backups", the data folder is excluded from those backups and the banner says to keep a copy of your own.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/BackupExclusion.swift` · `qa: BACKUP-02`
 - **BAK-003** When the "Keep my data out of Time Machine & iCloud backups" choice is on, it is applied again whenever the data folder changes and at each launch.
@@ -715,12 +719,14 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/AllRecordsExport.swift` · `qa: BACKUP-03`
 - **BAK-006** When the Backups pane is shown, it explains that safety copies of the database are saved in a hidden backups folder before a database format change or an encryption change.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01`
-- **BAK-007** Aletheia produces no encrypted backup archives and no iCloud backup: nothing appears in `.backups/archives/` and the security posture card never shows an encrypted-backup row, while database safety copies are still written to `.backups/snapshots` and `.backups/migrations`.
-  `surface: invariant` · `evidence: Sources/App/Services/Crypto/BackupService.swift, Sources/App/Services/Crypto/BackupCoordinator.swift` · `qa: BACKUP-01` · ⚠ TODO: SECURITY.md describes an archives folder and an encrypted iCloud destination as built but not active; the code has no wiring, so no backups are produced.
+- **BAK-007** Backup archives are encrypted and are written to `.backups/archives/`; database safety copies still go to `.backups/snapshots` and `.backups/migrations`.
+  `surface: invariant` · `evidence: Sources/App/Services/Crypto/BackupService.swift, Sources/App/Services/Crypto/BackupCoordinator.swift` · `qa: BACKUP-08` · ⚠ TODO: the code has no archive wiring yet, so BACKUP-08 cannot pass until it does
 - **BAK-008** When older backup folders exist, they are moved into the current hidden backups layout without overwriting anything.
   `surface: background` · `evidence: Sources/App/Services/BackupLayout.swift` · `qa: BACKUP-04`
 - **BAK-009** When Doctor warns that the data folder is kept out of Time Machine, its next step names the pane "Settings > Backups" and the toggle "Keep my data out of Time Machine & iCloud backups".
   `surface: ui` · `evidence: Sources/App/Services/Features/Doctor/DoctorRunner.swift` · `qa: BACKUP-02` · ⚠ DEFECT: today Doctor says "Settings > Snapshots & Backups"; its fitness function fails until fixed
+- **BAK-010** When a backup archive is restored, it unlocks with Touch ID or the passphrase, or with the recovery key on a new Mac.
+  `surface: ui` · `evidence: Sources/App/Services/Crypto/BackupService.swift, Sources/App/Services/Crypto/BackupCoordinator.swift` · `qa: BACKUP-08` · ⚠ TODO: no restore path is wired yet (see BAK-007)
 
 ## Progress notes (NOT)
 
@@ -897,7 +903,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/Digest/DigestSchedulePolicy.swift, Sources/App/AletheiaApp.swift` · `qa: DIGEST-03`
 - **DIG-016** Summary building also pauses while the user has paused it, in Low Power Mode, on battery power (unless "Prepare summaries on battery" is on; Low Power Mode still pauses), and for 10 minutes after a failed build.
   `surface: background` · `evidence: Sources/App/Services/Digest/DigestSchedulePolicy.swift, Sources/App/Services/PowerSource.swift` · `qa: DIGEST-03`
-- **DIG-017** A pause cancels the build in progress (finished sections are kept) and building resumes by itself when the reason ends.
+- **DIG-017** A pause cancels the build in progress (finished sections are kept) and building resumes by itself when the reason ends, except a pause the user chose, which stays until Resume is pressed.
   `surface: background` · `evidence: Sources/App/Services/Digest/DigestScheduler.swift` · `qa: DIGEST-03`
 - **DIG-018** A session whose build was interrupted is built first at the next launch, and a session that failed goes to the back of the queue.
   `surface: background` · `evidence: Sources/App/Services/Digest/DigestScheduler.swift` · `qa: DIGEST-02`
@@ -925,6 +931,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/Digest/PatientZoom.swift, Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: CHAT-12` · ⚠ TODO: README line 114 says "Notes and chat read transcripts, not digests", but the code reads digests in patient chat and long-session notes; the code is the source of truth here
 - **DIG-031** The "N of M ready" count treats a current summary built by any model as ready, even if the model in use has since changed.
   `surface: ui` · `evidence: Sources/App/Services/Digest/DigestScheduler.swift, Sources/App/Services/Store.swift` · `qa: DIGEST-01`
+- **DIG-032** When a recording ends while the user's own pause is still on and summary work is pending, the pause stays, and an info alert says transcription is paused with work pending.
+  `surface: ui` · `evidence: Sources/App/Services/Digest/DigestScheduler.swift, Sources/App/Services/Digest/DigestSchedulePolicy.swift` · `qa: DIGEST-03`
 
 ## Harness/eval (HAR)
 
@@ -1266,7 +1274,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 ## Sessions (SES)
 
-- **SES-001** When the therapist presses New session on a patient's page, and the disk is not known to be unencrypted, a session dated now is created, listed and opened.
+- **SES-001** When the therapist presses New session on a patient's page, and the disk is not known to be unencrypted, a session dated now is created, listed and opened; a further press within 10 seconds of the last one is ignored (file imports are not debounced).
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Services/Store.swift, Sources/App/Services/AppModel.swift` · `qa: SESSION-02`
 - **SES-002** When a patient has no sessions, the session list shows "No Sessions Yet" with a New session button, and the right pane says "Select a Session".
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift` · `qa: SESSION-01`
@@ -1278,7 +1286,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/CommentStore.swift, Sources/App/Services/Store.swift` · `qa: BUILD-10`
 - **SES-006** When a session has content, its folder holds session.json, mic.caf and call.caf for audio, transcript.txt, a note.<format>.txt with a note.<format>.meta.json per generated format, a legacy summary.txt, and digest.json for the summary.
   `surface: invariant` · `evidence: Sources/App/Services/Store.swift` · `qa: BUILD-10`
-- **SES-007** When the session list is shown, sessions appear newest first, each with the medium date, then the time and "Audio" when call.caf or mic.caf exists.
+- **SES-007** When the session list is shown, sessions appear newest first (sessions created at the same time keep their creation order), each with the medium date, then the time and "Audio" when call.caf or mic.caf exists.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Services/Store.swift` · `qa: SESSION-02`
 - **SES-008** When a session has a transcript (transcript.txt) or a saved summary (summary.txt), its row shows a "Transcript" or "Note" chip, and "Recording" while it is being recorded.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift:447, Sources/App/Views/PatientDetailView.swift:448, Sources/App/Views/PatientDetailView.swift:449, Sources/App/Models/SessionRecord.swift` · `qa: SESSION-03`
@@ -1338,6 +1346,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Views/ScheduleNextSessionSheet.swift` · `qa: SESSION-06`
 - **SES-035** When refreshing a patient's sessions fails, an alert titled "Something went wrong" shows the error.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift` · `qa: SESSION-03`
+- **SES-037** When sessions are created by file import, the 10-second debounce on New session does not apply.
+  `surface: ui` · `evidence: not yet traced to source` · `qa: SESSION-02`
 
 ## Search (SRC)
 
@@ -1427,7 +1437,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/Search/SearchIndex.swift, Sources/App/Services/AppModel.swift` · `qa: SEARCH-10`
 - **SRC-043** When the search index is stored, it lives in the data folder as its own file, holds an unencrypted copy of the searchable words (stemmed, with patient, session and date), is excluded from Time Machine and zeroes freed pages.
   `surface: invariant` · `evidence: Sources/App/Services/Search/SearchIndex.swift, Sources/App/Services/BackupExclusion.swift` · `qa: BUILD-10`
-- **SRC-044** When the app locks, the index connection is closed but the file stays, and the search results are unavailable until unlock.
+- **SRC-044** When the app locks, the index connection is closed but the file stays, and search returns nothing until unlock, with no fallback scan of the files.
   `surface: invariant` · `evidence: Sources/App/Services/AppLock.swift, Sources/App/Services/Search/SearchIndex.swift` · `qa: SEARCH-11`
 - **SRC-045** When the app quits with encryption on, the index file is deleted; otherwise it is only closed.
   `surface: invariant` · `evidence: Sources/App/Services/AppModel.swift` · `qa: ENCRYPT-09`
@@ -1713,7 +1723,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/Updates/UpdateInstalling.swift, Sources/App/Services/NetworkHelper/AssetID.swift` · `qa: UPDATE-07`
 - **UPD-013** When the release lists no checksum, Download update opens the release page in the browser instead of downloading.
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateInstalling.swift` · `qa: UPDATE-08`
-- **UPD-014** When a downloaded update's checksum does not match, the file is deleted and never opened, and the release page opens in the browser instead.
+- **UPD-014** When a downloaded update's checksum does not match, the file is deleted and never opened, and the generic releases page (not this version's page) opens in the browser instead.
   `surface: background` · `evidence: Sources/App/Services/Updates/UpdateInstalling.swift, Sources/App/Services/NetworkHelper/ModelFileInstaller.swift` · `qa: UPDATE-08`
 - **UPD-015** The update archive is only accepted from a github.com/mgwedd/aletheia releases download address with no "." or ".." segments.
   `surface: invariant` · `evidence: Sources/NetworkHelper/AssetCatalog.swift` · `qa: UPDATE-07`
@@ -1806,7 +1816,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift, Sources/App/Services/MenuBarContentPolicy.swift` · `qa: MENUBAR-02`
 - **OSI-030** When starting from the menu bar fails, the reason appears as a line under the button, for example "Couldn't create a session. Check the data folder in Settings."
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift` · `qa: MENUBAR-08`
-- **OSI-031** When a recording is running or paused, the menu-bar item shows a "Recording" or "Paused" chip, the patient name, an HH:MM:SS timer, Mic and Call level bars, Pause or Resume, and "Stop and save".
+- **OSI-031** When a recording is running or paused, the menu-bar item shows a "Recording" or "Paused" chip, the patient's initials (the full name only when "Show patient names in notifications and the menu bar" is on), an HH:MM:SS timer, Mic and Call level bars, Pause or Resume, and "Stop and save".
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift` · `qa: MENUBAR-04`
 - **OSI-032** When a recording is paused, the menu-bar item says "Nothing is being captured. Resume to continue the same session."
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift` · `qa: MENUBAR-05`
@@ -1930,7 +1940,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 ## Settings (SET)
 
-- **SET-001** When the user opens Settings, a sidebar lists General, AI and models, Note format, Backups, Security and Licenses, plus Encryption when the build offers it or it is already on, and Set-aside recordings only when there are some.
+- **SET-001** When the user opens Settings, a sidebar lists General, AI and models, Formats, Backups, Privacy & Security and Licenses & Legal, and Set-aside recordings only when there are some.
   `surface: ui` · `evidence: Sources/App/Views/Settings/SettingsComponents.swift:9, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-01`
 - **SET-002** When the user reopens Settings, it opens to the pane last used, and Up and Down arrow keys move between panes.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Views/Settings/SettingsComponents.swift:119` · `qa: SETTINGS-01`
@@ -1954,25 +1964,25 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: NOTE-07`
 - **SET-012** When the user manages Risk phrases, they can add a phrase, remove one, and use "Clear All" or "Reset to Defaults", each of which asks for confirmation ("Clear all risk phrases?", "Reset risk phrases?").
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/AppSettings.swift:293` · `qa: SETTINGS-09`
-- **SET-013** When the user opens Note format, they can set the default progress note format and the summary length, and turn on or off comments in drafts, patient background and preparing summaries on battery.
+- **SET-013** When the user opens Formats, they can set the default progress note format and the summary length, and turn on or off comments in drafts, patient background and preparing summaries on battery.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-10`
-- **SET-014** When the user opens Backups, the pane shows "Keep my data out of Time Machine & iCloud backups" (off by default) and the caption "Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder."
+- **SET-014** When the user opens Backups, the pane shows "Keep my data out of Time Machine & iCloud backups" (on by default) and the caption "Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder."
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/BackupExclusion.swift, Sources/App/Services/Store.swift:386` · `qa: BACKUP-01` · ⚠ TODO: the caption under-describes: a safety snapshot is also taken before a patient is deleted
 - **SET-015** When the user turns on "Keep my data out of Time Machine & iCloud backups", the data folder is excluded from those backups now and again on later launches, and an explicit off is respected.
   `surface: background` · `evidence: Sources/App/Services/BackupExclusion.swift, Sources/App/Services/AppSettings.swift:351` · `qa: BACKUP-02`
 - **SET-016** When the user opens General → Status, they can toggle "Show recording diagnostics", which is off by default and adds a call-audio readout of permission and stream state to the recording screen.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/AppSettings.swift:442` · `qa: SETTINGS-11`
-- **SET-017** When the user opens Licenses, the app shows the bundled third-party notices as read-only text with links, or "The license notices are missing from this build."
+- **SET-017** When the user opens Licenses & Legal, the app shows the bundled third-party notices as read-only text with links, or "The license notices are missing from this build."
   `surface: ui` · `evidence: Sources/App/Views/Settings/LicensesPane.swift, Sources/App/Services/ThirdPartyNotices.swift` · `qa: SETTINGS-12`
 - **SET-018** When "Show patient names in notifications" is left at its default, it is off.
   `surface: invariant` · `evidence: Sources/App/Services/AppSettings.swift:461` · `qa: NOTIFY-06`
 - **SET-019** When General is shown in a production build, no Spotlight option appears.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift:208` · `qa: SEARCH-12`
-- **SET-020** When the user opens General → Legal, Terms of Service and Privacy Policy links open GitHub, a "Consent Guide…" button opens the guide, and an "Accepted" row shows "v<version> on <date, time>" only when the current terms are accepted.
+- **SET-020** When the user opens Licenses & Legal, the Terms of Use and Privacy Policy links open the copies bundled in the app, a "Consent Guide…" button opens the guide, and an "Accepted" row shows "v<version> on <date, time>" only when the current terms are accepted.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift:326, Sources/App/Services/Legal.swift` · `qa: SETTINGS-12`
 - **SET-021** When the Settings window is shown, its minimum size is 900 by 640 points.
   `surface: ui` · `evidence: Sources/App/Views/Settings/SettingsComponents.swift:88` · `qa: SETTINGS-01`
-- **SET-022** When the user looks for an encrypted local or iCloud backup, Settings has no such control, and the Backups pane says "Aletheia does not make its own backup copies yet"; stored preferences for those backups change nothing.
+- **SET-022** When the user looks for an encrypted local or iCloud backup, Settings has no such control; stored preferences for those backups change nothing.
   `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift:313, Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01`
 - **SET-023** When the built-in llama.cpp engine is built into the app, AI and models shows the "Built-in model (llama.cpp)" card in every tier, including production.
   `surface: ui` · `evidence: Sources/App/Services/Llama/EmbeddedLlamaFeatureModule.swift:21, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-06`
@@ -2022,6 +2032,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/DataFolderMove.swift:5-20, Sources/App/Views/DataFolderMoveView.swift:96-99` · `qa: SETTINGS-14`
 - **SET-046** When the copy has been verified, the sheet says "The copy was verified and Aletheia now uses the standard local folder. Copies already synced to a cloud service must also be removed there and on other devices." with "Keep original for now" and "Delete original folder…", and deleting asks "Delete the original folder?" first.
   `surface: ui` · `evidence: Sources/App/Views/DataFolderMoveView.swift:20-25, Sources/App/Views/DataFolderMoveView.swift:58-63` · `qa: SETTINGS-14`
+- **SET-047** On a fresh install, "Keep my data out of Time Machine & iCloud backups" is on.
+  `surface: invariant` · `evidence: Sources/App/Services/AppSettings.swift` · `qa: SETTINGS-04`
 
 ## Appearance, accessibility & shortcuts (UX)
 
@@ -2082,7 +2094,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Legal.swift, Sources/App/AletheiaApp.swift` · `qa: SETUP-04`
 - **LEG-006** When an older, empty or missing accepted version is stored, the app counts the terms as not accepted.
   `surface: invariant` · `evidence: Sources/App/Services/Legal.swift:30` · `qa: SETUP-04`
-- **LEG-007** When the user taps Terms of Service or Privacy Policy, the documents open on GitHub in the browser.
+- **LEG-007** When the user taps Terms of Use or Privacy Policy, the bundled documents open in the app and read without internet access.
   `surface: ui` · `evidence: Sources/App/Services/Legal.swift, Sources/App/Views/FirstRunView.swift` · `qa: SETUP-03`
 - **LEG-008** The setup footer says "Aletheia is a tool, not legal or clinical advice. Get your client's consent before recording, and follow your licensing board's rules."
   `surface: ui` · `evidence: Sources/App/Views/FirstRunView.swift` · `qa: SETUP-04`
@@ -2137,7 +2149,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-022**: the Keep raw audio row is hidden entirely when the encryption feature is not in the build; whether any shipped build lacks it is not decidable from the repo
 - **DAT-002**: the data-format doc comment says an older app must not rewrite a newer folder, but the code only shows an alert and does not block saving; the code is on the alert-only side.
 - **DOC-005**: the Notarization row's fixed description says the app is notarized, while the README says it is not; the code computes the status value.
-- **BAK-007**: SECURITY.md describes an archives folder and an encrypted iCloud destination as built but not active; the code has no wiring, so no backups are produced.
+- **BAK-007**: the spec says backup archives are encrypted (BACKUP-08); SECURITY.md describes an archives folder and an encrypted iCloud destination as built but not active, and the code has no wiring, so no archives are produced yet.
+- **BAK-001**: the Backups banner text still says Aletheia makes no backup copies of its own, which conflicts with BACKUP-01 and BAK-007; confirm the wording.
 - **BAK-009**: the Time Machine row's next step says "Settings > Snapshots & Backups" but the pane is named "Backups"; the code uses the wrong name.
 - **DIG-029**: README line 114 says "Notes and chat read transcripts, not digests", but the code reads digests in patient chat and long-session notes; the code is the source of truth here
 - **AIE-002**: unreachable Apple Intelligence code remains though the README says it is blocked; the code is on the blocked side.
