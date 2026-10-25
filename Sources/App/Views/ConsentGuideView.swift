@@ -18,6 +18,8 @@ struct ConsentGuideView: View {
                     }
 
                     disclosureSampleBox
+
+                    scriptBox
                 }
                 .padding(.horizontal, 28)
                 .padding(.top, 8)
@@ -99,6 +101,26 @@ struct ConsentGuideView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SAMPLE INFORMED CONSENT CLAUSE").eyebrowStyle()
             Text(ConsentGuideContent.sampleClause)
+                .font(Theme.Typography.noteBody)
+                .foregroundStyle(Theme.text.color)
+                .padding(12)
+                .background(Theme.raised.color)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Theme.line.color, lineWidth: 1)
+                )
+        }
+    }
+
+    private var scriptBox: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("SUGGESTED SCRIPT BEFORE RECORDING").eyebrowStyle()
+            Text(ConsentGuideContent.scriptIntro)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(ConsentGuideContent.script)
                 .font(Theme.Typography.noteBody)
                 .foregroundStyle(Theme.text.color)
                 .padding(12)

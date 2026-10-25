@@ -16,15 +16,36 @@ protocol SpotlightIndexing {
 import CoreSpotlight
 import UniformTypeIdentifiers
 
+/// The two operations the indexer needs from `CSSearchableIndex`, so tests can
+/// observe them without touching the real Spotlight index.
+protocol SearchableIndex {
+    func deleteItems(inDomain domain: String, completion: @escaping (Error?) -> Void)
+    func index(_ items: [CSSearchableItem], completion: @escaping (Error?) -> Void)
+}
+
+struct SystemSearchableIndex: SearchableIndex {
+    func deleteItems(inDomain domain: String, completion: @escaping (Error?) -> Void) {
+        CSSearchableIndex.default().deleteSearchableItems(withDomainIdentifiers: [domain], completionHandler: completion)
+    }
+
+    func index(_ items: [CSSearchableItem], completion: @escaping (Error?) -> Void) {
+        CSSearchableIndex.default().indexSearchableItems(items, completionHandler: completion)
+    }
+}
+
 final class SpotlightIndexer: SpotlightIndexing {
     static let shared = SpotlightIndexer()
 
-    private let index = CSSearchableIndex.default()
+    private let index: SearchableIndex
+
+    init(index: SearchableIndex = SystemSearchableIndex()) {
+        self.index = index
+    }
 
     /// Replaces everything we've indexed with the given entries. We delete our
     /// whole domain first so removed patients/sessions don't linger.
     func replaceIndex(with entries: [SpotlightEntry]) {
-        index.deleteSearchableItems(withDomainIdentifiers: [SpotlightItemBuilder.domainIdentifier]) { [index] _ in
+        index.deleteItems(inDomain: SpotlightItemBuilder.domainIdentifier) { [index] _ in
             guard !entries.isEmpty else { return }
             let items = entries.map { entry -> CSSearchableItem in
                 let attributes = CSSearchableItemAttributeSet(contentType: .content)
@@ -38,12 +59,12 @@ final class SpotlightIndexer: SpotlightIndexing {
                     attributeSet: attributes
                 )
             }
-            index.indexSearchableItems(items) { _ in }
+            index.index(items) { _ in }
         }
     }
 
     func clear() {
-        index.deleteSearchableItems(withDomainIdentifiers: [SpotlightItemBuilder.domainIdentifier]) { _ in }
+        index.deleteItems(inDomain: SpotlightItemBuilder.domainIdentifier) { _ in }
     }
 }
 #else

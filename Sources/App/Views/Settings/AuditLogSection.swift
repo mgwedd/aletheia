@@ -16,7 +16,7 @@ enum AuditLogCopy {
         ("repeated failed unlocks", [.repeatedUnlockFailures]),
         ("failed exports", [.exportFailed]),
         ("failed integrity checks", [.integrityCheckFailed]),
-        ("backups", [.backupRun]),
+        ("backups and restores", [.backupRun, .backupRestored]),
         ("recovered recordings", [.recordingRecovered]),
     ]
 

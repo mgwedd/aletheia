@@ -36,7 +36,7 @@ final class OnDeviceCopyTests: XCTestCase {
     func testTheStatementIsStillMadeWhereItBelongs() throws {
         XCTAssertTrue(try source("Views/FirstRunView.swift").contains("run on this Mac"))
         XCTAssertTrue(try source("Views/SetupChecklistView.swift").contains("runs on this Mac"))
-        XCTAssertTrue(try source("Services/ConsentGuideContent.swift").contains("100% on this Mac"))
+        XCTAssertTrue(try source("Services/ConsentGuideContent.swift").contains("runs on this Mac"))
         XCTAssertTrue(try source("Services/SecurityPosture.swift").contains("run on this Mac's own hardware"))
     }
 

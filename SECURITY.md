@@ -56,9 +56,10 @@ about both). Settings › Backups › **Back Up Now** writes an end-to-end-encry
 copy of the database (`.aletheiabackup`, sealed with your encryption key) to a
 folder you choose. It needs encryption to be on and unlocked, refuses synced
 folders (iCloud Drive, Dropbox and similar), network locations and unencrypted
-removable disks, and never uploads the copy. It backs up the database only, not
-recordings or other files, and there is no restore screen yet. Each successful
-run is recorded once in the audit log. Nothing is backed up to iCloud. Point-in-time database snapshots
+removable disks, and never uploads the copy. It backs up the whole data folder.
+Restore from backup unpacks a backup into a new, empty folder, never over
+existing data, and refuses a wrong passphrase or an archive that has been
+altered. Each successful backup and restore is recorded once in the audit log. Nothing is backed up to iCloud. Point-in-time database snapshots
 (`.backups/snapshots/` and `.backups/migrations/`, via SQLite's `VACUUM INTO`)
 protect schema migrations and encryption on/off changes against a mid-write
 failure. All of these live in the single hidden `.backups/` folder inside your

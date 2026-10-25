@@ -103,6 +103,7 @@ final class AppSettings: ObservableObject {
         static let summaryVerbosity = "summaryVerbosity"
         static let includeCommentsInDrafts = "includeCommentsInDrafts"
         static let notificationsShowPatientNames = "notificationsShowPatientNames"
+        static let skipSingleNoteExportConfirmation = "skipSingleNoteExportConfirmation"
         static let transcriptSplitRatio = "transcriptSplitRatio"
         static let includePatientBackground = "includePatientBackground"
         static let noteInstructions = "noteInstructions"
@@ -223,6 +224,11 @@ final class AppSettings: ObservableObject {
     /// On by default.
     @Published var includeCommentsInDrafts: Bool {
         didSet { defaults.set(includeCommentsInDrafts, forKey: Keys.includeCommentsInDrafts) }
+    }
+    /// Skips the "not encrypted" question for exporting one session's note. Never
+    /// applies to a session with its transcript, a patient's records or all records.
+    @Published var skipSingleNoteExportConfirmation: Bool {
+        didSet { defaults.set(skipSingleNoteExportConfirmation, forKey: Keys.skipSingleNoteExportConfirmation) }
     }
     /// Whether system notifications name the patient and session date. Off by
     /// default: banners show on the lock screen and macOS keeps them.
@@ -461,6 +467,7 @@ final class AppSettings: ObservableObject {
         summaryVerbosity = defaults.string(forKey: Keys.summaryVerbosity)
             .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
         includeCommentsInDrafts = defaults.object(forKey: Keys.includeCommentsInDrafts) as? Bool ?? true
+        skipSingleNoteExportConfirmation = defaults.bool(forKey: Keys.skipSingleNoteExportConfirmation)
         notificationsShowPatientNames = defaults.object(forKey: Keys.notificationsShowPatientNames) as? Bool ?? false
         transcriptSplitRatio = TranscriptSplit.sanitized(
             ratio: defaults.object(forKey: Keys.transcriptSplitRatio) as? Double ?? TranscriptSplit.defaultRatio
