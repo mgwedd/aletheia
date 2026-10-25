@@ -86,7 +86,7 @@ final class ExportSpec: AcceptanceCase {
         let patientFolder = when.openPatientFolder("Jane Doe", in: when.openExportFolder(run))
         let folder = try when.openSessionFolder(in: patientFolder)
         then(folder).holds([
-            Copy.exportTranscript, "Note - SOAP.txt", "Note - DAP.txt", Copy.exportComments,
+            Copy.exportTranscript, "Note - SOAP.txt", "Note - DAP.txt",
             "Recording - microphone.caf", "Recording - call.caf",
         ])
         then(folder).recordingsPlay()

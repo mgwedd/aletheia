@@ -148,7 +148,7 @@ Before you start: a patient whose sessions have transcripts too long for this Ma
 Before you start: two patients with transcripts, notes and comments, one of them named like "Joanne Fox".
 - **SEARCH-01** Press ⌘F while the cursor is in a transcript → the sidebar search field takes focus.
 - **SEARCH-02** Type a word from a transcript into the sidebar field → results cover the detail pane.
-- **SEARCH-03** Look at the results → they are grouped Patients, Sessions, My notes, Progress notes, Comments and Transcripts, with highlighted snippets.
+- **SEARCH-03** Look at the results → they are grouped Patients, Sessions, Psychotherapy notes, Progress notes, Comments and Transcripts, with highlighted snippets.
 - **SEARCH-04** Search a word that appears in many places → each group shows its best five and a "Show more" row.
 - **SEARCH-05** Press ↓ then Return on a result → it opens and the search clears; Esc clears a query.
 - **SEARCH-06** Open a transcript result → that session opens on the Transcript tab, scrolled to the matching line.
@@ -170,7 +170,7 @@ Before you start: two patients with transcripts, notes and comments, one session
 - **EXPORT-04** Export to a destination that can't be written to → a toast reads "Export didn't finish".
 - **EXPORT-05** Export All Records to an iCloud Drive or other synced folder → the export is refused and nothing is written to the folder.
 - **EXPORT-06** Open the export folder → "Read me.txt" gives the counts, and each patient has a folder with one dated folder per session.
-- **EXPORT-07** Open a session's folder → it holds the transcript, one text file per note, any comments and recordings that play normally.
+- **EXPORT-07** Open a session's folder → it holds the transcript, one text file per note and recordings that play normally, but no comments or psychotherapy notes.
 - **EXPORT-08** Export a patient whose name has slashes or colons → illegal characters in the folder name become "-".
 - **EXPORT-09** Click **Export all records** on a patient's page → a single zip of text files appears, one folder per session.
 - **EXPORT-10** Click **Export** on a note and choose PDF, Word or Markdown → a save panel suggests a name and the file opens correctly.
