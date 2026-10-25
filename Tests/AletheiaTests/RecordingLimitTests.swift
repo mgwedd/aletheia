@@ -29,4 +29,11 @@ final class RecordingLimitTests: XCTestCase {
         XCTAssertFalse(content.body.contains("Jane"))
         XCTAssertTrue(content.body.contains("90 minutes"))
     }
+
+    @MainActor func testAlertWordingAndDefaultThreshold() {
+        XCTAssertEqual(RecordingLimit.Alert.title, "Still recording")
+        XCTAssertEqual(RecordingLimit.Alert.keep, "Keep Recording")
+        XCTAssertEqual(RecordingLimit.Alert.stop, "Stop Now")
+        XCTAssertEqual(SessionRecorder().reminderThreshold, 90 * 60)
+    }
 }

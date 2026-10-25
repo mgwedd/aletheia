@@ -334,8 +334,7 @@ struct AletheiaApp: App {
     /// The menu-bar icon reflects recording state at a glance: a filled red dot
     /// while recording, paused while paused, and a neutral waveform when idle.
     private var menuBarSymbol: String {
-        guard recorder.isRecording else { return "waveform" }
-        return recorder.isPaused ? "pause.circle.fill" : "record.circle.fill"
+        MenuBarPanel.iconSymbol(isRecording: recorder.isRecording, isPaused: recorder.isPaused)
     }
 
     private var showFirstRun: Binding<Bool> {

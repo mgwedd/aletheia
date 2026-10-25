@@ -54,11 +54,12 @@ Before you start: a session with no transcript, a Mac that can play some audio, 
 - **RECORD-06** Deny microphone access and click **Record Session** → no recording starts and an alert says how to allow it in System Settings.
 - **RECORD-07** Click **Record Session** on a Mac with FileVault off → recording doesn't start and a "Turn on FileVault" alert appears.
 - **RECORD-08** Let a recording run past 90 minutes → a "Still recording" alert asks whether you forgot, with **Keep Recording** and **Stop Now**.
-- **RECORD-09** Click **Stop Recording** → the microphone and call audio are saved as two files with the session, and transcription starts by itself.
+- **RECORD-09** Click **Stop Recording** → the microphone and call audio are saved as two files with the session, no audio is left anywhere else, and transcription starts by itself.
 - **RECORD-10** Force-quit Aletheia mid-recording and reopen → the audio up to that moment is recovered into its session.
 - **RECORD-11** Force-quit mid-recording, delete that patient's folder in Finder and reopen → a warning strip says a recording is set aside, naming no patient.
 - **RECORD-12** Click **Review in Settings…** and recover the item into a session → its audio is added to that session and leaves the list.
 - **RECORD-13** Click **Delete…** on a set-aside recording and confirm → the audio is gone for good.
+- **RECORD-14** Click **Pause**, speak, then **Resume** and **Stop Recording** → nothing said while paused is in the saved audio.
 
 
 ## 5. Transcribe (TRANSCRIBE)
@@ -254,17 +255,18 @@ Before you start: at least one patient and the app unlocked.
 - **MENUBAR-01** Look at the menu bar icon → a waveform when idle, a record symbol while recording, a pause symbol while paused.
 - **MENUBAR-02** Click the icon while idle → it shows "Not recording", a **Patient** picker and **Start recording**.
 - **MENUBAR-03** Choose a patient and click **Start recording** → a new session is created, recording begins and the main window comes forward.
-- **MENUBAR-04** Look at the panel while recording → it shows a **Recording** chip, the patient name, a timer, level bars, **Pause** and **Stop and save**.
+- **MENUBAR-04** Look at the panel while recording → it shows a **Recording** chip, the patient's initials (for example J.D.), a timer, level bars, **Pause** and **Stop and save**.
 - **MENUBAR-05** Click **Pause** in the panel → a **Paused** chip and **Resume** appear.
 - **MENUBAR-06** Click **Stop and save** → the recording is saved and the panel returns to "Not recording".
 - **MENUBAR-07** Delete every patient and open the panel → it asks you to add a patient in the main window first.
 - **MENUBAR-08** Make **Start recording** fail, such as with FileVault off → the reason appears under the button and the panel stays open.
-- **MENUBAR-09** Lock the app and open the panel → it shows "Aletheia is locked" with **Unlock**.
+- **MENUBAR-09** Lock the app and open the panel → it shows "Aletheia is locked" with **Unlock**, and no patient name or recording detail.
 - **MENUBAR-10** Press ⌘/ → a Keyboard Shortcuts window lists three groups.
 - **MENUBAR-11** Press ⌘N, ⌘G and Esc in their places → a patient is added, a note is generated and a sheet closes.
-- **MENUBAR-12** Choose **Help** > **Report a Bug…** → your browser opens the feedback page.
+- **MENUBAR-12** Choose **Help** > **Report a Bug…** → your browser opens the feedback page, with no patient information in the address.
 - **MENUBAR-13** Rest the pointer for two seconds on a control with a help tip → a "how this works" popover appears once.
 - **MENUBAR-14** Quit with work running → no alert appears and interrupted work is saved for the next launch.
+- **MENUBAR-15** While a recording is running, open the panel and try to start another → no second recording starts and the first keeps recording.
 
 ## 20. Build and privacy checks from Terminal (BUILD)
 Before you start: the Release app at /Applications/Aletheia.app and the repository checked out.
@@ -281,3 +283,4 @@ Before you start: the Release app at /Applications/Aletheia.app and the reposito
 - **BUILD-11** Start a recording and run `ls -la` on the session folder → no audio is there until you click **Stop Recording**.
 - **BUILD-12** Run `cat legal-acceptance.log` in the data folder after accepting terms → one line holds the accepted version, a UTC time and the app version.
 - **BUILD-13** Run `bash scripts/scan-secrets.sh` and `bash scripts/check-entitlements.sh` in the repository → both pass.
+- **BUILD-14** Search the app's source for network calls such as `URLSession` → none outside the network helper.
