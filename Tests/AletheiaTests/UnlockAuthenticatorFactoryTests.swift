@@ -55,8 +55,10 @@ final class TestHostTests: XCTestCase {
         XCTAssertFalse(TestHost.usesLiveKeychain(environment: xctest))
         XCTAssertFalse(TestHost.usesLiveKeychain(environment: xctest.merging(["CI": "false"]) { $1 }))
         XCTAssertFalse(TestHost.usesLiveKeychain(environment: xctest.merging(["ALETHEIA_LIVE_KEYCHAIN": "0"]) { $1 }))
-        XCTAssertTrue(TestHost.usesLiveKeychain(environment: xctest.merging(["CI": "true"]) { $1 }))
-        XCTAssertTrue(TestHost.usesLiveKeychain(environment: xctest.merging(["ALETHEIA_LIVE_KEYCHAIN": "1"]) { $1 }))
+        XCTAssertFalse(TestHost.usesLiveKeychain(environment: xctest.merging(["CI": "true"]) { $1 }),
+                       "CI must not put unit tests on the real Keychain")
+        XCTAssertFalse(TestHost.usesLiveKeychain(environment: xctest.merging(["ALETHEIA_LIVE_KEYCHAIN": "1"]) { $1 }),
+                       "no opt-in puts unit tests on the real Keychain")
         XCTAssertTrue(TestHost.usesLiveKeychain(environment: [:]))
     }
 

@@ -341,7 +341,9 @@ final class AppModel: ObservableObject {
     /// Writes an encrypted archive of the database into `folder` (a folder the
     /// user chose), sealed with the folder key, and records the backup once on
     /// success. Nothing is recorded when the backup is refused or fails.
-    func backUpNow(to folder: URL) async -> BackupOutcome {
+    /// Runs on the main actor: it updates published settings, which the menu
+    /// bar and windows observe; the archive itself is written off the main thread.
+    @MainActor func backUpNow(to folder: URL) async -> BackupOutcome {
         guard let root = settings.dataRootURL, let comments = commentStore else {
             return .failed("Choose a data folder first.")
         }
@@ -586,7 +588,6 @@ final class AppModel: ObservableObject {
     func deletePatient(_ patient: Patient) throws {
         guard let store else { throw StoreError.noDataRoot }
         try store.deletePatient(patient)
-        recordAudit(.recordDeleted, subjectID: patient.id.uuidString, detail: "patient")
         refreshPatients()
         reindexSpotlight()
     }

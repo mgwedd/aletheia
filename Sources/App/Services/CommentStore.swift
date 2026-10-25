@@ -89,7 +89,7 @@ final class CommentStore {
     var onSessionAnnotationsChanged: ((UUID) -> Void)?
 
     /// Receives an activity-log entry (action, record id, note) for each comment
-    /// or chat thread deleted. Never carries text.
+    /// or note changed, or comment or chat thread deleted. Never carries text.
     var onAudit: ((AuditAction, String?, String?) -> Void)?
 
     /// Called when a stored note or session chat exists but can't be decoded
@@ -143,14 +143,20 @@ final class CommentStore {
     @discardableResult
     func addComment(sessionID: UUID, quotedText: String, body: String, anchorSeconds: Double? = nil, quoteStart: Int? = nil, now: Date = Date()) -> SessionComment? {
         let added = annotations.addComment(sessionID: sessionID, quotedText: quotedText, body: body, anchorSeconds: anchorSeconds, quoteStart: quoteStart, now: now)
-        if added != nil { onSessionAnnotationsChanged?(sessionID) }
+        if added != nil {
+            onSessionAnnotationsChanged?(sessionID)
+            onAudit?(.phiAmended, sessionID.uuidString, PHIAuditDetail.comment)
+        }
         return added
     }
 
     @discardableResult
     func updateComment(id: String, body: String, now: Date = Date()) -> Bool {
         let updated = annotations.updateComment(id: id, body: body, now: now)
-        if updated { commentChanged(id) }
+        if updated {
+            commentChanged(id)
+            onAudit?(.phiAmended, annotations.sessionID(ofComment: id)?.uuidString, PHIAuditDetail.comment)
+        }
         return updated
     }
 
@@ -164,10 +170,10 @@ final class CommentStore {
     @discardableResult
     func deleteComment(id: String) -> Bool {
         // Looked up first: once the row is gone, so is the session it was on.
-        let session = onSessionAnnotationsChanged == nil ? nil : annotations.sessionID(ofComment: id)
+        let session = onSessionAnnotationsChanged == nil && onAudit == nil ? nil : annotations.sessionID(ofComment: id)
         let deleted = annotations.deleteComment(id: id)
         if deleted, let session { onSessionAnnotationsChanged?(session) }
-        if deleted { onAudit?(.recordDeleted, session?.uuidString, "comment") }
+        if deleted { onAudit?(.phiDeleted, session?.uuidString, PHIAuditDetail.comment) }
         return deleted
     }
 
@@ -187,8 +193,29 @@ final class CommentStore {
     @discardableResult
     func saveNote(sessionID: UUID, text: String, now: Date = Date()) -> Bool {
         let saved = annotations.saveNote(sessionID: sessionID, text: text, now: now)
-        if saved { onSessionAnnotationsChanged?(sessionID) }
+        if saved {
+            onSessionAnnotationsChanged?(sessionID)
+            if noteAuditDue(for: sessionID, now: now) {
+                onAudit?(.phiAmended, sessionID.uuidString, PHIAuditDetail.therapistNote)
+            }
+        }
         return saved
+    }
+
+    /// The therapist's own note saves on every edit while they type, so one
+    /// entry covers all the saves of a session within this many seconds.
+    static let noteAuditWindow: TimeInterval = 60
+    private var lastNoteAudit: [UUID: Date] = [:]
+    private let noteAuditLock = NSLock()
+
+    private func noteAuditDue(for sessionID: UUID, now: Date) -> Bool {
+        noteAuditLock.lock()
+        defer { noteAuditLock.unlock() }
+        if let last = lastNoteAudit[sessionID], now.timeIntervalSince(last) >= 0, now.timeIntervalSince(last) < Self.noteAuditWindow {
+            return false
+        }
+        lastNoteAudit[sessionID] = now
+        return true
     }
 
     // MARK: - Chat threads
@@ -207,7 +234,7 @@ final class CommentStore {
     @discardableResult
     func deleteChatThread(id: UUID, patientID: UUID) -> Bool {
         let deleted = chats.deleteChatThread(id: id, patientID: patientID)
-        if deleted { onAudit?(.recordDeleted, id.uuidString, "chat thread") }
+        if deleted { onAudit?(.phiDeleted, id.uuidString, PHIAuditDetail.chatThread) }
         return deleted
     }
 

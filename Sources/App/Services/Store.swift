@@ -1,5 +1,20 @@
 import Foundation
 
+/// The only notes the activity log gets for a change to a record: the kind of
+/// record, never a name or any text.
+enum PHIAuditDetail {
+    static let patient = "patient"
+    static let session = "session"
+    static let transcript = "transcript"
+    static let note = "note"
+    static let therapistNote = "therapist note"
+    static let comment = "comment"
+    static let audioRecording = "audio recording"
+    static let chatThread = "chat thread"
+
+    static let all: Set<String> = [patient, session, transcript, note, therapistNote, comment, audioRecording, chatThread]
+}
+
 enum StoreError: LocalizedError {
     case noDataRoot
     case patientNotFound
@@ -132,8 +147,9 @@ final class Store {
     /// this build understands, computed once when the store opens.
     let schemaCompatibility: SchemaCompatibility
 
-    /// Receives an activity-log entry (action, record id, note) for each
-    /// recording deleted. Never carries text.
+    /// Receives an activity-log entry (action, record id, note) for each record
+    /// created, saved or deleted. The note is one of `PHIAuditDetail`; it never
+    /// carries a name or text.
     var onAudit: ((AuditAction, String?, String?) -> Void)?
 
     /// - Parameter openDatabaseIfMissing: when `commentStore` is nil, whether to
@@ -326,6 +342,7 @@ final class Store {
         let patient = Patient(id: id, name: name, slug: id.uuidString)
         try SecureFS.createDirectory(at: patientDir(for: patient))
         try save(patient)
+        onAudit?(.phiCreated, patient.id.uuidString, PHIAuditDetail.patient)
         return patient
     }
 
@@ -404,6 +421,7 @@ final class Store {
 
         // Remove unreadable records cache entries matching this patient or its folder
         recordUnreadable([], replacing: { $0.patientId == patient.id || $0.folder.path.hasPrefix(dir.path) })
+        onAudit?(.phiDeleted, patient.id.uuidString, PHIAuditDetail.patient)
     }
 
     // MARK: - Sessions
@@ -536,6 +554,7 @@ final class Store {
         // Assign the session's stable identity at creation and persist it.
         let meta = SessionMetadata(id: UUID(), date: date)
         try writeSessionMetadata(meta, to: sessionMetadataURL(for: sessionDir))
+        onAudit?(.phiCreated, meta.id.uuidString, PHIAuditDetail.session)
         return SessionRecord(id: meta.id, patientId: patient.id, date: date, folderName: folderName)
     }
 
@@ -649,7 +668,7 @@ final class Store {
             do { try FileManager.default.removeItem(at: url); removed = true } catch { failed = true }
         }
         try? FileManager.default.removeItem(at: Store.stagingDir(for: session.id))
-        if removed { onAudit?(.recordDeleted, session.id.uuidString, "audio recording") }
+        if removed { onAudit?(.phiDeleted, session.id.uuidString, PHIAuditDetail.audioRecording) }
         if failed { throw StoreError.recordingNotDeleted }
     }
 
@@ -668,6 +687,7 @@ final class Store {
     func saveTranscript(_ text: String, for patient: Patient, session: SessionRecord) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
         try protector.write(text, to: url)
+        onAudit?(.phiAmended, session.id.uuidString, PHIAuditDetail.transcript)
         // Index in the background; the save itself never waits on it.
         if let index = searchIndex {
             let item = Store.indexItem(SessionSearch.Document(
@@ -979,6 +999,7 @@ final class Store {
             let record = try NoteFreshness.encode(fingerprint: NoteFreshness.fingerprint(of: transcript))
             try protector.write(record, to: dir.appendingPathComponent(Store.noteMetaFileName(for: format)))
         }
+        onAudit?(.phiAmended, session.id.uuidString, PHIAuditDetail.note)
     }
 
     // MARK: - Session digests
