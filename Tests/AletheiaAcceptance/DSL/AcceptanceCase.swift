@@ -68,6 +68,7 @@ class AcceptanceCase: XCTestCase {
     /// Marks a check whose fitness function is not written yet. Shows as
     /// skipped; never as passed, never as an expected failure.
     func pending(_ reason: String) throws {
+        AcceptanceLedger.shared.notePending(testName: name, reason: reason)
         throw XCTSkip("pending: \(reason)")
     }
 }
