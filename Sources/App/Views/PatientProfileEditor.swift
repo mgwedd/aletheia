@@ -148,7 +148,10 @@ struct PatientProfileEditor: View {
             Button("Keep Editing", role: .cancel) {}
         }
         .sheet(isPresented: $showDeleteConfirmation) {
-            DeletePatientConfirmationView(patient: original) {
+            DeletePatientConfirmationView(
+                patient: original,
+                sessionDates: ((try? appModel.store?.listSessions(for: original)) ?? []).map(\.date)
+            ) {
                 showDeleteConfirmation = false
                 do {
                     try appModel.deletePatient(original)
@@ -343,10 +346,15 @@ struct PatientProfileEditor: View {
 /// Requires typing the patient's name to confirm.
 struct DeletePatientConfirmationView: View {
     let patient: Patient
+    let sessionDates: [Date]
     let onDelete: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var typedName = ""
     @FocusState private var isFieldFocused: Bool
+
+    private var confirmation: DeletePatientConfirmation {
+        DeletePatientConfirmation(patientName: patient.name, sessionDates: sessionDates)
+    }
 
     private var matches: Bool {
         typedName.trimmingCharacters(in: .whitespaces)
@@ -357,13 +365,15 @@ struct DeletePatientConfirmationView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Delete \(patient.name)?")
+                    Text(confirmation.title)
                         .font(Theme.Typography.title)
                         .foregroundStyle(Theme.text.color)
-                    Text("This will permanently delete this patient and all of their recorded sessions, clinical notes, transcripts, audio, and AI conversations from disk.")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.muted.color)
-                        .fixedSize(horizontal: false, vertical: true)
+                    ForEach(confirmation.paragraphs, id: \.self) { paragraph in
+                        Text(paragraph)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.muted.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer()
                 Image(systemName: "exclamationmark.triangle.fill")
