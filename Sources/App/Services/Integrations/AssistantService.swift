@@ -226,13 +226,20 @@ struct AssistantService {
     /// and shouldn't quietly steer a regenerated note or answer.
     static func formatComments(_ comments: [SessionComment]) -> [String] {
         comments.filter { !$0.resolved }.map { comment in
-            let quote = comment.quotedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            // One line per comment: a multi-line quote or body would otherwise
+            // read as extra list items in the prompt.
+            let quote = oneLine(comment.quotedText)
+            let body = oneLine(comment.body)
             if let format = comment.format {
                 return quote.isEmpty
-                    ? "- [On \(format.shortName) note]: \(comment.body)"
-                    : "- [On \(format.shortName) note “\(quote)”]: \(comment.body)"
+                    ? "- [On \(format.shortName) note]: \(body)"
+                    : "- [On \(format.shortName) note “\(quote)”]: \(body)"
             }
-            return quote.isEmpty ? "- \(comment.body)" : "- On “\(quote)”: \(comment.body)"
+            return quote.isEmpty ? "- \(body)" : "- On “\(quote)”: \(body)"
         }
+    }
+
+    private static func oneLine(_ text: String) -> String {
+        text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
     }
 }

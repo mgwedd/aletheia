@@ -388,7 +388,7 @@ struct SessionDetailView: View {
         .onChange(of: settings.progressNoteFormat) { _, newFormat in
             note.showSaved(for: newFormat)
             // Note comments belong to one format.
-            reloadNoteComments(for: newFormat)
+            reloadNoteComments()
         }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -1125,7 +1125,7 @@ struct SessionDetailView: View {
             showingMyNotes = false
             settings.progressNoteFormat = initialNoteFormat
             note.showSaved(for: initialNoteFormat)
-            reloadNoteComments(for: initialNoteFormat)
+            reloadNoteComments()
         }
         selectedTab = initialTab
         if let initialFocusedCommentID {
@@ -1237,7 +1237,7 @@ struct SessionDetailView: View {
                 case .format(let format):
                     showingMyNotes = false
                     settings.progressNoteFormat = format
-                    reloadNoteComments(for: format)
+                    reloadNoteComments()
                 }
             }
         )
@@ -1474,7 +1474,7 @@ struct SessionDetailView: View {
         )
         // Keep the composer (and the typed comment) open when the save failed.
         guard let created else { return }
-        reloadNoteComments(for: format)
+        reloadNoteComments()
         showNoteComposer = false
         focusNoteComment(created.id)
     }
@@ -1486,7 +1486,7 @@ struct SessionDetailView: View {
         noteCommentRevealToken &+= 1
     }
 
-    private func reloadNoteComments(for format: ProgressNoteFormat? = nil) {
+    private func reloadNoteComments() {
         if let commentStore = appModel.commentStore {
             allComments = commentStore.comments(sessionID: session.id)
         }

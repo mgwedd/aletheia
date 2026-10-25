@@ -118,6 +118,15 @@ final class ProgressNotePromptTests: XCTestCase {
         XCTAssertTrue(prompt.contains("not the therapist's words"))
     }
 
+    func testAMultiLineCommentStaysOneListItem() {
+        let comment = SessionComment(
+            id: "1", quotedText: "Plan:\n  weekly\tsessions", body: "Add\n\nhomework",
+            createdAt: Date(), updatedAt: Date(), format: .soap
+        )
+        XCTAssertEqual(AssistantService.formatComments([comment]),
+                       ["- [On SOAP note “Plan: weekly sessions”]: Add homework"])
+    }
+
     func testSessionChatAndSummarizeIncludePatientBackground() {
         let bg = "===== Patient background =====\nClinical history:\nPTSD"
         let chatPrompt = Prompts.sessionChat(transcript: transcript, patientBackground: bg, history: [], question: "Q?")
