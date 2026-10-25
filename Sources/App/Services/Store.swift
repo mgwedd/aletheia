@@ -350,7 +350,8 @@ final class Store {
         guard patient.slug != name else { return patient }
         return Patient(
             id: patient.id, name: patient.name, notes: patient.notes, createdAt: patient.createdAt,
-            slug: name, clinicalHistory: patient.clinicalHistory, medications: patient.medications)
+            slug: name, clinicalHistory: patient.clinicalHistory, medications: patient.medications,
+            recordingConsentAttestedAt: patient.recordingConsentAttestedAt)
     }
 
     func patientDir(for patient: Patient) -> URL {
