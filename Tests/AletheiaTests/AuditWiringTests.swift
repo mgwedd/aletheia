@@ -293,6 +293,21 @@ final class AuditWiringTests: XCTestCase {
         XCTAssertEqual(entries(.integrityCheckFailed).count, 1)
     }
 
+    func testRowWithoutMACRaisesAlertOnLaunch() throws {
+        let key = try XCTUnwrap(AuditKeyManager.loadOrCreateKeychainKey())
+        let log = AuditLog(root: tempRoot, keyProvider: { key })
+        try log.record(.appUnlocked)
+        try log.record(.appLocked)
+        try log.core?.executeRaw("DROP TRIGGER IF EXISTS audit_no_update;")
+        try log.core?.executeRaw("UPDATE audit_events SET mac = NULL WHERE seq = 2;")
+
+        makeModel()
+        waitForAlerts { !self.appModel.securityAlerts.isEmpty }
+
+        XCTAssertEqual(appModel.securityAlerts, [.auditLogBroken(entry: 2)])
+        XCTAssertEqual(entries(.integrityCheckFailed).count, 1)
+    }
+
     func testIntactChainRaisesNoAlertOnLaunch() throws {
         makeModel()
         waitForAlerts { false }   // let the background check finish

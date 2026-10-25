@@ -73,7 +73,7 @@ final class EncryptionManager: ObservableObject {
 
     /// Set by `AppModel` to write key and key-storage changes to the activity
     /// log. Notes are fixed text; nothing about the key itself is passed.
-    var recordAudit: (AuditAction, String) -> Void = { _, _ in }
+    var recordAudit: (AuditAction, AuditDetail) -> Void = { _, _ in }
 
     /// Called after a passphrase change has been swapped in, never on a refusal.
     var onPassphraseChanged: (() -> Void)?
@@ -219,7 +219,7 @@ final class EncryptionManager: ObservableObject {
             try storeKeyOnDevice()
             rememberError = nil
             if !wasRemembered {
-                recordAudit(.securitySettingChanged, AuditedSettings.rememberKeyOnMac.detail(for: true))
+                recordAudit(.securitySettingChanged, .setting(AuditedSettings.rememberKeyOnMac, true))
             }
         } catch {
             rememberError = error.localizedDescription
@@ -248,7 +248,7 @@ final class EncryptionManager: ObservableObject {
         let wasRemembered = deviceKeys.load(for: id) != nil
         deviceKeys.delete(for: id)
         if wasRemembered {
-            recordAudit(.securitySettingChanged, AuditedSettings.rememberKeyOnMac.detail(for: false))
+            recordAudit(.securitySettingChanged, .setting(AuditedSettings.rememberKeyOnMac, false))
         }
     }
 

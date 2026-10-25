@@ -84,7 +84,13 @@ struct AuditEvent: Codable, Equatable {
     let at: String
     /// The user and uid who performed the action: "\(NSUserName()):\(getuid())".
     let actor: String
-    let action: AuditAction
+    /// The action as stored. Kept as the raw string so a row written by another
+    /// build (a newer one, say) still shows what it says.
+    let actionName: String
+    /// The known action, or nil for a string this build doesn't recognise.
+    var action: AuditAction? { AuditAction(rawValue: actionName) }
+    /// What the viewer and report show: the action's label, or the raw string.
+    var actionLabel: String { action?.displayName ?? actionName }
     /// Opaque record UUID (patient or session), never a name.
     let subjectID: String?
     /// Short, non-PHI qualifier, e.g. "Markdown" or "imported". Never clinical.
@@ -113,10 +119,25 @@ struct AuditEvent: Codable, Equatable {
         prevMac: Data? = nil,
         mac: Data? = nil
     ) {
+        self.init(seq: seq, at: at, actor: actor, actionName: action.rawValue, subjectID: subjectID,
+                  detail: detail, appVersion: appVersion, prevMac: prevMac, mac: mac)
+    }
+
+    init(
+        seq: Int64? = nil,
+        at: String,
+        actor: String = AuditLog.currentActor,
+        actionName: String,
+        subjectID: String? = nil,
+        detail: String? = nil,
+        appVersion: String = AppSettings.appVersionString,
+        prevMac: Data? = nil,
+        mac: Data? = nil
+    ) {
         self.seq = seq
         self.at = at
         self.actor = actor
-        self.action = action
+        self.actionName = actionName
         self.subjectID = subjectID
         self.detail = detail
         self.appVersion = appVersion
@@ -131,12 +152,25 @@ struct AuditEvent: Codable, Equatable {
         // Lines from the old text log carry no actor; don't attribute them to
         // whoever happens to be running the app now.
         actor = (try container.decodeIfPresent(String.self, forKey: .actor)) ?? AuditLog.unknownActor
-        action = try container.decode(AuditAction.self, forKey: .action)
+        actionName = try container.decode(String.self, forKey: .action)
         subjectID = try container.decodeIfPresent(String.self, forKey: .subjectID)
         detail = try container.decodeIfPresent(String.self, forKey: .detail)
         appVersion = (try container.decodeIfPresent(String.self, forKey: .appVersion)) ?? AppSettings.appVersionString
         prevMac = try container.decodeIfPresent(Data.self, forKey: .prevMac)
         mac = try container.decodeIfPresent(Data.self, forKey: .mac)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(seq, forKey: .seq)
+        try container.encode(at, forKey: .at)
+        try container.encode(actor, forKey: .actor)
+        try container.encode(actionName, forKey: .action)
+        try container.encodeIfPresent(subjectID, forKey: .subjectID)
+        try container.encodeIfPresent(detail, forKey: .detail)
+        try container.encode(appVersion, forKey: .appVersion)
+        try container.encodeIfPresent(prevMac, forKey: .prevMac)
+        try container.encodeIfPresent(mac, forKey: .mac)
     }
 }
 
@@ -334,7 +368,7 @@ final class AuditLog {
     func record(
         _ action: AuditAction,
         subjectID: String? = nil,
-        detail: String? = nil,
+        detail: AuditDetail? = nil,
         at date: Date = Date(),
         appVersion: String = AppSettings.appVersionString
     ) throws -> AuditEvent {
@@ -343,7 +377,7 @@ final class AuditLog {
             actor: Self.currentActor,
             action: action.rawValue,
             subjectID: subjectID,
-            detail: detail,
+            detail: detail?.text,
             appVersion: appVersion
         )
         let written: [SQLitePersistenceCore.AuditRow]
@@ -376,7 +410,7 @@ final class AuditLog {
             seq: row.seq,
             at: row.at,
             actor: row.actor,
-            action: AuditAction(rawValue: row.action) ?? .appUnlocked,
+            actionName: row.action,
             subjectID: row.subjectID,
             detail: row.detail,
             appVersion: row.appVersion,
@@ -407,8 +441,10 @@ final class AuditLog {
             let rows = core.allAuditEvents()
             var expectedPrevMac: Data? = nil
             for row in rows {
+                // A key exists, so every row should carry a tag: a row without one
+                // may have had it stripped.
                 guard let rowMac = row.mac else {
-                    return .unverifiable(reason: "Entry #\(row.seq) is missing cryptographic MAC")
+                    return .broken(seq: row.seq, reason: "Entry has no MAC (its authentication tag is missing)")
                 }
                 if row.prevMac != expectedPrevMac {
                     return .broken(seq: row.seq, reason: "prev_mac does not match preceding entry's MAC")
@@ -452,7 +488,7 @@ final class AuditLog {
         let lines = all.map { entry -> String in
             let seqStr = entry.seq.map { "#\($0)" } ?? "#?"
             let macStr = entry.mac?.prefix(8).map { String(format: "%02x", $0) }.joined() ?? "none"
-            var parts = ["\(seqStr)  \(entry.at)  \(entry.actor)  \(entry.action.displayName)"]
+            var parts = ["\(seqStr)  \(entry.at)  \(entry.actor)  \(entry.actionLabel)"]
             if let subject = entry.subjectID { parts.append("record \(subject)") }
             if let detail = entry.detail { parts.append(detail) }
             parts.append("mac: \(macStr)")
@@ -497,7 +533,7 @@ final class AuditLog {
             return SQLitePersistenceCore.NewAuditRow(
                 at: event.at,
                 actor: event.actor,
-                action: event.action.rawValue,
+                action: event.actionName,
                 subjectID: event.subjectID,
                 detail: event.detail.map { "imported · \($0)" } ?? "imported",
                 appVersion: event.appVersion

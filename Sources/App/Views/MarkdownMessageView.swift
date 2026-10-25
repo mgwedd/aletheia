@@ -256,7 +256,7 @@ private struct CodeCard: View {
                     .foregroundStyle(Theme.muted.color)
                 Spacer()
                 Button {
-                    feedback.copy(code)
+                    feedback.copy(code, kind: .copiedChat)
                 } label: {
                     Label(feedback.title, systemImage: feedback.justCopied ? "checkmark" : "doc.on.doc")
                         .font(.caption2)
