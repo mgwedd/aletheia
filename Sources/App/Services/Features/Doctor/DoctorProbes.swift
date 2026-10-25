@@ -141,13 +141,16 @@ struct LiveDoctorProbes: DoctorProbing {
     var isSandboxedProvider: () -> Bool = { true }
     var appLockProvider: () -> (enabled: Bool, canAuthenticate: Bool) = { (true, true) }
     var auditLedgerProvider: () -> AuditLedgerProbe = { .checked(.verified(count: 0), writable: true) }
+    /// Patient names and folder slugs (from the in-memory patient list) that the
+    /// shared report must never contain.
+    var knownTerms: [String] = []
 
     func callAudio() -> CallAudioDiagnostics? { callAudioDiagnostics }
     func timeMachineExclusion() -> Bool? { timeMachineExclusionProvider() }
     func isSandboxed() -> Bool { isSandboxedProvider() }
     func appLock() -> (enabled: Bool, canAuthenticate: Bool) { appLockProvider() }
     func auditLedger() -> AuditLedgerProbe { auditLedgerProvider() }
-    func environment() -> DoctorEnvironment { .current(dataRoot: dataRoot) }
+    func environment() -> DoctorEnvironment { .current(dataRoot: dataRoot, knownTerms: knownTerms) }
     func now() -> Date { Date() }
 
     func dataFolder() -> DataFolderProbe {
@@ -282,6 +285,12 @@ struct LiveDoctorProbes: DoctorProbing {
         return .checked(result, writable: writable)
     }
 
+    /// The patient values the report must scrub, from the patient list the app
+    /// already holds in memory (no extra disk reads).
+    static func knownTerms(for patients: [Patient]) -> [String] {
+        DoctorRedactor.terms(forPatients: patients.map { ($0.name, $0.slug) })
+    }
+
     /// Live probes wired to the running app's state.
     @MainActor
     static func make(
@@ -301,6 +310,7 @@ struct LiveDoctorProbes: DoctorProbing {
         }
         let dataRoot = settings.dataRootURL
         let appLockEnabled = settings.appLockEnabled
+        let knownTerms = LiveDoctorProbes.knownTerms(for: appModel.patients)
         return LiveDoctorProbes(
             dataRoot: dataRoot,
             appDatabaseFailure: appModel.databaseState.failure,
