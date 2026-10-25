@@ -274,13 +274,14 @@ final class AppLock: ObservableObject {
     /// stepping away re-requires authentication. No-op when the lock is off.
     func lockIfEnabled() {
         if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: canAuthenticateProvider()) {
+            // A lock that was already up (launch with the lock on) still keeps the
+            // search index shut: SQLite's page cache holds indexed text.
+            SessionSearch.setAppLocked(true)
+            SessionSearch.closeIndex()
             guard !isLocked else { return }
             isLocked = true
             lockGeneration += 1
             dropKeyUnlessWriting()
-            SessionSearch.setAppLocked(true)
-            // SQLite's page cache holds indexed text; don't keep it open behind the lock screen.
-            SessionSearch.closeIndex()
             // Names must not stay findable behind the lock; unlock re-indexes.
             spotlight.clear()
             LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript

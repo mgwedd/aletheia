@@ -26,6 +26,31 @@ final class LockSheetDismissalTests: XCTestCase {
     }
 
     @MainActor
+    func testLockAlreadyUpAtLaunchStillShutsTheSearchIndex() {
+        let suite = "lock-launch-index-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        let previous = SessionSearch.index
+        defer {
+            SessionSearch.setAppLocked(false)
+            SessionSearch.index = previous
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let settings = AppSettings(defaults: defaults)
+        settings.appLockEnabled = true
+        SessionSearch.setAppLocked(false)
+        let index = SearchIndex(url: FileManager.default.temporaryDirectory
+            .appendingPathComponent("lock-launch-\(UUID()).sqlite"))
+        SessionSearch.index = index
+        let appLock = AppLock(settings: settings, canAuthenticate: { true })
+        XCTAssertTrue(appLock.isLocked, "the lock is up from launch")
+
+        appLock.lockIfEnabled()
+
+        XCTAssertFalse(SessionSearch.mayOpenIndex, "the index may not open behind the lock")
+        XCTAssertFalse(index.isOpen)
+    }
+
+    @MainActor
     func testLockDoesNotBumpGenerationWhenTheLockIsOff() {
         let suite = "lock-sheet-off-\(UUID())"
         let defaults = UserDefaults(suiteName: suite)!
