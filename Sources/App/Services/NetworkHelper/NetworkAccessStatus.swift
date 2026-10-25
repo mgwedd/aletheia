@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Security
 
@@ -94,6 +95,12 @@ enum NetworkHelperDisclosure {
         lines += WhisperModel.allCases.map { "Whisper \($0.shortName) transcription model" }
         lines += LlamaModel.allCases.map { "\($0.shortName) language model" }
         return lines
+    }
+
+    /// What "Copy" under "Verify it yourself" puts on the clipboard: the command,
+    /// kept out of clipboard history like any other copied text.
+    static func copyVerifyCommand(for bundle: Bundle = .main, to pasteboard: NSPasteboard = .general) {
+        PHIPasteboard.writeString(verifyCommand(for: bundle), to: pasteboard)
     }
 
     /// Where the helper lives inside the app bundle.

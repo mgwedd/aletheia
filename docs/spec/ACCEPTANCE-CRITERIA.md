@@ -187,7 +187,7 @@ Before you start: a Mac that can authenticate with Touch ID or a password.
 ## 13. Encryption at rest (ENCRYPT)
 Before you start: a developer build, or a data folder that is already encrypted; Settings > Encryption appears only then.
 - **ENCRYPT-01** In a Release build with an unencrypted folder, look for encryption controls → none are offered.
-- **ENCRYPT-02** Click **Turn On…** with a passphrase under 12 characters (dev build) → **Continue** is disabled and a strength meter shows "Weak".
+- **ENCRYPT-02** Type a passphrase under 12 characters in **Turn On…** (dev build) → **Continue** stays disabled, and under 8 characters the strength meter reads "Weak".
 - **ENCRYPT-03** Reach the recovery key step (dev build) → 24 words show, with **Copy Words**, **Save as PDF…** and **Print…**.
 - **ENCRYPT-04** Reach the last step (dev build) → **Encrypt my data** stays unavailable until both acknowledgement boxes are ticked.
 - **ENCRYPT-05** Open data folder files in Terminal after encrypting (dev build) → transcripts, notes and recordings are unreadable while folder names stay readable.
@@ -231,7 +231,7 @@ Before you start: a data folder with some activity (unlock, export, delete a pat
 - **SECURITY-03** Click **Copy** under "Verify it yourself" → the button reads "Copied" and the clipboard holds the codesign command.
 - **SECURITY-04** Open the activity log after unlocking, exporting and deleting a patient → each adds a dated entry with no patient names.
 - **SECURITY-05** Click **Verify integrity & export audit report** → "Integrity verified" appears and a report is saved.
-- **SECURITY-06** Edit audit.log in Terminal, reopen and verify → "Integrity check failed" appears with the entry number.
+- **SECURITY-06** Change an activity log entry outside Aletheia, then click **Verify integrity & export audit report** → "Integrity check failed" appears with the entry number.
 - **SECURITY-07** Choose **Help** > **Aletheia Doctor…** → checks are grouped and each shows OK, Warning or Problem.
 - **SECURITY-08** Click **Copy report** in Doctor → the button reads "Copied" and the report holds no patient names.
 
