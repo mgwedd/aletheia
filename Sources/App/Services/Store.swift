@@ -475,6 +475,8 @@ final class Store {
         var unreadable: [UnreadableEntry] = []
         for folder in entries {
             guard let isDir = try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory, isDir else { continue }
+            // A hidden folder is a session still being created.
+            guard !folder.lastPathComponent.hasPrefix(".") else { continue }
             // A session folder is one carrying a `session.json` identity record,
             // or (legacy / manually created) one named "…_Session". The latter
             // is minted an id on sight so it becomes stable from here on.
@@ -543,17 +545,34 @@ final class Store {
     func createSession(for patient: Patient, on date: Date = Date()) throws -> SessionRecord {
         let dir = patientDir(for: patient)
         let dayString = dateFolderFormatter.string(from: date)
+        // Build the folder, identity file included, under a hidden name and then
+        // rename it into place. A listing running at the same time (background
+        // sweeps list sessions) never sees a session folder without its
+        // `session.json`, which it would otherwise give a second id.
+        let meta = SessionMetadata(id: UUID(), date: date)
+        let staged = dir.appendingPathComponent(".new-session-\(meta.id.uuidString)", isDirectory: true)
+        try SecureFS.createDirectory(at: staged)
+        do {
+            try writeSessionMetadata(meta, to: sessionMetadataURL(for: staged))
+        } catch {
+            try? fileManager.removeItem(at: staged)
+            throw error
+        }
         var folderName = "\(dayString)_Session"
         var suffix = 2
-        while fileManager.fileExists(atPath: dir.appendingPathComponent(folderName).path) {
+        while true {
+            if !fileManager.fileExists(atPath: dir.appendingPathComponent(folderName).path) {
+                // rename(2) fails rather than replace a folder that appeared meanwhile.
+                if rename(staged.path, dir.appendingPathComponent(folderName).path) == 0 { break }
+                if errno != EEXIST && errno != ENOTEMPTY {
+                    let code = errno
+                    try? fileManager.removeItem(at: staged)
+                    throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+                }
+            }
             folderName = "\(dayString)_Session-\(suffix)"
             suffix += 1
         }
-        let sessionDir = dir.appendingPathComponent(folderName, isDirectory: true)
-        try SecureFS.createDirectory(at: sessionDir)
-        // Assign the session's stable identity at creation and persist it.
-        let meta = SessionMetadata(id: UUID(), date: date)
-        try writeSessionMetadata(meta, to: sessionMetadataURL(for: sessionDir))
         onAudit?(.phiCreated, meta.id.uuidString, PHIAuditDetail.session)
         return SessionRecord(id: meta.id, patientId: patient.id, date: date, folderName: folderName)
     }
