@@ -105,6 +105,7 @@ final class AppModel: ObservableObject {
     /// this so kept recordings are only ever stored as ciphertext
     /// (`AudioRetentionPolicy.keepsAudio`).
     var isEncryptionEnabled: Bool { encryption.isEnabled }
+    var encryptionRequiresAppLock: Bool { encryption.requiresAppLock }
 
     /// Whether at-rest encryption is set up *and* unlocked this session. Read by
     /// Doctor to describe the keystore's state.

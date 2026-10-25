@@ -442,7 +442,7 @@ final class AppSettings: ObservableObject {
         debugDiagnosticsEnabled = defaults.bool(forKey: Keys.debugDiagnosticsEnabled)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         appLockEnabled = defaults.object(forKey: Keys.appLockEnabled) as? Bool ?? true
-        lockWhenHidden = defaults.object(forKey: Keys.lockWhenHidden) as? Bool ?? false
+        lockWhenHidden = defaults.object(forKey: Keys.lockWhenHidden) as? Bool ?? true
         hideFromScreenSharing = defaults.object(forKey: Keys.hideFromScreenSharing) as? Bool ?? true
         if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,
            IdleAutoLockTimeout.allCases.map(\.rawValue).contains(stored) {

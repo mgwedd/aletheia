@@ -186,6 +186,7 @@ targets:
         # XCTest creates this class when the bundle loads; it registers the
         # ledger observer (Tests/AletheiaAcceptance/Ledger).
         INFOPLIST_KEY_NSPrincipalClass: AcceptanceLedgerPrincipal
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LOCK_REQUIRED_SEAM"
     dependencies:
       - target: Aletheia
       - target: WhisperEngine

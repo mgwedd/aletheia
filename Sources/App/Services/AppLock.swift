@@ -192,6 +192,12 @@ final class AppLock: ObservableObject {
     private var backgroundWorkCancellable: AnyCancellable?
     /// The lock engaged while background work was writing; `onLock` runs once it ends.
     private(set) var keyDropPending = false
+    /// True when something outside the preferences (an encrypted folder whose key is
+    /// kept on this Mac) means the lock cannot be switched off.
+    private let lockRequired: () -> Bool
+
+    /// The preference, or the stored-key rule when the preference has been turned off.
+    var isLockEnabled: Bool { settings.appLockEnabled || lockRequired() }
 
     /// How often the idle timer checks elapsed time against the configured
     /// timeout. Coarse on purpose: auto-lock only needs to notice idleness
@@ -205,17 +211,19 @@ final class AppLock: ObservableObject {
         authenticator: UnlockAuthenticator = UnlockAuthenticatorFactory.make(),
         isAppActive: @escaping () -> Bool = { NSApp.isActive },
         spotlight: SpotlightIndexing = SpotlightIndexerFactory.make(),
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        lockRequired: @escaping () -> Bool = { false }
     ) {
         self.settings = settings
         self.now = now
         self.lastActivity = now()
+        self.lockRequired = lockRequired
         self.authenticator = authenticator
         self.isAppActive = isAppActive
         self.spotlight = spotlight
         self.canAuthenticateProvider = canAuthenticate
         self.isLocked = AppLockPolicy.shouldLock(
-            enabled: settings.appLockEnabled,
+            enabled: settings.appLockEnabled || lockRequired(),
             canAuthenticate: canAuthenticate()
         )
         // A lock that happened (or a launch) while another app was frontmost
@@ -273,7 +281,7 @@ final class AppLock: ObservableObject {
     /// Re-lock now (e.g. when the Mac sleeps or locks), so
     /// stepping away re-requires authentication. No-op when the lock is off.
     func lockIfEnabled() {
-        if AppLockPolicy.shouldLock(enabled: settings.appLockEnabled, canAuthenticate: canAuthenticateProvider()) {
+        if AppLockPolicy.shouldLock(enabled: isLockEnabled, canAuthenticate: canAuthenticateProvider()) {
             guard !isLocked else { return }
             isLocked = true
             lockGeneration += 1
@@ -415,7 +423,7 @@ final class AppLock: ObservableObject {
     /// on init and whenever settings change, so the timer only ever runs
     /// while it could actually do something.
     private func refreshIdleMonitoring() {
-        guard settings.appLockEnabled, settings.idleAutoLockMinutes > 0 else {
+        guard isLockEnabled, settings.idleAutoLockMinutes > 0 else {
             idleTimer?.invalidate()
             idleTimer = nil
             return
