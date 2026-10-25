@@ -44,6 +44,7 @@ Before you start: a patient with no sessions.
 - **SESSION-06** Schedule a repeating next session with "Save an .ics file" ticked (dev build) → Calendar gains an event with no patient name and the file is saved.
 - **SESSION-07** Choose **Remind Me** > Tomorrow (dev build) → Reminders gains a "Follow up" item that names no patient.
 - **SESSION-08** Run the Shortcuts action "Show Today's Sessions" (dev build) → sessions are listed by initials, and when locked it refuses.
+- **SESSION-09** With FileVault off, click **New session** → an alert asks you to turn on FileVault and no session is created.
 
 ## 4. Record a session (RECORD)
 Before you start: a session with no transcript, a Mac that can play some audio, and microphone and call-audio permissions not yet decided.
@@ -87,6 +88,7 @@ Before you start: a session with a saved transcript and no comments.
 - **COMMENT-05** Drag the divider between transcript and comments → the split is remembered, and dragging far enough folds a side away.
 - **COMMENT-06** Edit a card, then click **Resolve** → it moves into a collapsed "Resolved (N)" section, and **Reopen** brings it back.
 - **COMMENT-07** Click **Delete** on a card → it disappears at once with no confirmation.
+- **COMMENT-08** Delete a patient → her comments are gone and no longer listed for any session.
 
 ## 7. Draft and edit progress notes (NOTE)
 Before you start: a session with a transcript, the AI model downloaded, and a comment and patient background containing a distinctive fact.
@@ -148,10 +150,11 @@ Before you start: two patients with transcripts, notes and comments, one of them
 - **SEARCH-08** Search for text that appears nowhere → the results say "No results" for that query.
 - **SEARCH-09** Transcribe a session and search right away → a line says results may be incomplete, then fills in by itself.
 - **SEARCH-10** Quit, delete search.sqlite from the data folder and reopen → search still works and nothing is lost.
-- **SEARCH-11** Lock the app and unlock it → search works again after unlock.
+- **SEARCH-11** Lock the app → search finds nothing while locked, and works again after you unlock.
 - **SEARCH-12** Turn on "Find patients in Spotlight" (dev build) → Spotlight lists patients by initials, never names.
 - **SEARCH-13** Search a transcript word in capitals, then in lowercase → both return the same results, and accents are ignored.
 - **SEARCH-14** Type "Joanne" plus a topic word from her notes → only her sessions mentioning the topic appear, and adding a date word narrows them to that date.
+- **SEARCH-15** Delete a patient, then search a word from her transcript → no result mentions her.
 
 ## 11. Export and archive (EXPORT)
 Before you start: two patients with transcripts, notes and comments, one session with a kept recording, and one with nothing in it.
