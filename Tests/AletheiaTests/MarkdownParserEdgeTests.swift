@@ -114,7 +114,10 @@ final class MarkdownParserEdgeTests: XCTestCase {
         for end in document.indices {
             let prefix = String(document[...end])
             let blocks = MarkdownParser.parse(prefix)
-            let words = prefix.split { !$0.isLetter && !$0.isNumber }.map(String.init)
+            // A list marker is structure the renderer redraws, not text.
+            let withoutMarkers = prefix.replacingOccurrences(
+                of: #"(?m)^\s*\d+[.)](\s|$)"#, with: "", options: .regularExpression)
+            let words = withoutMarkers.split { !$0.isLetter && !$0.isNumber }.map(String.init)
             let rendered = blocks.map(Self.text).joined(separator: " ")
             for word in words where !["mermaid"].contains(word) {
                 XCTAssertTrue(rendered.contains(word), "'\(word)' was dropped from a partial document ending \(prefix.suffix(12))")

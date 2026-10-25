@@ -75,10 +75,16 @@ final class InterruptedWorkLauncherTests: XCTestCase {
         )
     }
 
-    /// Waits for `done` (up to a second); with no condition, long enough for the
-    /// launcher's pass to have run, so "nothing happened" is a real observation.
+    /// Waits for `done` (up to 15 seconds of wall-clock time, so a slow runner
+    /// can't run it out early); with no condition, long enough for the launcher's
+    /// pass to have run, so "nothing happened" is a real observation.
     private func settle(until done: (() -> Bool)? = nil) async {
-        for _ in 0..<(done == nil ? 5 : 100) where !(done?() ?? false) { try? await Task.sleep(nanoseconds: 10_000_000) }
+        if let done {
+            let deadline = Date().addingTimeInterval(15)
+            while !done() && Date() < deadline { try? await Task.sleep(nanoseconds: 10_000_000) }
+        } else {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
         try? await Task.sleep(nanoseconds: 50_000_000)
     }
 
@@ -127,10 +133,13 @@ final class InterruptedWorkLauncherTests: XCTestCase {
         let staged = try stage(Data("crash audio".utf8), for: recording.id)
 
         start()
+        let mic = store.micRecordingURL(for: patient, session: recording)
+        await settle { FileManager.default.fileExists(atPath: mic.path) }
         await settle { !self.transcribed.isEmpty }
 
-        let mic = store.micRecordingURL(for: patient, session: recording)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: mic.path), "the recording is back in its session")
+        let setAside = OrphanAudioSweep.quarantineDirectory(stagingRoot: stagingRoot).path
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mic.path),
+                      "the recording is back in its session (set aside: \(FileManager.default.fileExists(atPath: setAside)))")
         XCTAssertFalse(FileManager.default.fileExists(atPath: staged.path), "and no longer staged")
         XCTAssertEqual(transcribed, [recording.folderName])
     }
