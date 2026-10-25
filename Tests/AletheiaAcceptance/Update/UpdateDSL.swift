@@ -1,4 +1,5 @@
 @testable import Aletheia
+import CryptoKit
 import Foundation
 import XCTest
 
@@ -14,19 +15,26 @@ private final class FeedFake: UpdateChecking, @unchecked Sendable {
     }
 }
 
-private final class HelperFake: NetworkHelping, @unchecked Sendable {
-    struct Download: Equatable { let asset: AssetID; let sha256: String }
-    var failure: Error?
-    private(set) var downloads: [Download] = []
-    func fetchAppcast() async throws -> Data { Data() }
+/// The conversation with the sandboxed helper: writes `payload` into the file
+/// the app hands it, as the helper would. The app's own client, which checks
+/// the digest and deletes a mismatch, runs for real on top of it.
+private final class HelperConnectionFake: NetworkHelperConnection, @unchecked Sendable {
+    var payload = Data()
+    private(set) var assets: [AssetID] = []
+    func checkForUpdates() async throws -> Data { Data() }
     func fetchRevocations() async throws -> Data { Data() }
     func download(
-        _ asset: AssetID, expectedSHA256: String, to destination: URL,
-        onProgress: @escaping @Sendable (Double) -> Void
+        asset: AssetID, into file: FileHandle,
+        progress: @escaping @Sendable (Int64, Int64) -> Void
     ) async throws {
-        downloads.append(Download(asset: asset, sha256: expectedSHA256))
-        if let failure { throw failure }
+        assets.append(asset)
+        try file.write(contentsOf: payload)
+        progress(Int64(payload.count), Int64(payload.count))
     }
+}
+
+func sha256Hex(_ data: Data) -> String {
+    SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
 }
 
 // MARK: - Subjects
@@ -41,7 +49,7 @@ private final class OpenLog: @unchecked Sendable {
 @MainActor
 final class UpdateRig {
     fileprivate let feed: FeedFake
-    fileprivate let helper = HelperFake()
+    fileprivate let connection = HelperConnectionFake()
     fileprivate let log = OpenLog()
     let service: UpdateService
     private let suite = "aletheia-acceptance-update-\(UUID().uuidString)"
@@ -51,7 +59,7 @@ final class UpdateRig {
     fileprivate init(feed: Result<ReleaseInfo, Error>, interval: TimeInterval?) {
         let fake = FeedFake(feed)
         self.feed = fake
-        let helper = self.helper
+        let helper = NetworkHelperClient(connection: connection)
         let defaults = UserDefaults(suiteName: suite)!
         self.defaults = defaults
         downloads = FileManager.default.temporaryDirectory
@@ -68,8 +76,13 @@ final class UpdateRig {
 
     var fetchCount: Int { feed.fetchCount }
     var opened: [URL] { log.urls }
-    var downloadRequests: [(asset: AssetID, sha256: String)] { helper.downloads.map { ($0.asset, $0.sha256) } }
-    fileprivate func helperFails(_ error: Error) { helper.failure = error }
+    var downloadedAssets: [AssetID] { connection.assets }
+    fileprivate func helperSends(_ bytes: Data) { connection.payload = bytes }
+    var archive: URL { downloads.appendingPathComponent("Aletheia-update.dmg") }
+    /// Every file left in the downloads folder, including partials.
+    var filesLeftBehind: [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: downloads.path)) ?? []).sorted()
+    }
 
     func cleanUp() {
         defaults.removePersistentDomain(forName: suite)
@@ -144,15 +157,27 @@ extension When {
 
     /// Clicks Download update with a network helper and browser that are fakes.
     func downloadUpdate(checksumListed: Bool, checksumMatches: Bool = true) async -> UpdateDownload {
-        let rig = UpdateRig(feed: .success(Self.release("1.1.0", sha256: checksumListed ? Self.digest : nil)), interval: 0)
-        if !checksumMatches { rig.helperFails(URLError(.cannotParseResponse)) }
+        let rig = UpdateRig(
+            feed: .success(Self.release("1.1.0", sha256: checksumListed ? sha256Hex(Self.diskImage) : nil)),
+            interval: 0)
+        rig.helperSends(checksumMatches ? Self.diskImage : Data("not the release".utf8))
         await rig.service.checkForUpdates(force: true)
         rig.service.installAvailableUpdate()
-        for _ in 0..<100 where rig.opened.isEmpty { try? await Task.sleep(nanoseconds: 20_000_000) }
+        // The download runs in the background; wait for it to open something.
+        await eventually { !rig.opened.isEmpty }
         return UpdateDownload(rig: rig)
     }
 
-    static let digest = String(repeating: "ab", count: 32)
+    static let diskImage = Data("pretend disk image bytes".utf8)
+
+    /// Polls until `condition` holds or two seconds pass.
+    fileprivate func eventually(_ condition: @MainActor () -> Bool) async {
+        let deadline = Date().addingTimeInterval(2)
+        while !condition(), Date() < deadline { try? await Task.sleep(nanoseconds: 10_000_000) }
+    }
+
+    /// The Software update card's rows, top to bottom.
+    var softwareUpdateRows: [String] { SoftwareUpdateRow.allCases.map(\.title) }
 
     var currentSigningDescription: String { CodeSigningStatus.current().description }
     var automaticChecksDefault: Bool { app.settings.autoCheckForUpdates }
@@ -186,26 +211,39 @@ extension Then where Subject == UpdatePrompt {
 
 @MainActor extension Then where Subject == UpdateDownload {
     func downloadedAndOpenedDiskImage() {
-        expectEqual(subject.rig.downloadRequests.first?.asset, AssetID.updateArchive, "the downloaded asset")
-        expectEqual(subject.rig.downloadRequests.first?.sha256, When.digest, "the digest the download is checked against")
+        expectEqual(subject.rig.downloadedAssets, [AssetID.updateArchive], "the downloaded asset")
         expectEqual(subject.rig.opened.map(\.pathExtension), ["dmg"], "the opened file")
+        expectEqual(try? Data(contentsOf: subject.rig.archive), When.diskImage, "the verified disk image on disk")
         expect(subject.rig.service.available == nil, "the prompt should close")
     }
 
     func openedReleasePage() {
-        expectEqual(subject.rig.opened, [ReleaseLink.downloadsPage], "the page opened after a failed verification")
+        expectEqual(subject.rig.opened, [ReleaseLink.downloadsPage], "what opened after a failed verification")
+    }
+
+    func deletedTheFile() {
+        expectEqual(subject.rig.filesLeftBehind, [], "files left in the downloads folder after a mismatch")
     }
 }
 
 @MainActor extension Then where Subject == UpdateDownload {
     func downloadedNothingAndOpenedReleasePage() {
-        expect(subject.rig.downloadRequests.isEmpty, "nothing should be downloaded without a checksum")
+        expect(subject.rig.downloadedAssets.isEmpty, "nothing should be downloaded without a checksum")
         expectEqual(subject.rig.opened, [ReleaseLink.downloadsPage], "the page opened")
     }
 }
 
 @MainActor extension Then where Subject == UpdateRig {
     func checkedTheFeed(_ times: Int) { expectEqual(subject.fetchCount, times, "feed checks") }
+}
+
+extension Then where Subject == [String] {
+    func showVersionNotarizationAndAutomaticSwitch() {
+        expectEqual(
+            subject,
+            [Copy.versionRow, Copy.notarizationRow, Copy.automaticChecksRow, Copy.checkNowRow],
+            "the Software update rows")
+    }
 }
 
 extension Then where Subject == String {

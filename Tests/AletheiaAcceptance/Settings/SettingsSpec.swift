@@ -10,7 +10,10 @@ final class SettingsSpec: AcceptanceCase {
     }
 
     func test_SETTINGS_02() async throws {
-        try pending("the folder pointer persists through a bookmark in the app's real preferences, which a hosted test must not rewrite")
+        let row = try when.chooseDataFolderThenRelaunch()
+
+        then(row).showsPathAndChoose()
+        then(row).isStillInUseAfterRelaunch()
     }
 
     func test_SETTINGS_03() async throws {
@@ -26,7 +29,6 @@ final class SettingsSpec: AcceptanceCase {
 
     func test_SETTINGS_05() async throws {
         then(try await when.downloadSpeechModel()).barFilled()
-        try pending("UI driver: the percent bar and the Installed label")
     }
 
     func test_SETTINGS_06() async throws {
@@ -38,7 +40,7 @@ final class SettingsSpec: AcceptanceCase {
 
     func test_SETTINGS_07() async throws {
         then(when.pickBuiltInModels()).eachShowsALicenseLink()
-        try pending("UI driver: that the link sits above the download button")
+        then(when.lookAtModelCards()).showTheLicenseLinkBeforeTheDownload()
     }
 
     func test_SETTINGS_08() async throws {
@@ -50,7 +52,7 @@ final class SettingsSpec: AcceptanceCase {
         then(when.lookAtRiskPhrases()).isCustomised()
         then(when.removeRiskPhrase("wants to disappear")).doesNotList("wants to disappear")
         then(when.resetRiskPhrases()).isTheDefaultList()
-        try pending("UI driver: Reset to Defaults asking before it replaces the list")
+        then(when.askToResetRiskPhrases()).asksBeforeReplacingTheList()
     }
 
     func test_SETTINGS_10() async throws {
@@ -60,12 +62,11 @@ final class SettingsSpec: AcceptanceCase {
 
     func test_SETTINGS_11() async throws {
         then(when.turnOnRecordingDiagnostics()).wasTurnedOn("Show recording diagnostics")
-        try pending("UI driver: the call-audio readout on the recording pane")
+        then(when.openRecordingPane()).gainsADiagnosticsReadout()
     }
 
     func test_SETTINGS_12() async throws {
         then(when.lookAtLegal()).holdsTermsAndNotices()
-        try pending("UI driver: the Consent Guide… button and the pane layout")
     }
 
     func test_SETTINGS_13() async throws {
@@ -77,6 +78,5 @@ final class SettingsSpec: AcceptanceCase {
         let move = try when.moveSyncedFolderToThisMac()
 
         then(move).offersToCopyAndVerify()
-        try pending("UI driver: the sheet's Keep original and Delete original choices")
     }
 }

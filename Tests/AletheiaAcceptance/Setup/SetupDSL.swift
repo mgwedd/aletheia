@@ -10,19 +10,9 @@ struct SetupChecklist {
     let items: [SetupItem]
 
     var progress: Setup.Progress { Setup.progress(items) }
-    var counter: String { "\(progress.done) of \(progress.total) done" }
+    var counter: String { progress.label }
 
     func item(_ kind: ToolHealthCheck.Kind) -> SetupItem? { items.first { $0.id == kind } }
-}
-
-/// Whether the first-run sheet would be up. Mirrors the gate in `AletheiaApp`
-/// (`showFirstRun`), which is private to the view layer.
-struct FirstRunGate {
-    let hasDataFolder: Bool
-    let hasCompletedFirstRun: Bool
-    let hasAcceptedCurrentTerms: Bool
-
-    var sheetShows: Bool { !hasDataFolder || !hasCompletedFirstRun || !hasAcceptedCurrentTerms }
 }
 
 /// One checklist row's state, from a classified check.
@@ -33,8 +23,27 @@ struct SetupRowState {
 /// The "Protect your data" step for the current folder.
 struct EncryptionStep {
     let moduleInBuild: Bool
-    let recommendedWithoutFolder: Bool
-    let recommendedWithFolder: Bool
+    let withoutFolder: FirstRunEncryptionStep.Offer
+    let withFolder: FirstRunEncryptionStep.Offer
+    /// Whether Finish setup is available with a folder and the terms, encryption untouched.
+    let finishWithFolderOnly: Bool
+}
+
+/// Finish setup, as the sheet's footer shows it.
+struct FinishButton {
+    let enabled: Bool
+    let hint: String
+}
+
+struct MicrophoneClick {
+    let prompts: Int
+    let rowAfter: SetupRowState
+}
+
+struct CallAudioClick {
+    let openedPanes: [String]
+    let looks: Int
+    let rowAfter: SetupRowState
 }
 
 /// How a checklist row reads to the user.
@@ -51,15 +60,78 @@ extension Given {
     func dataFolderChosen() { app.settings.dataRootURL = app.root }
 }
 
+/// The macOS side of the checklist buttons, answering as scripted.
+@MainActor
+final class ScriptedSystem: SetupSystem {
+    var folder: URL?
+    var microphoneAnswer = true
+    var callAudioAnswer = false
+    /// The look at which System Settings has the grant, counting from 1.
+    var grantedAtLook = Int.max
+    private(set) var looks = 0
+    private(set) var microphonePrompts = 0
+    private(set) var openedPanes: [String] = []
+
+    func chooseFolder() -> URL? { folder }
+    func requestMicrophone() async -> Bool { microphonePrompts += 1; return microphoneAnswer }
+    func openMicrophoneSettings() { openedPanes.append("microphone") }
+    func requestCallAudio() async -> Bool { callAudioAnswer }
+    func callAudioGranted() -> Bool { looks += 1; return looks >= grantedAtLook }
+    func openCallAudioSettings() { openedPanes.append("call audio") }
+    func armCallAudioProbe() {}
+    func confirmCallAudioGrant() {}
+}
+
 // MARK: - When
 
 extension When {
-    func openFirstRunGate() -> FirstRunGate {
-        FirstRunGate(
-            hasDataFolder: app.settings.dataRootURL != nil,
-            hasCompletedFirstRun: app.settings.hasCompletedFirstRun,
-            hasAcceptedCurrentTerms: app.settings.hasAcceptedCurrentLegal)
+    func openFirstRunGate() -> FirstRunGate { FirstRunGate(settings: app.settings) }
+
+    /// Asks the sheet to close (Escape, a click outside) and says whether it is still up.
+    func sheetStaysUpAfterTryingToClose() -> Bool {
+        let presentation = FirstRunGate.presentation(settings: app.settings)
+        presentation.wrappedValue = false
+        return presentation.wrappedValue
     }
+
+    func finishButton() -> FinishButton {
+        let hasFolder = app.settings.dataRootURL != nil
+        let agreed = app.settings.hasAcceptedCurrentLegal
+        return FinishButton(
+            enabled: FirstRunFinish.isEnabled(hasDataFolder: hasFolder, agreedToTerms: agreed),
+            hint: FirstRunFinish.hint(hasDataFolder: hasFolder, agreedToTerms: agreed))
+    }
+
+    func chooseFolder(_ folder: URL?) async throws {
+        let system = ScriptedSystem()
+        system.folder = folder
+        let runner = SetupActionRunner(system: system, settings: app.settings, rebuildStore: { self.app.appModel.rebuildStore() })
+        _ = try await runner.perform(.chooseFolder)
+    }
+
+    /// Clicks Allow Microphone and answers the macOS prompt; returns the row as it reads afterwards.
+    func allowMicrophone(answer: MicrophoneAccess) async throws -> MicrophoneClick {
+        let system = ScriptedSystem()
+        system.microphoneAnswer = answer == .allowed
+        let runner = SetupActionRunner(system: system, settings: app.settings, rebuildStore: {})
+        _ = try await runner.perform(.requestMicrophone)
+        return MicrophoneClick(prompts: system.microphonePrompts, rowAfter: microphoneRow(answer))
+    }
+
+    /// Clicks Allow on call audio, declines the prompt, grants in System Settings on the nth look.
+    func allowCallAudio(grantedInSettingsAtLook look: Int) async throws -> CallAudioClick {
+        let system = ScriptedSystem()
+        system.grantedAtLook = look
+        let runner = SetupActionRunner(
+            system: system, settings: app.settings, rebuildStore: {}, pollInterval: 0, maxPolls: 10)
+        _ = try await runner.perform(.requestScreenRecording)
+        return CallAudioClick(
+            openedPanes: system.openedPanes, looks: system.looks,
+            rowAfter: callAudioRow(granted: system.looks >= look))
+    }
+
+    func readConsentGuide() -> [ConsentGuideContent.Section] { ConsentGuideContent.sections }
+    var consentSampleClause: String { ConsentGuideContent.sampleClause }
 
     /// Runs the same checks the sheet runs, for the services this build ships.
     func readChecklist() async -> SetupChecklist {
@@ -130,11 +202,12 @@ extension When {
     func lookAtEncryptionStep() -> EncryptionStep {
         EncryptionStep(
             moduleInBuild: app.appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id),
-            recommendedWithoutFolder: EncryptionOnboarding.isRecommended(dataFolderChosen: false, alreadyEnabled: false),
-            recommendedWithFolder: EncryptionOnboarding.isRecommended(dataFolderChosen: true, alreadyEnabled: false))
+            withoutFolder: FirstRunEncryptionStep(hasDataFolder: false, encryptionOn: false).offer,
+            withFolder: FirstRunEncryptionStep(hasDataFolder: true, encryptionOn: false).offer,
+            finishWithFolderOnly: FirstRunFinish.isEnabled(hasDataFolder: true, agreedToTerms: true))
     }
 
-    var termsLinks: [URL] { [Legal.termsURL, Legal.privacyURL] }
+    var termsLinks: [URL] { Legal.Document.allCases.map(\.url) }
     var dataFolderPath: String { app.root.path }
     var receiptExists: Bool { app.probe.files().contains("legal-acceptance.log") }
 }
@@ -201,8 +274,50 @@ extension Then where Subject == SetupRowState {
 extension Then where Subject == EncryptionStep {
     func isRecommendedOnceFolderChosen() {
         expect(subject.moduleInBuild, "the Protect your data step should be in this build")
-        expect(!subject.recommendedWithoutFolder, "encryption should not be recommended before a folder is chosen")
-        expect(subject.recommendedWithFolder, "encryption should be recommended once a folder is chosen")
+        expectEqual(subject.withoutFolder, .chooseFolderFirst, "the step before a folder is chosen")
+        expect(
+            subject.withFolder == .recommended(button: Copy.setUpEncryptionButton),
+            "encryption should be recommended with a \(Copy.setUpEncryptionButton) button once a folder is chosen, found \(subject.withFolder)")
+    }
+
+    func doesNotBlockFinish() {
+        expect(subject.finishWithFolderOnly, "Finish setup should enable without setting up encryption")
+    }
+}
+
+extension Then where Subject == FinishButton {
+    func isDisabled() { expect(!subject.enabled, "Finish setup should be disabled: \(subject.hint)") }
+    func isEnabled() { expect(subject.enabled, "Finish setup should be enabled: \(subject.hint)") }
+    func asksFor(_ text: String) { expect(subject.hint.contains(text), "the hint \"\(subject.hint)\" should ask for \(text)") }
+}
+
+extension Then where Subject == [ConsentGuideContent.Section] {
+    func areNumbered() {
+        expect(!subject.isEmpty, "the consent guide should have sections")
+        for (index, section) in subject.enumerated() {
+            expect(section.title.hasPrefix("\(index + 1)."), "section \(index + 1) should be numbered: \(section.title)")
+        }
+    }
+}
+
+extension Then where Subject == String {
+    func isASampleConsentClause() {
+        expect(subject.count > 40, "the sample consent clause should be a real clause: \(subject)")
+    }
+}
+
+extension Then where Subject == MicrophoneClick {
+    func asksMacOS() { expectEqual(subject.prompts, 1, "microphone prompts") }
+    func leavesRow(_ tone: RowTone, button: String) {
+        Then<SetupRowState>(subject: subject.rowAfter, check: check, file: file, line: line)
+            .needsButton(button, row: tone)
+    }
+}
+
+extension Then where Subject == CallAudioClick {
+    func sendsYouToSystemSettings() { expectEqual(subject.openedPanes, ["call audio"], "settings panes opened") }
+    func turnsDoneWithoutRestart() {
+        Then<SetupRowState>(subject: subject.rowAfter, check: check, file: file, line: line).isDone()
     }
 }
 

@@ -5,7 +5,7 @@ import XCTest
 
 // MARK: - Fakes
 
-/// A network helper that reports a fixed run of progress and writes nothing.
+/// A network helper that reports a fixed run of progress, then leaves a file at the destination.
 private final class ProgressHelperFake: NetworkHelping, @unchecked Sendable {
     let steps: [Double]
     init(steps: [Double]) { self.steps = steps }
@@ -16,6 +16,7 @@ private final class ProgressHelperFake: NetworkHelping, @unchecked Sendable {
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws {
         for step in steps { onProgress(step) }
+        try Data("model".utf8).write(to: destination)
     }
 }
 
@@ -36,9 +37,9 @@ struct SettingsDefaults {
 
 /// A model download seen from the progress bar.
 struct DownloadProgress {
-    let fractions: [Double]
-    let finished: Double
-    let stillDownloading: Bool
+    let midway: ModelCardPresentation
+    let finished: ModelCardPresentation
+    let finishedFraction: Double
 }
 
 /// The engine picker and what backs it.
@@ -71,6 +72,26 @@ struct NoteFormatChoices {
 }
 
 /// The result of pointing the data folder somewhere.
+struct DataFolderRow {
+    let chosen: URL
+    let shownPath: String
+    let button: String
+    let folderAfterRelaunch: URL?
+}
+
+/// Reset to Defaults and Clear All, before and after the yes.
+struct RiskPhraseConfirmation {
+    let asked: RiskPhraseEditor.Confirmation?
+    let listWhileAsking: [String]
+    let listAfterNo: [String]
+    let listAfterYes: [String]
+}
+
+struct RecordingPane {
+    let readoutOff: [String]?
+    let readoutOn: [String]?
+}
+
 struct FolderAttempt {
     let message: String?
     let folderAfter: URL?
@@ -85,10 +106,13 @@ struct FolderMove {
     let originalStillThere: Bool
     let reboundTo: URL?
     let destination: URL
+    let choices: [String]
+    let originalGoneAfterDelete: Bool
 }
 
 /// What Legal and Licenses hold.
 struct LegalPane {
+    let items: [String]
     let links: [URL]
     let noticeBlocks: Int
     let noticesLoaded: Bool
@@ -133,15 +157,49 @@ extension When {
         return AppearanceChoice(appliedName: applied, afterRelaunch: after)
     }
 
+    /// Downloads the speech model and returns the card as it reads mid-way and when done.
     func downloadSpeechModel() async throws -> DownloadProgress {
         let helper = ProgressHelperFake(steps: [0.25, 0.5, 1.0])
         let downloader = WhisperModelDownloader(helper: helper)
+        let model = app.settings.whisperModel
         let target = app.root.appendingPathComponent("speech-model.bin")
-        try await downloader.download(app.settings.whisperModel, to: target)
-        try await Task.sleep(nanoseconds: 200_000_000)
-        return DownloadProgress(
-            fractions: [downloader.progress], finished: downloader.progress,
-            stillDownloading: downloader.isDownloading)
+        let midway = ModelCardPresentation(
+            installed: false, isDownloading: true, progress: 0.5, sizeMB: model.approximateSizeMB)
+        try await downloader.download(model, to: target)
+        // Progress reaches the main queue a beat after the download returns.
+        await eventually { downloader.progress == 1.0 }
+        let finished = ModelCardPresentation(
+            installed: FileManager.default.fileExists(atPath: target.path),
+            isDownloading: downloader.isDownloading, progress: downloader.progress,
+            sizeMB: model.approximateSizeMB)
+        return DownloadProgress(midway: midway, finished: finished, finishedFraction: downloader.progress)
+    }
+
+    /// Polls until `condition` holds or two seconds pass.
+    fileprivate func eventually(_ condition: @MainActor () -> Bool) async {
+        let deadline = Date().addingTimeInterval(2)
+        while !condition(), Date() < deadline { try? await Task.sleep(nanoseconds: 10_000_000) }
+    }
+
+    /// The data folder row, and the folder in use after the app is quit and reopened.
+    func chooseDataFolderThenRelaunch() throws -> DataFolderRow {
+        let chosen = app.root.appendingPathComponent("chosen-folder", isDirectory: true)
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+        try app.settings.setDataRoot(chosen)
+        let shown = DataFolderDisplay.text(for: app.settings.dataRootURL)
+        app.relaunch(tier: app.tier)
+        return DataFolderRow(
+            chosen: chosen, shownPath: shown, button: DataFolderDisplay.chooseButton,
+            folderAfterRelaunch: app.settings.dataRootURL)
+    }
+
+    /// The cards for the speech model and for each built-in model, before anything downloads.
+    func lookAtModelCards() -> [ModelCardPresentation] {
+        let speech = ModelCardPresentation(
+            installed: false, isDownloading: false, progress: 0, sizeMB: app.settings.whisperModel.approximateSizeMB)
+        return [speech] + LlamaModel.allCases.map {
+            ModelCardPresentation(installed: false, isDownloading: false, progress: 0, sizeMB: $0.approximateSizeMB)
+        }
     }
 
     func lookAtEnginePicker() -> EnginePicker {
@@ -173,6 +231,19 @@ extension When {
     func removeRiskPhrase(_ text: String) -> RiskPhraseList {
         app.settings.riskPhrases.removeAll { $0 == text }
         return lookAtRiskPhrases()
+    }
+
+    func askToResetRiskPhrases() -> RiskPhraseConfirmation {
+        app.settings.addRiskPhrase("custom phrase")
+        var editor = RiskPhraseEditor()
+        editor.askToReset()
+        let asked = editor.pending
+        let whileAsking = app.settings.riskPhrases
+        editor.cancel()
+        let afterNo = app.settings.riskPhrases
+        RiskPhraseEditor.apply(.resetToDefaults, to: app.settings)
+        return RiskPhraseConfirmation(
+            asked: asked, listWhileAsking: whileAsking, listAfterNo: afterNo, listAfterYes: app.settings.riskPhrases)
     }
 
     func resetRiskPhrases() -> RiskPhraseList {
@@ -208,10 +279,24 @@ extension When {
         return !before && app.settings.debugDiagnosticsEnabled
     }
 
+    /// The recording pane with the setting off, then on: the readout rows it shows each time.
+    func openRecordingPane() -> RecordingPane {
+        let sample = CallAudioDiagnostics(
+            preflightGranted: true, currentBuild: "acceptance", confirmedBuild: nil, attemptedThisLaunch: false,
+            workedThisLaunch: false, lastStart: .notTried, streamRunning: false, streamDisrupted: false,
+            buffersReceived: 0, bytesWritten: nil, disruptions: 0, firstFailure: nil)
+        app.settings.debugDiagnosticsEnabled = false
+        let off = RecordingDiagnostics.readout(enabled: app.settings.debugDiagnosticsEnabled) { sample }
+        app.settings.debugDiagnosticsEnabled = true
+        let on = RecordingDiagnostics.readout(enabled: app.settings.debugDiagnosticsEnabled) { sample }
+        return RecordingPane(readoutOff: off?.map(\.label), readoutOn: on?.map(\.label))
+    }
+
     func lookAtLegal() -> LegalPane {
         let text = ThirdPartyNotices.load()
         return LegalPane(
-            links: [Legal.termsURL, Legal.privacyURL],
+            items: SettingsLegalItem.all.map(\.id),
+            links: Legal.Document.allCases.map(\.url),
             noticeBlocks: text.map { ThirdPartyNotices.blocks(from: $0).count } ?? 0,
             noticesLoaded: text != nil)
     }
@@ -244,13 +329,19 @@ extension When {
         let destination = app.root.appendingPathComponent("local", isDirectory: true).appendingPathComponent("Aletheia Data")
         var rebound: URL?
         try DataFolderMove.copyAndRebind(source: source, destination: destination) { rebound = $0 }
+        let stillThere = FileManager.default.fileExists(atPath: source.path)
+        let copyMatches = (try? DataFolderMove.verifyCopy(source, destination)) == true
+        try DataFolderMove.deleteOriginal(source)
+        let goneAfterDelete = !FileManager.default.fileExists(atPath: source.path)
         return FolderMove(
             sheetShowsForSyncedFolder: DataFolderPolicy.verdict(for: synced) != .ok
                 && DataFolderPolicy.presentsMoveSheet(requested: true, appLocked: false),
             sheetHiddenWhileLocked: !DataFolderPolicy.presentsMoveSheet(requested: true, appLocked: true),
-            copyMatches: (try? DataFolderMove.verifyCopy(source, destination)) == true,
-            originalStillThere: FileManager.default.fileExists(atPath: source.path),
-            reboundTo: rebound, destination: destination)
+            copyMatches: copyMatches,
+            originalStillThere: stillThere,
+            reboundTo: rebound, destination: destination,
+            choices: DataFolderMoveChoice.allCases.map(\.title),
+            originalGoneAfterDelete: goneAfterDelete)
     }
 }
 
@@ -279,8 +370,11 @@ extension Then where Subject == AppearanceChoice {
 
 extension Then where Subject == DownloadProgress {
     func barFilled() {
-        expectEqual(subject.finished, 1.0, "the final progress")
-        expect(!subject.stillDownloading, "the download should be finished")
+        expectEqual(subject.midway.rows.contains(.progress(fraction: 0.5)), true, "a percent bar while downloading")
+        expectEqual(subject.finishedFraction, 1.0, "the final progress")
+        expectEqual(ModelCardPresentation.percentText(subject.finishedFraction), "100%", "the bar's caption when full")
+        expectEqual(subject.finished.chip, "Installed", "the card's label once downloaded")
+        expect(subject.finished.rows.contains(.installed), "the Installed row should replace the bar")
     }
 }
 
@@ -289,6 +383,46 @@ extension Then where Subject == EnginePicker {
     func keepsAppleIntelligenceOff() {
         expect(subject.appleIntelligenceBlocked, "Apple Intelligence should stay off")
         expect(!subject.options.contains(.appleIntelligence), "Apple Intelligence should not be offered")
+    }
+}
+
+extension Then where Subject == [ModelCardPresentation] {
+    func showTheLicenseLinkBeforeTheDownload() {
+        for card in subject {
+            let link = card.rows.firstIndex(of: .licenseLink)
+            let download = card.rows.firstIndex { if case .downloadPrompt = $0 { return true } else { return false } }
+            expect(link != nil && download != nil, "a card should have a license link and a download: \(card.rows)")
+            if let link, let download { expect(link < download, "the license link should sit above the download: \(card.rows)") }
+        }
+    }
+}
+
+extension Then where Subject == DataFolderRow {
+    func showsPathAndChoose() {
+        expectEqual(subject.shownPath, subject.chosen.path, "the path in the row")
+        expectEqual(subject.button, "Choose…", "the button next to the path")
+    }
+
+    func isStillInUseAfterRelaunch() {
+        expectEqual(
+            subject.folderAfterRelaunch?.resolvingSymlinksInPath().path,
+            subject.chosen.resolvingSymlinksInPath().path, "the data folder after relaunch")
+    }
+}
+
+extension Then where Subject == RiskPhraseConfirmation {
+    func asksBeforeReplacingTheList() {
+        expectEqual(subject.asked, .resetToDefaults, "what Reset to Defaults asks")
+        expect(subject.listWhileAsking.contains("custom phrase"), "the list should not change while asking")
+        expect(subject.listAfterNo.contains("custom phrase"), "saying no should keep the list")
+        expectEqual(subject.listAfterYes, LongSessionNote.defaultRiskPhrases, "the list after saying yes")
+    }
+}
+
+extension Then where Subject == RecordingPane {
+    func gainsADiagnosticsReadout() {
+        expect(subject.readoutOff == nil, "the recording pane should have no readout while the setting is off")
+        expect(subject.readoutOn?.contains("Preflight granted") == true, "the readout should show the call-audio state: \(subject.readoutOn ?? [])")
     }
 }
 
@@ -334,6 +468,7 @@ extension Then where Subject == Bool {
 extension Then where Subject == LegalPane {
     func holdsTermsAndNotices() {
         expectEqual(subject.links.count, 2, "terms links")
+        expectEqual(subject.items, ["Terms of Service", "Privacy Policy", "Consent Guide…"], "what the Legal card holds")
         expect(subject.noticesLoaded, "the third-party notices should be in the build")
         expect(subject.noticeBlocks > 0, "the third-party notices should have content")
     }
@@ -353,5 +488,7 @@ extension Then where Subject == FolderMove {
         expect(subject.copyMatches, "the copy should verify against the original")
         expectEqual(subject.reboundTo, subject.destination, "the folder Aletheia now uses")
         expect(subject.originalStillThere, "the original should stay until you delete it")
+        expectEqual(subject.choices, ["Keep original for now", "Delete original folder…"], "the choices after the copy")
+        expect(subject.originalGoneAfterDelete, "choosing Delete should remove the original")
     }
 }

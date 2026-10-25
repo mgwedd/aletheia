@@ -6,3 +6,10 @@ extension Copy {
     static let remindMeLater = "Remind me later"
     static let downloadUpdate = "Download update"
 }
+
+extension Copy {
+    static let versionRow = "Current version"
+    static let notarizationRow = "Notarization"
+    static let automaticChecksRow = "Check for updates automatically"
+    static let checkNowRow = "Check for updates"
+}

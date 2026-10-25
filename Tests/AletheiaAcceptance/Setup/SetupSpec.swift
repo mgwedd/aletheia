@@ -3,7 +3,7 @@ import XCTest
 final class SetupSpec: AcceptanceCase {
     func test_SETUP_01() async throws {
         then(when.openFirstRunGate()).sheetShows()
-        try pending("UI driver: the sheet can't be dismissed")
+        then(when.sheetStaysUpAfterTryingToClose()).isTrue("asking to close the sheet should leave it up")
     }
 
     func test_SETUP_02() async throws {
@@ -18,7 +18,6 @@ final class SetupSpec: AcceptanceCase {
 
     func test_SETUP_03() async throws {
         then(when.termsLinks).areTermsAndPrivacyOnGitHub()
-        try pending("UI driver: clicking the links opens the default browser")
     }
 
     func test_SETUP_04() async throws {
@@ -28,34 +27,42 @@ final class SetupSpec: AcceptanceCase {
         then(when.termsRow()).isDone()
         then(when.dataFolderRow()).needsButton(Copy.chooseFolderButton, row: .problem)
         then(when.openFirstRunGate()).sheetShows()
-        try pending("UI driver: Finish setup's disabled state")
+        then(when.finishButton()).isDisabled()
+        then(when.finishButton()).asksFor("data folder")
     }
 
     func test_SETUP_05() async throws {
-        try pending("UI driver: the consent guide's numbered sections and sample clause")
+        then(when.readConsentGuide()).areNumbered()
+        then(when.consentSampleClause).isASampleConsentClause()
     }
 
     func test_SETUP_06() async throws {
-        given.dataFolderChosen()
+        given.noDataFolderChosen()
+        when.agreeToTerms()
+        try await when.chooseFolder(app.root)
         let row = when.dataFolderRow()
 
         then(row).isDone()
         then(row).detailMentions(when.dataFolderPath)
-        try pending("UI driver: the Choose Folder panel")
+        then(when.finishButton()).isEnabled()
     }
 
     func test_SETUP_07() async throws {
         then(when.microphoneRow(.notAskedYet)).needsButton(Copy.allowMicrophoneButton, row: .needsAttention)
-        then(when.microphoneRow(.denied)).needsButton(Copy.openSettingsButton, row: .problem)
+        let denied = try await when.allowMicrophone(answer: .denied)
+        then(denied).asksMacOS()
+        then(denied).leavesRow(.problem, button: Copy.openSettingsButton)
         then(when.microphoneRow(.allowed)).isDone()
-        try pending("UI driver: the macOS microphone prompt")
     }
 
     func test_SETUP_08() async throws {
         then(when.callAudioRow(granted: false)).needsButton(Copy.allowButton, row: .problem)
         then(when.callAudioRow(granted: true)).isDone()
         then(await when.recheckCallAudioAfterGrant()).isDone()
-        try pending("UI driver: granting in System Settings")
+
+        let click = try await when.allowCallAudio(grantedInSettingsAtLook: 3)
+        then(click).sendsYouToSystemSettings()
+        then(click).turnsDoneWithoutRestart()
     }
 
     func test_SETUP_09() async throws {
@@ -85,7 +92,7 @@ final class SetupSpec: AcceptanceCase {
         given.buildIs(.dev)
 
         then(when.lookAtEncryptionStep()).isRecommendedOnceFolderChosen()
-        try pending("UI driver: the button, and that Finish setup stays enabled")
+        then(when.lookAtEncryptionStep()).doesNotBlockFinish()
     }
 
     func test_SETUP_12() async throws {

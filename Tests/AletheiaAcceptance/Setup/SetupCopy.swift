@@ -4,6 +4,7 @@ extension Copy {
     static let openSettingsButton = "Open Settings"
     static let allowButton = "Allow"
     static let downloadButton = "Download"
+    static let setUpEncryptionButton = "Set Up Encryption"
 }
 
 extension Copy {

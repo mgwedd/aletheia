@@ -4,7 +4,7 @@ final class UpdateSpec: AcceptanceCase {
     func test_UPDATE_01() async throws {
         then(when.automaticChecksDefault).isOn("automatic update checks")
         then(when.currentSigningDescription).isNotarizationText()
-        try pending("UI driver: the Software update card's rows (version, Notarization, switch)")
+        then(when.softwareUpdateRows).showVersionNotarizationAndAutomaticSwitch()
     }
 
     func test_UPDATE_02() async throws {
@@ -60,7 +60,6 @@ final class UpdateSpec: AcceptanceCase {
         defer { outcome.rig.cleanUp() }
 
         then(outcome).downloadedAndOpenedDiskImage()
-        try pending("UI driver: that Aletheia stays open; the digest check itself runs in the network helper")
     }
 
     func test_UPDATE_08() async throws {
@@ -68,7 +67,7 @@ final class UpdateSpec: AcceptanceCase {
         defer { outcome.rig.cleanUp() }
 
         then(outcome).openedReleasePage()
-        try pending("the helper deletes a mismatched file; it is not reachable in process")
+        then(outcome).deletedTheFile()
     }
 
     func test_UPDATE_09() async throws {
