@@ -12,23 +12,14 @@ enum TestHost {
         environment["XCTestConfigurationFilePath"] != nil
     }
 
-    /// Whether the real login Keychain may be used. Under XCTest an ad-hoc
-    /// signed build is a new app on every rebuild, so each run would raise a
-    /// Keychain access prompt. Tests therefore get an in-memory store unless
-    /// opted in, as CI does (smoke-test.yml):
-    ///
-    ///     TEST_RUNNER_ALETHEIA_LIVE_KEYCHAIN=1 xcodebuild test -scheme Aletheia -destination 'platform=macOS'
-    ///
-    /// xcodebuild strips the `TEST_RUNNER_` prefix and passes the rest to the
-    /// test host, so the app sees `ALETHEIA_LIVE_KEYCHAIN=1`. `CI=true` also
-    /// opts in, but only if it reaches the test host, which xcodebuild doesn't
-    /// do by itself. Outside XCTest this is always true.
+    /// Whether the real login Keychain may be used: always in the app, never
+    /// while hosting unit tests, locally or on CI. Tests get an in-memory
+    /// store, so a Keychain stall or access prompt can't hang the suite. The
+    /// Keychain calls themselves are unit tested through injected closures.
     static func usesLiveKeychain(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Bool {
         !isHostingTests(environment: environment)
-            || environment["CI"] == "true"
-            || environment["ALETHEIA_LIVE_KEYCHAIN"] == "1"
     }
 
     /// Hosting tests in the background: no focus, no Dock icon, no visible windows.

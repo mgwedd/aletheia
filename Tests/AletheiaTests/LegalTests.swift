@@ -166,9 +166,8 @@ final class LegalTests: XCTestCase {
     /// The audit-log description names the ledger, not the old text file, and
     /// does not promise events the app never records.
     func testAuditLogDocsMatchTheLedger() throws {
-        let never: [AuditAction] = [.phiViewed, .phiCreated, .phiAmended, .phiDeleted, .aiInference,
-                                    .phiCopied, .backupRun, .backupRestored, .noteSigned]
-        XCTAssertEqual(never.count, 9)
+        let never: [AuditAction] = [.phiViewed, .aiInference, .phiCopied, .backupRestored, .noteSigned]
+        XCTAssertEqual(never.count, 5)
         for path in ["SECURITY.md", "docs/HIPAA-SAFEGUARDS.md"] {
             let text = try doc(path)
             XCTAssertTrue(text.contains("audit_events") || text.localizedCaseInsensitiveContains("tamper-evident"), path)

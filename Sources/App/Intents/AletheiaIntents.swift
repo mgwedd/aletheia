@@ -75,6 +75,10 @@ struct NewSessionIntent: AppIntent {
            !PHIEntryGate.allowsNewPHI(diskEncrypted: DiskEncryptionProbe().isDataVolumeEncrypted(root)) {
             return .result(dialog: "\(PHIEntryGate.blockedMessage)")
         }
+        if let root = AppSettings.shared.dataRootURL {
+            let log = AuditLog(root: root)
+            store.onAudit = { action, subject, detail in _ = try? log.record(action, subjectID: subject, detail: detail) }
+        }
         _ = try store.createSession(for: match)
         AppNavigator.shared.requestOpen(patientID: match.id)
         return .result(dialog: "Started a new session.")
