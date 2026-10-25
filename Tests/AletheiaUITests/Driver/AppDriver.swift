@@ -79,7 +79,8 @@ final class AppDriver {
 
     // MARK: Probe
 
-    private var probeElement: XCUIElement { app.otherElements["fixture-probe"] }
+    /// Matched by identifier alone: the role SwiftUI reports for the probe is not part of the contract.
+    private var probeElement: XCUIElement { app.descendants(matching: .any).matching(identifier: "fixture-probe").firstMatch }
 
     var probe: ProbeSnapshot {
         ensureLaunched()

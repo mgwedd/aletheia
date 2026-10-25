@@ -55,21 +55,21 @@ enum FixtureMode {
 
     private static var run: String { scenario?.run ?? "default" }
 
-    /// Inside the app's own container: the sandbox temp folder.
-    static let root: URL = {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("aletheia-fixture-\(run)", isDirectory: true)
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    /// Fixture folders live beside, not inside, the scratch folder: the scratch
+    /// folder is swept at every launch and a run's data must survive a relaunch.
+    private static func fixtureFolder(_ name: String) -> URL {
+        let url = PrivateStaging.root.deletingLastPathComponent()
+            .appendingPathComponent("Fixture", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+        try? SecureFS.createDirectory(at: url)
         return url
-    }()
+    }
+
+    /// Inside the app's own container.
+    static let root: URL = fixtureFolder("\(run)")
 
     /// Fixture bookkeeping kept beside, not inside, the data folder.
-    private static let support: URL = {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("aletheia-fixture-\(run)-support", isDirectory: true)
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }()
+    private static let support: URL = fixtureFolder("\(run)-support")
 
     static let suiteName = "com.aletheia.fixture.\(run)"
 
@@ -183,7 +183,7 @@ struct FixtureProbeOverlay: View {
 
     var body: some View {
         Color.clear
-            .frame(width: 1, height: 1)
+            .frame(width: 2, height: 2)
             .accessibilityElement()
             .accessibilityIdentifier("fixture-probe")
             .accessibilityLabel("fixture probe")

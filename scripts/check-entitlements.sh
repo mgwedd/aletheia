@@ -115,7 +115,8 @@ check_app() {
     trap 'rm -rf "$tmp"; trap - RETURN' RETURN
 
     # Signed entitlement keys must equal the production file's, exactly.
-    "${CODESIGN:-codesign}" -d --entitlements :- "$app" > "$tmp/ent.plist" 2>/dev/null || true
+    # Unquoted on purpose: CODESIGN may be "sh <stub>" (the self-test cannot exec a stub it just wrote).
+    ${CODESIGN:-codesign} -d --entitlements :- "$app" > "$tmp/ent.plist" 2>/dev/null || true
     local want got
     want="$(keys "$PROD")"
     # An unsigned app prints no entitlements: no keys, so the diff below fails it.
@@ -204,15 +205,15 @@ self_test() {
     mkdir -p "$d/App.app/Contents/MacOS"
     printf 'plain binary\n' > "$d/App.app/Contents/MacOS/App"
     printf '%s\n' '<dict><key>CFBundleName</key><string>x</string></dict>' > "$d/App.app/Contents/Info.plist"
-    printf '#!/bin/sh\ncat "$ENT_FIXTURE"\n' > "$d/codesign"; chmod +x "$d/codesign"
-    run_app() { CODESIGN="$d/codesign" ENT_FIXTURE="$1" PROD="$d/prod.ent" "$script" --app "$d/App.app" >/dev/null 2>&1; }
+    printf 'cat "$ENT_FIXTURE"\n' > "$d/codesign"
+    run_app() { CODESIGN="/bin/sh $d/codesign" ENT_FIXTURE="$1" PROD="$d/prod.ent" "$script" --app "$d/App.app" >/dev/null 2>&1; }
     run_app "$d/prod.ent" || { echo "check-entitlements: self-test: matching app should pass" >&2; bad=1; }
     ent "$d/extra.ent" a.sandbox a.audio a.extra
     run_app "$d/extra.ent" && { echo "check-entitlements: self-test: an extra entitlement key was accepted" >&2; bad=1; }
     ent "$d/missing.ent" a.sandbox
     run_app "$d/missing.ent" && { echo "check-entitlements: self-test: a missing entitlement key was accepted" >&2; bad=1; }
-    printf '#!/bin/sh\nexit 1\n' > "$d/unsigned"; chmod +x "$d/unsigned"
-    if CODESIGN="$d/unsigned" PROD="$d/prod.ent" "$script" --app "$d/App.app" 2>"$d/err" >/dev/null \
+    printf 'exit 1\n' > "$d/unsigned"
+    if CODESIGN="/bin/sh $d/unsigned" PROD="$d/prod.ent" "$script" --app "$d/App.app" 2>"$d/err" >/dev/null \
         || ! grep -q 'signed entitlements differ' "$d/err"; then
         echo "check-entitlements: self-test: an unsigned app was not refused with a message" >&2; bad=1
     fi
