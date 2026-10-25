@@ -5,7 +5,7 @@ extension AppModel {
     /// that folder as the data folder and records the restore in its log. The
     /// folder you were using is left exactly as it was. Nothing is recorded when
     /// the restore is refused or fails.
-    func restoreBackup(archive: URL, passphrase: String, into folder: URL) async -> BackupOutcome {
+    @MainActor func restoreBackup(archive: URL, passphrase: String, into folder: URL) async -> BackupOutcome {
         let fallback = settings.dataRootURL
         let verdict = backupFolderVerdict
         do {
