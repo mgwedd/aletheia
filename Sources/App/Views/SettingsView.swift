@@ -906,6 +906,7 @@ struct SettingsView: View {
             .padding(.vertical, 12)
         }
         BackupNowView()
+        RestoreBackupView()
         SettingsCaption("Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder.")
         Button("Show backups folder in Finder", action: showBackupsFolder)
             .buttonStyle(.themed)
