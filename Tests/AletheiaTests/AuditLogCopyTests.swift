@@ -34,7 +34,7 @@ final class AuditLogCopyTests: XCTestCase {
     func testCaptionNamesBackupsAndDeletionsAsRecorded() {
         let caption = AuditLogCopy.caption
         XCTAssertTrue(caption.contains("deletions"))
-        XCTAssertTrue(caption.contains("backups"))
+        XCTAssertTrue(caption.contains("backups and restores"))
         XCTAssertTrue(caption.contains("Viewing records is not recorded yet"))
         XCTAssertFalse(caption.localizedCaseInsensitiveContains("backups are not recorded"))
         XCTAssertTrue(caption.contains("§164.312(b)"), "keeps the audit-control note")
