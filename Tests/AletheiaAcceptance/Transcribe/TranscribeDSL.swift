@@ -73,11 +73,6 @@ struct TranscriptReading {
     var lines: [String] { text.split(separator: "\n").map(String.init) }
 }
 
-private struct DeskTimeout: Error, CustomStringConvertible {
-    let what: String
-    var description: String { "timed out waiting for \(what)" }
-}
-
 private struct SpeechFailure: LocalizedError {
     let message: String
     var errorDescription: String? { message }
@@ -311,14 +306,6 @@ final class TranscriptionDesk {
         let store = try XCTUnwrap(app.appModel.store)
         let listed = try store.listSessions(for: patient)
         return try XCTUnwrap(listed.first { $0.id == session.id }, "session \(session.id) \(session.folderName) is gone; listed: \(listed.map { "\($0.id) \($0.folderName)" })")
-    }
-
-    private func eventually(_ what: String, _ condition: @escaping () -> Bool) async throws {
-        for _ in 0..<600 {
-            if condition() { return }
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        throw DeskTimeout(what: what)
     }
 }
 
