@@ -163,13 +163,14 @@ Before you start: two patients with transcripts, notes and comments, one session
 - **EXPORT-02** Click **Cancel** during an export → the toast goes away and nothing is left in the destination.
 - **EXPORT-03** Let an export finish → a toast reads "Export ready" with counts and **Show in Finder**.
 - **EXPORT-04** Export to a destination that can't be written to → a toast reads "Export didn't finish".
-- **EXPORT-05** Pick an iCloud Drive folder → a "This folder syncs to the cloud" warning appears before anything is written.
+- **EXPORT-05** Export All Records to an iCloud Drive or other synced folder → the export is refused and nothing is written to the folder.
 - **EXPORT-06** Open the export folder → "Read me.txt" gives the counts, and each patient has a folder with one dated folder per session.
 - **EXPORT-07** Open a session's folder → it holds the transcript, one text file per note, any comments and recordings that play normally.
 - **EXPORT-08** Export a patient whose name has slashes or colons → illegal characters in the folder name become "-".
 - **EXPORT-09** Click **Export all records** on a patient's page → a single zip of text files appears, one folder per session.
 - **EXPORT-10** Click **Export** on a note and choose PDF, Word or Markdown → a save panel suggests a name and the file opens correctly.
 - **EXPORT-11** Export a whole session from its header → the file holds the patient's name, date, Summary and Transcript.
+- **EXPORT-12** Pick a folder on a disk that isn't encrypted → a "This disk isn't encrypted" warning appears and nothing has been written to the folder.
 
 ## 12. Lock and privacy shield (LOCK)
 Before you start: a Mac that can authenticate with Touch ID or a password.
@@ -197,13 +198,14 @@ Before you start: a developer build, or a data folder that is already encrypted;
 
 ## 14. Backups, data folder and upgrades (BACKUP)
 Before you start: some patients and sessions in the data folder, and a copy of it to experiment on.
-- **BACKUP-01** Open **Settings** > **Backups** → a banner says Aletheia makes no backup copies of its own and Time Machine includes the folder.
+- **BACKUP-01** Open **Settings** > **Backups** → a banner says Time Machine includes the data folder by default and **Back up now** saves an encrypted copy elsewhere.
 - **BACKUP-02** Turn on the option to keep your data out of backups → the banner confirms the folder is left out of Time Machine and iCloud backups.
 - **BACKUP-03** Click **Show backups folder in Finder** → the hidden backups folder opens.
 - **BACKUP-04** Delete a patient and open the backups folder → a database snapshot taken just before is there.
 - **BACKUP-05** Open a data folder written by an older version → it opens and upgrades in place with patients and sessions intact.
 - **BACKUP-06** Open a data folder written by a newer version → an "Update Aletheia" alert appears and the files are left untouched.
-- **BACKUP-07** Corrupt one patient.json in a copy of the data folder and open it → the sidebar says one record couldn't be read and everything else opens.
+- **BACKUP-07** Corrupt one patient.json in a data folder copy and open it → the sidebar says one record couldn't be read, everything else opens and the damaged file is unchanged.
+- **BACKUP-08** With encryption on, click **Back up now** and pick another folder → an archive is written there and no session text is readable in it.
 
 ## 15. Settings (SETTINGS)
 Before you start: setup finished.
@@ -248,11 +250,13 @@ Before you start: a Release build of Aletheia and an internet connection; to see
 ## 18. Notifications (NOTIFY)
 Before you start: allow Aletheia notifications in System Settings, and put Aletheia in the background.
 - **NOTIFY-01** Start a transcription for the first time → macOS asks for notification permission.
-- **NOTIFY-02** Let a transcription finish → a "Transcript ready" notification appears with no patient name.
+- **NOTIFY-02** Let a transcription finish → a "Transcript ready" notification appears that shows no patient name or initials.
 - **NOTIFY-03** Transcribe a silent recording → a "Transcription needs attention" notification appears.
 - **NOTIFY-04** Finish generating a note → a "Summary ready" notification appears.
-- **NOTIFY-05** Finish an export → an "Export ready" notification appears that names no patient.
+- **NOTIFY-05** Finish an export → an "Export ready" notification appears that shows no patient name or initials.
 - **NOTIFY-06** Turn on "Show patient names in notifications" and transcribe → the notification names the patient in full.
+- **NOTIFY-07** With "Show patient names in notifications" off, finish a transcript, a transcription problem, a note and an export → none of the four notifications shows a name or initials.
+- **NOTIFY-08** Turn on "Show patient names in notifications", lock the app and let a transcription finish → the notification shows no patient name or initials.
 
 ## 19. Menu bar item, menus and shortcuts (MENUBAR)
 Before you start: at least one patient and the app unlocked.

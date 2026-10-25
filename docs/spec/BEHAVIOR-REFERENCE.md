@@ -575,7 +575,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **LCK-011** When the user turns on "Allow screen sharing this session", capture is allowed until Aletheia quits, and the setting is off again at the next launch.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/AppSettings.swift` · `qa: LOCK-05`
 - **LCK-012** When a notification is posted for a finished transcript, a transcription problem, a recording left on disk, a ready summary, a long recording or an export, it names no patient and no date unless "Show patient names in notifications" is on, which it is not by default.
-  `surface: ui` · `evidence: Sources/App/Services/Notifications/SessionNotifications.swift, Sources/App/Services/AppSettings.swift, Sources/App/Views/SettingsView.swift` · `qa: NOTIFY-02`
+  `surface: ui` · `evidence: Sources/App/Services/Notifications/SessionNotifications.swift, Sources/App/Services/AppSettings.swift, Sources/App/Views/SettingsView.swift` · `qa: NOTIFY-07`
 - **LCK-013** When the user copies patient information, it goes to the clipboard of this Mac only, clipboard managers are asked not to keep it, and it is not cleared automatically afterwards.
   `surface: background` · `evidence: Sources/App/Services/PHIPasteboard.swift` · `qa: LOCK-07`
 - **LCK-014** When the user types or selects patient text anywhere in the app, system Writing Tools are not offered.
@@ -718,7 +718,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **BAK-006** When the Backups pane is shown, it explains that safety copies of the database are saved in a hidden backups folder before a database format change or an encryption change.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01`
 - **BAK-007** Aletheia produces no encrypted backup archives and no iCloud backup: nothing appears in `.backups/archives/` and the security posture card never shows an encrypted-backup row, while database safety copies are still written to `.backups/snapshots` and `.backups/migrations`.
-  `surface: invariant` · `evidence: Sources/App/Services/Crypto/BackupService.swift, Sources/App/Services/Crypto/BackupCoordinator.swift` · `qa: BACKUP-01` · ⚠ TODO: SECURITY.md describes an archives folder and an encrypted iCloud destination as built but not active; the code has no wiring, so no backups are produced.
+  `surface: invariant` · `evidence: Sources/App/Services/Crypto/BackupService.swift, Sources/App/Services/Crypto/BackupCoordinator.swift` · `qa: BACKUP-08` · ⚠ TODO: SECURITY.md describes an archives folder and an encrypted iCloud destination as built but not active; the code has no wiring, so no backups are produced.
 - **BAK-008** When older backup folders exist, they are moved into the current hidden backups layout without overwriting anything.
   `surface: background` · `evidence: Sources/App/Services/BackupLayout.swift` · `qa: BACKUP-04`
 - **BAK-009** When Doctor warns that the data folder is kept out of Time Machine, its next step names the pane "Settings > Backups" and the toggle "Keep my data out of Time Machine & iCloud backups".
@@ -1234,7 +1234,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **PAT-029** When a patient needs summaries, the patient page shows a status row reading "Summaries: all N ready" or "Summaries: R of N ready", with " · preparing" or a "paused" reason (locked, recording, transcribing, AI busy, Low Power Mode, battery, or after a problem) plus Pause, Resume and "Prepare now"; the row is hidden when no summaries are needed, and opening the page reprioritises that patient's summary jobs.
   `surface: background` · `evidence: Sources/App/Views/SummaryStatusRow.swift, Sources/App/Services/Digest/DigestSchedulePolicy.swift, Sources/App/Views/PatientDetailView.swift` · `qa: DIGEST-01`
 - **PAT-030** When the app is locked or a patient appears on a system surface, patients are named by dotted initials ("J.D."; "?" for a blank name) and no deep link into the patient is offered while locked.
-  `surface: invariant` · `evidence: Sources/App/Services/PatientLabel.swift, Sources/App/Services/SessionQueries.swift` · `qa: SEARCH-12`
+  `surface: invariant` · `evidence: Sources/App/Services/PatientLabel.swift, Sources/App/Services/SessionQueries.swift` · `qa: NOTIFY-08`
 - **PAT-031** When App Intents (a developer-build-only feature) ask for today's sessions, they list sessions across all patients, newest first, labelled by initials, and answer "Aletheia is locked. Unlock it first." while locked.
   `surface: background` · `evidence: Sources/App/Services/SessionQueries.swift, Sources/App/Intents, Sources/App/Services/PatientLabel.swift` · `qa: SESSION-08`
 - **PAT-032** When a patient name is typed into any patient text field, macOS Writing Tools is kept off for that text.
@@ -1588,7 +1588,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **EXP-030** When a patient's session has only a recording and no text, the one-patient zip counts it as left out (the zip holds no recordings), whereas the all-records folder includes it.
   `surface: invariant` · `evidence: Sources/App/Services/PatientArchive.swift, Sources/App/Services/AllRecordsExport.swift` · `qa: EXPORT-09`
 - **EXP-031** When the user picks an export folder on a disk that is not encrypted, a dialog titled "This disk isn't encrypted" offers "Export Anyway", "Choose Another Folder…" and "Cancel" before anything is written.
-  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/AllRecordsExport.swift` · `qa: EXPORT-05`
+  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/AllRecordsExport.swift` · `qa: EXPORT-12`
 - **EXP-032** When Aletheia cannot tell whether the chosen disk is encrypted, the dialog is titled "Couldn't confirm this disk is encrypted" with the same three buttons, and when several warnings apply the title is the first warning's and the message joins them all.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/AllRecordsExport.swift` · `qa: EXPORT-05`
 - **EXP-033** When a patient's records exceed 65,535 files or 4 GB, the zip export fails with "These records are too large to save as one zip file."
