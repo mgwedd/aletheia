@@ -118,6 +118,7 @@ struct FirstRunView: View {
             .themeDivider(.top)
         }
         .frame(width: 720, height: 720)
+        .interactiveDismissDisabled()
         .background(Theme.panel.color)
         .textSelection(.enabled)
         .sheet(isPresented: $showConsentGuide) {
@@ -171,14 +172,12 @@ struct FirstRunView: View {
             Text("Protect your data")
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.text.color)
-            if encryption.isEnabled {
+            switch FirstRunEncryptionStep(hasDataFolder: settings.dataRootURL != nil, encryptionOn: encryption.isEnabled).offer {
+            case .alreadyOn:
                 Label("At-rest encryption is on for this folder.", systemImage: "checkmark.seal.fill")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.accent.color)
-            } else if EncryptionOnboarding.isRecommended(
-                dataFolderChosen: settings.dataRootURL != nil,
-                alreadyEnabled: encryption.isEnabled
-            ) {
+            case .recommended(let button):
                 Text("Recommended: encrypt your notes, transcripts, summaries, chat, and recordings on disk with a recovery passphrase — on top of the app lock. It keeps your data protected even on an external drive, in a backup, or in a synced folder.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.muted.color)
@@ -187,14 +186,14 @@ struct FirstRunView: View {
                     Button {
                         showEncryptionSetup = true
                     } label: {
-                        Label("Set Up Encryption", systemImage: "lock.shield")
+                        Label(button, systemImage: "lock.shield")
                     }
                     .buttonStyle(.themePrimary)
                     Text("Or turn it on later in Settings. FileVault needs to be on before you add patients.")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.muted.color)
                 }
-            } else {
+            case .chooseFolderFirst:
                 // No data folder chosen yet — the checklist above prompts for it.
                 Text("Choose a data folder above, then you can turn on at-rest encryption here.")
                     .font(Theme.Typography.body)
@@ -246,8 +245,9 @@ struct FirstRunView: View {
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 16) {
-                Link("Terms of Service", destination: Legal.termsURL)
-                Link("Privacy Policy", destination: Legal.privacyURL)
+                ForEach(Legal.Document.allCases) { document in
+                    Link(document.title, destination: document.url)
+                }
             }
             .font(Theme.Typography.body)
             .tint(Theme.accent.color)
@@ -272,20 +272,13 @@ struct FirstRunView: View {
     }
 
     private var canContinue: Bool {
-        settings.dataRootURL != nil && agreedToLegal && licenseStepDone
+        FirstRunFinish.isEnabled(
+            hasDataFolder: settings.dataRootURL != nil, agreedToTerms: agreedToLegal, licenseStepDone: licenseStepDone)
     }
 
     private var footerHint: String {
-        if !licenseStepDone {
-            return "Paste your license key above to continue."
-        }
-        if settings.dataRootURL == nil {
-            return "Choose a data folder above to continue."
-        }
-        if !agreedToLegal {
-            return "Accept the Terms of Service and Privacy Policy to continue."
-        }
-        return "You can finish the rest of the checklist now or any time from Settings."
+        FirstRunFinish.hint(
+            hasDataFolder: settings.dataRootURL != nil, agreedToTerms: agreedToLegal, licenseStepDone: licenseStepDone)
     }
 }
 

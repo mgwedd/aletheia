@@ -270,3 +270,94 @@ jobs:
           path: build/TestResults.xcresult
           retention-days: 7
           if-no-files-found: ignore
+
+  # The acceptance suite: one fitness function per check in
+  # docs/spec/ACCEPTANCE-CRITERIA.md (see docs/spec/EXECUTION-LAYER.md). A check is
+  # accepted when its test passes here. A failing test fails this job; a pending
+  # one (skipped) does not, but the ledger lists it. The ledger comes from the
+  # test run itself and is written to the job summary even when the job fails.
+  # A docs-only change still runs on macOS, but only the coverage test: the docs
+  # are what it checks.
+  acceptance:
+    name: Acceptance
+    needs: changes
+    if: ${{ !cancelled() }}
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      NSUnbufferedIO: "YES"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The tests run inside the sandboxed app, which can only write to its own
+      # container, so the ledger goes there and a later step copies it out.
+      # xcodebuild hands TEST_RUNNER_-prefixed variables to the test process.
+      - name: Choose the ledger folder
+        run: |
+          echo "TEST_RUNNER_ACCEPTANCE_LEDGER_DIR=$HOME/Library/Containers/com.aletheia.app/Data/tmp/acceptance-ledger" >> "$GITHUB_ENV"
+
+      - name: Install tools (XcodeGen, xcbeautify)
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Cache Swift packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/SourcePackages
+          key: spm-macos-15-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
+          restore-keys: spm-macos-15-
+
+      - name: Run acceptance suite
+        env:
+          CODE_CHANGED: ${{ needs.changes.outputs.code != 'false' }}
+        run: |
+          set -o pipefail
+          ONLY=(-only-testing:AletheiaAcceptance)
+          if [ "$CODE_CHANGED" != "true" ]; then
+            echo "Only documentation changed; running the spec coverage tests alone."
+            ONLY=(-only-testing:AletheiaAcceptance/SpecCoverageTests -only-testing:AletheiaAcceptance/SpecParserTests)
+          fi
+          xcodebuild test \
+            -project Aletheia.xcodeproj \
+            -scheme AletheiaAcceptance \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            -resultBundlePath build/AcceptanceResults.xcresult \
+            "${ONLY[@]}" \
+            | xcbeautify --renderer github-actions
+
+      - name: Acceptance summary
+        if: always()
+        run: |
+          mkdir -p build/acceptance-ledger
+          cp "$TEST_RUNNER_ACCEPTANCE_LEDGER_DIR"/acceptance-ledger.* build/acceptance-ledger/ 2>/dev/null || true
+          LEDGER=build/acceptance-ledger/acceptance-ledger.md
+          if [ -f "$LEDGER" ]; then
+            cat "$LEDGER" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No acceptance ledger was written." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload acceptance ledger
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: AcceptanceLedger
+          path: build/acceptance-ledger
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload acceptance results on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: AcceptanceResults
+          path: build/AcceptanceResults.xcresult
+          retention-days: 7
+          if-no-files-found: ignore

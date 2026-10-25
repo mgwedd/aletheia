@@ -28,7 +28,7 @@ struct PatientProfileCard: View {
                     .help("Edit name, clinical history, medications and notes")
             }
             if rows.isEmpty {
-                Text("Nothing recorded yet. Edit to add clinical history or notes; both are available to the AI.")
+                Text(PatientProfileDraft.nothingRecordedMessage)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
                     .fixedSize(horizontal: false, vertical: true)

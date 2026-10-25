@@ -124,9 +124,9 @@ struct RootView: View {
         }
         // Here rather than on the session screen, so it appears whatever is on
         // screen and names the session that is actually recording.
-        .alert("Still recording", isPresented: $recorder.longRunningReminder) {
-            Button("Keep Recording", role: .cancel) {}
-            Button("Stop Now", role: .destructive) { Task { await recorder.stop() } }
+        .alert(RecordingLimit.Alert.title, isPresented: $recorder.longRunningReminder) {
+            Button(RecordingLimit.Alert.keep, role: .cancel) {}
+            Button(RecordingLimit.Alert.stop, role: .destructive) { Task { await recorder.stop() } }
         } message: {
             Text(SessionNotifications.longRecordingReminder(
                 patientName: recorder.active?.patientName ?? "This patient",

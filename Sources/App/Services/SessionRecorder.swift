@@ -13,6 +13,13 @@ enum RecordingLimit {
     /// meant to end and the mic is still open.
     static let reminderThreshold: TimeInterval = 90 * 60
 
+    /// The alert raised when the threshold passes.
+    enum Alert {
+        static let title = "Still recording"
+        static let keep = "Keep Recording"
+        static let stop = "Stop Now"
+    }
+
     static func shouldRemind(elapsed: TimeInterval, threshold: TimeInterval = reminderThreshold) -> Bool {
         elapsed >= threshold
     }
@@ -149,6 +156,8 @@ final class SessionRecorder: ObservableObject {
     /// so the UI can ask whether the therapist forgot to end the session. The
     /// view clears it when the user answers.
     @Published var longRunningReminder = false
+    /// How long a recording runs before the reminder; tests shorten it.
+    var reminderThreshold: TimeInterval = RecordingLimit.reminderThreshold
     /// True when the call track has stayed silent since the recording began (see
     /// `CallAudioWatch`), so the UI can say the other side isn't being captured.
     @Published private(set) var callAudioSilent = false
@@ -279,6 +288,7 @@ final class SessionRecorder: ObservableObject {
                 let started = Date()
                 clock = RecordingClock(startedAt: started)
                 state = .recording(startedAt: started)
+                startReminderTimer()
                 return nil
             } catch {
                 try? FileManager.default.removeItem(at: stagingDir)
@@ -488,8 +498,9 @@ final class SessionRecorder: ObservableObject {
     private func startReminderTimer() {
         reminderTask?.cancel()
         longRunningReminder = false
+        let threshold = reminderThreshold
         reminderTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(RecordingLimit.reminderThreshold * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(threshold * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
             guard self.isRecording else { return }
             self.longRunningReminder = true

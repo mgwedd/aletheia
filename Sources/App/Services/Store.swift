@@ -363,7 +363,8 @@ final class Store {
         guard patient.slug != name else { return patient }
         return Patient(
             id: patient.id, name: patient.name, notes: patient.notes, createdAt: patient.createdAt,
-            slug: name, clinicalHistory: patient.clinicalHistory, medications: patient.medications)
+            slug: name, clinicalHistory: patient.clinicalHistory, medications: patient.medications,
+            recordingConsentAttestedAt: patient.recordingConsentAttestedAt)
     }
 
     func patientDir(for patient: Patient) -> URL {
@@ -475,6 +476,8 @@ final class Store {
         var unreadable: [UnreadableEntry] = []
         for folder in entries {
             guard let isDir = try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory, isDir else { continue }
+            // A hidden folder is a session still being created.
+            guard !folder.lastPathComponent.hasPrefix(".") else { continue }
             // A session folder is one carrying a `session.json` identity record,
             // or (legacy / manually created) one named "…_Session". The latter
             // is minted an id on sight so it becomes stable from here on.
@@ -543,17 +546,34 @@ final class Store {
     func createSession(for patient: Patient, on date: Date = Date()) throws -> SessionRecord {
         let dir = patientDir(for: patient)
         let dayString = dateFolderFormatter.string(from: date)
+        // Build the folder, identity file included, under a hidden name and then
+        // rename it into place. A listing running at the same time (background
+        // sweeps list sessions) never sees a session folder without its
+        // `session.json`, which it would otherwise give a second id.
+        let meta = SessionMetadata(id: UUID(), date: date)
+        let staged = dir.appendingPathComponent(".new-session-\(meta.id.uuidString)", isDirectory: true)
+        try SecureFS.createDirectory(at: staged)
+        do {
+            try writeSessionMetadata(meta, to: sessionMetadataURL(for: staged))
+        } catch {
+            try? fileManager.removeItem(at: staged)
+            throw error
+        }
         var folderName = "\(dayString)_Session"
         var suffix = 2
-        while fileManager.fileExists(atPath: dir.appendingPathComponent(folderName).path) {
+        while true {
+            if !fileManager.fileExists(atPath: dir.appendingPathComponent(folderName).path) {
+                // rename(2) fails rather than replace a folder that appeared meanwhile.
+                if rename(staged.path, dir.appendingPathComponent(folderName).path) == 0 { break }
+                if errno != EEXIST && errno != ENOTEMPTY {
+                    let code = errno
+                    try? fileManager.removeItem(at: staged)
+                    throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+                }
+            }
             folderName = "\(dayString)_Session-\(suffix)"
             suffix += 1
         }
-        let sessionDir = dir.appendingPathComponent(folderName, isDirectory: true)
-        try SecureFS.createDirectory(at: sessionDir)
-        // Assign the session's stable identity at creation and persist it.
-        let meta = SessionMetadata(id: UUID(), date: date)
-        try writeSessionMetadata(meta, to: sessionMetadataURL(for: sessionDir))
         onAudit?(.phiCreated, meta.id.uuidString, PHIAuditDetail.session)
         return SessionRecord(id: meta.id, patientId: patient.id, date: date, folderName: folderName)
     }
@@ -667,7 +687,10 @@ final class Store {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
             do { try FileManager.default.removeItem(at: url); removed = true } catch { failed = true }
         }
-        try? FileManager.default.removeItem(at: Store.stagingDir(for: session.id))
+        let staging = Store.stagingDir(for: session.id)
+        if FileManager.default.fileExists(atPath: staging.path) {
+            do { try FileManager.default.removeItem(at: staging); removed = true } catch { failed = true }
+        }
         if removed { onAudit?(.phiDeleted, session.id.uuidString, PHIAuditDetail.audioRecording) }
         if failed { throw StoreError.recordingNotDeleted }
     }
@@ -1121,8 +1144,9 @@ final class Store {
         let coverageURL = noteSidecarURL(.coverage, patient: patient, session: session, format: format)
         if let coverage, !coverage.isEmpty {
             try protector.write(coverage, to: coverageURL)
-        } else {
-            try? FileManager.default.removeItem(at: coverageURL)
+        } else if FileManager.default.fileExists(atPath: coverageURL.path) {
+            // A stale "written from part of the transcript" line would mislabel the new note.
+            try FileManager.default.removeItem(at: coverageURL)
         }
     }
 
