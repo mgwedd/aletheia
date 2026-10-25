@@ -28,8 +28,7 @@ struct SettingsView: View {
     @ObservedObject private var navigator = AppNavigator.shared
     @ObservedObject private var setAside = SetAsideRecordings.shared
     @State private var newRiskPhrase = ""
-    @State private var confirmClearRiskPhrases = false
-    @State private var confirmResetRiskPhrases = false
+    @State private var riskEditor = RiskPhraseEditor()
     @State private var errorMessage: String?
     /// How the last audit log export ended, shown until dismissed.
     @State private var exportResult: SaveOutcome?
@@ -229,7 +228,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Data folder").eyebrowStyle()
             HStack(spacing: 8) {
-                Text(settings.dataRootURL?.path ?? "Not chosen yet")
+                Text(DataFolderDisplay.text(for: settings.dataRootURL))
                     .font(Theme.Typography.body)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -239,7 +238,7 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
                     .themeField()
                     .accessibilityLabel("Data folder")
-                Button("Choose…") { requireAuth(.changeDataFolder) { chooseFolder() } }
+                Button(DataFolderDisplay.chooseButton) { requireAuth(.changeDataFolder) { chooseFolder() } }
                     .buttonStyle(.themed)
                 Button("Show in Finder") {
                     if let url = settings.dataRootURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
@@ -255,7 +254,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Software update").eyebrowStyle()
             SettingsRowsCard {
-                SettingsRow(title: "Current version") {
+                SettingsRow(title: SoftwareUpdateRow.version.title) {
                     Text(appVersionString)
                         .font(Theme.Typography.body)
                         .foregroundStyle(Theme.muted.color)
@@ -263,7 +262,7 @@ struct SettingsView: View {
                 .padding(.vertical, 12)
                 SettingsHairline()
                 SettingsRow(
-                    title: "Notarization",
+                    title: SoftwareUpdateRow.notarization.title,
                     detail: "Signed with Developer ID and notarized by Apple so macOS Gatekeeper allows it to run without warnings."
                 ) {
                     Text(CodeSigningStatus.current().description)
@@ -273,14 +272,14 @@ struct SettingsView: View {
                 .padding(.vertical, 12)
                 SettingsHairline()
                 SettingsSwitchRow(
-                    title: "Check for updates automatically",
+                    title: SoftwareUpdateRow.automaticChecks.title,
                     detail: "Aletheia checks on launch and when switching back to the app.",
                     isOn: $settings.autoCheckForUpdates
                 )
                 .padding(.vertical, 12)
                 SettingsHairline()
                 SettingsRow(
-                    title: "Check for updates",
+                    title: SoftwareUpdateRow.checkNow.title,
                     detail: "Aletheia can check GitHub for published releases. No patient or client data is ever transmitted."
                 ) {
                     HStack(spacing: 8) {
@@ -319,11 +318,16 @@ struct SettingsView: View {
             Text("Legal").eyebrowStyle()
             SettingsRowsCard {
                 HStack(spacing: 16) {
-                    Link("Terms of Service", destination: Legal.termsURL)
-                    Link("Privacy Policy", destination: Legal.privacyURL)
-                    Button("Consent Guide…") { showConsentGuide = true }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Theme.accent.color)
+                    ForEach(SettingsLegalItem.all) { item in
+                        switch item {
+                        case .document(let document):
+                            Link(document.title, destination: document.url)
+                        case .consentGuide:
+                            Button(SettingsLegalItem.consentGuideTitle) { showConsentGuide = true }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Theme.accent.color)
+                        }
+                    }
                     Spacer()
                 }
                 .font(Theme.Typography.body)
@@ -430,46 +434,63 @@ struct SettingsView: View {
     }
 
     private var speechCard: some View {
-        SettingsCard {
+        let card = ModelCardPresentation(
+            installed: whisperInstalled, isDownloading: whisperDownloader.isDownloading,
+            progress: whisperDownloader.progress, sizeMB: settings.whisperModel.approximateSizeMB)
+        return SettingsCard {
             SettingsCardHeader(title: "Speech recognition") {
-                if whisperDownloader.isDownloading {
-                    Chip("Downloading", tone: .info)
-                } else if whisperInstalled {
-                    Chip("Installed", tone: .ok)
-                } else {
-                    Chip("Not downloaded", tone: .warn)
-                }
+                Chip(card.chip, tone: whisperDownloader.isDownloading ? .info : (whisperInstalled ? .ok : .warn))
             }
-            SettingsRow(
-                title: "Whisper \(settings.whisperModel.rawValue)",
-                detail: "Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.whisperModel.shortName)."
-            ) {
-                Picker("Speech model", selection: $settings.whisperModel) {
-                    ForEach(WhisperModel.allCases) { model in
-                        Text(model.displayName).tag(model)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(width: 280)
+            ForEach(Array(card.rows.enumerated()), id: \.offset) { _, row in
+                modelRow(
+                    row,
+                    picker: SettingsRow(
+                        title: "Whisper \(settings.whisperModel.rawValue)",
+                        detail: "Recommended for your Mac (\(settings.hardware.shortDescription)): \(settings.recommendation.whisperModel.shortName)."
+                    ) {
+                        Picker("Speech model", selection: $settings.whisperModel) {
+                            ForEach(WhisperModel.allCases) { model in
+                                Text(model.displayName).tag(model)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 280)
+                    },
+                    license: ModelLicenseLink(settings.whisperModel),
+                    status: "",
+                    download: { Task { await downloadWhisperModel() } })
             }
-            ModelLicenseLink(settings.whisperModel)
-            if whisperDownloader.isDownloading {
-                downloadProgress(whisperDownloader.progress)
-            } else if whisperInstalled {
-                HStack {
-                    DownloadedMark()
-                    Spacer()
-                    Button("Re-download") { Task { await downloadWhisperModel() } }
-                        .buttonStyle(.themed)
-                }
-            } else {
-                HStack {
-                    SettingsCaption("Not downloaded (~\(settings.whisperModel.approximateSizeMB) MB)")
-                    Spacer()
-                    Button("Download") { Task { await downloadWhisperModel() } }
-                        .buttonStyle(.themePrimary)
-                }
+        }
+    }
+
+    /// One row of a model card, in the order `ModelCardPresentation` lists them.
+    @ViewBuilder
+    private func modelRow(
+        _ row: ModelCardPresentation.Row, picker: some View, license: some View,
+        status: String, download: @escaping () -> Void
+    ) -> some View {
+        switch row {
+        case .picker:
+            picker
+        case .licenseLink:
+            license
+        case .progress(let fraction):
+            downloadProgress(fraction)
+            if !status.isEmpty { SettingsCaption(status) }
+        case .downloadPrompt(let sizeMB):
+            HStack {
+                SettingsCaption("Not downloaded (~\(sizeMB) MB)")
+                Spacer()
+                Button("Download", action: download)
+                    .buttonStyle(.themePrimary)
+            }
+        case .installed:
+            HStack {
+                DownloadedMark()
+                Spacer()
+                Button("Re-download", action: download)
+                    .buttonStyle(.themed)
             }
         }
     }
@@ -477,7 +498,7 @@ struct SettingsView: View {
     private func downloadProgress(_ value: Double) -> some View {
         HStack(spacing: 12) {
             ThemeProgressBar(value: value)
-            Text("\(Int(value * 100))%")
+            Text(ModelCardPresentation.percentText(value))
                 .font(Theme.Typography.caption)
                 .monospacedDigit()
                 .foregroundStyle(Theme.muted.color)
@@ -526,46 +547,29 @@ struct SettingsView: View {
 
     private var builtInModelCard: some View {
         let installed = FileManager.default.fileExists(atPath: LlamaRuntime.modelURL(for: settings.llamaModel).path)
+        let card = ModelCardPresentation(
+            installed: installed, isDownloading: llamaDownloader.isDownloading,
+            progress: llamaDownloader.progress, sizeMB: settings.llamaModel.approximateSizeMB)
         return SettingsCard {
             SettingsCardHeader(title: "Built-in model (llama.cpp)") {
-                if llamaDownloader.isDownloading {
-                    Chip("Downloading", tone: .info)
-                } else if installed {
-                    Chip("Installed", tone: .ok)
-                } else {
-                    Chip("Not downloaded", tone: .warn)
-                }
+                Chip(card.chip, tone: llamaDownloader.isDownloading ? .info : (installed ? .ok : .warn))
             }
-            SettingsRow(title: "Model") {
-                Picker("Model", selection: $settings.llamaModel) {
-                    ForEach(LlamaModel.allCases) { model in
-                        Text(model.displayName).tag(model)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(width: 280)
-            }
-            ModelLicenseLink(settings.llamaModel)
-            if llamaDownloader.isDownloading {
-                downloadProgress(llamaDownloader.progress)
-                if !llamaDownloader.statusText.isEmpty {
-                    SettingsCaption(llamaDownloader.statusText)
-                }
-            } else if installed {
-                HStack {
-                    DownloadedMark()
-                    Spacer()
-                    Button("Re-download") { Task { await downloadLlamaModel() } }
-                        .buttonStyle(.themed)
-                }
-            } else {
-                HStack {
-                    SettingsCaption("Not downloaded (~\(settings.llamaModel.approximateSizeMB) MB)")
-                    Spacer()
-                    Button("Download") { Task { await downloadLlamaModel() } }
-                        .buttonStyle(.themePrimary)
-                }
+            ForEach(Array(card.rows.enumerated()), id: \.offset) { _, row in
+                modelRow(
+                    row,
+                    picker: SettingsRow(title: "Model") {
+                        Picker("Model", selection: $settings.llamaModel) {
+                            ForEach(LlamaModel.allCases) { model in
+                                Text(model.displayName).tag(model)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 280)
+                    },
+                    license: ModelLicenseLink(settings.llamaModel),
+                    status: llamaDownloader.statusText,
+                    download: { Task { await downloadLlamaModel() } })
             }
             if !llamaDownloader.isDownloading {
                 ForEach(LlamaRuntime.unusedDownloadedModels(besides: settings.llamaModel)) { unused in
@@ -655,26 +659,23 @@ struct SettingsView: View {
                     .disabled(newRiskPhrase.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             HStack {
-                Button("Clear All") { confirmClearRiskPhrases = true }
+                Button("Clear All") { riskEditor.askToClearAll() }
                     .buttonStyle(.themed)
                     .disabled(settings.riskPhrases.isEmpty)
                 Spacer()
-                Button("Reset to Defaults") { confirmResetRiskPhrases = true }
+                Button("Reset to Defaults") { riskEditor.askToReset() }
                     .buttonStyle(.themed)
                     .disabled(settings.riskPhrases == LongSessionNote.defaultRiskPhrases)
             }
         }
-        .confirmationDialog("Clear all risk phrases?", isPresented: $confirmClearRiskPhrases, titleVisibility: .visible) {
-            Button("Clear All", role: .destructive) { settings.riskPhrases = [] }
+        .confirmationDialog(
+            riskEditor.pending?.title ?? "", isPresented: Binding(get: { riskEditor.pending != nil }, set: { if !$0 { riskEditor.cancel() } }),
+            titleVisibility: .visible, presenting: riskEditor.pending
+        ) { confirmation in
+            Button(confirmation.confirmButton, role: .destructive) { RiskPhraseEditor.apply(confirmation, to: settings) }
             Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("No lines will be prioritised for risk in long sessions until you add your own.")
-        }
-        .confirmationDialog("Reset risk phrases?", isPresented: $confirmResetRiskPhrases, titleVisibility: .visible) {
-            Button("Reset to Defaults", role: .destructive) { settings.resetRiskPhrases() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Your list is replaced by the built-in one.")
+        } message: { confirmation in
+            Text(confirmation.message)
         }
     }
 

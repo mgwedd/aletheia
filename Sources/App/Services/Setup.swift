@@ -85,6 +85,8 @@ enum Setup {
         let currentID: ToolHealthCheck.Kind?
 
         var fraction: Double { total == 0 ? 0 : Double(done) / Double(total) }
+        /// "2 of 6 done".
+        var label: String { "\(done) of \(total) done" }
     }
 
     static func progress(_ items: [SetupItem]) -> Progress {

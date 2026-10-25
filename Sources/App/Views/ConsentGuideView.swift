@@ -13,29 +13,9 @@ struct ConsentGuideView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     introBox
 
-                    section(
-                        title: "1. Informed Consent Standards",
-                        icon: "doc.text.magnifyingglass",
-                        content: "Professional ethics codes (including APA, ACA, NASW, and AAMFT) require obtaining explicit informed consent before recording therapy sessions in any medium. Inform your client of the purpose of the recording, how transcripts are generated, and who has access."
-                    )
-
-                    section(
-                        title: "2. Jurisdiction & Wiretapping Laws",
-                        icon: "building.columns",
-                        content: "Many states and jurisdictions require two-party (all-party) consent to record conversations. Because telehealth sessions may cross state lines, follow the strictest applicable jurisdiction's consent laws."
-                    )
-
-                    section(
-                        title: "3. On-Device Privacy Guarantees",
-                        icon: "lock.shield",
-                        content: "Explain to your client that Aletheia operates 100% on this Mac: speech recognition and AI note drafting run locally. No audio, transcripts, or notes are uploaded to any cloud server or third-party service."
-                    )
-
-                    section(
-                        title: "4. Client Rights & Revocation",
-                        icon: "hand.raised",
-                        content: "Clients have the right to decline recording, ask to pause or stop recording at any point during a session, or request that previous session recordings or transcripts be deleted from your records."
-                    )
+                    ForEach(ConsentGuideContent.sections) { entry in
+                        section(title: entry.title, icon: entry.icon, content: entry.text)
+                    }
 
                     disclosureSampleBox
                 }
@@ -118,7 +98,7 @@ struct ConsentGuideView: View {
     private var disclosureSampleBox: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SAMPLE INFORMED CONSENT CLAUSE").eyebrowStyle()
-            Text("“I use an on-device clinical documentation tool (Aletheia) to transcribe our session audio and assist in preparing clinical progress notes. All audio and notes remain strictly on this computer and are never sent to external servers or cloud AI providers. You may request to pause or stop recording at any time.”")
+            Text(ConsentGuideContent.sampleClause)
                 .font(Theme.Typography.noteBody)
                 .foregroundStyle(Theme.text.color)
                 .padding(12)
