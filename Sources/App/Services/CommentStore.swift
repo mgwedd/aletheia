@@ -104,7 +104,7 @@ final class CommentStore {
     /// Every record kind this store's data lives under, for operations (only
     /// `reencrypt`, today) that must walk everything regardless of which
     /// repository owns it.
-    private static let allKinds = ["comment", "note", "sessionChat", "chatThread"]
+    private static let allKinds = ["comment", AnnotationRepository.noteKind, AnnotationRepository.legacyNoteKind, "sessionChat", "chatThread"]
 
     /// The database file for a given data folder — the single SQLite store all
     /// annotations, notes, and chat threads live in.
@@ -131,6 +131,7 @@ final class CommentStore {
         self.protector = protector
         self.annotations = AnnotationRepository(core: core, protector: protector)
         self.chats = ChatRepository(core: core, protector: protector)
+        annotations.migrateLegacyNotes()
     }
 
     // MARK: - Comments
@@ -181,7 +182,9 @@ final class CommentStore {
         onSessionAnnotationsChanged(session)
     }
 
-    // MARK: - Notes
+    // MARK: - Psychotherapy note
+    // The therapist's private per-session note. The names stay `note` /
+    // `saveNote`; the text is kept apart from the record (`AIContextPolicy`).
 
     func note(sessionID: UUID) -> String {
         annotations.note(sessionID: sessionID)

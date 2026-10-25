@@ -815,7 +815,7 @@ final class Store {
     /// stored), plus resolved comments, which the chat leaves out but global
     /// search finds.
     private func searchMaterial(for patient: Patient, session: SessionRecord) -> [SessionSearch.Document] {
-        var parts = sessionMaterialParts(for: patient, session: session)
+        var parts = sessionMaterialParts(for: patient, session: session, forAI: false)
         if let resolved = Store.resolvedCommentsText(commentStore?.comments(sessionID: session.id) ?? []) {
             parts.append((kind: .comment, text: resolved))
         }
@@ -1508,6 +1508,12 @@ final class Store {
         commentStore?.comments(sessionID: session.id) ?? []
     }
 
+    /// The therapist's private psychotherapy note for a session. Only the
+    /// separate psychotherapy export and the note editor read it.
+    func psychotherapyNote(for session: SessionRecord) -> String {
+        commentStore?.note(sessionID: session.id) ?? ""
+    }
+
     func exportSessionMarkdown(patient: Patient, session: SessionRecord) -> String {
         MarkdownExporter.session(
             date: session.date,
@@ -1967,7 +1973,7 @@ final class Store {
             } catch {
                 unreadable = true
             }
-            let notes = commentStore?.note(sessionID: session.id) ?? ""
+            let notes = AIContextPolicy.notes(commentStore?.note(sessionID: session.id) ?? "", for: .patientChat)
             let comments = AssistantService.formatComments(commentStore?.comments(sessionID: session.id) ?? [])
             let generated = generatedNotes(for: patient, session: session)
                 .map { "Generated progress note (\($0.0)):\n\($0.1)" }
@@ -2004,10 +2010,13 @@ final class Store {
     /// comments, as the single-session chat renders them), then generated
     /// notes, so a long generated note is what gets cut. Unreadable notes are
     /// skipped. Each block's kind says what it is, for search.
-    private func sessionMaterialParts(for patient: Patient, session: SessionRecord) -> [(kind: SessionSearch.Kind, text: String)] {
+    private func sessionMaterialParts(
+        for patient: Patient, session: SessionRecord, forAI: Bool = true
+    ) -> [(kind: SessionSearch.Kind, text: String)] {
         var blocks: [(kind: SessionSearch.Kind, text: String)] = []
 
-        let notes = commentStore?.note(sessionID: session.id) ?? ""
+        let storedNote = commentStore?.note(sessionID: session.id) ?? ""
+        let notes = forAI ? AIContextPolicy.notes(storedNote, for: .patientChat) : storedNote
         let comments = AssistantService.formatComments(commentStore?.comments(sessionID: session.id) ?? [])
         let therapistSections: [(SessionSearch.Kind, String)] = [
             (.sessionNotes, Prompts.therapistMaterial(notes: notes, comments: [])),

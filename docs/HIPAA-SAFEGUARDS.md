@@ -15,7 +15,7 @@ transcripts, summaries, notes, comments, session digests) is created and stored
 in a data folder on the clinician's Mac. The App defaults to its standard
 location and refuses folders in iCloud Drive or other cloud-synced locations,
 network locations and unencrypted removable drives.
-The developer runs **no servers,
+Astrea Labs runs **no servers,
 accounts, analytics, or telemetry** and never receives, transmits, stores, or can
 access any of that data.
 
@@ -30,7 +30,7 @@ flowchart LR
     D -. "no server, no PHI, no access" .-> C
 ```
 
-Because the developer never receives PHI, the developer is **not a business
+Because Astrea Labs LLC never receives PHI, it is **not a business
 associate** for the app itself, and no Business Associate Agreement (BAA) is
 required for the app (see [PRIVACY.md](../PRIVACY.md)). The clinician/practice is
 the covered entity and data controller. That shifts most of HIPAA onto
