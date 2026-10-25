@@ -410,7 +410,16 @@ final class AppSettings: ObservableObject {
         for key in retiredKeys { defaults.removeObject(forKey: key) }
     }
 
-    private convenience init() { self.init(defaults: .standard) }
+    private convenience init() {
+        #if DEBUG
+        if FixtureMode.isActive {
+            self.init(defaults: FixtureMode.defaults)
+            FixtureMode.prepare(self)
+            return
+        }
+        #endif
+        self.init(defaults: .standard)
+    }
 
     /// Test seam: the shared instance uses `UserDefaults.standard`.
     init(defaults: UserDefaults) {

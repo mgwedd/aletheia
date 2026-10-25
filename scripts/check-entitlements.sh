@@ -35,7 +35,7 @@
 #        scripts/check-entitlements.sh --app <path.app>
 #            checks a built production app: its signed entitlement keys equal the
 #            production file's exactly, its Info.plist has no Calendar/Reminders
-#            purpose strings, and its executable has no debug-only `--harness` flags.
+#            purpose strings, and its executable has no debug-only `--harness` flags or fixture mode.
 #        scripts/check-entitlements.sh --self-test
 
 set -euo pipefail
@@ -115,7 +115,8 @@ check_app() {
     trap 'rm -rf "$tmp"; trap - RETURN' RETURN
 
     # Signed entitlement keys must equal the production file's, exactly.
-    "${CODESIGN:-codesign}" -d --entitlements :- "$app" > "$tmp/ent.plist" 2>/dev/null || true
+    # Unquoted on purpose: CODESIGN may be "sh <stub>" (the self-test cannot exec a stub it just wrote).
+    ${CODESIGN:-codesign} -d --entitlements :- "$app" > "$tmp/ent.plist" 2>/dev/null || true
     local want got
     want="$(keys "$PROD")"
     # An unsigned app prints no entitlements: no keys, so the diff below fails it.
@@ -146,6 +147,9 @@ check_app() {
         found=1
         if grep -aq -e '--harness' "$bin"; then
             err "$bin: contains the debug-only --harness flags"
+        fi
+        if grep -aq -e 'ALETHEIA_FIXTURE' -e 'fixture-probe' "$bin"; then
+            err "$bin: contains the debug-only fixture mode"
         fi
     done
     [ "$found" -eq 1 ] || err "$app: no executable in Contents/MacOS"
@@ -178,12 +182,14 @@ self_test() {
     printf '%s\n' '<dict>' '<key>CFBundleName</key><string>x</string>' '#ifdef ALETHEIA_DEV' \
         '<key>NSCalendarsFullAccessUsageDescription</key><string>x</string>' '#endif' '</dict>' > "$d/Info.plist"
     printf '%s\n' 'targets:' '  Aletheia:' '    settings:' '      configs:' '        Debug:' \
-        "          CODE_SIGN_ENTITLEMENTS: $d/dev.ent" '          INFOPLIST_PREPROCESSOR_DEFINITIONS: ALETHEIA_DEV=1' \
-        '        Release:' "          CODE_SIGN_ENTITLEMENTS: $d/prod.ent" \
-        '  AletheiaNetworkHelper:' '    settings:' "      CODE_SIGN_ENTITLEMENTS: $d/helper.ent" \
+        '          CODE_SIGN_ENTITLEMENTS: dev.ent' '          INFOPLIST_PREPROCESSOR_DEFINITIONS: ALETHEIA_DEV=1' \
+        '        Release:' '          CODE_SIGN_ENTITLEMENTS: prod.ent' \
+        '  AletheiaNetworkHelper:' '    settings:' '      CODE_SIGN_ENTITLEMENTS: helper.ent' \
         '"Resources/Aletheia.entitlements"' '"Resources/AletheiaDev.entitlements"' > "$d/project.yml"
-    run_static() { PROD="$d/prod.ent" DEV="$d/dev.ent" HELPER="$d/helper.ent" INFO="$d/Info.plist" PROJECT="$d/project.yml" "$script" >/dev/null 2>&1; }
-    run_static || { echo "check-entitlements: self-test: clean fixtures should pass" >&2; bad=1; }
+    # Paths relative to the fixture folder, so the wiring checks never see the
+    # temp folder's own path (it differs inside the app sandbox).
+    run_static() { CHECK_ENTITLEMENTS_ROOT="$d" PROD=prod.ent DEV=dev.ent HELPER=helper.ent INFO=Info.plist PROJECT=project.yml "$script" >"$d/static.log" 2>&1; }
+    run_static || { echo "check-entitlements: self-test: clean fixtures should pass:" >&2; cat "$d/static.log" >&2; bad=1; }
 
     # A Reminders string outside the dev block.
     cp "$d/Info.plist" "$d/Info.good"
@@ -201,15 +207,15 @@ self_test() {
     mkdir -p "$d/App.app/Contents/MacOS"
     printf 'plain binary\n' > "$d/App.app/Contents/MacOS/App"
     printf '%s\n' '<dict><key>CFBundleName</key><string>x</string></dict>' > "$d/App.app/Contents/Info.plist"
-    printf '#!/bin/sh\ncat "$ENT_FIXTURE"\n' > "$d/codesign"; chmod +x "$d/codesign"
-    run_app() { CODESIGN="$d/codesign" ENT_FIXTURE="$1" PROD="$d/prod.ent" "$script" --app "$d/App.app" >/dev/null 2>&1; }
+    printf 'cat "$ENT_FIXTURE"\n' > "$d/codesign"
+    run_app() { CODESIGN="/bin/sh $d/codesign" ENT_FIXTURE="$1" PROD="$d/prod.ent" "$script" --app "$d/App.app" >/dev/null 2>&1; }
     run_app "$d/prod.ent" || { echo "check-entitlements: self-test: matching app should pass" >&2; bad=1; }
     ent "$d/extra.ent" a.sandbox a.audio a.extra
     run_app "$d/extra.ent" && { echo "check-entitlements: self-test: an extra entitlement key was accepted" >&2; bad=1; }
     ent "$d/missing.ent" a.sandbox
     run_app "$d/missing.ent" && { echo "check-entitlements: self-test: a missing entitlement key was accepted" >&2; bad=1; }
-    printf '#!/bin/sh\nexit 1\n' > "$d/unsigned"; chmod +x "$d/unsigned"
-    if CODESIGN="$d/unsigned" PROD="$d/prod.ent" "$script" --app "$d/App.app" 2>"$d/err" >/dev/null \
+    printf 'exit 1\n' > "$d/unsigned"
+    if CODESIGN="/bin/sh $d/unsigned" PROD="$d/prod.ent" "$script" --app "$d/App.app" 2>"$d/err" >/dev/null \
         || ! grep -q 'signed entitlements differ' "$d/err"; then
         echo "check-entitlements: self-test: an unsigned app was not refused with a message" >&2; bad=1
     fi
@@ -220,6 +226,9 @@ self_test() {
     printf '%s\n' '<dict><key>CFBundleName</key><string>x</string></dict>' > "$d/App.app/Contents/Info.plist"
     printf 'xx --harness-record xx\n' > "$d/App.app/Contents/MacOS/App"
     run_app "$d/prod.ent" && { echo "check-entitlements: self-test: a --harness flag in the binary was accepted" >&2; bad=1; }
+
+    printf 'xx ALETHEIA_FIXTURE xx\n' > "$d/App.app/Contents/MacOS/App"
+    run_app "$d/prod.ent" && { echo "check-entitlements: self-test: fixture mode in the binary was accepted" >&2; bad=1; }
 
     [ "$bad" -eq 0 ] || return 1
     echo "check-entitlements: self-test OK"
