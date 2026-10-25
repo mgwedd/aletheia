@@ -99,7 +99,7 @@ enum NetworkHelperDisclosure {
 
     /// What "Copy" under "Verify it yourself" puts on the clipboard: the command,
     /// kept out of clipboard history like any other copied text.
-    static func copyVerifyCommand(for bundle: Bundle = .main, to pasteboard: NSPasteboard = .general) {
+    static func copyVerifyCommand(for bundle: Bundle = .main, to pasteboard: NSPasteboard = PHIPasteboard.general) {
         PHIPasteboard.writeString(verifyCommand(for: bundle), to: pasteboard)
     }
 
