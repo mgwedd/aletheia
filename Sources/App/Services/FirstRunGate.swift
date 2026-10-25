@@ -9,10 +9,11 @@ struct FirstRunGate: Equatable {
     let hasAcceptedCurrentTerms: Bool
 
     @MainActor
-    init(settings: AppSettings) {
+    /// A license issued under the current terms counts as accepting them.
+    init(settings: AppSettings, licenseCoversCurrentTerms: Bool = false) {
         hasDataFolder = settings.dataRootURL != nil
         hasCompletedFirstRun = settings.hasCompletedFirstRun
-        hasAcceptedCurrentTerms = settings.hasAcceptedCurrentLegal
+        hasAcceptedCurrentTerms = settings.hasAcceptedCurrentLegal || licenseCoversCurrentTerms
     }
 
     var sheetShows: Bool { !hasDataFolder || !hasCompletedFirstRun || !hasAcceptedCurrentTerms }
@@ -20,8 +21,10 @@ struct FirstRunGate: Equatable {
     /// The sheet's presentation. The user can't close it: asking to dismiss
     /// changes nothing, so it stays up until the three requirements are met.
     @MainActor
-    static func presentation(settings: AppSettings) -> Binding<Bool> {
-        Binding(get: { FirstRunGate(settings: settings).sheetShows }, set: { _ in })
+    static func presentation(settings: AppSettings, licenseCoversCurrentTerms: @escaping () -> Bool = { false }) -> Binding<Bool> {
+        Binding(get: {
+            FirstRunGate(settings: settings, licenseCoversCurrentTerms: licenseCoversCurrentTerms()).sheetShows
+        }, set: { _ in })
     }
 }
 

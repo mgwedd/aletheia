@@ -26,6 +26,16 @@ final class FirstRunGateTests: XCTestCase {
         XCTAssertTrue(FirstRunGate(settings: settings).sheetShows, "older terms")
     }
 
+    func testALicenseUnderTheCurrentTermsCountsAsAcceptingThem() {
+        let (settings, cleanUp) = makeSettings()
+        defer { cleanUp() }
+        settings.dataRootURL = FileManager.default.temporaryDirectory
+        settings.hasCompletedFirstRun = true
+        XCTAssertTrue(FirstRunGate(settings: settings).sheetShows)
+        XCTAssertFalse(FirstRunGate(settings: settings, licenseCoversCurrentTerms: true).sheetShows)
+        XCTAssertFalse(FirstRunGate.presentation(settings: settings, licenseCoversCurrentTerms: { true }).wrappedValue)
+    }
+
     func testAskingToDismissLeavesTheSheetUp() {
         let (settings, cleanUp) = makeSettings()
         defer { cleanUp() }

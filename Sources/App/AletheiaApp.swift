@@ -374,7 +374,7 @@ struct AletheiaApp: App {
     }
 
     private var showFirstRun: Binding<Bool> {
-        FirstRunGate.presentation(settings: settings)
+        FirstRunGate.presentation(settings: settings, licenseCoversCurrentTerms: { license.licenseCoversCurrentTerms })
     }
 }
 

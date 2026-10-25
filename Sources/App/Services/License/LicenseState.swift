@@ -146,6 +146,22 @@ final class LicenseState: ObservableObject {
         return apply(list)
     }
 
+    // MARK: - Terms recorded in the license
+
+    /// What the license says about the accepted terms, or nil without a usable license.
+    var termsSummary: LicenseTermsSummary? {
+        status.token.map { LicenseTermsSummary(token: $0, bundledHashes: Self.bundledHashes) }
+    }
+
+    /// A current license confirms acceptance of the exact terms and privacy text in
+    /// this build, so the app does not ask again. Anything else (no `acc`, a changed
+    /// document, a lapsed license) leaves the in-app acceptance in charge.
+    var licenseCoversCurrentTerms: Bool {
+        status.isActive && (termsSummary?.licenseCoversCurrentTerms ?? false)
+    }
+
+    static let bundledHashes = BundledLegalDocuments.hashes()
+
     // MARK: - The gate
 
     /// Why a new recording or an AI run may not start, or nil when it may. This is

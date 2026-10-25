@@ -13,6 +13,11 @@ struct LicenseToken: Equatable {
     let issuedAt: Date
     /// Nil for a key issued without an expiry: it never lapses (it can still be revoked).
     let expiresAt: Date?
+    /// Terms documents the licensee accepted when the license was issued. Empty
+    /// when the token has none or the field is unreadable.
+    var acceptances: [LicenseAcceptance] = []
+    /// Known plain-language notes about this license (see `LicenseClause`).
+    var clauses: [LicenseClause] = []
 
     /// The expiry warning starts this long before `expiresAt`.
     static let warningWindow: TimeInterval = 14 * 86_400
@@ -145,13 +150,16 @@ enum LicenseVerifier {
               let payload = try? JSONDecoder().decode(Payload.self, from: payloadData)
         else { throw LicenseError.malformed }
         guard payload.v == 1 else { throw LicenseError.unsupportedVersion }
+        let extras = (try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any]) ?? [:]
         guard let key = keyring.keys[payload.kid] else { throw LicenseError.unknownKey }
         let signed = Data("\(prefix).\(parts[1])".utf8)
         guard key.isValidSignature(signature, for: signed) else { throw LicenseError.badSignature }
         return LicenseToken(
             kid: payload.kid, lid: payload.lid, sub: payload.sub, tier: payload.tier,
             issuedAt: Date(timeIntervalSince1970: TimeInterval(payload.iat)),
-            expiresAt: payload.exp.map { Date(timeIntervalSince1970: TimeInterval($0)) })
+            expiresAt: payload.exp.map { Date(timeIntervalSince1970: TimeInterval($0)) },
+            acceptances: LicenseAcceptance.parse(extras["acc"]),
+            clauses: LicenseClause.parse(extras["cl"]))
     }
 }
 
