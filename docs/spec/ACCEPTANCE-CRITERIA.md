@@ -79,7 +79,7 @@ Before you start: a session that has a recording and no transcript.
 - **TRANSCRIBE-14** Transcription fails partway (the audio can't be read) → no transcript is written, the recording is kept, and a "Transcription needs attention" notification arrives.
 - **TRANSCRIBE-15** Transcribe with encryption on → the transcript is saved, and its text can't be read from the data folder without the passphrase.
 - **TRANSCRIBE-16** Turn on "Keep raw audio after transcription" with encryption off → the recording is still deleted once the transcript is saved, so audio is never left readable on disk.
-- **TRANSCRIBE-17** Transcribe a session that already has a transcript and the new result is silent → the earlier transcript is kept, along with the recording, and the tab says no speech was detected.
+- **TRANSCRIBE-17** Re-transcribe a silent recording that already has a transcript → the earlier transcript and the recording are kept, and the tab says no speech was detected.
 
 ## 6. Comment on the transcript (COMMENT)
 Before you start: a session with a saved transcript and no comments.

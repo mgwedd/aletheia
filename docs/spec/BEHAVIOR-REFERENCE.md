@@ -395,9 +395,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-064** When a transcription is cancelled or fails, the temporary decrypted copies of the recordings are removed.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:207-217` · `qa: TRANSCRIBE-05`
 - **TRN-065** When encryption is off and Keep raw audio was left on from earlier, a successful transcription with speech still deletes the recording.
-  `surface: background` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:44-60, Sources/App/Services/TranscriptionCoordinator.swift:225-244` · `qa: TRANSCRIBE-08`
+  `surface: background` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:44-60, Sources/App/Services/TranscriptionCoordinator.swift:225-244` · `qa: TRANSCRIBE-16`
 - **TRN-066** When a transcription produces no speech, an existing saved transcript for the session is not overwritten.
-  `surface: invariant` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:232-243` · `qa: TRANSCRIBE-09`
+  `surface: invariant` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:232-243` · `qa: TRANSCRIBE-17`
 - **TRN-067** When transcript text is exported for a session or a patient's records, or shown in a search snippet, the speaker is named by the patient's first name and no overlap marks are included.
   `surface: ui` · `evidence: Sources/App/Services/MarkdownExporter.swift:22, Sources/App/Services/PatientArchive.swift:66, Sources/App/Services/Search/GlobalSearchEngine.swift:238` · `qa: TRANSCRIBE-07`
 - **TRN-068** When the transcript is shown on screen, the "(overlapping)" mark is hidden.
@@ -419,7 +419,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-076** When the auto-transcribe setting is on (the default) and a recording is saved successfully, ending it starts transcription of that session, or queues it behind one already running.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:131-137, Sources/App/Views/SettingsView.swift:195` · `qa: RECORD-09`
 - **TRN-077** When the finished transcript cannot be saved, the transcription is reported as failed and the recordings are not deleted.
-  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:245-249` · `qa: TRANSCRIBE-08`
+  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:245-249` · `qa: TRANSCRIBE-14`
 - **TRN-078** When the app is locked during a transcription, the folder key is dropped once that transcription finishes.
   `surface: background` · `evidence: Sources/App/Services/AppLock.swift:156, 282-300` · `qa: TRANSCRIBE-04`
 - **TRN-079** When a transcription interrupted by a quit is picked up at the next launch, it runs only if the session's recording still exists and is dropped if the patient or session is gone.
@@ -444,6 +444,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionProgress.swift:150-166, Sources/App/Views/SessionDetailView.swift:1575-1582` · `qa: TRANSCRIBE-03`
 - **TRN-089** When this session is being transcribed or is waiting in the queue, its Transcribe button is disabled with the tooltip "This session is being transcribed" or "Waiting for another transcription to finish".
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionProgress.swift:150-166` · `qa: TRANSCRIBE-03`
+- **TRN-090** When encryption is on and a transcription finishes, the saved transcript is stored sealed, so its text cannot be read from the data folder without the passphrase.
+  `surface: invariant` · `evidence: Sources/App/Services/Crypto/EncryptionManager.swift, docs/ENCRYPTION.md` · `qa: TRANSCRIBE-15`
 
 ## Encryption at rest (ENC)
 
