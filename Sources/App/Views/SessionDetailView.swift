@@ -249,6 +249,7 @@ struct SessionDetailView: View {
     @State private var engineRetries = PendingRetries<EngineRetryKind, () -> Void>()
     @State private var confirmationMessage: String?
     @State private var showScheduleSheet = false
+    @State private var showRecordingConsent = false
     @State private var pendingExport: ExportConfirmation?
     @State private var scheduleStart = Date()
     @State private var scheduleDurationMinutes = SessionEventBuilder.defaultDurationMinutes
@@ -380,8 +381,19 @@ struct SessionDetailView: View {
         } message: {
             Text(confirmationMessage ?? "")
         }
-        .dismissOnLock { showScheduleSheet = false; editingInstructions = false; pendingExport = nil }
+        .dismissOnLock { showScheduleSheet = false; editingInstructions = false; pendingExport = nil; showRecordingConsent = false }
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
+        .sheet(isPresented: $showRecordingConsent) {
+            RecordingConsentSheet(
+                onCancel: { showRecordingConsent = false },
+                onConfirm: {
+                    showRecordingConsent = false
+                    if appModel.attestRecordingConsent(patientID: patient.id) {
+                        Task { await startRecording() }
+                    }
+                }
+            )
+        }
         .exportConfirmation($pendingExport, settings: settings)
         .exportResultAlert($exportResult)
         .confirmationDialog(
@@ -1580,6 +1592,10 @@ struct SessionDetailView: View {
 
     private func startRecording() async {
         guard appModel.authorizeNewPHI(), let store = appModel.store else { return }
+        guard appModel.hasRecordingConsent(patientID: patient.id) else {
+            showRecordingConsent = true
+            return
+        }
         let micURL = store.micRecordingURL(for: patient, session: session)
         let callURL = store.callRecordingURL(for: patient, session: session)
         // Refused (another recording is in the way) or failed to start: say why.
