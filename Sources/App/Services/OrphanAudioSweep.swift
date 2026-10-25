@@ -14,7 +14,10 @@ private let log = Logger(subsystem: "com.aletheia", category: "OrphanAudioSweep"
 ///    Skips the session being recorded, and doesn't run at all while an encrypted folder is locked.
 /// 2. Scans encrypted session folders for any legacy plaintext `.caf` files and seals them in place,
 ///    recording `.recordingRecovered`.
-/// 3. Empties the private scratch folder (`PrivateStaging`) of decrypted or patient-derived temporary
+/// 3. Retries discarding the audio of sessions whose earlier discard after transcription failed
+///    (marked by `markDiscardPending`), when the retention setting still says to discard and the
+///    session has its transcript.
+/// 4. Empties the private scratch folder (`PrivateStaging`) of decrypted or patient-derived temporary
 ///    files a crash left behind, and removes `aletheia-*.caf` copies older builds left in the shared
 ///    temporary directory.
 enum OrphanAudioSweep {
@@ -24,6 +27,8 @@ enum OrphanAudioSweep {
         var legacySessionsSealed: Int = 0
         var quarantinedUnknownDirs: Int = 0
         var temporaryFilesPurged: Int = 0
+        /// Sessions whose audio was discarded after an earlier discard had failed.
+        var audioDiscardsRetried: Int = 0
         /// The folder is encrypted but locked: nothing was touched, run again once unlocked.
         var skippedLocked = false
     }
@@ -40,6 +45,8 @@ enum OrphanAudioSweep {
     ///     its staging folder is left alone.
     ///   - queuesTranscription: whether a recovered session without a transcript
     ///     is listed for transcription (the "transcribe after recording" setting).
+    ///   - discardsAudioAfterTranscription: the current retention setting; audio is only
+    ///     retried for deletion while it says to discard.
     @discardableResult
     static func sweep(
         store: Store,
@@ -48,6 +55,7 @@ enum OrphanAudioSweep {
         ledger: InterruptedWorkLedger? = nil,
         activeSessionID: UUID? = nil,
         queuesTranscription: Bool = true,
+        discardsAudioAfterTranscription: Bool = false,
         stagingRoot: URL = Store.stagingDirectoryURL,
         scratchRoot: URL = PrivateStaging.root,
         temporaryDirectory: URL = PrivateStaging.legacyTemporaryDirectory
@@ -132,10 +140,65 @@ enum OrphanAudioSweep {
             }
         }
 
-        // 3. Purge scratch-space and legacy shared-temp leftovers.
+        // 3. Retry discards that failed after transcription.
+        result.audioDiscardsRetried = retryPendingDiscards(
+            store: store, discards: discardsAudioAfterTranscription, stagingRoot: stagingRoot)
+
+        // 4. Purge scratch-space and legacy shared-temp leftovers.
         result.temporaryFilesPurged = PrivateStaging.sweep(root: scratchRoot, legacyTemporaryDirectory: temporaryDirectory)
 
         return result
+    }
+
+    private static let discardMarkerPrefix = "discard-"
+
+    private static func discardMarker(for sessionID: UUID, stagingRoot: URL) -> URL {
+        stagingRoot.appendingPathComponent(discardMarkerPrefix + sessionID.uuidString)
+    }
+
+    /// Remembers that `sessionID`'s audio should be discarded but couldn't be, so a later
+    /// launch retries. The marker lives in the private staging folder (not the session folder,
+    /// which may be the very thing that can't be written) and holds no patient data.
+    static func markDiscardPending(for sessionID: UUID, stagingRoot: URL = Store.stagingDirectoryURL) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: stagingRoot, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let url = discardMarker(for: sessionID, stagingRoot: stagingRoot)
+        if !fm.fileExists(atPath: url.path) {
+            fm.createFile(atPath: url.path, contents: Data(), attributes: [.posixPermissions: 0o600])
+        }
+    }
+
+    static func clearDiscardPending(for sessionID: UUID, stagingRoot: URL = Store.stagingDirectoryURL) {
+        try? FileManager.default.removeItem(at: discardMarker(for: sessionID, stagingRoot: stagingRoot))
+    }
+
+    static func isDiscardPending(for sessionID: UUID, stagingRoot: URL = Store.stagingDirectoryURL) -> Bool {
+        FileManager.default.fileExists(atPath: discardMarker(for: sessionID, stagingRoot: stagingRoot).path)
+    }
+
+    /// Deletes the audio of each marked session that has its transcript, while the setting
+    /// still says to discard. A marker for a session this data folder doesn't have stays; one
+    /// for a session whose audio the setting now keeps is dropped and the audio left alone.
+    /// The deletion is recorded by `Store.deleteRecordings`.
+    private static func retryPendingDiscards(store: Store, discards: Bool, stagingRoot: URL) -> Int {
+        let entries = (try? FileManager.default.contentsOfDirectory(at: stagingRoot, includingPropertiesForKeys: nil)) ?? []
+        var count = 0
+        for marker in entries where marker.lastPathComponent.hasPrefix(discardMarkerPrefix) {
+            guard let id = UUID(uuidString: String(marker.lastPathComponent.dropFirst(discardMarkerPrefix.count))) else { continue }
+            guard discards else {
+                try? FileManager.default.removeItem(at: marker)
+                continue
+            }
+            guard let (patient, session) = store.locateSession(id: id), session.hasTranscript else { continue }
+            do {
+                try store.deleteRecordings(for: patient, session: session)
+                try? FileManager.default.removeItem(at: marker)
+                count += 1
+            } catch {
+                log.error("Couldn't discard the recording for session \(id.uuidString, privacy: .public); will retry at next launch")
+            }
+        }
+        return count
     }
 
     /// Seals the recordings in `item` into `session`'s folder and removes them

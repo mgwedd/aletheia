@@ -28,10 +28,9 @@ struct EncryptionSetupSheet: View {
     @State private var recoveryKey = ""
     @State private var storedKeyAcknowledged = false
     @State private var acknowledged = false
-    /// Default on: store the key in this Mac's keychain so, after this one-time
-    /// setup, encryption is transparent on every later launch. The passphrase
-    /// and emergency recovery key stay the recovery path if the keychain is ever lost.
-    @State private var rememberOnDevice = true
+    /// Off unless the user turns it on: a copy of the key in this Mac's keychain
+    /// is an opt-in convenience.
+    @State private var rememberOnDevice = EncryptionSettingsDefaults.rememberKeyOnDevice
     @State private var working = false
     @State private var didEnable = false
     @State private var warning: String?
@@ -292,7 +291,7 @@ struct EncryptionSetupSheet: View {
                     Text("Remember on this Mac")
                         .font(Theme.Typography.body)
                         .foregroundStyle(Theme.text.color)
-                    Text("Keeps the key in this Mac's login keychain so you aren't asked for the passphrase on later launches. Turn off for maximum security.")
+                    Text("Keeps the key in this Mac's login keychain so you aren't asked for the passphrase on later launches. Off by default; leave it off for maximum security.")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.muted.color)
                         .fixedSize(horizontal: false, vertical: true)
@@ -303,7 +302,7 @@ struct EncryptionSetupSheet: View {
                     .toggleStyle(.switch)
                     .tint(Theme.accent.color)
             }
-            .help("Stores the key in this Mac's login keychain so you won't be asked for the passphrase on later launches. Leave off for maximum security.")
+            .help("Stores the key in this Mac's login keychain so you won't be asked for the passphrase on later launches. Off by default; leave it off for maximum security.")
         }
     }
 

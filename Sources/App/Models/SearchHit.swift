@@ -22,8 +22,8 @@ enum SearchKind: String, CaseIterable, Identifiable {
         switch self {
         case .patient: return "Patient"
         case .session: return "Session"
-        case .sessionNotes: return "My notes"
-        case .note: return "Note"
+        case .sessionNotes: return "Psychotherapy note"
+        case .note: return "Progress note"
         case .comment: return "Comment"
         case .transcript: return "Transcript"
         }
@@ -34,7 +34,7 @@ enum SearchKind: String, CaseIterable, Identifiable {
         switch self {
         case .patient: return "Patients"
         case .session: return "Sessions"
-        case .sessionNotes: return "My notes"
+        case .sessionNotes: return "Psychotherapy notes"
         case .note: return "Progress notes"
         case .comment: return "Comments"
         case .transcript: return "Transcripts"

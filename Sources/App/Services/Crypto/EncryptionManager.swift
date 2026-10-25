@@ -97,14 +97,15 @@ final class EncryptionManager: ObservableObject {
         dataRootProvider: @escaping () -> URL?,
         deviceKeys: DeviceKeyStoring = KeychainDeviceKeyStore.makeDefault(),
         defaults: UserDefaults = .standard,
-        throttle: UnlockThrottle = UnlockThrottle()
+        throttle: UnlockThrottle = UnlockThrottle(),
+        autoUnlockAtLaunch: Bool = true
     ) {
         self.dataRootProvider = dataRootProvider
         self.deviceKeys = deviceKeys
         self.defaults = defaults
         self.throttle = throttle
         refreshState()
-        autoUnlockFromDevice()
+        if autoUnlockAtLaunch { autoUnlockFromDevice() }
     }
 
     // MARK: - Derived state
@@ -143,12 +144,16 @@ final class EncryptionManager: ObservableObject {
     }
 
     private func writeMarker(at root: URL) throws {
-        try Data("1\n".utf8).write(to: markerURL(root), options: .atomic)
+        try SecureFS.write(Data("1\n".utf8), to: markerURL(root))
         defaults.set(true, forKey: markerDefaultsKey(root))
     }
 
-    private func clearMarker(at root: URL) {
-        try? FileManager.default.removeItem(at: markerURL(root))
+    /// Throws when the marker file can't be removed: left behind after the keystore
+    /// is gone, it would make a plaintext folder look like a lost keystore.
+    private func clearMarker(at root: URL) throws {
+        if FileManager.default.fileExists(atPath: markerURL(root).path) {
+            try FileManager.default.removeItem(at: markerURL(root))
+        }
         defaults.removeObject(forKey: markerDefaultsKey(root))
     }
 
@@ -192,6 +197,12 @@ final class EncryptionManager: ObservableObject {
         onProtectionChanged?()
         SessionSearch.openIndex()
     }
+
+    /// The app lock must stay on: the folder is encrypted and its key sits in this
+    /// Mac's keychain, so without the lock nothing but the login session stands
+    /// between a reader and the records. Derived from the keystore and keychain,
+    /// not from a preference that `defaults write` could flip.
+    var requiresAppLock: Bool { isEnabled && isRememberedOnDevice }
 
     /// Whether the DEK is remembered in this Mac's keychain for auto-unlock.
     var isRememberedOnDevice: Bool {
@@ -268,7 +279,7 @@ final class EncryptionManager: ObservableObject {
         do {
             try keystore.write(to: root)
         } catch {
-            clearMarker(at: root)
+            try? clearMarker(at: root)
             throw error
         }
         self.dek = dek
@@ -292,7 +303,7 @@ final class EncryptionManager: ObservableObject {
         // Drop the keychain copy before the keystore (which holds its id) is gone. Not
         // `forgetOnDevice()`: the disable is recorded as one event.
         if let id = Keystore.load(from: root)?.id { deviceKeys.delete(for: id) }
-        clearMarker(at: root) // before the keystore goes, so a half-finished disable never looks like a lost keystore
+        try clearMarker(at: root) // before the keystore goes, so a half-finished disable never looks like a lost keystore
         try FileManager.default.removeItem(at: root.appendingPathComponent(Keystore.fileName))
         dek = nil
         state = .disabled

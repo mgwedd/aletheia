@@ -27,6 +27,9 @@ struct RootView: View {
     /// detail view's Edit button and the sidebar's context menu.
     @State private var editingProfile: Patient?
     @State private var editingFocus: ProfileField = .name
+    /// Unsaved edits from a profile editor that closed because the app locked.
+    /// The next editor opened for the same patient starts from them.
+    @State private var lockedProfileDraft: Patient?
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -64,6 +67,7 @@ struct RootView: View {
         // single failed save. Non-blocking, but pinned above everything so it's
         // never missed. See DatabaseUnavailableBanner / DoctorFeatureModule.
         .safeAreaInset(edge: .top, spacing: 0) { dataSafetyNotices }
+        .dismissOnLock { showSettings = false }
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(settings)
@@ -78,7 +82,9 @@ struct RootView: View {
             PatientProfileEditor(
                 patient: appModel.patients.first { $0.id == patient.id } ?? patient,
                 showsMedications: appModel.featureRegistry.contains(id: PatientMedicationsFeatureModule.id),
-                initialFocus: editingFocus
+                initialFocus: editingFocus,
+                draft: lockedProfileDraft?.id == patient.id ? lockedProfileDraft : nil,
+                onLockDraft: { lockedProfileDraft = $0 }
             )
             .environmentObject(appModel)
         }
@@ -118,9 +124,9 @@ struct RootView: View {
         }
         // Here rather than on the session screen, so it appears whatever is on
         // screen and names the session that is actually recording.
-        .alert("Still recording", isPresented: $recorder.longRunningReminder) {
-            Button("Keep Recording", role: .cancel) {}
-            Button("Stop Now", role: .destructive) { Task { await recorder.stop() } }
+        .alert(RecordingLimit.Alert.title, isPresented: $recorder.longRunningReminder) {
+            Button(RecordingLimit.Alert.keep, role: .cancel) {}
+            Button(RecordingLimit.Alert.stop, role: .destructive) { Task { await recorder.stop() } }
         } message: {
             Text(SessionNotifications.longRecordingReminder(
                 patientName: recorder.active?.patientName ?? "This patient",

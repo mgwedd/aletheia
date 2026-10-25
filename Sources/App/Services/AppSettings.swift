@@ -108,6 +108,7 @@ final class AppSettings: ObservableObject {
         static let summaryVerbosity = "summaryVerbosity"
         static let includeCommentsInDrafts = "includeCommentsInDrafts"
         static let notificationsShowPatientNames = "notificationsShowPatientNames"
+        static let skipSingleNoteExportConfirmation = "skipSingleNoteExportConfirmation"
         static let transcriptSplitRatio = "transcriptSplitRatio"
         static let includePatientBackground = "includePatientBackground"
         static let noteInstructions = "noteInstructions"
@@ -129,7 +130,11 @@ final class AppSettings: ObservableObject {
 
     private let defaults: UserDefaults
 
-    @Published var dataRootURL: URL?
+    @Published var dataRootURL: URL? {
+        // Re-assert the backup-exclusion policy whenever the folder in use changes
+        // (not run for the assignments made inside `init`).
+        didSet { applyBackupExclusion() }
+    }
     @Published private(set) var dataRootVerdict: DataFolderPolicy.Verdict = .ok
     @Published var whisperModel: WhisperModel {
         didSet { defaults.set(whisperModel.rawValue, forKey: Keys.whisperModel) }
@@ -224,6 +229,11 @@ final class AppSettings: ObservableObject {
     /// On by default.
     @Published var includeCommentsInDrafts: Bool {
         didSet { defaults.set(includeCommentsInDrafts, forKey: Keys.includeCommentsInDrafts) }
+    }
+    /// Skips the "not encrypted" question for exporting one session's note. Never
+    /// applies to a session with its transcript, a patient's records or all records.
+    @Published var skipSingleNoteExportConfirmation: Bool {
+        didSet { defaults.set(skipSingleNoteExportConfirmation, forKey: Keys.skipSingleNoteExportConfirmation) }
     }
     /// Whether system notifications name the patient and session date. Off by
     /// default: banners show on the lock screen and macOS keeps them.
@@ -347,9 +357,8 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(debugDiagnosticsEnabled, forKey: Keys.debugDiagnosticsEnabled) }
     }
     /// Keep the data folder out of Time Machine and iCloud's device backup (via
-    /// `isExcludedFromBackup`). Off by default: the app writes no backup of its
-    /// own unless opted in, so Time Machine is the baseline copy and excluding
-    /// the folder would leave exactly one copy of everything. The key is only
+    /// `isExcludedFromBackup`). On by default (the app keeps its own encrypted
+    /// backup archives). The key is only
     /// written when the user flips the toggle, so an unset key means "use the
     /// default" (`BackupExclusion.resolvedExclusion`). Applied to the folder
     /// whenever this changes, at launch, or when the data root is set.
@@ -473,7 +482,7 @@ final class AppSettings: ObservableObject {
         debugDiagnosticsEnabled = defaults.bool(forKey: Keys.debugDiagnosticsEnabled)
         spotlightIndexingEnabled = defaults.bool(forKey: Keys.spotlightIndexingEnabled)
         appLockEnabled = defaults.object(forKey: Keys.appLockEnabled) as? Bool ?? true
-        lockWhenHidden = defaults.object(forKey: Keys.lockWhenHidden) as? Bool ?? false
+        lockWhenHidden = defaults.object(forKey: Keys.lockWhenHidden) as? Bool ?? true
         hideFromScreenSharing = defaults.object(forKey: Keys.hideFromScreenSharing) as? Bool ?? true
         if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,
            IdleAutoLockTimeout.allCases.map(\.rawValue).contains(stored) {
@@ -489,6 +498,7 @@ final class AppSettings: ObservableObject {
         summaryVerbosity = defaults.string(forKey: Keys.summaryVerbosity)
             .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
         includeCommentsInDrafts = defaults.object(forKey: Keys.includeCommentsInDrafts) as? Bool ?? true
+        skipSingleNoteExportConfirmation = defaults.bool(forKey: Keys.skipSingleNoteExportConfirmation)
         notificationsShowPatientNames = defaults.object(forKey: Keys.notificationsShowPatientNames) as? Bool ?? false
         transcriptSplitRatio = TranscriptSplit.sanitized(
             ratio: defaults.object(forKey: Keys.transcriptSplitRatio) as? Double ?? TranscriptSplit.defaultRatio
@@ -521,7 +531,7 @@ final class AppSettings: ObservableObject {
         } else {
             dismissedDamagedRecordIDs = []
         }
-        if let bookmarked = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark) {
+        if let bookmarked = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark, defaults: defaults) {
             dataRootURL = bookmarked
         } else if defaults.bool(forKey: Keys.usesStandardDataRoot) {
             dataRootURL = Self.standardDataRoot
@@ -551,7 +561,7 @@ final class AppSettings: ObservableObject {
     func setDataRoot(_ url: URL) throws {
         let verdict = DataFolderPolicy.verdict(for: url)
         guard verdict == .ok else { throw DataFolderSelectionError.rejected(verdict.explanation) }
-        try SecurityScopedBookmark.save(url: url, key: Keys.dataRootBookmark)
+        try SecurityScopedBookmark.save(url: url, key: Keys.dataRootBookmark, defaults: defaults)
         defaults.set(false, forKey: Keys.usesStandardDataRoot)
         dataRootURL = url
         dataRootVerdict = .ok
@@ -567,7 +577,7 @@ final class AppSettings: ObservableObject {
         let root = Self.standardDataRoot
         let verdict = DataFolderPolicy.verdict(for: root)
         guard verdict == .ok else { throw DataFolderSelectionError.rejected(verdict.explanation) }
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try SecureFS.createDirectory(at: root)
         defaults.removeObject(forKey: Keys.dataRootBookmark)
         defaults.set(true, forKey: Keys.usesStandardDataRoot)
         dataRootURL = root
@@ -579,9 +589,8 @@ final class AppSettings: ObservableObject {
     /// so it's kept out of (or allowed back into) Time Machine and iCloud's device
     /// backup. Best-effort — a failure to write the flag never blocks the app.
     ///
-    /// For an install that never chose (key absent) the default applies, so a
-    /// folder excluded under the previous "on by default" policy is cleared back
-    /// into Time Machine; an explicit stored choice is always respected.
+    /// For an install that never chose (key absent) the default applies (excluded);
+    /// an explicit stored choice is always respected.
     private func applyBackupExclusion() {
         guard let root = dataRootURL else { return }
         // Skip the write when the folder already matches the policy.

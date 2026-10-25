@@ -29,14 +29,14 @@ enum UpdatePromptLayout {
     static var contentWidth: CGFloat { width - 2 * padding }
     static let rowSpacing: CGFloat = 8
 
-    static let viewOnGitHub = "View on GitHub"
+    static let viewDownloads = "View downloads"
     static let skip = "Skip this version"
     static let later = "Remind me later"
     static let download = "Download update"
 
     /// Links on the first row, buttons on the second: four controls in one row
     /// need more than the prompt's width.
-    static let rows = [[viewOnGitHub, skip], [later, download]]
+    static let rows = [[viewDownloads, skip], [later, download]]
 }
 
 struct UpdatePromptView: View {
@@ -93,7 +93,7 @@ struct UpdatePromptView: View {
 
             VStack(spacing: 12) {
                 HStack(spacing: 16) {
-                    Link(UpdatePromptLayout.viewOnGitHub, destination: release.releasePageOrWebURL)
+                    Link(UpdatePromptLayout.viewDownloads, destination: ReleaseLink.downloadsPage)
                         .font(Theme.Typography.control)
                         .foregroundStyle(Theme.accent.color)
                     Button(UpdatePromptLayout.skip, action: onSkip)

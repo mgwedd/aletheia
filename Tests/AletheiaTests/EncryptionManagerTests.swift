@@ -261,6 +261,44 @@ final class EncryptionManagerTests: XCTestCase {
         XCTAssertFalse(relaunched.protector.requiresProtection)
     }
 
+    func testDisableDoesNotRemoveKeystoreOnCorruptRow() throws {
+        let store = Store(root: tempRoot)
+        let patient = try store.createPatient(name: "Dana Cole")
+        let session = try store.createSession(for: patient)
+        let comments = try XCTUnwrap(CommentStore(root: tempRoot))
+        XCTAssertTrue(comments.saveNote(sessionID: session.id, text: "private note"))
+
+        let defaults = isolatedDefaults()
+        let m = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: defaults)
+        try m.enable(passphrase: "test-passphrase-1", iterations: fastIterations)
+
+        // Break the sealed note row so it no longer authenticates.
+        let core = try SQLitePersistenceCore(opening: CommentStore.databaseURL(root: tempRoot))
+        var record = try XCTUnwrap(core.record(kind: "psychotherapyNote", id: session.id.uuidString))
+        var envelope = try XCTUnwrap(Data(base64Encoded: String(decoding: record.payload, as: UTF8.self)))
+        envelope[envelope.count - 1] ^= 0xFF
+        record.payload = Data(envelope.base64EncodedString().utf8)
+        XCTAssertTrue(core.put(record))
+
+        XCTAssertThrowsError(try m.disable()) { error in
+            guard case .decryptionIncomplete(let failures)? = error as? EncryptionManager.ManagerError else {
+                return XCTFail("expected decryptionIncomplete, got \(error)")
+            }
+            XCTAssertTrue(failures.contains("Aletheia.sqlite"))
+        }
+        XCTAssertTrue(Keystore.exists(at: tempRoot), "the keystore stays so sealed data remains readable")
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: tempRoot.appendingPathComponent(EncryptionManager.markerFileName).path),
+            "the encrypted marker stays")
+        XCTAssertEqual(m.state, .unlocked)
+        XCTAssertTrue(m.isEnabled)
+        XCTAssertEqual(core.record(kind: "psychotherapyNote", id: session.id.uuidString)?.payload, record.payload,
+                       "the unreadable row is left exactly as it was")
+
+        let relaunched = EncryptionManager(dataRootProvider: { [tempRoot] in tempRoot }, defaults: defaults)
+        XCTAssertEqual(relaunched.state, .lockedNeedsPassphrase)
+    }
+
     func testFolderEncryptedBeforeTheMarkerExistedGetsOne() throws {
         let (keystore, _) = try Keystore.create(passphrase: "test-passphrase-1", iterations: fastIterations)
         try keystore.write(to: tempRoot)
@@ -327,10 +365,9 @@ final class EncryptionManagerTests: XCTestCase {
         try m.enable(passphrase: "test-passphrase-1", recoveryKey: key, iterations: fastIterations)
         m.lock()
 
-        var words = RecoveryKey.words(from: key)
-        words[23] = words[23] == "abandon" ? "zoo" : "abandon"
+        let typo = RecoveryKeyTestSupport.badChecksumVariant(of: key)
         for _ in 0..<5 {
-            XCTAssertThrowsError(try m.unlock(recoveryKey: words.joined(separator: " "))) {
+            XCTAssertThrowsError(try m.unlock(recoveryKey: typo)) {
                 XCTAssertEqual($0 as? RecoveryKey.RecoveryKeyError, .invalidChecksum)
             }
         }

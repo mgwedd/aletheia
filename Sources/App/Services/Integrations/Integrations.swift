@@ -21,15 +21,30 @@ final class Integrations: ObservableObject {
     /// Decides which sessions get a summary, and when (`DigestScheduler`).
     let digestScheduler: DigestScheduler
 
-    init(settings: AppSettings) {
+    /// Stand-ins for the real engines, set only by tests. Production passes
+    /// none, so the real transcriber, built-in model and notifier are used.
+    private let transcriberOverride: Transcribing?
+    private let engineOverride: LocalLLMEngine?
+
+    init(
+        settings: AppSettings,
+        transcriber: Transcribing? = nil,
+        engine: LocalLLMEngine? = nil,
+        notifier: AppNotifying? = nil,
+        now: @escaping () -> Date = Date.init
+    ) {
         self.settings = settings
+        self.transcriberOverride = transcriber
+        self.engineOverride = engine
+        self.notifier = notifier ?? UserNotificationService()
         self.digests = DigestBuilder(queue: inferenceQueue)
-        self.digestScheduler = DigestScheduler(builder: digests, queue: inferenceQueue, settings: settings)
+        self.digestScheduler = DigestScheduler(builder: digests, queue: inferenceQueue, settings: settings, now: now)
     }
 
     /// Speech-to-text: whisper.cpp with Metal (see `WhisperTranscriber`).
     func makeTranscriber() -> Transcribing {
-        WhisperTranscriber(modelPath: settings.whisperModelPath, expectedBytes: settings.whisperModel.expectedBytes)
+        if let transcriberOverride { return transcriberOverride }
+        return WhisperTranscriber(modelPath: settings.whisperModelPath, expectedBytes: settings.whisperModel.expectedBytes)
     }
 
     /// Low-level LLM adapter, chosen by the resolved backend (see
@@ -49,7 +64,7 @@ final class Integrations: ObservableObject {
 
     private func builtInAssistant() -> Assistant {
         #if canImport(llama)
-        return LlamaAssistant(modelURL: llamaModelURL)
+        return LlamaAssistant(modelURL: llamaModelURL, expectedModelBytes: settings.llamaModel.expectedBytes, engineOverride: engineOverride)
         #else
         return UnavailableAssistant()
         #endif
@@ -120,7 +135,7 @@ final class Integrations: ObservableObject {
 
     /// System notifications (transcript/summary ready). Created once so the
     /// same authorization state is reused.
-    private let notifier: AppNotifying = UserNotificationService()
+    private let notifier: AppNotifying
 
     func makeNotifier() -> AppNotifying {
         notifier

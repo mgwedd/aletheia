@@ -97,10 +97,11 @@ struct AletheiaApp: App {
     init() {
         let settings = AppSettings.shared
         _settings = StateObject(wrappedValue: settings)
-        let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL })
+        let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL }, autoUnlockAtLaunch: false)
         _encryption = StateObject(wrappedValue: encryption)
-        let appLock = AppLock(settings: settings)
-        if appLock.isLocked { encryption.lock() }
+        let appLock = AppLock(settings: settings, lockRequired: { [weak encryption] in encryption?.requiresAppLock ?? false })
+        // The key comes off the keychain only when the app is not locked at launch.
+        if !appLock.isLocked { encryption.autoUnlockFromDevice() }
         SessionSearch.setAppLocked(appLock.isLocked)   // before AppModel builds the index: it starts closed behind the lock
         let appModel = AppModel(settings: settings, encryption: encryption)
         _appModel = StateObject(wrappedValue: appModel)
@@ -122,6 +123,7 @@ struct AletheiaApp: App {
         let recorder = SessionRecorder()
         recorder.licenseRefusal = { [weak license] in license?.newWorkRefusal }
         recorder.onStopped = { [weak transcription] in transcription?.startAfterRecording($0) }
+        recorder.onNotice = { [weak appModel] in appModel?.noteRecordingProblem($0) }
         // Also a system notification, so it's noticed when the app isn't
         // focused (the therapist has likely switched to the call window).
         recorder.onLongRunning = { [weak integrations] recording in
@@ -286,6 +288,7 @@ struct AletheiaApp: App {
                     Button("Aletheia Doctor…") {
                         openWindow(id: DoctorFeatureModule.windowID)
                     }
+                    .disabled(LockCoverPolicy.commandDisabled(.openDoctor, isLocked: appLock.isLocked))
                 }
                 Divider()
                 // The feedback form on astrealabs.com, in the browser.
@@ -364,23 +367,11 @@ struct AletheiaApp: App {
     /// The menu-bar icon reflects recording state at a glance: a filled red dot
     /// while recording, paused while paused, and a neutral waveform when idle.
     private var menuBarSymbol: String {
-        guard recorder.isRecording else { return "waveform" }
-        return recorder.isPaused ? "pause.circle.fill" : "record.circle.fill"
+        MenuBarPanel.iconSymbol(isRecording: recorder.isRecording, isPaused: recorder.isPaused)
     }
 
     private var showFirstRun: Binding<Bool> {
-        Binding(
-            // The sheet can't be dismissed by the user (set is a no-op), so the
-            // app is unusable until the data folder is chosen, first run is
-            // done, AND the current Terms/Privacy version has been accepted —
-            // re-appearing if the terms version changes.
-            get: {
-                settings.dataRootURL == nil
-                    || !settings.hasCompletedFirstRun
-                    || !(settings.hasAcceptedCurrentLegal || license.licenseCoversCurrentTerms)
-            },
-            set: { _ in }
-        )
+        FirstRunGate.presentation(settings: settings, licenseCoversCurrentTerms: { license.licenseCoversCurrentTerms })
     }
 }
 
@@ -399,7 +390,18 @@ private struct LockCover: ViewModifier {
             hasDataFolder: settings.dataRootURL != nil,
             encryption: encryption.state
         )
+        let interactive = LockCoverPolicy.contentInteractionEnabled(isLocked: appLock.isLocked)
         return content
+            .environment(\.lockGeneration, appLock.lockGeneration)
+            // While locked the cover is only a picture: take away hit testing,
+            // keyboard focus and Accessibility from what is underneath it.
+            .allowsHitTesting(interactive)
+            .accessibilityHidden(!interactive)
+            .disabled(!interactive)
+            .onChange(of: appLock.isLocked) { _, locked in
+                guard LockCoverPolicy.resignsFirstResponder(onLockChangingTo: locked) else { return }
+                for window in NSApp.windows { window.makeFirstResponder(nil) }
+            }
             // Tier-2: an encrypted folder needs its passphrase once per launch
             // before its notes can be read or written. Added first so Tier-1
             // (added last) draws above it when both covers apply.

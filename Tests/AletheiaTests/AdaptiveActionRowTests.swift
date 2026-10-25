@@ -74,10 +74,10 @@ final class AdaptiveActionRowTests: XCTestCase {
     /// a hover tip on the format picker now, not the row's caption.
     func testTheNotesTabActionRowIsAdaptive() throws {
         let source = try String(contentsOf: Self.source("SessionDetailView.swift"), encoding: .utf8)
-        XCTAssertTrue(source.contains("AdaptiveActionRow {\n                    EmptyView()\n                } actions: {"))
+        XCTAssertTrue(source.contains("AdaptiveActionRow {\n                    Text(NoteKind.progress.title).eyebrowStyle()\n                } actions: {"))
         XCTAssertFalse(source.contains("Text(settings.progressNoteFormat.blurb)"))
         XCTAssertTrue(source.contains(".hoverTip(showingMyNotes ? HelpTips.myNotes : nil)"))
-        XCTAssertTrue(source.contains("AdaptiveLabel(\n                title: \"Length:"),
+        XCTAssertTrue(source.contains("AdaptiveLabel(\n                title: NoteWords.lengthLabel("),
                       "the Length menu label should compact with the row")
     }
 

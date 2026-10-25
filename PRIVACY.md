@@ -1,15 +1,15 @@
 # Privacy Policy
 
-_Last updated: 2026-10-23_
+_Last updated: 2026-10-24_
 
 **Plain-language summary:** Aletheia keeps clinical data in a folder you choose.
 A cloud-synced folder may be copied by its provider. Back Up Now saves an
 encrypted copy of the database to a folder you choose on your Mac or an external
 disk; the App never uploads it. The app itself has no network access: a bundled,
 sandboxed helper makes the few outbound requests, and none carries patient data.
-The developer does not collect, receive, store, or
+Astrea Labs does not collect, receive, store, or
 have access to your data or your patients' data. There are no accounts, analytics,
-telemetry, or developer-operated servers that receive clinical data.
+telemetry, or Astrea Labs servers that receive clinical data.
 
 > This document is a template provided for transparency. It is **not legal
 > advice**. Because Aletheia is used with protected health information (PHI),
@@ -18,21 +18,22 @@ telemetry, or developer-operated servers that receive clinical data.
 
 ## 1. Who this covers
 
-This policy describes the Aletheia macOS application ("the App"). It does not
+This policy describes the Aletheia macOS application ("the App"), made by Astrea Labs LLC,
+a Wyoming limited liability company ("Astrea Labs"). It does not
 govern model files you choose to download; those are covered by their providers' terms and policies.
 
-## 2. What the developer collects
+## 2. What Astrea Labs collects
 
-The App has no analytics, crash reporting, usage tracking, or accounts, and
-sends nothing about you or your records to the developer. The developer cannot
-see how the App is used or what it holds. Update requests to GitHub, model
-downloads from Hugging Face and the license revocation list from
-`astrealabs.com` may expose an IP address and app version to those hosts.
+The App has no analytics, crash reporting, usage tracking or accounts, and it
+never tells Astrea Labs how or when it is used.
+Update requests to GitHub, model downloads from Hugging Face and the license
+revocation list from `astrealabs.com` may expose an IP address and app version
+to those hosts.
 
-If you applied for a license key, the developer keeps the application you
+If you applied for a license key, Astrea Labs keeps the application you
 submitted (your name, contact and professional details, and a record of the key
 issued to you), as described on the application form. The App itself never
-sends the developer anything, including your key.
+sends Astrea Labs anything, including your key.
 
 The App also keeps an audit log on your Mac (see section 3). It never leaves
 your Mac.
@@ -75,16 +76,17 @@ files that open without the App. The copy is not encrypted by the App, and the
 App warns when the destination is on an unencrypted disk or a synced folder.
 Keep it on an encrypted disk. The export is written only to the folder you pick.
 
-Settings > Backups > Back Up Now writes an encrypted copy of the database (not
-recordings or other files) to a folder you choose. It needs encryption to be on and
+Settings > Backups > Back Up Now writes an encrypted copy of your whole data
+folder (database, notes, transcripts and recordings) to a folder you choose. It needs encryption to be on and
 unlocked, refuses synced folders (iCloud Drive, Dropbox and similar), network
 locations and unencrypted removable disks, and never uploads the copy. Each
-successful run is recorded once in the audit log. There is no restore screen in
-the App yet. The App does not upload backups of its own. App
+successful run is recorded once in the audit log. Restore from backup (Settings >
+Backups) restores a backup into a new, empty folder (never over existing data) and
+opens it; it needs your passphrase and the key file kept beside the backup. The App does not upload backups of its own. App
 settings, downloaded models, and an optional remembered encryption key are
 stored separately in the app container or login Keychain; the audit log's
-signing key is in the login Keychain. Your data is not sent to the developer or a
-developer-operated server.
+signing key is in the login Keychain. Your data is not sent to Astrea Labs or a
+server it runs.
 
 ## 4. Network connections the App makes
 
@@ -119,8 +121,8 @@ software, outside the App's own network requests.
 
 You (the clinician or practice) are the controller/custodian and, where
 applicable, the HIPAA **covered entity** for the patient data you create with
-the App. Because the developer does not receive PHI through the App, the
-developer is not your business associate for the App itself. You remain
+the App. Because Astrea Labs does not receive PHI through the App, Astrea
+Labs is not your business associate for the App itself. You remain
 responsible for lawful collection, patient consent, retention, and disclosure.
 
 ## 6. Security

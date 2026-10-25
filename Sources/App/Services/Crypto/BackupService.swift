@@ -22,6 +22,13 @@ protocol BackupService {
     /// Restores the most recent archive over `databaseURL`.
     /// PRECONDITION: no store may be open on `databaseURL`.
     func restoreLatest(to databaseURL: URL) async -> BackupOutcome
+    /// Seals the whole data folder `root` (with `databaseURL`, a consistent
+    /// snapshot, standing in for the live database) into an archive.
+    func backUpFolder(root: URL, databaseURL: URL, reason: String) async -> BackupOutcome
+}
+
+extension BackupService {
+    func backUpFolder(root: URL, databaseURL: URL, reason: String) async -> BackupOutcome { .notConfigured }
 }
 
 /// Keeps end-to-end-encrypted backups on this Mac, under
@@ -53,10 +60,24 @@ struct LocalEncryptedBackupService: BackupService {
     func backUp(databaseURL: URL, reason: String, at date: Date) async -> BackupOutcome {
         BackupLayout.adoptLegacy(dataRoot: root, fileManager: fileManager)
         do {
-            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try SecureFS.createDirectory(at: directory)
             let name = "\(Self.stamp(date))-\(Self.slug(reason)).\(EncryptedBackupArchive.fileExtension)"
             let destination = directory.appendingPathComponent(name)
             try EncryptedBackupArchive.create(from: databaseURL, to: destination, using: key)
+            prune()
+            return .success(destination)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    func backUpFolder(root: URL, databaseURL: URL, reason: String) async -> BackupOutcome {
+        BackupLayout.adoptLegacy(dataRoot: root, fileManager: fileManager)
+        do {
+            try SecureFS.createDirectory(at: directory)
+            let name = "\(Self.stamp(Date()))-\(Self.slug(reason)).\(EncryptedBackupArchive.fileExtension)"
+            let destination = directory.appendingPathComponent(name)
+            try FolderBackupArchive.create(folder: root, databaseSnapshot: databaseURL, to: destination, using: key)
             prune()
             return .success(destination)
         } catch {

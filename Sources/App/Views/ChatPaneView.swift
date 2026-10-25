@@ -168,7 +168,7 @@ struct ChatPaneView: View {
                 .font(.system(size: 28, weight: .regular))
                 .foregroundStyle(Theme.muted.color)
                 .accessibilityHidden(true)
-            Text("Ask a question about \(title)")
+            Text(ChatWords.emptyTitle(about: title))
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.text.color)
             Text("The AI only knows what's in the transcript(s) here.")
@@ -377,7 +377,7 @@ private struct ChatBubble: View {
         if message.role == .summary {
             // A compaction: what later answers remember of everything above.
             VStack(alignment: .leading, spacing: 8) {
-                Chip("Conversation compacted")
+                Chip(ChatWords.compactedChip)
                 MarkdownMessageView(text: message.text)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)

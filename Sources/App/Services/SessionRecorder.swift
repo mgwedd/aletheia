@@ -13,6 +13,13 @@ enum RecordingLimit {
     /// meant to end and the mic is still open.
     static let reminderThreshold: TimeInterval = 90 * 60
 
+    /// The alert raised when the threshold passes.
+    enum Alert {
+        static let title = "Still recording"
+        static let keep = "Keep Recording"
+        static let stop = "Stop Now"
+    }
+
     static func shouldRemind(elapsed: TimeInterval, threshold: TimeInterval = reminderThreshold) -> Bool {
         elapsed >= threshold
     }
@@ -149,6 +156,8 @@ final class SessionRecorder: ObservableObject {
     /// so the UI can ask whether the therapist forgot to end the session. The
     /// view clears it when the user answers.
     @Published var longRunningReminder = false
+    /// How long a recording runs before the reminder; tests shorten it.
+    var reminderThreshold: TimeInterval = RecordingLimit.reminderThreshold
     /// True when the call track has stayed silent since the recording began (see
     /// `CallAudioWatch`), so the UI can say the other side isn't being captured.
     @Published private(set) var callAudioSilent = false
@@ -159,6 +168,10 @@ final class SessionRecorder: ObservableObject {
     /// Called once when a recording passes `RecordingLimit.reminderThreshold`,
     /// whatever screen (if any) is showing.
     var onLongRunning: ((ActiveRecording) -> Void)?
+    /// Called when something the user must be told about happens outside the
+    /// recording screen: a finished recording that couldn't be encrypted yet, or a
+    /// microphone that couldn't be restarted. The app shows it as a banner.
+    var onNotice: ((SecurityAlert) -> Void)?
     /// Why call audio isn't being captured for the current recording (it never
     /// started, or stopped part-way), or nil when it's fine. Shown on the
     /// recording screen so a mic-only session is never a silent surprise.
@@ -200,6 +213,15 @@ final class SessionRecorder: ObservableObject {
 
     init(stagingDirectoryURL: URL = Store.stagingDirectoryURL) {
         self.stagingDirectoryURL = stagingDirectoryURL
+        // Runs on the audio thread; hop to the main actor to raise the notice.
+        mic.onRestartFailed = { [weak self] in
+            Task { @MainActor [weak self] in self?.micRestartFailed() }
+        }
+    }
+
+    /// The microphone changed mid-recording and capture couldn't be restarted.
+    func micRestartFailed() {
+        onNotice?(.microphoneRestartFailed)
     }
 
     /// The Stop under way, so a second Stop (or the quit) waits for its seal
@@ -266,6 +288,7 @@ final class SessionRecorder: ObservableObject {
                 let started = Date()
                 clock = RecordingClock(startedAt: started)
                 state = .recording(startedAt: started)
+                startReminderTimer()
                 return nil
             } catch {
                 try? FileManager.default.removeItem(at: stagingDir)
@@ -425,6 +448,8 @@ final class SessionRecorder: ObservableObject {
         micURL = nil
         callURL = nil
         state = sealError.map { .error($0) } ?? .idle
+        // The error state has no screen of its own, so tell the user here.
+        if sealError != nil { onNotice?(.recordingEncryptionDeferred) }
         if let finished, sealError == nil, !isQuitting { onStopped?(finished) }
     }
 
@@ -473,8 +498,9 @@ final class SessionRecorder: ObservableObject {
     private func startReminderTimer() {
         reminderTask?.cancel()
         longRunningReminder = false
+        let threshold = reminderThreshold
         reminderTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(RecordingLimit.reminderThreshold * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(threshold * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
             guard self.isRecording else { return }
             self.longRunningReminder = true

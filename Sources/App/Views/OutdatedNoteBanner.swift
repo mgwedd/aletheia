@@ -11,7 +11,7 @@ struct OutdatedNoteBanner: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-            Text("Outdated: the transcript has changed since this note was generated.")
+            Text(NoteWords.outdatedMessage)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button("Regenerate", action: onRegenerate)

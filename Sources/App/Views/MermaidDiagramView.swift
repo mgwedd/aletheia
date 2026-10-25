@@ -178,6 +178,7 @@ struct MermaidCard: View {
                 }
             }
         }
+        .dismissOnLock { isExpanded = false }
         .sheet(isPresented: $isExpanded) {
             if let layout, let diagram {
                 MermaidExpandedSheet(source: source, layout: layout, summary: diagram.accessibilityDescription)
@@ -192,8 +193,8 @@ struct MermaidCard: View {
             if layout != nil {
                 ThemeSegmentedControl(
                     options: [
-                        ThemeTab(value: Mode.diagram, title: "Diagram"),
-                        ThemeTab(value: Mode.source, title: "Source")
+                        ThemeTab(value: Mode.diagram, title: CardWords.diagramTab),
+                        ThemeTab(value: Mode.source, title: CardWords.sourceTab)
                     ],
                     selection: $mode
                 )
@@ -347,8 +348,8 @@ private struct MermaidExpandedSheet: View {
                 Spacer(minLength: 8)
                 ThemeSegmentedControl(
                     options: [
-                        ThemeTab(value: Mode.diagram, title: "Diagram"),
-                        ThemeTab(value: Mode.source, title: "Source")
+                        ThemeTab(value: Mode.diagram, title: CardWords.diagramTab),
+                        ThemeTab(value: Mode.source, title: CardWords.sourceTab)
                     ],
                     selection: $mode
                 )

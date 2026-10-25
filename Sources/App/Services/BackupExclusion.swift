@@ -4,20 +4,19 @@ import Foundation
 /// `isExcludedFromBackup` resource value — which keeps it out of Time Machine
 /// and out of iCloud's device backup.
 ///
-/// Aletheia writes no backup of its own unless the clinician opts in, so by
-/// default the data folder is **left in** system backups: Time Machine is the
-/// baseline copy, and excluding the folder would leave exactly one copy of
-/// everything. The folder can hold plaintext PHI when at-rest encryption is off,
-/// so Time Machine backups should be on an **encrypted disk**. A clinician who
-/// wants the folder kept out of system backups (and relies on the app's own
-/// encrypted snapshot instead) can turn the exclusion on.
+/// By default the data folder is **kept out** of system backups: Aletheia keeps
+/// its own encrypted backup archives, and the folder can hold plaintext PHI when
+/// at-rest encryption is off. A clinician who prefers Time Machine to include the
+/// folder can turn the exclusion off (and should use an **encrypted disk**).
 enum BackupExclusion {
     /// The `UserDefaults` key holding the user's explicit choice.
     static let defaultsKey = "keepDataOutOfSystemBackups"
 
-    /// What applies when the user has never chosen: do **not** exclude, so Time
-    /// Machine includes the data folder.
-    static let defaultExcluded = false
+    /// The switch's label in Settings > Backups, also quoted by the Doctor.
+    static let settingTitle = "Keep my data out of Time Machine & iCloud backups"
+
+    /// What applies when the user has never chosen: exclude the data folder.
+    static let defaultExcluded = true
 
     /// The exclusion policy to apply: the user's stored choice if they made one,
     /// otherwise `defaultExcluded`. An absent key means "never chosen" — the app
@@ -42,6 +41,30 @@ enum BackupExclusion {
         var values = URLResourceValues()
         values.isExcludedFromBackup = excluded
         try url.setResourceValues(values)
+        // Where the resource-value write doesn't take effect (seen inside an App
+        // Sandbox container), write or clear the marker it uses directly.
+        if isExcluded(at: url) != excluded { setMarker(excluded, at: url) }
+    }
+
+    private static let markerName = "com.apple.metadata:com_apple_backup_excludeItem"
+
+    private static func hasMarker(at url: URL) -> Bool {
+        url.withUnsafeFileSystemRepresentation { path in
+            path.map { getxattr($0, markerName, nil, 0, 0, 0) >= 0 } ?? false
+        }
+    }
+
+    private static func setMarker(_ on: Bool, at url: URL) {
+        url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return }
+            if on {
+                guard let value = try? PropertyListSerialization.data(
+                    fromPropertyList: "com.apple.backupd", format: .binary, options: 0) else { return }
+                _ = value.withUnsafeBytes { setxattr(path, markerName, $0.baseAddress, value.count, 0, 0) }
+            } else {
+                _ = removexattr(path, markerName, 0)
+            }
+        }
     }
 
     /// Marks `url` excluded from backups, ignoring failure. For folders the app
@@ -62,6 +85,7 @@ enum BackupExclusion {
     static func isExcluded(at url: URL) -> Bool {
         var url = url
         url.removeAllCachedResourceValues()
-        return (try? url.resourceValues(forKeys: [.isExcludedFromBackupKey]))?.isExcludedFromBackup ?? false
+        if (try? url.resourceValues(forKeys: [.isExcludedFromBackupKey]))?.isExcludedFromBackup == true { return true }
+        return hasMarker(at: url)
     }
 }

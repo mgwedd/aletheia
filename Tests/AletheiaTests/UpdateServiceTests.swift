@@ -181,35 +181,47 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertNil(service.manualNotice)
     }
 
-    func testReleasePageOrWebURLFallback() {
-        let customURL = URL(string: "https://example.com/custom-release")!
-        let withPage = ReleaseInfo(
-            version: "1.2.0",
-            downloadURL: URL(string: "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg")!,
-            releaseNotes: "Notes",
-            releasePageURL: customURL
-        )
-        XCTAssertEqual(withPage.releasePageOrWebURL, customURL)
+    private let goodDownload = URL(string: "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg")!
 
-        let gitHubWithoutPage = ReleaseInfo(
-            version: "1.2.0",
-            downloadURL: URL(string: "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg")!,
-            releaseNotes: "Notes"
-        )
-        XCTAssertEqual(
-            gitHubWithoutPage.releasePageOrWebURL,
-            URL(string: "https://github.com/mgwedd/aletheia/releases/tag/v1.2.0")!
-        )
+    func testReleasesOpenAletheiasDownloadPageOnAstreaLabs() {
+        let page = ReleaseLink.downloadsPage
+        XCTAssertEqual(page.scheme, "https")
+        XCTAssertEqual(page.host, "astrealabs.com")
+        XCTAssertEqual(page.path, "/aletheia/download")
+        XCTAssertNil(page.query)
+        XCTAssertNil(page.fragment)
+    }
 
-        let thirdParty = ReleaseInfo(
-            version: "1.2.0",
-            downloadURL: URL(string: "https://mycdn.example.org/downloads/Aletheia.dmg")!,
-            releaseNotes: "Notes"
-        )
-        XCTAssertEqual(
-            thirdParty.releasePageOrWebURL,
-            URL(string: "https://mycdn.example.org/downloads/Aletheia.dmg")!
-        )
+    /// Links in the feed are ignored: a page URL in it is not even decoded.
+    @MainActor
+    func testFeedLinksAreNeverOpened() throws {
+        let json = #"{"version":"1.2.0","downloadURL":"https://evil.example/x.dmg","releaseNotes":"n","releasePageURL":"file:///etc/passwd"}"#
+        let release = try JSONDecoder().decode(ReleaseInfo.self, from: Data(json.utf8))
+        var opened: [URL] = []
+        GuidedDownloadInstaller(open: { opened.append($0) }).install(release)
+        XCTAssertEqual(opened, [ReleaseLink.downloadsPage])
+    }
+
+    @MainActor
+    func testInstallerFallsBackToTheDownloadsPage() async {
+        var opened: [URL] = []
+        let done = expectation(description: "fallback opened")
+        let installer = GuidedDownloadInstaller(helper: FailingHelper(), open: { opened.append($0); done.fulfill() })
+        installer.install(ReleaseInfo(
+            version: "1.2.0", downloadURL: goodDownload, releaseNotes: "Notes", sha256: String(repeating: "a", count: 64)
+        ))
+        await fulfillment(of: [done], timeout: 10)
+        XCTAssertEqual(opened, [ReleaseLink.downloadsPage])
+    }
+
+    /// Nothing in the app links to GitHub releases any more.
+    func testNoScreenLinksToGitHubReleases() throws {
+        let repo = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for file in ["Views/UpdatePromptView.swift", "Views/SettingsView.swift", "Services/Updates/UpdateInstalling.swift", "Services/Updates/UpdateChecking.swift"] {
+            let text = try String(contentsOf: repo.appendingPathComponent("Sources/App/\(file)"), encoding: .utf8)
+            XCTAssertFalse(text.contains("github.com"), file)
+        }
     }
 
     func testCodeSigningStatusInspectorAndDescriptions() {
@@ -274,7 +286,7 @@ final class UpdatePromptLayoutTests: XCTestCase {
     func testAllFourActionsAreOnOfferedRows() {
         XCTAssertEqual(
             Set(UpdatePromptLayout.rows.flatMap { $0 }),
-            [UpdatePromptLayout.viewOnGitHub, UpdatePromptLayout.skip, UpdatePromptLayout.later, UpdatePromptLayout.download]
+            [UpdatePromptLayout.viewDownloads, UpdatePromptLayout.skip, UpdatePromptLayout.later, UpdatePromptLayout.download]
         )
     }
 
@@ -284,4 +296,15 @@ final class UpdatePromptLayoutTests: XCTestCase {
         let single = UpdatePromptLayout.rows.flatMap { $0 }
         XCTAssertGreaterThan(rowWidth(single, spacing: UpdatePromptLayout.rowSpacing), UpdatePromptLayout.contentWidth)
     }
+}
+
+/// A helper whose every call fails, so the installer takes its fallback.
+private struct FailingHelper: NetworkHelping {
+    struct Failure: Error {}
+    func fetchAppcast() async throws -> Data { throw Failure() }
+    func fetchRevocations() async throws -> Data { throw Failure() }
+    func download(
+        _ asset: AssetID, expectedSHA256: String, to destination: URL,
+        onProgress: @escaping @Sendable (Double) -> Void
+    ) async throws { throw Failure() }
 }

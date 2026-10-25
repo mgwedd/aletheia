@@ -103,6 +103,23 @@ enum AllRecordsExport {
         return patients.map { PatientArchive.uniqueName(PatientArchive.defaultRootName(patientName: $0.name), taken: &taken) }
     }
 
+    /// The records would be copied off this Mac by a sync client, so nothing is written.
+    struct SyncedFolderRefusal: LocalizedError, Equatable {
+        var errorDescription: String? {
+            "That folder syncs to the cloud (iCloud Drive or another synced folder), so the records would be copied off this Mac. Nothing was exported. Choose a folder on this Mac that doesn't sync."
+        }
+    }
+
+    /// Whether `folder` is in iCloud Drive or another cloud-synced place, by the same
+    /// detection the data-folder chooser uses plus the export folder's path check.
+    static func isSyncedFolder(_ folder: URL) -> Bool {
+        if ExportDestinationCheck.pathLooksSynced(folder) { return true }
+        switch DataFolderPolicy.verdict(for: folder) {
+        case .iCloudDrive, .iCloudDesktopDocuments, .thirdPartyCloud: return true
+        case .ok, .networkVolume, .removableUnencrypted: return false
+        }
+    }
+
     static func write(
         from source: AllRecordsSource,
         to destination: URL,
@@ -110,6 +127,7 @@ enum AllRecordsExport {
         progress: (Double, String) -> Void,
         isCancelled: () -> Bool
     ) throws -> PatientArchiveWriter.Outcome {
+        if isSyncedFolder(destination.deletingLastPathComponent()) { throw SyncedFolderRefusal() }
         let fm = FileManager.default
         let staging = destination.deletingLastPathComponent()
             .appendingPathComponent(".\(destination.lastPathComponent).partial-\(UUID().uuidString)", isDirectory: true)
@@ -214,7 +232,7 @@ enum AllRecordsExport {
             "Aletheia records",
             "Exported on \(longFormatter.string(from: exportedOn)).",
             "",
-            "There is one folder per patient. Each holds a Sessions folder with one folder per session, oldest first: the transcript, notes and comments as plain text files that open in any text editor, and any kept recordings as audio files that open in QuickTime Player.",
+            "There is one folder per patient. Each holds a Sessions folder with one folder per session, oldest first: the transcript and notes as plain text files that open in any text editor, and any kept recordings as audio files that open in QuickTime Player.",
             "",
             "These files are not encrypted by Aletheia. Keep them on an encrypted disk, and delete them when your record-keeping rules allow.",
             "",

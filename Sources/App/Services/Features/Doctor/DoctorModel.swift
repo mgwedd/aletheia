@@ -147,7 +147,9 @@ struct DoctorEnvironment: Equatable {
             supportedSchemaVersion: SchemaMigrator.latestVersion,
             homeDirectory: NSHomeDirectory(),
             dataRoot: dataRoot?.path,
-            knownTerms: [NSUserName(), (NSHomeDirectory() as NSString).lastPathComponent] + knownTerms
+            // The account's real home folder name, not NSHomeDirectory(): in the sandbox that is
+            // the app container ending in "Data", which would blank out "Data folder" in the report.
+            knownTerms: [NSUserName(), DataFolderPolicy.realHome.lastPathComponent] + knownTerms
         )
     }
 }
@@ -285,6 +287,46 @@ struct DoctorRedactor: Equatable {
     var dataRoot: String?
     var knownTerms: [String] = []
 
+    /// Terms shorter than this are ignored: they'd match inside ordinary words.
+    static let minimumTermLength = 3
+    /// Single words taken from a patient's name must be at least this long, so a
+    /// short given name ("Al", "Sam") can't blank out everyday words in the report.
+    static let minimumNamePartLength = 4
+
+    /// What to redact for a set of patients: each full display name and folder
+    /// slug, plus each word of the name that is long enough to be safe on its own.
+    /// Initials are never included (too short to match safely).
+    static func terms(forPatients patients: [(name: String, slug: String)]) -> [String] {
+        var out: [String] = []
+        for patient in patients {
+            out.append(patient.name)
+            out.append(patient.slug)
+            let parts = patient.name.split(whereSeparator: { !$0.isLetter && $0 != "'" && $0 != "’" && $0 != "-" })
+            out += parts.map(String.init).filter { $0.count >= minimumNamePartLength }
+        }
+        return out
+    }
+
+    /// Replaces `term` wherever it appears as a whole word, ignoring case and
+    /// diacritics ("jose" matches "José"). Matching is literal, so characters
+    /// like `.` or `(` in a name are not treated as a pattern. A match flanked by
+    /// letters ("Ann" inside "Annual") is left alone.
+    private static func replacingWholeWord(_ term: String, in text: String) -> String {
+        var result = ""
+        var cursor = text.startIndex
+        let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        while cursor < text.endIndex, let range = text.range(of: term, options: options, range: cursor..<text.endIndex) {
+            let before = range.lowerBound > text.startIndex ? text[text.index(before: range.lowerBound)] : nil
+            let after = range.upperBound < text.endIndex ? text[range.upperBound] : nil
+            let flankedByLetter = (before?.isLetter ?? false) || (after?.isLetter ?? false)
+            result += text[cursor..<range.lowerBound]
+            result += flankedByLetter ? String(text[range]) : "<redacted>"
+            cursor = range.upperBound
+        }
+        result += text[cursor...]
+        return result
+    }
+
     func redact(_ text: String) -> String {
         var out = text
 
@@ -326,9 +368,9 @@ struct DoctorRedactor: Equatable {
         out = out.replacingOccurrences(of: "\\d{4}-\\d{2}-\\d{2}_[^\\s/]+", with: "<session folder>", options: .regularExpression)
 
         // Known identifying values, longest first so a full name goes before its parts.
-        let terms = Set(knownTerms.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { $0.count >= 3 })
+        let terms = Set(knownTerms.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { $0.count >= Self.minimumTermLength })
         for term in terms.sorted(by: { $0.count > $1.count }) {
-            out = out.replacingOccurrences(of: term, with: "<redacted>", options: [.caseInsensitive])
+            out = Self.replacingWholeWord(term, in: out)
         }
 
         // Whatever absolute path is left: keep nothing below the filesystem root.

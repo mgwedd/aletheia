@@ -2,6 +2,13 @@ import CryptoKit
 import Foundation
 import Security
 
+/// Defaults for choices offered when a passphrase is first set or entered.
+enum EncryptionSettingsDefaults {
+    /// Whether "Remember on this Mac" starts checked. Off: the key is copied to
+    /// the login keychain only when the user asks.
+    static let rememberKeyOnDevice = false
+}
+
 /// Stores a folder's data-encryption key (DEK) on *this Mac* so an encrypted
 /// folder can unlock without retyping the recovery passphrase every launch.
 /// Abstracted so the manager can be tested with an in-memory double instead of
@@ -25,7 +32,7 @@ final class ProcessMemoryDeviceKeyStore: DeviceKeyStoring {
 extension KeychainDeviceKeyStore {
     private static let testStore = ProcessMemoryDeviceKeyStore()
 
-    /// The Keychain store, or a shared in-memory one under XCTest without opt-in.
+    /// The Keychain store, or a shared in-memory one under XCTest.
     static func makeDefault(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> DeviceKeyStoring {

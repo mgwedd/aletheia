@@ -145,8 +145,8 @@ final class GlobalSearchHitsTests: XCTestCase {
     func testKindLabelsFollowGroupOrder() {
         XCTAssertEqual(
             SearchKind.allCases.map(\.filterLabel),
-            ["Patients", "Sessions", "My notes", "Progress notes", "Comments", "Transcripts"])
-        XCTAssertEqual(SearchKind.allCases.map(\.badge), ["Patient", "Session", "My notes", "Note", "Comment", "Transcript"])
+            ["Patients", "Sessions", "Psychotherapy notes", "Progress notes", "Comments", "Transcripts"])
+        XCTAssertEqual(SearchKind.allCases.map(\.badge), ["Patient", "Session", "Psychotherapy note", "Progress note", "Comment", "Transcript"])
     }
 
     // MARK: SearchHighlighter

@@ -41,9 +41,9 @@ anti-hostility property.
                     unwrap ────┤          ├──── unwrap   ├──── unwrap
                                │          │              │
                     ┌──────────┴──┐  ┌────┴────────┐  ┌──┴───────────────┐
-                    │ Device KEK  │  │ Recovery    │  │ CloudKit escrow  │
-                    │ (this Mac,  │  │ passphrase  │  │ KEK (future,     │
-                    │ Touch ID /  │  │ (password   │  │ opt-in, #60)     │
+                    │ Device KEK  │  │ Recovery    │  │ Cloud escrow     │
+                    │ (this Mac,  │  │ passphrase  │  │ (not offered)    │
+                    │ Touch ID /  │  │ (password   │  │                  │
                     │ account)    │  │  manager)   │  │                  │
                     └─────────────┘  └─────────────┘  └──────────────────┘
                      default, silent   break-glass       trusted off-device
@@ -61,12 +61,12 @@ has: `Keystore.wrappings: [Wrapping]` with a `kind` per slot
 | --- | --- | --- | --- |
 | **Device KEK** (default) | Every launch on this Mac, gated by the macOS account (and Touch ID where available) | The macOS account/keychain is erased or the clinician moves to a new Mac | Silent and not hostile, but device-bound — must be paired with an off-device path |
 | **Recovery passphrase** | The clinician types it (new Mac, keychain reset, restore) | Forgotten *and* the device path is also gone | The break-glass path; low-entropy, so PBKDF2-600k + per-slot salt makes a stolen keystore expensive |
-| **CloudKit escrow** (future, opt-in, #60) | Restore on any of the clinician's Macs from their private iCloud | The clinician loses their Apple ID *and* both other paths | Only the *wrapped* DEK (ciphertext) is escrowed; Apple never sees the key or the PHI |
+| **Cloud escrow** (not offered; design idea only) | Would restore on another Mac from a cloud copy of the wrapped key | n/a | Nothing is escrowed or uploaded today |
 
 The clinician is locked out only if **every** path they enabled is lost at once.
 With device + passphrase (the default after first-run), that means forgetting the
-passphrase **and** losing the Mac account simultaneously — and CloudKit escrow
-removes even that.
+passphrase **and** losing the Mac account simultaneously. A cloud escrow path
+is not offered, so keep the recovery key and passphrase safe.
 
 ### "Tied to their ID, recoverable via computer auth"
 
@@ -89,15 +89,15 @@ The Device KEK is the request "recoverable unless they fully reset the machine":
 
 ### Non-hostile onboarding rules
 
-1. **Default to two paths.** First-run's opt-out encryption sets a passphrase
-   *and* enables the device path ("Remember on this Mac", default on) — one
-   silent, one portable, from the very first launch.
+1. **Passphrase first, device path opt-in.** First-run's opt-out encryption sets a passphrase
+   *and* offers the device path ("Remember on this Mac", default off) — the
+   passphrase is the only path unless the clinician opts in.
 2. **Prove the passphrase is saved before it can matter.** After set-up, ask the
    clinician to re-enter it once (confirm they recorded it), and link the exact
    copy for a password manager. Never let a *single* device-only path exist
    without a warning that a machine reset would lose everything.
 3. **Make recovery legible.** Settings shows which paths are active ("This Mac ✓,
-   Recovery passphrase ✓, iCloud ✗") so the clinician can see their safety net,
+   Recovery passphrase ✓") so the clinician can see their safety net,
    add a path, or rotate the passphrase — all without re-encrypting data.
 4. **Never a silent single point of failure.** Turning off the last off-device
    path is a deliberate, warned action (`Keystore.removingWrapping` already
@@ -165,7 +165,7 @@ and attested it is correct.**
 | **Local end-to-end-encrypted archive** (sealed with the user's key) | **in place** via Settings › Backups › Back up now (user-chosen local folder; no schedule) | `LocalEncryptedBackupService`, `BackupCoordinator`, `EncryptedBackupArchive` |
 | **Attest-then-prune** UX + **Restore previous version** | next | `MigrationBackup.prunable` ready; needs Settings + a post-update banner. Nothing prunes migration pre-images today. |
 | **Snapshot the small JSON** (patient/session) alongside the DB | next | copy referenced JSON into the same pre-image set |
-| **Whole-folder atomicity** across DB + files | not covered | The archive covers only the SQLite database; transcripts, notes and `digest.json` are covered only through the data folder (for example Time Machine) |
+| **Whole-folder atomicity** across DB + files | partial | Back Up Now archives the whole folder (the database as a consistent snapshot, other files as they are at that moment) and Restore from backup recovers it into an empty folder |
 
 ### Where backups live (one layout)
 
@@ -271,5 +271,5 @@ readable copy is left beside the keystore.)
    attest-then-prune + Restore UI, and snapshotting the small JSON too.
 3. Device-KEK keyslot hardening (`SecAccessControl` biometrics; promote to a
    `Wrapping`), passphrase-saved confirmation, and the recovery-paths view.
-4. CloudKit escrow slot (rides on #60 once CloudKit backup lands).
+4. Cloud escrow slot: not offered; listed only as a design idea.
 5. Whole-folder atomic backup (Arch v2 (7), #70).

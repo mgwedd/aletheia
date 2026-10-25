@@ -79,7 +79,7 @@ final class CallAudioNameTests: XCTestCase {
         let md = MarkdownExporter.session(date: Date(), patientName: "Jane Doe", transcript: stored, summary: nil)
         XCTAssertTrue(md.contains("[00:20] Jane: I said call audio: twice."), md)
         XCTAssertFalse(md.contains("Call audio"))
-        let session = ArchiveSession(date: Date(), transcript: stored, notes: [], summary: "", comments: [])
+        let session = ArchiveSession(date: Date(), transcript: stored, notes: [], summary: "")
         let files = PatientArchive.files(patientName: "Jane Doe", background: "", sessions: [session], exportedOn: Date())
         let transcript = files.first { $0.path.hasSuffix("Transcript.txt") }?.text ?? ""
         XCTAssertTrue(transcript.contains("[00:12] Jane: Long."), transcript)

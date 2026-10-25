@@ -22,6 +22,7 @@ final class SQLitePersistenceCore: PersistenceCore {
     /// The database file, retained so a pre-migration snapshot can be written
     /// beside it before a schema upgrade transforms the data.
     private let url: URL
+    private let migrations: [SchemaMigrator.Migration]
 
     // SQLite needs to know whether a bound value outlives the call; TRANSIENT
     // tells it to copy, which is always safe here.
@@ -40,11 +41,14 @@ final class SQLitePersistenceCore: PersistenceCore {
     /// Opens (creating and migrating if needed) the database at `url`, or throws a
     /// `DatabaseOpenFailure` saying why it couldn't: a newer schema, a refused or
     /// failed migration, a corrupt file, or a locked/full/unreadable one.
-    init(opening url: URL) throws {
+    ///
+    /// `migrations` is the schema history to apply; it is only ever anything but
+    /// the shipped list in tests, which need a step that fails.
+    init(opening url: URL, migrations: [SchemaMigrator.Migration] = SchemaMigrator.migrations) throws {
         self.url = url
+        self.migrations = migrations
         do {
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try SecureFS.createDirectory(at: url.deletingLastPathComponent())
         } catch {
             throw DatabaseOpenFailure(kind: .cannotOpen, reason: "The data folder couldn't be created.")
         }
@@ -60,6 +64,11 @@ final class SQLitePersistenceCore: PersistenceCore {
         }
         db = handle
         sqlite3_busy_timeout(handle, 5000)
+        // The journal and WAL files take the database file's mode, so narrow it
+        // (and any left from an earlier run) before the first write.
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            try? SecureFS.tightenFile(at: URL(fileURLWithPath: url.path + suffix))
+        }
         // PHI hygiene: zero freed pages so payload bytes from a removed or
         // replaced record can't survive in the file's free space. The bytes are
         // adapter-sealed when encryption is on, but a defence in depth for the
@@ -91,7 +100,7 @@ final class SQLitePersistenceCore: PersistenceCore {
         guard let current = read.version else {
             return failure(code: read.code, fallback: .cannotOpen)
         }
-        switch SchemaMigrator.plan(current: current) {
+        switch SchemaMigrator.plan(current: current, migrations: migrations) {
         case .upToDate:
             return nil
         case .needsNewerApp(let dataVersion, let appVersion):
@@ -216,8 +225,7 @@ final class SQLitePersistenceCore: PersistenceCore {
         // Best-effort: a legacy-folder problem must never block (or fake) a pre-image.
         let dataRoot = url.deletingLastPathComponent()
         BackupLayout.adoptLegacy(dataRoot: dataRoot)
-        try? FileManager.default.createDirectory(
-            at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? SecureFS.createDirectory(at: destination.deletingLastPathComponent())
         guard !FileManager.default.fileExists(atPath: destination.path) else { return .database }
         guard snapshot(to: destination) else { return .database }
         // The small structured JSON a migration could also rewrite goes into the

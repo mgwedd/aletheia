@@ -36,11 +36,13 @@ final class TranscriptionCoordinator: ObservableObject {
     private let appModel: AppModel
     private let integrations: Integrations
     private let settings: AppSettings
+    private let now: () -> Date
 
-    init(appModel: AppModel, integrations: Integrations, settings: AppSettings) {
+    init(appModel: AppModel, integrations: Integrations, settings: AppSettings, now: @escaping () -> Date = Date.init) {
         self.appModel = appModel
         self.integrations = integrations
         self.settings = settings
+        self.now = now
     }
 
     func job(for sessionID: UUID) -> TranscriptionJob? {
@@ -94,7 +96,7 @@ final class TranscriptionCoordinator: ObservableObject {
         }
         running = (patient, session)
         jobs[sessionID] = TranscriptionJob(
-            startedAt: Date(),
+            startedAt: now(),
             modelName: "Whisper \(settings.whisperModel.rawValue)"
         )
         let protector = appModel.currentProtector
@@ -167,7 +169,7 @@ final class TranscriptionCoordinator: ObservableObject {
 
     private func apply(_ progress: TranscriptionProgress, to sessionID: UUID) {
         guard var job = jobs[sessionID] else { return }
-        job.apply(progress, now: Date())
+        job.apply(progress, now: now())
         jobs[sessionID] = job
     }
 
@@ -243,12 +245,7 @@ final class TranscriptionCoordinator: ObservableObject {
             // encryption being turned off can't leave audio in the clear.
             var audioNotice: String?
             if decision == .discard {
-                do {
-                    try store.deleteRecordings(for: patient, session: session)
-                } catch {
-                    audioNotice = "The transcript is saved, but the recording couldn't be deleted and is still in "
-                        + "your data folder. Delete it from the session folder to remove it."
-                }
+                audioNotice = Self.discardAudio(store: store, patient: patient, session: session)
             }
             appModel.refreshPatients()
             await integrations.makeNotifier().post(
@@ -263,6 +260,27 @@ final class TranscriptionCoordinator: ObservableObject {
             return .cancelled
         } catch {
             return .failed(message: error.localizedDescription)
+        }
+    }
+}
+
+extension TranscriptionCoordinator {
+    /// Deletes a transcribed session's audio. If that fails the audio stays, the session is
+    /// marked so the next launch retries (`OrphanAudioSweep`), and the returned notice tells
+    /// the user. Returns nil when the audio is gone.
+    nonisolated static func discardAudio(
+        store: Store, patient: Patient, session: SessionRecord,
+        stagingRoot: URL = Store.stagingDirectoryURL
+    ) -> String? {
+        do {
+            try store.deleteRecordings(for: patient, session: session)
+            OrphanAudioSweep.clearDiscardPending(for: session.id, stagingRoot: stagingRoot)
+            return nil
+        } catch {
+            OrphanAudioSweep.markDiscardPending(for: session.id, stagingRoot: stagingRoot)
+            return "The transcript is saved, but the recording couldn't be deleted and is still in "
+                + "your data folder. Aletheia will try again the next time it opens; you can also delete it "
+                + "from the session folder."
         }
     }
 }
