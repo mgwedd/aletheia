@@ -15,7 +15,7 @@ transcripts, summaries, notes, comments, session digests) is created and stored
 in a data folder on the clinician's Mac. The App defaults to its standard
 location and refuses folders in iCloud Drive or other cloud-synced locations,
 network locations and unencrypted removable drives.
-The developer runs **no servers,
+Astrea Labs runs **no servers,
 accounts, analytics, or telemetry** and never receives, transmits, stores, or can
 access any of that data.
 
@@ -30,7 +30,7 @@ flowchart LR
     D -. "no server, no PHI, no access" .-> C
 ```
 
-Because the developer never receives PHI, the developer is **not a business
+Because Astrea Labs LLC never receives PHI, it is **not a business
 associate** for the app itself, and no Business Associate Agreement (BAA) is
 required for the app (see [PRIVACY.md](../PRIVACY.md)). The clinician/practice is
 the covered entity and data controller. That shifts most of HIPAA onto
@@ -50,7 +50,7 @@ the destination and encryption of any system backup.
 | Clinical database | `Aletheia.sqlite` holds records, metadata, and the audit ledger. The optional encryption feature seals selected fields, not the SQLite file, schema, or all metadata. |
 | Search index | `search.sqlite` is a local full-text index of transcript, note, and comment text. It is plaintext even when optional encryption is on, and it stays on disk between launches; the app lock closes it but does not delete it. It is deleted when encryption is turned off and rebuilt when missing. |
 | Audit log | The `audit_events` table in `Aletheia.sqlite` is an append-only, HMAC-chained ledger of actions, times, the macOS account name and user ID, and optional opaque identifiers. It is not encrypted by the optional encryption feature. An old `audit.log` text file is imported once and renamed `audit.log.imported`. |
-| Recovery material and copies | `.aletheia-keystore.json` stores a wrapped data key if optional encryption is enabled. `.backups/snapshots/` and `.backups/migrations/` hold local safety copies. Back Up Now writes an encrypted database archive (`.aletheiabackup`) to a folder the user picks; it refuses synced, network and unencrypted removable destinations, never uploads, and each successful run is recorded once in the audit ledger. There is no restore screen. |
+| Recovery material and copies | `.aletheia-keystore.json` stores a wrapped data key if optional encryption is enabled. `.backups/snapshots/` and `.backups/migrations/` hold local safety copies. Back Up Now writes an encrypted archive of the whole data folder (`.aletheiabackup`) to a folder the user picks; it refuses synced, network and unencrypted removable destinations, never uploads, and each successful run is recorded once in the audit ledger. Restore from backup unpacks into a new, empty folder only, verifies integrity before writing anything, and is recorded once in the ledger. |
 | Other local storage | App settings and the selected-folder bookmark live in the macOS app container. Downloaded models live under the app's Application Support directory. While a recording is in progress its audio is staged in a private (`0700`) `Staging/` folder in the same Application Support directory, then moved into the session folder when it stops (sealed if encryption is on); a crash leaves it there until the next launch recovers it. Optional remembered data keys use the device-only login Keychain service `com.aletheia.datakey`; the audit ledger's signing key is a separate login Keychain item. |
 | Exports | Settings › Backups › Export All Records writes a folder of ordinary, unencrypted files (a `Read me.txt` plus one folder per patient) to a location the user picks, and records the export in the audit ledger. The app warns when the destination is on an unencrypted disk or a synced folder. The practice owns that copy. |
 
@@ -105,9 +105,9 @@ These belong to the practice. Aletheia supports, but cannot satisfy, them:
   exclusion. The folder can hold unencrypted PHI, so use an encrypted backup
   disk. The app creates local database snapshots before selected operations.
   Settings › Backups › Back Up Now writes an encrypted copy of the database
-  (not recordings or other files) to a local folder the clinician chooses, and
-  refuses iCloud or other synced folders; there is no restore screen yet. Keep a separate backup of the entire
-  folder and test restores.
+  of the whole data folder to a local folder the clinician chooses, and
+  refuses iCloud or other synced folders. Restore from backup recovers it into a
+  new, empty folder. Test a restore before relying on a backup.
 - **Facility & workstation/device controls (§164.310)** — physical security of
   the Mac is the practice's. FileVault + app lock reduce exposure if a device is
   lost or left unattended.

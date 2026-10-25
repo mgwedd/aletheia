@@ -89,6 +89,9 @@ final class InterruptedWorkLauncher {
         ledger: @escaping () -> InterruptedWorkLedger?,
         stagingSessionID: @escaping () -> UUID? = { nil },
         transcribesAfterRecording: @escaping () -> Bool = { true },
+        stagingRoot: URL = Store.stagingDirectoryURL,
+        scratchRoot: URL = PrivateStaging.root,
+        temporaryDirectory: URL = PrivateStaging.legacyTemporaryDirectory,
         discardsAudioAfterTranscription: @escaping () -> Bool = { false },
         transcribe: @escaping (InterruptedWorkResumer.Target) -> Void,
         summarize: @escaping (InterruptedWorkResumer.Target) -> Void
@@ -107,7 +110,10 @@ final class InterruptedWorkLauncher {
                     ledger: ledgerInstance,
                     activeSessionID: stagingSessionID(),
                     queuesTranscription: transcribesAfterRecording(),
-                    discardsAudioAfterTranscription: discardsAudioAfterTranscription()
+                    discardsAudioAfterTranscription: discardsAudioAfterTranscription(),
+                    stagingRoot: stagingRoot,
+                    scratchRoot: scratchRoot,
+                    temporaryDirectory: temporaryDirectory
                 )
             }
             guard let ledger = ledgerInstance else { return }

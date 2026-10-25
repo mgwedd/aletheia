@@ -22,13 +22,13 @@ struct ConsentGuideView: View {
                     section(
                         title: "2. Jurisdiction & Wiretapping Laws",
                         icon: "building.columns",
-                        content: "Many states and jurisdictions require two-party (all-party) consent to record conversations. Because telehealth sessions may cross state lines, follow the strictest applicable jurisdiction's consent laws."
+                        content: "Many states and jurisdictions require two-party (all-party) consent to record conversations. Because telehealth sessions may cross state lines, follow the strictest applicable jurisdiction's consent laws. Three examples, not a complete list: California Penal Code §632, Washington RCW 9.73.030 and Connecticut Gen. Stat. §52-570d. Check the law wherever you and your client are located during a session."
                     )
 
                     section(
                         title: "3. On-Device Privacy Guarantees",
                         icon: "lock.shield",
-                        content: "Explain to your client that Aletheia operates 100% on this Mac: speech recognition and AI note drafting run locally. No audio, transcripts, or notes are uploaded to any cloud server or third-party service."
+                        content: "Explain to your client that Aletheia runs on this Mac: speech recognition and AI note drafting happen locally, and the app does not upload audio, transcripts, or notes to any cloud server or third-party service. The data stays on this Mac unless you export it or your own backups (such as Time Machine) copy it."
                     )
 
                     section(
@@ -38,6 +38,8 @@ struct ConsentGuideView: View {
                     )
 
                     disclosureSampleBox
+
+                    scriptBox
                 }
                 .padding(.horizontal, 28)
                 .padding(.top, 8)
@@ -118,7 +120,27 @@ struct ConsentGuideView: View {
     private var disclosureSampleBox: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SAMPLE INFORMED CONSENT CLAUSE").eyebrowStyle()
-            Text("“I use an on-device clinical documentation tool (Aletheia) to transcribe our session audio and assist in preparing clinical progress notes. All audio and notes remain strictly on this computer and are never sent to external servers or cloud AI providers. You may request to pause or stop recording at any time.”")
+            Text("“I use an on-device clinical documentation tool (Aletheia) to transcribe our session audio and assist in preparing clinical progress notes. The app does not send audio or notes to external servers or cloud AI providers; they are stored on this computer, and copies exist only where I export them or my own backups make them. You may request to pause or stop recording at any time.”")
+                .font(Theme.Typography.noteBody)
+                .foregroundStyle(Theme.text.color)
+                .padding(12)
+                .background(Theme.raised.color)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Theme.line.color, lineWidth: 1)
+                )
+        }
+    }
+
+    private var scriptBox: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("SUGGESTED SCRIPT BEFORE RECORDING").eyebrowStyle()
+            Text("Read this aloud and wait for a clear answer before you start recording. Adapt it to your practice.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("“Before we start, I would like to record today's session so that I can write my clinical notes. The recording is stored on my computer and is used only for documentation. Do you agree to be recorded? You can say no, and you can ask me to pause or stop at any time.”")
                 .font(Theme.Typography.noteBody)
                 .foregroundStyle(Theme.text.color)
                 .padding(12)
