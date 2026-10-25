@@ -31,7 +31,9 @@ final class SettingsSidebarPolishTests: XCTestCase {
     func testDownloadedModelsShowACheckmarkNotACaption() throws {
         let settings = try source("Sources/App/Views/SettingsView.swift")
         XCTAssertFalse(settings.contains("Downloaded to this Mac"))
-        XCTAssertEqual(settings.components(separatedBy: "DownloadedMark()").count - 1, 2, "Whisper and the language model")
+        // One shared row builder renders the mark for both the Whisper and language-model cards.
+        XCTAssertEqual(settings.components(separatedBy: "DownloadedMark()").count - 1, 1)
+        XCTAssertEqual(settings.components(separatedBy: "modelRow(").count - 1, 3, "its definition, Whisper and the language model")
         XCTAssertTrue(settings.contains(#"Image(systemName: "checkmark.circle.fill")"#))
     }
 }

@@ -159,9 +159,12 @@ final class ExportWiringTests: XCTestCase {
 
     func testNoteCopyIsRichAndConfirmsInAPopup() throws {
         let session = try source("Views/SessionDetailView.swift")
-        XCTAssertTrue(session.contains("RichClipboard.write(RichClipboard.payload(markdown: summaryText))"))
-        XCTAssertTrue(session.contains(".popover(isPresented: $noteCopied"))
-        XCTAssertTrue(session.contains("Label(\"Copied\", systemImage: \"checkmark.circle.fill\")"))
+        XCTAssertTrue(try source("Services/SessionAI/SessionNoteModel.swift")
+            .contains("RichClipboard.write(RichClipboard.payload(markdown: summaryText)"))
+        XCTAssertTrue(session.contains("note.copyNote()"))
+        XCTAssertTrue(session.contains(".popover(isPresented: Binding(get: { note.copyFeedback.justCopied }"))
+        XCTAssertTrue(session.contains("Label(CardWords.copied, systemImage: \"checkmark.circle.fill\")"))
+        XCTAssertTrue(try source("Models/CopyFeedback.swift").contains("static let copied = \"Copied\""))
     }
 
     func testTheMenuListsEveryFormatWithPDFCheckedAndNoExtraLabel() throws {

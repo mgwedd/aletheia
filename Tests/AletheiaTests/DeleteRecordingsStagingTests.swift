@@ -10,6 +10,10 @@ final class DeleteRecordingsStagingTests: XCTestCase {
         func clear() {}
     }
 
+    private struct EncryptedDisk: DiskEncryptionProbing {
+        func isDataVolumeEncrypted(_ url: URL) -> Bool? { true }
+    }
+
     private final class MemoryDeviceKeys: DeviceKeyStoring {
         private var keys: [String: SymmetricKey] = [:]
         func save(_ key: SymmetricKey, for id: String) throws { keys[id] = key }
@@ -44,6 +48,7 @@ final class DeleteRecordingsStagingTests: XCTestCase {
         let encryption = EncryptionManager(
             dataRootProvider: { r }, deviceKeys: MemoryDeviceKeys(), defaults: isolatedDefaults())
         let model = AppModel(settings: AppSettings.shared, encryption: encryption, spotlightIndexer: NoopSpotlightIndexer())
+        model.diskProbe = EncryptedDisk()
         let patient = try XCTUnwrap(model.addPatient(name: "Jane Doe"))
         let session = try XCTUnwrap(model.startNewSession(for: patient))
         return (try XCTUnwrap(model.store), patient, session)

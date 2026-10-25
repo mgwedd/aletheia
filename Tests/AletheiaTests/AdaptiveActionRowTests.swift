@@ -77,7 +77,7 @@ final class AdaptiveActionRowTests: XCTestCase {
         XCTAssertTrue(source.contains("AdaptiveActionRow {\n                    EmptyView()\n                } actions: {"))
         XCTAssertFalse(source.contains("Text(settings.progressNoteFormat.blurb)"))
         XCTAssertTrue(source.contains(".hoverTip(showingMyNotes ? HelpTips.myNotes : nil)"))
-        XCTAssertTrue(source.contains("AdaptiveLabel(\n                title: \"Length:"),
+        XCTAssertTrue(source.contains("AdaptiveLabel(\n                title: NoteWords.lengthLabel("),
                       "the Length menu label should compact with the row")
     }
 

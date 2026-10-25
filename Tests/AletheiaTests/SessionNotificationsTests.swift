@@ -110,7 +110,7 @@ final class SessionNotificationsTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let files = [
             "Sources/App/Services/TranscriptionCoordinator.swift",
-            "Sources/App/Views/SessionDetailView.swift",
+            "Sources/App/Services/SessionAI/SessionNoteModel.swift",
             "Sources/App/AletheiaApp.swift",
         ]
         for path in files {
