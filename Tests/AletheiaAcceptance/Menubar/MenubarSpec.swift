@@ -47,7 +47,7 @@ final class MenubarSpec: AcceptanceCase {
         let jane = try await given.patient(named: "Jane Doe")
         _ = try await when.startFromMenuBar(jane, on: bench)
 
-        then(when.menuBarPatientLabel(for: jane)).readsAsName("Jane Doe")
+        then(when.menuBarPatientLabel(for: jane)).readsAsInitials("J.D.")
     }
 
     func test_MENUBAR_05() async throws {

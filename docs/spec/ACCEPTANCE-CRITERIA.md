@@ -255,7 +255,7 @@ Before you start: at least one patient and the app unlocked.
 - **MENUBAR-01** Look at the menu bar icon → a waveform when idle, a record symbol while recording, a pause symbol while paused.
 - **MENUBAR-02** Click the icon while idle → it shows "Not recording", a **Patient** picker and **Start recording**.
 - **MENUBAR-03** Choose a patient and click **Start recording** → a new session is created, recording begins and the main window comes forward.
-- **MENUBAR-04** Look at the panel while recording → it shows a **Recording** chip, the patient name, a timer, level bars, **Pause** and **Stop and save**.
+- **MENUBAR-04** Look at the panel while recording → it shows a **Recording** chip, the patient's initials (for example J.D.), a timer, level bars, **Pause** and **Stop and save**.
 - **MENUBAR-05** Click **Pause** in the panel → a **Paused** chip and **Resume** appear.
 - **MENUBAR-06** Click **Stop and save** → the recording is saved and the panel returns to "Not recording".
 - **MENUBAR-07** Delete every patient and open the panel → it asks you to add a patient in the main window first.

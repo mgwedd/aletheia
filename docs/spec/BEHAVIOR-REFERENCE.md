@@ -175,7 +175,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift:291` · `qa: MENUBAR-08`
 - **REC-068** When a recording fails to start from the session screen, a "Something went wrong" alert shows the reason.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:364, Sources/App/Views/SessionDetailView.swift:1526` · `qa: RECORD-06`
-- **REC-069** When a recording is running, the menu bar panel shows a Recording chip, the patient name, an HH:MM:SS timer, Mic and Call level bars, a Pause button and a Stop and save button.
+- **REC-069** When a recording is running, the menu bar panel shows a Recording chip, the patient's initials (the full name only when "Show patient names in notifications and the menu bar" is on), an HH:MM:SS timer, Mic and Call level bars, a Pause button and a Stop and save button.
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift:130` · `qa: MENUBAR-04`
 - **REC-070** When a recording is paused, the menu bar panel shows a Paused chip, a muted timer, the note "Nothing is being captured. Resume to continue the same session." and a Resume button, and hides the level bars.
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift:141` · `qa: MENUBAR-05`
@@ -1806,7 +1806,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift, Sources/App/Services/MenuBarContentPolicy.swift` · `qa: MENUBAR-15`
 - **OSI-030** When starting from the menu bar fails, the reason appears as a line under the button, for example "Couldn't create a session. Check the data folder in Settings."
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift` · `qa: MENUBAR-08`
-- **OSI-031** When a recording is running or paused, the menu-bar item shows a "Recording" or "Paused" chip, the patient name, an HH:MM:SS timer, Mic and Call level bars, Pause or Resume, and "Stop and save".
+- **OSI-031** When a recording is running or paused, the menu-bar item shows a "Recording" or "Paused" chip, the patient's initials (the full name only when "Show patient names in notifications and the menu bar" is on), an HH:MM:SS timer, Mic and Call level bars, Pause or Resume, and "Stop and save".
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift` · `qa: MENUBAR-04`
 - **OSI-032** When a recording is paused, the menu-bar item says "Nothing is being captured. Resume to continue the same session."
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift` · `qa: MENUBAR-05`

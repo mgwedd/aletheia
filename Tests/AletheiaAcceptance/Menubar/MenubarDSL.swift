@@ -186,8 +186,8 @@ extension When {
         expectEqual(subject, symbol, "the menu bar icon")
     }
 
-    func readsAsName(_ name: String) {
-        expectEqual(subject, name, "the patient shown in the panel")
+    func readsAsInitials(_ initials: String) {
+        expectEqual(subject, initials, "the patient shown in the panel")
     }
 }
 
