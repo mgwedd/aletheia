@@ -270,6 +270,94 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertNotNil(error)
         XCTAssertEqual(try Data(contentsOf: destMic), Data("earlier take".utf8), "A failed start must not clear an earlier recording")
     }
+
+    // MARK: Quitting and failed starts
+
+    func testQuittingMidRecordingKeepsTheAudioAndDoesNotStartTranscription() async {
+        let (recorder, tempRoot, stagingRoot, dest) = makeStagingRecorder()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        var stopped: [SessionRecorder.ActiveRecording] = []
+        recorder.onStopped = { stopped.append($0) }
+        let id = UUID()
+        let destMic = dest.appendingPathComponent("mic.caf")
+        _ = await recorder.start(micURL: destMic, callURL: dest.appendingPathComponent("call.caf"), context: context(id))
+
+        await recorder.shutDown()
+
+        XCTAssertEqual(try? Data(contentsOf: destMic), Data("live audio".utf8), "the take is put in the session on the way out")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagingRoot.appendingPathComponent(id.uuidString).path))
+        XCTAssertTrue(stopped.isEmpty, "no transcription starts while the app is quitting")
+        XCTAssertFalse(recorder.hasOpenRecording)
+    }
+
+    func testQuittingWhenTheTakeCannotBeSealedLeavesItStagedForTheNextLaunch() async {
+        let (recorder, tempRoot, stagingRoot, dest) = makeStagingRecorder()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        var notices: [SecurityAlert] = []
+        recorder.onNotice = { notices.append($0) }
+        let id = UUID()
+        let key = ProtectionKey(SymmetricKey(size: .bits256))
+        let destMic = dest.appendingPathComponent("mic.caf")
+        _ = await recorder.start(
+            micURL: destMic, callURL: dest.appendingPathComponent("call.caf"), context: context(id),
+            protector: FileProtector(keyReference: key, requiresKey: true))
+        key.revoke()
+
+        await recorder.shutDown()
+
+        let staged = stagingRoot.appendingPathComponent(id.uuidString).appendingPathComponent("mic.caf")
+        XCTAssertEqual(try? Data(contentsOf: staged), Data("live audio".utf8), "never lost")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destMic.path), "and never left as plaintext in the session")
+        XCTAssertEqual(notices, [.recordingEncryptionDeferred])
+    }
+
+    func testQuittingWithNothingRecordingDoesNothing() async {
+        let (recorder, tempRoot, _, _) = makeStagingRecorder()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        var stopped = 0
+        var notices = 0
+        recorder.onStopped = { _ in stopped += 1 }
+        recorder.onNotice = { _ in notices += 1 }
+        await recorder.shutDown()
+        XCTAssertEqual(stopped, 0)
+        XCTAssertEqual(notices, 0)
+        XCTAssertEqual(recorder.state, .idle)
+    }
+
+    func testAnOrdinaryStopReportsTheFinishedRecordingOnce() async {
+        let (recorder, tempRoot, _, dest) = makeStagingRecorder()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        var stopped: [UUID] = []
+        recorder.onStopped = { stopped.append($0.sessionID) }
+        let id = UUID()
+        _ = await recorder.start(
+            micURL: dest.appendingPathComponent("mic.caf"), callURL: dest.appendingPathComponent("call.caf"), context: context(id))
+
+        await recorder.stop()
+        await recorder.stop()
+
+        XCTAssertEqual(stopped, [id])
+    }
+
+    func testAStartThatFailsLeavesNothingStagedAndIsReported() async {
+        let (recorder, tempRoot, stagingRoot, dest) = makeStagingRecorder()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        recorder.audioCaptureStartOverride = { mic, _ in
+            try Data("partial".utf8).write(to: mic)
+            throw CancellationError()
+        }
+        let id = UUID()
+
+        let error = await recorder.start(
+            micURL: dest.appendingPathComponent("mic.caf"), callURL: dest.appendingPathComponent("call.caf"), context: context(id))
+
+        XCTAssertNotNil(error)
+        guard case .error = recorder.state else { return XCTFail("The failure must be surfaced") }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagingRoot.appendingPathComponent(id.uuidString).path))
+        XCTAssertNil(recorder.stagingSessionID)
+        XCTAssertFalse(recorder.hasOpenRecording)
+        XCTAssertNil(recorder.active)
+    }
 }
 
 final class CallAudioWatchTests: XCTestCase {
