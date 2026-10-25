@@ -39,6 +39,16 @@ final class LockScreenTests: XCTestCase {
         AppLock(settings: .shared, canAuthenticate: { true }, authenticator: auth, isAppActive: { active })
     }
 
+    /// Polls until `condition` holds or `timeout` passes. The button's attempt runs on an
+    /// unstructured task; a fixed number of yields only works while the main actor is idle,
+    /// and the test host's own work (a busy CI runner) can hold it for longer.
+    private func waitUntil(timeout: TimeInterval = 10, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
     private func source(_ relative: String) throws -> String {
         try String(contentsOf: URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -107,7 +117,7 @@ final class LockScreenTests: XCTestCase {
         lock.lockIfEnabled()
         XCTAssertTrue(lock.isLocked)
         lock.requestUnlock()
-        for _ in 0..<5 { await Task.yield() }
+        await waitUntil { !lock.isLocked }
         XCTAssertEqual(auth.reasons.count, 1)
         XCTAssertFalse(lock.isLocked)
     }
