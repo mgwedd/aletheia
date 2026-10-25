@@ -171,7 +171,13 @@ extension When {
 
     /// Waits for the alert to be raised, then reads what it offers.
     func waitForStillRecordingAlert(on bench: RecordingBench) async throws -> ReminderAlert {
-        try await eventually(within: 5, "the Still recording alert is raised") { bench.recorder.longRunningReminder }
+        do {
+            try await eventually(within: 5, "the Still recording alert is raised") { bench.recorder.longRunningReminder }
+        } catch let timeout as EventuallyTimeout {
+            // Say what the recorder was doing, so a failure shows why no alert came.
+            throw EventuallyTimeout(
+                what: "\(timeout.what) (recorder state: \(bench.recorder.state))", seconds: timeout.seconds)
+        }
         return ReminderAlert(title: RecordingLimit.Alert.title, buttons: [RecordingLimit.Alert.keep, RecordingLimit.Alert.stop])
     }
 
