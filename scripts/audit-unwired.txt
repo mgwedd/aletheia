@@ -3,7 +3,6 @@
 phiViewed
 aiInference
 phiCopied
-recordingConsentAttested
 noteSigned
 aiNoteVerified
 retentionWarningOverridden

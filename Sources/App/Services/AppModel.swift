@@ -583,6 +583,23 @@ final class AppModel: ObservableObject {
         savePatientNotes(current)
     }
 
+    /// Whether the clinician has attested consent to record this patient.
+    func hasRecordingConsent(patientID: UUID) -> Bool {
+        patients.first { $0.id == patientID }?.recordingConsentAttestedAt != nil
+    }
+
+    /// Stores the clinician's attestation that the patient agreed to be recorded
+    /// and to AI processing, and logs it. Asked once per patient: an existing
+    /// attestation is kept. Returns whether the patient is now attested.
+    @discardableResult
+    func attestRecordingConsent(patientID: UUID, at date: Date = Date()) -> Bool {
+        if hasRecordingConsent(patientID: patientID) { return true }
+        updatePatient(id: patientID) { $0.recordingConsentAttestedAt = date }
+        guard hasRecordingConsent(patientID: patientID) else { return false }
+        recordAudit(.recordingConsentAttested, subjectID: patientID.uuidString)
+        return true
+    }
+
     /// Deletes a patient and all of their associated records from disk and the
     /// database, writes an audit log entry (HIPAA §164.312(b)), refreshes the
     /// patient list, and reindexes Spotlight.

@@ -223,7 +223,7 @@ final class BackupRestoreTests: XCTestCase {
 
     // MARK: - App model
 
-    func testBackUpThenRestoreThroughTheAppModelRecordsOneRestore() async throws {
+    @MainActor func testBackUpThenRestoreThroughTheAppModelRecordsOneRestore() async throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "BackupRestoreTests-\(UUID().uuidString)"))
         let dataRoot = try sampleFolder()
         let settings = AppSettings.shared

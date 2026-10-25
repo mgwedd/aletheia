@@ -26,6 +26,10 @@ struct Patient: Identifiable, Codable, Hashable {
     var clinicalHistory: String
     /// Current medications, name + dose.
     var medications: [Medication]
+    /// When the clinician attested that this patient agreed to be recorded and
+    /// to AI processing of the recording. Nil until they do; once set, later
+    /// recordings for the patient don't ask again.
+    var recordingConsentAttestedAt: Date?
 
     init(
         id: UUID = UUID(),
@@ -34,7 +38,8 @@ struct Patient: Identifiable, Codable, Hashable {
         createdAt: Date = Date(),
         slug: String,
         clinicalHistory: String = "",
-        medications: [Medication] = []
+        medications: [Medication] = [],
+        recordingConsentAttestedAt: Date? = nil
     ) {
         self.id = id
         self.name = name
@@ -43,10 +48,11 @@ struct Patient: Identifiable, Codable, Hashable {
         self.slug = slug
         self.clinicalHistory = clinicalHistory
         self.medications = medications
+        self.recordingConsentAttestedAt = recordingConsentAttestedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, notes, createdAt, slug, clinicalHistory, medications
+        case id, name, notes, createdAt, slug, clinicalHistory, medications, recordingConsentAttestedAt
     }
 
     // Custom decoding so patient.json files written before these fields existed
@@ -60,6 +66,7 @@ struct Patient: Identifiable, Codable, Hashable {
         slug = try c.decode(String.self, forKey: .slug)
         clinicalHistory = try c.decodeIfPresent(String.self, forKey: .clinicalHistory) ?? ""
         medications = try c.decodeIfPresent([Medication].self, forKey: .medications) ?? []
+        recordingConsentAttestedAt = try c.decodeIfPresent(Date.self, forKey: .recordingConsentAttestedAt)
     }
 
     /// The always-included background block handed to the AI so it can weigh the
