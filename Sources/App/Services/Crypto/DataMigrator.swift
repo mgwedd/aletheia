@@ -11,7 +11,7 @@ import Foundation
 ///   Patients/<slug>/patient.json, patient_chat.json
 ///   Patients/<slug>/ChatThreads/<id>.json
 ///   Patients/<slug>/<…_Session>/{transcript.txt, summary.txt, chat.json,
-///                                 note.<format>.txt, note.<format>.meta.json, digest.json, digest-sections.json,
+///                                 note.<format>.txt, note.<format>.meta.json, note.<format>.signed.json, transcript.raw[.n].txt, digest.json, digest-sections.json,
 ///                                 mic.caf, call.caf}
 ///   Aletheia.sqlite  (the comment/notes DB, field-level)
 ///
@@ -122,6 +122,7 @@ enum DataMigrator {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: sessionDir.path)) ?? []
         return sessionFileNames + names.filter {
             Store.isNoteFileName($0) || Store.isNoteMetaFileName($0) || Store.isNoteSidecarFileName($0)
+                || Store.isNoteSignatureFileName($0) || NoteLifecycle.isRawTranscriptName($0)
         }.sorted()
     }
 

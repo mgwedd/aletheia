@@ -83,6 +83,16 @@ struct AuditDetail: Equatable, ExpressibleByStringLiteral {
 
     static let exportedPsychotherapyNotes: AuditDetail = "Psychotherapy notes, zip, authorization confirmed"
 
+    // MARK: - Signing
+
+    static func signedNote(_ format: ProgressNoteFormat) -> AuditDetail {
+        AuditDetail(built: "Progress note \(format.shortName)")
+    }
+
+    static func reopenedSignedNote(_ format: ProgressNoteFormat) -> AuditDetail {
+        AuditDetail(built: "Signed progress note \(format.shortName) reopened as a draft")
+    }
+
     static func exportedPsychotherapyNote(_ format: ExportFormat) -> AuditDetail {
         AuditDetail(built: "Psychotherapy note, \(format.title), authorization confirmed")
     }

@@ -10,6 +10,8 @@ struct ExportConfirmation: Identifiable {
         case singleNote
         case session
         case patientWide
+        /// Psychotherapy notes on their own: always asks, in the authorization wording.
+        case psychotherapy
     }
 
     let id = UUID()
@@ -34,22 +36,34 @@ struct ExportConfirmation: Identifiable {
         self.proceed = proceed
     }
 
-    var title: String { "Save a copy of \(patientLabel)'s records?" }
+    var title: String {
+        scope == .psychotherapy ? PsychotherapyExport.confirmationTitle : "Save a copy of \(patientLabel)'s records?"
+    }
 
     var message: String {
-        "This saves \(contents) as a \(fileType) file outside Aletheia's data folder. "
+        if scope == .psychotherapy { return PsychotherapyExport.confirmationMessage }
+        return "This saves \(contents) as a \(fileType) file outside Aletheia's data folder. "
             + "The file is not encrypted, and Aletheia can't protect it once it's saved."
     }
 
     var advice: String {
-        "Save it only to a place you control, such as an encrypted disk, and delete it when you're done."
+        if scope == .psychotherapy {
+            return "\(patientLabel): \(contents) as a \(fileType) file outside Aletheia's data folder, not encrypted. "
+                + "Save it only to a place you control, apart from the medical record."
+        }
+        return "Save it only to a place you control, such as an encrypted disk, and delete it when you're done."
     }
 
     static let confirmTitle = "Export"
+
+    /// The confirm button: the authorization wording for psychotherapy notes.
+    var confirmButtonTitle: String {
+        scope == .psychotherapy ? PsychotherapyExport.confirmButton : Self.confirmTitle
+    }
     static let dontAskAgainTitle = "Don't ask again for single-note exports"
 
-    /// Whether the question is shown. A patient-wide or session-with-transcript
-    /// export always asks; a single note skips it only when the therapist opted out.
+    /// Whether the question is shown. A patient-wide, session-with-transcript or
+    /// psychotherapy export always asks; a single note skips it only when the therapist opted out.
     func needsAsking(skipSingleNote: Bool) -> Bool {
         !(scope == .singleNote && skipSingleNote)
     }
