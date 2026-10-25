@@ -102,23 +102,8 @@ final class LockedMac {
             appLocked: lock.isLocked, hasDataFolder: true, encryption: app.encryption.state)
     }
 
-    /// Waits until `condition` holds, polling the main loop, for at most `seconds`.
-    @discardableResult
-    func eventually(upTo seconds: TimeInterval = 5, _ condition: () -> Bool) async -> Bool {
-        let deadline = Date().addingTimeInterval(seconds)
-        while !condition(), Date() < deadline {
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: 5_000_000)
-        }
-        return condition()
-    }
-
     var nothingIsHidden: Bool { [mainWindow, sheet, popover].allSatisfy { !shield.isHidden($0) } }
 
-    /// Waits up to `seconds` for the lock to engage.
-    func waitUntilLocked(upTo seconds: TimeInterval) async -> Bool {
-        await eventually(upTo: seconds) { lock.isLocked }
-    }
 
     func putSheetAndPopoverOnScreen() {
         mainWindow.beginSheet(sheet)
@@ -195,7 +180,7 @@ extension Given {
     /// Turns encryption on and lets this Mac remember the key, so unlocking the
     /// app opens the folder as it does for a user who kept that setting.
     func encryptedFolderRememberedOnThisMac() throws {
-        try app.encryption.enable(passphrase: "correct horse battery staple", iterations: 1_000)
+        try app.encryption.enable(passphrase: "correct horse battery staple", iterations: 100_000)
         try app.encryption.rememberOnDevice()
     }
 
@@ -203,7 +188,7 @@ extension Given {
 
     /// Encryption on, with the key not kept on this Mac.
     func encryptedFolderNotRememberedOnThisMac() throws {
-        try app.encryption.enable(passphrase: "correct horse battery staple", iterations: 1_000)
+        try app.encryption.enable(passphrase: "correct horse battery staple", iterations: 100_000)
     }
 
     func autoLockAfter(minutes: Int) { app.settings.idleAutoLockMinutes = minutes }
@@ -215,38 +200,39 @@ extension Given {
 // MARK: - When
 
 extension When {
-    func unlock(_ mac: LockedMac) async {
+    func unlock(_ mac: LockedMac) async throws {
         mac.authenticator.next = .succeeds
         await mac.lock.unlock()
-        await mac.eventually { !mac.lock.isLocked && mac.nothingIsHidden && mac.sheet.alphaValue == 1 }
+        try await eventually("the app to unlock and show its windows") { !mac.lock.isLocked && mac.nothingIsHidden && mac.sheet.alphaValue == 1 }
     }
 
     /// Leaves the Mac in each way macOS announces it (screen lock, screensaver,
     /// sleep, fast user switch), unlocking in between.
-    func leaveTheMacEachWay(_ mac: LockedMac) async -> RelockResult {
+    func leaveTheMacEachWay(_ mac: LockedMac) async throws -> RelockResult {
         var missed: [String] = []
         for trigger in RelockTrigger.allCases {
-            await unlock(mac)
+            try await unlock(mac)
             if trigger.isDistributed {
                 DistributedNotificationCenter.default().postNotificationName(
                     trigger.notificationName, object: nil, userInfo: nil, deliverImmediately: true)
             } else {
                 NSWorkspace.shared.notificationCenter.post(name: trigger.notificationName, object: nil)
             }
-            if !(await mac.waitUntilLocked(upTo: 3)) { missed.append(trigger.notificationName.rawValue) }
+            do { try await eventually(within: 3, "the app to lock") { mac.lock.isLocked } }
+            catch { missed.append(trigger.notificationName.rawValue) }
         }
         return RelockResult(missed: missed)
     }
 
     /// Leaves the app alone for a minute, one second at a time, as the idle timer sees it.
-    func leaveAloneForAMinute(_ mac: LockedMac) async -> IdleLockResult {
-        await mac.eventually { mac.lock.isWatchingForIdle }
+    func leaveAloneForAMinute(_ mac: LockedMac) async throws -> IdleLockResult {
+        try await eventually("the idle timer to start") { mac.lock.isWatchingForIdle }
         app.clock.advance(by: 59)
         mac.lock.checkIdleTimeout()
         let early = mac.lock.isLocked
         app.clock.advance(by: 1)
         mac.lock.checkIdleTimeout()
-        await mac.eventually { mac.lock.isLocked }
+        try await eventually("the app to lock after a minute") { mac.lock.isLocked }
         return IdleLockResult(lockedBeforeAMinute: early, lockedAfterAMinute: mac.lock.isLocked)
     }
 
@@ -257,18 +243,18 @@ extension When {
             newInstallDefaultMinutes: fresh.idleAutoLockMinutes)
     }
 
-    func lockWithSheetPopoverAndMenuBarPanelOpen(_ mac: LockedMac) async -> MenuBarPanel {
+    func lockWithSheetPopoverAndMenuBarPanelOpen(_ mac: LockedMac) async throws -> MenuBarPanel {
         mac.putSheetAndPopoverOnScreen()
         mac.lock.lockIfEnabled()
-        await mac.eventually { mac.shield.isHidden(mac.sheet) && mac.shield.isHidden(mac.popover) }
+        try await eventually("the sheet and popover to be hidden") { mac.shield.isHidden(mac.sheet) && mac.shield.isHidden(mac.popover) }
         return MenuBarPanel(
             label: MenuBarContentPolicy.patientLabel(name: "Jane Doe", showFullName: true, isLocked: mac.lock.isLocked),
             canStartRecording: MenuBarContentPolicy.canStartRecording(isLocked: mac.lock.isLocked, isStarting: false))
     }
 
-    func lockTheApp(_ mac: LockedMac) async {
+    func lockTheApp(_ mac: LockedMac) async throws {
         mac.lock.lockIfEnabled()
-        await mac.eventually { mac.lock.isLocked && mac.mainWindow.sharingType == .none }
+        try await eventually("the app to lock and hide its window from capture") { mac.lock.isLocked && mac.mainWindow.sharingType == .none }
     }
 
     /// Turns App lock off in Settings; Touch ID answers as scripted.
@@ -313,10 +299,10 @@ extension When {
         return RecordingDeletion(reportedNotDeleted: reported, audioLeftBehind: FileManager.default.fileExists(atPath: staged.path))
     }
 
-    func finishTheRecording(_ mac: LockedMac) async {
+    func finishTheRecording(_ mac: LockedMac) async throws {
         mac.switches.recordingOrTranscribing = false
         mac.workChanged.send()
-        await mac.eventually { mac.keyDrops == 1 }
+        try await eventually("the key to be dropped") { mac.keyDrops == 1 }
     }
 
     func lookAtCapture(of mac: LockedMac) async -> CaptureView {

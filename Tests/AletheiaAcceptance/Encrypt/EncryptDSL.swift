@@ -108,7 +108,7 @@ struct ReopenedStaging {
 
 enum EncryptionFixtures {
     static let passphrase = "correct horse battery staple"
-    static let iterations = 1_000
+    static let iterations = 100_000
 }
 
 extension Given {

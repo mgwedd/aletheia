@@ -23,7 +23,7 @@ final class LockSpec: AcceptanceCase {
 
         then(mac).showsLockScreen()
 
-        await when.unlock(mac)
+        try await when.unlock(mac)
 
         then(mac).showsNoLockScreen()
     }
@@ -31,7 +31,7 @@ final class LockSpec: AcceptanceCase {
     func test_LOCK_02() async throws {
         let mac = launch()
 
-        then(await when.leaveTheMacEachWay(mac)).lockedAfterEveryWayOfLeaving()
+        then(try await when.leaveTheMacEachWay(mac)).lockedAfterEveryWayOfLeaving()
     }
 
     func test_LOCK_03() async throws {
@@ -40,55 +40,55 @@ final class LockSpec: AcceptanceCase {
         then(choices).defaultsToFifteenMinutes()
 
         let mac = launch()
-        await when.unlock(mac)
+        try await when.unlock(mac)
         given.autoLockAfter(minutes: 1)
 
-        let result = await when.leaveAloneForAMinute(mac)
+        let result = try await when.leaveAloneForAMinute(mac)
 
         then(result).lockedAboutAMinuteLater()
     }
 
     func test_LOCK_04() async throws {
         let mac = launch()
-        await when.unlock(mac)
+        try await when.unlock(mac)
 
-        let panel = await when.lockWithSheetPopoverAndMenuBarPanelOpen(mac)
+        let panel = try await when.lockWithSheetPopoverAndMenuBarPanelOpen(mac)
 
         then(mac).showsLockScreen()
         then(mac).sheetAndPopoverAreHidden()
         then(mac).ignoresInputToHiddenWindows()
         then(panel).hidesPatientNameAndRecording()
 
-        await when.unlock(mac)
+        try await when.unlock(mac)
 
         then(mac).sheetAndPopoverAreShownAgain()
     }
 
     func test_LOCK_05() async throws {
         let mac = launch()
-        await when.unlock(mac)
+        try await when.unlock(mac)
 
         // With the default setting, and again with it off, a locked app is blank.
         then(await when.lookAtCapture(of: mac)).isBlankToOtherApps()
         given.hideFromScreenSharing(false)
         then(await when.lookAtCapture(of: mac)).isVisibleToOtherApps()
-        await when.lockTheApp(mac)
+        try await when.lockTheApp(mac)
         then(await when.lookAtCapture(of: mac)).isBlankToOtherApps()
     }
 
     func test_LOCK_06() async throws {
         try given.encryptedFolderRememberedOnThisMac()
         let mac = launch()
-        await when.unlock(mac)
+        try await when.unlock(mac)
         given.aRecordingIsRunning(mac)
 
-        await when.lockTheApp(mac)
+        try await when.lockTheApp(mac)
 
         then(mac).isLocked()
         then(mac).recordingStillRuns()
         then(mac).keepsTheFolderKey()
 
-        await when.finishTheRecording(mac)
+        try await when.finishTheRecording(mac)
 
         then(mac).dropsTheFolderKey()
     }
@@ -112,8 +112,8 @@ final class LockSpec: AcceptanceCase {
 
         then(mac).showsLockScreen()
 
-        await when.unlock(mac)
-        await when.lockTheApp(mac)
+        try await when.unlock(mac)
+        try await when.lockTheApp(mac)
 
         then(mac).isLocked()
     }
@@ -125,7 +125,7 @@ final class LockSpec: AcceptanceCase {
     func test_LOCK_11() async throws {
         try given.encryptedFolderNotRememberedOnThisMac()
         let mac = launch()
-        await when.unlock(mac)
+        try await when.unlock(mac)
 
         let cancelled = await when.turnAppLockOff(mac, touchIDSucceeds: false)
         then(cancelled).askedForTouchID()
@@ -149,7 +149,7 @@ final class LockSpec: AcceptanceCase {
         then(mac).showsLockScreen()
         then(mac).showsNoPatients()
 
-        await when.unlock(mac)
+        try await when.unlock(mac)
 
         then(mac).openedWithoutAskingForAPassphrase()
         then(mac).showsPatients(["Jane Doe"])
