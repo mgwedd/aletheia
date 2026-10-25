@@ -20,8 +20,8 @@ struct DataFolderMoveView: View {
             if moved {
                 Text("The copy was verified and Aletheia now uses the standard local folder. Copies already synced to a cloud service must also be removed there and on other devices.")
                 HStack {
-                    Button("Keep original for now") { finish() }.buttonStyle(.themed)
-                    Button("Delete original folder…") { confirmDelete = true }.buttonStyle(.themePrimary)
+                    Button(DataFolderMoveChoice.keepOriginal.title) { finish() }.buttonStyle(.themed)
+                    Button(DataFolderMoveChoice.deleteOriginal.title) { confirmDelete = true }.buttonStyle(.themePrimary)
                         .disabled(!holdsOriginalAccess)
                 }
             } else {
@@ -104,7 +104,7 @@ struct DataFolderMoveView: View {
     private func deleteOriginal() {
         guard let original else { return }
         do {
-            try FileManager.default.removeItem(at: original)
+            try DataFolderMove.deleteOriginal(original)
             finish()
         } catch {
             errorMessage = "The local copy is ready, but the original could not be deleted: \(error.localizedDescription)"

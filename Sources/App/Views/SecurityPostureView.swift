@@ -11,32 +11,16 @@ struct SecurityPostureView: View {
     @StateObject private var reachability = NetworkReachability()
 
     private var postureItems: [PostureItem] {
-        SecurityPosture.evaluate(
-            appLockEnabled: settings.appLockEnabled,
-            canAuthenticate: AppLock.canAuthenticate(),
-            idleAutoLockMinutes: settings.idleAutoLockMinutes,
-            encryptionEnabled: encryption.isEnabled,
-            encryptionUnlocked: encryption.isUnlocked,
-            encryptionKeystoreMissing: encryption.isKeystoreMissing,
-            encryptionOffered: SettingsAvailability.encryptionOffered(
-                isEnabled: encryption.isEnabled,
-                moduleInBuild: appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
-            ),
-            auditLogActive: appModel.audit != nil,
-            auditLogVerifiable: appModel.audit?.isVerifiable ?? true,
-            auditWriteFailed: appModel.auditWriteFailed,
-            auditChainBroken: appModel.securityAlerts.contains { $0.id == "auditLogBroken" },
-            localEncryptedBackup: settings.localEncryptedBackupEnabled,
-            networkOnline: reachability.isOnline,
-            diskEncrypted: appModel.diskEncrypted
-        )
+        SecurityPosture.current(
+            settings: settings, appModel: appModel, encryption: encryption,
+            canAuthenticate: AppLock.canAuthenticate(), networkOnline: reachability.isOnline)
     }
 
     var body: some View {
         let items = postureItems
         let overall = SecurityPosture.overall(items)
         VStack(alignment: .leading, spacing: 12) {
-            Text(Self.headline(for: overall))
+            Text(SecurityPosture.headline(for: overall))
                 .font(Theme.Typography.body.weight(.semibold))
                 .foregroundStyle(Theme.text.color)
             VStack(alignment: .leading, spacing: 0) {
@@ -79,14 +63,6 @@ struct SecurityPostureView: View {
         case .secure: return .ok
         case .actionRecommended: return .warn
         case .informational: return .neutral
-        }
-    }
-
-    private static func headline(for level: PostureLevel) -> String {
-        switch level {
-        case .actionRecommended: return "Some protections could be stronger"
-        case .secure: return "Your data is well protected on this Mac"
-        case .informational: return "Security overview"
         }
     }
 }
