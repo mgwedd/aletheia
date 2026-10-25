@@ -935,6 +935,32 @@ final class Store {
         }
     }
 
+    /// What a lookup by id found: the session, no such session in a folder that
+    /// read cleanly, or no answer because part of the folder couldn't be read.
+    enum SessionLookup {
+        case found(patient: Patient, session: SessionRecord)
+        case absent
+        case unsure
+    }
+
+    /// Like `locateSession(id:)`, but says when "not found" can't be trusted:
+    /// a listing that failed or skipped an unreadable patient or session.
+    func lookUpSession(id: UUID) -> SessionLookup {
+        guard let listing = try? patientListing() else { return .unsure }
+        var unsure = !listing.unreadable.isEmpty
+        for patient in listing.patients {
+            guard let sessions = try? sessionListing(for: patient) else {
+                unsure = true
+                continue
+            }
+            if let session = sessions.sessions.first(where: { $0.id == id }) {
+                return .found(patient: patient, session: session)
+            }
+            if !sessions.unreadable.isEmpty { unsure = true }
+        }
+        return unsure ? .unsure : .absent
+    }
+
     /// The patient and session with this id, by listing the data folder.
     func locateSession(id: UUID) -> (patient: Patient, session: SessionRecord)? {
         for patient in (try? listPatients()) ?? [] {

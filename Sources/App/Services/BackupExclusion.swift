@@ -36,36 +36,24 @@ enum BackupExclusion {
     /// Sets (or clears) the backup-exclusion flag on `url`. Applied to a folder,
     /// it covers the whole subtree. Throws if the flag can't be written (e.g.
     /// the URL isn't currently accessible).
+    ///
+    /// Writes the attribute behind `isExcludedFromBackup` (Time Machine's sticky
+    /// exclusion) directly, so the change is on disk when this returns. Going
+    /// through `setResourceValues` instead applies it late on some volumes and
+    /// not at all inside the App Sandbox container, so a quick off-then-on could
+    /// read back the old value or be undone by the earlier write landing late.
     static func setExcluded(_ excluded: Bool, at url: URL) throws {
-        var url = url
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = excluded
-        try url.setResourceValues(values)
-        // Where the resource-value write doesn't take effect (seen inside an App
-        // Sandbox container), write or clear the marker it uses directly.
-        if isExcluded(at: url) != excluded { setMarker(excluded, at: url) }
+        let written: Bool = url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return false }
+            guard excluded else { return removexattr(path, markerName, 0) == 0 || errno == ENOATTR }
+            guard let value = try? PropertyListSerialization.data(
+                fromPropertyList: "com.apple.backupd", format: .binary, options: 0) else { return false }
+            return value.withUnsafeBytes { setxattr(path, markerName, $0.baseAddress, value.count, 0, 0) } == 0
+        }
+        guard written else { throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path]) }
     }
 
     private static let markerName = "com.apple.metadata:com_apple_backup_excludeItem"
-
-    private static func hasMarker(at url: URL) -> Bool {
-        url.withUnsafeFileSystemRepresentation { path in
-            path.map { getxattr($0, markerName, nil, 0, 0, 0) >= 0 } ?? false
-        }
-    }
-
-    private static func setMarker(_ on: Bool, at url: URL) {
-        url.withUnsafeFileSystemRepresentation { path in
-            guard let path else { return }
-            if on {
-                guard let value = try? PropertyListSerialization.data(
-                    fromPropertyList: "com.apple.backupd", format: .binary, options: 0) else { return }
-                _ = value.withUnsafeBytes { setxattr(path, markerName, $0.baseAddress, value.count, 0, 0) }
-            } else {
-                _ = removexattr(path, markerName, 0)
-            }
-        }
-    }
 
     /// Marks `url` excluded from backups, ignoring failure. For folders the app
     /// creates itself and can still use if the flag can't be written.
@@ -73,19 +61,11 @@ enum BackupExclusion {
         try? setExcluded(true, at: url)
     }
 
-    /// Whether `url` is currently marked excluded from backups. `false` when the
-    /// value can't be read.
-    ///
-    /// `URL` caches resource values it has read, and that cache is **not**
-    /// updated by a `setResourceValues` write to the same path through another
-    /// `URL` value. Reading a stale cache is how the round-trip
-    /// (set-excluded → read-back) can report the old value right after a change —
-    /// both in a test and in the app's own backup-toggle state. Clear the cache
-    /// first so this always reflects what's on disk now.
+    /// Whether `url` is currently marked excluded from backups: whether it
+    /// carries the sticky-exclusion attribute. `false` when it can't be read.
     static func isExcluded(at url: URL) -> Bool {
-        var url = url
-        url.removeAllCachedResourceValues()
-        if (try? url.resourceValues(forKeys: [.isExcludedFromBackupKey]))?.isExcludedFromBackup == true { return true }
-        return hasMarker(at: url)
+        url.withUnsafeFileSystemRepresentation { path in
+            path.map { getxattr($0, markerName, nil, 0, 0, 0) >= 0 } ?? false
+        }
     }
 }
