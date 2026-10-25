@@ -25,8 +25,9 @@ final class CopyFeedback: ObservableObject {
     var title: String { justCopied ? CardWords.copied : CardWords.copy }
 
     /// Puts `text` on the pasteboard, as patient text that stays on this Mac.
-    func copy(_ text: String, to pasteboard: NSPasteboard = PHIPasteboard.general) {
-        PHIPasteboard.writeString(text, to: pasteboard)
+    /// `kind` names what was copied, for the activity log.
+    func copy(_ text: String, kind: AuditDetail? = nil, to pasteboard: NSPasteboard = PHIPasteboard.general) {
+        PHIPasteboard.writeString(text, kind: kind, to: pasteboard)
         flash()
     }
 

@@ -960,7 +960,7 @@ struct SettingsView: View {
         exports.start(destination: destination, onFinished: { outcome in
             model.recordAudit(
                 .recordExported,
-                detail: "All records, folder of \(outcome.patientCount ?? 0) patients, \(outcome.sessionCount) sessions"
+                detail: .exportedAllRecords(patients: outcome.patientCount ?? 0, sessions: outcome.sessionCount)
             )
         }, onFailed: {
             model.recordAudit(.exportFailed, detail: "All records, folder")

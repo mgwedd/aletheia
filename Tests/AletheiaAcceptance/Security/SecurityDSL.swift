@@ -117,7 +117,7 @@ extension When {
         let outcome = try XCTUnwrap(app.appModel.verifyAuditLog(), "verifying did nothing")
         return IntegrityRun(
             message: outcome.message, report: outcome.report, entryCount: before.count,
-            actionNames: before.map(\.action.displayName))
+            actionNames: before.map(\.actionLabel))
     }
 
     /// Changes one entry's text directly in the database, the way someone with
