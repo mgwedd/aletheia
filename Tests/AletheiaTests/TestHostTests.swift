@@ -5,7 +5,7 @@ import XCTest
 final class TestHostFixtureTests: XCTestCase {
     private let xctest = ["XCTestConfigurationFilePath": "/x"]
 
-    func testFixtureScenarioKeepsTheAppInTheForeground() {
+    @MainActor func testFixtureScenarioKeepsTheAppInTheForeground() {
         let env = xctest.merging([FixtureMode.environmentKey: "{}"]) { $1 }
         XCTAssertFalse(TestHost.runsInBackground(environment: env))
         XCTAssertNil(TestHost.activationPolicy(environment: env))
