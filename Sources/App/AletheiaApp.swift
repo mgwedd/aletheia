@@ -264,6 +264,10 @@ struct AletheiaApp: App {
                         await updateService.checkForUpdates()
                     }
                 }
+                .onChange(of: license.licenseCoversCurrentTerms, initial: true) { _, covers in
+                    FirstRunGate.recordAcceptanceCoveredByLicense(
+                        settings: settings, covers: covers, token: license.status.token)
+                }
                 .onChange(of: scenePhase) { _, phase in
                     // An expiry that passed while the app was open takes effect now.
                     if phase == .active { license.refresh() }

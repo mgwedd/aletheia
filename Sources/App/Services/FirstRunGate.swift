@@ -28,14 +28,24 @@ struct FirstRunGate: Equatable {
     }
 }
 
+extension FirstRunGate {
+    /// When the license covers the current terms, store the same local record and
+    /// receipt the in-app accept writes, so a later lapse or revocation of the
+    /// license doesn't bring the setup sheet back. Does nothing if already accepted.
+    @MainActor
+    static func recordAcceptanceCoveredByLicense(settings: AppSettings, covers: Bool, token: LicenseToken?) {
+        guard covers, !settings.hasAcceptedCurrentLegal else { return }
+        settings.recordLegalAcceptance(license: token)
+    }
+}
+
 /// When "Finish setup" is available, and what the footer says until it is.
 enum FirstRunFinish {
-    static func isEnabled(hasDataFolder: Bool, agreedToTerms: Bool, licenseStepDone: Bool = true) -> Bool {
-        licenseStepDone && hasDataFolder && agreedToTerms
+    static func isEnabled(hasDataFolder: Bool, agreedToTerms: Bool) -> Bool {
+        hasDataFolder && agreedToTerms
     }
 
-    static func hint(hasDataFolder: Bool, agreedToTerms: Bool, licenseStepDone: Bool = true) -> String {
-        if !licenseStepDone { return "Paste your license key above to continue." }
+    static func hint(hasDataFolder: Bool, agreedToTerms: Bool) -> String {
         if !hasDataFolder { return "Choose a data folder above to continue." }
         if !agreedToTerms { return "Accept the Terms of Service and Privacy Policy to continue." }
         return "You can finish the rest of the checklist now or any time from Settings."

@@ -207,9 +207,9 @@ struct FirstRunView: View {
     }
 
     /// Step 1: the license key, checked on this Mac. It comes before the terms, so
-    /// the acceptance below is recorded against a named licensee. Once setup has
-    /// been completed, re-accepting updated terms never needs a license: a lapsed
-    /// one must not stand between a clinician and their records.
+    /// the acceptance below is recorded against a named licensee. It is offered, not
+    /// required: without a current license the records stay open and only new
+    /// recording and AI are refused.
     private var licenseSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("License")
@@ -229,12 +229,6 @@ struct FirstRunView: View {
         }
     }
 
-    /// The license step is done: a current license, or setup was completed before
-    /// (terms re-acceptance only).
-    private var licenseStepDone: Bool {
-        license.status.isActive || settings.hasCompletedFirstRun
-    }
-
     private var legalSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Terms & Privacy")
@@ -251,7 +245,7 @@ struct FirstRunView: View {
             }
             .font(Theme.Typography.body)
             .tint(Theme.accent.color)
-            Toggle(isOn: licenseGatedAgreement) {
+            Toggle(isOn: $agreedToLegal) {
                 Text("I have read and agree to the Terms of Service and Privacy Policy.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.text.color)
@@ -266,19 +260,14 @@ struct FirstRunView: View {
         }
     }
 
-    /// The acceptance box does nothing until the license step is done.
-    private var licenseGatedAgreement: Binding<Bool> {
-        Binding(get: { agreedToLegal && licenseStepDone }, set: { if licenseStepDone { agreedToLegal = $0 } })
-    }
-
     private var canContinue: Bool {
         FirstRunFinish.isEnabled(
-            hasDataFolder: settings.dataRootURL != nil, agreedToTerms: agreedToLegal, licenseStepDone: licenseStepDone)
+            hasDataFolder: settings.dataRootURL != nil, agreedToTerms: agreedToLegal)
     }
 
     private var footerHint: String {
         FirstRunFinish.hint(
-            hasDataFolder: settings.dataRootURL != nil, agreedToTerms: agreedToLegal, licenseStepDone: licenseStepDone)
+            hasDataFolder: settings.dataRootURL != nil, agreedToTerms: agreedToLegal)
     }
 }
 
