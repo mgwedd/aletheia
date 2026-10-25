@@ -5,16 +5,26 @@ import XCTest
 /// The consistent-backup path: "Back up now" snapshots the live database and
 /// seals the snapshot (not the live file), and the sealed archive restores to a
 /// working store with its records intact.
+private struct UnconfiguredDestination: BackupService {
+    var isConfigured: Bool { false }
+    func backUp(databaseURL: URL, reason: String) async -> BackupOutcome { XCTFail("must not be called"); return .notConfigured }
+    func restoreLatest(to databaseURL: URL) async -> BackupOutcome { .notConfigured }
+}
+
 final class BackupCoordinatorTests: XCTestCase {
     private var tempRoot: URL!
+    private var originalScratchRoot: URL!
 
     override func setUpWithError() throws {
         tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("BackupCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        originalScratchRoot = PrivateStaging.root
+        PrivateStaging.root = tempRoot.appendingPathComponent("Scratch", isDirectory: true)
     }
 
     override func tearDownWithError() throws {
+        PrivateStaging.root = originalScratchRoot
         try? FileManager.default.removeItem(at: tempRoot)
     }
 
@@ -62,14 +72,14 @@ final class BackupCoordinatorTests: XCTestCase {
             return XCTFail("backup should succeed")
         }
         let strays = (try? FileManager.default.contentsOfDirectory(
-            at: FileManager.default.temporaryDirectory, includingPropertiesForKeys: nil))?
+            at: PrivateStaging.root, includingPropertiesForKeys: nil))?
             .filter { $0.lastPathComponent.hasPrefix("aletheia-backup-") } ?? []
         XCTAssertTrue(strays.isEmpty, "the temp snapshot must be cleaned up: \(strays)")
     }
 
     func testUnconfiguredDestinationReportsNotConfiguredWithoutSnapshotting() async throws {
         let (store, _) = try makeStore("live3")
-        let service = ICloudEncryptedBackupService(key: SymmetricKey(size: .bits256))
+        let service = UnconfiguredDestination()
         let outcome = await BackupCoordinator(store: store, destination: service).backUpNow(reason: "manual")
         XCTAssertEqual(outcome, .notConfigured)
     }

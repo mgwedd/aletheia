@@ -85,6 +85,7 @@ final class AppSettings: ObservableObject {
 
     private enum Keys {
         static let dataRootBookmark = "dataRootBookmark"
+        static let usesStandardDataRoot = "usesStandardDataRoot"
         static let whisperModel = "whisperModel"
         static let assistantBackend = "assistantBackend"
         static let llamaModel = "llamaModel"
@@ -113,7 +114,6 @@ final class AppSettings: ObservableObject {
         static let summariesPaused = "summariesPaused"
         static let prepareSummariesOnBattery = "prepareSummariesOnBattery"
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
-        static let iCloudEncryptedBackupEnabled = "iCloudEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
         static let autoTranscribeAfterRecording = "autoTranscribeAfterRecording"
         static let appearance = "appearance"
@@ -125,6 +125,7 @@ final class AppSettings: ObservableObject {
     private let defaults: UserDefaults
 
     @Published var dataRootURL: URL?
+    @Published private(set) var dataRootVerdict: DataFolderPolicy.Verdict = .ok
     @Published var whisperModel: WhisperModel {
         didSet { defaults.set(whisperModel.rawValue, forKey: Keys.whisperModel) }
     }
@@ -157,17 +158,39 @@ final class AppSettings: ObservableObject {
     /// Off by default: putting patient names into system-wide Spotlight is a
     /// privacy trade-off (anyone at the Mac can see them), so the user opts in.
     @Published var spotlightIndexingEnabled: Bool {
-        didSet { defaults.set(spotlightIndexingEnabled, forKey: Keys.spotlightIndexingEnabled) }
+        didSet {
+            defaults.set(spotlightIndexingEnabled, forKey: Keys.spotlightIndexingEnabled)
+            audited(AuditedSettings.spotlight, from: oldValue, to: spotlightIndexingEnabled)
+        }
     }
+    /// Receives the note for each change to a security-relevant setting; set by
+    /// the composition root to write it to the activity log.
+    var onAuditedChange: ((String) -> Void)?
+
+    /// The one route a security-relevant setting's `didSet` takes to the log.
+    func audited<Value: Equatable>(_ setting: AuditedSetting<Value>, from old: Value, to new: Value) {
+        guard old != new else { return }
+        onAuditedChange?(setting.detail(for: new))
+    }
+
     /// Require Touch ID / the login password to open the app (see `AppLock`).
     @Published var appLockEnabled: Bool {
-        didSet { defaults.set(appLockEnabled, forKey: Keys.appLockEnabled) }
+        didSet {
+            defaults.set(appLockEnabled, forKey: Keys.appLockEnabled)
+            audited(AuditedSettings.appLock, from: oldValue, to: appLockEnabled)
+        }
     }
     @Published var lockWhenHidden: Bool {
-        didSet { defaults.set(lockWhenHidden, forKey: Keys.lockWhenHidden) }
+        didSet {
+            defaults.set(lockWhenHidden, forKey: Keys.lockWhenHidden)
+            audited(AuditedSettings.lockWhenHidden, from: oldValue, to: lockWhenHidden)
+        }
     }
     @Published var hideFromScreenSharing: Bool {
-        didSet { defaults.set(hideFromScreenSharing, forKey: Keys.hideFromScreenSharing) }
+        didSet {
+            defaults.set(hideFromScreenSharing, forKey: Keys.hideFromScreenSharing)
+            audited(AuditedSettings.hideFromScreenSharing, from: oldValue, to: hideFromScreenSharing)
+        }
     }
     /// Temporary exception; always resets at launch.
     @Published var allowScreenSharingThisSession = false
@@ -177,7 +200,10 @@ final class AppSettings: ObservableObject {
     /// effect while `appLockEnabled` is on — locking requires the Touch ID /
     /// password gate to exist in the first place.
     @Published var idleAutoLockMinutes: Int {
-        didSet { defaults.set(idleAutoLockMinutes, forKey: Keys.idleAutoLockMinutes) }
+        didSet {
+            defaults.set(idleAutoLockMinutes, forKey: Keys.idleAutoLockMinutes)
+            audited(AuditedSettings.idleTimeout, from: oldValue, to: idleAutoLockMinutes)
+        }
     }
     /// The clinical documentation format the "Generate note" action defaults to.
     /// A plain summary out of the box (`ProgressNoteFormat.default`); a therapist who
@@ -281,17 +307,11 @@ final class AppSettings: ObservableObject {
             noteInstructions[format.rawValue] = trimmed
         }
     }
-    /// Opt-in: keep an end-to-end-encrypted backup copy of the database on this
-    /// Mac (in addition to whatever Time Machine already does). The default is
-    /// off — Time Machine of the data folder is the baseline local backup.
+    /// Set once "Back up now" has written an end-to-end-encrypted archive. Shown
+    /// in the security overview; Time Machine of the data folder stays the
+    /// baseline local backup.
     @Published var localEncryptedBackupEnabled: Bool {
         didSet { defaults.set(localEncryptedBackupEnabled, forKey: Keys.localEncryptedBackupEnabled) }
-    }
-    /// Opt-in: also upload the end-to-end-encrypted backup to the user's private
-    /// iCloud (CloudKit). The blob is encrypted with the user's key before it
-    /// leaves the Mac, so Apple only ever stores ciphertext. Off by default.
-    @Published var iCloudEncryptedBackupEnabled: Bool {
-        didSet { defaults.set(iCloudEncryptedBackupEnabled, forKey: Keys.iCloudEncryptedBackupEnabled) }
     }
     /// Opt-in: keep a session's raw audio (`mic.caf` / `call.caf`) on disk after
     /// it has been transcribed. Off by default (transcript-only) — the recording
@@ -412,7 +432,6 @@ final class AppSettings: ObservableObject {
         systemPrompt = (savedPrompt?.isEmpty == false) ? savedPrompt! : Prompts.defaultSystemPrompt
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
         localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)
-        iCloudEncryptedBackupEnabled = defaults.bool(forKey: Keys.iCloudEncryptedBackupEnabled)
         keepAudioRecordings = defaults.bool(forKey: Keys.keepAudioRecordings)
         autoTranscribeAfterRecording = Self.resolvedAutoTranscribe(in: defaults)
         appearance = defaults.string(forKey: Keys.appearance)
@@ -461,7 +480,14 @@ final class AppSettings: ObservableObject {
         } else {
             dismissedDamagedRecordIDs = []
         }
-        dataRootURL = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark)
+        if let bookmarked = SecurityScopedBookmark.resolve(key: Keys.dataRootBookmark) {
+            dataRootURL = bookmarked
+        } else if defaults.bool(forKey: Keys.usesStandardDataRoot) {
+            dataRootURL = Self.standardDataRoot
+        }
+        if let root = dataRootURL {
+            dataRootVerdict = DataFolderPolicy.verdict(for: root)
+        }
         // Re-assert the backup-exclusion policy on the resolved folder each launch
         // (best-effort: the folder may not be accessible yet this early).
         applyBackupExclusion()
@@ -482,8 +508,29 @@ final class AppSettings: ObservableObject {
     /// Persists a security-scoped bookmark so the sandboxed app can keep
     /// reading/writing that folder on future launches without re-prompting.
     func setDataRoot(_ url: URL) throws {
+        let verdict = DataFolderPolicy.verdict(for: url)
+        guard verdict == .ok else { throw DataFolderSelectionError.rejected(verdict.explanation) }
         try SecurityScopedBookmark.save(url: url, key: Keys.dataRootBookmark)
+        defaults.set(false, forKey: Keys.usesStandardDataRoot)
         dataRootURL = url
+        dataRootVerdict = .ok
+        applyBackupExclusion()
+    }
+
+    static var standardDataRoot: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Aletheia/Data", isDirectory: true)
+    }
+
+    func useStandardDataRoot() throws {
+        let root = Self.standardDataRoot
+        let verdict = DataFolderPolicy.verdict(for: root)
+        guard verdict == .ok else { throw DataFolderSelectionError.rejected(verdict.explanation) }
+        try SecureFS.createDirectory(at: root)
+        defaults.removeObject(forKey: Keys.dataRootBookmark)
+        defaults.set(true, forKey: Keys.usesStandardDataRoot)
+        dataRootURL = root
+        dataRootVerdict = .ok
         applyBackupExclusion()
     }
 

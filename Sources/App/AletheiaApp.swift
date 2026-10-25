@@ -75,6 +75,7 @@ struct AletheiaApp: App {
     private let windowShield: WindowShield
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
+    @State private var showDataFolderMove = false
 
     init() {
         let settings = AppSettings.shared
@@ -86,6 +87,9 @@ struct AletheiaApp: App {
         SessionSearch.setAppLocked(appLock.isLocked)   // before AppModel builds the index: it starts closed behind the lock
         let appModel = AppModel(settings: settings, encryption: encryption)
         _appModel = StateObject(wrappedValue: appModel)
+        settings.onAuditedChange = { [weak appModel] detail in
+            appModel?.recordAudit(.securitySettingChanged, detail: detail)
+        }
         let integrations = Integrations(settings: settings)
         _integrations = StateObject(wrappedValue: integrations)
         let transcription = TranscriptionCoordinator(
@@ -96,6 +100,7 @@ struct AletheiaApp: App {
         _transcription = StateObject(wrappedValue: transcription)
         let recorder = SessionRecorder()
         recorder.onStopped = { [weak transcription] in transcription?.startAfterRecording($0) }
+        recorder.onNotice = { [weak appModel] in appModel?.noteRecordingProblem($0) }
         // Also a system notification, so it's noticed when the app isn't
         // focused (the therapist has likely switched to the call window).
         recorder.onLongRunning = { [weak integrations] recording in
@@ -103,7 +108,7 @@ struct AletheiaApp: App {
                 await integrations?.makeNotifier().post(
                     SessionNotifications.longRecordingReminder(
                         patientName: recording.patientName,
-                        showsName: settings.notificationsShowPatientNames
+                        policy: .current(showFullName: settings.notificationsShowPatientNames)
                     )
                 )
             }
@@ -124,6 +129,8 @@ struct AletheiaApp: App {
         appLock.onUnlock = { [weak appModel, weak encryption] in
             encryption?.autoUnlockFromDevice()
             appModel?.recordAudit(.appUnlocked)
+            appModel?.noteUnlockSuccess()
+            appModel?.reindexSpotlight()
         }
         appLock.onLock = { [weak encryption] in encryption?.lock() }
         // A recording or transcription keeps the key it started with until it
@@ -138,7 +145,7 @@ struct AletheiaApp: App {
         windowShield.start()
         self.windowShield = windowShield
         appLock.onUnlockFailed = { [weak appModel] reason in
-            appModel?.recordAudit(.appUnlockFailed, detail: reason)
+            appModel?.noteUnlockFailure(reason)
         }
         appLock.onLocked = { [weak appModel] in
             appModel?.recordAudit(.appLocked)
@@ -189,14 +196,28 @@ struct AletheiaApp: App {
                         // presents) reads must be injected here explicitly.
                         .environmentObject(encryption)
                 }
+                .sheet(isPresented: Binding(
+                    get: { DataFolderPolicy.presentsMoveSheet(requested: showDataFolderMove, appLocked: appLock.isLocked) },
+                    // Hidden by the app lock: keep the request so it shows again after unlock.
+                    set: { if !$0 && !appLock.isLocked { showDataFolderMove = false } }
+                )) {
+                    DataFolderMoveView()
+                        .environmentObject(settings)
+                        .environmentObject(appModel)
+                        .noWritingTools()
+                }
                 .frame(minWidth: 900, minHeight: 600)
+                .onAppear {
+                    showDataFolderMove = settings.dataRootURL != nil && settings.dataRootVerdict != .ok
+                }
                 .task {
                     if settings.autoCheckForUpdates {
                         await updateService.checkForUpdates()
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    // AppLock observes hide (when enabled), idle, sleep and screen lock.
+                    // Activation can trigger another update check. AppLock
+                    // handles hide (when enabled), idle, sleep, and screen lock.
                     if phase == .active, settings.autoCheckForUpdates {
                         Task { await updateService.checkForUpdates() }
                     }
@@ -235,6 +256,7 @@ struct AletheiaApp: App {
                     Button("Aletheia Doctor…") {
                         openWindow(id: DoctorFeatureModule.windowID)
                     }
+                    .disabled(LockCoverPolicy.commandDisabled(.openDoctor, isLocked: appLock.isLocked))
                 }
                 Divider()
                 // The feedback form on astrealabs.com, in the browser.
@@ -347,7 +369,18 @@ private struct LockCover: ViewModifier {
             hasDataFolder: settings.dataRootURL != nil,
             encryption: encryption.state
         )
+        let interactive = LockCoverPolicy.contentInteractionEnabled(isLocked: appLock.isLocked)
         return content
+            .environment(\.lockGeneration, appLock.lockGeneration)
+            // While locked the cover is only a picture: take away hit testing,
+            // keyboard focus and Accessibility from what is underneath it.
+            .allowsHitTesting(interactive)
+            .accessibilityHidden(!interactive)
+            .disabled(!interactive)
+            .onChange(of: appLock.isLocked) { _, locked in
+                guard LockCoverPolicy.resignsFirstResponder(onLockChangingTo: locked) else { return }
+                for window in NSApp.windows { window.makeFirstResponder(nil) }
+            }
             // Tier-2: an encrypted folder needs its passphrase once per launch
             // before its notes can be read or written. Added first so Tier-1
             // (added last) draws above it when both covers apply.

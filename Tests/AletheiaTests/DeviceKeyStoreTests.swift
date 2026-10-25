@@ -97,7 +97,7 @@ final class DeviceKeyStoreTests: XCTestCase {
 
     func testDefaultManagerUsesKeychainAndDoesNotAutoUnlockUnrememberedFolder() throws {
         // No id assigned (never remembered) → refresh must not consult the device
-        // store, so a fresh manager stays locked. Uses the real default store.
+        // store, so a fresh manager stays locked. Uses the default store.
         let first = EncryptionManager(dataRootProvider: { [root] in root })
         _ = try first.enable(passphrase: "test-passphrase-1", iterations: fastIterations)
         let relaunched = EncryptionManager(dataRootProvider: { [root] in root })
@@ -105,7 +105,7 @@ final class DeviceKeyStoreTests: XCTestCase {
     }
 
     func testTestsDoNotUseTheRealKeychainByDefault() throws {
-        try XCTSkipIf(TestHost.usesLiveKeychain(), "Live Keychain opted in.")
+        XCTAssertFalse(TestHost.usesLiveKeychain())
         XCTAssertTrue(KeychainDeviceKeyStore.makeDefault() is ProcessMemoryDeviceKeyStore)
         let a = AuditKeyManager.loadOrCreateKeychainKey()
         let b = AuditKeyManager.loadOrCreateKeychainKey()
@@ -126,26 +126,6 @@ final class DeviceKeyStoreTests: XCTestCase {
         let err = KeychainDeviceKeyStore.KeychainError.unexpectedStatus(-50)
         XCTAssertNotNil(err.errorDescription)
         XCTAssertTrue(err.errorDescription?.contains("keychain") == true)
-    }
-
-    func testKeychainDeviceKeyStoreOperations() throws {
-        try XCTSkipUnless(
-            TestHost.usesLiveKeychain(),
-            "Touches the real Keychain; run with TEST_RUNNER_ALETHEIA_LIVE_KEYCHAIN=1 (CI does)."
-        )
-        let store = KeychainDeviceKeyStore()
-        let testID = "test-key-\(UUID().uuidString)"
-        let key = SymmetricKey(size: .bits256)
-
-        // Save key to keychain
-        try? store.save(key, for: testID)
-
-        // Load key (might be nil if headless keychain is locked, but shouldn't crash)
-        _ = store.load(for: testID)
-
-        // Delete key
-        store.delete(for: testID)
-        XCTAssertNil(store.load(for: testID))
     }
 
     // MARK: - Keychain calls
@@ -203,5 +183,35 @@ final class DeviceKeyStoreTests: XCTestCase {
         let text = try XCTUnwrap(KeychainDeviceKeyStore.KeychainError.unexpectedStatus(-25300).errorDescription)
         XCTAssertTrue(text.contains("-25300"))
         XCTAssertFalse(text.contains("unexpectedStatus"), "no raw enum dump")
+    }
+
+    func testEveryKeychainCallIsNonSynchronizable() {
+        var queries: [[String: Any]] = []
+        let client = KeychainDeviceKeyStore.Client(
+            add: { queries.append($0 as! [String: Any]); return errSecSuccess },
+            update: { q, _ in queries.append(q as! [String: Any]); return errSecItemNotFound },
+            copy: { queries.append($0 as! [String: Any]); return (errSecItemNotFound, nil) },
+            delete: { queries.append($0 as! [String: Any]); return errSecSuccess }
+        )
+        let store = KeychainDeviceKeyStore(client: client)
+        try? store.save(SymmetricKey(size: .bits256), for: "id")
+        _ = store.load(for: "id")
+        store.delete(for: "id")
+        XCTAssertEqual(queries.count, 4, "update, add, copy, delete")
+        for query in queries {
+            XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, false)
+        }
+    }
+
+    func testAuditKeyQueryIsNonSynchronizable() {
+        XCTAssertEqual(AuditKeyManager.keyQuery[kSecAttrSynchronizable as String] as? Bool, false)
+        XCTAssertEqual(AuditKeyManager.keyQuery[kSecAttrAccount as String] as? String, "com.aletheia.audit-hmac-key")
+    }
+
+    func testCommonStatusesGetPlainReasons() throws {
+        let locked = try XCTUnwrap(KeychainDeviceKeyStore.KeychainError.unexpectedStatus(errSecInteractionNotAllowed).errorDescription)
+        XCTAssertTrue(locked.contains("locked"))
+        let refused = try XCTUnwrap(KeychainDeviceKeyStore.KeychainError.unexpectedStatus(errSecAuthFailed).errorDescription)
+        XCTAssertTrue(refused.contains("refused"))
     }
 }

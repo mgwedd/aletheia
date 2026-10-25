@@ -494,8 +494,10 @@ enum SessionSearch {
     /// counted and ranked (Okapi BM25, the formula behind FTS5's bm25()) as they
     /// stream past, without being copied out of SQLite, and only the best
     /// the best `hitLimit(forCharacterBudget:)` of each kind are built into hits.
+    /// `searchIndex` is the index to run against; the app's own when nil.
     static func search(
-        _ documents: [Document], question: String, characterBudget: Int = 0, now: Date = Date(), calendar: Calendar = .current
+        _ documents: [Document], question: String, characterBudget: Int = 0, now: Date = Date(), calendar: Calendar = .current,
+        in searchIndex: SearchIndex? = nil
     ) -> Result {
         let keepPerKind = hitLimit(forCharacterBudget: characterBudget)
         let range = dateRange(in: question, now: now, calendar: calendar)
@@ -519,7 +521,7 @@ enum SessionSearch {
             )
         }
         // Tokenize what isn't stored yet outside the index's lock.
-        let current = index
+        let current = searchIndex ?? index
         var prepared: [Int: [SearchIndex.Passage]] = [:]
         for i in current.missing(items) { prepared[i] = SearchIndex.passages(of: items[i].text, kind: documents[inRange[i]].kind) }
 

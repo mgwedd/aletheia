@@ -37,8 +37,10 @@
 	<true/>
 
 	<!--
-	The user picks the data folder (defaults to a folder inside iCloud
-	Drive) via NSOpenPanel on first launch. This entitlement is what lets
+	The user picks the data folder via NSOpenPanel on first launch (the
+	app refuses cloud-synced, network and unencrypted removable
+	folders). This
+	entitlement lets
 	a sandboxed app keep read/write access to that folder, via a
 	security-scoped bookmark, across future launches.
 	-->

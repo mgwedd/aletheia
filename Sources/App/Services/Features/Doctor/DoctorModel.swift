@@ -135,15 +135,19 @@ struct DoctorEnvironment: Equatable {
     var homeDirectory: String
     /// The chosen data folder, so the report can redact anything below it.
     var dataRoot: String?
+    /// Values that must never appear in the report wherever they turn up: the
+    /// account name, and any patient names or folder slugs the caller knows.
+    var knownTerms: [String] = []
 
-    static func current(dataRoot: URL?) -> DoctorEnvironment {
+    static func current(dataRoot: URL?, knownTerms: [String] = []) -> DoctorEnvironment {
         DoctorEnvironment(
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
             buildTier: BuildTier.current.rawValue,
             macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             supportedSchemaVersion: SchemaMigrator.latestVersion,
             homeDirectory: NSHomeDirectory(),
-            dataRoot: dataRoot?.path
+            dataRoot: dataRoot?.path,
+            knownTerms: [NSUserName(), (NSHomeDirectory() as NSString).lastPathComponent] + knownTerms
         )
     }
 }
@@ -253,7 +257,8 @@ struct DoctorReport: Equatable {
                 }
             }
         }
-        let redactor = DoctorRedactor(homeDirectory: environment.homeDirectory, dataRoot: environment.dataRoot)
+        let redactor = DoctorRedactor(
+            homeDirectory: environment.homeDirectory, dataRoot: environment.dataRoot, knownTerms: environment.knownTerms)
         return redactor.redact(lines.joined(separator: "\n"))
     }
 
@@ -262,16 +267,63 @@ struct DoctorReport: Equatable {
     }
 }
 
-/// Scrubs paths out of report text so a copied report is safe to share.
+/// Scrubs identifying values out of report text so a copied report is safe to share.
 ///
 /// - Anything at or below `<dataRoot>/` is collapsed to `<data folder>/…` — the
 ///   rest of that line is dropped, because a path below the root can contain a
 ///   patient or session name (legacy patient folders may still have names,
-///   and session folders include dates of service).
+///   and session folders include dates of service). A bare data-root path
+///   (without a trailing slash) becomes `<data folder>`.
 /// - The user's home directory becomes `~`, and so does any other `/Users/<name>`.
+/// - UUIDs (patient folder ids) become `<id>`; `Patients/…` and legacy
+///   `yyyy-MM-dd_…` session folder names are dropped wherever they appear.
+/// - Every `knownTerms` value (account name, patient names, slugs) is replaced
+///   by value, case-insensitively.
+/// - Any absolute path still left collapses to `<path>`.
 struct DoctorRedactor: Equatable {
     var homeDirectory: String
     var dataRoot: String?
+    var knownTerms: [String] = []
+
+    /// Terms shorter than this are ignored: they'd match inside ordinary words.
+    static let minimumTermLength = 3
+    /// Single words taken from a patient's name must be at least this long, so a
+    /// short given name ("Al", "Sam") can't blank out everyday words in the report.
+    static let minimumNamePartLength = 4
+
+    /// What to redact for a set of patients: each full display name and folder
+    /// slug, plus each word of the name that is long enough to be safe on its own.
+    /// Initials are never included (too short to match safely).
+    static func terms(forPatients patients: [(name: String, slug: String)]) -> [String] {
+        var out: [String] = []
+        for patient in patients {
+            out.append(patient.name)
+            out.append(patient.slug)
+            let parts = patient.name.split(whereSeparator: { !$0.isLetter && $0 != "'" && $0 != "’" && $0 != "-" })
+            out += parts.map(String.init).filter { $0.count >= minimumNamePartLength }
+        }
+        return out
+    }
+
+    /// Replaces `term` wherever it appears as a whole word, ignoring case and
+    /// diacritics ("jose" matches "José"). Matching is literal, so characters
+    /// like `.` or `(` in a name are not treated as a pattern. A match flanked by
+    /// letters ("Ann" inside "Annual") is left alone.
+    private static func replacingWholeWord(_ term: String, in text: String) -> String {
+        var result = ""
+        var cursor = text.startIndex
+        let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        while cursor < text.endIndex, let range = text.range(of: term, options: options, range: cursor..<text.endIndex) {
+            let before = range.lowerBound > text.startIndex ? text[text.index(before: range.lowerBound)] : nil
+            let after = range.upperBound < text.endIndex ? text[range.upperBound] : nil
+            let flankedByLetter = (before?.isLetter ?? false) || (after?.isLetter ?? false)
+            result += text[cursor..<range.lowerBound]
+            result += flankedByLetter ? String(text[range]) : "<redacted>"
+            cursor = range.upperBound
+        }
+        result += text[cursor...]
+        return result
+    }
 
     func redact(_ text: String) -> String {
         var out = text
@@ -286,6 +338,14 @@ struct DoctorRedactor: Equatable {
                     return String(line[..<range.lowerBound]) + "<data folder>/…"
                 }
                 .joined(separator: "\n")
+            // A root inside the home folder is already shown as `~/…`; one elsewhere
+            // (an external drive) would otherwise show its volume name.
+            if root.count > 1, !(homeDirectory.count > 1 && root.hasPrefix(homeDirectory)) {
+                let bare = root.hasSuffix("/") ? String(root.dropLast()) : root
+                out = out.replacingOccurrences(
+                    of: NSRegularExpression.escapedPattern(for: bare) + "(?![A-Za-z0-9_-])(?!\\.[A-Za-z0-9])",
+                    with: "<data folder>", options: .regularExpression)
+            }
         }
 
         // The exact home directory (may be somewhere other than /Users, e.g.
@@ -297,6 +357,23 @@ struct DoctorRedactor: Equatable {
         }
         // Any other local user's home.
         out = out.replacingOccurrences(of: "/Users/[^/\\s]+", with: "~", options: .regularExpression)
+
+        // Patient folder ids, patient and session folder names.
+        out = out.replacingOccurrences(
+            of: "[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}",
+            with: "<id>", options: .regularExpression)
+        out = out.replacingOccurrences(of: "Patients/\\S*", with: "<patient folder>", options: .regularExpression)
+        out = out.replacingOccurrences(of: "\\d{4}-\\d{2}-\\d{2}_[^\\s/]+", with: "<session folder>", options: .regularExpression)
+
+        // Known identifying values, longest first so a full name goes before its parts.
+        let terms = Set(knownTerms.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { $0.count >= Self.minimumTermLength })
+        for term in terms.sorted(by: { $0.count > $1.count }) {
+            out = Self.replacingWholeWord(term, in: out)
+        }
+
+        // Whatever absolute path is left: keep nothing below the filesystem root.
+        out = out.replacingOccurrences(
+            of: "(?<![\\w~>.<])/(?:[\\w.@+-]+/?)+", with: "<path>", options: .regularExpression)
         return out
     }
 }

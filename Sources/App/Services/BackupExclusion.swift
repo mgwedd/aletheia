@@ -15,6 +15,9 @@ enum BackupExclusion {
     /// The `UserDefaults` key holding the user's explicit choice.
     static let defaultsKey = "keepDataOutOfSystemBackups"
 
+    /// The switch's label in Settings > Backups, also quoted by the Doctor.
+    static let settingTitle = "Keep my data out of Time Machine & iCloud backups"
+
     /// What applies when the user has never chosen: do **not** exclude, so Time
     /// Machine includes the data folder.
     static let defaultExcluded = false
@@ -42,6 +45,12 @@ enum BackupExclusion {
         var values = URLResourceValues()
         values.isExcludedFromBackup = excluded
         try url.setResourceValues(values)
+    }
+
+    /// Marks `url` excluded from backups, ignoring failure. For folders the app
+    /// creates itself and can still use if the flag can't be written.
+    static func markExcluded(_ url: URL) {
+        try? setExcluded(true, at: url)
     }
 
     /// Whether `url` is currently marked excluded from backups. `false` when the

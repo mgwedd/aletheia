@@ -71,6 +71,13 @@ final class EncryptionManager: ObservableObject {
     /// whenever the key or on/off state changes.
     var onProtectionChanged: (() -> Void)?
 
+    /// Set by `AppModel` to write key and key-storage changes to the activity
+    /// log. Notes are fixed text; nothing about the key itself is passed.
+    var recordAudit: (AuditAction, String) -> Void = { _, _ in }
+
+    /// Called after a passphrase change has been swapped in, never on a refusal.
+    var onPassphraseChanged: (() -> Void)?
+
     private let dataRootProvider: () -> URL?
     private let deviceKeys: DeviceKeyStoring
     private let defaults: UserDefaults
@@ -136,7 +143,7 @@ final class EncryptionManager: ObservableObject {
     }
 
     private func writeMarker(at root: URL) throws {
-        try Data("1\n".utf8).write(to: markerURL(root), options: .atomic)
+        try SecureFS.write(Data("1\n".utf8), to: markerURL(root))
         defaults.set(true, forKey: markerDefaultsKey(root))
     }
 
@@ -197,8 +204,12 @@ final class EncryptionManager: ObservableObject {
     /// the folder to be unlocked.
     func rememberOnDevice() throws {
         do {
+            let wasRemembered = isRememberedOnDevice
             try storeKeyOnDevice()
             rememberError = nil
+            if !wasRemembered {
+                recordAudit(.securitySettingChanged, AuditedSettings.rememberKeyOnMac.detail(for: true))
+            }
         } catch {
             rememberError = error.localizedDescription
             throw error
@@ -223,7 +234,11 @@ final class EncryptionManager: ObservableObject {
     /// encrypted and will ask for the passphrase next launch.
     func forgetOnDevice() {
         guard let root = dataRoot, let id = Keystore.load(from: root)?.id else { return }
+        let wasRemembered = deviceKeys.load(for: id) != nil
         deviceKeys.delete(for: id)
+        if wasRemembered {
+            recordAudit(.securitySettingChanged, AuditedSettings.rememberKeyOnMac.detail(for: false))
+        }
     }
 
     // MARK: - Transitions
@@ -274,7 +289,9 @@ final class EncryptionManager: ObservableObject {
         guard dek != nil else { throw ManagerError.locked }
         let result = DataMigrator.migrate(root: root, from: protector, to: .passthrough)
         guard result.isComplete else { throw ManagerError.decryptionIncomplete(result.failures) }
-        forgetOnDevice() // drop the keychain copy before the keystore (which holds its id) is gone
+        // Drop the keychain copy before the keystore (which holds its id) is gone. Not
+        // `forgetOnDevice()`: the disable is recorded as one event.
+        if let id = Keystore.load(from: root)?.id { deviceKeys.delete(for: id) }
         clearMarker(at: root) // before the keystore goes, so a half-finished disable never looks like a lost keystore
         try FileManager.default.removeItem(at: root.appendingPathComponent(Keystore.fileName))
         dek = nil
@@ -351,11 +368,43 @@ final class EncryptionManager: ObservableObject {
             keystore = try keystore.removingWrapping(id: old.id)
         }
         try keystore.write(to: root)
+        recordAudit(.encryptionKeyChanged, "Recovery key replaced")
         return key
     }
 
-    /// Drops the in-memory DEK; the folder stays encrypted and re-locks. Called
-    /// on the same "app hidden" transition as the Tier-1 app lock.
+    /// Changes the passphrase. Needs the current passphrase (counted by the
+    /// shared unlock throttle) and a new one that meets the minimum. Only the
+    /// passphrase slot is re-wrapped: the data key, the recovery key slot and
+    /// the files are untouched, so nothing is re-encrypted. The keystore is
+    /// swapped in only after the new one has been written and verified.
+    func changePassphrase(
+        current: String,
+        new: String,
+        iterations: Int = PassphraseKDF.defaultIterations,
+        beforeSwap: (() throws -> Void)? = nil
+    ) throws {
+        guard let root = dataRoot, isEnabled else { throw ManagerError.notEnabled }
+        guard Keystore.exists(at: root) else { throw ManagerError.keystoreMissing }
+        guard dek != nil else { throw ManagerError.locked }
+        guard let keystore = Keystore.load(from: root) else { throw Keystore.KeystoreError.malformed }
+        let wait = throttle.remainingDelay
+        guard wait <= 0 else { throw ManagerError.throttled(retryAfter: wait) }
+        guard PassphraseStrength.meetsRequirement(new) else { throw ManagerError.passphraseTooShort }
+        let updated: (keystore: Keystore, dek: SymmetricKey)
+        do {
+            updated = try keystore.replacingPassphrase(current: current, new: new, iterations: iterations)
+        } catch Keystore.KeystoreError.wrongPassphrase {
+            throttle.recordFailure()
+            throw Keystore.KeystoreError.wrongPassphrase
+        }
+        throttle.recordSuccess()
+        try updated.keystore.replaceOnDisk(at: root, verifyingPassphrase: new, expectedDEK: updated.dek, beforeSwap: beforeSwap)
+        onPassphraseChanged?()
+    }
+
+    /// Drops the in-memory DEK; the folder stays encrypted and re-locks.
+    /// Runs whenever the app lock engages, including on hide only when
+    /// "Lock when hidden" is on.
     func lock() {
         guard dek != nil else { return }
         dek = nil
@@ -374,5 +423,6 @@ final class EncryptionManager: ObservableObject {
         guard let dek else { throw FileProtector.ProtectorError.locked }
         let updated = try keystore.addingPassphraseWrapping(dek: dek, passphrase: passphrase, iterations: iterations)
         try updated.write(to: root)
+        recordAudit(.encryptionKeyChanged, "Recovery passphrase added")
     }
 }

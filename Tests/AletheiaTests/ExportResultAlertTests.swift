@@ -70,10 +70,16 @@ final class ExportResultAlertTests: XCTestCase {
         let views = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/App/Views")
-        for file in ["SessionDetailView.swift", "SettingsView.swift"] {
-            let source = try String(contentsOf: views.appendingPathComponent(file), encoding: .utf8)
-            XCTAssertTrue(source.contains(".exportResultAlert($exportResult)"), file)
-            XCTAssertTrue(source.contains("exportResult = outcome.shown"), file)
+        // Each screen that exports shows the alert; the file that runs the export sets the result.
+        let screens = [
+            ("SessionDetailView.swift", "SessionDetailView.swift"),
+            ("SettingsView.swift", "Settings/AuditLogSection.swift"),
+        ]
+        for (screen, exporter) in screens {
+            let alert = try String(contentsOf: views.appendingPathComponent(screen), encoding: .utf8)
+            XCTAssertTrue(alert.contains(".exportResultAlert($exportResult)"), screen)
+            let export = try String(contentsOf: views.appendingPathComponent(exporter), encoding: .utf8)
+            XCTAssertTrue(export.contains("exportResult = outcome.shown"), exporter)
         }
         let toast = try String(contentsOf: views.appendingPathComponent("ExportStatusToast.swift"), encoding: .utf8)
         XCTAssertTrue(toast.contains("ExportFileLink(url: url)"), "the records zip links its path too")

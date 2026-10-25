@@ -5,9 +5,10 @@ import Foundation
 /// UserNotifications framework.
 ///
 /// Banners show on the lock screen and are kept by macOS, so by default they
-/// carry no patient name or session date (`showsName: false`). Names appear
-/// only when the user turns on "Show patient names in notifications".
-/// Identifiers never carry a name, whatever the setting.
+/// show the patient's initials and no session date. The full name and date
+/// appear only when the user turns on "Show patient names in notifications" and
+/// the app is unlocked; `PatientLabel` makes that call. Identifiers never carry
+/// a name, whatever the setting.
 enum SessionNotifications {
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -15,57 +16,59 @@ enum SessionNotifications {
         return f
     }()
 
-    static func transcriptionComplete(patientName: String, date: Date, showsName: Bool) -> AppNotificationContent {
+    /// The label for `patientName` and whether it is the full name (so the date
+    /// may be shown too).
+    private static func label(_ name: String, _ policy: PatientLabel.Policy) -> (text: String, full: Bool) {
+        (PatientLabel.text(forName: name, surface: .notification, policy: policy),
+         PatientLabel.showsFullName(surface: .notification, policy: policy))
+    }
+
+    private static func sessionPhrase(_ name: String, date: Date, _ policy: PatientLabel.Policy) -> String {
+        let l = label(name, policy)
+        return l.full ? "\(l.text)'s session from \(dateFormatter.string(from: date))" : "\(l.text)'s session"
+    }
+
+    static func transcriptionComplete(patientName: String, date: Date, policy: PatientLabel.Policy) -> AppNotificationContent {
         AppNotificationContent(
             identifier: "transcription-\(date.timeIntervalSince1970)",
             title: "Transcript ready",
-            body: showsName
-                ? "\(patientName)'s session from \(dateFormatter.string(from: date)) has finished transcribing."
-                : "A session has finished transcribing. Open Aletheia to see it."
+            body: "\(sessionPhrase(patientName, date: date, policy)) has finished transcribing."
         )
     }
 
     /// A transcription that failed or found no speech, so someone who stepped
     /// away isn't left assuming the transcript is on its way.
-    static func transcriptionProblem(patientName: String, date: Date, showsName: Bool) -> AppNotificationContent {
+    static func transcriptionProblem(patientName: String, date: Date, policy: PatientLabel.Policy) -> AppNotificationContent {
         AppNotificationContent(
             identifier: "transcription-problem-\(date.timeIntervalSince1970)",
             title: "Transcription needs attention",
-            body: showsName
-                ? "\(patientName)'s session from \(dateFormatter.string(from: date)) wasn't transcribed. Open the session to see why."
-                : "A session wasn't transcribed. Open Aletheia to see why."
+            body: "\(sessionPhrase(patientName, date: date, policy)) wasn't transcribed. Open the session to see why."
         )
     }
 
     /// The transcript was saved, but the recording that should have been
     /// deleted afterwards is still on disk.
-    static func recordingNotDeleted(patientName: String, date: Date, showsName: Bool) -> AppNotificationContent {
+    static func recordingNotDeleted(patientName: String, date: Date, policy: PatientLabel.Policy) -> AppNotificationContent {
         AppNotificationContent(
             identifier: "recording-kept-\(date.timeIntervalSince1970)",
             title: "Recording still on disk",
-            body: showsName
-                ? "\(patientName)'s session from \(dateFormatter.string(from: date)) was transcribed, but its recording couldn't be deleted. Open the session to see why."
-                : "A session was transcribed, but its recording couldn't be deleted. Open Aletheia to see why."
+            body: "\(sessionPhrase(patientName, date: date, policy)) was transcribed, but its recording couldn't be deleted. Open the session to see why."
         )
     }
 
-    static func summaryReady(patientName: String, date: Date, showsName: Bool) -> AppNotificationContent {
+    static func summaryReady(patientName: String, date: Date, policy: PatientLabel.Policy) -> AppNotificationContent {
         AppNotificationContent(
             identifier: "summary-\(date.timeIntervalSince1970)",
             title: "Summary ready",
-            body: showsName
-                ? "The AI summary for \(patientName)'s \(dateFormatter.string(from: date)) session is ready to review."
-                : "An AI summary is ready to review in Aletheia."
+            body: "The AI summary for \(sessionPhrase(patientName, date: date, policy)) is ready to review in Aletheia."
         )
     }
 
-    static func longRecordingReminder(patientName: String, showsName: Bool) -> AppNotificationContent {
+    static func longRecordingReminder(patientName: String, policy: PatientLabel.Policy) -> AppNotificationContent {
         AppNotificationContent(
             identifier: "long-recording",
             title: "Still recording",
-            body: showsName
-                ? "\(patientName)'s session has been recording for over 90 minutes. Did you forget to end it?"
-                : "A session has been recording for over 90 minutes. Did you forget to end it?"
+            body: "\(label(patientName, policy).text)'s session has been recording for over 90 minutes. Did you forget to end it?"
         )
     }
 

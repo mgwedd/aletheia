@@ -396,6 +396,7 @@ struct SessionDetailView: View {
         } message: {
             Text(confirmationMessage ?? "")
         }
+        .dismissOnLock { showScheduleSheet = false; editingInstructions = false }
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
         .exportResultAlert($exportResult)
     }
@@ -630,7 +631,6 @@ struct SessionDetailView: View {
 
     private func scheduleReminder(_ leadTime: ReminderLeadTime) async {
         let draft = SessionReminderBuilder.draft(
-            patientName: patient.name,
             sessionDate: session.date,
             leadTime: leadTime
         )
@@ -644,7 +644,6 @@ struct SessionDetailView: View {
 
     private func scheduleEvent() async {
         let draft = SessionEventBuilder.draft(
-            patientName: patient.name,
             start: scheduleStart,
             durationMinutes: scheduleDurationMinutes,
             recurrence: scheduleRecurrence
@@ -694,6 +693,8 @@ struct SessionDetailView: View {
         let outcome = ExportRenderer.save(document, as: format, baseName: base)
         if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
+        } else if case .failed = outcome {
+            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: "Session, \(format.title)")
         }
         exportResult = outcome.shown
     }
@@ -711,6 +712,8 @@ struct SessionDetailView: View {
         let outcome = ExportRenderer.save(document, as: format, baseName: base)
         if case .saved = outcome {
             appModel.recordAudit(.recordExported, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
+        } else if case .failed = outcome {
+            appModel.recordAudit(.exportFailed, subjectID: session.id.uuidString, detail: "Note \(noteFormat), \(format.title)")
         }
         exportResult = outcome.shown
     }
@@ -1943,7 +1946,7 @@ struct SessionDetailView: View {
                     await integrations.makeNotifier().post(
                         SessionNotifications.summaryReady(
                             patientName: patient.name, date: session.date,
-                            showsName: settings.notificationsShowPatientNames
+                            policy: .current(showFullName: settings.notificationsShowPatientNames)
                         )
                     )
                 }

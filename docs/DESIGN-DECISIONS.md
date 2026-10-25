@@ -53,9 +53,10 @@ vague question matches weakly and ranks poorly.
 
 **Prompt is sized to the Mac.** The budget covers transcript text only. Extras
 add up to 3,000 chars for each session, so 20 sessions can add about 60,000
-chars (about 20,000 tokens), which exceeds the smallest Mac's budget. The app
-sets `num_ctx` at runtime from the Mac's memory and refuses over-budget prompts
-with a clear message, so Ollama never truncates silently.
+chars (about 20,000 tokens), which exceeds the smallest Mac's budget. The built-in
+engine sizes its context (`n_ctx`) from the tokenized prompt, capped by the Mac's
+memory and the model's trained window, and refuses over-budget prompts with a
+clear message, so nothing is truncated silently.
 
 ### Implementation notes
 
@@ -74,8 +75,8 @@ with a clear message, so Ollama never truncates silently.
 | Option | Recall | Latency and memory | Risk | Effort |
 |---|---|---|---|---|
 | **A. Per-Mac dynamic budget** (current) | unchanged | none | user still gets partial-evidence answers, now with coverage labels | done |
-| **B. Larger fixed budget** (e.g., 24,000 tokens) | up to 4x | KV cache and time-to-first-token grow with prompt; an 8 GB Mac can swap | needs `num_ctx` set to match or Ollama truncates the front of the prompt; changing `num_ctx` reloads the model (cold start) | small, but needs measurement |
-| **C. Per-model dynamic budget** | scales with hardware | same as B, bounded by tier | needs a table of context sizes per model tag and per `ModelAdvisor` tier; table goes stale as models change; Ollama's reported window may differ from what fits in RAM | medium |
+| **B. Larger fixed budget** (e.g., 24,000 tokens) | up to 4x | KV cache and time-to-first-token grow with prompt; an 8 GB Mac can swap | the engine's cap must rise to match, and a bigger `n_ctx` rebuilds the context and its KV cache | small, but needs measurement |
+| **C. Per-model dynamic budget** | scales with hardware | same as B, bounded by tier | needs a table of context sizes per model tag and per `ModelAdvisor` tier; table goes stale as models change; a model's trained window may differ from what fits in RAM | medium |
 | **D. Map-reduce summaries** (summarise per session, answer over summaries) | every session represented | one model call per session, slow on 3B models; cache per session keyed on transcript hash to amortise | compounding error; a summary drops the detail a clinician asks about; a wrong "not discussed" is plausible | large |
 | **E. Embeddings** (NaturalLanguage, on-device) | best for vague questions | index build once per session; query is cheap | index is PHI: must be sealed (`FileProtector`), migrated by `DataMigrator`, excluded from export and covered by backup rules | large |
 | **F. Lexical fixes** (stopwords, whole-word match) | small gain | none | low | small |
@@ -131,7 +132,7 @@ flowchart TD
   DEC -->|keep: opt-in + encryption| SAVE["saveTranscript, audio stays"]
   DEL --> TX[("transcript.txt<br/>one file, sealed by FileProtector")]
   SAVE --> TX
-  TX --> ED["Hand edit: saveEditedTranscript()<br/>same file, no history"]
+  TX --> ED["Hand edit: transcript editor save<br/>same file, no history"]
   ED --> TX
   TX -.derives.-> N["note.format.txt, summary.txt<br/>(files)"]
   TX -.derives.-> SC["session chat, patient chat threads<br/>(SQLite records)"]
@@ -164,7 +165,7 @@ first.
 | Patient-chat search | persistent FTS5 index `search.sqlite` (`SearchIndex`), keyed by session, kind and a fingerprint of the text | the text each search reads | not stale: a search stores any text it hasn't seen and drops older versions of that session; `saveTranscript` and a launch/unlock sweep (by mtime and size) also refresh it. It holds a plaintext (stemmed) copy of searchable text, accepted because FileVault covers it at rest; it is excluded from Time Machine and rebuilt if missing or corrupt |
 | Session search, export | read from files at query time (`searchSessions`) | live | not stale |
 | Spotlight | names and dates only | none | unaffected |
-| Encryption sealing | `FileProtector.write` seals each write | `saveTranscript` seals correctly | a **new** file kind (such as a prior revision) is not covered: `DataMigrator` converts only a fixed list (`transcript.txt`, `summary.txt`, `chat.json`, `note.*.txt`). A revision file left out of that list is skipped on enable (stays plaintext) and, worse, stays sealed when encryption is turned off after the keystore is removed (unreadable) |
+| Encryption sealing | `FileProtector.write` seals each write | `saveTranscript` seals correctly | a **new** file kind (such as a prior revision) is not covered: `DataMigrator` converts only a fixed list (`transcript.txt`, `summary.txt`, `chat.json`, the digest files, `note.*.txt`). A revision file left out of that list is skipped on enable (stays plaintext) and, worse, stays sealed when encryption is turned off after the keystore is removed (unreadable) |
 | DB snapshots and backups | `.backups/snapshots` cover SQLite only | `transcript.txt` is a file | a replaced transcript is not recoverable from DB snapshots; only Time Machine or a manual copy |
 | Whisper model | `WhisperModel` pinned by SHA | a different model gives different text and timing | every item above changes more, not less |
 | Audio retention | `AudioRetentionPolicy` | audio is deleted after the first non-blank transcript by default | in the default case there is nothing to retranscribe |
@@ -231,7 +232,7 @@ Steps and constraints:
    when its file modification date precedes `replacedAt`; chat messages carry
    `ChatMessage.date` and compare directly. Show a one-line badge on the note
    and in chat; do not rewrite or delete them.
-7. **Audit.** Optional: add an `AuditEvent` case for "transcript replaced".
+7. **Audit.** Optional: add an `AuditAction` case for "transcript replaced".
 8. **Tests** (XCTest, run in CI): archive-then-write ordering and failure
    abort; blank result leaves transcript untouched; migrator round trip for the
    new file; comment re-match count; staleness comparison as a pure function.

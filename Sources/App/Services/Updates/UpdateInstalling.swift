@@ -27,20 +27,19 @@ struct GuidedDownloadInstaller: UpdateInstalling {
     @MainActor
     func install(_ release: ReleaseInfo) {
         // A feed without a digest can't be checked, so it isn't downloaded
-        // here: the release page opens in the browser instead.
+        // here: the downloads page opens in the browser instead.
         guard let sha256 = release.sha256 else {
-            open(release.releasePageOrWebURL)
+            open(ReleaseLink.downloadsPage)
             return
         }
         let helper = helper, open = open
         let archive = downloadsDirectory.appendingPathComponent("Aletheia-update.dmg")
-        let fallback = release.releasePageOrWebURL
         Task { @MainActor in
             do {
                 try await helper.download(.updateArchive, expectedSHA256: sha256, to: archive) { _ in }
                 open(archive)
             } catch {
-                open(fallback)
+                open(ReleaseLink.downloadsPage)
             }
         }
     }

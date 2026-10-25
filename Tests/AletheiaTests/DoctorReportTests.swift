@@ -48,6 +48,113 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertEqual(out, "line one\n<data folder>/…\nline three")
     }
 
+    func testUUIDsAreRedacted() {
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: root)
+        let out = redactor.redact("Patient 3F2504E0-4F89-41D3-9A0C-0305E82C3301 and 3f2504e0-4f89-41d3-9a0c-0305e82c3302 failed")
+        XCTAssertEqual(out, "Patient <id> and <id> failed")
+    }
+
+    func testPatientAndSessionFolderNamesRedactedEvenOutsideTheDataRoot() {
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: root)
+        let out = redactor.redact("see Patients/jane-doe-4f2a/notes.json and 2024-01-05_Intake-Jane for details")
+        XCTAssertFalse(out.contains("jane"))
+        XCTAssertFalse(out.contains("Jane"))
+        XCTAssertFalse(out.contains("notes.json"))
+        XCTAssertTrue(out.contains("<patient folder>"))
+        XCTAssertTrue(out.contains("<session folder>"))
+    }
+
+    func testTimestampsAreNotMistakenForSessionFolders() {
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: root)
+        XCTAssertEqual(redactor.redact("Generated: 2023-11-14T22:13:20Z"), "Generated: 2023-11-14T22:13:20Z")
+    }
+
+    func testKnownTermsAreRedactedByValueCaseInsensitively() {
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: nil, knownTerms: ["Jane Doe", "jane-doe", "mike", "  ", "x"])
+        let out = redactor.redact("Error for JANE DOE (jane-doe) owned by Mike; x stays")
+        XCTAssertEqual(out, "Error for <redacted> (<redacted>) owned by <redacted>; x stays")
+    }
+
+    private func patientTerms(_ name: String, slug: String = "jane-doe-4f2a") -> [String] {
+        LiveDoctorProbes.knownTerms(for: [Patient(name: name, slug: slug)])
+    }
+
+    func testErrorStringContainingNameIsRedacted() {
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: root, knownTerms: patientTerms("Jane Smith"))
+        let out = redactor.redact("Couldn't decrypt note for Jane Smith; Smith's file is damaged, ask Jane.")
+        XCTAssertFalse(out.contains("Jane"))
+        XCTAssertFalse(out.contains("Smith"))
+        XCTAssertTrue(out.contains("is damaged"))
+    }
+
+    func testPatientSlugOutsideDataRootIsRedacted() {
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: root, knownTerms: patientTerms("Jane Doe"))
+        let out = redactor.redact("Restore failed for jane-doe-4f2a (copy kept in /Volumes/Backup/jane-doe-4f2a/notes)")
+        XCTAssertFalse(out.contains("jane-doe-4f2a"))
+        XCTAssertFalse(out.contains("Volumes"))
+    }
+
+    func testNameMatchingIgnoresCaseAndDiacritics() {
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: nil, knownTerms: patientTerms("José Núñez", slug: "p1"))
+        let out = redactor.redact("failed: JOSE NUNEZ, jose, José, núñez")
+        XCTAssertEqual(out, "failed: <redacted>, <redacted>, <redacted>, <redacted>")
+    }
+
+    func testNamesWithRegexCharactersAreMatchedLiterally() {
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: nil, knownTerms: ["J.* (Jr)", "O'Brien+"])
+        let out = redactor.redact("for J.* (Jr) and O'Brien+ but not Jx anything")
+        XCTAssertEqual(out, "for <redacted> and <redacted> but not Jx anything")
+    }
+
+    func testShortNamePartsAndInitialsAreNotRedactedButFullNameIs() {
+        let terms = patientTerms("Al Li Roe", slug: "xy")
+        XCTAssertTrue(terms.contains("Al Li Roe"))
+        XCTAssertFalse(terms.contains("Al"))
+        XCTAssertFalse(terms.contains("Roe"))
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: nil, knownTerms: terms)
+        XCTAssertEqual(redactor.redact("Al Li Roe: all rows ok"), "<redacted>: all rows ok")
+    }
+
+    func testNameDoesNotMangleLongerWords() {
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: nil, knownTerms: ["Ann"])
+        XCTAssertEqual(redactor.redact("Annual check for Ann"), "Annual check for <redacted>")
+    }
+
+    func testDoctorEnvironmentCarriesPatientNamesFromTheLiveProbes() {
+        let patients = [Patient(name: "Jane Doe", slug: "jane-doe-4f2a")]
+        let probes = LiveDoctorProbes(
+            dataRoot: nil, appDatabaseFailure: nil, encryptionInUse: false, encryptionUnlocked: false,
+            whisperModelPath: URL(fileURLWithPath: "/tmp/none"), whisperModelName: "Small",
+            whisperExpectedMB: 1, whisperExpectedSHA256: "", toolHealthProvider: { [] },
+            callAudioDiagnostics: nil, knownTerms: LiveDoctorProbes.knownTerms(for: patients))
+        let env = probes.environment()
+        XCTAssertTrue(env.knownTerms.contains("Jane Doe"))
+        XCTAssertTrue(env.knownTerms.contains("jane-doe-4f2a"))
+
+        let check = DoctorCheck(
+            id: "z", category: .records, title: "Records", status: .failed,
+            detail: "Couldn't open the record for Jane Doe")
+        let text = DoctorReport(checks: [check], generatedAt: Date(), environment: env).plainText()
+        XCTAssertFalse(text.contains("Jane"), text)
+        XCTAssertTrue(text.contains("<redacted>"))
+    }
+
+    func testDataRootOutsideHomeIsRedactedEvenWithoutATrailingPath() {
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: "/Volumes/DrSmithPractice/Aletheia")
+        let out = redactor.redact("Data folder is missing: /Volumes/DrSmithPractice/Aletheia.")
+        XCTAssertEqual(out, "Data folder is missing: <data folder>.")
+    }
+
+    func testAnyRemainingAbsolutePathIsDropped() {
+        let redactor = DoctorRedactor(homeDirectory: home, dataRoot: root)
+        let out = redactor.redact("Moved to /Volumes/Backup Drive/Clinic and /tmp/x/y.sqlite ok; Settings > Data Folder, and/or more")
+        XCTAssertFalse(out.contains("Volumes"))
+        XCTAssertFalse(out.contains("tmp"))
+        XCTAssertFalse(out.contains("y.sqlite"))
+        XCTAssertTrue(out.contains("and/or more"))
+        XCTAssertTrue(out.contains("Settings > Data Folder"))
+    }
+
     // MARK: Report text
 
     private func report(checks: [DoctorCheck]) -> DoctorReport {
@@ -76,6 +183,29 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertFalse(text.contains("patient.json"))
         XCTAssertFalse(text.contains("/Users/mike"))
         XCTAssertTrue(text.contains("~/Documents/Aletheia aside."))
+    }
+
+    func testGoldenReportHasNoHomePathUUIDOrPatientName() {
+        let uuid = "3F2504E0-4F89-41D3-9A0C-0305E82C3301"
+        let checks = [
+            DoctorCheck(id: "a", category: .records, title: "Records", status: .failed,
+                        detail: "Couldn't read \(root)/Patients/\(uuid)/patient.json for Jane Doe",
+                        nextStep: "Ask jane-doe's clinician; copy /Volumes/Other/Aletheia aside."),
+            DoctorCheck(id: "b", category: .dataFolder, title: "Folder", status: .warning,
+                        detail: "Owned by mike at \(home)/Library and 2024-01-05_Intake-Jane"),
+        ]
+        var r = report(checks: checks)
+        r = DoctorReport(
+            checks: r.checks, generatedAt: r.generatedAt,
+            environment: DoctorEnvironment(
+                appVersion: "2.22.0", buildTier: "production", macOSVersion: "Version 14.5 (Build 23F79)",
+                supportedSchemaVersion: 1, homeDirectory: home, dataRoot: root,
+                knownTerms: ["Jane Doe", "jane-doe", "Jane", "mike"]))
+        let text = r.plainText()
+        for banned in ["/Users", "/Volumes", uuid, "Jane", "jane", "mike", "patient.json", "Patients"] {
+            XCTAssertFalse(text.contains(banned), "leaked \(banned):\n\(text)")
+        }
+        XCTAssertTrue(text.contains("Generated: 2023-11-14T22:13:20Z"))
     }
 
     func testOverallIsTheWorstStatus() {

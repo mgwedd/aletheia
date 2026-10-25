@@ -67,6 +67,34 @@ final class AuditLogTests: XCTestCase {
         XCTAssertEqual(seq, 2)
     }
 
+    func testAuditWriteFailureIsSurfaced() throws {
+        var states: [Bool] = []
+        log.onWriteStateChanged = { states.append($0) }
+        XCTAssertFalse(log.lastWriteFailed)
+
+        try log.core?.executeRaw("CREATE TRIGGER block_insert BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'blocked'); END;")
+        XCTAssertThrowsError(try log.record(.appUnlocked))
+        XCTAssertThrowsError(try log.record(.appUnlocked))
+        XCTAssertTrue(log.lastWriteFailed)
+        XCTAssertEqual(states, [true], "reported once when it flips, not per failed write")
+
+        try log.core?.executeRaw("DROP TRIGGER block_insert;")
+        try log.record(.appUnlocked)
+        XCTAssertFalse(log.lastWriteFailed)
+        XCTAssertEqual(states, [true, false])
+    }
+
+    func testUnavailableDatabaseCountsAsAFailedWrite() throws {
+        let broken = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        // A directory where the database file should be: it can't be opened.
+        try FileManager.default.createDirectory(
+            at: broken.appendingPathComponent("Aletheia.sqlite", isDirectory: true), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: broken) }
+        let unavailable = AuditLog(root: broken, keyProvider: { self.testKey })
+        XCTAssertThrowsError(try unavailable.record(.appUnlocked))
+        XCTAssertTrue(unavailable.lastWriteFailed)
+    }
+
     func testMissingKeyRecordsUnverifiableNotSkipped() throws {
         let keylessLog = AuditLog(root: root, keyProvider: { nil })
         let event = try keylessLog.record(.appUnlocked, detail: "key-absent")
@@ -167,6 +195,12 @@ final class AuditLogTests: XCTestCase {
         for action in AuditAction.allCases {
             XCTAssertFalse(action.displayName.isEmpty, "\(action) needs a display name")
         }
+    }
+
+    func testPassphraseChangeIsRecorded() throws {
+        try log.record(.encryptionPassphraseChanged)
+        XCTAssertEqual(log.entries().first?.action, .encryptionPassphraseChanged)
+        XCTAssertEqual(AuditAction.encryptionPassphraseChanged.rawValue, "encryptionPassphraseChanged")
     }
 
     func testSubjectAndDetailRoundTrip() throws {

@@ -93,6 +93,10 @@ final class CommentStore {
     /// index in step). Runs on the saving thread; must not block.
     var onSessionAnnotationsChanged: ((UUID) -> Void)?
 
+    /// Receives an activity-log entry (action, record id, note) for each comment
+    /// or chat thread deleted. Never carries text.
+    var onAudit: ((AuditAction, String?, String?) -> Void)?
+
     /// Called when a stored note or session chat exists but can't be decoded
     /// (it reads as empty meanwhile; the record itself is left in place).
     var onRecordDecodeFailure: (() -> Void)? {
@@ -188,6 +192,7 @@ final class CommentStore {
         let session = onSessionAnnotationsChanged == nil ? nil : annotations.sessionID(ofComment: id)
         let deleted = annotations.deleteComment(id: id)
         if deleted, let session { onSessionAnnotationsChanged?(session) }
+        if deleted { onAudit?(.recordDeleted, session?.uuidString, "comment") }
         return deleted
     }
 
@@ -224,7 +229,9 @@ final class CommentStore {
 
     @discardableResult
     func deleteChatThread(id: UUID, patientID: UUID) -> Bool {
-        chats.deleteChatThread(id: id, patientID: patientID)
+        let deleted = chats.deleteChatThread(id: id, patientID: patientID)
+        if deleted { onAudit?(.recordDeleted, id.uuidString, "chat thread") }
+        return deleted
     }
 
     // MARK: - Session chat

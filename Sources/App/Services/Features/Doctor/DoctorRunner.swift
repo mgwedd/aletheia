@@ -44,7 +44,7 @@ struct DoctorRunner {
             checks += Self.snapshotChecks(probes.snapshots(), now: now)
             checks += Self.timeMachineChecks(probes.timeMachineExclusion())
             checks += Self.recordChecks(probes.unreadableEntries())
-            checks += Self.auditLogChecks(probes.isAuditLogWritable())
+            checks += Self.auditLogChecks(probes.auditLedger())
         }
 
         checks += Self.appLockChecks(probes.appLock())
@@ -300,7 +300,7 @@ struct DoctorRunner {
                 id: "backups.timeMachine", category: .backups, title: "Time Machine backup",
                 status: .warning,
                 detail: "The data folder is excluded from Time Machine backups.",
-                nextStep: "If you want Time Machine to back up your data folder, turn off “Keep data out of Time Machine” in Settings > Snapshots & Backups.",
+                nextStep: "If you want Time Machine to back up your data folder, turn off “\(BackupExclusion.settingTitle)” in Settings > \(SettingsPane.backups.title).",
                 action: .openSettings
             )]
         } else {
@@ -333,20 +333,35 @@ struct DoctorRunner {
         }
     }
 
-    static func auditLogChecks(_ isWritable: Bool) -> [DoctorCheck] {
-        if isWritable {
-            return [DoctorCheck(
-                id: "records.auditLog", category: .records, title: "Audit log",
-                status: .ok, detail: "The local HIPAA audit log (audit.log) is writable."
-            )]
-        } else {
-            return [DoctorCheck(
-                id: "records.auditLog", category: .records, title: "Audit log",
-                status: .failed,
-                detail: "The local audit log cannot be written in the data folder. Actions touching patient records cannot be audited.",
-                nextStep: "In Finder, check file and folder permissions on the data folder.",
-                action: .openSettings
-            )]
+    static func auditLogChecks(_ ledger: AuditLedgerProbe) -> [DoctorCheck] {
+        func check(_ status: DoctorStatus, _ detail: String, next: String? = nil, action: DoctorAction? = nil) -> [DoctorCheck] {
+            [DoctorCheck(id: "records.auditLog", category: .records, title: "Audit log",
+                         status: status, detail: detail, nextStep: next, action: action)]
+        }
+        switch ledger {
+        case .unavailable:
+            return check(.failed,
+                "The audit ledger could not be opened. Actions touching patient records cannot be audited.",
+                next: "In Finder, check file and folder permissions on the data folder, then run Doctor again.",
+                action: .openSettings)
+        case .checked(.broken(let seq, _), _):
+            return check(.failed,
+                "The audit ledger's hash chain does not verify; entry #\(seq) was altered or removed.",
+                next: "Keep a copy of the data folder as it is, then review the audit log in Settings.",
+                action: .openSettings)
+        case .checked(.unverifiable(let reason), _):
+            return check(.warning,
+                "The audit ledger opened but its hash chain could not be verified: \(reason).",
+                next: "Unlock the app or check Keychain access, then run Doctor again.",
+                action: .openSettings)
+        case .checked(.verified, let writable):
+            if !writable {
+                return check(.failed,
+                    "The audit ledger cannot be written in the data folder. Actions touching patient records cannot be audited.",
+                    next: "In Finder, check file and folder permissions on the data folder.",
+                    action: .openSettings)
+            }
+            return check(.ok, "The audit ledger opens, is writable, and its hash chain verifies.")
         }
     }
 

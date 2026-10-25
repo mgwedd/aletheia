@@ -77,6 +77,15 @@ enum WhisperDigestProbe: Equatable {
 
 // MARK: - The probing seam
 
+/// What reading the audit ledger turned up.
+enum AuditLedgerProbe: Equatable {
+    /// The ledger could not be opened.
+    case unavailable
+    /// The ledger opened; `result` is its hash-chain check and `writable` whether
+    /// the database file and its folder accept writes.
+    case checked(IntegrityVerificationResult, writable: Bool)
+}
+
 /// Everything Doctor needs to know about the outside world, behind one seam so
 /// `DoctorRunner` can be unit-tested with stubs (no real disk, SQLite or a model).
 protocol DoctorProbing {
@@ -97,7 +106,7 @@ protocol DoctorProbing {
     func timeMachineExclusion() -> Bool?
     func isSandboxed() -> Bool
     func appLock() -> (enabled: Bool, canAuthenticate: Bool)
-    func isAuditLogWritable() -> Bool
+    func auditLedger() -> AuditLedgerProbe
 }
 
 extension DoctorProbing {
@@ -105,7 +114,7 @@ extension DoctorProbing {
     func timeMachineExclusion() -> Bool? { nil }
     func isSandboxed() -> Bool { true }
     func appLock() -> (enabled: Bool, canAuthenticate: Bool) { (true, true) }
-    func isAuditLogWritable() -> Bool { true }
+    func auditLedger() -> AuditLedgerProbe { .checked(.verified(count: 0), writable: true) }
 }
 
 // MARK: - Live implementation
@@ -131,14 +140,17 @@ struct LiveDoctorProbes: DoctorProbing {
     var timeMachineExclusionProvider: () -> Bool? = { nil }
     var isSandboxedProvider: () -> Bool = { true }
     var appLockProvider: () -> (enabled: Bool, canAuthenticate: Bool) = { (true, true) }
-    var auditLogWritableProvider: () -> Bool = { true }
+    var auditLedgerProvider: () -> AuditLedgerProbe = { .checked(.verified(count: 0), writable: true) }
+    /// Patient names and folder slugs (from the in-memory patient list) that the
+    /// shared report must never contain.
+    var knownTerms: [String] = []
 
     func callAudio() -> CallAudioDiagnostics? { callAudioDiagnostics }
     func timeMachineExclusion() -> Bool? { timeMachineExclusionProvider() }
     func isSandboxed() -> Bool { isSandboxedProvider() }
     func appLock() -> (enabled: Bool, canAuthenticate: Bool) { appLockProvider() }
-    func isAuditLogWritable() -> Bool { auditLogWritableProvider() }
-    func environment() -> DoctorEnvironment { .current(dataRoot: dataRoot) }
+    func auditLedger() -> AuditLedgerProbe { auditLedgerProvider() }
+    func environment() -> DoctorEnvironment { .current(dataRoot: dataRoot, knownTerms: knownTerms) }
     func now() -> Date { Date() }
 
     func dataFolder() -> DataFolderProbe {
@@ -259,6 +271,26 @@ struct LiveDoctorProbes: DoctorProbing {
         return checks
     }
 
+    /// Reads the audit ledger and verifies its hash chain. Read-only: no row is
+    /// appended. Writability is judged from file permissions, not by writing.
+    static func probeAuditLedger(_ audit: AuditLog?, dataRoot: URL?) -> AuditLedgerProbe {
+        guard let audit, audit.core != nil else { return .unavailable }
+        let result = audit.verifyIntegrity()
+        var writable = true
+        if let root = dataRoot {
+            let fm = FileManager.default
+            let db = root.appendingPathComponent("Aletheia.sqlite")
+            writable = fm.isWritableFile(atPath: db.path) && fm.isWritableFile(atPath: root.path)
+        }
+        return .checked(result, writable: writable)
+    }
+
+    /// The patient values the report must scrub, from the patient list the app
+    /// already holds in memory (no extra disk reads).
+    static func knownTerms(for patients: [Patient]) -> [String] {
+        DoctorRedactor.terms(forPatients: patients.map { ($0.name, $0.slug) })
+    }
+
     /// Live probes wired to the running app's state.
     @MainActor
     static func make(
@@ -278,6 +310,7 @@ struct LiveDoctorProbes: DoctorProbing {
         }
         let dataRoot = settings.dataRootURL
         let appLockEnabled = settings.appLockEnabled
+        let knownTerms = LiveDoctorProbes.knownTerms(for: appModel.patients)
         return LiveDoctorProbes(
             dataRoot: dataRoot,
             appDatabaseFailure: appModel.databaseState.failure,
@@ -305,14 +338,8 @@ struct LiveDoctorProbes: DoctorProbing {
                 let canAuth = context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
                 return (enabled: appLockEnabled, canAuthenticate: canAuth)
             },
-            auditLogWritableProvider: {
-                guard let root = dataRoot else { return false }
-                let auditURL = root.appendingPathComponent("audit.log")
-                if FileManager.default.fileExists(atPath: auditURL.path) {
-                    return FileManager.default.isWritableFile(atPath: auditURL.path)
-                } else {
-                    return FileManager.default.isWritableFile(atPath: root.path)
-                }
+            auditLedgerProvider: {
+                Self.probeAuditLedger(appModel.audit, dataRoot: dataRoot)
             }
         )
     }

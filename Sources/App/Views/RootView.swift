@@ -26,6 +26,9 @@ struct RootView: View {
     /// detail view's Edit button and the sidebar's context menu.
     @State private var editingProfile: Patient?
     @State private var editingFocus: ProfileField = .name
+    /// Unsaved edits from a profile editor that closed because the app locked.
+    /// The next editor opened for the same patient starts from them.
+    @State private var lockedProfileDraft: Patient?
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -63,6 +66,7 @@ struct RootView: View {
         // single failed save. Non-blocking, but pinned above everything so it's
         // never missed. See DatabaseUnavailableBanner / DoctorFeatureModule.
         .safeAreaInset(edge: .top, spacing: 0) { dataSafetyNotices }
+        .dismissOnLock { showSettings = false }
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(settings)
@@ -76,7 +80,9 @@ struct RootView: View {
             PatientProfileEditor(
                 patient: appModel.patients.first { $0.id == patient.id } ?? patient,
                 showsMedications: appModel.featureRegistry.contains(id: PatientMedicationsFeatureModule.id),
-                initialFocus: editingFocus
+                initialFocus: editingFocus,
+                draft: lockedProfileDraft?.id == patient.id ? lockedProfileDraft : nil,
+                onLockDraft: { lockedProfileDraft = $0 }
             )
             .environmentObject(appModel)
         }
@@ -122,7 +128,7 @@ struct RootView: View {
         } message: {
             Text(SessionNotifications.longRecordingReminder(
                 patientName: recorder.active?.patientName ?? "This patient",
-                showsName: true   // in-app alert behind the app lock, not a lock-screen banner
+                policy: .init(showFullName: true, isLocked: false)   // in-app alert behind the app lock, not a lock-screen banner
             ).body)
         }
         // `selectedPatient` is a snapshot; keep it in step with saves (matched by
@@ -212,6 +218,12 @@ struct RootView: View {
                     onOpenDoctor: { openWindow(id: DoctorFeatureModule.windowID) },
                     onDismiss: { appModel.dismissSaveFailure() }
                 )
+            }
+            if appModel.auditWriteFailed {
+                SecurityAlertStrip(message: SecurityPosture.auditWriteFailedDetail)
+            }
+            ForEach(appModel.securityAlerts) { alert in
+                SecurityAlertStrip(message: alert.message) { appModel.dismissSecurityAlert(alert) }
             }
             if !setAside.items.isEmpty {
                 SetAsideRecordingsStrip(count: setAside.items.count) {

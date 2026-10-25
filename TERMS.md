@@ -1,6 +1,6 @@
 # Terms of Service
 
-_Last updated: 2026-09-17_
+_Last updated: 2026-10-23_
 
 > This document is a template provided for transparency. It is **not legal
 > advice**. Aletheia is used with protected health information (PHI); have your
@@ -54,9 +54,15 @@ You are solely responsible for:
 - **Device security.** Protecting the Mac the App runs on — FileVault, the App's
   Touch ID / password lock, account security, and physical access. See
   [SECURITY.md](SECURITY.md).
-- **Backups.** Backing up your data folder. The App does not back up your data.
-- **Third-party software.** Any tools you install to use with the App (for
-  example Ollama or model files), under their own licenses and terms.
+- **Backups.** Backing up your data folder. The App does not back up your data
+  automatically. Settings › Backups › Back Up Now saves an encrypted copy of the
+  database (not recordings or other files) to a folder you choose, so keep your
+  own backups of the whole data folder too. Settings › Backups ›
+  Export All Records can export every record to a folder you choose; that export is not
+  encrypted by the App, so protecting and eventually deleting it is also your
+  responsibility.
+- **Third-party software.** Any model files you download to use with the App,
+  under their own licenses and terms.
 
 ## 5. Acceptable use
 
@@ -98,7 +104,9 @@ patients, or your violation of these Terms or applicable law.
 ## 9. Third-party components
 
 The App may use open-source and third-party components, each under its own
-license. Those licenses govern those components; these Terms govern the App.
+license. Those licenses govern those components; these Terms govern the App. The
+notices are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and in the App
+under Settings › Licenses.
 
 ## 10. Termination
 
@@ -114,10 +122,13 @@ after an update requires accepting the updated Terms in the App.
 
 ## 12. Governing law
 
-These Terms are governed by the laws of the developer's jurisdiction, without
-regard to conflict-of-laws rules. _(Specify the governing jurisdiction with your
-counsel before distribution.)_
+These Terms are governed by the laws of the State of Wyoming, United States,
+without regard to conflict-of-laws rules.
 
 ## 13. Contact
 
-Questions about these Terms: open an issue on the project's repository.
+Questions about these Terms: email support@astrealabs.com.
+Never include patient information, recordings, transcripts, notes, or
+screenshots that show client details. Use the App's redacted Doctor report
+instead. If we receive patient information by mistake, we delete it as far as
+we are able.

@@ -17,13 +17,12 @@ final class SessionReminderBuilderTests: XCTestCase {
 
     func testDraftTitleAndNotes() {
         let draft = SessionReminderBuilder.draft(
-            patientName: "Jane Doe",
             sessionDate: calendar.date(from: DateComponents(year: 2026, month: 3, day: 5))!,
             leadTime: .tomorrow,
             now: now,
             calendar: calendar
         )
-        XCTAssertEqual(draft.title, "Follow up: Jane Doe")
+        XCTAssertEqual(draft.title, "Follow up (Aletheia)")
         XCTAssertTrue(draft.notes.contains("therapy session on"))
     }
 
@@ -39,7 +38,6 @@ final class SessionReminderBuilderTests: XCTestCase {
 
     func testDraftDueDateMatchesLeadTime() {
         let draft = SessionReminderBuilder.draft(
-            patientName: "Jane",
             sessionDate: now,
             leadTime: .nextWeek,
             now: now,

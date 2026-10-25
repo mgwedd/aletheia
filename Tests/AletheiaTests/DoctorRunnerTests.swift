@@ -23,7 +23,7 @@ final class DoctorRunnerTests: XCTestCase {
         var timeMachineExcluded: Bool? = false
         var sandboxed: Bool = true
         var appLockState: (enabled: Bool, canAuthenticate: Bool) = (true, true)
-        var auditLogWritable: Bool = true
+        var ledger: AuditLedgerProbe = .checked(.verified(count: 3), writable: true)
 
         func environment() -> DoctorEnvironment { env }
         func now() -> Date { date }
@@ -38,7 +38,7 @@ final class DoctorRunnerTests: XCTestCase {
         func timeMachineExclusion() -> Bool? { timeMachineExcluded }
         func isSandboxed() -> Bool { sandboxed }
         func appLock() -> (enabled: Bool, canAuthenticate: Bool) { appLockState }
-        func isAuditLogWritable() -> Bool { auditLogWritable }
+        func auditLedger() -> AuditLedgerProbe { ledger }
     }
 
     private func run(_ probes: StubProbes) async -> DoctorReport {
@@ -170,6 +170,15 @@ final class DoctorRunnerTests: XCTestCase {
 
     // MARK: Snapshots
 
+    /// The next step names the switch and the pane as Settings shows them.
+    func testTimeMachineStepNamesTheBackupsPaneAndSwitch() throws {
+        let step = try XCTUnwrap(DoctorRunner.timeMachineChecks(true).first?.nextStep)
+        XCTAssertTrue(step.contains("Settings > Backups."))
+        XCTAssertTrue(step.contains("“Keep my data out of Time Machine & iCloud backups”"))
+        XCTAssertFalse(step.contains("Snapshots"))
+        XCTAssertEqual(SettingsPane.backups.title, "Backups")
+    }
+
     func testSnapshotAgeIsDescribed() async {
         var probes = StubProbes()
         let threeDaysAgo = probes.date.addingTimeInterval(-3 * 86_400 - 60)
@@ -284,18 +293,15 @@ final class DoctorRunnerTests: XCTestCase {
 
     func testAuditLogChecks() async {
         var probes = StubProbes()
-        probes.auditLogWritable = true
         var report = await run(probes)
-        let writable = check("records.auditLog", in: report)
-        XCTAssertEqual(writable?.status, .ok)
-        XCTAssertNil(writable?.action)
+        XCTAssertEqual(check("records.auditLog", in: report)?.status, .ok)
+        XCTAssertNil(check("records.auditLog", in: report)?.action)
 
-        probes.auditLogWritable = false
+        probes.ledger = .checked(.verified(count: 3), writable: false)
         report = await run(probes)
-        let unwritable = check("records.auditLog", in: report)
-        XCTAssertEqual(unwritable?.status, .failed)
-        XCTAssertEqual(unwritable?.action, .openSettings)
-        XCTAssertNotNil(unwritable?.nextStep)
+        XCTAssertEqual(check("records.auditLog", in: report)?.status, .failed)
+        XCTAssertEqual(check("records.auditLog", in: report)?.action, .openSettings)
+        XCTAssertNotNil(check("records.auditLog", in: report)?.nextStep)
     }
 
     // MARK: App Lock

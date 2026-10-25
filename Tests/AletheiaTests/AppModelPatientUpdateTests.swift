@@ -36,6 +36,7 @@ final class AppModelPatientUpdateTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        SessionSearch.index = SearchIndex()   // AppModel pointed it at this test's folder
         appModel = nil
         AppSettings.shared.dataRootURL = originalDataRoot
         try? FileManager.default.removeItem(at: tempRoot)
@@ -44,6 +45,19 @@ final class AppModelPatientUpdateTests: XCTestCase {
     private func storedPatient(_ id: UUID) throws -> Patient {
         let store = try XCTUnwrap(appModel.store)
         return try XCTUnwrap(try store.listPatients().first { $0.id == id })
+    }
+
+    func testBlankPatientNamesAreRefusedAndCreateNothing() throws {
+        XCTAssertNil(appModel.addPatient(name: ""))
+        XCTAssertNil(appModel.addPatient(name: "   \n\t"))
+        XCTAssertNil(appModel.fileVaultNotice)
+        let store = try XCTUnwrap(appModel.store)
+        XCTAssertTrue(try store.listPatients().isEmpty)
+        XCTAssertThrowsError(try store.createPatient(name: "  ")) {
+            guard case StoreError.blankPatientName = $0 else { return XCTFail("wrong error \($0)") }
+        }
+        XCTAssertTrue(try store.listPatients().isEmpty)
+        XCTAssertNotNil(appModel.addPatient(name: "Jane Doe"))
     }
 
     func testUnencryptedDiskBlocksNewPatientsAndSessionsButKeepsExistingOnes() throws {
@@ -144,5 +158,23 @@ final class AppModelPatientUpdateTests: XCTestCase {
         XCTAssertNotNil(deleteEvent)
         XCTAssertEqual(deleteEvent?.subjectID, created.id.uuidString)
         XCTAssertEqual(deleteEvent?.detail, "patient")
+    }
+}
+
+final class BlankPatientNameTests: XCTestCase {
+    func testSheetSubmitIgnoresBlankNames() {
+        for blank in ["", "   ", "\n\t "] {
+            var called = false
+            AddPatientSheet.submit(name: blank) { called = true }
+            XCTAssertFalse(called, "blank name \(blank.debugDescription) must not submit")
+            XCTAssertFalse(AddPatientSheet.canSubmit(blank))
+        }
+    }
+
+    func testSheetSubmitRunsForRealName() {
+        var called = false
+        AddPatientSheet.submit(name: "  Jane Doe ") { called = true }
+        XCTAssertTrue(called)
+        XCTAssertTrue(AddPatientSheet.canSubmit("Jane Doe"))
     }
 }

@@ -197,7 +197,67 @@ struct Keystore: Codable, Equatable {
         return copy
     }
 
+    /// Returns a copy where every passphrase slot that opens with `current` is
+    /// replaced by one wrapping the same DEK under `new` (other passphrase
+    /// slots and the recovery key slot are untouched), plus that DEK. No PHI
+    /// file is re-encrypted: the DEK does not change.
+    func replacingPassphrase(
+        current: String,
+        new: String,
+        iterations: Int = PassphraseKDF.defaultIterations,
+        now: Date = Date()
+    ) throws -> (keystore: Keystore, dek: SymmetricKey) {
+        let dek = try unlock(passphrase: current)
+        var copy = self
+        var label = "Recovery passphrase"
+        var replacedAny = false
+        copy.wrappings.removeAll { slot in
+            guard slot.kind == .passphrase,
+                  let params = try? Self.parameters(of: slot),
+                  Self.openPassphraseWrapping(params, passphrase: current) != nil else { return false }
+            if !replacedAny, let existing = slot.label { label = existing }
+            replacedAny = true
+            return true
+        }
+        copy.wrappings.append(
+            try Self.makeWrapping(dek: dek, secret: new, kind: .passphrase, label: label, iterations: iterations, now: now)
+        )
+        return (copy, dek)
+    }
+
     // MARK: - Disk
+
+    static let stagingFileName = ".aletheia-keystore.json.new"
+
+    /// Replaces the keystore on disk without ever leaving it unusable: the new
+    /// keystore is written to a staging file, read back and checked (it must
+    /// decode to the same value and open to `dek` with `passphrase`), and only
+    /// then swapped in. Any failure, or a crash before the swap, leaves the old
+    /// keystore in place; the staging file is removed on failure.
+    func replaceOnDisk(
+        at root: URL,
+        verifyingPassphrase passphrase: String,
+        expectedDEK dek: SymmetricKey,
+        beforeSwap: (() throws -> Void)? = nil
+    ) throws {
+        let fm = FileManager.default
+        let destination = root.appendingPathComponent(Self.fileName)
+        let staging = root.appendingPathComponent(Self.stagingFileName)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        do {
+            try SecureFS.write(try encoder.encode(self), to: staging)
+            let reread = try JSONDecoder().decode(Keystore.self, from: Data(contentsOf: staging))
+            guard reread == self,
+                  let opened = try? reread.unlock(passphrase: passphrase),
+                  opened == dek else { throw KeystoreError.malformed }
+            try beforeSwap?()
+            _ = try fm.replaceItemAt(destination, withItemAt: staging)
+        } catch {
+            try? fm.removeItem(at: staging)
+            throw error
+        }
+    }
 
     static func exists(at root: URL) -> Bool {
         FileManager.default.fileExists(atPath: root.appendingPathComponent(fileName).path)
@@ -213,8 +273,8 @@ struct Keystore: Codable, Equatable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(self)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try data.write(to: root.appendingPathComponent(Self.fileName), options: .atomic)
+        try SecureFS.createDirectory(at: root)
+        try SecureFS.write(data, to: root.appendingPathComponent(Self.fileName))
     }
 
     // MARK: - Internals

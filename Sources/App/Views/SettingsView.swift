@@ -35,19 +35,16 @@ struct SettingsView: View {
     @State private var exportResult: SaveOutcome?
     @State private var showEncryptionSetup = false
     @State private var showNewRecoveryKeySheet = false
+    @State private var showChangePassphraseSheet = false
+    @State private var gate = SensitiveActionGate()
     @State private var showConsentGuide = false
     @State private var confirmDisableEncryption = false
     @State private var isDisablingEncryption = false
     @State private var rememberOnDevice = false
-    /// Audit-log entries for the viewer, newest first. Loaded on appear and after
-    /// an export; a snapshot, not a live binding (the log is append-only on disk).
-    @State private var auditEntries: [AuditEvent] = []
-    @State private var auditVerificationMessage: String?
     /// A folder chosen for Export All Records that needs a warning before writing.
     @State private var riskyExportFolder: RiskyExportFolder?
     /// The pane last shown, so Settings reopens where it was left.
     @AppStorage("settings.selectedPane") private var selectedPaneRaw: String = SettingsPane.default.rawValue
-    private let auditPreviewLimit = 15
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
 
@@ -105,8 +102,19 @@ struct SettingsView: View {
             .environmentObject(integrations)
             .onDisappear { Task { await runHealthChecks() } }
         }
+        .dismissOnLock {
+            showSetup = false
+            showEncryptionSetup = false
+            showChangePassphraseSheet = false
+            showNewRecoveryKeySheet = false
+            showConsentGuide = false
+        }
         .sheet(isPresented: $showEncryptionSetup) {
             EncryptionSetupSheet()
+                .environmentObject(encryption)
+        }
+        .sheet(isPresented: $showChangePassphraseSheet) {
+            ChangePassphraseSheet()
                 .environmentObject(encryption)
         }
         .sheet(isPresented: $showNewRecoveryKeySheet) {
@@ -121,7 +129,7 @@ struct SettingsView: View {
             isPresented: $confirmDisableEncryption,
             titleVisibility: .visible
         ) {
-            Button("Turn Off and Decrypt", role: .destructive) { disableEncryption() }
+            Button("Turn Off and Decrypt", role: .destructive) { requireAuth(.disableEncryption) { disableEncryption() } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Your notes, transcripts, summaries, chat, records and recordings will be decrypted back to plain files on disk. FileVault, if on, still protects them.")
@@ -129,7 +137,6 @@ struct SettingsView: View {
         .liveStatusRefresh { authoritative in await runHealthChecks(authoritative: authoritative) }
         .onAppear {
             rememberOnDevice = encryption.isRememberedOnDevice
-            loadAuditEntries()
         }
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -208,7 +215,7 @@ struct SettingsView: View {
         if appModel.featureRegistry.contains(id: SpotlightFeatureModule.id) {
             SettingsSwitchRow(
                 title: "Find patients in Spotlight",
-                detail: "Lets you open a patient or session straight from macOS Spotlight. Only names and dates are indexed — never transcripts or summaries. Anyone using this Mac can see indexed names, so leave this off on a shared computer.",
+                detail: "Lets you open a patient or session straight from macOS Spotlight. Only initials and dates are indexed — never names, transcripts or summaries. Results are removed while Aletheia is locked.",
                 isOn: $settings.spotlightIndexingEnabled
             )
             .onChange(of: settings.spotlightIndexingEnabled) { _, _ in appModel.reindexSpotlight() }
@@ -232,7 +239,7 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
                     .themeField()
                     .accessibilityLabel("Data folder")
-                Button("Choose…", action: chooseFolder)
+                Button("Choose…") { requireAuth(.changeDataFolder) { chooseFolder() } }
                     .buttonStyle(.themed)
                 Button("Show in Finder") {
                     if let url = settings.dataRootURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
@@ -298,7 +305,7 @@ struct SettingsView: View {
                 .padding(.vertical, 12)
                 SettingsHairline()
                 HStack {
-                    Link("View Releases on GitHub", destination: URL(string: "https://github.com/mgwedd/aletheia/releases")!)
+                    Link("View Downloads", destination: ReleaseLink.downloadsPage)
                         .font(Theme.Typography.body)
                     Spacer()
                 }
@@ -809,6 +816,17 @@ struct SettingsView: View {
                 .padding(.vertical, 12)
                 SettingsHairline()
                 SettingsRow(
+                    title: "Passphrase",
+                    detail: "Change the passphrase that unlocks your data folder. Your files aren't re-encrypted, and your recovery key keeps working."
+                ) {
+                    Button("Change Passphrase…") {
+                        requireAuth(.changePassphrase) { showChangePassphraseSheet = true }
+                    }
+                    .buttonStyle(.themed)
+                }
+                .padding(.vertical, 12)
+                SettingsHairline()
+                SettingsRow(
                     title: "Emergency recovery key",
                     detail: "A 24-word key allows unlocking your data folder if you forget your passphrase. If you misplace your printed key, create a new one to invalidate the old one."
                 ) {
@@ -871,8 +889,8 @@ struct SettingsView: View {
         HStack(alignment: .center, spacing: 14) {
             Chip("Time Machine", tone: .info)
             Text(settings.keepDataOutOfSystemBackups
-                 ? "Your data folder is kept out of Time Machine and iCloud backups. Aletheia does not make its own backup copies yet, so keep a copy of your own."
-                 : "Aletheia does not make its own backup copies yet. Time Machine includes the data folder by default.")
+                 ? "Your data folder is kept out of Time Machine and iCloud backups. Use Back up now to save an encrypted copy to a folder on this Mac or an external disk."
+                 : "Time Machine includes the data folder by default. You can also use Back up now to save an encrypted copy to a folder of your choice.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.text.color)
                 .fixedSize(horizontal: false, vertical: true)
@@ -881,12 +899,13 @@ struct SettingsView: View {
         .themeBanner(.info)
         SettingsRowsCard {
             SettingsSwitchRow(
-                title: "Keep my data out of Time Machine & iCloud backups",
+                title: BackupExclusion.settingTitle,
                 detail: "Off by default, so Time Machine includes your data folder — without it you'd have only one copy. Your data folder can hold unencrypted patient data (and audio/transcript files), so keep your Time Machine backups on an encrypted disk. Turn this on only if you'd rather keep the folder out of macOS system backups and rely on your own copy instead.",
                 isOn: $settings.keepDataOutOfSystemBackups
             )
             .padding(.vertical, 12)
         }
+        BackupNowView()
         SettingsCaption("Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder.")
         Button("Show backups folder in Finder", action: showBackupsFolder)
             .buttonStyle(.themed)
@@ -900,7 +919,7 @@ struct SettingsView: View {
             Text("Export all records").eyebrowStyle()
             SettingsCaption("Copies every patient's notes, transcripts, comments and kept recordings into a folder of ordinary files that open without Aletheia. This never needs a license key. The copy isn't encrypted by Aletheia, so save it to this Mac with FileVault on or to an encrypted external drive.")
             HStack(spacing: 8) {
-                Button("Export All Records…", action: chooseExportAllFolder)
+                Button("Export All Records…") { requireAuth(.exportAllRecords) { chooseExportAllFolder() } }
                     .buttonStyle(.themed)
                     .disabled(appModel.store == nil || exports.isRunning)
                 if case let .running(_, label) = exports.state {
@@ -937,6 +956,8 @@ struct SettingsView: View {
                 .recordExported,
                 detail: "All records, folder of \(outcome.patientCount ?? 0) patients, \(outcome.sessionCount) sessions"
             )
+        }, onFailed: {
+            model.recordAudit(.exportFailed, detail: "All records, folder")
         }) { progress, isCancelled in
             progress(0, "Listing patients")
             let source = try StoreAllRecordsSource(store: store)
@@ -960,7 +981,7 @@ struct SettingsView: View {
         SettingsSwitchRow(
             title: "App lock",
             detail: "Require Touch ID or your Mac password to open. Aletheia locks after 15 minutes of inactivity by default, when the display sleeps, or when your Mac locks or switches user.",
-            isOn: $settings.appLockEnabled
+            isOn: appLockSelection
         )
         SettingsSwitchRow(
             title: "Lock when Aletheia is hidden",
@@ -992,8 +1013,8 @@ struct SettingsView: View {
             isOn: $settings.allowScreenSharingThisSession
         )
         SettingsSwitchRow(
-            title: "Show patient names in notifications",
-            detail: "Off by default. Notifications appear on the lock screen and stay in Notification Center, so they just say that a session is ready. Turn this on to include the patient's name and the session date.",
+            title: "Show patient names in notifications and the menu bar",
+            detail: "Off by default. Notifications appear on the lock screen and stay in Notification Center, so they show only the patient's initials, as does the menu bar. Turn this on to include the full name and the session date. Names stay hidden while Aletheia is locked.",
             isOn: $settings.notificationsShowPatientNames
         )
         SettingsRow(
@@ -1009,131 +1030,7 @@ struct SettingsView: View {
             SecurityPostureView()
         }
         NetworkAccessView()
-        auditLogSection
-    }
-
-    private var auditLogSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Security audit log").eyebrowStyle()
-            SettingsCaption("An on-device record of app unlocks (when app lock is on), encryption changes and exports. Deletions and backups are not recorded yet. It holds no names or clinical content and never leaves this Mac. It supports, but does not by itself satisfy, HIPAA's audit-control requirement (§164.312(b)).")
-            if auditEntries.isEmpty {
-                SettingsCard {
-                    SettingsCaption("No activity recorded yet. App unlocks are only logged when app lock is on.")
-                }
-            } else {
-                SettingsRowsCard {
-                    ForEach(Array(auditEntries.prefix(auditPreviewLimit).enumerated()), id: \.offset) { item in
-                        if item.offset > 0 { SettingsHairline() }
-                        HStack {
-                            Text(item.element.action.displayName)
-                                .foregroundStyle(Theme.text.color)
-                            Spacer()
-                            Text(auditTimestamp(item.element))
-                                .foregroundStyle(Theme.muted.color)
-                        }
-                        .font(Theme.Typography.caption)
-                        .padding(.vertical, 9)
-                    }
-                }
-                if auditEntries.count > auditPreviewLimit {
-                    SettingsCaption("Showing the \(auditPreviewLimit) most recent of \(auditEntries.count) entries.")
-                }
-            }
-            HStack(spacing: 8) {
-                Button("Verify integrity & export audit report", action: verifyIntegrityAndExportReport)
-                    .buttonStyle(.themed)
-                    .disabled(auditEntries.isEmpty)
-                Button("Refresh", action: loadAuditEntries)
-                    .buttonStyle(.themed)
-                Button("Export…", action: exportAuditLog)
-                    .buttonStyle(.themed)
-                    .disabled(auditEntries.isEmpty)
-                Spacer()
-            }
-            if let auditVerificationMessage {
-                SettingsCaption(auditVerificationMessage)
-            }
-        }
-    }
-
-    // MARK: - Audit log viewer
-
-    /// Load the log into the viewer, newest first. `entries()` reads file order
-    /// (oldest first), so reverse for a most-recent-at-top list.
-    private func loadAuditEntries() {
-        auditEntries = Array((appModel.audit?.entries() ?? []).reversed())
-    }
-
-    private func auditTimestamp(_ entry: AuditEvent) -> String {
-        guard let date = entry.date else { return entry.at }
-        return Self.auditDateFormatter.string(from: date)
-    }
-
-    /// Human-readable, oldest-first rendering for the exported file (a log reads
-    /// naturally top-to-bottom in time). Header states the PHI-free scope.
-    private func auditExportText() -> String {
-        let all = appModel.audit?.entries() ?? []
-        let header = """
-        Aletheia security audit log (HIPAA §164.312(b)) — an on-device record with no PHI.
-        Exported \(Self.auditDateFormatter.string(from: Date()))
-
-        """
-        let lines = all.map { entry -> String in
-            let ts = entry.date.map { Self.auditDateFormatter.string(from: $0) } ?? entry.at
-            var parts = ["\(ts)  \(entry.action.displayName)"]
-            if let subject = entry.subjectID { parts.append("record \(subject)") }
-            if let detail = entry.detail { parts.append(detail) }
-            return parts.joined(separator: "  ·  ")
-        }
-        return header + lines.joined(separator: "\n") + "\n"
-    }
-
-    private func verifyIntegrityAndExportReport() {
-        guard let audit = appModel.audit else { return }
-        let result = audit.verifyIntegrity()
-        let statusString: String
-        switch result {
-        case .verified(let count):
-            statusString = "Integrity verified: all \(count) entries intact."
-        case .broken(let seq, let reason):
-            statusString = "Integrity check failed at entry #\(seq): \(reason)"
-        case .unverifiable(let reason):
-            statusString = "Audit log unverifiable: \(reason)"
-        }
-        auditVerificationMessage = statusString
-
-        let name = FileSaver.fileName("Aletheia Audit Report", Self.auditFileStamp())
-        let report = audit.generateReport(status: statusString)
-        let outcome = FileSaver.saveText(report, suggestedName: "\(name).txt")
-        if case .saved = outcome {
-            appModel.recordAudit(.auditLogExported)
-            loadAuditEntries()
-        }
-        exportResult = outcome.shown
-    }
-
-    private func exportAuditLog() {
-        let name = FileSaver.fileName("Aletheia Audit Log", Self.auditFileStamp())
-        let outcome = FileSaver.saveText(auditExportText(), suggestedName: "\(name).txt")
-        if case .saved = outcome {
-            // The export itself is an ePHI-adjacent action worth recording.
-            appModel.recordAudit(.auditLogExported)
-            loadAuditEntries()
-        }
-        exportResult = outcome.shown
-    }
-
-    private static let auditDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        return f
-    }()
-
-    private static func auditFileStamp() -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
+        AuditLogSection(exportResult: $exportResult, requireAuth: requireAuth)
     }
 
     private func disableEncryption() {
@@ -1182,8 +1079,36 @@ struct SettingsView: View {
     private var idleAutoLockSelection: Binding<IdleAutoLockTimeout> {
         Binding(
             get: { IdleAutoLockTimeout(rawValue: settings.idleAutoLockMinutes) ?? .defaultTimeout },
-            set: { settings.idleAutoLockMinutes = $0.rawValue }
+            set: { newValue in
+                if IdleLockChange.weakens(from: IdleAutoLockTimeout(rawValue: settings.idleAutoLockMinutes) ?? .defaultTimeout, to: newValue) {
+                    requireAuth(.weakenIdleLock) { settings.idleAutoLockMinutes = newValue.rawValue }
+                } else {
+                    settings.idleAutoLockMinutes = newValue.rawValue
+                }
+            }
         )
+    }
+
+    /// Turning the app lock on is free; turning it off needs a fresh check.
+    private var appLockSelection: Binding<Bool> {
+        Binding(
+            get: { settings.appLockEnabled },
+            set: { on in
+                if on {
+                    settings.appLockEnabled = true
+                } else {
+                    requireAuth(.turnOffAppLock) { settings.appLockEnabled = false }
+                }
+            }
+        )
+    }
+
+    /// Runs `body` only after a fresh Touch ID / password check. On cancel or
+    /// failure nothing changes, and the control is redrawn from the stored value.
+    private func requireAuth(_ action: SensitiveAction, _ body: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            if !(await gate.perform(action, body)) { settings.objectWillChange.send() }
+        }
     }
 
     private func legalAcceptanceStamp(version: String, at date: Date) -> String {
