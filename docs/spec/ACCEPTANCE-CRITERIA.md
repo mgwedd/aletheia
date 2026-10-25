@@ -194,14 +194,14 @@ Before you start: a developer build, or a data folder that is already encrypted;
 
 ## 14. Backups, data folder and upgrades (BACKUP)
 Before you start: some patients and sessions in the data folder, and a copy of it to experiment on.
-- **BACKUP-01** Open **Settings** > **Backups** → a banner says Time Machine includes the data folder by default, and that **Back up now** saves an encrypted copy to a folder of your choice.
+- **BACKUP-01** Open **Settings** > **Backups** → a banner says Time Machine includes the data folder by default and **Back up now** saves an encrypted copy elsewhere.
 - **BACKUP-02** Turn on the option to keep your data out of backups → the banner confirms the folder is left out of Time Machine and iCloud backups.
 - **BACKUP-03** Click **Show backups folder in Finder** → the hidden backups folder opens.
 - **BACKUP-04** Delete a patient and open the backups folder → a database snapshot taken just before is there.
 - **BACKUP-05** Open a data folder written by an older version → it opens and upgrades in place with patients and sessions intact.
 - **BACKUP-06** Open a data folder written by a newer version → an "Update Aletheia" alert appears and the files are left untouched.
-- **BACKUP-07** Corrupt one patient.json in a copy of the data folder and open it → the sidebar says one record couldn't be read, everything else opens, and the damaged file is left exactly as it was.
-- **BACKUP-08** With encryption on, click **Back up now** and pick a folder outside the data folder → an archive is written there and none of the session text can be read in it.
+- **BACKUP-07** Corrupt one patient.json in a data folder copy and open it → the sidebar says one record couldn't be read, everything else opens and the damaged file is unchanged.
+- **BACKUP-08** With encryption on, click **Back up now** and pick another folder → an archive is written there and no session text is readable in it.
 
 ## 15. Settings (SETTINGS)
 Before you start: setup finished.
@@ -251,7 +251,7 @@ Before you start: allow Aletheia notifications in System Settings, and put Aleth
 - **NOTIFY-04** Finish generating a note → a "Summary ready" notification appears.
 - **NOTIFY-05** Finish an export → an "Export ready" notification appears that shows no patient name or initials.
 - **NOTIFY-06** Turn on "Show patient names in notifications" and transcribe → the notification names the patient in full.
-- **NOTIFY-07** Leave "Show patient names in notifications" off and let a transcript finish, a transcription need attention, a note finish and an export finish → none of the four notifications contains the patient's name or initials.
+- **NOTIFY-07** With "Show patient names in notifications" off, finish a transcript, a transcription problem, a note and an export → none of the four notifications shows a name or initials.
 - **NOTIFY-08** Turn on "Show patient names in notifications", lock the app and let a transcription finish → the notification shows no patient name or initials.
 
 ## 19. Menu bar item, menus and shortcuts (MENUBAR)

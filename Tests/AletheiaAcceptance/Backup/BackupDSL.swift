@@ -213,7 +213,7 @@ extension Then where Subject == BackupProtection {
         expect(!subject.settingIsOn, "expected the keep-out-of-backups option to be off by default")
     }
     func leavesFolderOutOfBackups() {
-        expect(subject.folderIsExcluded, "expected the data folder to be left out of Time Machine and iCloud backups")
+        expect(subject.folderIsExcluded, "expected the data folder to be left out of Time Machine and iCloud backups (option on: \(subject.settingIsOn))")
     }
 }
 

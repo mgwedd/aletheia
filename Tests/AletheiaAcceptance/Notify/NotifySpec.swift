@@ -35,6 +35,7 @@ final class NotifySpec: AcceptanceCase {
     }
 
     func test_NOTIFY_06() async throws {
+        given.appIsUnlocked()
         given.showPatientNamesInNotifications(true)
 
         let shown = when.transcriptionFinishes(for: "Jane Doe")

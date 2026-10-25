@@ -65,7 +65,7 @@ extension Then where Subject == ShownNotification {
     }
 
     func namesPatientInFull(_ name: String) {
-        expect(subject.content.body.contains(name), "expected \"\(name)\" in the body, it reads:\n\(subject.content.body)")
+        expect(subject.content.body.contains(name), "expected \"\(name)\" in the body, it reads:\n\(subject.content.body)\n(app locked: \(SystemSurfaceAccess.isLocked))")
     }
 }
 
