@@ -733,7 +733,7 @@ struct SessionDetailView: View {
     /// Saves the psychotherapy note on its own, after the authorization
     /// confirmation. Never part of a progress-note export.
     private func exportPsychotherapyNote(as format: ExportFormat) {
-        let detail = "Psychotherapy note, \(format.title), authorization confirmed"
+        let detail = AuditDetail.exportedPsychotherapyNote(format)
         guard let document = try? PsychotherapyExport.sessionDocument(
             patientName: patient.name, date: session.date, note: sessionNote, authorized: true) else { return }
         let outcome = ExportRenderer.save(

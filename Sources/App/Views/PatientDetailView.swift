@@ -408,7 +408,7 @@ struct PatientDetailView: View {
         let patient = patient
         let sessions = sessions
         let model = appModel
-        let detail = "Psychotherapy notes, zip, authorization confirmed"
+        let detail = AuditDetail.exportedPsychotherapyNotes
         exports.start(destination: destination, onFinished: { _ in
             model.recordAudit(.recordExported, subjectID: patient.id.uuidString, detail: detail)
         }, onFailed: {
