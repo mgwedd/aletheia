@@ -182,12 +182,14 @@ self_test() {
     printf '%s\n' '<dict>' '<key>CFBundleName</key><string>x</string>' '#ifdef ALETHEIA_DEV' \
         '<key>NSCalendarsFullAccessUsageDescription</key><string>x</string>' '#endif' '</dict>' > "$d/Info.plist"
     printf '%s\n' 'targets:' '  Aletheia:' '    settings:' '      configs:' '        Debug:' \
-        "          CODE_SIGN_ENTITLEMENTS: $d/dev.ent" '          INFOPLIST_PREPROCESSOR_DEFINITIONS: ALETHEIA_DEV=1' \
-        '        Release:' "          CODE_SIGN_ENTITLEMENTS: $d/prod.ent" \
-        '  AletheiaNetworkHelper:' '    settings:' "      CODE_SIGN_ENTITLEMENTS: $d/helper.ent" \
+        '          CODE_SIGN_ENTITLEMENTS: dev.ent' '          INFOPLIST_PREPROCESSOR_DEFINITIONS: ALETHEIA_DEV=1' \
+        '        Release:' '          CODE_SIGN_ENTITLEMENTS: prod.ent' \
+        '  AletheiaNetworkHelper:' '    settings:' '      CODE_SIGN_ENTITLEMENTS: helper.ent' \
         '"Resources/Aletheia.entitlements"' '"Resources/AletheiaDev.entitlements"' > "$d/project.yml"
-    run_static() { PROD="$d/prod.ent" DEV="$d/dev.ent" HELPER="$d/helper.ent" INFO="$d/Info.plist" PROJECT="$d/project.yml" "$script" >/dev/null 2>&1; }
-    run_static || { echo "check-entitlements: self-test: clean fixtures should pass" >&2; bad=1; }
+    # Paths relative to the fixture folder, so the wiring checks never see the
+    # temp folder's own path (it differs inside the app sandbox).
+    run_static() { CHECK_ENTITLEMENTS_ROOT="$d" PROD=prod.ent DEV=dev.ent HELPER=helper.ent INFO=Info.plist PROJECT=project.yml "$script" >"$d/static.log" 2>&1; }
+    run_static || { echo "check-entitlements: self-test: clean fixtures should pass:" >&2; cat "$d/static.log" >&2; bad=1; }
 
     # A Reminders string outside the dev block.
     cp "$d/Info.plist" "$d/Info.good"
