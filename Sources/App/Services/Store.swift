@@ -2,19 +2,6 @@ import Foundation
 
 /// The only notes the activity log gets for a change to a record: the kind of
 /// record, never a name or any text.
-enum PHIAuditDetail {
-    static let patient = "patient"
-    static let session = "session"
-    static let transcript = "transcript"
-    static let note = "note"
-    static let therapistNote = "therapist note"
-    static let comment = "comment"
-    static let audioRecording = "audio recording"
-    static let chatThread = "chat thread"
-
-    static let all: Set<String> = [patient, session, transcript, note, therapistNote, comment, audioRecording, chatThread]
-}
-
 enum StoreError: LocalizedError {
     case noDataRoot
     case patientNotFound
@@ -148,9 +135,9 @@ final class Store {
     let schemaCompatibility: SchemaCompatibility
 
     /// Receives an activity-log entry (action, record id, note) for each record
-    /// created, saved or deleted. The note is one of `PHIAuditDetail`; it never
+    /// created, saved or deleted. The note is one of `AuditDetail.recordKinds`; it never
     /// carries a name or text.
-    var onAudit: ((AuditAction, String?, String?) -> Void)?
+    var onAudit: ((AuditAction, String?, AuditDetail?) -> Void)?
 
     /// - Parameter openDatabaseIfMissing: when `commentStore` is nil, whether to
     ///   try opening the database here. `AppModel` passes `false` because it has
@@ -342,7 +329,7 @@ final class Store {
         let patient = Patient(id: id, name: name, slug: id.uuidString)
         try SecureFS.createDirectory(at: patientDir(for: patient))
         try save(patient)
-        onAudit?(.phiCreated, patient.id.uuidString, PHIAuditDetail.patient)
+        onAudit?(.phiCreated, patient.id.uuidString, AuditDetail.patient)
         return patient
     }
 
@@ -422,7 +409,7 @@ final class Store {
 
         // Remove unreadable records cache entries matching this patient or its folder
         recordUnreadable([], replacing: { $0.patientId == patient.id || $0.folder.path.hasPrefix(dir.path) })
-        onAudit?(.phiDeleted, patient.id.uuidString, PHIAuditDetail.patient)
+        onAudit?(.phiDeleted, patient.id.uuidString, AuditDetail.patient)
     }
 
     // MARK: - Sessions
@@ -574,7 +561,7 @@ final class Store {
             folderName = "\(dayString)_Session-\(suffix)"
             suffix += 1
         }
-        onAudit?(.phiCreated, meta.id.uuidString, PHIAuditDetail.session)
+        onAudit?(.phiCreated, meta.id.uuidString, AuditDetail.session)
         return SessionRecord(id: meta.id, patientId: patient.id, date: date, folderName: folderName)
     }
 
@@ -691,7 +678,7 @@ final class Store {
         if FileManager.default.fileExists(atPath: staging.path) {
             do { try FileManager.default.removeItem(at: staging); removed = true } catch { failed = true }
         }
-        if removed { onAudit?(.phiDeleted, session.id.uuidString, PHIAuditDetail.audioRecording) }
+        if removed { onAudit?(.phiDeleted, session.id.uuidString, AuditDetail.audioRecording) }
         if failed { throw StoreError.recordingNotDeleted }
     }
 
@@ -710,7 +697,7 @@ final class Store {
     func saveTranscript(_ text: String, for patient: Patient, session: SessionRecord) throws {
         let url = sessionDir(for: patient, session: session).appendingPathComponent("transcript.txt")
         try protector.write(text, to: url)
-        onAudit?(.phiAmended, session.id.uuidString, PHIAuditDetail.transcript)
+        onAudit?(.phiAmended, session.id.uuidString, AuditDetail.transcript)
         // Index in the background; the save itself never waits on it.
         if let index = searchIndex {
             let item = Store.indexItem(SessionSearch.Document(
@@ -1022,7 +1009,7 @@ final class Store {
             let record = try NoteFreshness.encode(fingerprint: NoteFreshness.fingerprint(of: transcript))
             try protector.write(record, to: dir.appendingPathComponent(Store.noteMetaFileName(for: format)))
         }
-        onAudit?(.phiAmended, session.id.uuidString, PHIAuditDetail.note)
+        onAudit?(.phiAmended, session.id.uuidString, AuditDetail.note)
     }
 
     // MARK: - Session digests

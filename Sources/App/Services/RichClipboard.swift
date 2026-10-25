@@ -22,11 +22,11 @@ enum RichClipboard {
 
     /// Replaces the pasteboard's contents with the payload: plain text always,
     /// rich text and HTML when they could be made.
-    static func write(_ payload: Payload, to pasteboard: NSPasteboard = PHIPasteboard.general) {
+    static func write(_ payload: Payload, kind: AuditDetail = .note, to pasteboard: NSPasteboard = PHIPasteboard.general) {
         let item = NSPasteboardItem()
         item.setString(payload.plain, forType: .string)
         if let rtf = payload.rtf { item.setData(rtf, forType: .rtf) }
         if let html = payload.html { item.setData(html, forType: .html) }
-        PHIPasteboard.write([item], to: pasteboard)
+        PHIPasteboard.write([item], kind: kind, to: pasteboard)
     }
 }

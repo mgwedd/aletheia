@@ -19,7 +19,7 @@ final class PHIAuditWiringTests: XCTestCase {
         store = Store(root: root, commentStore: comments)
         let key = SymmetricKey(size: .bits256)
         log = AuditLog(root: root, keyProvider: { key })
-        let sink: (AuditAction, String?, String?) -> Void = { [log] action, subject, detail in
+        let sink: (AuditAction, String?, AuditDetail?) -> Void = { [log] action, subject, detail in
             _ = try? log?.record(action, subjectID: subject, detail: detail)
         }
         store.onAudit = sink

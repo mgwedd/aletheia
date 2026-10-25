@@ -142,7 +142,7 @@ enum ThemeTextAreaMetrics {
 /// to `onSubmit`, and reports focus.
 final class ThemeTextAreaTextView: PatientTextView {
     override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
-        PHIPasteboard.writeSelection(to: pboard) { super.writeSelection(to: $0, types: types) }
+        PHIPasteboard.writeSelection(to: pboard, kind: .copiedPatientText) { super.writeSelection(to: $0, types: types) }
     }
 
     var placeholder = "" { didSet { if placeholder != oldValue { needsDisplay = true } } }

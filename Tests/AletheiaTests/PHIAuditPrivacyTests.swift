@@ -13,7 +13,7 @@ final class PHIAuditPrivacyTests: XCTestCase {
         let store = Store(root: root, commentStore: comments)
         let key = SymmetricKey(size: .bits256)
         let log = AuditLog(root: root, keyProvider: { key })
-        let sink: (AuditAction, String?, String?) -> Void = { action, subject, detail in
+        let sink: (AuditAction, String?, AuditDetail?) -> Void = { action, subject, detail in
             _ = try? log.record(action, subjectID: subject, detail: detail)
         }
         store.onAudit = sink
@@ -40,8 +40,8 @@ final class PHIAuditPrivacyTests: XCTestCase {
         let rows = log.entries()
         XCTAssertGreaterThanOrEqual(rows.count, 10)
         for row in rows {
-            let detail = try XCTUnwrap(row.detail, "\(row.action) has no detail")
-            XCTAssertTrue(PHIAuditDetail.all.contains(detail), "unexpected detail \(detail)")
+            let detail = try XCTUnwrap(row.detail, "\(row.actionLabel) has no detail")
+            XCTAssertTrue(AuditDetail.recordKinds.map(\.text).contains(detail), "unexpected detail \(detail)")
             XCTAssertNotNil(row.subjectID.flatMap(UUID.init(uuidString:)), "subject must be an opaque id")
             let whole = String(describing: row)
             for secret in [name, "Zebra", "Quokka", text, "panic"] {
