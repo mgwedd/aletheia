@@ -84,9 +84,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **REC-022** When the user presses Stop Recording, the recording ends, the audio is saved with the session, and the session screen leaves the recording pane.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:1540, Sources/App/Services/SessionRecorder.swift:413` · `qa: RECORD-09`
 - **REC-023** When the user stops a recording and "Transcribe automatically when a recording ends" is on (the default), transcription starts by itself.
-  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:129, Sources/App/Views/SettingsView.swift:196, Sources/App/Services/AppSettings.swift:504` · `qa: RECORD-09`
+  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:131, Sources/App/Views/SettingsView.swift:196, Sources/App/Services/AppSettings.swift:504` · `qa: RECORD-09`
 - **REC-024** When the user stops a recording and "Transcribe automatically when a recording ends" is off, the session waits for the user to press Transcribe.
-  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:129` · `qa: RECORD-09`
+  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:131` · `qa: RECORD-09`
 - **REC-025** When Aletheia is quit during a recording and the recording can be finalized within the quit's short wait, the audio is saved to the session.
   `surface: background` · `evidence: Sources/App/Services/Shutdown/AppLifecycle.swift:62, Sources/App/Services/SessionRecorder.swift:406, Sources/App/Services/Shutdown/ShutdownCoordinator.swift:95` · `qa: RECORD-10`
 - **REC-026** When Aletheia is quit during a recording, transcription is not started at that moment.
@@ -289,19 +289,19 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-011** When several sessions are queued, they run one at a time in the order they were queued.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift` · `qa: TRANSCRIBE-03`
 - **TRN-012** When the user cancels a transcription while it is preparing or transcribing, no new transcript is written.
-  `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:210-225, Sources/App/Views/SessionDetailView.swift:1588` · `qa: TRANSCRIBE-05`
+  `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:212-227, Sources/App/Views/SessionDetailView.swift:1588` · `qa: TRANSCRIBE-05`
 - **TRN-013** When a transcription is running, the Mac is kept from going to idle sleep until it finishes.
-  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:198` · `qa: TRANSCRIBE-04`
+  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:200` · `qa: TRANSCRIBE-04`
 - **TRN-014** When the user leaves the session screen during a transcription, it keeps running and the menu bar panel shows "Transcribing…" with a percentage.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift, Sources/App/Views/RecordingMenuBar.swift:85` · `qa: TRANSCRIBE-04`
 - **TRN-015** When the app is locked during a transcription, the transcription keeps running.
   `surface: background` · `evidence: Sources/App/Services/AppLock.swift:156,282, Sources/App/Views/HoverTip.swift:43` · `qa: TRANSCRIBE-04`
 - **TRN-016** When Aletheia is quit while a transcription is running or waiting, that session is recorded as interrupted in a hidden file in the data folder and is transcribed again at the next launch once the sessions can be read.
-  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:244, Sources/App/Services/Shutdown/ShutdownCoordinator.swift:20-70` · `qa: TRANSCRIBE-06`
+  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:246, Sources/App/Services/Shutdown/ShutdownCoordinator.swift:20-70` · `qa: TRANSCRIBE-06`
 - **TRN-017** When a transcription finishes, a notification says it is ready, naming the patient only if notification names are enabled.
   `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift, Sources/App/Services/Notifications/SessionNotifications.swift:19` · `qa: NOTIFY-02`
 - **TRN-018** When a transcription fails, an alert titled "Something went wrong" shows the reason on the session screen and a "Transcription needs attention" notification tells the user.
-  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:1588, Sources/App/Services/TranscriptionCoordinator.swift:90-104` · `qa: TRANSCRIBE-13`
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:1588, Sources/App/Services/TranscriptionCoordinator.swift:92-106` · `qa: TRANSCRIBE-13`
 - **TRN-019** When a transcription finishes successfully, the transcript is saved only if it is complete, never as a partial file.
   `surface: invariant` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift` · `qa: TRANSCRIBE-08`
 - **TRN-020** When a transcription finishes with speech detected, the recording is deleted by default and only the transcript is kept.
@@ -311,9 +311,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-022** When encryption is off, the Keep raw audio setting is disabled so it cannot be turned on.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift:187-194, Sources/App/Views/Settings/SettingsComponents.swift:75` · `qa: TRANSCRIBE-12` · ⚠ TODO: the row is hidden altogether when the encryption feature is not part of the build; whether any shipped build lacks it is not decidable from the repo
 - **TRN-023** When a recording cannot be deleted after a successful transcription, the transcript is kept, the Transcript tab shows "The transcript is saved, but the recording couldn't be deleted and is still in your data folder. Delete it from the session folder to remove it." and a "Recording still on disk" notification is posted.
-  `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:248-258, Sources/App/Services/Notifications/SessionNotifications.swift:51` · `qa: TRANSCRIBE-09`
+  `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:250-260, Sources/App/Services/Notifications/SessionNotifications.swift:51` · `qa: TRANSCRIBE-09`
 - **TRN-024** When a transcription produces no speech or only whitespace, the recording is kept regardless of the retention setting.
-  `surface: invariant` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:58, Sources/App/Services/TranscriptionCoordinator.swift:236` · `qa: TRANSCRIBE-09`
+  `surface: invariant` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:58, Sources/App/Services/TranscriptionCoordinator.swift:238` · `qa: TRANSCRIBE-09`
 - **TRN-025** When a transcription produces no speech, the Transcript tab shows a dismissible notice: "No speech was detected, so the recording was kept. Tap Transcribe to try again, or delete the recording files (mic.caf / call.caf in this session's folder) if you don't need them.", followed by " At-rest encryption is off, so the kept recording is not encrypted." when encryption is off.
   `surface: ui` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:68-75, Sources/App/Views/SessionDetailView.swift:712-726` · `qa: TRANSCRIBE-09`
 - **TRN-026** When a no-speech recording is kept while encryption is off, the notice also says "At-rest encryption is off, so the kept recording is not encrypted."
@@ -391,13 +391,13 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-062** When a downloaded speech model's checksum does not match its pinned value, the download is discarded, any model already installed is left as it was, and the user is told "The downloaded model failed its integrity check and was discarded. Please try downloading it again."
   `surface: ui` · `evidence: Sources/App/Services/NetworkHelper/ModelFileInstaller.swift:10-16, Sources/App/Services/WhisperModelDownloader.swift:12-14` · `qa: SETTINGS-05`
 - **TRN-063** When the user cancels a transcription, the recording files are kept.
-  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:210-225, Sources/App/Views/TranscriptionProgressView.swift:100` · `qa: TRANSCRIBE-05`
+  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:212-227, Sources/App/Views/TranscriptionProgressView.swift:100` · `qa: TRANSCRIBE-05`
 - **TRN-064** When a transcription is cancelled or fails, the temporary decrypted copies of the recordings are removed.
-  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:205-215` · `qa: TRANSCRIBE-05`
+  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:207-217` · `qa: TRANSCRIBE-05`
 - **TRN-065** When encryption is off and Keep raw audio was left on from earlier, a successful transcription with speech still deletes the recording.
-  `surface: background` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:44-60, Sources/App/Services/TranscriptionCoordinator.swift:223-242` · `qa: TRANSCRIBE-08`
+  `surface: background` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:44-60, Sources/App/Services/TranscriptionCoordinator.swift:225-244` · `qa: TRANSCRIBE-16`
 - **TRN-066** When a transcription produces no speech, an existing saved transcript for the session is not overwritten.
-  `surface: invariant` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:230-241` · `qa: TRANSCRIBE-09`
+  `surface: invariant` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:232-243` · `qa: TRANSCRIBE-17`
 - **TRN-067** When transcript text is exported for a session or a patient's records, or shown in a search snippet, the speaker is named by the patient's first name and no overlap marks are included.
   `surface: ui` · `evidence: Sources/App/Services/MarkdownExporter.swift:22, Sources/App/Services/PatientArchive.swift:66, Sources/App/Services/Search/GlobalSearchEngine.swift:238` · `qa: TRANSCRIBE-07`
 - **TRN-068** When the transcript is shown on screen, the "(overlapping)" mark is hidden.
@@ -415,11 +415,11 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-074** When the user cancels a running transcription, the band reads "Cancelling… finishing the current step" and the Cancel button is unavailable once the Saving stage has begun.
   `surface: ui` · `evidence: Sources/App/Views/TranscriptionProgressView.swift:58-60,100, Sources/App/Services/TranscriptionProgress.swift:186-196` · `qa: TRANSCRIBE-05`
 - **TRN-075** When the user cancels a session that is waiting in the queue, it leaves the queue, the running transcription is not affected and the recordings are kept.
-  `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:144, Sources/App/Views/TranscriptionProgressView.swift:3-31` · `qa: TRANSCRIBE-05`
+  `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:146, Sources/App/Views/TranscriptionProgressView.swift:3-31` · `qa: TRANSCRIBE-05`
 - **TRN-076** When the auto-transcribe setting is on (the default) and a recording is saved successfully, ending it starts transcription of that session, or queues it behind one already running.
-  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:129-135, Sources/App/Views/SettingsView.swift:195` · `qa: RECORD-09`
+  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:131-137, Sources/App/Views/SettingsView.swift:195` · `qa: RECORD-09`
 - **TRN-077** When the finished transcript cannot be saved, the transcription is reported as failed and the recordings are not deleted.
-  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:243-247` · `qa: TRANSCRIBE-08`
+  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:245-249` · `qa: TRANSCRIBE-14`
 - **TRN-078** When the app is locked during a transcription, the folder key is dropped once that transcription finishes.
   `surface: background` · `evidence: Sources/App/Services/AppLock.swift:156,282-300` · `qa: TRANSCRIBE-04`
 - **TRN-079** When a transcription interrupted by a quit is picked up at the next launch, it runs only if the session's recording still exists and is dropped if the patient or session is gone.
@@ -431,19 +431,21 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-082** When a no-speech or recording-kept notice is showing on the Transcript tab, it has a Dismiss button and is cleared when Transcribe is pressed again.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:477-480,707-722` · `qa: TRANSCRIBE-09`
 - **TRN-083** When a transcription finds no speech, a "Transcription needs attention" notification tells the user.
-  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:90-100, Sources/App/Services/Notifications/SessionNotifications.swift:41` · `qa: NOTIFY-03`
+  `surface: background` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:92-102, Sources/App/Services/Notifications/SessionNotifications.swift:41` · `qa: NOTIFY-03`
 - **TRN-084** When only one of the two recording files exists, only that track is transcribed and the percentage still runs from 0 to 100.
   `surface: background` · `evidence: Sources/App/Services/WhisperTranscriber.swift:57-76, Sources/App/Services/TranscriptionProgress.swift:46-52` · `qa: TRANSCRIBE-02`
 - **TRN-085** When a transcription is running, the background search-index sweep waits.
   `surface: background` · `evidence: Sources/App/Views/RootView.swift:278-296` · `qa: TRANSCRIBE-04`
 - **TRN-086** When a transcription is running, the progress band's title reads "Transcribing <session date and time> · Whisper <model name>" such as "Whisper base.en".
-  `surface: ui` · `evidence: Sources/App/Views/TranscriptionProgressView.swift:48-55, Sources/App/Services/TranscriptionCoordinator.swift:84` · `qa: TRANSCRIBE-02`
+  `surface: ui` · `evidence: Sources/App/Views/TranscriptionProgressView.swift:48-55, Sources/App/Services/TranscriptionCoordinator.swift:86` · `qa: TRANSCRIBE-02`
 - **TRN-087** When a session has no recording file and is not being transcribed, no Transcribe button is shown.
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionProgress.swift:134-136, Sources/App/Views/SessionDetailView.swift:476` · `qa: TRANSCRIBE-01`
 - **TRN-088** When another session is recording, the Transcribe button is disabled with the tooltip "Another session is recording. Stop it first".
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionProgress.swift:150-166, Sources/App/Views/SessionDetailView.swift:1575-1582` · `qa: TRANSCRIBE-03`
 - **TRN-089** When this session is being transcribed or is waiting in the queue, its Transcribe button is disabled with the tooltip "This session is being transcribed" or "Waiting for another transcription to finish".
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionProgress.swift:150-166` · `qa: TRANSCRIBE-03`
+- **TRN-090** When encryption is on and a transcription finishes, the saved transcript is stored sealed, so its text cannot be read from the data folder without the passphrase.
+  `surface: invariant` · `evidence: Sources/App/Services/Crypto/EncryptionManager.swift, docs/ENCRYPTION.md` · `qa: TRANSCRIBE-15`
 
 ## Encryption at rest (ENC)
 
