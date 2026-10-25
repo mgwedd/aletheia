@@ -138,7 +138,7 @@ final class SignedNoteTests: XCTestCase {
         XCTAssertEqual(try status(), .draft)
         XCTAssertFalse(FileManager.default.fileExists(atPath: signatureURL().path))
         XCTAssertEqual(store.previousNote(for: patient, session: session, format: .soap), "S: calm")
-        XCTAssertEqual(audits.filter { $0.0 == .phiAmended }.count, 1)
+        XCTAssertEqual(audits.filter { $0.0 == .phiAmended && ($0.2 ?? "").contains("reopened") }.count, 1)
         try store.saveEditedNote("S: calmer", for: patient, session: session, format: .soap)
         XCTAssertEqual(store.note(for: patient, session: session, format: .soap), "S: calmer")
         let second = try store.signNote(for: patient, session: session, format: .soap, signer: "mw:501")
@@ -147,8 +147,9 @@ final class SignedNoteTests: XCTestCase {
 
     func testReopeningAnUnsignedNoteDoesNothing() throws {
         try store.saveGeneratedNote("S: calm", for: patient, session: session, format: .soap)
+        let before = audits.count
         try store.reopenSignedNote(for: patient, session: session, format: .soap)
-        XCTAssertTrue(audits.isEmpty)
+        XCTAssertEqual(audits.count, before, "reopening an unsigned note logs nothing")
         XCTAssertNil(store.previousNote(for: patient, session: session, format: .soap))
     }
 

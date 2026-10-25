@@ -90,7 +90,7 @@ final class DraftReviewTests: XCTestCase {
         _ = try store.signNote(for: patient, session: session, format: .soap, signer: "mw:501")
         XCTAssertThrowsError(try store.saveEditedNote("S: edited", for: patient, session: session, format: .soap))
         try store.reopenSignedNote(for: patient, session: session, format: .soap)
-        XCTAssertEqual(audits.filter { $0.0 == .phiAmended }.count, 1)
+        XCTAssertEqual(audits.filter { $0.0 == .phiAmended && ($0.2 ?? "").contains("reopened") }.count, 1)
         XCTAssertNoThrow(try store.saveEditedNote("S: edited", for: patient, session: session, format: .soap))
         XCTAssertEqual(try store.noteLifecycle(for: patient, session: session, format: .soap), .draft)
         XCTAssertEqual(store.previousNote(for: patient, session: session, format: .soap), "S: calm")
