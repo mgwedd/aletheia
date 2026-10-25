@@ -399,7 +399,7 @@ jobs:
 
       - name: Generate audio fixtures
         if: env.RUN_BUILD == 'true'
-        run: ./scripts/make-audio-fixtures.sh
+        run: ./scripts/make-audio-fixtures.sh build/AudioFixtures
 
       - name: Run UI tests (dev tier)
         if: env.RUN_BUILD == 'true'
