@@ -300,7 +300,7 @@ struct DoctorRunner {
                 id: "backups.timeMachine", category: .backups, title: "Time Machine backup",
                 status: .warning,
                 detail: "The data folder is excluded from Time Machine backups.",
-                nextStep: "If you want Time Machine to back up your data folder, turn off “Keep data out of Time Machine” in Settings > Snapshots & Backups.",
+                nextStep: "If you want Time Machine to back up your data folder, turn off “\(BackupExclusion.settingTitle)” in Settings > \(SettingsPane.backups.title).",
                 action: .openSettings
             )]
         } else {

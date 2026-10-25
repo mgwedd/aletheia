@@ -68,6 +68,10 @@ struct PatientsListView: View {
         // alone gets swept into the window's ">>" overflow when the pane is
         // narrow, so adding a patient looked impossible — this never hides.
         .safeAreaInset(edge: .bottom, spacing: 0) { footer }
+        .dismissOnLock {
+            showAddPatient = false
+            newPatientName = ""   // a typed name is patient data; it does not wait behind the lock
+        }
         .sheet(isPresented: $showAddPatient) {
             AddPatientSheet(name: $newPatientName) {
                 if let created = appModel.addPatient(name: newPatientName) {
