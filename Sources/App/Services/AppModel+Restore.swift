@@ -27,7 +27,9 @@ extension AppModel {
             return .failed("The backup was restored to \(folder.lastPathComponent), but it couldn't be opened: \(error.localizedDescription)")
         }
         rebuildStore()
-        try? encryption.unlock(passphrase: passphrase)
+        if (try? encryption.unlock(passphrase: passphrase)) == nil {
+            try? encryption.unlock(recoveryKey: passphrase)
+        }
         rebuildStore()
         recordAudit(.backupRestored, detail: archive.lastPathComponent)
         return .success(folder)

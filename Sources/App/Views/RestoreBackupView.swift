@@ -13,7 +13,7 @@ struct RestoreBackupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Restore from backup").eyebrowStyle()
-            SettingsCaption("Restores a backup made with Back Up Now into a new, empty folder, then opens it. Your current data folder isn't changed or overwritten. You need the passphrase you used when you turned on encryption, and the key file kept beside the backup.")
+            SettingsCaption("Restores a backup made with Back Up Now into a new, empty folder, then opens it. Your current data folder isn't changed or overwritten. You need the passphrase you used when you turned on encryption (or, on a new Mac, your emergency recovery key), and the key file kept beside the backup.")
             HStack(spacing: 8) {
                 Button("Choose Backup…", action: chooseArchive)
                     .buttonStyle(.themed)
@@ -22,7 +22,7 @@ struct RestoreBackupView: View {
                 Spacer()
             }
             if archive != nil {
-                ThemeSecureField(label: "Passphrase", text: $passphrase)
+                ThemeSecureField(label: "Passphrase or recovery key", text: $passphrase)
                 HStack(spacing: 8) {
                     Button("Restore Into Empty Folder…", action: restore)
                         .buttonStyle(.themed)

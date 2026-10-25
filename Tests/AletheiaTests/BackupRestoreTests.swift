@@ -193,6 +193,20 @@ final class BackupRestoreTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: target.appendingPathComponent("Aletheia.sqlite")), Data("db snapshot".utf8))
     }
 
+    func testRecoveryKeyOpensTheBackupOnANewMac() throws {
+        let root = try sampleFolder()
+        let recovery = RecoveryKey.generate()
+        let (keystore, dek) = try Keystore.create(passphrase: passphrase, recoveryKey: recovery, iterations: 100_000)
+        let out = try dir("out")
+        try keystore.write(to: out)
+        let archive = out.appendingPathComponent("a.aletheiabackup")
+        try FolderBackupArchive.create(folder: root, databaseSnapshot: try snapshot(), to: archive, using: dek)
+
+        let target = base.appendingPathComponent("restored")
+        try BackupRestore.restore(archive: archive, passphrase: recovery, into: target, fallbackKeystoreRoot: nil)
+        XCTAssertEqual(try Data(contentsOf: target.appendingPathComponent("Aletheia.sqlite")), Data("db snapshot".utf8))
+    }
+
     func testMissingKeyFileAndRefusedFolder() throws {
         let root = try sampleFolder()
         let archive = try makeArchive(root: root, key: SymmetricKey(size: .bits256))

@@ -27,6 +27,7 @@ final class SecureFSSourceScanTests: XCTestCase {
         "Sources/App/Services/PatientArchive.swift": "export to a location the user picks; keeps normal modes",
         "Sources/App/Services/AllRecordsExport.swift": "export to a location the user picks; keeps normal modes",
         "Sources/App/Services/Crypto/EncryptedBackupArchive.swift": "writes the backup archive to the backup destination, which may be a user-chosen drive",
+        "Sources/App/Services/Crypto/FolderBackupArchive.swift": "writes the archive to the backup destination and the restored files to a folder the user picked, which may be a user-chosen drive; staging is already private",
         "Sources/App/Services/DataFolderMove.swift": "creates the parent of a data folder the user picked, which is not ours to restrict",
         "Sources/App/Services/OrphanAudioSweep.swift": "already creates its quarantine folder 0700",
         "Sources/App/Services/Llama/LlamaModelDownloader.swift": "model files hold no patient data",

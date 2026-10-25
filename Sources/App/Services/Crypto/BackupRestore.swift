@@ -3,7 +3,7 @@ import Foundation
 
 /// Restores an encrypted folder backup into a fresh or empty folder.
 ///
-/// The key comes from the user's passphrase: it opens the key wrapper kept
+/// The key comes from the user's passphrase (or emergency recovery key): it opens the key wrapper kept
 /// beside the archive (or, failing that, the one in the current data folder),
 /// and that key opens the archive. A wrong passphrase, a wrong key wrapper, a
 /// damaged or altered archive, or a folder that already holds files all end in
@@ -19,7 +19,7 @@ enum BackupRestore {
             case .keyFileMissing:
                 return "The key file for this backup wasn't found beside it. Keep the .aletheia-keystore.json file next to the backup."
             case .wrongPassphrase:
-                return "That passphrase doesn't open this backup."
+                return "That passphrase or recovery key doesn't open this backup."
             case .folderNotAllowed(let reason):
                 return reason
             }
@@ -35,6 +35,8 @@ enum BackupRestore {
         do {
             return try keystore.unlock(passphrase: passphrase)
         } catch Keystore.KeystoreError.wrongPassphrase {
+            // On a new Mac the emergency recovery key stands in for the passphrase.
+            if keystore.hasRecoveryKey, let dek = try? keystore.unlock(recoveryKey: passphrase) { return dek }
             throw Failure.wrongPassphrase
         }
     }
