@@ -114,7 +114,7 @@ final class InterruptedWorkLauncherTests: XCTestCase {
         ])
 
         start()
-        await settle { !FileManager.default.fileExists(atPath: ledger.url.path) }
+        await settle { !FileManager.default.fileExists(atPath: self.ledger.url.path) }
 
         XCTAssertEqual(transcribed, [recorded.folderName])
         XCTAssertEqual(summarized, [other.folderName])
@@ -192,10 +192,26 @@ final class InterruptedWorkLauncherTests: XCTestCase {
         ledger.record([InterruptedWork(kind: .transcription, patientID: UUID(), sessionFolder: "gone")])
 
         start()
-        await settle { !FileManager.default.fileExists(atPath: ledger.url.path) }
+        await settle { !FileManager.default.fileExists(atPath: self.ledger.url.path) }
 
         XCTAssertEqual(transcribed, [])
         XCTAssertFalse(FileManager.default.fileExists(atPath: ledger.url.path))
+    }
+
+    func testADamagedListDoesNotStopTheLaunchOrLoseAudioAndIsKept() async throws {
+        let (patient, recording) = try session(withRecording: false)
+        let store = try XCTUnwrap(appModel.store)
+        _ = try stage(Data("crash audio".utf8), for: recording.id)
+        let damaged = Data("[{broken".utf8)
+        try damaged.write(to: ledger.url)
+
+        start()
+        await settle { FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: recording).path) }
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: recording).path),
+                      "the sweep still recovers the audio")
+        XCTAssertEqual(transcribed, [recording.folderName], "and its transcription is listed afresh")
+        XCTAssertEqual(try Data(contentsOf: ledger.unreadableCopyURL), damaged, "the damaged list is kept")
     }
 
     // MARK: - Locked folder
