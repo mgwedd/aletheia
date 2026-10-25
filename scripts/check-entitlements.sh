@@ -35,7 +35,7 @@
 #        scripts/check-entitlements.sh --app <path.app>
 #            checks a built production app: its signed entitlement keys equal the
 #            production file's exactly, its Info.plist has no Calendar/Reminders
-#            purpose strings, and its executable has no debug-only `--harness` flags.
+#            purpose strings, and its executable has no debug-only `--harness` flags or fixture mode.
 #        scripts/check-entitlements.sh --self-test
 
 set -euo pipefail
@@ -147,6 +147,9 @@ check_app() {
         if grep -aq -e '--harness' "$bin"; then
             err "$bin: contains the debug-only --harness flags"
         fi
+        if grep -aq -e 'ALETHEIA_FIXTURE' -e 'fixture-probe' "$bin"; then
+            err "$bin: contains the debug-only fixture mode"
+        fi
     done
     [ "$found" -eq 1 ] || err "$app: no executable in Contents/MacOS"
 }
@@ -220,6 +223,9 @@ self_test() {
     printf '%s\n' '<dict><key>CFBundleName</key><string>x</string></dict>' > "$d/App.app/Contents/Info.plist"
     printf 'xx --harness-record xx\n' > "$d/App.app/Contents/MacOS/App"
     run_app "$d/prod.ent" && { echo "check-entitlements: self-test: a --harness flag in the binary was accepted" >&2; bad=1; }
+
+    printf 'xx ALETHEIA_FIXTURE xx\n' > "$d/App.app/Contents/MacOS/App"
+    run_app "$d/prod.ent" && { echo "check-entitlements: self-test: fixture mode in the binary was accepted" >&2; bad=1; }
 
     [ "$bad" -eq 0 ] || return 1
     echo "check-entitlements: self-test OK"

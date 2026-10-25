@@ -80,12 +80,30 @@ struct AletheiaApp: App {
     init() {
         let settings = AppSettings.shared
         _settings = StateObject(wrappedValue: settings)
+        #if DEBUG
+        let encryption = FixtureMode.isActive
+            ? EncryptionManager(dataRootProvider: { settings.dataRootURL },
+                                deviceKeys: FixtureMode.deviceKeys, defaults: FixtureMode.defaults)
+            : EncryptionManager(dataRootProvider: { settings.dataRootURL })
+        #else
         let encryption = EncryptionManager(dataRootProvider: { settings.dataRootURL })
+        #endif
         _encryption = StateObject(wrappedValue: encryption)
         let appLock = AppLock(settings: settings)
         if appLock.isLocked { encryption.lock() }
         SessionSearch.setAppLocked(appLock.isLocked)   // before AppModel builds the index: it starts closed behind the lock
+        #if DEBUG
+        let appModel = FixtureMode.isActive
+            ? AppModel(settings: settings, encryption: encryption, spotlightIndexer: FixtureSpotlight(),
+                       featureRegistry: .compose(tier: FixtureMode.scenario?.buildTier ?? .dev, from: FeatureRegistry.allModules))
+            : AppModel(settings: settings, encryption: encryption)
+        if FixtureMode.isActive {
+            appModel.diskProbe = FixtureMode.disk
+            FixtureMode.seed(appModel)
+        }
+        #else
         let appModel = AppModel(settings: settings, encryption: encryption)
+        #endif
         _appModel = StateObject(wrappedValue: appModel)
         settings.onAuditedChange = { [weak appModel] detail in
             appModel?.recordAudit(.securitySettingChanged, detail: detail)

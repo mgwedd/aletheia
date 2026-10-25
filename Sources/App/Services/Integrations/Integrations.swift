@@ -36,6 +36,9 @@ final class Integrations: ObservableObject {
     /// `effectiveAssistantBackend`): the built-in llama.cpp engine, or, in a
     /// build without it, an assistant that reports the model as unavailable.
     func makeAssistant() -> Assistant {
+        #if DEBUG
+        if FixtureMode.isActive { return FixtureMode.assistant }
+        #endif
         switch effectiveAssistantBackend {
         case .appleIntelligence:
             #if canImport(FoundationModels)
