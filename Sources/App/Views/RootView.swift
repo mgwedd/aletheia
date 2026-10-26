@@ -15,6 +15,8 @@ struct RootView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
+    /// The full update prompt, opened from the update banner's "What's New…".
+    @State private var showUpdateDetails = false
     /// The license strip's text when the therapist closed it; it returns once the text changes.
     @State private var dismissedLicenseText: String?
     /// Bound so the sidebar can be brought back from the detail pane's title bar
@@ -120,14 +122,6 @@ struct RootView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(appModel.schemaWarning ?? "")
-        }
-        .alert(
-            updateService.manualNotice?.title ?? "",
-            isPresented: manualNoticeBinding
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(updateService.manualNotice?.message ?? "")
         }
         // Here rather than on the session screen, so it appears whatever is on
         // screen and names the session that is actually recording.
@@ -250,6 +244,14 @@ struct RootView: View {
                     onDismiss: { dismissedLicenseText = LicenseBanner.text(for: license.status) }
                 )
             }
+            if let release = updateService.available {
+                UpdateBanner(
+                    release: release,
+                    onDetails: { showUpdateDetails = true },
+                    onUpdate: { updateService.installAvailableUpdate() },
+                    onLater: { updateService.dismiss() }
+                )
+            }
             if !setAside.items.isEmpty {
                 SetAsideRecordingsStrip(count: setAside.items.count) {
                     navigator.requestSettings(.setAsideRecordings)
@@ -284,10 +286,11 @@ struct RootView: View {
         )
     }
 
+    /// Closing the prompt keeps the banner; its buttons clear `available`, which closes both.
     private var updatePresented: Binding<Bool> {
         Binding(
-            get: { updateService.available != nil },
-            set: { if !$0 { updateService.dismiss() } }
+            get: { showUpdateDetails && updateService.available != nil },
+            set: { showUpdateDetails = $0 }
         )
     }
 
@@ -302,13 +305,6 @@ struct RootView: View {
         Binding(
             get: { appModel.schemaWarning != nil },
             set: { if !$0 { appModel.schemaWarning = nil } }
-        )
-    }
-
-    private var manualNoticeBinding: Binding<Bool> {
-        Binding(
-            get: { updateService.manualNotice != nil },
-            set: { if !$0 { updateService.clearManualNotice() } }
         )
     }
 }

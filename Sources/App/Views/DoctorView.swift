@@ -259,8 +259,8 @@ struct DoctorView: View {
         case .reviewRecords:
             showReviewRecords = true
         case .updateCheck:
-            // The result (update prompt or "you're up to date") shows in the
-            // main window, so bring that forward.
+            // A newer version shows as a banner in the main window, so bring
+            // that forward.
             MainWindow.show(openWindow: openWindow)
             Task { await updateService.checkForUpdates(force: true) }
         }

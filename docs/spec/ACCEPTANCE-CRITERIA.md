@@ -250,10 +250,10 @@ Before you start: a data folder with some activity (unlock, export, delete a pat
 ## 17. Software updates (UPDATE)
 Before you start: a Release build of Aletheia and an internet connection; to see an offer, an older build or a newer release.
 - **UPDATE-01** Open **Settings** > **General** > **Software update** → it shows the version and the automatic-check switch.
-- **UPDATE-02** Click **Check for updates** when up to date → a "You're Up to Date" alert appears and Settings says you are up to date.
-- **UPDATE-03** Turn off Wi-Fi and click **Check for updates** → a "Couldn't Check for Updates" alert appears.
-- **UPDATE-04** Run an older build against a newer release → a prompt offers **View downloads**, **Skip this version**, **Remind me later** and **Download update**.
-- **UPDATE-05** Click **Remind me later** → the prompt closes and the same version is offered at a later check.
+- **UPDATE-02** Click **Check for updates** when up to date → Settings says you are up to date, and no alert or banner appears.
+- **UPDATE-03** Turn off Wi-Fi and click **Check for updates** → Settings says it couldn't check, and no alert appears.
+- **UPDATE-04** Run an older build against a newer release → a banner above the main window reads "Aletheia X is available." with **What's New…**, **Remind me later** and **Download update**, without blocking the app; **What's New…** opens a prompt offering **View downloads**, **Skip this version**, **Remind me later** and **Download update**.
+- **UPDATE-05** Click **Remind me later** → the banner (and prompt) closes and the same version is offered at a later check.
 - **UPDATE-06** Click **Skip this version** → automatic checks don't offer it again.
 - **UPDATE-07** Click **Download update** → the disk image downloads, is verified and opens, and Aletheia stays open.
 - **UPDATE-08** Click **Download update** for a release with a mismatched checksum → the file is deleted, nothing is opened, and the generic releases page opens instead.
