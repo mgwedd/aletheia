@@ -33,8 +33,7 @@ enum LicenseLinks {
     }
 
     static func copySupportAddress() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(supportAddress, forType: .string)
+        PHIPasteboard.writeString(supportAddress)
     }
 }
 
