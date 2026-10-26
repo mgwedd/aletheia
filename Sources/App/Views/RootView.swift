@@ -15,6 +15,8 @@ struct RootView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var selectedPatient: Patient?
     @State private var showSettings = false
+    /// The license strip's text when the therapist closed it; it returns once the text changes.
+    @State private var dismissedLicenseText: String?
     /// Bound so the sidebar can be brought back from the detail pane's title bar
     /// and from the search home (View > Show/Hide Sidebar is `SidebarCommands`).
     @State private var columnVisibility = NavigationSplitViewVisibility.all
@@ -52,6 +54,12 @@ struct RootView: View {
                         GlobalSearchResultsView(model: search, onOpen: { openSearchResult($0) })
                     }
                 }
+                // Data-safety notices: an unopenable database (nothing can be saved),
+                // a failed save, license and other strips. Non-blocking, and pinned
+                // to the top of this pane. Set on the column: set on the split view,
+                // the strips covered the top of the pane, hiding the search field
+                // once a query moved it there.
+                .safeAreaInset(edge: .top, spacing: 0) { dataSafetyNotices }
                 // No toolbar items here on purpose: a wide one (the old 280pt search
                 // field) pushed the system sidebar toggle into the » overflow menu,
                 // leaving a collapsed sidebar with no way back.
@@ -63,10 +71,6 @@ struct RootView: View {
         .overlay(alignment: .bottomTrailing) {
             ExportStatusToast(center: exports).padding(16)
         }
-        // Data-safety notices: an unopenable database (nothing can be saved) or a
-        // single failed save. Non-blocking, but pinned above everything so it's
-        // never missed. See DatabaseUnavailableBanner / DoctorFeatureModule.
-        .safeAreaInset(edge: .top, spacing: 0) { dataSafetyNotices }
         #if DEBUG
         .overlay(alignment: .topLeading) { if FixtureMode.isActive { FixtureProbeOverlay() } }
         #endif
@@ -232,17 +236,20 @@ struct RootView: View {
             ForEach(appModel.securityAlerts) { alert in
                 SecurityAlertStrip(message: alert.message) { appModel.dismissSecurityAlert(alert) }
             }
-            LicenseBanner(
-                status: license.status,
-                onOpenSettings: {
-                    navigator.requestSettings(.license)
-                    showSettings = true
-                },
-                onExportRecords: {
-                    navigator.requestSettings(.exportAllRecords)
-                    showSettings = true
-                }
-            )
+            if LicenseBanner.text(for: license.status) != dismissedLicenseText {
+                LicenseBanner(
+                    status: license.status,
+                    onOpenSettings: {
+                        navigator.requestSettings(.license)
+                        showSettings = true
+                    },
+                    onExportRecords: {
+                        navigator.requestSettings(.exportAllRecords)
+                        showSettings = true
+                    },
+                    onDismiss: { dismissedLicenseText = LicenseBanner.text(for: license.status) }
+                )
+            }
             if !setAside.items.isEmpty {
                 SetAsideRecordingsStrip(count: setAside.items.count) {
                     navigator.requestSettings(.setAsideRecordings)

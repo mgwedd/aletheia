@@ -88,6 +88,8 @@ enum SettingsAvailability {
 /// wrap it in a smaller `.frame(minWidth:)`, which clips the content instead of
 /// growing the window.
 enum SettingsLayout {
+    /// The button that closes Settings, bottom right.
+    static let done = "Done"
     static let sidebarWidth: CGFloat = 220
     /// Narrowest a pane's controls (field + button, segmented control) fit.
     static let paneMinWidth: CGFloat = 680
