@@ -3,8 +3,7 @@ import XCTest
 final class UpdateSpec: AcceptanceCase {
     func test_UPDATE_01() async throws {
         then(when.automaticChecksDefault).isOn("automatic update checks")
-        then(when.currentSigningDescription).isNotarizationText()
-        then(when.softwareUpdateRows).showVersionNotarizationAndAutomaticSwitch()
+        then(when.softwareUpdateRows).showVersionAndAutomaticSwitch()
     }
 
     func test_UPDATE_02() async throws {

@@ -224,28 +224,6 @@ final class UpdateServiceTests: XCTestCase {
         }
     }
 
-    func testCodeSigningStatusInspectorAndDescriptions() {
-        let notarized = CodeSigningStatus.current(inspector: { .developerIDNotarized(teamID: "ABCDE12345") })
-        XCTAssertEqual(notarized, .developerIDNotarized(teamID: "ABCDE12345"))
-        XCTAssertTrue(notarized.description.contains("Developer ID signed and notarized"))
-
-        let adHoc = CodeSigningStatus.current(inspector: { .adHoc })
-        XCTAssertEqual(adHoc, .adHoc)
-        XCTAssertTrue(adHoc.description.contains("Ad-hoc"))
-
-        let dev = CodeSigningStatus.current(inspector: { .devBuild })
-        XCTAssertEqual(dev, .devBuild)
-        XCTAssertTrue(dev.description.contains("Development build"))
-
-        let unsigned = CodeSigningStatus.current(inspector: { .unsigned })
-        XCTAssertEqual(unsigned, .unsigned)
-        XCTAssertTrue(unsigned.description.contains("Unsigned build"))
-
-        let other = CodeSigningStatus.current(inspector: { .other("Apple Development") })
-        XCTAssertEqual(other, .other("Apple Development"))
-        XCTAssertTrue(other.description.contains("Apple Development"))
-    }
-
     func testAppSettingsAutoCheckForUpdatesDefaultAndPersistence() {
         let original = AppSettings.shared.autoCheckForUpdates
         defer { AppSettings.shared.autoCheckForUpdates = original }

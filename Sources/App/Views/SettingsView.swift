@@ -262,16 +262,6 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 12)
                 SettingsHairline()
-                SettingsRow(
-                    title: SoftwareUpdateRow.notarization.title,
-                    detail: "Signed with Developer ID and notarized by Apple so macOS Gatekeeper allows it to run without warnings."
-                ) {
-                    Text(CodeSigningStatus.current().description)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.muted.color)
-                }
-                .padding(.vertical, 12)
-                SettingsHairline()
                 SettingsSwitchRow(
                     title: SoftwareUpdateRow.automaticChecks.title,
                     detail: "Aletheia checks on launch and when switching back to the app.",
@@ -281,7 +271,7 @@ struct SettingsView: View {
                 SettingsHairline()
                 SettingsRow(
                     title: SoftwareUpdateRow.checkNow.title,
-                    detail: "Aletheia can check GitHub for published releases. No patient or client data is ever transmitted."
+                    detail: "Using the latest version guarantees the best security, privacy, and user experience."
                 ) {
                     HStack(spacing: 8) {
                         if updateService.isChecking {
@@ -506,27 +496,32 @@ struct SettingsView: View {
         }
     }
 
+    private var engineOptions: [AssistantBackend] {
+        AssistantBackend.selectableOptions(
+            embeddedLlamaAvailable: appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id),
+            appleIntelligenceBlocked: Integrations.appleIntelligenceBlocked)
+    }
+
     private var languageCard: some View {
         SettingsCard {
             SettingsCardHeader(title: "Language model") { EmptyView() }
-            SettingsRow(title: "Engine", detail: settings.assistantBackend.summary) {
-                Picker("Engine", selection: $settings.assistantBackend) {
-                    // Apple Intelligence is intentionally hidden for now (see
-                    // Integrations.appleIntelligenceBlocked) — keep AI fully on
-                    // backends we can prove stay on this Mac. "Built-in model"
-                    // shows when EmbeddedLlamaFeatureModule is registered (every
-                    // tier); AssistantBackend.selectableOptions does the gating
-                    // so it's unit-tested.
-                    ForEach(AssistantBackend.selectableOptions(
-                        embeddedLlamaAvailable: appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id),
-                        appleIntelligenceBlocked: Integrations.appleIntelligenceBlocked
-                    )) { backend in
-                        Text(backend.displayName).tag(backend)
+            if AssistantBackend.offersEngineChoice(engineOptions) {
+                SettingsRow(title: "Engine", detail: settings.assistantBackend.summary) {
+                    Picker("Engine", selection: $settings.assistantBackend) {
+                        // Apple Intelligence is intentionally hidden for now (see
+                        // Integrations.appleIntelligenceBlocked) — keep AI fully on
+                        // backends we can prove stay on this Mac. "Built-in model"
+                        // shows when EmbeddedLlamaFeatureModule is registered (every
+                        // tier); AssistantBackend.selectableOptions does the gating
+                        // so it's unit-tested.
+                        ForEach(engineOptions) { backend in
+                            Text(backend.displayName).tag(backend)
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 220)
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(width: 220)
             }
             HStack(spacing: 6) {
                 Text("In use now")
