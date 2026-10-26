@@ -249,7 +249,7 @@ Before you start: a data folder with some activity (unlock, export, delete a pat
 
 ## 17. Software updates (UPDATE)
 Before you start: a Release build of Aletheia and an internet connection; to see an offer, an older build or a newer release.
-- **UPDATE-01** Open **Settings** > **General** > **Software update** → it shows the version, a Notarization row and the automatic-check switch.
+- **UPDATE-01** Open **Settings** > **General** > **Software update** → it shows the version and the automatic-check switch.
 - **UPDATE-02** Click **Check for updates** when up to date → a "You're Up to Date" alert appears and Settings says you are up to date.
 - **UPDATE-03** Turn off Wi-Fi and click **Check for updates** → a "Couldn't Check for Updates" alert appears.
 - **UPDATE-04** Run an older build against a newer release → a prompt offers **View downloads**, **Skip this version**, **Remind me later** and **Download update**.

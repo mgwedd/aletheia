@@ -153,7 +153,7 @@ extension When {
         app.relaunch(tier: app.tier)
         let after = app.settings.appearance
         // Leave the host app as it was found.
-        app.settings.appearance = .system
+        app.settings.appearance = .default
         return AppearanceChoice(appliedName: applied, afterRelaunch: after)
     }
 

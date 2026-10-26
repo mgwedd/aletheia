@@ -14,7 +14,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 | App lock and privacy shield (LCK) | 23 |
 | Audit log (AUD) | 14 |
 | Data format and upgrades (DAT) | 12 |
-| Doctor and security posture (DOC) | 11 |
+| Doctor and security posture (DOC) | 10 |
 | Security guarantees (SEC) | 9 |
 | Backups (BAK) | 10 |
 | Progress notes (NOT) | 69 |
@@ -31,11 +31,11 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 | Updates (UPD) | 28 |
 | OS integrations (OSI) | 62 |
 | Onboarding & setup (STP) | 27 |
-| Settings (SET) | 47 |
+| Settings (SET) | 46 |
 | Appearance, accessibility & shortcuts (UX) | 21 |
 | Legal & consent (LEG) | 11 |
 | Build tiers (BLD) | 17 |
-| **Total** | **1008** |
+| **Total** | **1017** |
 
 ## Recording (REC)
 
@@ -683,8 +683,6 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SecurityPostureView.swift, Sources/App/Services/SecurityPosture.swift` · `qa: SECURITY-01`
 - **DOC-004** When the user opens Network access, it shows whether the main app can connect to the internet, and lists the helper's only hosts and downloads (update check and opted-in model downloads).
   `surface: ui` · `evidence: Sources/App/Services/NetworkHelper/NetworkAccessStatus.swift, Sources/App/Views/Settings/NetworkAccessView.swift` · `qa: SECURITY-02`
-- **DOC-005** When the user opens Settings → Software update, the Notarization row shows the app's signing status such as "Developer ID signed and notarized by Apple" or "Ad-hoc signed (development build; not notarized)".
-  `surface: ui` · `evidence: Sources/App/Services/Updates/CodeSigningStatus.swift, Sources/App/Views/SettingsView.swift` · `qa: UPDATE-01` · ⚠ TODO: the row's fixed description says the app is notarized, while the README says it is not; the code computes the status value.
 - **DOC-006** When Doctor finishes, its headline summarizes the result, such as "All checks passed" or "1 problem, 2 warnings".
   `surface: ui` · `evidence: Sources/App/Views/DoctorView.swift, Sources/App/Services/Features/Doctor/DoctorModel.swift` · `qa: SECURITY-07`
 - **DOC-007** When the user chooses "Copy report", the button reads "Copied", and the footer says the report holds no patient names, session names or note text.
@@ -1749,7 +1747,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/NetworkHelper/AssetCatalog.swift` · `qa: UPDATE-07`
 - **UPD-016** Updates never install themselves and never quit the app; the user quits Aletheia when ready and drags the new version into Applications.
   `surface: ui` · `evidence: Sources/App/Views/UpdatePromptView.swift, Sources/App/Services/Updates/UpdateService.swift, docs/SETUP-GUIDE.md` · `qa: UPDATE-07`
-- **UPD-017** When the user opens Settings → General, the software update section shows the current version, a Notarization row, the automatic-check switch with the detail "Aletheia checks on launch and when switching back to the app.", a "Check for updates" row and a "View Releases on GitHub" link.
+- **UPD-017** When the user opens Settings → General, the software update section shows the current version, the automatic-check switch with the detail "Aletheia checks on launch and when switching back to the app.", a "Check for updates" row and a "View Releases on GitHub" link.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: UPDATE-01`
 - **UPD-018** When a check is running in Settings, a spinner and "Checking…" replace the button, then the row shows "You're up to date (checked at …)", "Couldn't check for updates", or "vX available".
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: UPDATE-02`
@@ -1761,8 +1759,6 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/UpdatePromptView.swift, Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-07`
 - **UPD-022** When the verified download fails for any reason (network error, bad checksum), Download update opens the downloads page in the browser instead.
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateInstalling.swift` · `qa: UPDATE-08`
-- **UPD-023** The Notarization row reads "Developer ID signed and notarized by Apple" for any Developer ID signature without checking the notarization ticket; other builds read "Ad-hoc signed (development build; not notarized)", "Development build", "Unsigned build" or "Signed (name)".
-  `surface: ui` · `evidence: Sources/App/Services/Updates/CodeSigningStatus.swift, Sources/App/Views/SettingsView.swift` · `qa: UPDATE-01` · ⚠ TODO: README says the app is not notarized while the Notarization row can say it is
 - **UPD-024** When the user chooses "Remind me later", the prompt closes and the same version is offered again at a later check.
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-05`
 - **UPD-025** When the user has already downloaded an update during this run, the same version is not offered again until Aletheia is relaunched.
@@ -2012,7 +2008,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Llama/EmbeddedLlamaFeatureModule.swift:21, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-06`
 - **SET-024** On a fresh install, transcription starts automatically when a recording ends.
   `surface: invariant` · `evidence: Sources/App/Services/AppSettings.swift:504` · `qa: SETTINGS-04`
-- **SET-025** On a fresh install, Appearance is System.
+- **SET-025** On a fresh install, Appearance is Dark.
   `surface: invariant` · `evidence: Sources/App/Views/Theme/AppearancePreference.swift:15` · `qa: SETTINGS-03`
 - **SET-026** When the user relaunches the app, the chosen Appearance is still applied.
   `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift:437, Sources/App/AletheiaApp.swift:28` · `qa: SETTINGS-03`
@@ -2030,8 +2026,6 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/AppSettings.swift:456` · `qa: SETTINGS-04`
 - **SET-033** When Aletheia Doctor is in the build, General → Status offers "Aletheia Doctor…".
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: SECURITY-07`
-- **SET-034** When the user opens General → "Software update", the "Notarization" row shows the app's actual signing state: "Developer ID signed and notarized by Apple", "Ad-hoc signed (development build; not notarized)", "Development build" or "Unsigned build".
-  `surface: ui` · `evidence: Sources/App/Services/Updates/CodeSigningStatus.swift:14, Sources/App/Views/SettingsView.swift:259` · `qa: UPDATE-01` · ⚠ TODO: the row's caption always says the app is notarized, but the README and setup guide say it is not notarized unless signing secrets are set; code is on the "notarized" side for the caption
 - **SET-035** On a fresh install, automatic update checks are on and run on launch and when switching back to the app.
   `surface: background` · `evidence: Sources/App/Services/AppSettings.swift:477, Sources/App/AletheiaApp.swift` · `qa: UPDATE-01`
 - **SET-036** When the user presses "Check for updates", the row shows "You're up to date (checked at …)", "Couldn't check for updates" or "v<version> available", with a "View Releases on GitHub" link.
@@ -2172,7 +2166,6 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **REC-055**: restart after a mid-recording input-device change is best-effort; if it fails the failure is only counted internally and never shown to the user
 - **TRN-022**: the Keep raw audio row is hidden entirely when the encryption feature is not in the build; whether any shipped build lacks it is not decidable from the repo
 - **DAT-002**: the data-format doc comment says an older app must not rewrite a newer folder, but the code only shows an alert and does not block saving; the code is on the alert-only side.
-- **DOC-005**: the Notarization row's fixed description says the app is notarized, while the README says it is not; the code computes the status value.
 - **BAK-007**: the spec says backup archives are encrypted (BACKUP-08); SECURITY.md describes an archives folder and an encrypted iCloud destination as built but not active, and the code has no wiring, so no archives are produced yet.
 - **BAK-001**: the Backups banner text still says Aletheia makes no backup copies of its own, which conflicts with BACKUP-01 and BAK-007; confirm the wording.
 - **BAK-009**: the Time Machine row's next step says "Settings > Snapshots & Backups" but the pane is named "Backups"; the code uses the wrong name.
@@ -2197,6 +2190,4 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **EXP-025**: README line 20 ("no backup feature of its own") conflicts with the Backups pane and PRIVACY.md/SECURITY.md
 - **NET-021**: the setup checklist and tool-health code still contain an Apple Intelligence readiness path though the feature is blocked
 - **NET-022**: revocation fetch policy exists in the app but has no caller; README says there is no license key
-- **UPD-023**: README says the app is not notarized while the Notarization row says "notarized" for any Developer ID signature
 - **SET-014**: the caption under-describes: a safety snapshot is also taken before a patient is deleted
-- **SET-034**: the row's caption always says the app is notarized, but the README and setup guide say it is not notarized unless signing secrets are set; code is on the "notarized" side for the caption

@@ -262,16 +262,6 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 12)
                 SettingsHairline()
-                SettingsRow(
-                    title: SoftwareUpdateRow.notarization.title,
-                    detail: "Signed with Developer ID and notarized by Apple so macOS Gatekeeper allows it to run without warnings."
-                ) {
-                    Text(CodeSigningStatus.current().description)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.muted.color)
-                }
-                .padding(.vertical, 12)
-                SettingsHairline()
                 SettingsSwitchRow(
                     title: SoftwareUpdateRow.automaticChecks.title,
                     detail: "Aletheia checks on launch and when switching back to the app.",
@@ -281,7 +271,7 @@ struct SettingsView: View {
                 SettingsHairline()
                 SettingsRow(
                     title: SoftwareUpdateRow.checkNow.title,
-                    detail: "Aletheia can check GitHub for published releases. No patient or client data is ever transmitted."
+                    detail: "Using the latest version guarantees the best security, privacy, and user experience."
                 ) {
                     HStack(spacing: 8) {
                         if updateService.isChecking {

@@ -174,7 +174,6 @@ extension When {
     /// The Software update card's rows, top to bottom.
     var softwareUpdateRows: [String] { SoftwareUpdateRow.allCases.map(\.title) }
 
-    var currentSigningDescription: String { CodeSigningStatus.current().description }
     var automaticChecksDefault: Bool { app.settings.autoCheckForUpdates }
 }
 
@@ -233,16 +232,12 @@ extension Then where Subject == UpdatePrompt {
 }
 
 extension Then where Subject == [String] {
-    func showVersionNotarizationAndAutomaticSwitch() {
+    func showVersionAndAutomaticSwitch() {
         expectEqual(
             subject,
-            [Copy.versionRow, Copy.notarizationRow, Copy.automaticChecksRow, Copy.checkNowRow],
+            [Copy.versionRow, Copy.automaticChecksRow, Copy.checkNowRow],
             "the Software update rows")
     }
-}
-
-extension Then where Subject == String {
-    func isNotarizationText() { expect(!subject.isEmpty, "the Notarization row should say something") }
 }
 
 extension Then where Subject == Bool {

@@ -12,7 +12,7 @@ enum AppearancePreference: String, CaseIterable, Identifiable {
     case light
     case dark
 
-    static let `default`: AppearancePreference = .system
+    static let `default`: AppearancePreference = .dark
 
     var id: String { rawValue }
 

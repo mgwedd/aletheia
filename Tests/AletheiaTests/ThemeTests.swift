@@ -195,7 +195,7 @@ final class AppearancePreferenceTests: XCTestCase {
     func testRawValuesAreStable() {
         // Persisted in UserDefaults; renaming a case would reset everyone's choice.
         XCTAssertEqual(AppearancePreference.allCases.map(\.rawValue), ["system", "light", "dark"])
-        XCTAssertEqual(AppearancePreference.default, .system)
+        XCTAssertEqual(AppearancePreference.default, .dark)
     }
 
     func testMapsToAppKitAppearances() {
