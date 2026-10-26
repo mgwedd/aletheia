@@ -35,6 +35,7 @@ final class SettingsSpec: AcceptanceCase {
         let picker = when.lookAtEnginePicker()
 
         then(picker).offersOnly([Copy.automaticEngine, Copy.builtInEngine])
+        then(picker).isHidden()
         then(picker).keepsAppleIntelligenceOff()
     }
 

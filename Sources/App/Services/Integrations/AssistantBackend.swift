@@ -61,6 +61,13 @@ extension AssistantBackend {
             return true
         }
     }
+
+    /// Whether the Engine menu is worth showing: only when there are two real
+    /// engines to choose between. With just the built-in model, "Automatic" and
+    /// "Built-in model" mean the same thing, so the menu is hidden.
+    static func offersEngineChoice(_ options: [AssistantBackend]) -> Bool {
+        options.filter { $0 != .automatic }.count > 1
+    }
 }
 
 /// Pure decision logic: given what's actually available on this Mac, decides

@@ -379,6 +379,9 @@ extension Then where Subject == EnginePicker {
         expect(subject.appleIntelligenceBlocked, "Apple Intelligence should stay off")
         expect(!subject.options.contains(.appleIntelligence), "Apple Intelligence should not be offered")
     }
+    func isHidden() {
+        expect(!AssistantBackend.offersEngineChoice(subject.options), "the Engine menu should be hidden with only one engine")
+    }
 }
 
 extension Then where Subject == [ModelCardPresentation] {

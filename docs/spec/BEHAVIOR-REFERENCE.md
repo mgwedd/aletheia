@@ -1173,7 +1173,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/UntrustedText.swift` · `qa: NOTE-16`
 - **AIE-040** When a model download is offered in Settings, the model's license link is visible there before the download is started.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift:539, Sources/App/Views/ModelLicenseLink.swift` · `qa: SETTINGS-07`
-- **AIE-041** When Settings shows the Language model card, the Engine picker offers only "Automatic (recommended)" and "Built-in model", and a separate Built-in model card lets the user pick the model, download or re-download it, and remove an unused downloaded one.
+- **AIE-041** When Settings shows the Language model card, it has no Engine menu while the built-in model is the only engine (the menu shows only when two engines can be chosen), and a separate Built-in model card lets the user pick the model, download or re-download it, and remove an unused downloaded one.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift:483-546, Sources/App/Services/Integrations/AssistantBackend.swift` · `qa: SETTINGS-07`
 - **AIE-042** When a fix-by-download runs, the overlay "Downloading the AI model…" with a progress bar appears.
   `surface: ui` · `evidence: Sources/App/Views/AIEngineProblemAlert.swift` · `qa: NOTE-09`
@@ -1978,7 +1978,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/AppSettings.swift:473, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-04`
 - **SET-009** When the user opens AI and models, the "Speech recognition" card has one model picker with a chip of Downloading, Installed or Not downloaded, a "Downloaded" mark with "Re-download" when installed, "Not downloaded (~N MB)" with "Download" otherwise, a percent bar while downloading, and a license link.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift:454` · `qa: SETTINGS-05`
-- **SET-010** When the user opens AI and models, the "Language model" card shows the engine picker, "In use now", and an "Off" chip saying "Apple Intelligence is turned off on purpose."
+- **SET-010** When the user opens AI and models, the "Language model" card shows "In use now", and an "Off" chip saying "Apple Intelligence is turned off on purpose."
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-06`
 - **SET-011** When the user opens AI instructions, they can edit the text, and "Reset to Default" restores it and is disabled while the text already is the default.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: NOTE-07`

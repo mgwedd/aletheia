@@ -496,27 +496,32 @@ struct SettingsView: View {
         }
     }
 
+    private var engineOptions: [AssistantBackend] {
+        AssistantBackend.selectableOptions(
+            embeddedLlamaAvailable: appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id),
+            appleIntelligenceBlocked: Integrations.appleIntelligenceBlocked)
+    }
+
     private var languageCard: some View {
         SettingsCard {
             SettingsCardHeader(title: "Language model") { EmptyView() }
-            SettingsRow(title: "Engine", detail: settings.assistantBackend.summary) {
-                Picker("Engine", selection: $settings.assistantBackend) {
-                    // Apple Intelligence is intentionally hidden for now (see
-                    // Integrations.appleIntelligenceBlocked) — keep AI fully on
-                    // backends we can prove stay on this Mac. "Built-in model"
-                    // shows when EmbeddedLlamaFeatureModule is registered (every
-                    // tier); AssistantBackend.selectableOptions does the gating
-                    // so it's unit-tested.
-                    ForEach(AssistantBackend.selectableOptions(
-                        embeddedLlamaAvailable: appModel.featureRegistry.contains(id: EmbeddedLlamaFeatureModule.id),
-                        appleIntelligenceBlocked: Integrations.appleIntelligenceBlocked
-                    )) { backend in
-                        Text(backend.displayName).tag(backend)
+            if AssistantBackend.offersEngineChoice(engineOptions) {
+                SettingsRow(title: "Engine", detail: settings.assistantBackend.summary) {
+                    Picker("Engine", selection: $settings.assistantBackend) {
+                        // Apple Intelligence is intentionally hidden for now (see
+                        // Integrations.appleIntelligenceBlocked) — keep AI fully on
+                        // backends we can prove stay on this Mac. "Built-in model"
+                        // shows when EmbeddedLlamaFeatureModule is registered (every
+                        // tier); AssistantBackend.selectableOptions does the gating
+                        // so it's unit-tested.
+                        ForEach(engineOptions) { backend in
+                            Text(backend.displayName).tag(backend)
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 220)
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(width: 220)
             }
             HStack(spacing: 6) {
                 Text("In use now")
