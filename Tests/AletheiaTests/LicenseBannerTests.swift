@@ -89,4 +89,21 @@ final class LicenseBannerTests: XCTestCase {
         XCTAssertEqual(SettingsRequest.exportAllRecords.pane, .backups)
         XCTAssertEqual(SettingsRequest.license.pane, .license)
     }
+
+    func testTheLicenseStripCanBeClosed() {
+        XCTAssertEqual(LicenseBanner.dismissHelp, "Dismiss")
+    }
+
+    /// The top strips sit on the detail column. Set on the split view, they covered
+    /// the search field once a query moved it to the top of the pane.
+    func testTopStripsAreSetOnTheDetailColumn() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/Views/RootView.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let detail = try XCTUnwrap(source.range(of: "} detail: {"))
+        let inset = try XCTUnwrap(source.range(of: ".safeAreaInset(edge: .top, spacing: 0) { dataSafetyNotices }"))
+        XCTAssertLessThan(detail.lowerBound, inset.lowerBound)
+        XCTAssertEqual(source.components(separatedBy: "{ dataSafetyNotices }").count, 2, "set once")
+    }
 }

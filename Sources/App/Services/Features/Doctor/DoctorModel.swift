@@ -121,6 +121,25 @@ struct DoctorCheck: Identifiable, Equatable {
         self.nextStep = nextStep
         self.action = action
     }
+
+    /// The Settings pane this check's "Open Settings" shows. Without one, Settings
+    /// reopened on whichever pane was last left open (often License).
+    var settingsPane: SettingsPane {
+        switch id {
+        case "encryption.appLock", "records.auditLog": return .security
+        case "encryption.keystore": return .encryption
+        case "tools.whisperFile", "tools.whisperDigest", "tools.whisperModel": return .ai
+        default: return id.hasPrefix("backups.") ? .backups : .general
+        }
+    }
+
+    /// What the fix button does: as `action.route`, with "Open Settings" sent to
+    /// this check's pane.
+    var actionRoute: DoctorActionRoute? {
+        guard let action else { return nil }
+        if case .settings(nil) = action.route { return .settings(.pane(settingsPane)) }
+        return action.route
+    }
 }
 
 /// Facts about the running app and Mac that go at the top of a report. All

@@ -119,6 +119,8 @@ struct LicenseBanner: View {
     let status: LicenseStatus
     let onOpenSettings: () -> Void
     var onExportRecords: () -> Void = {}
+    /// The ✕: hides the strip until its text changes or Aletheia relaunches.
+    var onDismiss: (() -> Void)?
 
     var body: some View {
         if let text = Self.text(for: status) {
@@ -143,6 +145,14 @@ struct LicenseBanner: View {
                 Button("License…", action: onOpenSettings)
                     .buttonStyle(.themed)
                     .controlSize(.small)
+                if let onDismiss {
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(Self.dismissHelp)
+                    .accessibilityLabel(Self.dismissHelp)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -152,6 +162,8 @@ struct LicenseBanner: View {
             .accessibilityElement(children: .combine)
         }
     }
+
+    static let dismissHelp = "Dismiss"
 
     /// Recording and the AI are paused: offer to export the records, which always works.
     static func offersExport(for status: LicenseStatus) -> Bool {

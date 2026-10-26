@@ -56,12 +56,24 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            SettingsSidebar(selection: paneSelection, panes: panes)
-            SettingsPaneContainer(title: pane.title) {
-                paneContent
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                SettingsSidebar(selection: paneSelection, panes: panes)
+                SettingsPaneContainer(title: pane.title) {
+                    paneContent
+                }
+                .id(pane)
             }
-            .id(pane)
+            // Done sits bottom right, like other sheets, not in the toolbar
+            // (which put it at the top centre of the sheet).
+            HStack {
+                Spacer()
+                Button(SettingsLayout.done) { dismiss() }
+                    .buttonStyle(.themePrimary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .themeDivider(.top)
         }
         .frame(
             minWidth: SettingsLayout.minWidth,
@@ -75,11 +87,6 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .onAppear { showRequestedSection() }
         .onChange(of: navigator.pendingSettings) { _, _ in showRequestedSection() }
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }
-            }
-        }
         .sheet(isPresented: $showSetup) {
             VStack(spacing: 0) {
                 HStack {
@@ -165,7 +172,7 @@ struct SettingsView: View {
         selectedPaneRaw = request.pane.rawValue
         switch request {
         case .setupAssistant: showSetup = true
-        case .setAsideRecordings, .license, .exportAllRecords: break
+        case .setAsideRecordings, .license, .exportAllRecords, .pane: break
         }
     }
 

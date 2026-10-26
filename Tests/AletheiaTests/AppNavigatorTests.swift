@@ -125,6 +125,22 @@ final class DoctorActionRouteTests: XCTestCase {
         XCTAssertEqual(DoctorAction.openSettings.route, .settings(nil))
     }
 
+    /// "Open Settings" on a Doctor row shows that check's pane, not whichever
+    /// pane Settings was last left on.
+    func testDoctorOpenSettingsShowsTheChecksPane() {
+        func pane(_ id: String) -> DoctorActionRoute? {
+            DoctorCheck(id: id, category: .tools, title: "", status: .warning, detail: "", action: .openSettings).actionRoute
+        }
+        XCTAssertEqual(pane("encryption.appLock"), .settings(.pane(.security)))
+        XCTAssertEqual(pane("records.auditLog"), .settings(.pane(.security)))
+        XCTAssertEqual(pane("backups.timeMachine"), .settings(.pane(.backups)))
+        XCTAssertEqual(pane("tools.whisperFile"), .settings(.pane(.ai)))
+        XCTAssertEqual(pane("dataFolder.present"), .settings(.pane(.general)))
+        XCTAssertEqual(SettingsRequest.pane(.security).pane, .security)
+        let setup = DoctorCheck(id: "tools.builtInModel", category: .tools, title: "", status: .warning, detail: "", action: .setupAssistant)
+        XCTAssertEqual(setup.actionRoute, .settings(.setupAssistant))
+    }
+
     func testOtherActionsRoute() {
         XCTAssertEqual(DoctorAction.openSystemSettings.route, .systemSettings)
         XCTAssertEqual(DoctorAction.reviewRecords.route, .reviewRecords)

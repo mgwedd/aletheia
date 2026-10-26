@@ -132,6 +132,8 @@ enum SettingsRequest: Equatable {
     case license
     /// Export All Records, in the Backups pane.
     case exportAllRecords
+    /// A pane, with nothing more to open in it.
+    case pane(SettingsPane)
 
     /// The pane that holds what is being asked for.
     var pane: SettingsPane {
@@ -140,6 +142,7 @@ enum SettingsRequest: Equatable {
         case .setAsideRecordings: return .setAsideRecordings
         case .license: return .license
         case .exportAllRecords: return .backups
+        case .pane(let pane): return pane
         }
     }
 }
