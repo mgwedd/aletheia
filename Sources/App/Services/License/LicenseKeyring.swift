@@ -30,10 +30,10 @@ struct LicenseKeyring {
     static let production = LicenseKeyring(encoded: productionPublicKeys)
 
     #if ALETHEIA_DEV
-    /// The dev tier also trusts a dev key whose private half lives only under `Tests/`
-    /// (and in `scripts/mint-dev-license.swift`). Compiled out of every other tier.
-    static let devKeyID = "aletheia-dev-1"
-    static let devPublicKey = "l5KEG0cBMvhtV+s4ZO14Q7eFg172/V29cw1MehAF2lI="
+    /// The dev tier also trusts a dev key for local Debug builds. Its private half is kept
+    /// by the owner outside the repo, never committed. Compiled out of every other tier.
+    static let devKeyID = "aletheia-dev-2"
+    static let devPublicKey = "8KFp2hW7OwEzohfjyeq+7R4eZywqyDxNYBGU7YUzkSU="
     #endif
 
     /// The keyring this build trusts: production keys, plus the dev key in the dev tier.

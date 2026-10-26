@@ -94,12 +94,11 @@ final class LicenseTermsTests: XCTestCase {
         }
     }
 
-    func testDevSeedMintsAcceptanceToo() throws {
-        let dev = try LicenseTestMint.devKey()
+    func testAFreshKeyMintsAcceptanceToo() throws {
+        let (key, ring) = LicenseTestMint.freshKeyring()
         var payload = LicenseTestMint.payload(kid: "test-1")
         payload["acc"] = [entry("terms")]
-        let devRing = LicenseKeyring(encoded: ["test-1": dev.publicKey.rawRepresentation.base64EncodedString()])
-        let token = try LicenseVerifier.verify(try LicenseTestMint.token(payload, key: dev), keyring: devRing, now: now)
+        let token = try LicenseVerifier.verify(try LicenseTestMint.token(payload, key: key), keyring: ring, now: now)
         XCTAssertEqual(token.acceptances.count, 1)
     }
 
