@@ -59,7 +59,8 @@ enum DataFolderPolicy {
                 ubiquitous: values.isUbiquitousItem == true,
                 localVolume: values.volumeIsLocal,
                 removableVolume: values.volumeIsRemovable == true,
-                encryptedVolume: values.volumeIsEncrypted,
+                encryptedVolume: values.volumeIsEncrypted == true
+                    ? true : SystemVolumeResources().volumeIsEncrypted(at: candidate),
                 syncMarker: marker
             )
         })
