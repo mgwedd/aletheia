@@ -25,8 +25,11 @@ final class UpdateSpec: AcceptanceCase {
         defer { rig.cleanUp() }
         await when.checkAutomatically(rig)
 
-        let prompt = when.lookAtPrompt(rig)
+        let banner = when.lookAtBanner(rig)
+        then(banner).reads("Aletheia 1.1.0 is available.")
+        then(banner).hasButtons([Copy.whatsNew, Copy.remindMeLater, Copy.downloadUpdate])
 
+        let prompt = when.lookAtPrompt(rig)
         then(prompt).offers(version: "1.1.0")
         then(prompt).hasButtons([Copy.viewDownloads, Copy.skipThisVersion, Copy.remindMeLater, Copy.downloadUpdate])
     }

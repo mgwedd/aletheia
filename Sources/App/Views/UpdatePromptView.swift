@@ -124,3 +124,46 @@ struct UpdatePromptView: View {
         .textSelection(.enabled)
     }
 }
+
+/// A strip above the main window when a newer version is out. It doesn't block
+/// the app; "What's New…" opens the full prompt with the release notes.
+struct UpdateBanner: View {
+    let release: ReleaseInfo
+    let onDetails: () -> Void
+    let onUpdate: () -> Void
+    let onLater: () -> Void
+
+    static let details = "What's New…"
+
+    static func text(for release: ReleaseInfo) -> String {
+        "Aletheia \(release.version) is available."
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle.fill")
+                .foregroundStyle(Theme.accent.color)
+                .accessibilityHidden(true)
+            Text(Self.text(for: release))
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.text.color)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button(Self.details, action: onDetails)
+                .buttonStyle(.themed)
+                .controlSize(.small)
+            Button(UpdatePromptLayout.later, action: onLater)
+                .buttonStyle(.themed)
+                .controlSize(.small)
+            Button(UpdatePromptLayout.download, action: onUpdate)
+                .buttonStyle(.themePrimary)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.callout.color)
+        .themeDivider(.bottom)
+        .accessibilityElement(children: .contain)
+    }
+}

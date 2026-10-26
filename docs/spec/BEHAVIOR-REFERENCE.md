@@ -1725,11 +1725,11 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/AppSettings.swift` · `qa: UPDATE-01`
 - **UPD-005** When the user chooses Check for Updates… from the app menu or Settings, a check runs immediately regardless of the 30-minute limit.
   `surface: ui` · `evidence: Sources/App/AletheiaApp.swift, Sources/App/Views/SettingsView.swift` · `qa: UPDATE-02`
-- **UPD-006** When a manual check finds no newer version, an alert reads "You're Up to Date" with "Aletheia X is currently the newest version available."
+- **UPD-006** When a manual check finds no newer version, no alert or banner appears; only the Settings row says you are up to date.
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-02`
-- **UPD-007** When a manual check cannot reach the update feed, an alert reads "Couldn't Check for Updates" with "Aletheia couldn't check for updates: <reason>. Check your internet connection and try again.", but an automatic check that fails shows nothing.
+- **UPD-007** When a check cannot reach the update feed, no alert appears; after a manual check the Settings row says "Couldn't check for updates".
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-03`
-- **UPD-008** When a newer version exists, a prompt titled "Aletheia X is available" says "You have Y.", and shows a "What is new" section from the release notes only if the notes contain text beyond headings and list markers.
+- **UPD-008** When a newer version exists, a non-blocking banner above the main window reads "Aletheia X is available." with "What's New…", "Remind me later" and "Download update"; "What's New…" opens a prompt titled "Aletheia X is available" says "You have Y.", and shows a "What is new" section from the release notes only if the notes contain text beyond headings and list markers.
   `surface: ui` · `evidence: Sources/App/Views/UpdatePromptView.swift` · `qa: UPDATE-04`
 - **UPD-009** When the update prompt appears, it offers "View downloads", "Skip this version", "Remind me later" and "Download update", with Download update as the default.
   `surface: ui` · `evidence: Sources/App/Views/UpdatePromptView.swift` · `qa: UPDATE-04`
@@ -1753,7 +1753,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: UPDATE-02`
 - **UPD-019** Versions are compared by their numeric parts (1, 1.2 or 1.2.3), ignoring pre-release and build suffixes.
   `surface: invariant` · `evidence: Sources/App/Services/Updates/SemanticVersion.swift` · `qa: UPDATE-04`
-- **UPD-020** When the user skipped a version, a manual check for that version shows "You're Up to Date" rather than the prompt, while a newer version is still offered.
+- **UPD-020** When the user skipped a version, a manual check treats that version as up to date rather than offering it, while a newer version is still offered.
   `surface: ui` · `evidence: Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-06`
 - **UPD-021** When the user chooses Download update, the prompt closes and Aletheia stays open so unsaved work can be finished.
   `surface: ui` · `evidence: Sources/App/Views/UpdatePromptView.swift, Sources/App/Services/Updates/UpdateService.swift` · `qa: UPDATE-07`

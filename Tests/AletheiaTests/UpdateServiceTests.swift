@@ -138,7 +138,7 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertTrue(installer.installed.isEmpty)
     }
 
-    func testManualCheckWhenUpToDateRecordsResultAndNotice() async {
+    func testManualCheckWhenUpToDateRecordsResult() async {
         let service = makeService(checker: FakeChecker(.success(makeRelease("1.0.0"))))
         await service.checkForUpdates(force: true)
         if case .upToDate(let checkedAt) = service.manualCheckResult {
@@ -146,21 +146,20 @@ final class UpdateServiceTests: XCTestCase {
         } else {
             XCTFail("Expected .upToDate manualCheckResult, got \(String(describing: service.manualCheckResult))")
         }
-        XCTAssertEqual(service.manualNotice, .upToDate(currentVersion: "1.0.0"))
+        XCTAssertNil(service.available, "nothing is offered")
     }
 
-    func testAutomaticCheckDoesNotRecordManualNoticeOrResult() async {
+    func testAutomaticCheckDoesNotRecordAResult() async {
         let service = makeService(checker: FakeChecker(.success(makeRelease("1.0.0"))))
         await service.checkForUpdates(force: false)
         XCTAssertNil(service.manualCheckResult)
-        XCTAssertNil(service.manualNotice)
     }
 
-    func testManualCheckWhenUpdateAvailableRecordsResultAndClearsNotice() async {
+    func testManualCheckWhenUpdateAvailableRecordsResult() async {
         let service = makeService(checker: FakeChecker(.success(makeRelease("1.1.0"))))
         await service.checkForUpdates(force: true)
         XCTAssertEqual(service.manualCheckResult, .updateAvailable(version: "1.1.0"))
-        XCTAssertNil(service.manualNotice)
+        XCTAssertEqual(service.available?.version, "1.1.0")
     }
 
     func testManualCheckFailureRecordsCouldNotCheck() async {
@@ -171,14 +170,7 @@ final class UpdateServiceTests: XCTestCase {
         } else {
             XCTFail("Expected .couldNotCheck, got \(String(describing: service.manualCheckResult))")
         }
-        if case .couldNotCheck(let reason) = service.manualNotice {
-            XCTAssertFalse(reason.isEmpty)
-        } else {
-            XCTFail("Expected .couldNotCheck notice, got \(String(describing: service.manualNotice))")
-        }
-
-        service.clearManualNotice()
-        XCTAssertNil(service.manualNotice)
+        XCTAssertNil(service.available)
     }
 
     private let goodDownload = URL(string: "https://github.com/mgwedd/aletheia/releases/download/v1.2.0/Aletheia.dmg")!
@@ -215,6 +207,19 @@ final class UpdateServiceTests: XCTestCase {
     }
 
     /// Nothing in the app links to GitHub releases any more.
+    /// No alert or sheet opens by itself: a newer version shows as a banner, and
+    /// the full prompt opens only from it.
+    func testUpdatesNeverInterruptTheMainWindow() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let text = try String(contentsOf: root.appendingPathComponent("Sources/App/Views/RootView.swift"), encoding: .utf8)
+        XCTAssertFalse(text.contains("You're Up to Date"))
+        XCTAssertTrue(text.contains("UpdateBanner("))
+        XCTAssertTrue(text.contains("showUpdateDetails && updateService.available != nil"))
+        XCTAssertEqual(UpdateBanner.text(for: ReleaseInfo(
+            version: "1.2.0", downloadURL: goodDownload, releaseNotes: "")), "Aletheia 1.2.0 is available.")
+    }
+
     func testNoScreenLinksToGitHubReleases() throws {
         let repo = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
