@@ -134,4 +134,16 @@ final class SettingsLayoutTests: XCTestCase {
         }
         XCTAssertEqual(offenders, [], "SettingsView sizes itself; presenters must not add a frame")
     }
+
+    /// Done closes Settings from the bottom right, not from the toolbar (which put
+    /// it at the top centre of the sheet).
+    func testDoneIsAtTheBottomNotInTheToolbar() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/App/Views/SettingsView.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertFalse(source.contains("placement: .confirmationAction"))
+        XCTAssertTrue(source.contains("Button(SettingsLayout.done) { dismiss() }"))
+        XCTAssertEqual(SettingsLayout.done, "Done")
+    }
 }

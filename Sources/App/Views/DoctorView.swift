@@ -233,9 +233,9 @@ struct DoctorView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if let action = check.action {
+            if let action = check.action, let route = check.actionRoute {
                 Button(action.label) {
-                    perform(action)
+                    perform(route)
                 }
                 .buttonStyle(.themed)
                 .controlSize(.small)
@@ -246,8 +246,8 @@ struct DoctorView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func perform(_ action: DoctorAction) {
-        switch action.route {
+    private func perform(_ route: DoctorActionRoute) {
+        switch route {
         case .settings(let request):
             if let request { AppNavigator.shared.requestSettings(request) }
             openSettings()
