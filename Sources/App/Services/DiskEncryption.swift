@@ -1,3 +1,4 @@
+import DiskArbitration
 import Foundation
 
 /// Reads whether the volume holding the data folder is encrypted. Behind a
@@ -13,12 +14,36 @@ protocol VolumeResourceProviding {
     func volumeIsEncrypted(at url: URL) -> Bool?
 }
 
-/// Asks the file system through `URLResourceKey.volumeIsEncryptedKey`. This is
-/// an in-process read: it works under the App Sandbox and starts no subprocess.
+/// Reads the encryption state of the volume that really holds `url`.
+///
+/// `URLResourceKey.volumeIsEncryptedKey` is not used for a negative answer: on a
+/// Mac with FileVault on it reports false for the Data volume and for every
+/// path under it. The authoritative flag is Disk Arbitration's
+/// `DAMediaEncrypted`, read for the volume `statfs` names. `statfs` follows
+/// firmlinks, so `~` resolves to the Data volume rather than the sealed,
+/// never-encrypted system volume that `/` and the volume URL point at. Both
+/// reads are in-process and work under the App Sandbox; when Disk Arbitration
+/// can't answer the result is nil (unknown), never a guessed false.
 struct SystemVolumeResources: VolumeResourceProviding {
     func volumeIsEncrypted(at url: URL) -> Bool? {
-        guard let values = try? url.resourceValues(forKeys: [.volumeIsEncryptedKey]) else { return nil }
-        return values.volumeIsEncrypted
+        if let values = try? url.resourceValues(forKeys: [.volumeIsEncryptedKey]),
+           values.volumeIsEncrypted == true {
+            return true
+        }
+        var info = statfs()
+        guard statfs(url.path, &info) == 0 else { return nil }
+        let device = withUnsafePointer(to: &info.f_mntfromname) {
+            $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
+        }
+        guard let session = DASessionCreate(kCFAllocatorDefault),
+              let disk = device.withCString({ DADiskCreateFromBSDName(kCFAllocatorDefault, session, $0) }),
+              let description = DADiskCopyDescription(disk) as? [String: Any] else { return nil }
+        return Self.isEncrypted(diskDescription: description)
+    }
+
+    /// The `DAMediaEncrypted` flag of a Disk Arbitration description; nil when absent.
+    static func isEncrypted(diskDescription: [String: Any]) -> Bool? {
+        diskDescription[kDADiskDescriptionMediaEncryptedKey as String] as? Bool
     }
 }
 
