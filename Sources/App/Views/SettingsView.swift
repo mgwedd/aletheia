@@ -172,7 +172,7 @@ struct SettingsView: View {
         selectedPaneRaw = request.pane.rawValue
         switch request {
         case .setupAssistant: showSetup = true
-        case .setAsideRecordings, .license, .exportAllRecords: break
+        case .setAsideRecordings, .license, .exportAllRecords, .pane: break
         }
     }
 
