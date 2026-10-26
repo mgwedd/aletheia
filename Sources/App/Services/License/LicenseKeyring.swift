@@ -26,22 +26,9 @@ struct LicenseKeyring {
     ]
     // END PRODUCTION KEYS
 
-    /// Production keys only. Never contains the dev key.
     static let production = LicenseKeyring(encoded: productionPublicKeys)
 
-    #if ALETHEIA_DEV
-    /// The dev tier also trusts a dev key for local Debug builds. Its private half is kept
-    /// by the owner outside the repo, never committed. Compiled out of every other tier.
-    static let devKeyID = "aletheia-dev-2"
-    static let devPublicKey = "8KFp2hW7OwEzohfjyeq+7R4eZywqyDxNYBGU7YUzkSU="
-    #endif
-
-    /// The keyring this build trusts: production keys, plus the dev key in the dev tier.
-    static let active: LicenseKeyring = {
-        #if ALETHEIA_DEV
-        return LicenseKeyring(encoded: productionPublicKeys.merging([devKeyID: devPublicKey]) { prod, _ in prod })
-        #else
-        return production
-        #endif
-    }()
+    /// The keyring this build trusts. Every build, Debug included, trusts the production
+    /// keys only: to try a build, issue a short-lived test license from the site's admin.
+    static let active = production
 }

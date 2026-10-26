@@ -4,7 +4,7 @@ import XCTest
 
 /// No private half of a key the app trusts may be committed. Every base64 or hex
 /// string in the repo that could be a 32-byte Ed25519 seed is tried as one; it fails
-/// if the public key it gives is a production key, the dev key, or the retired dev key.
+/// if the public key it gives is a production key or one of the retired dev keys.
 final class LicenseSeedLeakTests: XCTestCase {
     private var repo: URL {
         URL(fileURLWithPath: #filePath)
@@ -13,7 +13,7 @@ final class LicenseSeedLeakTests: XCTestCase {
 
     private let trusted: Set<String> = {
         var keys = Set(LicenseKeyring.productionPublicKeys.values)
-        keys.insert("8KFp2hW7OwEzohfjyeq+7R4eZywqyDxNYBGU7YUzkSU=") // aletheia-dev-2
+        keys.insert("8KFp2hW7OwEzohfjyeq+7R4eZywqyDxNYBGU7YUzkSU=") // aletheia-dev-2, retired
         keys.insert("l5KEG0cBMvhtV+s4ZO14Q7eFg172/V29cw1MehAF2lI=") // aletheia-dev-1, retired
         return keys
     }()

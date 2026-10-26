@@ -3,49 +3,24 @@ import XCTest
 @testable import Aletheia
 
 final class LicenseKeyringTests: XCTestCase {
-    private func devKeyring() -> LicenseKeyring {
-        LicenseKeyring(encoded: ["aletheia-dev-2": "8KFp2hW7OwEzohfjyeq+7R4eZywqyDxNYBGU7YUzkSU="])
-    }
-
-    /// The dev key must never be trusted by a shipped build.
-    func testProductionKeyringNeverContainsTheDevKey() throws {
-        XCTAssertNil(LicenseKeyring.production.keys["aletheia-dev-2"])
-        XCTAssertFalse(LicenseKeyring.productionPublicKeys.keys.contains { $0.contains("dev") })
-        // And not by public key value, whatever its id.
-        let devRaw = try XCTUnwrap(devKeyring().keys["aletheia-dev-2"]).rawRepresentation
-        for key in LicenseKeyring.production.keys.values {
-            XCTAssertNotEqual(key.rawRepresentation, devRaw)
-        }
-        for encoded in LicenseKeyring.productionPublicKeys.values {
-            XCTAssertNotEqual(Data(base64Encoded: encoded), devRaw)
-        }
-    }
-
-    func testActiveKeyringByTier() throws {
-        // Signed with a throwaway key under the dev key's id: no build may accept it.
+    /// Every build, Debug included, trusts exactly the production keys.
+    func testEveryBuildTrustsOnlyTheProductionKeys() throws {
+        XCTAssertEqual(Set(LicenseKeyring.active.keys.keys), Set(LicenseKeyring.production.keys.keys))
         let impostor = Curve25519.Signing.PrivateKey()
         let text = try LicenseTestMint.token(LicenseTestMint.payload(kid: "aletheia-dev-2"), key: impostor)
-        #if ALETHEIA_DEV
-        XCTAssertEqual(LicenseKeyring.active.keys["aletheia-dev-2"]?.rawRepresentation,
-                       try XCTUnwrap(devKeyring().keys["aletheia-dev-2"]).rawRepresentation,
-                       "the dev tier trusts the dev key")
-        XCTAssertThrowsError(try LicenseVerifier.verify(text, keyring: .active, now: LicenseTestMint.now)) {
-            XCTAssertEqual($0 as? LicenseError, .badSignature)
-        }
-        #else
-        XCTAssertNil(LicenseKeyring.active.keys["aletheia-dev-2"], "a shipped tier never trusts the dev key")
-        XCTAssertEqual(Set(LicenseKeyring.active.keys.keys), Set(LicenseKeyring.production.keys.keys))
         XCTAssertThrowsError(try LicenseVerifier.verify(text, keyring: .active, now: LicenseTestMint.now)) {
             XCTAssertEqual($0 as? LicenseError, .unknownKey)
         }
-        #endif
     }
 
-    /// The first dev key's private half was once committed, so no build trusts it any more.
-    func testTheRetiredDevKeyIsNotTrusted() {
-        let retired = "l5KEG0cBMvhtV+s4ZO14Q7eFg172/V29cw1MehAF2lI="
-        XCTAssertNil(LicenseKeyring.active.keys["aletheia-dev-1"])
-        XCTAssertFalse(LicenseKeyring.active.keys.values.contains { $0.rawRepresentation.base64EncodedString() == retired })
+    /// The old dev keys are retired: their ids and public keys are trusted nowhere.
+    func testTheRetiredDevKeysAreNotTrusted() {
+        let retired = ["aletheia-dev-1": "l5KEG0cBMvhtV+s4ZO14Q7eFg172/V29cw1MehAF2lI=",
+                       "aletheia-dev-2": "8KFp2hW7OwEzohfjyeq+7R4eZywqyDxNYBGU7YUzkSU="]
+        for (kid, key) in retired {
+            XCTAssertNil(LicenseKeyring.active.keys[kid])
+            XCTAssertFalse(LicenseKeyring.active.keys.values.contains { $0.rawRepresentation.base64EncodedString() == key })
+        }
     }
 
     func testInvalidEncodedKeysAreDroppedNotTrusted() {
