@@ -90,20 +90,20 @@ final class UpdateRig {
     }
 }
 
-/// What the update prompt offers.
+/// What the update banner and the prompt it opens offer.
 struct UpdatePrompt {
     let release: ReleaseInfo?
     let buttons: [String]
 }
 
-/// What the manual-check alert says.
 struct UpdateDownload {
     let rig: UpdateRig
 }
 
-struct UpdateAlert {
-    let notice: UpdateService.ManualNotice?
+/// What Settings says after a manual check. No alert is shown for it.
+struct UpdateCheckOutcome {
     let result: UpdateService.ManualCheckResult?
+    let offered: ReleaseInfo?
 }
 
 // MARK: - Given
@@ -141,15 +141,22 @@ extension When {
             sha256: sha256)
     }
 
-    func checkManually(_ rig: UpdateRig) async -> UpdateAlert {
+    func checkManually(_ rig: UpdateRig) async -> UpdateCheckOutcome {
         await rig.service.checkForUpdates(force: true)
-        return UpdateAlert(notice: rig.service.manualNotice, result: rig.service.manualCheckResult)
+        return UpdateCheckOutcome(result: rig.service.manualCheckResult, offered: rig.service.available)
     }
 
     func checkAutomatically(_ rig: UpdateRig) async { await rig.service.checkForUpdates() }
 
     func lookAtPrompt(_ rig: UpdateRig) -> UpdatePrompt {
         UpdatePrompt(release: rig.service.available, buttons: UpdatePromptLayout.rows.flatMap { $0 })
+    }
+
+    /// The banner's text and buttons, when a version is offered.
+    func lookAtBanner(_ rig: UpdateRig) -> UpdatePrompt {
+        UpdatePrompt(
+            release: rig.service.available,
+            buttons: [UpdateBanner.details, UpdatePromptLayout.later, UpdatePromptLayout.download])
     }
 
     func remindLater(_ rig: UpdateRig) { rig.service.dismiss() }
@@ -179,15 +186,15 @@ extension When {
 
 // MARK: - Then
 
-extension Then where Subject == UpdateAlert {
+extension Then where Subject == UpdateCheckOutcome {
     func saysUpToDate() {
-        expectEqual(subject.notice?.title, Copy.upToDateTitle, "the alert title")
         if case .upToDate = subject.result {} else { fail("Settings should say you are up to date, found \(String(describing: subject.result))") }
+        expect(subject.offered == nil, "no banner should appear when up to date")
     }
 
     func saysCouldNotCheck() {
-        expectEqual(subject.notice?.title, Copy.couldNotCheckTitle, "the alert title")
         if case .couldNotCheck = subject.result {} else { fail("Settings should say the check failed, found \(String(describing: subject.result))") }
+        expect(subject.offered == nil, "no banner should appear when the check failed")
     }
 }
 
@@ -200,6 +207,10 @@ extension Then where Subject == UpdatePrompt {
 
     func hasButtons(_ names: [String]) {
         expectEqual(Set(subject.buttons), Set(names), "the prompt's controls")
+    }
+
+    func reads(_ text: String) {
+        expectEqual(subject.release.map(UpdateBanner.text(for:)), text, "the banner text")
     }
 }
 
