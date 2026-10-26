@@ -3,23 +3,13 @@ import Foundation
 import XCTest
 @testable import Aletheia
 
-/// Mints license tokens and revocation lists for tests. The dev signing key's
-/// private half lives only here, under `Tests/` (see `Fixtures/dev-license-signing-seed.txt`).
+/// Mints license tokens and revocation lists for tests, always with throwaway keys made
+/// at run time. No private signing key is stored in the repo.
 enum LicenseTestMint {
     static let now = Date(timeIntervalSince1970: 1_800_000_000)
     static let day: TimeInterval = 86_400
 
-    /// The dev tier's signing key, from the fixture file.
-    static func devKey(file: StaticString = #filePath) throws -> Curve25519.Signing.PrivateKey {
-        let url = URL(fileURLWithPath: "\(file)")
-            .deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/dev-license-signing-seed.txt")
-        let text = try String(contentsOf: url, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
-        let seed = try XCTUnwrap(Data(base64Encoded: text))
-        return try Curve25519.Signing.PrivateKey(rawRepresentation: seed)
-    }
-
-    /// A throwaway key with its own keyring, so most tests don't depend on the dev key.
+    /// A throwaway key with its own keyring.
     static func freshKeyring(kid: String = "test-1") -> (key: Curve25519.Signing.PrivateKey, ring: LicenseKeyring) {
         let key = Curve25519.Signing.PrivateKey()
         let ring = LicenseKeyring(encoded: [kid: key.publicKey.rawRepresentation.base64EncodedString()])
