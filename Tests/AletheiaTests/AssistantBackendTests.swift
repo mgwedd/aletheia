@@ -100,4 +100,15 @@ final class AssistantBackendResolverTests: XCTestCase {
             }
         }
     }
+
+    /// With only the built-in model, "Automatic" and "Built-in model" are the
+    /// same engine, so there is nothing to choose and the menu is hidden.
+    func testTheEngineMenuShowsOnlyWithTwoRealEngines() {
+        XCTAssertFalse(AssistantBackend.offersEngineChoice(
+            AssistantBackend.selectableOptions(embeddedLlamaAvailable: true, appleIntelligenceBlocked: true)))
+        XCTAssertFalse(AssistantBackend.offersEngineChoice(
+            AssistantBackend.selectableOptions(embeddedLlamaAvailable: false, appleIntelligenceBlocked: true)))
+        XCTAssertTrue(AssistantBackend.offersEngineChoice(
+            AssistantBackend.selectableOptions(embeddedLlamaAvailable: true, appleIntelligenceBlocked: false)))
+    }
 }

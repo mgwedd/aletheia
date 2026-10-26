@@ -226,7 +226,7 @@ Before you start: setup finished.
 - **SETTINGS-03** Pick Light, then Dark under Appearance → the whole app changes at once and stays that way after relaunch.
 - **SETTINGS-04** Look at the defaults on a fresh install → automatic transcription is on, keeping data out of backups is on, raw audio kept is off, and notification names are off.
 - **SETTINGS-05** Open **AI and models** > **Speech recognition** and download a model → a percent bar fills and the row shows Installed.
-- **SETTINGS-06** Look at the **Language model** card → the engine picker offers only Automatic and Built-in model, and Apple Intelligence is off.
+- **SETTINGS-06** Look at the **Language model** card → there is no engine menu, since the built-in model is the only engine, and Apple Intelligence is off.
 - **SETTINGS-07** Pick a built-in model → its license link shows before anything downloads.
 - **SETTINGS-08** Start the model download → progress reads "Downloading model…" then "Verifying downloaded model…".
 - **SETTINGS-09** Add and remove a risk phrase → the list updates, and **Reset to Defaults** asks first.
@@ -249,7 +249,7 @@ Before you start: a data folder with some activity (unlock, export, delete a pat
 
 ## 17. Software updates (UPDATE)
 Before you start: a Release build of Aletheia and an internet connection; to see an offer, an older build or a newer release.
-- **UPDATE-01** Open **Settings** > **General** > **Software update** → it shows the version, a Notarization row and the automatic-check switch.
+- **UPDATE-01** Open **Settings** > **General** > **Software update** → it shows the version and the automatic-check switch.
 - **UPDATE-02** Click **Check for updates** when up to date → a "You're Up to Date" alert appears and Settings says you are up to date.
 - **UPDATE-03** Turn off Wi-Fi and click **Check for updates** → a "Couldn't Check for Updates" alert appears.
 - **UPDATE-04** Run an older build against a newer release → a prompt offers **View downloads**, **Skip this version**, **Remind me later** and **Download update**.

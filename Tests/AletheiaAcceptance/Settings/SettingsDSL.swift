@@ -153,7 +153,7 @@ extension When {
         app.relaunch(tier: app.tier)
         let after = app.settings.appearance
         // Leave the host app as it was found.
-        app.settings.appearance = .system
+        app.settings.appearance = .default
         return AppearanceChoice(appliedName: applied, afterRelaunch: after)
     }
 
@@ -378,6 +378,9 @@ extension Then where Subject == EnginePicker {
     func keepsAppleIntelligenceOff() {
         expect(subject.appleIntelligenceBlocked, "Apple Intelligence should stay off")
         expect(!subject.options.contains(.appleIntelligence), "Apple Intelligence should not be offered")
+    }
+    func isHidden() {
+        expect(!AssistantBackend.offersEngineChoice(subject.options), "the Engine menu should be hidden with only one engine")
     }
 }
 

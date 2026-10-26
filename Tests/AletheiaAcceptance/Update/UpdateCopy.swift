@@ -9,7 +9,6 @@ extension Copy {
 
 extension Copy {
     static let versionRow = "Current version"
-    static let notarizationRow = "Notarization"
     static let automaticChecksRow = "Check for updates automatically"
     static let checkNowRow = "Check for updates"
 }

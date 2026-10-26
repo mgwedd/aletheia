@@ -24,12 +24,11 @@ enum SettingsLegalItem: Equatable, Identifiable {
 
 /// The rows of the Software update card.
 enum SoftwareUpdateRow: CaseIterable {
-    case version, notarization, automaticChecks, checkNow
+    case version, automaticChecks, checkNow
 
     var title: String {
         switch self {
         case .version: return "Current version"
-        case .notarization: return "Notarization"
         case .automaticChecks: return "Check for updates automatically"
         case .checkNow: return "Check for updates"
         }
