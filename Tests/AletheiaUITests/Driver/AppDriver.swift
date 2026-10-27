@@ -91,9 +91,10 @@ final class AppDriver {
 
     var probe: ProbeSnapshot {
         ensureLaunched()
-        guard let json = probeElement.value as? String,
+        let json = probeElement.label
+        guard !json.isEmpty,
               let snapshot = try? JSONDecoder().decode(ProbeSnapshot.self, from: Data(json.utf8)) else {
-            XCTFail("the fixture probe could not be read")
+            XCTFail("the fixture probe could not be read: \"\(json.prefix(200))\"")
             return ProbeSnapshot(files: [], patients: [], aiRequests: [])
         }
         return snapshot
