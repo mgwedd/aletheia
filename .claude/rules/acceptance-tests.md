@@ -48,3 +48,10 @@ requirement changes, so their tests should too.
 - When reviewing a diff, flag edits to test bodies that a changed criterion
   doesn't explain, and harness churn out of proportion to the code change.
 - Unit tests (`Tests/AletheiaTests`) are free to change with internals.
+
+## Feature changes must touch acceptance and UI tests
+
+The corollary: tests change when behaviour changes. If a diff changes what a
+user can see or do and no criterion, acceptance test or UI test changes with
+it, coverage is missing. Add or update the criterion and its tests in the same
+PR, and flag it in review when a feature change arrives without them.
