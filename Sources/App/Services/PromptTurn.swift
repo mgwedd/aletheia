@@ -14,7 +14,7 @@ struct PromptTurn: Equatable {
     static func recent(_ history: [ChatMessage], question: String? = nil) -> [PromptTurn] {
         var recent = ChatMemory.remembered(history).recent
         if let last = recent.last, last.role == .user, last.text == question { recent.removeLast() }
-        return recent.compactMap { message in
+        return recent.filter(\.reachesModel).compactMap { message in
             switch message.role {
             case .user: return PromptTurn(role: .user, text: message.text)
             case .assistant: return PromptTurn(role: .assistant, text: message.text)

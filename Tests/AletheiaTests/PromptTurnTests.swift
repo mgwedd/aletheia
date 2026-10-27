@@ -17,6 +17,18 @@ final class PromptTurnTests: XCTestCase {
         XCTAssertEqual(PromptTurn.recent(history).count, 3)
     }
 
+    /// A reply read from My Notes never goes back to the model.
+    func testRecentLeavesOutRepliesFromMyNotes() {
+        let history = [
+            ChatMessage(role: .user, text: "What have I noted about sleep?"),
+            ChatMessage(role: .assistant, text: "> private note", fromMyNotes: true),
+            ChatMessage(role: .user, text: "Summarize."),
+        ]
+        XCTAssertEqual(PromptTurn.recent(history, question: "Summarize."), [
+            PromptTurn(role: .user, text: "What have I noted about sleep?"),
+        ])
+    }
+
     func testConversationAlternatesAndEndsWithThePrompt() {
         let turns = [
             PromptTurn(role: .assistant, text: "Hello."),
