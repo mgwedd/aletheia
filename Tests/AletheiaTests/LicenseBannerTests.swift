@@ -51,38 +51,15 @@ final class LicenseBannerTests: XCTestCase {
         XCTAssertTrue(text.contains("Settings > License key"), text)
     }
 
-    private func emailParts(_ url: URL) throws -> (to: String, subject: String, body: String) {
-        let parts = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
-        let item = { (name: String) in parts.queryItems?.first { $0.name == name }?.value ?? "" }
-        XCTAssertEqual(parts.scheme, "mailto")
-        XCTAssertEqual(parts.queryItems?.map(\.name), ["subject", "body"], "nothing but a subject and body")
-        return (parts.path, item("subject"), item("body"))
+    func testGetAKeyOpensTheBetaApplicationPage() {
+        XCTAssertEqual(LicenseLinks.applicationURL.absoluteString, "https://astrealabs.com/aletheia/beta")
+        XCTAssertEqual(LicenseLinks.applicationURL.scheme, "https")
     }
 
-    func testGetAKeyDraftsARenewalEmailNamingOnlyTheLicenseIDAndEndDate() throws {
-        let token = try sampleToken()
-        let email = try emailParts(LicenseLinks.keyRequestEmail(for: token))
-        XCTAssertEqual(email.to, "support@astrealabs.com")
-        XCTAssertEqual(email.subject, "Aletheia license renewal")
-        XCTAssertTrue(email.body.contains("Please renew my Aletheia license."), email.body)
-        XCTAssertTrue(email.body.contains("License ID: \(token.lid)"), email.body)
-        if let expiresAt = token.expiresAt {
-            XCTAssertTrue(email.body.contains("Ends: \(expiresAt.licenseText)"), email.body)
-        }
-        XCTAssertFalse(email.body.contains(token.sub), "the licensee's email is not repeated")
-        XCTAssertFalse(email.body.contains(token.kid))
-    }
-
-    func testWithoutALicenseGetAKeyAsksForOne() throws {
-        let email = try emailParts(LicenseLinks.keyRequestEmail(for: nil))
-        XCTAssertEqual(email.to, "support@astrealabs.com")
-        XCTAssertEqual(email.subject, "Aletheia license key")
-        XCTAssertFalse(email.body.contains("License ID"), email.body)
-    }
-
-    func testTheSettingsCaptionSaysWhatTheEmailIncludes() {
+    func testTheSettingsCaptionSaysWhereGetAKeyGoes() {
+        XCTAssertTrue(LicensePane.requestCaption.contains("astrealabs.com/aletheia/beta"))
         XCTAssertTrue(LicensePane.requestCaption.contains("support@astrealabs.com"))
-        XCTAssertTrue(LicensePane.requestCaption.contains("license ID and end date, nothing else"))
+        XCTAssertFalse(LicensePane.requestCaption.localizedCaseInsensitiveContains("draft"))
     }
 
     func testExportRequestOpensTheBackupsPane() {
