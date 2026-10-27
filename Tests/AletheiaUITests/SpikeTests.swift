@@ -8,6 +8,6 @@ final class SpikeTests: XCTestCase {
         let probe = app.descendants(matching: .any).matching(identifier: "fixture-probe").firstMatch
         if !probe.waitForExistence(timeout: 30) { print("TREE", app.debugDescription) }
         XCTAssertTrue(probe.exists)
-        print("PROBE", probe.value as? String ?? "nil")
+        print("PROBE", probe.label)
     }
 }

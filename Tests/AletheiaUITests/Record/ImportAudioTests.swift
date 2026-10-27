@@ -37,6 +37,11 @@ final class ImportAudioTests: XCTestCase {
         XCTAssertTrue(app.exists(app.button(importButton)), "the session does not offer \(importButton)")
     }
 
+    /// An alert's message is a static text whose words sit in its value on macOS, not its label.
+    private func alertText(containing words: String) -> XCUIElement {
+        app.app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", words, words)).firstMatch
+    }
+
     private func hasRecordingFile(_ probe: ProbeSnapshot) -> Bool {
         probe.files.contains { $0.hasSuffix("mic.caf") }
     }
@@ -76,8 +81,7 @@ final class ImportAudioTests: XCTestCase {
         app.tap(importButton)
 
         XCTAssertTrue(app.exists(app.app.staticTexts["Something went wrong"]), "no alert")
-        XCTAssertTrue(app.exists(app.app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "couldn't read that file as audio")).firstMatch), "the alert does not say why")
+        XCTAssertTrue(app.exists(alertText(containing: "couldn't read that file as audio")), "the alert does not say why")
         XCTAssertFalse(hasRecordingFile(app.probe), "audio was saved from a file that is not audio")
     }
 
@@ -98,8 +102,7 @@ final class ImportAudioTests: XCTestCase {
         app.tap(importButton)
 
         XCTAssertTrue(app.exists(app.app.staticTexts["Something went wrong"]), "no alert")
-        XCTAssertTrue(app.exists(app.app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "needs a license key")).firstMatch), "the alert does not say a license key is needed")
+        XCTAssertTrue(app.exists(alertText(containing: "needs a license key")), "the alert does not say a license key is needed")
         XCTAssertFalse(hasRecordingFile(app.probe), "audio was imported without a license")
     }
 }

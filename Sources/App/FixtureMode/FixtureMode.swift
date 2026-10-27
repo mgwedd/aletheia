@@ -247,13 +247,17 @@ struct FixtureProbeOverlay: View {
     @EnvironmentObject private var appModel: AppModel
 
     var body: some View {
-        Color.clear
-            .frame(width: 2, height: 2)
-            .accessibilityElement()
-            .accessibilityIdentifier("fixture-probe")
-            .accessibilityLabel("fixture probe")
-            .accessibilityValue(FixtureProbe.snapshotJSON(appModel: appModel))
-            .allowsHitTesting(false)
+        // Redrawn twice a second, so files written without a model change still show.
+        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+            Color.clear
+                .frame(width: 2, height: 2)
+                .accessibilityElement()
+                .accessibilityIdentifier("fixture-probe")
+                // The JSON rides in the label: XCUI reads a label back for any
+                // element, but not always a value.
+                .accessibilityLabel(FixtureProbe.snapshotJSON(appModel: appModel))
+                .allowsHitTesting(false)
+        }
     }
 }
 
