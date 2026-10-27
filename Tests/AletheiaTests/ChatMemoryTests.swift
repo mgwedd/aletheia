@@ -16,9 +16,25 @@ final class ChatMemoryTests: XCTestCase {
 
     func testCompactsOnlyPastTheBudget() {
         XCTAssertFalse(ChatMemory.needsCompaction([q1, a1]))
-        let long = ChatMessage(role: .assistant, text: String(repeating: "x", count: ChatMemory.budget + 1))
+        let long = ChatMessage(role: .assistant, text: String(repeating: "x", count: ChatMemory.budget() + 1))
         XCTAssertTrue(ChatMemory.needsCompaction([q1, long]))
         XCTAssertFalse(ChatMemory.needsCompaction([q1, long, summary]))
+    }
+
+    func testRepliesFromMyNotesDontCountTowardCompaction() {
+        let notes = ChatMessage(role: .assistant, text: String(repeating: "x", count: ChatMemory.budget() + 1), fromMyNotes: true)
+        XCTAssertFalse(ChatMemory.needsCompaction([q1, notes]))
+    }
+
+    /// A quarter of the model's window, so a small window still leaves most of
+    /// itself to the session material.
+    func testBudgetScalesWithTheModelWindow() {
+        XCTAssertEqual(ChatMemory.budget(for: ContextBudget(tokens: 8_192)), 6_144)
+        XCTAssertEqual(ChatMemory.budget(for: ContextBudget(tokens: 16_384)), 12_288)
+        XCTAssertEqual(ChatMemory.budget(for: ContextBudget(tokens: 65_536)), 24_000)
+        let mid = ChatMessage(role: .assistant, text: String(repeating: "x", count: 8_000))
+        XCTAssertTrue(ChatMemory.needsCompaction([q1, mid], window: ContextBudget(tokens: 8_192)))
+        XCTAssertFalse(ChatMemory.needsCompaction([q1, mid], window: ContextBudget(tokens: 16_384)))
     }
 
     func testCompactCommand() {
