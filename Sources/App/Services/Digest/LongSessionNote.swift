@@ -72,6 +72,8 @@ enum LongSessionNote {
         service: AssistantService,
         builder: DigestBuilder,
         sessionID: UUID,
+        sessionDate: Date = Date(),
+        folderName: String = "",
         loadDigest: @escaping () async -> SessionDigest?,
         saveDigest: @escaping (SessionDigest) throws -> Void,
         sectionCache: SectionCacheAccess? = nil,
@@ -117,6 +119,7 @@ enum LongSessionNote {
                     try Task.checkCancellation()
                     // Never short of the risk lines.
                     var room = min(total, max(readRoom, flaggedCost + digestShare))
+                    var checkReserve = 0
                     var plannedCheck: CheckOutcome?
                     if let cap = effort.materialCap(for: .note) {
                         // Fast: a compact prompt.
@@ -128,6 +131,7 @@ enum LongSessionNote {
                             plannedCheck = .noRoom
                         } else {
                             room = room - reserve
+                            checkReserve = reserve
                         }
                     }
                     // Risk lines get their room first (every flagged line, then neighbours from
@@ -146,15 +150,43 @@ enum LongSessionNote {
                     }
                     try Task.checkCancellation()
                     let totalLines = nonBlankLines(transcript).count
-                    let material = SessionMaterial.excerpts(digest: digestText, passages: found.text)
+                    var lookups = 0
                     @MainActor func label(_ check: CheckOutcome?) -> String {
                         coverageLabel(
                             digestParts: digest.sections.count, digestShortened: shortened, digestOmitted: omitted,
                             passageLines: found.lineCount, totalLines: totalLines, effort: effort,
-                            droppedRisk: found.droppedRisk, check: check)
+                            lookups: lookups, droppedRisk: found.droppedRisk, check: check)
                             + (fields.coverageNote.map { " " + $0 } ?? "")
                     }
                     coverage(label(plannedCheck))
+
+                    // Detailed or Focus: with every part's summary and the risk lines in, the
+                    // model reads parts in full, in the room left over. The risk scan stays fixed.
+                    var followUps = ""
+                    if looksCloser(effort: effort, verbosity: verbosity) {
+                        let base = Prompts.sessionMaterial(.excerpts(digest: digestText, passages: found.text))
+                        let scope = LocalToolScope(sessions: [
+                            LocalToolSession(
+                                id: sessionID, tag: "S1", date: sessionDate, folderName: folderName,
+                                transcript: transcript, digest: digest, notes: notes,
+                                comments: AssistantService.formatComments(comments))
+                        ])
+                        let refinement = try await LocalToolLoop.refine(
+                            question: lookupTask(format),
+                            initialContext: base,
+                            scope: scope,
+                            effort: effort,
+                            characterBudget: max(0, total - checkReserve - base.count - 80),
+                            service: service,
+                            builder: builder,
+                            live: live)
+                        if !refinement.additionalContext.isEmpty {
+                            followUps = refinement.additionalContext
+                            lookups = refinement.outcomes.filter { !$0.isError }.count
+                            coverage(label(plannedCheck))
+                        }
+                    }
+                    let material = SessionMaterial.excerpts(digest: digestText, passages: found.text, followUps: followUps)
 
                     // The draft, streamed into the pane as it is written.
                     let draftStats = StatsBox()
@@ -308,6 +340,20 @@ enum LongSessionNote {
 
     private final class StatsBox: @unchecked Sendable {
         var value: AIRunStats?
+    }
+
+    /// Whether a long-session note reads parts in full after the summaries: at
+    /// Length Detailed or at Focus, never at Fast.
+    nonisolated static func looksCloser(effort: AnswerEffort, verbosity: SummaryVerbosity) -> Bool {
+        effort.maxToolCalls > 0 && (verbosity == .detailed || effort == .focus)
+    }
+
+    /// What the lookup planner is preparing for. A note covers the whole session, so
+    /// close reads are spread over it, not drawn to one stretch.
+    nonisolated static func lookupTask(_ format: ProgressNoteFormat) -> String {
+        "Write a \(format.displayName) covering the whole session, start to end. The material has a "
+            + "summary of every part. Read in full the parts whose summary is too thin to write from, "
+            + "spread across the session so no part is left out."
     }
 
     /// Whether `transcript` is short enough to send whole (if it also fits).
@@ -568,13 +614,14 @@ enum LongSessionNote {
     /// applies (not Focus).
     static func coverageLabel(
         digestParts: Int, digestShortened: Bool = false, digestOmitted: Bool = false, passageLines: Int,
-        totalLines: Int, effort: AnswerEffort, droppedRisk: Int = 0, check: CheckOutcome?
+        totalLines: Int, effort: AnswerEffort, lookups: Int = 0, droppedRisk: Int = 0, check: CheckOutcome?
     ) -> String {
         let summary = digestOmitted
             ? "no summary of the whole session (it didn't fit)"
             : "a summary of the whole session (\(digestParts) part\(digestParts == 1 ? "" : "s")"
                 + (digestShortened ? ", shortened to fit" : "") + ")"
-        var text = "Read: \(summary) plus \(passageLines) of \(totalLines) transcript lines · \(effort.displayName). "
+        let followUps = lookups > 0 ? " and \(lookups) follow-up lookup\(lookups == 1 ? "" : "s")" : ""
+        var text = "Read: \(summary) plus \(passageLines) of \(totalLines) transcript lines\(followUps) · \(effort.displayName). "
             + "Details outside those lines may be missing."
         if droppedRisk > 0 {
             text += " \(droppedRisk) risk-flagged line\(droppedRisk == 1 ? "" : "s") didn't fit or were shortened; check the transcript for risk."

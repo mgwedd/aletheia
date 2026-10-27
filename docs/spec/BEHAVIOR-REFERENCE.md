@@ -839,9 +839,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Views/SettingsView.swift` · `qa: NOTE-04`
 - **NOT-037** The transcript and summaries given to the AI are treated as material to summarize, not as instructions, so text inside a transcript that tells the AI to do something does not change how the note is written.
   `surface: invariant` · `evidence: Sources/App/Services/UntrustedText.swift, Sources/App/Services/Prompts.swift` · `qa: NOTE-16`
-- **NOT-038** A session short enough for this Mac to read at once gets its note in a single pass reading the whole transcript at every effort level.
+- **NOT-038** A session of up to three ten-minute parts (about 30 minutes) that this Mac can read at once gets its note in a single pass reading the whole transcript at every effort level.
   `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Services/ContextBudget.swift` · `qa: NOTE-14`
-- **NOT-039** A session too long for this Mac to read at once gets its note from the session summary plus transcript passages, with lines mentioning a risk phrase (suicide, self-harm or violence wording, or the therapist's own added phrases) prioritized first, then the best passages for each section.
+- **NOT-039** A longer session, or one too long for this Mac to read at once, gets its note from the summary of every part of the session (shortened evenly across the session if they don't all fit) plus transcript passages, with lines mentioning a risk phrase (suicide, self-harm or violence wording, or the therapist's own added phrases) prioritized first, then the best passages for each section.
   `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-14`
 - **NOT-040** Risk phrases are editable in Settings: the therapist can add, remove, clear (after confirming "Clear all risk phrases?") and reset (after confirming "Reset risk phrases?") them; empty and duplicate phrases are ignored, and matching is whole-word, case-insensitive and ignores apostrophe style.
   `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-09`
@@ -907,6 +907,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-14`
 - **NOT-072** When risk-flagged lines did not all fit in a long-session note, the coverage line says so and tells the therapist to check the transcript for risk.
   `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-14`
+- **NOT-073** A long-session note at Length Detailed (at Normal or Focus) or at Focus effort reads parts of the transcript in full after the part summaries and risk lines are in, chosen across the whole session, with the room left over; its coverage line adds "and N follow-up lookups". Fast, and Concise or Natural at Normal, make no lookups.
+  `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: NOTE-17`
 
 ## Digests (DIG)
 

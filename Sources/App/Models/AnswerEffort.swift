@@ -108,9 +108,9 @@ enum AnswerEffort: String, CaseIterable, Identifiable, Codable, Hashable {
         case (.note, .fast):
             return "Quickest: one pass. A session that fits is read whole; a longer one from its summary, its risk lines and the best passages, \(cap)."
         case (.note, .normal):
-            return "One pass. A session that fits is read whole; a longer one from its summary, its risk lines and as many passages as fit."
+            return "One pass. A session that fits is read whole; a longer one from its summary, its risk lines and as many passages as fit. At Length Detailed, then \(lookups) to read parts in full."
         case (.note, .focus):
-            return "Slowest. Like Normal, then one more pass checks a long session's draft against the passages. A session that fits is read whole and not checked."
+            return "Slowest. Like Normal, with \(lookups) to read parts in full at any length, then one more pass checks a long session's draft against the passages. A session that fits is read whole and not checked."
         case (.sessionChat, .fast):
             return "Quickest: one pass. A session that fits is read whole; a longer one from its summary and the passages search finds, \(cap)."
         case (.sessionChat, .normal):

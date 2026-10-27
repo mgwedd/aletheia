@@ -303,6 +303,8 @@ final class SessionNoteModel: ObservableObject {
                     service: service,
                     builder: integrations.digests,
                     sessionID: session.id,
+                    sessionDate: session.date,
+                    folderName: session.folderName,
                     loadDigest: {
                         await Task.detached { store.digest(for: patient, session: session, model: model) }.value
                     },

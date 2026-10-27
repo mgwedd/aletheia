@@ -14,11 +14,18 @@ private final class StubModel: Assistant, @unchecked Sendable {
     var checkError: Error?
     /// Waits this long on each digest call (nanoseconds).
     var digestDelay: UInt64 = 0
+    /// Lookup planning prompts, kept apart from `prompts`, and what they get back.
+    var plans: [String] = []
+    var planResponse = #"{"calls":[]}"#
 
     func isReachable() async -> Bool { true }
     func listModels() async throws -> [String] { [] }
     func hasModel(_ name: String) async -> Bool { true }
     func generate(model: String, system: String, prompt: String) async throws -> String {
+        if prompt.contains("Do not write the final answer yet.") {
+            plans.append(prompt)
+            return planResponse
+        }
         prompts.append(prompt)
         if prompt.contains("Transcript section") {
             if digestDelay > 0 { try await Task.sleep(nanoseconds: digestDelay) }
@@ -77,12 +84,13 @@ final class LongSessionNoteTests: XCTestCase {
         var snapshots: [String]
         var coverage: [String]
         var prompts: [String]
+        var plans: [String] = []
     }
 
     private func run(
         transcript: String, effort: AnswerEffort = .normal, stored: SessionDigest? = nil, tokens: Int = 8192,
         format: ProgressNoteFormat = .soap, phrases: [String] = defaultPhrases, sectionCache: SectionCacheAccess? = nil,
-        notes: String = "", configure: (StubModel) -> Void = { _ in }
+        notes: String = "", verbosity: SummaryVerbosity = .default, configure: (StubModel) -> Void = { _ in }
     ) async throws -> Run {
         let stub = StubModel()
         configure(stub)
@@ -90,13 +98,14 @@ final class LongSessionNoteTests: XCTestCase {
         service.budget = ContextBudget(tokens: tokens)
         var coverage: [String] = []
         let stream = LongSessionNote.stream(
-            format: format, transcript: transcript, notes: notes, effort: effort, riskPhrases: phrases, service: service,
+            format: format, transcript: transcript, notes: notes, verbosity: verbosity, effort: effort,
+            riskPhrases: phrases, service: service,
             builder: DigestBuilder(queue: InferenceQueue()), sessionID: UUID(),
             loadDigest: { stored }, saveDigest: { _ in }, sectionCache: sectionCache,
             live: { _, _ in }, coverage: { coverage.append($0) })
         var snapshots: [String] = []
         for try await snapshot in stream { snapshots.append(snapshot) }
-        return Run(snapshots: snapshots, coverage: coverage, prompts: stub.prompts)
+        return Run(snapshots: snapshots, coverage: coverage, prompts: stub.prompts, plans: stub.plans)
     }
 
     func testPsychotherapyNoteTextIsNeverInTheGenerationPrompt() async throws {
@@ -777,7 +786,7 @@ final class LongSessionNoteTests: XCTestCase {
         // All calls except the last two are digest stages (.digest, nil grammar);
         // the last two are the draft and Focus check stages (.note, SOAP grammar).
         XCTAssertGreaterThanOrEqual(stub.recordedCalls.count, 3)
-        let digestCalls = stub.recordedCalls.dropLast(2)
+        let digestCalls = stub.recordedCalls.dropLast(2).filter { $0.grammar != LocalToolLoop.grammar }
         let noteCalls = Array(stub.recordedCalls.suffix(2))
         XCTAssertTrue(digestCalls.allSatisfy { $0.task == .digest && $0.grammar == nil })
         XCTAssertEqual(noteCalls.map(\.task), [.note, .note])
@@ -828,5 +837,47 @@ final class LongSessionNoteTests: XCTestCase {
         XCTAssertTrue(text.contains("line 0 of"))
         XCTAssertTrue(text.contains("line 99 of"), "the end of the session is kept, not only the start")
         XCTAssertTrue(text.contains("line 50 of") || text.contains("line 49 of"), "the middle too")
+    }
+
+    // MARK: - Lookups at Detailed or Focus
+
+    func testLookupsOnlyAtDetailedOrFocus() {
+        XCTAssertTrue(LongSessionNote.looksCloser(effort: .normal, verbosity: .detailed))
+        XCTAssertTrue(LongSessionNote.looksCloser(effort: .focus, verbosity: .concise))
+        XCTAssertTrue(LongSessionNote.looksCloser(effort: .focus, verbosity: .natural))
+        XCTAssertFalse(LongSessionNote.looksCloser(effort: .normal, verbosity: .natural))
+        XCTAssertFalse(LongSessionNote.looksCloser(effort: .normal, verbosity: .concise))
+        XCTAssertFalse(LongSessionNote.looksCloser(effort: .fast, verbosity: .detailed))
+    }
+
+    func testDetailedNoteReadsAPartInFullAfterEverySummary() async throws {
+        let text = syntheticTranscript(minutes: 120)
+        let result = try await run(transcript: text, tokens: 65_536, verbosity: .detailed) {
+            $0.planResponse = #"{"calls":[{"tool":"read_section","session":"S1","start":"50:00","end":"52:00"}]}"#
+        }
+        let plan = try XCTUnwrap(result.plans.first)
+        XCTAssertEqual(plan.components(separatedBy: "section digest").count - 1, TranscriptSections.split(text).count,
+                       "the planner sees every part's summary")
+        XCTAssertTrue(plan.contains("think about hurting myself"), "and the risk lines")
+        XCTAssertTrue(plan.contains("whole session"))
+        let final = try XCTUnwrap(result.prompts.last)
+        XCTAssertTrue(final.contains("follow-up lookups"), "the part read in full reaches the note")
+        XCTAssertTrue(final.contains("think about hurting myself"), "risk lines stay")
+        XCTAssertTrue(try XCTUnwrap(result.coverage.last).contains("and 1 follow-up lookup ·"))
+    }
+
+    func testNaturalAtNormalAndDetailedAtFastMakeNoLookups() async throws {
+        let text = syntheticTranscript(minutes: 120)
+        let natural = try await run(transcript: text, tokens: 65_536, verbosity: .natural)
+        let fast = try await run(transcript: text, effort: .fast, tokens: 65_536, verbosity: .detailed)
+        XCTAssertTrue(natural.plans.isEmpty)
+        XCTAssertTrue(fast.plans.isEmpty)
+        XCTAssertFalse(try XCTUnwrap(natural.coverage.last).contains("follow-up"))
+    }
+
+    func testFocusPlansLookupsAtAnyLength() async throws {
+        let text = syntheticTranscript(minutes: 120)
+        let focus = try await run(transcript: text, effort: .focus, tokens: 65_536, verbosity: .concise)
+        XCTAssertFalse(focus.plans.isEmpty)
     }
 }

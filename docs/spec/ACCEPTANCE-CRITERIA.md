@@ -122,9 +122,10 @@ Before you start: a session with a transcript, the AI model downloaded, and a co
 - **NOTE-11** Click **Edit** and use ⌘B and ⌘I → text shows formatted with no raw Markdown symbols, and **Save** keeps it.
 - **NOTE-12** Change the transcript after generating a note → the note shows an "Outdated" message with **Regenerate**.
 - **NOTE-13** Type in **My Notes** → it saves as you type and the AI never rewrites it.
-- **NOTE-14** Generate a note on a transcript too long to read at once → the status steps through "Processing transcript" and the note ends with a coverage line.
+- **NOTE-14** Generate a note on a session over 30 minutes, or too long to read at once → the status steps through "Processing transcript" and the note ends with a coverage line.
 - **NOTE-15** Click **Copy** on a note and paste into a rich-text app → headings and lists come through formatted, and the button shows "Copied".
 - **NOTE-16** Put a line in a transcript telling the AI to ignore instructions, then generate a note → the note summarises normally and ignores it.
+- **NOTE-17** Generate a Detailed note, or a note at Focus, on a session over 30 minutes → the coverage line counts follow-up lookups as well as every part's summary; at Fast, or Concise or Natural at Normal, it counts none.
 
 ## 8. Chat and Q&A (CHAT)
 Before you start: a patient with at least two sessions that have transcripts, and the AI model downloaded.

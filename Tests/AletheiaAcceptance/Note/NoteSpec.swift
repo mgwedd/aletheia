@@ -64,4 +64,8 @@ final class NoteSpec: AcceptanceCase {
     func test_NOTE_16() async throws {
         try pending("not automated yet")
     }
+
+    func test_NOTE_17() async throws {
+        try pending("not automated yet")
+    }
 }
