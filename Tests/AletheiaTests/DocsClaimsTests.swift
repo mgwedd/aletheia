@@ -32,7 +32,7 @@ final class DocsClaimsTests: XCTestCase {
             let lower = text.lowercased()
             XCTAssertFalse(lower.contains("ollama"), path)
             XCTAssertFalse(lower.contains("11434"), path)
-            XCTAssertFalse(lower.contains("icloud backup"), path)
+            XCTAssertFalse(LegalTests.withoutSettingTitle(text).lowercased().contains("icloud backup"), path)
             for p in paragraphs(text) where p.localizedCaseInsensitiveContains("ai server") {
                 XCTAssertTrue(isNegated(p), "\(path) mentions an AI server without saying there is none")
             }

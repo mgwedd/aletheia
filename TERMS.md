@@ -1,6 +1,6 @@
 # End User License Agreement and Terms of Service
 
-_Last updated: 2026-10-25_
+_Last updated: 2026-10-27_
 
 > This document is **not legal advice**. Aletheia is used with protected health
 > information (PHI); have your own counsel review your practice's policies and
@@ -15,10 +15,11 @@ agree to this End User License Agreement and Terms of Service ("Terms") and to
 the [Privacy Policy](PRIVACY.md).
 If you do not agree, do not use the App.
 
-The App records your acceptance **on your own Mac** — the version of these Terms
-you accepted and the date and time you accepted them, both in the App's settings
-and in an `legal-acceptance.log` file in your data folder that you can open and
-read. It does not send that record, or anything else, to Astrea Labs. You
+The App records your acceptance **on your own Mac**: the version of these Terms
+you accepted, the date and time, the App version, and (once you have added one)
+your license ID and the name the license was issued to. It keeps this in the
+App's settings and in a `legal-acceptance.log` file in your data folder that you
+can open and read. It does not send that record, or anything else, to Astrea Labs. You
 cannot use the App without first accepting; the setup screen will not let you
 continue until you do.
 
@@ -33,8 +34,8 @@ The App is proprietary and source-available. Your use is governed by the
 [LICENSE](LICENSE). These Terms do not grant any ownership or rights beyond
 what that license allows.
 
-**License key.** Using the App requires a license key issued to you by
-Astrea Labs. The key is personal to you: do not share, transfer, or publish it. A
+**License key.** Making new recordings and using the AI features require a
+license key issued to you by Astrea Labs. The key is personal to you: do not share, transfer, or publish it. A
 key may have an expiry date, shown in Settings → License key, and can be
 renewed. Astrea Labs may revoke a key that is shared or used in breach of
 these Terms; the App learns of revocations from a signed list it downloads while
@@ -45,9 +46,8 @@ for a 14-day grace period and then stop; a revoked key has no grace period.
 **Your records stay yours.** Opening, reading, searching, exporting and deleting
 your existing records never require a license key, with no time limit. After a
 key expires or is revoked you can keep using the App for these, and you can
-export all of your records at once (Settings → Backups → Export All Records), so
-you can always open, read, search, export, and
-delete your existing records.
+export your records at once (Settings → Backups → Export All Records; see
+Exports in section 4 for what it leaves out).
 
 **Pre-release versions.** Beta and other pre-release versions are provided for
 evaluation, may contain more errors than a final release, and may change
@@ -66,15 +66,22 @@ relying on it or entering it into a record.
 
 You are solely responsible for:
 
-- **Consent.** Obtaining each patient's informed consent to record before you
-  start recording, as required by your jurisdiction and licensing board. Where
-  the law requires the consent of every party to a recording, you are
-  responsible for getting consent from every party, including every person on a
-  video call or in the room. See [CONSENT.md](CONSENT.md).
-- **Compliance.** Your use of the App under HIPAA, state law, and the rules of
-  your licensing board, including lawful collection, retention, and disclosure
-  of patient data. You are the data controller / covered entity; Astrea Labs
-  never receives PHI and is not your business associate.
+- **Consent.** Obtaining informed consent to record, and to process the
+  recording with AI, before you start recording, as required by your
+  jurisdiction and licensing board. Where the law requires the consent of every
+  party to a recording, you are responsible for getting consent from every
+  party, including every person on a video call or in the room. The App asks
+  you to attest that you have this consent, and saves your attestation with the
+  session, but it cannot check that anyone agreed. See [CONSENT.md](CONSENT.md).
+- **Your legal obligations.** Your use of the App under HIPAA (where it applies
+  to you), state law, and the rules of your licensing board, including lawful
+  collection, retention, and disclosure of patient data. You are responsible for
+  the patient data you create with the App and, if you are a HIPAA covered
+  entity or work for one, for your HIPAA duties, including the App in
+  your own risk analysis. Astrea Labs never receives PHI and is not your
+  business associate. The App has no special handling for records covered by
+  42 CFR Part 2 (substance use disorder treatment programs); if that applies to
+  you, it is your responsibility.
 - **Device security.** Protecting the Mac the App runs on — FileVault, the App's
   Touch ID / password lock, account security, and physical access. See
   [SECURITY.md](SECURITY.md).
@@ -82,18 +89,30 @@ You are solely responsible for:
   passphrase (at least 12 characters) and the 24-word recovery key safe and
   separate from the Mac. Astrea Labs cannot recover them, and without them
   encrypted data cannot be recovered.
-- **Exports.** Exports the App writes (PDF and Markdown notes, calendar files,
-  and Export All Records) are plaintext files that the App does not encrypt.
-  Once an export is written, protecting it, sharing it only as the law allows,
-  and eventually deleting it is your responsibility.
+- **Exports.** Exports the App writes (PDF, Word and Markdown notes, calendar
+  files, psychotherapy-note exports, and Export All Records) are plaintext files
+  that the App does not encrypt. Export All Records leaves out psychotherapy
+  notes and private comments; export those separately. Once an export is
+  written, protecting it, sharing only the minimum necessary and only as the law
+  allows, and eventually deleting it is your responsibility.
+- **Deleting records.** Deleting a patient removes their files and database
+  entries from the App, but it is not a secure erase. A deleted patient's
+  information can remain in the safety snapshots of the database the App keeps in
+  the `.backups` folder of your data folder (the five most recent), and in any
+  Time Machine or other backups and exports you made. Records may also have to be
+  kept for a set period, so check the rules that apply to you before deleting.
 - **Supported macOS and updates.** Running the App on macOS 14 or later, and
   installing App updates and macOS security updates. Earlier macOS versions are
   not supported, and an App version you have not updated may lack fixes.
 - **Backups.** Backing up your data folder. The App does not back up your data
-  automatically. Settings › Backups › Back Up Now saves an encrypted copy of the
-  database (not recordings or other files) to a folder you choose, so keep your
-  own backups of the whole data folder too. Settings › Backups ›
-  Export All Records can export every record to a folder you choose; that export is not
+  for you, and by default it keeps the data folder out of Time Machine and iCloud device backups, so a new installation has no backup until you arrange one.
+  Back Up Now (Settings › Backups) saves an encrypted archive of the whole data
+  folder, but it needs the App's own encryption, which released versions do not
+  include, so it is not available in them. To back up, turn off "Keep my data out
+  of Time Machine & iCloud backups" in Settings › Backups and use Time Machine
+  with an encrypted backup disk, or copy the data folder to encrypted storage
+  yourself, and test a restore. Export All Records is not a complete backup: it
+  leaves out psychotherapy notes and private comments, and its files are not
   encrypted by the App (see Exports above).
 - **Third-party software.** Any model files you download to use with the App,
   under their own licenses and terms.
@@ -167,5 +186,12 @@ without regard to conflict-of-laws rules.
 Questions about these Terms: email support@astrealabs.com.
 Never include patient information, recordings, transcripts, notes, or
 screenshots that show client details. Use the App's redacted Doctor report
-instead. If we receive patient information by mistake, we delete it as far as
-we are able.
+instead, and read it first: redaction removes names, identifiers and file paths
+it knows about, but initials and short names can remain. If we receive patient information by mistake, we delete it as far as
+we are able and tell you, so you can decide whether it needs assessing under
+your own obligations.
+
+Reports sent through the App's Report a Bug or Request a Feature links go to
+astrealabs.com. They are reviewed and may be posted as public issues in the
+project's GitHub repository, so never put patient or client information in
+them.

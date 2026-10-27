@@ -417,7 +417,7 @@ struct DoctorRunner {
         var checks: [DoctorCheck] = []
 
         let expected = Int64(file.expectedMB) * 1_048_576
-        let redownload = "Re-download it in Settings > Speech-to-Text Model."
+        let redownload = "Re-download it in Settings > AI and models."
         if let size = file.sizeBytes {
             let amount = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
             if size == 0 {

@@ -1715,8 +1715,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/NetworkReachability.swift` · `qa: BUILD-07`
 - **NET-021** Apple Intelligence is turned off on purpose, the AI settings say so, and AI features run only in the engine built into the app on this Mac.
   `surface: invariant` · `evidence: README.md, Sources/App/Views/SettingsView.swift, Tests/AletheiaTests/AppleIntelligenceBlockTests.swift` · `qa: SETTINGS-06`
-- **NET-022** When the helper is asked for the license-revocation list, it refuses with "The license revocation list isn't configured yet." and makes no request; nothing in the app currently asks for it.
-  `surface: background` · `evidence: Sources/NetworkHelper/HelperFetcher.swift, Sources/NetworkHelper/AssetCatalog.swift, Sources/App/Services/Updates/RevocationFetchPolicy.swift` · `qa: BUILD-08`
+- **NET-022** While update checks are on, the app asks the helper for the signed license revocation list at most once a day; the helper fetches it from astrealabs.com with a plain GET and no identifier, and accepts it only if it starts with the list marker and is within the size cap.
+  `surface: background` · `evidence: Sources/NetworkHelper/HelperFetcher.swift, Sources/NetworkHelper/AssetCatalog.swift, Sources/App/Services/Updates/RevocationFetchPolicy.swift, Sources/App/Services/License/RevocationRefresher.swift` · `qa: BUILD-08`
 - **NET-023** When a build has network access but is otherwise sandboxed, the Network access card reads "Aletheia can connect to the internet" with a "Review" chip.
   `surface: ui` · `evidence: Sources/App/Services/NetworkHelper/NetworkAccessStatus.swift` · `qa: SECURITY-02`
 - **NET-024** When the app is not sandboxed (a development build) the card reads "Not sandboxed (development build)", and when entitlements cannot be read it reads "Couldn't check network access".
