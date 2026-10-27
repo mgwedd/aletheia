@@ -419,11 +419,18 @@ extension Then where Subject == [ConsentInExport] {
 @MainActor
 extension Then where Subject == ConsentInExport {
     func hasConsentSection(_ record: ConsentRecord) {
-        let text = subject.text
-        expect(text.contains(Copy.consentExportHeading), "the \(subject.what) export has no \"\(Copy.consentExportHeading)\" section")
-        expect(text.contains(record.party.title), "the \(subject.what) export does not say who consented")
-        expect(text.contains(record.method.title), "the \(subject.what) export does not say how")
-        expect(text.contains(RecordingConsent.dateTime(record.consentedAt)), "the \(subject.what) export does not say when")
+        let text = Self.spaced(subject.text)
+        func has(_ part: String) -> Bool { text.contains(Self.spaced(part)) }
+        expect(has(Copy.consentExportHeading), "the \(subject.what) export has no \"\(Copy.consentExportHeading)\" section")
+        expect(has(record.party.title), "the \(subject.what) export does not say who consented")
+        expect(has(record.method.title), "the \(subject.what) export does not say how")
+        expect(has(RecordingConsent.dateTime(record.consentedAt)), "the \(subject.what) export does not say when")
+    }
+
+    /// Every run of whitespace as one plain space. A PDF reads the narrow
+    /// space in "11:30\u{202F}PM" back as an ordinary one.
+    private static func spaced(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 }
 
