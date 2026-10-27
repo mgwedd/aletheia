@@ -189,6 +189,32 @@ struct TranscriptTextView: NSViewRepresentable {
             super.accessibilityAttributedString(for: range).map { TranscriptStyler.forReader($0, callAudioName: callAudioName) }
         }
 
+        /// Draws the patient's name into the blank a call-audio label lays out
+        /// as (see `Coordinator.layoutManager(_:shouldGenerateGlyphs:...)`).
+        override func draw(_ dirtyRect: NSRect) {
+            super.draw(dirtyRect)
+            guard let layout = layoutManager, let container = textContainer, let storage = textStorage else { return }
+            let origin = textContainerOrigin
+            let visible = layout.glyphRange(forBoundingRect: dirtyRect.offsetBy(dx: -origin.x, dy: -origin.y), in: container)
+            let chars = layout.characterRange(forGlyphRange: visible, actualGlyphRange: nil)
+            storage.enumerateAttribute(Coordinator.displayNameKey, in: chars) { value, clipped, _ in
+                guard let name = value as? String else { return }
+                // The run may start before the dirty area; the name sits at its start.
+                var range = NSRange()
+                _ = storage.attribute(Coordinator.displayNameKey, at: clipped.location,
+                                      longestEffectiveRange: &range, in: NSRange(location: 0, length: storage.length))
+                let glyph = layout.glyphIndexForCharacter(at: range.location)
+                guard glyph < layout.numberOfGlyphs else { return }
+                let line = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+                let position = layout.location(forGlyphAt: glyph)
+                let font = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont ?? Coordinator.font
+                let color = storage.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? NSColor ?? Theme.text.nsColor
+                let point = NSPoint(x: origin.x + line.minX + position.x,
+                                    y: origin.y + line.minY + position.y - font.ascender)
+                (name as NSString).draw(at: point, withAttributes: [.font: font, .foregroundColor: color])
+            }
+        }
+
         override func mouseDown(with event: NSEvent) {
             super.mouseDown(with: event) // runs the whole press-drag-release
             guard event.clickCount == 1, selectedRange().length == 0 else { return }
@@ -282,9 +308,12 @@ struct TranscriptTextView: NSViewRepresentable {
 
         /// Replaces the glyphs of hidden characters with null glyphs: no width,
         /// nothing drawn, but the characters (and so every offset) stay put. A
-        /// call-audio label is laid out as the name instead: the name's glyphs
-        /// all belong to the label's first character, and the label's own
-        /// characters become null glyphs.
+        /// call-audio label keeps one glyph per character too: its first
+        /// character becomes a blank as wide as the name (see
+        /// `boundingBoxForControlGlyphAt`), the rest null glyphs, and the text
+        /// view draws the name into that blank. Emitting the name's own glyphs
+        /// instead (more glyphs than characters) broke line layout: the rest
+        /// of the turn wrapped one letter per line.
         func layoutManager(
             _ layoutManager: NSLayoutManager,
             shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
@@ -294,44 +323,55 @@ struct TranscriptTextView: NSViewRepresentable {
             forGlyphRange glyphRange: NSRange
         ) -> Int {
             guard let storage = layoutManager.textStorage else { return 0 }
-            var outGlyphs: [CGGlyph] = []
-            var outProps: [NSLayoutManager.GlyphProperty] = []
-            var outIndexes: [Int] = []
+            var outProps = Array(UnsafeBufferPointer(start: props, count: glyphRange.length))
             var changed = false
-            var lastNamed = -1
             for i in 0..<glyphRange.length {
                 let index = charIndexes[i]
-                guard index < storage.length else {
-                    outGlyphs.append(glyphs[i]); outProps.append(props[i]); outIndexes.append(index)
-                    continue
-                }
+                guard index < storage.length else { continue }
                 var label = NSRange()
-                if let name = storage.attribute(Self.displayNameKey, at: index, effectiveRange: &label) as? String {
+                if storage.attribute(Self.displayNameKey, at: index, effectiveRange: &label) != nil {
                     changed = true
-                    if index == label.location, lastNamed != index {
-                        lastNamed = index
-                        let units = Array(name.utf16)
-                        var named = [CGGlyph](repeating: 0, count: units.count)
-                        CTFontGetGlyphsForCharacters(font as CTFont, units, &named, units.count)
-                        for glyph in named where glyph != 0 {
-                            outGlyphs.append(glyph); outProps.append([]); outIndexes.append(index)
-                        }
-                    } else {
-                        outGlyphs.append(glyphs[i]); outProps.append(.null); outIndexes.append(index)
-                    }
+                    outProps[i] = index == label.location ? .controlCharacter : .null
                 } else if storage.attribute(Self.hiddenKey, at: index, effectiveRange: nil) != nil {
                     changed = true
-                    outGlyphs.append(glyphs[i]); outProps.append(.null); outIndexes.append(index)
-                } else {
-                    outGlyphs.append(glyphs[i]); outProps.append(props[i]); outIndexes.append(index)
+                    outProps[i] = .null
                 }
             }
             guard changed else { return 0 }
             layoutManager.setGlyphs(
-                outGlyphs, properties: outProps, characterIndexes: outIndexes, font: font,
-                forGlyphRange: NSRange(location: glyphRange.location, length: outGlyphs.count)
+                glyphs, properties: outProps, characterIndexes: charIndexes, font: font,
+                forGlyphRange: glyphRange
             )
-            return outGlyphs.count
+            return glyphRange.length
+        }
+
+        /// The first character of a call-audio label lays out as a blank.
+        func layoutManager(
+            _ layoutManager: NSLayoutManager,
+            shouldUse action: NSLayoutManager.ControlCharacterAction,
+            forControlCharacterAt charIndex: Int
+        ) -> NSLayoutManager.ControlCharacterAction {
+            guard let storage = layoutManager.textStorage, charIndex < storage.length,
+                  storage.attribute(Self.displayNameKey, at: charIndex, effectiveRange: nil) != nil
+            else { return action }
+            return .whitespace
+        }
+
+        /// ...as wide as the name it stands for.
+        func layoutManager(
+            _ layoutManager: NSLayoutManager,
+            boundingBoxForControlGlyphAt glyphIndex: Int,
+            for textContainer: NSTextContainer,
+            proposedLineFragment proposedRect: NSRect,
+            glyphPosition: NSPoint,
+            characterIndex charIndex: Int
+        ) -> NSRect {
+            guard let storage = layoutManager.textStorage, charIndex < storage.length,
+                  let name = storage.attribute(Self.displayNameKey, at: charIndex, effectiveRange: nil) as? String
+            else { return NSRect(origin: glyphPosition, size: .zero) }
+            let font = storage.attribute(.font, at: charIndex, effectiveRange: nil) as? NSFont ?? Self.font
+            let width = (name as NSString).size(withAttributes: [.font: font]).width
+            return NSRect(x: glyphPosition.x, y: glyphPosition.y, width: width, height: 0)
         }
 
         // MARK: Syncing with SwiftUI
