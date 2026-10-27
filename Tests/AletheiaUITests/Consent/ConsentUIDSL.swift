@@ -40,15 +40,12 @@ extension Given {
 }
 
 extension When {
-    /// Opens the patient's page from the sidebar, then their first session.
+    /// Puts the patient's newest session on screen (the scenario's `open`).
+    /// Finding rows in the sidebar is not what these checks are about.
     func openFirstSession(of name: String) {
+        app.seed { $0.open = name }
         app.ensureLaunched()
-        let row = app.app.staticTexts[name].firstMatch
-        XCTAssertTrue(app.exists(row), "no sidebar row for \(name)")
-        row.click()
-        let session = app.app.descendants(matching: .any).matching(identifier: "session-row").firstMatch
-        XCTAssertTrue(app.exists(session), "\(name) has no session to open")
-        session.click()
+        XCTAssertTrue(app.exists(app.button(Copy.consentRecordSession)), "\(name)'s session is not on screen")
     }
 
     func pressRecordSession() -> ConsentSheetOnScreen {
