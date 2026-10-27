@@ -35,25 +35,16 @@ struct TranscriptionQueuedView: View {
 }
 
 /// What the session screen shows above every tab while the session is being
-/// transcribed: an info-tinted band with a spinner, the title, a determinate
+/// transcribed: an info-tinted band with a spinner, "Transcribing…", a determinate
 /// bar, the percentage and (once there is enough data) a time estimate, what
 /// is happening now, and a Cancel.
 struct TranscriptionProgressView: View {
     let job: TranscriptionJob
-    /// The session's own date, for the title ("Transcribing Oct 8, 2:14 PM").
-    /// Without it the title reads "Transcribing this session".
-    var sessionDate: Date? = nil
     let onCancel: () -> Void
 
     private var percent: Int { Int(job.progress.fraction * 100) }
 
-    private var title: String {
-        let base = sessionDate.map { "Transcribing \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "Transcribing this session"
-        if let model = job.modelName, !model.isEmpty {
-            return "\(base) · \(model)"
-        }
-        return base
-    }
+    private let title = "Transcribing…"
 
     /// "42% · about 2 min left"; the estimate only appears once the model has one.
     private var progressText: String {

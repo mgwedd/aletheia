@@ -319,7 +319,7 @@ struct SessionDetailView: View {
                 .themeDivider(.bottom)
             // Above the tab content, so progress shows on every tab.
             if let job = transcription.job(for: session.id) {
-                TranscriptionProgressView(job: job, sessionDate: session.date) {
+                TranscriptionProgressView(job: job) {
                     transcription.cancel(sessionID: session.id)
                 }
             } else if isQueued {
@@ -480,18 +480,20 @@ struct SessionDetailView: View {
             consentStatus
         }
         .padding(.horizontal, 20)
-        .frame(height: 52)
+        .padding(.vertical, 6)
+        .frame(minHeight: 52)
         .background(Theme.window.color)
     }
 
     /// "Consent: verbal, from the patient · …", with Change… until a note is signed.
     private var consentStatus: some View {
         HStack(spacing: 6) {
+            // Wraps rather than cutting off when the header is narrow.
             Text(consentLine)
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
-                .lineLimit(1)
-                .truncationMode(.tail)
+                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
             if canChangeConsent {
                 Button(RecordingConsent.changeTitle) {
                     // A note may have been signed since the line was drawn.
