@@ -63,6 +63,8 @@ final class ProfileEditing {
     func setName(_ text: String) { draft.name = text }
     func setClinicalHistory(_ text: String) { draft.clinicalHistory = text }
     func setNotes(_ text: String) { draft.notes = text }
+    func setRecordingConsent(_ choice: ConsentPolicyChoice) { draft.recordingConsent = choice }
+    var recordingConsentChoices: [String] { ConsentPolicyChoice.allCases.map(\.title) }
     func addMedication() { draft.addMedication() }
     func removeMedication(at index: Int) { draft.removeMedication(id: draft.medications[index].id) }
 

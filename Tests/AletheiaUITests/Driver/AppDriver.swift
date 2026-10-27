@@ -20,6 +20,7 @@ struct Scenario: Encodable, Equatable {
     var importFile: String?
     /// The patient whose newest session is on screen at launch.
     var open: String?
+    var consentPolicy: String?
 }
 
 /// The facts the app publishes through its invisible `fixture-probe` element.
@@ -32,6 +33,7 @@ struct ProbeSnapshot: Decodable, Equatable {
         var medications: [String]
         var folderExists: Bool
         var sessions: Int
+        var consentPolicy: String?
     }
 
     var files: [String]
