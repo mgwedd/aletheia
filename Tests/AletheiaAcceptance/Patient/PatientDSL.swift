@@ -90,6 +90,8 @@ struct PatientDeletion {
     fileprivate let patient: Patient
     let folder: URL
     let typedName: String
+    /// Everything the confirmation sheet says, in reading order.
+    let notice: [String]
 
     var deleteEnabled: Bool { PatientDeletionConfirmation.matches(typed: typedName, patientName: patient.name) }
 
@@ -185,7 +187,10 @@ extension When {
 
     func askToDeletePatient(_ patient: Patient, typing typed: String) throws -> PatientDeletion {
         let store = try XCTUnwrap(app.appModel.store)
-        return PatientDeletion(app: app, patient: patient, folder: store.patientDir(for: patient), typedName: typed)
+        let sessionDates = try store.listSessions(for: patient).map(\.date)
+        let notice = DeletePatientConfirmation(patientName: patient.name, sessionDates: sessionDates).paragraphs
+        return PatientDeletion(
+            app: app, patient: patient, folder: store.patientDir(for: patient), typedName: typed, notice: notice)
     }
 
     /// The patient as stored on disk, read back fresh.
@@ -300,6 +305,14 @@ extension Then where Subject == ProfileEditing.CloseOutcome {
 extension Then where Subject == PatientDeletion {
     func deleteIsDisabled() { expect(!subject.deleteEnabled, "expected Delete Patient to be disabled for \(subject.typedName.debugDescription)") }
     func deleteIsEnabled() { expect(subject.deleteEnabled, "expected Delete Patient to be enabled for \(subject.typedName.debugDescription)") }
+
+    /// The sheet names where copies can remain, so deleting is not mistaken for erasing everywhere.
+    func namesTheCopiesThatRemain() {
+        let text = subject.notice.joined(separator: "\n")
+        for phrase in [Copy.deleteNoticeBackupsFolder, Copy.deleteNoticeTimeMachine, Copy.deleteNoticeExports] {
+            expect(text.contains(phrase), "expected the confirmation to mention \"\(phrase)\", it says: \(text)")
+        }
+    }
 }
 
 extension Then where Subject == DataLocation {

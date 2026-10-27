@@ -160,9 +160,9 @@ The only third-party dependencies are the official whisper.cpp and llama.cpp XCF
 
 ### Storage protection
 
-- **Sandbox, lock, audit:** App Sandbox is on; the app lock uses LocalAuthentication; the audit log records security events (unlocks and failed unlocks, exports, deletions, opening and saving records, consent attestations, signing, settings and folder changes, the kind of AI work run) without patient content, and is tamper-evident but not a full history of every edit.
+- **Sandbox, lock, audit:** App Sandbox is on; the app lock uses LocalAuthentication; the audit log records security events (unlocks and failed unlocks, exports, deletions, opening and saving records, consent attestations, signing, settings and folder changes, the kind of AI work run; overriding a retention warning and changing a Part 2 flag are not yet recorded) without patient content, and is tamper-evident but not a full history of every edit.
 - **Encryption (dev tier only):** AES-256-GCM in 1 MiB chunks, with a random data key wrapped by a passphrase (PBKDF2-HMAC-SHA256, 600,000 iterations). See [docs/ENCRYPTION.md](docs/ENCRYPTION.md).
-- **Backups:** the five newest database snapshots and pre-migration copies are kept in `.backups`. The data folder is kept out of Time Machine and iCloud device backups by default; backing it up is the clinician's job (turn the exclusion off and use an encrypted disk).
+- **Backups:** the five newest rolling database snapshots are kept in `.backups`, and pre-migration copies stay there until removed. The data folder is kept out of Time Machine and iCloud device backups by default; backing it up is the clinician's job (turn the exclusion off and use an encrypted disk).
 
 ### Build tiers
 

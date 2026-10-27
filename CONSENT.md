@@ -45,7 +45,7 @@ This is a record of what you attest. Aletheia cannot check that anyone
 actually agreed.
 
 The record is saved with the session, and the activity log notes that consent
-was attested (by session and record ID, not by name). It appears in every
+was attested (by an opaque patient and session ID, not by name). It appears in every
 export of the session as a "Recording consent" section, and in Export All
 Records. Once the session's note is signed, its consent record is locked and
 cannot be changed.

@@ -14,7 +14,9 @@ struct BackupNowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Back up now").eyebrowStyle()
-            SettingsCaption("Saves an encrypted copy of your whole data folder (database, notes, transcripts and recordings) to a folder you choose, sealed with your encryption key. Choose a folder on this Mac or an external disk that doesn't sync to the cloud. To open it on another Mac you need your recovery passphrase; Aletheia keeps a copy of the key file beside the archive.")
+            SettingsCaption(appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
+                ? "Saves an encrypted copy of your whole data folder (database, notes, transcripts and recordings) to a folder you choose, sealed with your encryption key. Choose a folder on this Mac or an external disk that doesn't sync to the cloud. To open it on another Mac you need your recovery passphrase; Aletheia keeps a copy of the key file beside the archive."
+                : "Back Up Now needs at-rest encryption, which is in developer builds only.")
             HStack(spacing: 8) {
                 Button("Back Up Now…", action: choose)
                     .buttonStyle(.themed)

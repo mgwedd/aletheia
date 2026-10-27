@@ -70,7 +70,8 @@ restore is recorded once in the audit log. Nothing is backed up to iCloud.
 Point-in-time database snapshots (`.backups/snapshots/` and
 `.backups/migrations/`, via SQLite's `VACUUM INTO`) protect schema migrations,
 encryption on/off changes and patient deletion against a mid-write failure; the
-five most recent snapshots are kept. All of these live in the single hidden
+five newest rolling snapshots are kept, and the pre-migration copies are kept
+until removed. All of these live in the single hidden
 `.backups/` folder inside your data folder (older versions used `Backups/` and
 `.snapshots/`; they are moved there automatically). Because of those snapshots,
 deleting a patient does not remove their database entries from `.backups/` right
@@ -85,7 +86,10 @@ attestations; note signing and AI note verification; recordings recovered after
 an unexpected quit; backups and restores; audit-log exports; changes to security
 settings or the data folder; export failures; and failed integrity checks. Each
 entry has a time, the macOS account name and user ID, and at most an opaque
-record ID, never a name or clinical text. Entries are chained with HMAC-SHA256
+record ID (a consent entry carries an opaque patient and session ID), never a
+name or clinical text. The ledger also defines entries for overriding a retention
+warning and for changing a patient's Part 2 flag, which the app does not yet
+record. Entries are chained with HMAC-SHA256
 under a key in the login Keychain, and the database refuses edits and deletes of
 the rows. That detects changes made outside the App; it cannot detect changes by
 someone who controls your macOS account and Keychain. Writes are best effort, and

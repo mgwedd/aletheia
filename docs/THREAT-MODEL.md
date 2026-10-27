@@ -15,7 +15,7 @@ It describes what the code does today; the protections in use are listed in
   the user). The key that seals the audit ledger lives in the login Keychain.
 - **Audit ledger**: the record of security events (unlocks and failed unlocks,
   exports, deletions, opening and saving records, consent attestations, signing,
-  settings and folder changes, the kind of AI work run). It holds no clinical
+  settings and folder changes, the kind of AI work run; entries for overriding a retention warning and changing a Part 2 flag are defined but not yet recorded). It holds no clinical
   text and is not a full history of every edit.
 
 ## Trust boundaries and threats

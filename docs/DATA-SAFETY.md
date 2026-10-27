@@ -165,7 +165,7 @@ and attested it is correct.**
 | **Local encrypted archive** (sealed with the user's key) | **in place, developer builds only**: Settings › Backups › Back Up Now needs at-rest encryption, so released builds do not offer it (user-chosen local folder; no schedule) | `LocalEncryptedBackupService`, `BackupCoordinator`, `EncryptedBackupArchive` |
 | **Attest-then-prune** UX + **Restore previous version** | next | `MigrationBackup.prunable` ready; needs Settings + a post-update banner. Nothing prunes migration pre-images today. |
 | **Snapshot the small JSON** (patient/session) alongside the DB | next | copy referenced JSON into the same pre-image set |
-| **Whole-folder atomicity** across DB + files | partial | Back Up Now archives the whole folder (the database as a consistent snapshot, other files as they are at that moment) and Restore from backup recovers it into an empty folder |
+| **Whole-folder atomicity** across DB + files | partial | Back Up Now (developer builds) archives the whole folder (the database as a consistent snapshot, other files as they are at that moment) and Restore from backup recovers it into an empty folder |
 
 ### Where backups live (one layout)
 

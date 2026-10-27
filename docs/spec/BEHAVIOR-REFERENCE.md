@@ -1256,7 +1256,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Views/PatientProfileEditor.swift, Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-06`
 - **PAT-021** When the therapist chooses Delete patient… in the editor, a "Delete <name>?" confirmation sheet requires typing the patient's name (trimmed, case-insensitive) before the Delete Patient button is enabled.
   `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift` · `qa: PATIENT-08`
-- **PAT-022** When a patient is deleted, their folder with every session, transcript, audio recording and note is removed from disk (copies can remain in the .backups safety snapshots and in any Time Machine or other backups and exports), their chat threads, comments and notes are purged from the database, and the patient and their sessions are removed from the search index.
+- **PAT-022** When a patient is deleted, their folder with every session, transcript, audio recording and note is removed from disk (copies can remain in the .backups rolling snapshots and pre-migration copies, and in any Time Machine or other backups and exports), their chat threads, comments and notes are purged from the database, and the patient and their sessions are removed from the search index.
   `surface: background` · `evidence: Sources/App/Services/Store.swift, Sources/App/Views/PatientProfileEditor.swift` · `qa: PATIENT-08`
 - **PAT-023** When a patient is deleted and the database is open, a "pre-delete-patient" safety snapshot of the database is taken first, and if deletion fails an "Unable to delete patient" alert shows the reason.
   `surface: background` · `evidence: Sources/App/Services/Store.swift, Sources/App/Views/PatientProfileEditor.swift` · `qa: PATIENT-08`
@@ -1622,7 +1622,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AllRecordsExport.swift, Sources/App/Services/ExportJobCenter.swift` · `qa: EXPORT-01`
 - **EXP-024** When the user quits during an export, the export is cancelled ("Cancelling") and the app waits up to 2.5 seconds for it to stop, leaving no destination file or folder; if it hasn't stopped by then, quit proceeds and a hidden ".partial-" staging folder may remain.
   `surface: background` · `evidence: Sources/App/Services/ExportJobCenter.swift` · `qa: EXPORT-02`
-- **EXP-025** Settings → Backups offers an "Export All Records…" button with a caption saying it copies every patient's notes, transcripts, comments and kept recordings into ordinary files that open without Aletheia and never need a license key.
+- **EXP-025** Settings → Backups offers an "Export All Records…" button with a caption saying it copies every patient's notes, transcripts, kept recordings into ordinary files (private comments and psychotherapy notes are not included) that open without Aletheia and never need a license key.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, PRIVACY.md, SECURITY.md, README.md` · `qa: BACKUP-03`
 - **EXP-026** When a session has saved notes, its exported folder contains one "Note - <format name>.txt" per note, as plain text with Markdown formatting removed.
   `surface: invariant` · `evidence: Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-07`
@@ -2073,6 +2073,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/DataFolderMoveView.swift:20-25, Sources/App/Views/DataFolderMoveView.swift:58-63` · `qa: SETTINGS-14`
 - **SET-047** On a fresh install, "Keep my data out of Time Machine & iCloud backups" is on.
   `surface: invariant` · `evidence: Sources/App/Services/AppSettings.swift` · `qa: SETTINGS-04`
+- **SET-048** In Settings > License key, **Get a Key…** opens https://astrealabs.com/aletheia/beta in the default browser, where a key is applied for or a lost one recovered, and the caption under it reads "Opens astrealabs.com/aletheia/beta in your browser, where you apply for a key or recover a lost one. Nothing from this Mac is sent. For help, copy the support address and write from your mail app; never include patient information."
+  `surface: ui` · `evidence: Sources/App/Views/LicenseViews.swift` · `qa: LICENSE-01`
 
 ## Appearance, accessibility & shortcuts (UX)
 

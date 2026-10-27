@@ -946,7 +946,7 @@ struct SettingsView: View {
     private var exportAllSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Export all records").eyebrowStyle()
-            SettingsCaption("Copies every patient's notes, transcripts, comments and kept recordings into a folder of ordinary files that open without Aletheia. This never needs a license key. The copy isn't encrypted by Aletheia, so save it to this Mac with FileVault on or to an encrypted external drive.")
+            SettingsCaption("Copies every patient's notes, transcripts and kept recordings (private comments and psychotherapy notes are not included) into a folder of ordinary files that open without Aletheia. This never needs a license key. The copy isn't encrypted by Aletheia, so save it to this Mac with FileVault on or to an encrypted external drive.")
             HStack(spacing: 8) {
                 Button("Export All Records…") { requireAuth(.exportAllRecords) { chooseExportAllFolder() } }
                     .buttonStyle(.themed)

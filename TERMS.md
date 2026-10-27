@@ -98,7 +98,7 @@ You are solely responsible for:
 - **Deleting records.** Deleting a patient removes their files and database
   entries from the App, but it is not a secure erase. A deleted patient's
   information can remain in the safety snapshots of the database the App keeps in
-  the `.backups` folder of your data folder (the five most recent), and in any
+  the `.backups` folder of your data folder (the five newest rolling snapshots, and copies made before database changes, which are kept until removed), and in any
   Time Machine or other backups and exports you made. Records may also have to be
   kept for a set period, so check the rules that apply to you before deleting.
 - **Supported macOS and updates.** Running the App on macOS 14 or later, and

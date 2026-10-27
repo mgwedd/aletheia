@@ -28,7 +28,7 @@ Before you start: setup finished, a data folder chosen, and the disk encrypted w
 - **PATIENT-05** Rename Jane with stray spaces and save → the name is saved trimmed, and a blank name shows "A name is required."
 - **PATIENT-06** Fill in Clinical history and Patient notes and save → the profile card shows only the filled rows; with both empty it says "Nothing recorded yet."
 - **PATIENT-07** Type a change in the editor and click **Cancel** → "Discard your changes?" offers **Discard Changes** and **Keep Editing**.
-- **PATIENT-08** Click **Delete patient…** and type her name → **Delete Patient** enables on a match, and her folder and everything in it is gone.
+- **PATIENT-08** Click **Delete patient…** and type her name → **Delete Patient** enables on a match, and her folder and everything in it is gone, and the confirmation first names the copies that can remain: the rolling snapshots in .backups, Time Machine and other backups, and exports.
 - **PATIENT-09** Add a patient on a Mac with FileVault off → a "Turn on FileVault" alert appears and no patient is added.
 - **PATIENT-10** Choose **Edit Profile…** and click **Add medication** twice (dev build) → two rows with Medication and Dose fields appear; **Remove medication** deletes one; none left reads "None recorded."
 - **PATIENT-11** Save medications with one row left blank (dev build) → the blank row is dropped, and the profile card lists the others as name and dose.
@@ -327,3 +327,7 @@ Before you start: setup finished, FileVault on, and patients "Jane Doe" and "Ada
 - **CONSENT-10** Export the session as PDF, Word or Markdown, and export all records → each includes a "Recording consent" section with who, how and when.
 - **CONSENT-11** Sign the session's note → the session's consent can no longer be changed, and saving a new one is refused.
 - **CONSENT-12** Record consent with encryption on (dev build), then quit and reopen → the session folder holds a sealed consent.json that reads back unchanged.
+
+## 22. License key (LICENSE)
+Before you start: setup finished.
+- **LICENSE-01** Click **Get a Key…** in Settings > License key → your browser opens the Astrea Labs beta application page, and the caption beside it says nothing from this Mac is sent.

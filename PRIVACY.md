@@ -119,9 +119,9 @@ delete.
 
 Deleting a patient removes their files and database entries from the App, but it
 is not a secure erase. The App first saves a safety copy of its database in the
-`.backups` folder inside the data folder (it keeps the five most recent), which
-still holds the deleted patient's database entries until newer copies replace it,
-and Time Machine or other backups and exports you made may hold earlier copies.
+`.backups` folder inside the data folder (it keeps the five newest rolling snapshots,
+and copies made before database changes until they are removed), which still
+holds the deleted patient's database entries, and Time Machine or other backups and exports you made may hold earlier copies.
 
 Settings > Backups > Back Up Now writes an encrypted copy of your whole data
 folder (database, notes, transcripts and recordings) to a folder you choose. It
