@@ -2,7 +2,7 @@ import XCTest
 
 extension Copy {
     static let consentSheetTitle = "Record consent"
-    static let consentConfirmation = "I obtained this patient's consent to record the session and to process the recording with AI."
+    static let consentConfirmation = "I obtained consent from everyone in this session to record it and to process the recording with AI."
     static let consentStartRecording = "Start recording"
     static let consentChooseAudio = "Choose Audio File…"
     static let consentRecordSession = "Record Session"

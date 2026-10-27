@@ -317,7 +317,7 @@ final class LegalTests: XCTestCase {
         "Connecticut Gen. Stat. §52-570d",
         "not a complete list",
         "Before we start, I would like to record today's session so that I can write my clinical notes.",
-        "The recording is stored on my computer and is used only for documentation.",
+        "The recording stays on my computer, where AI software turns it into a transcript and a draft of my notes.",
         "Do you agree to be recorded?",
         "you can ask me to pause or stop at any time",
     ]

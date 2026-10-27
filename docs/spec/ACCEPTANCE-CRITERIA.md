@@ -315,7 +315,7 @@ Before you start: the Release app at /Applications/Aletheia.app and the reposito
 
 ## 21. Recording consent (CONSENT)
 Before you start: setup finished, FileVault on, and patients "Jane Doe" and "Adam Lee", each with a session that has no recording yet.
-- **CONSENT-01** Click **Record Session** for Jane → a **Record consent** sheet asks who consented, how (**Verbal** or **Written**) and when, and **Start recording** stays disabled until you tick the confirmation.
+- **CONSENT-01** Click **Record Session** for Jane → a **Record consent** sheet asks who consented, how (**Verbal** or **Written**) and when, and **Start recording** stays disabled until you tick the confirmation that everyone in the session consented.
 - **CONSENT-02** Choose **Patient** and **Verbal**, tick the confirmation and click **Start recording** → recording starts and the session shows "Consent: verbal, from the patient" with the date and time.
 - **CONSENT-03** Start a second session for Jane with the default **First session** policy → recording starts with no sheet and the session shows consent on file since the first date.
 - **CONSENT-04** Set **Recording consent** to **Every session** in Settings > General → every new session of every patient asks again before it records.

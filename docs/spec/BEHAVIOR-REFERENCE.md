@@ -2183,7 +2183,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 ## Recording consent (CNS)
 
-- **CNS-001** When the user clicks Record Session and the session needs consent, a "Record consent" sheet opens before any recording starts, with Who consented, How (Verbal, Written) and When, the confirmation "I obtained this patient's consent to record the session and to process the recording with AI." and a "Read the consent guide…" link.
+- **CNS-001** When the user clicks Record Session and the session needs consent, a "Record consent" sheet opens before any recording starts, with Who consented, How (Verbal, Written) and When, the confirmation "I obtained consent from everyone in this session to record it and to process the recording with AI." and a "Read the consent guide…" link.
   `surface: ui` · `evidence: Sources/App/Views/RecordingConsentSheet.swift, Sources/App/Views/SessionDetailView.swift` · `qa: CONSENT-01`
 - **CNS-002** The sheet's Start recording button stays disabled until the confirmation is ticked; Cancel closes the sheet and records nothing.
   `surface: ui` · `evidence: Sources/App/Views/RecordingConsentSheet.swift` · `qa: CONSENT-01`
@@ -2211,7 +2211,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Services/AppModel.swift` · `qa: CONSENT-05`
 - **CNS-014** When the menu bar panel's chosen patient needs consent, the panel shows Who consented, How and the confirmation in place, and Start recording stays disabled until it is ticked.
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift` · `qa: CONSENT-06`
-- **CNS-015** When Start recording is pressed in the menu bar with consent confirmed, the new session's consent record is saved before the recorder starts; pressing it unconfirmed shows "Confirm you have this patient's consent before recording." and starts nothing.
+- **CNS-015** When Start recording is pressed in the menu bar with consent confirmed, the new session's consent record is saved before the recorder starts; pressing it unconfirmed shows "Confirm you have consent from everyone in this session before recording." and starts nothing.
   `surface: background` · `evidence: Sources/App/Views/RecordingMenuBar.swift, Sources/App/Services/AppModel.swift` · `qa: CONSENT-06`
 - **CNS-016** The patient profile editor has a "Recording consent" choice of Use default, First session or Every session; Use default follows Settings.
   `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift, Sources/App/Models/PatientProfileDraft.swift` · `qa: CONSENT-07`

@@ -10,5 +10,5 @@ extension Copy {
     static let consentAttested = "Recording consent attested"
     static let consentExportHeading = "Recording consent"
     static let consentArchiveFile = "Recording consent.txt"
-    static let consentNotConfirmed = "Confirm you have this patient's consent before recording."
+    static let consentNotConfirmed = "Confirm you have consent from everyone in this session before recording."
 }
