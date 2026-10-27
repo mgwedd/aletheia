@@ -238,6 +238,15 @@ final class SessionRecorder: ObservableObject {
     /// still being finalized by a Stop).
     var hasOpenRecording: Bool { stagingMicURL != nil || micURL != nil }
 
+    /// Why `start` would refuse right now (the license, or another recording
+    /// in the way), or nil. Asked before the consent sheet, so a refused start
+    /// saves no consent.
+    func startRefusal() -> String? {
+        if let refusal = licenseRefusal?() { return refusal }
+        return RecordingStartPolicy.refusal(
+            isRecording: isRecording, isStarting: isStarting, activePatientName: active?.patientName)
+    }
+
     /// Starts recording. Returns nil once recording, or why it isn't: another
     /// recording is in the way (which is left untouched), or this one failed to
     /// start (also left in `state`).

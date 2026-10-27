@@ -134,16 +134,22 @@ struct ConsentCapture: Equatable {
 
     var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    private static func wholeSeconds(_ date: Date) -> Date {
+        Date(timeIntervalSinceReferenceDate: date.timeIntervalSinceReferenceDate.rounded(.down))
+    }
+
     /// Ticked, and a name entered when someone other than the patient consented.
     var isComplete: Bool { confirmed && (!party.needsName || !trimmedName.isEmpty) }
 
-    /// The record this capture makes, with the consent time never later than `now`.
+    /// The record this capture makes, with the consent time never later than
+    /// `now`. Times are kept to the second, so the sealed file reads back exactly.
     func record(sessionID: UUID, patientID: UUID, policy: ConsentPolicy,
                 now: Date = Date(), recordedBy: String = AuditLog.currentActor) -> ConsentRecord {
-        ConsentRecord(
+        let recordedAt = Self.wholeSeconds(now)
+        return ConsentRecord(
             sessionID: sessionID, patientID: patientID, party: party,
             consenterName: party.needsName ? trimmedName : nil, method: method,
-            consentedAt: min(consentedAt, now), recordedAt: now, recordedBy: recordedBy,
+            consentedAt: min(Self.wholeSeconds(consentedAt), recordedAt), recordedAt: recordedAt, recordedBy: recordedBy,
             policy: policy, statement: RecordingConsent.attestationText)
     }
 }

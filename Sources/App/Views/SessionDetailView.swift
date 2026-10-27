@@ -1758,6 +1758,10 @@ struct SessionDetailView: View {
 
     private func startRecording() async {
         guard appModel.authorizeNewPHI(), let store = appModel.store else { return }
+        if let refusal = recorder.startRefusal() {
+            errorMessage = refusal
+            return
+        }
         guard !appModel.needsRecordingConsent(patient: patient, session: session) else {
             consentPurpose = .record
             showRecordingConsent = true

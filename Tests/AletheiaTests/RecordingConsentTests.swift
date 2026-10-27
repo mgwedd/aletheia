@@ -304,15 +304,15 @@ final class RecordingConsentTests: XCTestCase {
         XCTAssertFalse(md.contains("Recording consent"))
     }
 
-    func testArchiveWritesAConsentFileForSessionsWithContent() {
+    func testArchiveWritesAConsentFileOnlyForSessionsWithARecord() {
         let date = Date(timeIntervalSince1970: 1_800_000_000)
         let sessions = [
             ArchiveSession(date: date, transcript: "Hello.", notes: [], summary: "", consent: ["Who: Patient"]),
-            ArchiveSession(date: date.addingTimeInterval(86_400), transcript: "", notes: [], summary: "", consent: ["No consent recorded."]),
+            ArchiveSession(date: date.addingTimeInterval(86_400), transcript: "Hi.", notes: [], summary: "", consent: []),
         ]
         let files = PatientArchive.files(patientName: "Jane Doe", background: "", sessions: sessions, exportedOn: date)
         let consent = files.filter { $0.path.hasSuffix("/Recording consent.txt") }
-        XCTAssertEqual(consent.count, 1, "an empty session gets no consent file")
+        XCTAssertEqual(consent.count, 1, "a session without its own record gets no consent file")
         XCTAssertEqual(consent.first?.text, "Recording consent\n\nWho: Patient\n")
     }
 }

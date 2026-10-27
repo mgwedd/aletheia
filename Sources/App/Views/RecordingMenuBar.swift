@@ -300,6 +300,10 @@ struct RecordingMenuBar: View {
             return
         }
         // Before creating a session, so a refused start leaves no empty one behind.
+        if let refusal = recorder.startRefusal() {
+            startProblem = refusal
+            return
+        }
         let needsConsent = appModel.needsRecordingConsent(patient: patient, session: nil)
         if let problem = RecordingConsent.menuBarProblem(needsConsent: needsConsent, capture: consent) {
             startProblem = problem
@@ -311,6 +315,8 @@ struct RecordingMenuBar: View {
             return
         }
         if needsConsent {
+            // The panel has no When field: consent is given as Start is pressed.
+            consent.consentedAt = Date()
             do {
                 try appModel.recordConsent(consent, patient: patient, session: session)
                 consent = ConsentCapture()

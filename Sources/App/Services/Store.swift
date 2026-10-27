@@ -1127,9 +1127,7 @@ final class Store {
             throw StoreError.consentUnreadable
         }
         guard let data else { return nil }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        guard let record = try? decoder.decode(ConsentRecord.self, from: data) else { throw StoreError.consentUnreadable }
+        guard let record = try? JSONDecoder.aletheia.decode(ConsentRecord.self, from: data) else { throw StoreError.consentUnreadable }
         return record
     }
 
@@ -1139,10 +1137,7 @@ final class Store {
     func saveConsentRecord(_ record: ConsentRecord, for patient: Patient, session: SessionRecord) throws {
         if hasSignedNote(for: patient, session: session) { throw StoreError.consentLocked }
         _ = try consentRecord(for: patient, session: session)
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.sortedKeys]
-        try protector.write(try encoder.encode(record), to: consentURL(for: patient, session: session))
+        try protector.write(try JSONEncoder.aletheia.encode(record), to: consentURL(for: patient, session: session))
         onAudit?(.recordingConsentAttested, session.id.uuidString,
                  AuditDetail.recordingConsent(patientID: patient.id, method: record.method))
     }
