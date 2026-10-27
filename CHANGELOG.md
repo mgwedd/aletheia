@@ -9,6 +9,18 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.64.0] - 2026-10-27
+
+### Added
+- show a newer version as a banner, never an up-to-date alert (#520)
+- Get a Key drafts an email to support (#519)
+- Dark by default, fewer redundant rows (#518)
+
+### Fixed
+- license strip close button, strips off the search field, Settings Done at the bottom, Doctor opens the right Settings pane (#522)
+- detect FileVault from Disk Arbitration (#521)
+- no dev signing key; every build trusts production keys only (#517)
+
 ## [2.63.0] - 2026-10-26
 
 ### Added
