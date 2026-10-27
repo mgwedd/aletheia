@@ -1,4 +1,5 @@
 @testable import Aletheia
+import AVFoundation
 import Foundation
 import XCTest
 
@@ -377,5 +378,214 @@ extension When {
 @MainActor extension Then where Subject == String? {
     func isNoRefusal() {
         expect(subject == nil, "the recording was refused: \(subject ?? "")")
+    }
+}
+
+// MARK: - Import Audio…
+
+/// What the Import Audio… button does: the FileVault and consent gates, then
+/// the real import of the file that was picked, over a scratch folder of its own.
+@MainActor
+final class ImportBench {
+    enum Step: Equatable {
+        /// The Turn on FileVault alert is up and nothing else happens.
+        case refused
+        /// The consent sheet opens first; the picker waits for it.
+        case asksForConsent
+        case opensFilePicker
+    }
+
+    let app: InProcessDriver
+    let folder: URL
+    private let originalScratch: URL
+    private(set) var failure: String?
+
+    init(app: InProcessDriver) throws {
+        self.app = app
+        folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("aletheia-acceptance-import-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        originalScratch = PrivateStaging.root
+        PrivateStaging.root = folder.appendingPathComponent("scratch", isDirectory: true)
+    }
+
+    func cleanUp() {
+        PrivateStaging.root = originalScratch
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    var store: Store { app.appModel.store! }
+
+    /// Whether the session screen offers Import Audio… beside Record Session.
+    func offersImport(for visit: PatientSession) -> Bool {
+        let hasRecording = [store.micRecordingURL(for: visit.patient, session: visit.session),
+                            store.callRecordingURL(for: visit.patient, session: visit.session)]
+            .contains { FileManager.default.fileExists(atPath: $0.path) }
+        return SessionActionPolicy.offersRecord(
+            hasTranscript: false, hasRecording: hasRecording, isTranscribing: false, isQueued: false)
+    }
+
+    func press(for visit: PatientSession) -> Step {
+        switch app.appModel.beginAudioImport(patientID: visit.patient.id) {
+        case .blocked: return .refused
+        case .needsConsent: return .asksForConsent
+        case .ready: return .opensFilePicker
+        }
+    }
+
+    /// The same call the view makes with the picked file.
+    func importFile(_ file: URL, into visit: PatientSession) {
+        do {
+            try store.importRecording(from: file, for: visit.patient, session: visit.session)
+            failure = nil
+        } catch {
+            failure = error.localizedDescription
+        }
+    }
+
+    func write(_ data: Data, named name: String) throws -> URL {
+        let url = folder.appendingPathComponent(name)
+        try data.write(to: url)
+        return url
+    }
+
+    /// Two seconds of a 440 Hz tone, as a WAV from a phone might be.
+    func writeTone(named name: String) throws -> URL {
+        let url = folder.appendingPathComponent(name)
+        let rate = 44_100.0
+        let frames = AVAudioFrameCount(2 * rate)
+        let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        let samples = try XCTUnwrap(buffer.floatChannelData)[0]
+        for frame in 0..<Int(frames) {
+            samples[frame] = 0.3 * sin(2 * .pi * 440 * Float(frame) / Float(rate))
+        }
+        let file = try AVAudioFile(forWriting: url, settings: [
+            AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: rate, AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+        ])
+        try file.write(from: buffer)
+        return url
+    }
+}
+
+extension Given {
+    func importBench() throws -> ImportBench { try ImportBench(app: app) }
+
+    /// The patient has already said yes to being recorded.
+    func recordingConsent(of visit: PatientSession) {
+        _ = app.appModel.attestRecordingConsent(patientID: visit.patient.id)
+    }
+
+    /// An audio file the user keeps somewhere on the Mac.
+    func anAudioFile(_ bench: ImportBench) throws -> URL { try bench.writeTone(named: "visit.wav") }
+
+    /// A file that carries an audio extension but no sound.
+    func aFileThatIsNotAudio(_ bench: ImportBench) throws -> URL {
+        try bench.write(Data("these words are not audio".utf8), named: "notes.m4a")
+    }
+
+    /// The session already holds a recording made in the app.
+    func aRecording(_ bytes: Data, in visit: PatientSession, _ bench: ImportBench) throws {
+        try bytes.write(to: bench.store.micRecordingURL(for: visit.patient, session: visit.session))
+    }
+
+    /// The session's progress note is written and signed.
+    func aSignedNote(in visit: PatientSession, _ bench: ImportBench) throws {
+        try bench.store.saveGeneratedNote("S: calm", for: visit.patient, session: visit.session, format: .soap)
+        _ = try bench.store.signNote(for: visit.patient, session: visit.session, format: .soap, signer: "mw:501")
+    }
+}
+
+extension When {
+    /// Click Import Audio….
+    func pressImportAudio(on bench: ImportBench, _ visit: PatientSession) -> ImportBench.Step {
+        bench.press(for: visit)
+    }
+
+    /// Tick the consent box and continue; the picker opens once the patient is attested.
+    func confirmRecordingConsent(on bench: ImportBench, _ visit: PatientSession) -> ImportBench.Step {
+        _ = app.appModel.attestRecordingConsent(patientID: visit.patient.id)
+        return bench.press(for: visit)
+    }
+
+    /// Pick `file` in the open panel.
+    func pick(_ file: URL, on bench: ImportBench, into visit: PatientSession) {
+        bench.importFile(file, into: visit)
+    }
+
+    func recordedFiles(of visit: PatientSession, _ bench: ImportBench) -> RecordedFiles {
+        RecordedFiles(
+            mic: bench.store.micRecordingURL(for: visit.patient, session: visit.session),
+            call: bench.store.callRecordingURL(for: visit.patient, session: visit.session))
+    }
+}
+
+@MainActor extension Then where Subject == ImportBench.Step {
+    func opensTheFilePicker() { expectEqual(subject, .opensFilePicker, "what Import Audio… did") }
+    func asksForConsentFirst() { expectEqual(subject, .asksForConsent, "what Import Audio… did") }
+    func isRefused() { expectEqual(subject, .refused, "what Import Audio… did") }
+}
+
+@MainActor extension Then where Subject == ImportBench {
+    func hasNoFailure() {
+        expect(subject.failure == nil, "the import failed: \(subject.failure ?? "")")
+    }
+
+    func becameTheRecording(of visit: PatientSession) throws {
+        let mic = subject.store.micRecordingURL(for: visit.patient, session: visit.session)
+        let readable = try subject.store.readableRecording(at: mic)
+        defer { if readable.isTemporary { try? FileManager.default.removeItem(at: readable.url) } }
+        let samples = try AudioResampler.loadWhisperSamples(from: readable.url)
+        expect(!samples.isEmpty, "the session's recording holds no sound")
+        expect(abs(Double(samples.count) - 32_000) < 3_200, "the recording is not about two seconds long (\(samples.count) samples)")
+    }
+
+    func leftTheOriginalAlone(_ file: URL, _ original: Data) {
+        expectEqual((try? Data(contentsOf: file)) ?? Data(), original, "the picked file")
+    }
+
+    func startsTranscriptionOnItsOwn() {
+        expect(subject.app.settings.autoTranscribeAfterRecording, "automatic transcription is off by default")
+    }
+
+    func savedNothing(for visit: PatientSession) {
+        let files = RecordedFiles(
+            mic: subject.store.micRecordingURL(for: visit.patient, session: visit.session),
+            call: subject.store.callRecordingURL(for: visit.patient, session: visit.session))
+        expect(!files.micExists && !files.callExists, "audio was added to the session")
+    }
+
+    func refusedAsNotAudio() {
+        expect(subject.failure?.contains(Copy.couldntReadAsAudio) == true,
+               "the alert does not say the file couldn't be read as audio: \(subject.failure ?? "nil")")
+    }
+
+    func refusedBecauseTheNoteIsSigned() {
+        expect(subject.failure?.contains(Copy.noteIsSigned) == true,
+               "the alert does not say the note is signed: \(subject.failure ?? "nil")")
+    }
+
+    func refusedToReplaceTheRecording() {
+        expect(subject.failure?.contains(Copy.alreadyHasRecording) == true,
+               "the alert does not say the session already has a recording: \(subject.failure ?? "nil")")
+    }
+
+    func keptTheRecording(of visit: PatientSession, _ bytes: Data) {
+        let mic = subject.store.micRecordingURL(for: visit.patient, session: visit.session)
+        expectEqual((try? Data(contentsOf: mic)) ?? Data(), bytes, "the recording the session already had")
+    }
+
+    func offersImport(for visit: PatientSession) {
+        expect(subject.offersImport(for: visit), "Import Audio… is not offered")
+    }
+
+    func offersNoImport(for visit: PatientSession) {
+        expect(!subject.offersImport(for: visit), "Import Audio… is offered for a session that has a recording")
+    }
+
+    func showsTurnOnFileVaultAlert() {
+        expectEqual(subject.app.appModel.fileVaultNotice?.title, Copy.turnOnFileVault, "the FileVault alert")
     }
 }

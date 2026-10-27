@@ -592,6 +592,16 @@ final class AppModel: ObservableObject {
         savePatientNotes(current)
     }
 
+    /// Where an audio import for this patient may go next: refused (FileVault
+    /// is off, and the alert is raised), held for the recording-consent
+    /// attestation, or free to open the file picker.
+    enum AudioImportStart: Equatable { case blocked, needsConsent, ready }
+
+    func beginAudioImport(patientID: UUID) -> AudioImportStart {
+        guard authorizeNewPHI() else { return .blocked }
+        return hasRecordingConsent(patientID: patientID) ? .ready : .needsConsent
+    }
+
     /// Whether the clinician has attested consent to record this patient.
     func hasRecordingConsent(patientID: UUID) -> Bool {
         patients.first { $0.id == patientID }?.recordingConsentAttestedAt != nil

@@ -431,15 +431,18 @@ struct SessionDetailView: View {
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
         .sheet(isPresented: $showRecordingConsent) {
             RecordingConsentSheet(
-                onCancel: { showRecordingConsent = false },
+                confirmTitle: consentForImport ? "Continue" : "Start recording",
+                onCancel: { showRecordingConsent = false; consentForImport = false },
                 onConfirm: {
                     showRecordingConsent = false
                     if appModel.attestRecordingConsent(patientID: patient.id) {
                         if consentForImport {
-                            showAudioImporter = true
+                            pickAudioFile()
                         } else {
                             Task { await startRecording() }
                         }
+                    } else {
+                        consentForImport = false
                     }
                 }
             )
@@ -1713,6 +1716,7 @@ struct SessionDetailView: View {
     private func startRecording() async {
         guard appModel.authorizeNewPHI(), let store = appModel.store else { return }
         guard appModel.hasRecordingConsent(patientID: patient.id) else {
+            consentForImport = false
             showRecordingConsent = true
             return
         }
@@ -1734,12 +1738,24 @@ struct SessionDetailView: View {
     }
 
     private func requestAudioImport() {
-        guard appModel.authorizeNewPHI() else { return }
-        guard appModel.hasRecordingConsent(patientID: patient.id) else {
+        switch appModel.beginAudioImport(patientID: patient.id) {
+        case .blocked: return
+        case .needsConsent:
             consentForImport = true
             showRecordingConsent = true
+        case .ready: pickAudioFile()
+        }
+    }
+
+    private func pickAudioFile() {
+        #if DEBUG
+        // A UI test cannot answer the system open panel; a fixture run hands
+        // over its own clip instead.
+        if let fixture = FixtureMode.importFile() {
+            importAudio(from: fixture)
             return
         }
+        #endif
         showAudioImporter = true
     }
 

@@ -1,4 +1,5 @@
 #if DEBUG
+import AVFoundation
 import Foundation
 import SwiftUI
 
@@ -9,6 +10,8 @@ struct FixtureScenario: Decodable, Equatable {
     struct PatientSeed: Decodable, Equatable {
         var name: String
         var sessions: Int?
+        /// True when the patient has already attested to recording consent.
+        var recordingConsent: Bool?
     }
 
     /// Names the throwaway data folder and defaults domain. Launching again
@@ -25,6 +28,10 @@ struct FixtureScenario: Decodable, Equatable {
 
     /// Replies the scripted AI engine gives, in order; the last repeats.
     var aiReplies: [String]?
+
+    /// What "Import Audio…" is handed instead of the system open panel:
+    /// "clip" (a two-second tone) or "notAudio" (a text file named like audio).
+    var importFile: String?
 
     var buildTier: BuildTier { tier == "production" ? .production : .dev }
     var appLockOn: Bool { appLock == "on" }
@@ -120,6 +127,41 @@ enum FixtureMode {
             }
         }
         model.refreshPatients()
+        for seed in scenario?.patients ?? [] where seed.recordingConsent == true {
+            if let patient = model.patients.first(where: { $0.name == seed.name }) {
+                _ = model.attestRecordingConsent(patientID: patient.id)
+            }
+        }
+    }
+
+    /// The file "Import Audio…" is given in a fixture run, written fresh into
+    /// the fixture's own folder. Nil when the scenario names none.
+    static func importFile() -> URL? {
+        guard let kind = scenario?.importFile else { return nil }
+        let url = support.appendingPathComponent(kind == "clip" ? "import-clip.wav" : "import-notes.m4a")
+        try? FileManager.default.removeItem(at: url)
+        if kind == "clip" {
+            try? writeTone(to: url)
+        } else {
+            try? Data("these words are not audio".utf8).write(to: url)
+        }
+        return url
+    }
+
+    private static func writeTone(to url: URL, seconds: Double = 2, rate: Double = 16_000) throws {
+        let frames = AVAudioFrameCount(seconds * rate)
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
+              let samples = buffer.floatChannelData?[0] else { return }
+        buffer.frameLength = frames
+        for frame in 0..<Int(frames) {
+            samples[frame] = 0.3 * sin(2 * .pi * 440 * Float(frame) / Float(rate))
+        }
+        let file = try AVAudioFile(forWriting: url, settings: [
+            AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: rate, AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+        ])
+        try file.write(from: buffer)
     }
 }
 
