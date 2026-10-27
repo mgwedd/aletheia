@@ -9,6 +9,15 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.65.0] - 2026-10-27
+
+### Added
+- configurable recording consent per session (#525)
+- import an audio file as a session's recording (#524)
+
+### Fixed
+- align terms, privacy, consent and setup with app behaviour before the first beta invite (#528)
+
 ## [2.64.0] - 2026-10-27
 
 ### Added
