@@ -655,6 +655,20 @@ final class Store {
         sessionDir(for: patient, session: session).appendingPathComponent("call.caf")
     }
 
+    /// Imports an audio file as the session's recording (`mic.caf`), sealed
+    /// like one recorded in the app. Refused when the session's note is signed
+    /// or it already has a recording, so nothing is ever replaced.
+    func importRecording(from source: URL, for patient: Patient, session: SessionRecord) throws {
+        if hasSignedNote(for: patient, session: session) { throw StoreError.noteSigned }
+        let mic = micRecordingURL(for: patient, session: session)
+        let call = callRecordingURL(for: patient, session: session)
+        if FileManager.default.fileExists(atPath: mic.path) || FileManager.default.fileExists(atPath: call.path) {
+            throw AudioImportError.sessionHasRecording
+        }
+        try AudioImport.importRecording(from: source, to: mic, protector: protector)
+        onAudit?(.phiCreated, session.id.uuidString, AuditDetail.audioRecording)
+    }
+
     /// A readable copy of a recording that may be sealed. When it had to be
     /// decrypted, the copy is a temporary file the caller must move or delete
     /// (`isTemporary == true`); otherwise it's `url` itself.

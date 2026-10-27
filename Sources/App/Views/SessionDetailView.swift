@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -272,6 +273,10 @@ struct SessionDetailView: View {
     @State private var confirmationMessage: String?
     @State private var showScheduleSheet = false
     @State private var showRecordingConsent = false
+    /// What the consent sheet unlocks once attested: recording, or importing a file.
+    @State private var consentForImport = false
+    @State private var showAudioImporter = false
+    @State private var isImportingAudio = false
     @State private var pendingExport: ExportConfirmation?
     @State private var scheduleStart = Date()
     @State private var scheduleDurationMinutes = SessionEventBuilder.defaultDurationMinutes
@@ -422,7 +427,7 @@ struct SessionDetailView: View {
         } message: {
             Text(confirmationMessage ?? "")
         }
-        .dismissOnLock { showScheduleSheet = false; editingInstructions = false; pendingExport = nil; showRecordingConsent = false }
+        .dismissOnLock { showScheduleSheet = false; editingInstructions = false; pendingExport = nil; showRecordingConsent = false; showAudioImporter = false }
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
         .sheet(isPresented: $showRecordingConsent) {
             RecordingConsentSheet(
@@ -430,10 +435,17 @@ struct SessionDetailView: View {
                 onConfirm: {
                     showRecordingConsent = false
                     if appModel.attestRecordingConsent(patientID: patient.id) {
-                        Task { await startRecording() }
+                        if consentForImport {
+                            showAudioImporter = true
+                        } else {
+                            Task { await startRecording() }
+                        }
                     }
                 }
             )
+        }
+        .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio]) { result in
+            if case let .success(url) = result { importAudio(from: url) }
         }
         .exportConfirmation($pendingExport, settings: settings)
         .exportResultAlert($exportResult)
@@ -519,7 +531,17 @@ struct SessionDetailView: View {
                         Label("Record Session", systemImage: "record.circle")
                     }
                     .help(recordBlocker ?? "Record this session's audio")
-                    .disabled(recordBlocker != nil)
+                    .disabled(recordBlocker != nil || isImportingAudio)
+                    Button {
+                        requestAudioImport()
+                    } label: {
+                        Label("Import Audio…", systemImage: "square.and.arrow.down")
+                    }
+                    .help(recordBlocker ?? "Use an audio file you already have as this session's recording")
+                    .disabled(recordBlocker != nil || isImportingAudio)
+                    if isImportingAudio {
+                        ProgressView().controlSize(.small)
+                    }
                 }
             }
 
@@ -1709,6 +1731,42 @@ struct SessionDetailView: View {
             ),
             protector: appModel.currentProtector
         )
+    }
+
+    private func requestAudioImport() {
+        guard appModel.authorizeNewPHI() else { return }
+        guard appModel.hasRecordingConsent(patientID: patient.id) else {
+            consentForImport = true
+            showRecordingConsent = true
+            return
+        }
+        showAudioImporter = true
+    }
+
+    /// Converts and seals the picked file off the main thread, then transcribes
+    /// it when "Transcribe automatically" is on, as a finished recording would be.
+    private func importAudio(from url: URL) {
+        guard let store = appModel.store else { return }
+        consentForImport = false
+        isImportingAudio = true
+        let patient = patient, session = session
+        Task {
+            let failure: String? = await Task.detached(priority: .userInitiated) {
+                do {
+                    try store.importRecording(from: url, for: patient, session: session)
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+            isImportingAudio = false
+            onSessionUpdated()
+            if let failure {
+                errorMessage = failure
+            } else if settings.autoTranscribeAfterRecording {
+                transcription.start(patient: patient, session: session)
+            }
+        }
     }
 
     private func stopRecording() async {
