@@ -40,7 +40,7 @@ extension Given {
     /// FileVault on. Without a license the app refuses before asking for consent.
     func janeAndAdamWithASessionEach() {
         app.seed {
-            $0.license = "on"
+            $0.license = "test"   // a test license, so Import Audio… is offered too
             $0.fileVault = "on"
             $0.patients = [.init(name: "Jane Doe", sessions: 1), .init(name: "Adam Lee", sessions: 1)]
         }

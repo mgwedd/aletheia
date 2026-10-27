@@ -420,6 +420,11 @@ final class ImportBench {
 
     /// Whether the session screen offers Import Audio… beside Record Session.
     func offersImport(for visit: PatientSession) -> Bool {
+        app.appModel.importsAudio() && offersRecord(for: visit)
+    }
+
+    /// Whether the session screen offers Record Session.
+    func offersRecord(for visit: PatientSession) -> Bool {
         let hasRecording = [store.micRecordingURL(for: visit.patient, session: visit.session),
                             store.callRecordingURL(for: visit.patient, session: visit.session)]
             .contains { FileManager.default.fileExists(atPath: $0.path) }
@@ -446,9 +451,7 @@ final class ImportBench {
     /// The same call the view makes with the picked files.
     func importFiles(_ files: [URL], into visit: PatientSession) {
         do {
-            try store.importRecordings(
-                from: files, allowingTwoTracks: app.appModel.importsTwoTracks(),
-                for: visit.patient, session: visit.session)
+            try store.importRecordings(from: files, for: visit.patient, session: visit.session)
             failure = nil
         } catch {
             failure = error.localizedDescription
@@ -522,16 +525,17 @@ extension Given {
         UserDefaults().removePersistentDomain(forName: suite)
         let license = LicenseState(settings: settings)
         app.appModel.newRecordingRefusal = { license.newWorkRefusal }
+        app.appModel.importsAudio = { license.isTestLicense }
     }
 
-    /// The Mac holds a current test license, which takes two tracks at once.
+    /// The Mac holds a current test license, which offers Import Audio….
     func aTestLicense() {
-        app.appModel.importsTwoTracks = { true }
+        app.appModel.importsAudio = { true }
     }
 
     /// The Mac holds a customer license.
     func aCustomerLicense() {
-        app.appModel.importsTwoTracks = { false }
+        app.appModel.importsAudio = { false }
     }
 
     /// The session's progress note is written and signed.
@@ -611,11 +615,6 @@ extension When {
                "the alert does not ask for one file or two: \(subject.failure ?? "nil")")
     }
 
-    func refusedAsMoreThanOneFile() {
-        expect(subject.failure == Copy.oneFileOnly,
-               "the alert does not ask for one audio file: \(subject.failure ?? "nil")")
-    }
-
     func leftTheOriginalAlone(_ file: URL, _ original: Data) {
         expectEqual((try? Data(contentsOf: file)) ?? Data(), original, "the picked file")
     }
@@ -658,6 +657,11 @@ extension When {
 
     func offersImport(for visit: PatientSession) {
         expect(subject.offersImport(for: visit), "Import Audio… is not offered")
+    }
+
+    func offersRecordButNoImport(for visit: PatientSession) {
+        expect(subject.offersRecord(for: visit), "Record Session is not offered")
+        expect(!subject.offersImport(for: visit), "Import Audio… is offered without a test license")
     }
 
     func offersNoImport(for visit: PatientSession) {

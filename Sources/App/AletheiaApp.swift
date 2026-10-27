@@ -145,7 +145,7 @@ struct AletheiaApp: App {
         let recorder = SessionRecorder()
         recorder.licenseRefusal = { [weak license] in license?.newWorkRefusal }
         appModel.newRecordingRefusal = { [weak recorder] in recorder?.newRecordingRefusal }
-        appModel.importsTwoTracks = { [weak license] in
+        appModel.importsAudio = { [weak license] in
             #if DEBUG
             if FixtureMode.scenario?.testLicense == true { return true }
             #endif

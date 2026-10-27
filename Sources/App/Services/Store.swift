@@ -669,19 +669,18 @@ final class Store {
         try importRecordings(from: [source], for: patient, session: session)
     }
 
-    /// Imports one audio file as the session's recording (`mic.caf`), or, when
-    /// `allowingTwoTracks`, two as its microphone and call tracks (`mic.caf`,
-    /// `call.caf`), sealed like a recording made in the app. Refused when the
-    /// session's note is signed or it already has a recording, so nothing is
-    /// ever replaced.
-    func importRecordings(from sources: [URL], allowingTwoTracks: Bool = false, for patient: Patient, session: SessionRecord) throws {
+    /// Imports one audio file as the session's recording (`mic.caf`), or two
+    /// as its microphone and call tracks (`mic.caf`, `call.caf`), sealed like
+    /// a recording made in the app. Refused when the session's note is signed
+    /// or it already has a recording, so nothing is ever replaced.
+    func importRecordings(from sources: [URL], for patient: Patient, session: SessionRecord) throws {
         if hasSignedNote(for: patient, session: session) { throw StoreError.noteSigned }
         let mic = micRecordingURL(for: patient, session: session)
         let call = callRecordingURL(for: patient, session: session)
         if FileManager.default.fileExists(atPath: mic.path) || FileManager.default.fileExists(atPath: call.path) {
             throw AudioImportError.sessionHasRecording
         }
-        let tracks = try AudioImport.tracks(for: sources, allowingTwo: allowingTwoTracks)
+        let tracks = try AudioImport.tracks(for: sources)
         var pairs = [(source: tracks.mic, destination: mic)]
         if let callSource = tracks.call { pairs.append((callSource, call)) }
         try AudioImport.importRecordings(pairs, protector: protector)

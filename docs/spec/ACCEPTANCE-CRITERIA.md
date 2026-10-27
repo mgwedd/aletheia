@@ -62,16 +62,17 @@ Before you start: a session with no transcript, a Mac that can play some audio, 
 - **RECORD-12** Click **Review in Settings…** and recover the item into a session → its audio is added to that session and leaves the list.
 - **RECORD-13** Click **Delete…** on a set-aside recording and confirm → the audio is gone for good.
 - **RECORD-14** Click **Pause**, speak, then **Resume** and **Stop Recording** → nothing said while paused is in the saved audio.
+Import Audio… is for trying a build: only a test license offers it, and RECORD-15 to RECORD-20, RECORD-22, RECORD-23 and CONSENT-05 use one.
 - **RECORD-15** Click **Import Audio…** and pick an audio file → it becomes the session's recording, the original file is untouched, and transcription starts by itself.
 - **RECORD-16** Click **Import Audio…** for a patient who hasn't agreed to recording yet → the consent sheet appears first, and the file picker opens only after you confirm.
 - **RECORD-17** Pick a file that isn't audio → a "Something went wrong" alert says it couldn't be read as audio and nothing is saved.
 - **RECORD-18** Open a session that already has a recording → it offers neither **Record Session** nor **Import Audio…**, and an import into it is refused, leaving the recording as it was.
 - **RECORD-19** Import audio into a session whose note is signed → it is refused with an alert and nothing is saved.
 - **RECORD-20** Click **Import Audio…** on a Mac with FileVault off → no picker opens and a "Turn on FileVault" alert appears.
-- **RECORD-21** Click **Import Audio…** without a license key → an alert says a license key is needed, no picker opens and nothing is saved.
-- **RECORD-22** With a test license, click **Import Audio…** and pick two files, a microphone track and a call track (such as the two `.caf` files Aletheia exports) → the one named "call" becomes the call audio, the other the microphone, and neither original is touched.
-- **RECORD-23** With a test license, pick three or more files in **Import Audio…** → an alert asks for one file or two, and nothing is saved.
-- **RECORD-24** With a customer license, pick two files in **Import Audio…** → an alert asks for one audio file, and nothing is saved.
+- **RECORD-21** Open a session without a license key → it offers **Record Session** but no **Import Audio…**.
+- **RECORD-22** Click **Import Audio…** and pick two files, a microphone track and a call track (such as the two `.caf` files Aletheia exports) → the one named "call" becomes the call audio, the other the microphone, and neither original is touched.
+- **RECORD-23** Pick three or more files in **Import Audio…** → an alert asks for one file or two, and nothing is saved.
+- **RECORD-24** Open a session with a customer license → it offers **Record Session** but no **Import Audio…**.
 
 
 ## 5. Transcribe (TRANSCRIBE)

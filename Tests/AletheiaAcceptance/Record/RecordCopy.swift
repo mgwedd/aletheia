@@ -6,5 +6,4 @@ extension Copy {
     static let alreadyHasRecording = "already has a recording"
     static let needsLicenseKey = "needs a license key"
     static let oneFileOrTwo = "Pick one audio file, or two"
-    static let oneFileOnly = "Pick one audio file."
 }

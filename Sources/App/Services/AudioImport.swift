@@ -7,8 +7,6 @@ enum AudioImportError: LocalizedError, Equatable {
     case sessionHasRecording
     /// More than two files were picked; a session has a microphone and a call track.
     case tooManyFiles
-    /// Two files were picked where only one is taken.
-    case oneFileOnly
 
     var errorDescription: String? {
         switch self {
@@ -18,16 +16,14 @@ enum AudioImportError: LocalizedError, Equatable {
             return "This session already has a recording. Import into a new session instead."
         case .tooManyFiles:
             return "Pick one audio file, or two: the microphone track and the call track."
-        case .oneFileOnly:
-            return "Pick one audio file."
         }
     }
 }
 
 /// Brings the audio the user picked into a session, so it can be transcribed
-/// like one recorded in the app. One file becomes the microphone recording.
-/// With a test license, two become the microphone and call tracks, as Aletheia
-/// records and exports them.
+/// like one recorded in the app. One file becomes the microphone recording;
+/// two become the microphone and call tracks, as Aletheia records and exports
+/// them.
 ///
 /// Each file is converted to the recording format in the private scratch folder
 /// (never next to the original), then sealed into the session folder the same
@@ -38,19 +34,17 @@ enum AudioImport {
 
     /// Which picked file is which track. A file whose name mentions "call"
     /// is the call track and the other the microphone; when the names don't
-    /// tell them apart, the first by name is the microphone. Two files are
-    /// refused unless `allowingTwo`.
-    static func tracks(for sources: [URL], allowingTwo: Bool) throws -> (mic: URL, call: URL?) {
+    /// tell them apart, the first by name is the microphone.
+    static func tracks(for sources: [URL]) throws -> (mic: URL, call: URL?) {
         switch sources.count {
         case 1: return (sources[0], nil)
-        case 2 where !allowingTwo: throw AudioImportError.oneFileOnly
         case 2:
             let named = sources.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
             let isCall = named.map { $0.deletingPathExtension().lastPathComponent.localizedCaseInsensitiveContains("call") }
             if isCall[0] && !isCall[1] { return (named[1], named[0]) }
             return (named[0], named[1])
         case 0: throw AudioImportError.unreadable
-        default: throw allowingTwo ? AudioImportError.tooManyFiles : AudioImportError.oneFileOnly
+        default: throw AudioImportError.tooManyFiles
         }
     }
 

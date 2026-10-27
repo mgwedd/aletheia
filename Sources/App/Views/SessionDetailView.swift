@@ -456,7 +456,7 @@ struct SessionDetailView: View {
                 }
             )
         }
-        .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio], allowsMultipleSelection: appModel.importsTwoTracks()) { result in
+        .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio], allowsMultipleSelection: true) { result in
             if case let .success(urls) = result, !urls.isEmpty { importAudio(from: urls) }
         }
         .exportConfirmation($pendingExport, settings: settings)
@@ -578,13 +578,15 @@ struct SessionDetailView: View {
                     }
                     .help(recordBlocker ?? "Record this session's audio")
                     .disabled(recordBlocker != nil || isImportingAudio)
-                    Button {
-                        requestAudioImport()
-                    } label: {
-                        Label("Import Audio…", systemImage: "square.and.arrow.down")
+                    if appModel.importsAudio() {
+                        Button {
+                            requestAudioImport()
+                        } label: {
+                            Label("Import Audio…", systemImage: "square.and.arrow.down")
+                        }
+                        .help(recordBlocker ?? "Use an audio file you already have as this session's recording")
+                        .disabled(recordBlocker != nil || isImportingAudio)
                     }
-                    .help(recordBlocker ?? "Use an audio file you already have as this session's recording")
-                    .disabled(recordBlocker != nil || isImportingAudio)
                     if isImportingAudio {
                         ProgressView().controlSize(.small)
                     }
@@ -1813,11 +1815,10 @@ struct SessionDetailView: View {
         guard let store = appModel.store else { return }
         isImportingAudio = true
         let patient = patient, session = session
-        let allowingTwo = appModel.importsTwoTracks()
         Task {
             let failure: String? = await Task.detached(priority: .userInitiated) {
                 do {
-                    try store.importRecordings(from: urls, allowingTwoTracks: allowingTwo, for: patient, session: session)
+                    try store.importRecordings(from: urls, for: patient, session: session)
                     return nil
                 } catch {
                     return error.localizedDescription

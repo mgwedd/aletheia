@@ -212,14 +212,14 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/Store.swift:662` · `qa: RECORD-19`
 - **REC-086** When FileVault is off, Import Audio… raises the "Turn on FileVault" alert instead of opening the picker, the same gate as Record Session.
   `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:600, Sources/App/Services/AppModel.swift:528` · `qa: RECORD-20`
-- **REC-087** Without a license key, Import Audio… shows the license alert instead of opening the picker, the same gate as Record Session.
-  `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:606, Sources/App/Services/SessionRecorder.swift:238` · `qa: RECORD-21`
-- **REC-088** With a current test license (tier "test"), when the user picks two files in Import Audio…, the one whose name mentions "call" is sealed as the session's call track (call.caf) and the other as its microphone track (mic.caf); when neither or both names mention "call", the first by name is the microphone. Both are converted before either is sealed, so a file that isn't audio leaves nothing behind.
+- **REC-087** Without a license key the session offers no Import Audio…, since only a test license offers it. Should the import be started anyway, the license refusal applies, the same gate as Record Session.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Services/AppModel.swift, Sources/App/Services/SessionRecorder.swift:238` · `qa: RECORD-21`
+- **REC-088** When the user picks two files in Import Audio…, the one whose name mentions "call" is sealed as the session's call track (call.caf) and the other as its microphone track (mic.caf); when neither or both names mention "call", the first by name is the microphone. Both are converted before either is sealed, so a file that isn't audio leaves nothing behind.
   `surface: background` · `evidence: Sources/App/Services/AudioImport.swift, Sources/App/Services/Store.swift` · `qa: RECORD-22`
-- **REC-089** With a current test license, when the user picks three or more files in Import Audio…, the import is refused with "Pick one audio file, or two: the microphone track and the call track." and nothing is saved.
+- **REC-089** When the user picks three or more files in Import Audio…, the import is refused with "Pick one audio file, or two: the microphone track and the call track." and nothing is saved.
   `surface: ui` · `evidence: Sources/App/Services/AudioImport.swift` · `qa: RECORD-23`
-- **REC-090** Without a current test license, Import Audio… takes one file: the picker allows a single selection, and two or more files are refused with "Pick one audio file." and nothing is saved.
-  `surface: ui` · `evidence: Sources/App/Services/AudioImport.swift, Sources/App/Views/SessionDetailView.swift, Sources/App/Services/License/LicenseState.swift` · `qa: RECORD-24`
+- **REC-090** Import Audio… is offered only while a current test license (signed tier "test") is installed. With a customer license, an expired test license or none, the session shows Record Session alone, and starting an import is refused with "Importing audio needs a test license."
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Services/AppModel.swift, Sources/App/Services/License/LicenseState.swift, Sources/App/AletheiaApp.swift` · `qa: RECORD-24`
 
 ## Set-aside recordings (SAR)
 

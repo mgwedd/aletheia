@@ -20,7 +20,7 @@ final class ImportAudioTests: XCTestCase {
     private let importButton = "Import Audio…"
     private let recordButton = "Record Session"
 
-    private func scenario(consent: Bool, importFile: String?, fileVault: String? = nil, license: String = "on") {
+    private func scenario(consent: Bool, importFile: String?, fileVault: String? = nil, license: String = "test") {
         app.seed {
             $0.patients = [.init(name: "Jane Doe", sessions: 1, recordingConsent: consent)]
             $0.importFile = importFile
@@ -59,7 +59,7 @@ final class ImportAudioTests: XCTestCase {
     }
 
     func test_RECORD_22_twoFilesBecomeTheMicrophoneAndCallTracks() {
-        scenario(consent: true, importFile: "twoTracks", license: "test")
+        scenario(consent: true, importFile: "twoTracks")
         openTheSession()
 
         app.tap(importButton)
@@ -71,7 +71,7 @@ final class ImportAudioTests: XCTestCase {
     }
 
     func test_RECORD_23_threeFilesAreRefused() {
-        scenario(consent: true, importFile: "threeFiles", license: "test")
+        scenario(consent: true, importFile: "threeFiles")
         openTheSession()
 
         app.tap(importButton)
@@ -81,15 +81,12 @@ final class ImportAudioTests: XCTestCase {
         XCTAssertFalse(hasRecordingFile(app.probe), "audio was imported from three files")
     }
 
-    func test_RECORD_24_customerLicenseTakesOneFile() {
-        scenario(consent: true, importFile: "twoTracks", license: "on")
-        openTheSession()
+    func test_RECORD_24_customerLicenseOffersNoImport() {
+        scenario(consent: true, importFile: "clip", license: "on")
+        app.ensureLaunched()
 
-        app.tap(importButton)
-
-        XCTAssertTrue(app.exists(app.app.staticTexts["Something went wrong"]), "no alert")
-        XCTAssertTrue(app.exists(alertText(containing: "Pick one audio file.")), "the alert does not ask for one audio file")
-        XCTAssertFalse(hasRecordingFile(app.probe), "audio was imported from two files without a test license")
+        XCTAssertTrue(app.exists(app.button(recordButton)), "the session does not offer \(recordButton)")
+        XCTAssertTrue(app.gone(app.button(importButton)), "\(importButton) is offered with a customer license")
     }
 
     func test_RECORD_16_consentSheetComesBeforeTheFile() {
@@ -129,14 +126,11 @@ final class ImportAudioTests: XCTestCase {
         XCTAssertFalse(hasRecordingFile(app.probe), "audio was imported with FileVault off")
     }
 
-    func test_RECORD_21_withoutALicenseTheImportIsRefused() {
+    func test_RECORD_21_withoutALicenseNoImportIsOffered() {
         scenario(consent: true, importFile: "clip", license: "off")
-        openTheSession()
+        app.ensureLaunched()
 
-        app.tap(importButton)
-
-        XCTAssertTrue(app.exists(app.app.staticTexts["Something went wrong"]), "no alert")
-        XCTAssertTrue(app.exists(alertText(containing: "needs a license key")), "the alert does not say a license key is needed")
-        XCTAssertFalse(hasRecordingFile(app.probe), "audio was imported without a license")
+        XCTAssertTrue(app.exists(app.button(recordButton)), "the session does not offer \(recordButton)")
+        XCTAssertTrue(app.gone(app.button(importButton)), "\(importButton) is offered without a license")
     }
 }
