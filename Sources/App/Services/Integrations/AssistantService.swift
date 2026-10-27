@@ -48,7 +48,9 @@ struct AssistantService {
         let report = report
         return assistant.stream(
             model: model, system: system, turns: turns, prompt: prompt, task: task, grammar: grammar,
-            onStats: report.map { report in { @Sendable stats in report(.finished(stats)) } })
+            onStats: report.map { report in { @Sendable stats in
+                if let prefill = stats.prefill { report(.prefill(prefill)) } else { report(.finished(stats)) }
+            } })
     }
 
     /// Whether `prompt` (with the standing instructions) is within the budget.

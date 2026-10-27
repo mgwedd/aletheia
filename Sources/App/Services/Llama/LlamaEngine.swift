@@ -506,14 +506,21 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         // llama_decode takes at most n_batch tokens: feed the prompt in chunks,
         // keeping the last one for the loop below, which samples from it.
         let chunk = Int(llama_n_batch(context))
+        let parts = (promptCount + chunk - 1) / chunk
         var offset = 0
         while promptCount - offset > chunk {
             if isCancelled() { return output }
+            var report = AIRunStats()
+            report.prefill = PrefillProgress(part: offset / chunk + 1, total: parts)
+            onStats?(report)
             guard llama_decode(context, llama_batch_get_one(tokenStore + offset, Int32(chunk))) == 0 else {
                 throw LocalLLMEngineError.generationFailed("The model failed to decode a batch.")
             }
             offset += chunk
         }
+        var lastReport = AIRunStats()
+        lastReport.prefill = PrefillProgress(part: parts, total: parts)
+        onStats?(lastReport)
         var batch = llama_batch_get_one(tokenStore + offset, Int32(promptCount - offset))
 
         var produced = 0
@@ -524,6 +531,9 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
             }
             if readEnd == nil {
                 readEnd = DispatchTime.now().uptimeNanoseconds
+                var done = AIRunStats()
+                done.prefill = PrefillProgress(part: parts, total: parts, complete: true)
+                onStats?(done)
             }
             // llama_sampler_sample applies the whole chain (grammar included)
             // to the last token's logits, picks one, and feeds it back to
