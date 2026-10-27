@@ -95,18 +95,14 @@ struct ChatPaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             conversation
-            if onCompact != nil, ChatMemory.hasHistory(messages) {
-                HStack(spacing: 8) {
-                    Spacer(minLength: 8)
-                    Button("Compact") { onCompact?("") }
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
-                        .disabled(isSending)
-                        .hoverTip(HelpTips.compact, arrowEdge: .top)
-                }
+            Text("AI generated responses can be inaccurate. Double-check responses.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
-            }
+                .accessibilityIdentifier("chat.disclaimer")
             if !notices.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(notices, id: \.self) { notice in
@@ -236,7 +232,7 @@ struct ChatPaneView: View {
                     }
                 }
             }
-            if let effort {
+            if effort != nil || showsCompact {
                 effortRow(effort)
             }
             HStack(alignment: .bottom, spacing: 10) {
@@ -302,20 +298,35 @@ struct ChatPaneView: View {
         return true
     }
 
-    private func effortRow(_ effort: Binding<AnswerEffort>) -> some View {
+    private var showsCompact: Bool {
+        onCompact != nil && ChatMemory.hasHistory(messages)
+    }
+
+    /// The bar above the field: the Fast / Normal / Focus selector at the
+    /// leading edge, Compact at the trailing edge.
+    private func effortRow(_ effort: Binding<AnswerEffort>?) -> some View {
         HStack(spacing: 10) {
-            Text(AnswerEffort.label)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.muted.color)
-            ThemeSegmentedControl(
-                options: AnswerEffort.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
-                selection: effort
-            )
-            .frame(width: 240)
-            .disabled(isSending)
-            .help(effort.wrappedValue.blurb(for: effortFeature))
-            .accessibilityLabel(AnswerEffort.label)
-            Spacer(minLength: 0)
+            if let effort {
+                Text(AnswerEffort.label)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                ThemeSegmentedControl(
+                    options: AnswerEffort.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
+                    selection: effort
+                )
+                .frame(width: 240)
+                .disabled(isSending)
+                .help(effort.wrappedValue.blurb(for: effortFeature))
+                .accessibilityLabel(AnswerEffort.label)
+            }
+            Spacer(minLength: 16)
+            if showsCompact {
+                Button("Compact") { onCompact?("") }
+                    .buttonStyle(.themed)
+                    .controlSize(.small)
+                    .disabled(isSending)
+                    .hoverTip(HelpTips.compact, arrowEdge: .top)
+            }
         }
     }
 

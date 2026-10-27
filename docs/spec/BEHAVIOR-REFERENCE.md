@@ -1058,8 +1058,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/ContextBudget.swift, Sources/App/Services/HardwareCapabilities.swift` · `qa: CHAT-12`
 - **CHT-038** When one therapist-typed field (question, notes, comments or background) is longer than 300,000 characters (about 100 pages), the request is refused with a message.
   `surface: ui` · `evidence: Sources/App/Services/TherapistInput.swift` · `qa: NOTE-14`
-- **CHT-039** When more than 12,000 characters have built up since the last summary, the conversation is compacted before the next question is sent.
-  `surface: background` · `evidence: Sources/App/Services/ChatMemory.swift:12, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-13`
+- **CHT-039** When the messages since the last summary pass a quarter of the model's room (6,144 characters on an 8K window, 12,288 on 16K, at most 24,000), the conversation is compacted before the next question is sent.
+  `surface: background` · `evidence: Sources/App/Services/ChatMemory.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-13`
 - **CHT-040** When the chat has history, a Compact button appears and compacts the conversation on demand.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:98-101` · `qa: CHAT-13`
 - **CHT-041** When a conversation has been compacted, a "Conversation compacted" card appears and the summary stands in for the older messages.
@@ -1121,6 +1121,12 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Views/ChatStreamRunner.swift:253` · `qa: CHAT-06`
 - **CHT-072** When text containing line breaks is pasted into the chat box and sent, each run of line breaks in the sent question becomes a single space.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:35` · `qa: CHAT-02`
+- **CHT-073** When an Ask question is about the therapist's own notes ("What have I noted about…", "my notes"), the answer comes straight from My Notes on this Mac, at once and with no AI: the paragraphs that mention the question's words, quoted, or the notes in full when short and nothing matches, under a line saying My Notes stay private and the AI never reads them.
+  `surface: ui` · `evidence: Sources/App/Services/SessionAI/MyNotesLookup.swift, Sources/App/Services/SessionAI/SessionChatModel.swift` · `qa: CHAT-19`
+- **CHT-074** While the model reads a prompt longer than one batch, the status shows "Reading the session · part N of M", then on the last part "Analyzing <one or two of the question's words found in the session>" (plain matching, never the model), then "Preparing the answer" until the first words appear. Notes show the parts and "Preparing the answer" too.
+  `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Models/AIRunStats.swift, Sources/App/Views/AIProgressView.swift` · `qa: CHAT-20`
+- **CHT-075** The Compact button sits on the same bar as the AI effort control, apart from it, and "AI generated responses can be inaccurate. Double-check responses." always shows in small muted text at the bottom left of the conversation, in Light, Dark and Increase Contrast.
+  `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-21`
 
 ## AI engine & models (AIE)
 

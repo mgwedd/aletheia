@@ -147,6 +147,9 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-16** Remove the AI model and ask a question → a "Something went wrong" or engine alert appears, the question stays in the chat, and **Retry** asks it again.
 - **CHAT-17** Right-click a thread in the **Chats** list → the menu offers Rename and Delete.
 - **CHAT-18** Set a different effort in an **Ask** tab, the patient chat and notes → each keeps its own setting when you switch back.
+- **CHAT-19** Write a line about the client in **My Notes**, then ask "What have I noted about <name>?" in **Ask** → the answer quotes that line at once and says the AI never reads My Notes.
+- **CHAT-20** Ask a question on a long session → the status moves through reading the session part by part, analyzing, and "Preparing the answer" before the answer appears.
+- **CHAT-21** Open **Ask** on a session with a conversation → **Compact** sits on the effort bar, and "AI generated responses can be inaccurate. Double-check responses." shows at the bottom left of the conversation.
 
 ## 9. Summaries prepared in the background (DIGEST)
 Before you start: a patient whose sessions have transcripts too long for this Mac to read at once, and the AI model downloaded.

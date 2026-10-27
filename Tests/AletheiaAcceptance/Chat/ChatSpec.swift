@@ -72,4 +72,16 @@ final class ChatSpec: AcceptanceCase {
     func test_CHAT_18() async throws {
         try pending("not automated yet")
     }
+
+    func test_CHAT_19() async throws {
+        try pending("not automated yet")
+    }
+
+    func test_CHAT_20() async throws {
+        try pending("not automated yet")
+    }
+
+    func test_CHAT_21() async throws {
+        try pending("not automated yet")
+    }
 }
