@@ -126,7 +126,7 @@ final class LongSessionNoteTests: XCTestCase {
         let final = try XCTUnwrap(result.prompts.last)
         XCTAssertEqual(result.snapshots.last, "DRAFT NOTE")
         XCTAssertTrue(service.fits(prompt: final))
-        XCTAssertTrue(final.contains("merged digest"))
+        XCTAssertTrue(final.contains("section digest"), "every section's digest, not only the merged one")
         XCTAssertTrue(final.contains("think about hurting myself"), "risk statement comes from the transcript")
         XCTAssertTrue(final.contains("I would never do it"), "the denial comes with it")
         XCTAssertFalse(final.contains(text))
@@ -796,5 +796,37 @@ final class LongSessionNoteTests: XCTestCase {
         XCTAssertTrue(fastPrompt.contains("think about hurting myself"))
         XCTAssertTrue(fastPrompt.contains("I would never do it"))
         XCTAssertTrue(try XCTUnwrap(fast.coverage.last).contains("· Fast."))
+    }
+
+    // MARK: - Long sessions read every section
+
+    func testSessionsOverThreeSectionsAreReadWhole() {
+        XCTAssertTrue(LongSessionNote.readsWhole(syntheticTranscript(minutes: 30)), "three ten-minute sections")
+        XCTAssertFalse(LongSessionNote.readsWhole(syntheticTranscript(minutes: 31)), "a fourth section")
+    }
+
+    func testLongSessionThatFitsStillReadsEverySectionDigest() async throws {
+        let text = syntheticTranscript(minutes: 60)
+        var service = AssistantService(assistant: StubModel(), model: "m")
+        service.budget = ContextBudget(tokens: 65_536)
+        XCTAssertTrue(service.fits(prompt: Prompts.progressNote(format: .soap, transcript: text)), "it would fit whole")
+
+        let result = try await run(transcript: text, tokens: 65_536)
+        let final = try XCTUnwrap(result.prompts.last)
+        let sections = TranscriptSections.split(text).count
+        XCTAssertGreaterThan(sections, LongSessionNote.wholeReadSections)
+        XCTAssertFalse(final.contains(text), "not sent whole")
+        XCTAssertEqual(final.components(separatedBy: "section digest").count - 1, sections, "one digest per section")
+        XCTAssertTrue(final.contains("think about hurting myself"), "risk lines are still read from the transcript")
+    }
+
+    func testShortenedDigestKeepsBothEnds() {
+        let digest = (0..<100).map { "line \($0) of the session digest" }.joined(separator: "\n")
+        let (text, shortened) = LongSessionNote.fit(digest, to: 400)
+        XCTAssertTrue(shortened)
+        XCTAssertLessThanOrEqual(text.count, 400)
+        XCTAssertTrue(text.contains("line 0 of"))
+        XCTAssertTrue(text.contains("line 99 of"), "the end of the session is kept, not only the start")
+        XCTAssertTrue(text.contains("line 50 of") || text.contains("line 49 of"), "the middle too")
     }
 }

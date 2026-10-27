@@ -81,6 +81,9 @@ final class DigestSchedulePolicyTests: XCTestCase {
         XCTAssertTrue(DigestSchedulePolicy.needsSummary(transcriptCharacters: 40_000, historyCharacters: 40_000, room: 30_000))
         // Short session, but the patient's history no longer fits.
         XCTAssertTrue(DigestSchedulePolicy.needsSummary(transcriptCharacters: 5_000, historyCharacters: 90_000, room: 30_000))
+        XCTAssertTrue(
+            DigestSchedulePolicy.needsSummary(transcriptCharacters: 5_000, historyCharacters: 5_000, room: 30_000, readsWhole: false),
+            "a long session's note reads its section summaries")
         XCTAssertFalse(DigestSchedulePolicy.needsSummary(transcriptCharacters: 0, historyCharacters: 90_000, room: 30_000))
     }
 
