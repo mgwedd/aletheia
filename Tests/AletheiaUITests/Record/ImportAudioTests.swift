@@ -1,8 +1,8 @@
 import XCTest
 
-/// RECORD-15 to RECORD-21 through the real window. The system open panel
+/// RECORD-15 to RECORD-23 through the real window. The system open panel
 /// cannot be answered by a UI test, so the scenario's `importFile` hands
-/// Import Audio… a fixture file at the point where the panel would return one.
+/// Import Audio… fixture files at the point where the panel would return them.
 final class ImportAudioTests: XCTestCase {
     private var app = AppDriver()
 
@@ -56,6 +56,29 @@ final class ImportAudioTests: XCTestCase {
         XCTAssertTrue(hasRecordingFile(probe), "the session has no recording after the import")
         XCTAssertTrue(app.gone(app.button(importButton)), "\(importButton) is still offered")
         XCTAssertTrue(app.gone(app.button(recordButton)), "\(recordButton) is still offered")
+    }
+
+    func test_RECORD_22_twoFilesBecomeTheMicrophoneAndCallTracks() {
+        scenario(consent: true, importFile: "twoTracks")
+        openTheSession()
+
+        app.tap(importButton)
+
+        let probe = app.waitForProbe { self.hasRecordingFile($0) && $0.files.contains { $0.hasSuffix("call.caf") } }
+        XCTAssertTrue(hasRecordingFile(probe), "the session has no microphone track after the import")
+        XCTAssertTrue(probe.files.contains { $0.hasSuffix("call.caf") }, "the session has no call track after the import")
+        XCTAssertTrue(app.gone(app.button(importButton)), "\(importButton) is still offered")
+    }
+
+    func test_RECORD_23_threeFilesAreRefused() {
+        scenario(consent: true, importFile: "threeFiles")
+        openTheSession()
+
+        app.tap(importButton)
+
+        XCTAssertTrue(app.exists(app.app.staticTexts["Something went wrong"]), "no alert")
+        XCTAssertTrue(app.exists(alertText(containing: "Pick one audio file, or two")), "the alert does not ask for one file or two")
+        XCTAssertFalse(hasRecordingFile(app.probe), "audio was imported from three files")
     }
 
     func test_RECORD_16_consentSheetComesBeforeTheFile() {

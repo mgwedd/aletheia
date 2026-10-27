@@ -33,7 +33,9 @@ struct FixtureScenario: Decodable, Equatable {
     var aiReplies: [String]?
 
     /// What "Import Audio…" is handed instead of the system open panel:
-    /// "clip" (a two-second tone) or "notAudio" (a text file named like audio).
+    /// "clip" (a two-second tone), "twoTracks" (a microphone and a call track,
+    /// as Aletheia exports them), "threeFiles" (three tones) or "notAudio" (a
+    /// text file named like audio).
     var importFile: String?
 
     /// The patient whose newest session is on screen at launch, so a test of a
@@ -159,18 +161,27 @@ enum FixtureMode {
         if let newest { AppNavigator.shared.requestOpenSession(patientID: patient.id, sessionID: newest.id) }
     }
 
-    /// The file "Import Audio…" is given in a fixture run, written fresh into
+    /// The files "Import Audio…" is given in a fixture run, written fresh into
     /// the fixture's own folder. Nil when the scenario names none.
-    static func importFile() -> URL? {
+    static func importFiles() -> [URL]? {
         guard let kind = scenario?.importFile else { return nil }
-        let url = support.appendingPathComponent(kind == "clip" ? "import-clip.wav" : "import-notes.m4a")
-        try? FileManager.default.removeItem(at: url)
-        if kind == "clip" {
-            try? writeTone(to: url)
-        } else {
-            try? SecureFS.write(Data("these words are not audio".utf8), to: url)
+        let names: [String]
+        switch kind {
+        case "clip": names = ["import-clip.wav"]
+        case "twoTracks": names = ["Recording - microphone.caf", "Recording - call.caf"]
+        case "threeFiles": names = ["track 1.wav", "track 2.wav", "track 3.wav"]
+        default: names = ["import-notes.m4a"]
         }
-        return url
+        return names.map { name in
+            let url = support.appendingPathComponent(name)
+            try? FileManager.default.removeItem(at: url)
+            if kind != "notAudio" {
+                try? writeTone(to: url)
+            } else {
+                try? SecureFS.write(Data("these words are not audio".utf8), to: url)
+            }
+            return url
+        }
     }
 
     private static func writeTone(to url: URL, seconds: Double = 2, rate: Double = 16_000) throws {

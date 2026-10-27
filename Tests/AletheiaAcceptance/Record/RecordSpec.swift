@@ -276,4 +276,30 @@ final class RecordSpec: AcceptanceCase {
         then(importing).saysALicenseKeyIsNeeded()
         then(importing).savedNothing(for: visit)
     }
+
+    func test_RECORD_22() async throws {
+        let visit = try await given.aPatientWithASession()
+        given.recordingConsent(of: visit)
+        let tracks = try given.anExportedPairOfTracks(importing)
+        let originals = try [tracks.mic, tracks.call].map { try Data(contentsOf: $0) }
+
+        when.pick([tracks.call, tracks.mic], on: importing, into: visit)
+
+        then(importing).hasNoFailure()
+        try then(importing).becameTheTracks(of: visit, micSeconds: 2, callSeconds: 3)
+        then(importing).leftTheOriginalAlone(tracks.mic, originals[0])
+        then(importing).leftTheOriginalAlone(tracks.call, originals[1])
+        then(importing).offersNoImport(for: visit)
+    }
+
+    func test_RECORD_23() async throws {
+        let visit = try await given.aPatientWithASession()
+        given.recordingConsent(of: visit)
+        let files = try given.threeAudioFiles(importing)
+
+        when.pick(files, on: importing, into: visit)
+
+        then(importing).refusedAsTooManyFiles()
+        then(importing).savedNothing(for: visit)
+    }
 }

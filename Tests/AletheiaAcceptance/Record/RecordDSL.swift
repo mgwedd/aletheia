@@ -440,8 +440,13 @@ final class ImportBench {
 
     /// The same call the view makes with the picked file.
     func importFile(_ file: URL, into visit: PatientSession) {
+        importFiles([file], into: visit)
+    }
+
+    /// The same call the view makes with the picked files.
+    func importFiles(_ files: [URL], into visit: PatientSession) {
         do {
-            try store.importRecording(from: file, for: visit.patient, session: visit.session)
+            try store.importRecordings(from: files, for: visit.patient, session: visit.session)
             failure = nil
         } catch {
             failure = error.localizedDescription
@@ -454,11 +459,11 @@ final class ImportBench {
         return url
     }
 
-    /// Two seconds of a 440 Hz tone, as a WAV from a phone might be.
-    func writeTone(named name: String) throws -> URL {
+    /// A 440 Hz tone, two seconds unless told otherwise, as a WAV from a phone might be.
+    func writeTone(named name: String, seconds: Double = 2) throws -> URL {
         let url = folder.appendingPathComponent(name)
         let rate = 44_100.0
-        let frames = AVAudioFrameCount(2 * rate)
+        let frames = AVAudioFrameCount(seconds * rate)
         let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false))
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
         buffer.frameLength = frames
@@ -485,6 +490,18 @@ extension Given {
 
     /// An audio file the user keeps somewhere on the Mac.
     func anAudioFile(_ bench: ImportBench) throws -> URL { try bench.writeTone(named: "visit.wav") }
+
+    /// The two tracks Aletheia exports for a session: two seconds of
+    /// microphone and three of call audio, so each can be told apart.
+    func anExportedPairOfTracks(_ bench: ImportBench) throws -> (mic: URL, call: URL) {
+        (try bench.writeTone(named: "Recording - microphone.caf", seconds: 2),
+         try bench.writeTone(named: "Recording - call.caf", seconds: 3))
+    }
+
+    /// Three audio files.
+    func threeAudioFiles(_ bench: ImportBench) throws -> [URL] {
+        try (1...3).map { try bench.writeTone(named: "track \($0).wav") }
+    }
 
     /// A file that carries an audio extension but no sound.
     func aFileThatIsNotAudio(_ bench: ImportBench) throws -> URL {
@@ -531,6 +548,11 @@ extension When {
         bench.importFile(file, into: visit)
     }
 
+    /// Pick several files at once in the open panel.
+    func pick(_ files: [URL], on bench: ImportBench, into visit: PatientSession) {
+        bench.importFiles(files, into: visit)
+    }
+
     func recordedFiles(of visit: PatientSession, _ bench: ImportBench) -> RecordedFiles {
         RecordedFiles(
             mic: bench.store.micRecordingURL(for: visit.patient, session: visit.session),
@@ -557,6 +579,24 @@ extension When {
         let samples = try AudioResampler.loadWhisperSamples(from: readable.url)
         expect(!samples.isEmpty, "the session's recording holds no sound")
         expect(abs(Double(samples.count) - 32_000) < 3_200, "the recording is not about two seconds long (\(samples.count) samples)")
+    }
+
+    /// The session's microphone and call tracks hold `mic` and `call` seconds of sound.
+    func becameTheTracks(of visit: PatientSession, micSeconds mic: Double, callSeconds call: Double) throws {
+        for (url, seconds, track) in [
+            (subject.store.micRecordingURL(for: visit.patient, session: visit.session), mic, "microphone"),
+            (subject.store.callRecordingURL(for: visit.patient, session: visit.session), call, "call"),
+        ] {
+            let readable = try subject.store.readableRecording(at: url)
+            defer { if readable.isTemporary { try? FileManager.default.removeItem(at: readable.url) } }
+            let got = Double(try AudioResampler.loadWhisperSamples(from: readable.url).count) / 16_000
+            expect(abs(got - seconds) < 0.2, "the \(track) track is \(got) s long, not \(seconds) s")
+        }
+    }
+
+    func refusedAsTooManyFiles() {
+        expect(subject.failure?.contains(Copy.oneFileOrTwo) == true,
+               "the alert does not ask for one file or two: \(subject.failure ?? "nil")")
     }
 
     func leftTheOriginalAlone(_ file: URL, _ original: Data) {
