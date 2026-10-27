@@ -33,6 +33,10 @@ struct FixtureScenario: Decodable, Equatable {
     /// "clip" (a two-second tone) or "notAudio" (a text file named like audio).
     var importFile: String?
 
+    /// The patient whose newest session is on screen at launch, so a test of a
+    /// session screen does not depend on finding rows in the sidebar.
+    var open: String?
+
     var buildTier: BuildTier { tier == "production" ? .production : .dev }
     var appLockOn: Bool { appLock == "on" }
 
@@ -132,6 +136,15 @@ enum FixtureMode {
                 _ = model.attestRecordingConsent(patientID: patient.id)
             }
         }
+    }
+
+    /// Opens the scenario's `open` patient at their newest session.
+    @MainActor static func openRequestedSession(_ model: AppModel) {
+        guard let name = scenario?.open,
+              let patient = model.patients.first(where: { $0.name == name }) else { return }
+        let newest = (try? model.store?.listSessions(for: patient))?.max { $0.date < $1.date }
+        AppNavigator.shared.requestOpen(patientID: patient.id)
+        if let newest { AppNavigator.shared.requestOpenSession(patientID: patient.id, sessionID: newest.id) }
     }
 
     /// The file "Import Audio…" is given in a fixture run, written fresh into

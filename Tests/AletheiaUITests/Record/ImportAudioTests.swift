@@ -25,22 +25,14 @@ final class ImportAudioTests: XCTestCase {
             $0.patients = [.init(name: "Jane Doe", sessions: 1, recordingConsent: consent)]
             $0.importFile = importFile
             $0.fileVault = fileVault
+            $0.open = "Jane Doe"
         }
     }
 
-    /// Opens Jane Doe and her one session, as a click on each would.
+    /// Launches on Jane Doe's one session (the scenario's `open`). Finding
+    /// rows in the sidebar is not what these checks are about.
     private func openTheSession() {
         app.ensureLaunched()
-        let patient = app.app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", "Jane Doe")).firstMatch
-        XCTAssertTrue(app.exists(patient), "Jane Doe is not listed")
-        patient.click()
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        let row = app.app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", formatter.string(from: Date()))).firstMatch
-        XCTAssertTrue(app.exists(row), "her session is not listed")
-        row.click()
         XCTAssertTrue(app.exists(app.button(importButton)), "the session does not offer \(importButton)")
     }
 

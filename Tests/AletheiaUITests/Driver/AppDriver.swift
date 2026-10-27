@@ -16,6 +16,8 @@ struct Scenario: Encodable, Equatable {
     var aiReplies: [String]?
     /// What Import Audio… is handed instead of the open panel: "clip" or "notAudio".
     var importFile: String?
+    /// The patient whose newest session is on screen at launch.
+    var open: String?
 }
 
 /// The facts the app publishes through its invisible `fixture-probe` element.

@@ -119,6 +119,7 @@ struct AletheiaApp: App {
         if FixtureMode.isActive {
             appModel.diskProbe = FixtureMode.disk
             FixtureMode.seed(appModel)
+            FixtureMode.openRequestedSession(appModel)
         }
         #else
         let appModel = AppModel(settings: settings, encryption: encryption)

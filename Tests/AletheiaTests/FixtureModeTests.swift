@@ -21,8 +21,9 @@ final class FixtureScenarioTests: XCTestCase {
 
     func testParsesTheImportFileAndRecordingConsentSeeds() throws {
         let scenario = try FixtureScenario.parse(
-            #"{"patients":[{"name":"Jane Doe","sessions":1,"recordingConsent":true}],"importFile":"clip"}"#)
+            #"{"patients":[{"name":"Jane Doe","sessions":1,"recordingConsent":true}],"importFile":"clip","open":"Jane Doe"}"#)
         XCTAssertEqual(scenario.importFile, "clip")
+        XCTAssertEqual(scenario.open, "Jane Doe")
         XCTAssertEqual(scenario.patients?.first?.recordingConsent, true)
         XCTAssertNil(try FixtureScenario.parse("{}").importFile)
     }
