@@ -35,7 +35,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 | Appearance, accessibility & shortcuts (UX) | 21 |
 | Legal & consent (LEG) | 11 |
 | Build tiers (BLD) | 17 |
-| **Total** | **1017** |
+| Recording consent (CNS) | 28 |
+| **Total** | **1045** |
 
 ## Recording (REC)
 
@@ -201,7 +202,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:1783` · `qa: RECORD-15`
 - **REC-081** When an import succeeds, the activity log gains a phiCreated entry for the session with detail "audio recording".
   `surface: background` · `evidence: Sources/App/Services/Store.swift:669` · `qa: RECORD-15`
-- **REC-082** When the user clicks Import Audio… for a patient without a recording-consent attestation, the consent sheet (button "Continue") appears first and the file picker opens only after the attestation; cancelling leaves no import pending, so a later Record Session shows its own sheet.
+- **REC-082** When the user clicks Import Audio… for a session that needs recording consent, the consent sheet (button "Choose Audio File…") appears first and the file picker opens only after consent is recorded; cancelling leaves no import pending, so a later Record Session shows its own sheet.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:433-447, Sources/App/Views/SessionDetailView.swift:1740, Sources/App/Services/AppModel.swift:600` · `qa: RECORD-16`
 - **REC-083** When the picked file cannot be read as audio or holds no sound, the "Something went wrong" alert says "Aletheia couldn't read that file as audio. Try an M4A, MP3, WAV, AIFF or CAF file." and nothing is written to the session or left in scratch.
   `surface: ui` · `evidence: Sources/App/Services/AudioImport.swift:7-14, Sources/App/Services/AudioImport.swift:43` · `qa: RECORD-17`
@@ -2179,3 +2180,62 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: project.yml, scripts/check-entitlements.sh` · `qa: BUILD-02`
 - **BLD-017** Microphone and Speech-recognition purpose strings are present in every build.
   `surface: invariant` · `evidence: Sources/App/Resources/Info.plist` · `qa: BUILD-03`
+
+## Recording consent (CNS)
+
+- **CNS-001** When the user clicks Record Session and the session needs consent, a "Record consent" sheet opens before any recording starts, with Who consented, How (Verbal, Written) and When, the confirmation "I obtained this patient's consent to record the session and to process the recording with AI." and a "Read the consent guide…" link.
+  `surface: ui` · `evidence: Sources/App/Views/RecordingConsentSheet.swift, Sources/App/Views/SessionDetailView.swift` · `qa: CONSENT-01`
+- **CNS-002** The sheet's Start recording button stays disabled until the confirmation is ticked; Cancel closes the sheet and records nothing.
+  `surface: ui` · `evidence: Sources/App/Views/RecordingConsentSheet.swift` · `qa: CONSENT-01`
+- **CNS-003** Who consented offers Patient, Patient and others present, Parent or guardian and Other representative; for a parent, guardian or representative a Name field appears, and Start recording stays disabled while that name is blank.
+  `surface: ui` · `evidence: Sources/App/Models/ConsentRecord.swift, Sources/App/Views/RecordingConsentSheet.swift` · `qa: CONSENT-01`
+- **CNS-004** When defaults to the moment the sheet opened and cannot be set later than now.
+  `surface: ui` · `evidence: Sources/App/Views/RecordingConsentSheet.swift, Sources/App/Models/ConsentRecord.swift` · `qa: CONSENT-01`
+- **CNS-005** When the user confirms the sheet, the session's consent record (who, name if given, method, when consent was given, when it was recorded, who recorded it and the policy in force) is saved before recording starts.
+  `surface: background` · `evidence: Sources/App/Services/AppModel.swift, Sources/App/Services/Store.swift` · `qa: CONSENT-02`
+- **CNS-006** When a session has a consent record, the session screen shows "Consent: <method>, from <who>" with the date and time consent was given, and the representative's name when one was entered.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Models/ConsentRecord.swift` · `qa: CONSENT-02`
+- **CNS-007** Under the First session policy, a patient with consent on file is not asked again, and a session of theirs with no consent record of its own shows "Consent on file since <date>".
+  `surface: ui` · `evidence: Sources/App/Services/RecordingConsent.swift, Sources/App/Views/SessionDetailView.swift` · `qa: CONSENT-03`
+- **CNS-008** A session that already has a consent record is never asked again, whatever the policy, so a stopped recording can be resumed or redone without a second sheet.
+  `surface: background` · `evidence: Sources/App/Services/RecordingConsent.swift` · `qa: CONSENT-03`
+- **CNS-009** Settings > General has a "Recording consent" choice of First session (the default) or Every session, saved on this Mac.
+  `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Views/SettingsView.swift` · `qa: CONSENT-04`
+- **CNS-010** Under the Every session policy, each session without a consent record asks before it records, even when the patient consented before.
+  `surface: background` · `evidence: Sources/App/Services/RecordingConsent.swift` · `qa: CONSENT-04`
+- **CNS-011** A change to the default consent policy is written to the activity log as "Recording consent: first session" or "Recording consent: every session".
+  `surface: background` · `evidence: Sources/App/Services/AuditedSetting.swift, Sources/App/Services/AppSettings.swift` · `qa: CONSENT-04`
+- **CNS-012** When the user clicks Import Audio… and the session needs consent, the consent sheet opens first with its button labelled "Choose Audio File…"; the file picker opens only after consent is recorded, and Cancel opens nothing.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Views/RecordingConsentSheet.swift` · `qa: CONSENT-05`
+- **CNS-013** An audio import is refused for a session that still needs consent.
+  `surface: background` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Services/AppModel.swift` · `qa: CONSENT-05`
+- **CNS-014** When the menu bar panel's chosen patient needs consent, the panel shows Who consented, How and the confirmation in place, and Start recording stays disabled until it is ticked.
+  `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift` · `qa: CONSENT-06`
+- **CNS-015** When Start recording is pressed in the menu bar with consent confirmed, the new session's consent record is saved before the recorder starts; pressing it unconfirmed shows "Confirm you have this patient's consent before recording." and starts nothing.
+  `surface: background` · `evidence: Sources/App/Views/RecordingMenuBar.swift, Sources/App/Services/AppModel.swift` · `qa: CONSENT-06`
+- **CNS-016** The patient profile editor has a "Recording consent" choice of Use default, First session or Every session; Use default follows Settings.
+  `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift, Sources/App/Models/PatientProfileDraft.swift` · `qa: CONSENT-07`
+- **CNS-017** A patient's own policy is saved in their patient record and overrides the Settings default for that patient only.
+  `surface: background` · `evidence: Sources/App/Models/Patient.swift, Sources/App/Services/RecordingConsent.swift` · `qa: CONSENT-07`
+- **CNS-018** A patient record saved before consent policies existed reads as Use default.
+  `surface: invariant` · `evidence: Sources/App/Models/Patient.swift` · `qa: CONSENT-07`
+- **CNS-019** Settings > General has "Apply to Patients…", which lists every patient with a checkbox, a Select All toggle and a policy choice, and applies it to the selected patients only; Apply stays disabled with none selected.
+  `surface: ui` · `evidence: Sources/App/Views/Settings/ConsentPolicyPatientsSheet.swift, Sources/App/Services/AppModel.swift` · `qa: CONSENT-08`
+- **CNS-020** Applying Use default to selected patients clears their own policy so they follow Settings again.
+  `surface: background` · `evidence: Sources/App/Services/AppModel.swift` · `qa: CONSENT-08`
+- **CNS-021** Each recorded consent writes one "Recording consent attested" activity-log entry whose subject is the session's ID and whose note is "Patient <record ID>, <method>"; the entry carries no name and no typed text.
+  `surface: background` · `evidence: Sources/App/Services/AppModel.swift, Sources/App/Services/AuditDetail.swift` · `qa: CONSENT-09`
+- **CNS-022** The activity log's list of what it records includes recording consent attestations.
+  `surface: ui` · `evidence: Sources/App/Views/Settings/AuditLogSection.swift` · `qa: CONSENT-09`
+- **CNS-023** A session exported as PDF, Word or Markdown includes a "Recording consent" section with who, method and when; with no record of its own it says consent was on file for the patient since its date, or "No consent recorded."
+  `surface: ui` · `evidence: Sources/App/Services/MarkdownExporter.swift, Sources/App/Services/Store.swift` · `qa: CONSENT-10`
+- **CNS-024** Export All Records writes a "Recording consent.txt" in each session folder that has a consent record.
+  `surface: background` · `evidence: Sources/App/Services/PatientArchive.swift, Sources/App/Services/AllRecordsExport.swift` · `qa: CONSENT-10`
+- **CNS-025** Once a session has a signed note, saving its consent record is refused and the session screen offers no way to change it.
+  `surface: invariant` · `evidence: Sources/App/Services/Store.swift, Sources/App/Views/SessionDetailView.swift` · `qa: CONSENT-11`
+- **CNS-026** Before a note is signed, the session screen's consent line offers "Change…", which reopens the sheet and replaces the record, logging a new attestation.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift` · `qa: CONSENT-11`
+- **CNS-027** The consent record is stored as consent.json in the session folder, written through the file protector so it is sealed when encryption is on, and is converted with the other session files when encryption is turned on or off.
+  `surface: invariant` · `evidence: Sources/App/Services/Store.swift, Sources/App/Services/Crypto/DataMigrator.swift` · `qa: CONSENT-12`
+- **CNS-028** A consent record that is present but unreadable is reported as an error, never as no consent.
+  `surface: invariant` · `evidence: Sources/App/Services/Store.swift` · `qa: CONSENT-12`

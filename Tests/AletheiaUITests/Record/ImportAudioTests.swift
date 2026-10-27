@@ -64,12 +64,12 @@ final class ImportAudioTests: XCTestCase {
 
         app.tap(importButton)
 
-        XCTAssertTrue(app.exists(app.app.staticTexts["Before you record"]), "no consent sheet")
+        XCTAssertTrue(app.exists(app.app.staticTexts["Record consent"]), "no consent sheet")
         XCTAssertFalse(hasRecordingFile(app.probe), "audio was imported before consent")
         let box = app.app.checkBoxes.firstMatch
         XCTAssertTrue(app.exists(box), "no consent checkbox")
         box.click()
-        app.tap("Continue")
+        app.tap("Choose Audio File…")
         let probe = app.waitForProbe { self.hasRecordingFile($0) }
         XCTAssertTrue(hasRecordingFile(probe), "the session has no recording after consent")
     }

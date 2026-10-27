@@ -9,6 +9,8 @@ struct ArchiveSession: Equatable, Sendable {
     var notes: [ArchiveNote]
     /// The latest-note file, used only when no per-format note exists (older sessions).
     var summary: String
+    /// The "Recording consent" lines; empty when the session has no consent record of its own.
+    var consent: [String] = []
 }
 
 struct ArchiveNote: Equatable, Sendable {
@@ -80,6 +82,10 @@ enum PatientArchive {
             let summary = session.summary.trimmingCharacters(in: .whitespacesAndNewlines)
             if session.notes.isEmpty, !summary.isEmpty {
                 files.append(ArchiveFile(path: "\(folder)/Summary.txt", text: summary + "\n", modified: session.date))
+            }
+            if !session.consent.isEmpty {
+                let text = ([RecordingConsent.exportHeading, ""] + session.consent).joined(separator: "\n") + "\n"
+                files.append(ArchiveFile(path: "\(folder)/\(RecordingConsent.exportHeading).txt", text: text, modified: session.date))
             }
             if files.count == before, !hasRecording(index) { empty += 1 }
         }
@@ -203,6 +209,11 @@ extension PatientArchive {
 /// present but can't be read throws, so the export fails instead of leaving it
 /// out without saying.
 enum ArchiveLoader {
+    /// A record that can't be read still counts, so the archive says so.
+    private static func hasOwnConsentRecord(store: Store, patient: Patient, session: SessionRecord) -> Bool {
+        do { return try store.consentRecord(for: patient, session: session) != nil } catch { return true }
+    }
+
     static func load(store: Store, patient: Patient, session: SessionRecord) throws -> ArchiveSession {
         let notes: [ArchiveNote] = ProgressNoteFormat.allCases.compactMap { format in
             guard let text = store.note(for: patient, session: session, format: format),
@@ -220,7 +231,9 @@ enum ArchiveLoader {
                 guard !NoteEditing.normalized(text).isEmpty else { return "" }
                 let status = store.signedStatus(ofText: text, patient: patient, session: session)
                 return NoteLifecycle.stamped(PatientArchive.plainText(fromMarkdown: text), status: status)
-            } ?? ""
+            } ?? "",
+            consent: hasOwnConsentRecord(store: store, patient: patient, session: session)
+                ? store.consentExportLines(for: patient, session: session) : []
         )
     }
 }

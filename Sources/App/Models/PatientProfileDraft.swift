@@ -18,6 +18,8 @@ struct PatientProfileDraft: Equatable {
     var clinicalHistory: String
     var notes: String
     var medications: [Medication]
+    /// When recording asks this patient for consent; Use default follows Settings.
+    var recordingConsent: ConsentPolicyChoice
 
     /// `edits` are unsaved changes kept from an earlier editor (closed by the
     /// app locking); they start out typed in, on top of `patient`.
@@ -29,6 +31,7 @@ struct PatientProfileDraft: Equatable {
         clinicalHistory = shown.clinicalHistory
         notes = shown.notes
         medications = shown.medications
+        recordingConsent = ConsentPolicyChoice(shown.recordingConsentPolicy)
     }
 
     /// The fields as currently typed, on top of the saved patient (unsaved).
@@ -38,6 +41,7 @@ struct PatientProfileDraft: Equatable {
         patient.clinicalHistory = clinicalHistory
         patient.notes = notes
         patient.medications = medications
+        patient.recordingConsentPolicy = recordingConsent.policy
         return patient
     }
 
@@ -53,6 +57,7 @@ struct PatientProfileDraft: Equatable {
     var hasChanges: Bool {
         if let cleanedName, cleanedName != original.name { return true }
         if clinicalHistory != original.clinicalHistory || notes != original.notes { return true }
+        if recordingConsent.policy != original.recordingConsentPolicy { return true }
         return showsMedications && cleanedMedications != original.medications
     }
 
@@ -75,6 +80,7 @@ struct PatientProfileDraft: Equatable {
         patient.name = cleanedName
         patient.clinicalHistory = clinicalHistory
         patient.notes = notes
+        patient.recordingConsentPolicy = recordingConsent.policy
         if showsMedications { patient.medications = cleanedMedications }
     }
 }

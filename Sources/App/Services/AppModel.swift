@@ -602,27 +602,75 @@ final class AppModel: ObservableObject {
     /// (nil) allows it.
     var newRecordingRefusal: (() -> String?)?
 
-    func beginAudioImport(patientID: UUID) -> AudioImportStart {
+    func beginAudioImport(patient: Patient, session: SessionRecord) -> AudioImportStart {
         if let refusal = newRecordingRefusal?() { return .refused(refusal) }
         guard authorizeNewPHI() else { return .blocked }
-        return hasRecordingConsent(patientID: patientID) ? .ready : .needsConsent
+        return needsRecordingConsent(patient: patient, session: session) ? .needsConsent : .ready
     }
 
-    /// Whether the clinician has attested consent to record this patient.
-    func hasRecordingConsent(patientID: UUID) -> Bool {
-        patients.first { $0.id == patientID }?.recordingConsentAttestedAt != nil
+    // MARK: - Recording consent
+
+    /// The latest stored copy of `patient`, or `patient` itself.
+    private func current(_ patient: Patient) -> Patient {
+        patients.first { $0.id == patient.id } ?? patient
     }
 
-    /// Stores the clinician's attestation that the patient agreed to be recorded
-    /// and to AI processing, and logs it. Asked once per patient: an existing
-    /// attestation is kept. Returns whether the patient is now attested.
+    /// The patient's own policy, or the Settings default.
+    func consentPolicy(for patient: Patient) -> ConsentPolicy {
+        RecordingConsent.effectivePolicy(for: current(patient), default: settings.recordingConsentPolicy)
+    }
+
+    /// The session's consent record. Throws when one exists but can't be read.
+    func consentRecord(patient: Patient, session: SessionRecord) throws -> ConsentRecord? {
+        try store?.consentRecord(for: patient, session: session)
+    }
+
+    /// What the session screen and exports say about consent. An unreadable
+    /// record reads as unreadable, never as no consent.
+    func consentStatus(patient: Patient, session: SessionRecord) throws -> ConsentStatus {
+        RecordingConsent.status(record: try consentRecord(patient: patient, session: session), patient: current(patient))
+    }
+
+    /// Whether recording (or importing audio) into `session` must first ask
+    /// for consent. `session` is nil for a session not created yet, as the
+    /// menu bar starts one. A record that exists but can't be read counts as
+    /// consent recorded.
+    func needsRecordingConsent(patient: Patient, session: SessionRecord?) -> Bool {
+        let hasRecord: Bool
+        if let session {
+            do { hasRecord = try consentRecord(patient: patient, session: session) != nil } catch { hasRecord = true }
+        } else {
+            hasRecord = false
+        }
+        return RecordingConsent.needsCapture(
+            patient: current(patient), policy: consentPolicy(for: patient), sessionHasRecord: hasRecord)
+    }
+
+    /// Whether the session's consent can still be recorded or changed: not
+    /// once a note in it is signed.
+    func canChangeConsent(patient: Patient, session: SessionRecord) -> Bool {
+        !(store?.hasSignedNote(for: patient, session: session) ?? true)
+    }
+
+    /// Saves the completed consent sheet as the session's record (the store
+    /// logs it) and marks the patient as having consented, once.
     @discardableResult
-    func attestRecordingConsent(patientID: UUID, at date: Date = Date()) -> Bool {
-        if hasRecordingConsent(patientID: patientID) { return true }
-        updatePatient(id: patientID) { $0.recordingConsentAttestedAt = date }
-        guard hasRecordingConsent(patientID: patientID) else { return false }
-        recordAudit(.recordingConsentAttested, subjectID: patientID.uuidString)
-        return true
+    func recordConsent(_ capture: ConsentCapture, patient: Patient, session: SessionRecord,
+                       now: Date = Date()) throws -> ConsentRecord {
+        guard let store else { throw StoreError.noDataRoot }
+        guard capture.isComplete else { throw ConsentCaptureIncomplete() }
+        let record = capture.record(
+            sessionID: session.id, patientID: patient.id, policy: consentPolicy(for: patient), now: now)
+        try store.saveConsentRecord(record, for: patient, session: session)
+        if current(patient).recordingConsentAttestedAt == nil {
+            updatePatient(id: patient.id) { $0.recordingConsentAttestedAt = record.consentedAt }
+        }
+        return record
+    }
+
+    /// Sets (or, with nil, clears) the consent policy of each patient in `ids`.
+    func setConsentPolicy(_ policy: ConsentPolicy?, forPatients ids: Set<UUID>) {
+        for id in ids { updatePatient(id: id) { $0.recordingConsentPolicy = policy } }
     }
 
     /// Deletes a patient and all of their associated records from disk and the

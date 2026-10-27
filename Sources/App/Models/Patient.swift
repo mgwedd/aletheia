@@ -30,6 +30,8 @@ struct Patient: Identifiable, Codable, Hashable {
     /// to AI processing of the recording. Nil until they do; once set, later
     /// recordings for the patient don't ask again.
     var recordingConsentAttestedAt: Date?
+    /// This patient's own consent policy; nil follows the Settings default.
+    var recordingConsentPolicy: ConsentPolicy?
 
     init(
         id: UUID = UUID(),
@@ -39,7 +41,8 @@ struct Patient: Identifiable, Codable, Hashable {
         slug: String,
         clinicalHistory: String = "",
         medications: [Medication] = [],
-        recordingConsentAttestedAt: Date? = nil
+        recordingConsentAttestedAt: Date? = nil,
+        recordingConsentPolicy: ConsentPolicy? = nil
     ) {
         self.id = id
         self.name = name
@@ -49,10 +52,11 @@ struct Patient: Identifiable, Codable, Hashable {
         self.clinicalHistory = clinicalHistory
         self.medications = medications
         self.recordingConsentAttestedAt = recordingConsentAttestedAt
+        self.recordingConsentPolicy = recordingConsentPolicy
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, notes, createdAt, slug, clinicalHistory, medications, recordingConsentAttestedAt
+        case id, name, notes, createdAt, slug, clinicalHistory, medications, recordingConsentAttestedAt, recordingConsentPolicy
     }
 
     // Custom decoding so patient.json files written before these fields existed
@@ -67,6 +71,7 @@ struct Patient: Identifiable, Codable, Hashable {
         clinicalHistory = try c.decodeIfPresent(String.self, forKey: .clinicalHistory) ?? ""
         medications = try c.decodeIfPresent([Medication].self, forKey: .medications) ?? []
         recordingConsentAttestedAt = try c.decodeIfPresent(Date.self, forKey: .recordingConsentAttestedAt)
+        recordingConsentPolicy = try? c.decodeIfPresent(ConsentPolicy.self, forKey: .recordingConsentPolicy)
     }
 
     /// The always-included background block handed to the AI so it can weigh the

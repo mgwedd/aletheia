@@ -1,29 +1,52 @@
 import SwiftUI
 
-/// Asked once per patient, before their first recording: the clinician attests
-/// that the patient agreed to be recorded and to AI processing of the
-/// recording. Aletheia stores the date of the attestation, not the consent
-/// itself.
+/// Record consent: who agreed to the recording, how, and when, with the
+/// clinician's confirmation. Shown before Record Session and Import Audio…
+/// when the consent policy asks, and from Change… on the session screen.
 struct RecordingConsentSheet: View {
-    /// The primary button's title: what happens once the clinician attests.
-    var confirmTitle = "Start recording"
+    let purpose: ConsentSheetPurpose
+    let policy: ConsentPolicy
     var onCancel: () -> Void
-    var onConfirm: () -> Void
+    var onConfirm: (ConsentCapture) -> Void
 
-    @State private var confirmed = false
+    @State private var capture = ConsentCapture()
     @State private var showConsentGuide = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Before you record")
+            Text(RecordingConsent.sheetTitle)
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.text.color)
                 .accessibilityAddTraits(.isHeader)
-            Text("Confirm that this patient has agreed to be recorded, and to have the recording transcribed and processed by AI on this Mac. You are only asked once for each patient.")
+            Text(RecordingConsent.sheetExplanation(policy))
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)
-            Toggle(RecordingConsent.attestationText, isOn: $confirmed)
+
+            labelled("Who consented") {
+                Picker("Who consented", selection: $capture.party) {
+                    ForEach(ConsentParty.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+            if capture.party.needsName {
+                labelled("Name") {
+                    ThemeTextField(placeholder: "Name", text: $capture.name)
+                }
+            }
+            labelled("How") {
+                ThemeSegmentedControl(
+                    options: ConsentMethod.allCases.map { ThemeTab(value: $0, title: $0.title) },
+                    selection: $capture.method, sizing: .fitted)
+            }
+            labelled("When") {
+                DatePicker("When", selection: $capture.consentedAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+            }
+
+            Toggle(RecordingConsent.attestationText, isOn: $capture.confirmed)
                 .toggleStyle(.checkbox)
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.text.color)
@@ -34,9 +57,9 @@ struct RecordingConsentSheet: View {
                 Button("Cancel", action: onCancel)
                     .buttonStyle(.themed)
                     .keyboardShortcut(.cancelAction)
-                Button(confirmTitle, action: onConfirm)
+                Button(purpose.confirmTitle) { onConfirm(capture) }
                     .buttonStyle(.themePrimary)
-                    .disabled(!confirmed)
+                    .disabled(!capture.isComplete)
             }
         }
         .padding(24)
@@ -44,5 +67,14 @@ struct RecordingConsentSheet: View {
         .background(Theme.panel.color)
         .dismissOnLock { showConsentGuide = false; onCancel() }
         .sheet(isPresented: $showConsentGuide) { ConsentGuideView() }
+    }
+
+    private func labelled<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(Theme.Typography.sectionLabel)
+                .foregroundStyle(Theme.muted.color)
+            content()
+        }
     }
 }

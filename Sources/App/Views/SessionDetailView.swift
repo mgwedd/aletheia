@@ -273,8 +273,11 @@ struct SessionDetailView: View {
     @State private var confirmationMessage: String?
     @State private var showScheduleSheet = false
     @State private var showRecordingConsent = false
-    /// What the consent sheet unlocks once attested: recording, or importing a file.
-    @State private var consentForImport = false
+    /// What the consent sheet is in front of: recording, importing a file, or a change.
+    @State private var consentPurpose: ConsentSheetPurpose = .record
+    /// The session's consent line, and whether Change… is offered.
+    @State private var consentLine = ""
+    @State private var canChangeConsent = false
     @State private var showAudioImporter = false
     @State private var isImportingAudio = false
     @State private var pendingExport: ExportConfirmation?
@@ -340,6 +343,7 @@ struct SessionDetailView: View {
         }
         .navigationTitle(Self.dateFormatter.string(from: session.date))
         .background(Theme.window.color)
+        .onChange(of: selectedTab) { refreshConsent() }
         .selectablePatientText()
         .onAppear {
             appModel.access.viewedSession(session.id)
@@ -431,18 +435,23 @@ struct SessionDetailView: View {
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
         .sheet(isPresented: $showRecordingConsent) {
             RecordingConsentSheet(
-                confirmTitle: consentForImport ? "Continue" : "Start recording",
-                onCancel: { showRecordingConsent = false; consentForImport = false },
-                onConfirm: {
+                purpose: consentPurpose,
+                policy: appModel.consentPolicy(for: patient),
+                onCancel: { showRecordingConsent = false },
+                onConfirm: { capture in
                     showRecordingConsent = false
-                    if appModel.attestRecordingConsent(patientID: patient.id) {
-                        if consentForImport {
-                            pickAudioFile()
-                        } else {
-                            Task { await startRecording() }
-                        }
-                    } else {
-                        consentForImport = false
+                    do {
+                        try appModel.recordConsent(capture, patient: patient, session: session)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                        refreshConsent()
+                        return
+                    }
+                    refreshConsent()
+                    switch consentPurpose {
+                    case .record: Task { await startRecording() }
+                    case .importAudio: pickAudioFile()
+                    case .change: break
                     }
                 }
             )
@@ -468,10 +477,44 @@ struct SessionDetailView: View {
                 Chip(headerDetail)
             }
             Spacer(minLength: 0)
+            consentStatus
         }
         .padding(.horizontal, 20)
         .frame(height: 52)
         .background(Theme.window.color)
+    }
+
+    /// "Consent: verbal, from the patient · …", with Change… until a note is signed.
+    private var consentStatus: some View {
+        HStack(spacing: 6) {
+            Text(consentLine)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            if canChangeConsent {
+                Button(RecordingConsent.changeTitle) {
+                    // A note may have been signed since the line was drawn.
+                    refreshConsent()
+                    guard canChangeConsent else { return }
+                    consentPurpose = .change
+                    showRecordingConsent = true
+                }
+                .buttonStyle(.themed)
+                .controlSize(.small)
+                .help("Record this session's consent again")
+            }
+        }
+    }
+
+    private func refreshConsent() {
+        do {
+            consentLine = RecordingConsent.sessionLine(try appModel.consentStatus(patient: patient, session: session))
+            canChangeConsent = appModel.canChangeConsent(patient: patient, session: session)
+        } catch {
+            consentLine = error.localizedDescription
+            canChangeConsent = false
+        }
     }
 
     /// "2:14 PM · 1m 24s": when the session started and, once there is a
@@ -1715,8 +1758,12 @@ struct SessionDetailView: View {
 
     private func startRecording() async {
         guard appModel.authorizeNewPHI(), let store = appModel.store else { return }
-        guard appModel.hasRecordingConsent(patientID: patient.id) else {
-            consentForImport = false
+        if let refusal = recorder.startRefusal() {
+            errorMessage = refusal
+            return
+        }
+        guard !appModel.needsRecordingConsent(patient: patient, session: session) else {
+            consentPurpose = .record
             showRecordingConsent = true
             return
         }
@@ -1738,11 +1785,11 @@ struct SessionDetailView: View {
     }
 
     private func requestAudioImport() {
-        switch appModel.beginAudioImport(patientID: patient.id) {
+        switch appModel.beginAudioImport(patient: patient, session: session) {
         case .blocked: return
         case .refused(let message): errorMessage = message
         case .needsConsent:
-            consentForImport = true
+            consentPurpose = .importAudio
             showRecordingConsent = true
         case .ready: pickAudioFile()
         }
@@ -1764,7 +1811,6 @@ struct SessionDetailView: View {
     /// it when "Transcribe automatically" is on, as a finished recording would be.
     private func importAudio(from url: URL) {
         guard let store = appModel.store else { return }
-        consentForImport = false
         isImportingAudio = true
         let patient = patient, session = session
         Task {
@@ -1907,6 +1953,7 @@ struct SessionDetailView: View {
 
     private func load() {
         guard let store = appModel.store else { return }
+        refreshConsent()
         reloadTranscript()
         transcriptDraft = transcriptText
         if transcriptReadError == nil, let restored = UnsavedTranscriptDrafts.take(for: session.id) {

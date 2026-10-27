@@ -282,6 +282,7 @@ struct PatientDetailView: View {
                 isRecording: isRecording(session)
             )
             .tag(session.id)
+            .accessibilityIdentifier("session-row")
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)

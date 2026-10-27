@@ -29,6 +29,10 @@ enum StoreError: LocalizedError {
     /// The note (or the transcript it was written from) is signed, so it can't be
     /// replaced. Reopen the note as a new draft first.
     case noteSigned
+    /// The session's note is signed, so its consent record is fixed.
+    case consentLocked
+    /// A consent record exists but couldn't be read, so it was not replaced.
+    case consentUnreadable
 
     var errorDescription: String? {
         switch self {
@@ -53,6 +57,9 @@ enum StoreError: LocalizedError {
         case .recordingNotDeleted:
             return "The recording couldn't be deleted from your data folder."
         case .blankPatientName: return "A patient needs a name."
+        case .consentLocked: return RecordingConsent.lockedBySignedNote
+        case .consentUnreadable:
+            return "Aletheia couldn't read this session's consent record, so it was left as it is."
         }
     }
 }
@@ -69,6 +76,7 @@ enum StoreError: LocalizedError {
 ///       note.<format>.txt  (one progress note per format, e.g. note.soap.txt)
 ///       note.<format>.meta.json  (fingerprint of the transcript that note was generated from)
 ///       digest.json        (section + session digests of the transcript, see `SessionDigest`)
+///       consent.json       (the session's recording consent, see `ConsentRecord`)
 ///
 /// Identity is a persisted `UUID`, never the path. A patient's id lives in
 /// `patient.json`, a session's in `session.json` — both assigned once at
@@ -356,7 +364,8 @@ final class Store {
         return Patient(
             id: patient.id, name: patient.name, notes: patient.notes, createdAt: patient.createdAt,
             slug: name, clinicalHistory: patient.clinicalHistory, medications: patient.medications,
-            recordingConsentAttestedAt: patient.recordingConsentAttestedAt)
+            recordingConsentAttestedAt: patient.recordingConsentAttestedAt,
+            recordingConsentPolicy: patient.recordingConsentPolicy)
     }
 
     func patientDir(for patient: Patient) -> URL {
@@ -1102,6 +1111,37 @@ final class Store {
         onAudit?(.phiAmended, session.id.uuidString, AuditDetail.note)
     }
 
+    // MARK: - Recording consent
+
+    static let consentFileName = "consent.json"
+
+    private func consentURL(for patient: Patient, session: SessionRecord) -> URL {
+        sessionDir(for: patient, session: session).appendingPathComponent(Store.consentFileName)
+    }
+
+    /// The session's consent record, nil when none was recorded. A record that
+    /// exists but can't be read or decoded throws: it is never taken as no consent.
+    func consentRecord(for patient: Patient, session: SessionRecord) throws -> ConsentRecord? {
+        let data: Data?
+        do { data = try protector.dataIfPresent(at: consentURL(for: patient, session: session)) } catch {
+            throw StoreError.consentUnreadable
+        }
+        guard let data else { return nil }
+        guard let record = try? JSONDecoder.aletheia.decode(ConsentRecord.self, from: data) else { throw StoreError.consentUnreadable }
+        return record
+    }
+
+    /// Seals `record` into the session folder and logs the attestation with
+    /// the session's ID, the patient's record ID and the method only. Refused
+    /// once the session has a signed note, and over a record that can't be read.
+    func saveConsentRecord(_ record: ConsentRecord, for patient: Patient, session: SessionRecord) throws {
+        if hasSignedNote(for: patient, session: session) { throw StoreError.consentLocked }
+        _ = try consentRecord(for: patient, session: session)
+        try protector.write(try JSONEncoder.aletheia.encode(record), to: consentURL(for: patient, session: session))
+        onAudit?(.recordingConsentAttested, session.id.uuidString,
+                 AuditDetail.recordingConsent(patientID: patient.id, method: record.method))
+    }
+
     // MARK: - Session digests
 
     static let digestFileName = "digest.json"
@@ -1721,8 +1761,20 @@ final class Store {
             date: session.date,
             patientName: patient.name,
             transcript: transcript(for: patient, session: session),
-            summary: summary
+            summary: summary,
+            consent: consentExportLines(for: patient, session: session)
         )
+    }
+
+    /// The body of an export's "Recording consent" section. A record that
+    /// can't be read says so, never "no consent".
+    func consentExportLines(for patient: Patient, session: SessionRecord) -> [String] {
+        do {
+            let record = try consentRecord(for: patient, session: session)
+            return RecordingConsent.exportLines(RecordingConsent.status(record: record, patient: patient))
+        } catch {
+            return [RecordingConsent.unreadableRecord]
+        }
     }
 
     /// The signed status of the note in whichever format holds exactly `text`

@@ -312,3 +312,18 @@ Before you start: the Release app at /Applications/Aletheia.app and the reposito
 - **BUILD-12** Run `cat legal-acceptance.log` in the data folder after accepting terms → one line holds the accepted version, a UTC time and the app version.
 - **BUILD-13** Run `bash scripts/scan-secrets.sh` and `bash scripts/check-entitlements.sh` in the repository → both pass.
 - **BUILD-14** Search the app's source for network calls such as `URLSession` → none outside the network helper.
+
+## 21. Recording consent (CONSENT)
+Before you start: setup finished, FileVault on, and patients "Jane Doe" and "Adam Lee", each with a session that has no recording yet.
+- **CONSENT-01** Click **Record Session** for Jane → a **Record consent** sheet asks who consented, how (**Verbal** or **Written**) and when, and **Start recording** stays disabled until you tick the confirmation.
+- **CONSENT-02** Choose **Patient** and **Verbal**, tick the confirmation and click **Start recording** → recording starts and the session shows "Consent: verbal, from the patient" with the date and time.
+- **CONSENT-03** Start a second session for Jane with the default **First session** policy → recording starts with no sheet and the session shows consent on file since the first date.
+- **CONSENT-04** Set **Recording consent** to **Every session** in Settings > General → every new session of every patient asks again before it records.
+- **CONSENT-05** Click **Import Audio…** for a session that needs consent → the same sheet appears with **Choose Audio File…**, and no file picker opens until consent is recorded.
+- **CONSENT-06** Choose a patient who needs consent in the menu bar panel → the panel asks who and how in place, and **Start recording** stays disabled until you tick the confirmation.
+- **CONSENT-07** Set **Recording consent** to **Every session** in Jane's profile editor and save → only Jane is asked every session, and Adam still follows the Settings default.
+- **CONSENT-08** Click **Apply to Patients…** in Settings, select several patients or **Select All**, and apply a policy → each selected profile shows that policy, and **Use default** clears it.
+- **CONSENT-09** Record consent, then open the activity log → a "Recording consent attested" entry gives the session, the patient's record ID and the method, and no name.
+- **CONSENT-10** Export the session as PDF, Word or Markdown, and export all records → each includes a "Recording consent" section with who, how and when.
+- **CONSENT-11** Sign the session's note → the session's consent can no longer be changed, and saving a new one is refused.
+- **CONSENT-12** Record consent with encryption on (dev build), then quit and reopen → the session folder holds a sealed consent.json that reads back unchanged.

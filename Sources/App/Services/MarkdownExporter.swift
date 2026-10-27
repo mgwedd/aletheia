@@ -10,7 +10,10 @@ enum MarkdownExporter {
         return f
     }()
 
-    static func session(date: Date, patientName: String, transcript: String?, summary: String?) -> String {
+    /// `consent` is the body of the "Recording consent" section, one fact per
+    /// line; nil leaves the section out.
+    static func session(date: Date, patientName: String, transcript: String?, summary: String?,
+                        consent: [String]? = nil) -> String {
         var lines: [String] = [
             "# \(patientName)",
             "",
@@ -26,6 +29,9 @@ enum MarkdownExporter {
         }
         if !transcriptText.isEmpty {
             lines += ["## Transcript", "", transcriptText, ""]
+        }
+        if let consent, !consent.isEmpty {
+            lines += ["## \(RecordingConsent.exportHeading)", ""] + consent.map { "- \($0)" } + [""]
         }
         if summaryText.isEmpty && transcriptText.isEmpty {
             lines += ["_No transcript or summary recorded for this session yet._", ""]
