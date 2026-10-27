@@ -37,6 +37,7 @@ struct SettingsView: View {
     @State private var showChangePassphraseSheet = false
     @State private var gate = SensitiveActionGate()
     @State private var showConsentGuide = false
+    @State private var showConsentPolicyPatients = false
     @State private var confirmDisableEncryption = false
     @State private var isDisablingEncryption = false
     @State private var rememberOnDevice = false
@@ -130,6 +131,15 @@ struct SettingsView: View {
         .sheet(isPresented: $showConsentGuide) {
             ConsentGuideView()
         }
+        .sheet(isPresented: $showConsentPolicyPatients) {
+            ConsentPolicyPatientsSheet(
+                patients: appModel.patients,
+                onApply: { policy, ids in
+                    appModel.setConsentPolicy(policy, forPatients: ids)
+                    showConsentPolicyPatients = false
+                },
+                onCancel: { showConsentPolicyPatients = false })
+        }
         .confirmationDialog(
             "Turn off encryption?",
             isPresented: $confirmDisableEncryption,
@@ -218,6 +228,22 @@ struct SettingsView: View {
             )
             .frame(width: 240)
             .accessibilityLabel("Appearance")
+        }
+        SettingsRow(
+            title: "Ask for recording consent",
+            detail: "Before recording or importing audio. A patient's own choice, set in their profile or here, comes first."
+        ) {
+            HStack(spacing: 8) {
+                ThemeSegmentedControl(
+                    options: ConsentPolicy.allCases.map { ThemeTab(value: $0, title: $0.title) },
+                    selection: $settings.recordingConsentPolicy,
+                    sizing: .fitted
+                )
+                .accessibilityLabel("Recording consent")
+                Button("Apply to Patients…") { showConsentPolicyPatients = true }
+                    .buttonStyle(.themed)
+                    .disabled(appModel.patients.isEmpty)
+            }
         }
         if appModel.featureRegistry.contains(id: SpotlightFeatureModule.id) {
             SettingsSwitchRow(

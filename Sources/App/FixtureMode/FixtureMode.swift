@@ -40,6 +40,9 @@ struct FixtureScenario: Decodable, Equatable {
     /// session screen does not depend on finding rows in the sidebar.
     var open: String?
 
+    /// Settings > General > Recording consent: "firstSession" (default) or "everySession".
+    var consentPolicy: String?
+
     var buildTier: BuildTier { tier == "production" ? .production : .dev }
     var appLockOn: Bool { appLock == "on" }
     var licenseOn: Bool { license == "on" }
@@ -120,7 +123,12 @@ enum FixtureMode {
         settings.hasCompletedFirstRun = true
         if !settings.hasAcceptedCurrentLegal { settings.recordLegalAcceptance() }
         // Only on a run's first launch, so a relaunch keeps what the test changed.
-        if isFirstLaunchOfRun { settings.appLockEnabled = scenario?.appLockOn ?? false }
+        if isFirstLaunchOfRun {
+            settings.appLockEnabled = scenario?.appLockOn ?? false
+            if let policy = scenario?.consentPolicy.flatMap(ConsentPolicy.init(rawValue:)) {
+                settings.recordingConsentPolicy = policy
+            }
+        }
     }
 
     /// Builds the scenario's data once per run, before the first window exists.
@@ -137,7 +145,7 @@ enum FixtureMode {
         model.refreshPatients()
         for seed in scenario?.patients ?? [] where seed.recordingConsent == true {
             if let patient = model.patients.first(where: { $0.name == seed.name }) {
-                _ = model.attestRecordingConsent(patientID: patient.id)
+                model.updatePatient(id: patient.id) { $0.recordingConsentAttestedAt = Date() }
             }
         }
     }
@@ -265,6 +273,8 @@ enum FixtureProbe {
         var medications: [String]
         var folderExists: Bool
         var sessions: Int
+        /// The patient's own consent policy; nil follows Settings.
+        var consentPolicy: String?
     }
 
     struct Snapshot: Codable, Equatable {
@@ -306,7 +316,8 @@ enum FixtureProbe {
                 name: patient.name, notes: patient.notes, clinicalHistory: patient.clinicalHistory,
                 medications: patient.medications.map { "\($0.name) \($0.dose)" },
                 folderExists: dir.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
-                sessions: (try? appModel.store?.listSessions(for: patient).count) ?? 0)
+                sessions: (try? appModel.store?.listSessions(for: patient).count) ?? 0,
+                consentPolicy: patient.recordingConsentPolicy?.rawValue)
         }
         let asked = FixtureMode.engine.requests.map { request in
             ([request.system] + request.turns.map { "\($0)" } + [request.prompt]).joined(separator: "\n")

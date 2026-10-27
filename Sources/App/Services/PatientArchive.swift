@@ -9,6 +9,8 @@ struct ArchiveSession: Equatable, Sendable {
     var notes: [ArchiveNote]
     /// The latest-note file, used only when no per-format note exists (older sessions).
     var summary: String
+    /// The "Recording consent" lines, empty when not loaded.
+    var consent: [String] = []
 }
 
 struct ArchiveNote: Equatable, Sendable {
@@ -80,6 +82,11 @@ enum PatientArchive {
             let summary = session.summary.trimmingCharacters(in: .whitespacesAndNewlines)
             if session.notes.isEmpty, !summary.isEmpty {
                 files.append(ArchiveFile(path: "\(folder)/Summary.txt", text: summary + "\n", modified: session.date))
+            }
+            let hasContent = files.count > before || hasRecording(index)
+            if hasContent, !session.consent.isEmpty {
+                let text = ([RecordingConsent.exportHeading, ""] + session.consent).joined(separator: "\n") + "\n"
+                files.append(ArchiveFile(path: "\(folder)/\(RecordingConsent.exportHeading).txt", text: text, modified: session.date))
             }
             if files.count == before, !hasRecording(index) { empty += 1 }
         }
@@ -220,7 +227,8 @@ enum ArchiveLoader {
                 guard !NoteEditing.normalized(text).isEmpty else { return "" }
                 let status = store.signedStatus(ofText: text, patient: patient, session: session)
                 return NoteLifecycle.stamped(PatientArchive.plainText(fromMarkdown: text), status: status)
-            } ?? ""
+            } ?? "",
+            consent: store.consentExportLines(for: patient, session: session)
         )
     }
 }

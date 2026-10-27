@@ -6,3 +6,4 @@ lockWhenHidden
 idleAutoLockMinutes
 spotlightIndexingEnabled
 hideFromScreenSharing
+recordingConsentPolicy

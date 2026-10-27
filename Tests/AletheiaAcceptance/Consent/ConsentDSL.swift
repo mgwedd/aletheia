@@ -181,6 +181,8 @@ extension When {
             return ConsentGate(sheet: nil)
         case .importAudio:
             return ConsentGate(sheet: nil, pickerOpened: true)
+        case .change:
+            return ConsentGate(sheet: nil)
         }
     }
 

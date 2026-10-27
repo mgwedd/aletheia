@@ -202,7 +202,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:1783` · `qa: RECORD-15`
 - **REC-081** When an import succeeds, the activity log gains a phiCreated entry for the session with detail "audio recording".
   `surface: background` · `evidence: Sources/App/Services/Store.swift:669` · `qa: RECORD-15`
-- **REC-082** When the user clicks Import Audio… for a patient without a recording-consent attestation, the consent sheet (button "Continue") appears first and the file picker opens only after the attestation; cancelling leaves no import pending, so a later Record Session shows its own sheet.
+- **REC-082** When the user clicks Import Audio… for a session that needs recording consent, the consent sheet (button "Choose Audio File…") appears first and the file picker opens only after consent is recorded; cancelling leaves no import pending, so a later Record Session shows its own sheet.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:433-447, Sources/App/Views/SessionDetailView.swift:1740, Sources/App/Services/AppModel.swift:600` · `qa: RECORD-16`
 - **REC-083** When the picked file cannot be read as audio or holds no sound, the "Something went wrong" alert says "Aletheia couldn't read that file as audio. Try an M4A, MP3, WAV, AIFF or CAF file." and nothing is written to the session or left in scratch.
   `surface: ui` · `evidence: Sources/App/Services/AudioImport.swift:7-14, Sources/App/Services/AudioImport.swift:43` · `qa: RECORD-17`

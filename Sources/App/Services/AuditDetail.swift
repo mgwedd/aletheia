@@ -97,6 +97,13 @@ struct AuditDetail: Equatable, ExpressibleByStringLiteral {
         AuditDetail(built: "Psychotherapy note, \(format.title), authorization confirmed")
     }
 
+    // MARK: - Recording consent
+
+    /// The patient's record ID and the method; never who consented or their name.
+    static func recordingConsent(patientID: UUID, method: ConsentMethod) -> AuditDetail {
+        AuditDetail(built: "Patient \(patientID.uuidString), \(method.word)")
+    }
+
     // MARK: - Alerts
 
     static func failedUnlocks(attempts: Int, minutes: Int) -> AuditDetail {

@@ -428,7 +428,7 @@ final class ImportBench {
     }
 
     func press(for visit: PatientSession) -> Step {
-        switch app.appModel.beginAudioImport(patientID: visit.patient.id) {
+        switch app.appModel.beginAudioImport(patient: visit.patient, session: visit.session) {
         case .blocked: return .refused
         case .refused(let message):
             failure = message
@@ -480,7 +480,7 @@ extension Given {
 
     /// The patient has already said yes to being recorded.
     func recordingConsent(of visit: PatientSession) {
-        _ = app.appModel.attestRecordingConsent(patientID: visit.patient.id)
+        app.appModel.updatePatient(id: visit.patient.id) { $0.recordingConsentAttestedAt = Date() }
     }
 
     /// An audio file the user keeps somewhere on the Mac.
@@ -520,7 +520,9 @@ extension When {
 
     /// Tick the consent box and continue; the picker opens once the patient is attested.
     func confirmRecordingConsent(on bench: ImportBench, _ visit: PatientSession) -> ImportBench.Step {
-        _ = app.appModel.attestRecordingConsent(patientID: visit.patient.id)
+        var capture = ConsentCapture()
+        capture.confirmed = true
+        _ = try? app.appModel.recordConsent(capture, patient: visit.patient, session: visit.session)
         return bench.press(for: visit)
     }
 

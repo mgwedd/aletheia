@@ -91,6 +91,15 @@ struct PatientProfileEditor: View {
 
                     if draft.showsMedications { medicationsField }
 
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Recording consent").eyebrowStyle()
+                        ThemeSegmentedControl(
+                            options: ConsentPolicyChoice.allCases.map { ThemeTab(value: $0, title: $0.title) },
+                            selection: $draft.recordingConsent, sizing: .fitted)
+                            .accessibilityLabel("Recording consent")
+                        infoCaption("When to ask before recording this patient. Use default follows Settings.")
+                    }
+
                     removePatientSection
                 }
                 .padding(.horizontal, 28)

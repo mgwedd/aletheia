@@ -97,6 +97,7 @@ final class AppSettings: ObservableObject {
         static let idleAutoLockMinutes = "idleAutoLockMinutes"
         static let lockWhenHidden = "lockWhenHidden"
         static let hideFromScreenSharing = "hideFromScreenSharing"
+        static let recordingConsentPolicy = "recordingConsentPolicy"
         static let acceptedLegalVersion = "acceptedLegalVersion"
         static let acceptedLegalDate = "acceptedLegalDate"
         static let licenseToken = "licenseToken"
@@ -171,6 +172,14 @@ final class AppSettings: ObservableObject {
         didSet {
             defaults.set(spotlightIndexingEnabled, forKey: Keys.spotlightIndexingEnabled)
             audited(AuditedSettings.spotlight, from: oldValue, to: spotlightIndexingEnabled)
+        }
+    }
+    /// When recording consent is asked for, unless a patient has a policy of
+    /// their own (see `RecordingConsent`).
+    @Published var recordingConsentPolicy: ConsentPolicy {
+        didSet {
+            defaults.set(recordingConsentPolicy.rawValue, forKey: Keys.recordingConsentPolicy)
+            audited(AuditedSettings.recordingConsentPolicy, from: oldValue, to: recordingConsentPolicy)
         }
     }
     /// Receives the note for each change to a security-relevant setting; set by
@@ -499,6 +508,8 @@ final class AppSettings: ObservableObject {
         appLockEnabled = defaults.object(forKey: Keys.appLockEnabled) as? Bool ?? true
         lockWhenHidden = defaults.object(forKey: Keys.lockWhenHidden) as? Bool ?? true
         hideFromScreenSharing = defaults.object(forKey: Keys.hideFromScreenSharing) as? Bool ?? true
+        recordingConsentPolicy = defaults.string(forKey: Keys.recordingConsentPolicy)
+            .flatMap(ConsentPolicy.init(rawValue:)) ?? .default
         if let stored = defaults.object(forKey: Keys.idleAutoLockMinutes) as? Int,
            IdleAutoLockTimeout.allCases.map(\.rawValue).contains(stored) {
             idleAutoLockMinutes = stored

@@ -19,7 +19,8 @@ final class ConsentSpec: AcceptanceCase {
     func test_CONSENT_01() async throws {
         let (jane, _) = try await given.janeAndAdamWithSessions()
 
-        let sheet = try XCTUnwrap(then(await when.pressRecordSession(jane, on: bench)).showsTheSheet())
+        let gate = await when.pressRecordSession(jane, on: bench)
+        let sheet = try XCTUnwrap(then(gate).showsTheSheet())
 
         then(sheet).asksWhoHowAndWhen()
         then(sheet).confirmsWith(Copy.consentStartRecording)
@@ -35,7 +36,8 @@ final class ConsentSpec: AcceptanceCase {
 
     func test_CONSENT_02() async throws {
         let (jane, _) = try await given.janeAndAdamWithSessions()
-        let sheet = try XCTUnwrap(then(await when.pressRecordSession(jane, on: bench)).showsTheSheet())
+        let gate = await when.pressRecordSession(jane, on: bench)
+        let sheet = try XCTUnwrap(then(gate).showsTheSheet())
 
         sheet.choose(.patient)
         sheet.choose(.verbal)
@@ -53,7 +55,8 @@ final class ConsentSpec: AcceptanceCase {
         let first = try given.consentRecorded(for: jane)
         let second = try given.anotherSession(for: jane)
 
-        then(await when.pressRecordSession(second, on: bench)).asksNothing()
+        let gate = await when.pressRecordSession(second, on: bench)
+        then(gate).asksNothing()
 
         then(bench).isRecording(second)
         let line = try when.consentLine(of: second)
@@ -70,7 +73,8 @@ final class ConsentSpec: AcceptanceCase {
         when.setRecordingConsentDefault(.everySession)
 
         for visit in [try given.anotherSession(for: jane), try given.anotherSession(for: adam)] {
-            let sheet = try XCTUnwrap(then(await when.pressRecordSession(visit, on: bench)).showsTheSheet())
+            let gate = await when.pressRecordSession(visit, on: bench)
+            let sheet = try XCTUnwrap(then(gate).showsTheSheet())
             then(sheet).explains("every session")
         }
         let entries = try when.activityLog().compactMap(\.detail)
@@ -86,9 +90,11 @@ final class ConsentSpec: AcceptanceCase {
         let sheet = try XCTUnwrap(then(gate).showsTheSheet())
         then(sheet).asksWhoHowAndWhen()
         then(sheet).confirmsWith(Copy.consentChooseAudio)
-        then(try await when.confirm(sheet)).openedNoPicker()
+        let unticked = try await when.confirm(sheet)
+        then(unticked).openedNoPicker()
         sheet.tickConfirmation()
-        then(try await when.confirm(sheet)).openedThePicker()
+        let ticked = try await when.confirm(sheet)
+        then(ticked).openedThePicker()
     }
 
     func test_CONSENT_06() async throws {
@@ -98,7 +104,8 @@ final class ConsentSpec: AcceptanceCase {
 
         then(panel).asksInPlace()
         then(panel).cannotStart()
-        then(try await when.startRecording(from: panel, on: bench)).refusedWithoutASession(Copy.consentNotConfirmed)
+        let refused = try await when.startRecording(from: panel, on: bench)
+        then(refused).refusedWithoutASession(Copy.consentNotConfirmed)
         panel.capture.confirmed = true
         then(panel).canStart()
         let start = try await when.startRecording(from: panel, on: bench)
@@ -118,11 +125,13 @@ final class ConsentSpec: AcceptanceCase {
         editor.save()
 
         then(when.profileConsentChoice(of: jane.patient)).expectEqual(when.profileConsentChoice(of: jane.patient), .everySession, "Jane's policy")
-        if let sheet = then(await when.pressRecordSession(try given.anotherSession(for: jane), on: bench)).showsTheSheet() {
+        let janeGate = await when.pressRecordSession(try given.anotherSession(for: jane), on: bench)
+        if let sheet = then(janeGate).showsTheSheet() {
             then(sheet).explains("every session")
         }
         let adamAgain = try given.anotherSession(for: adam)
-        then(await when.pressRecordSession(adamAgain, on: bench)).asksNothing()
+        let adamGate = await when.pressRecordSession(adamAgain, on: bench)
+        then(adamGate).asksNothing()
     }
 
     func test_CONSENT_08() async throws {

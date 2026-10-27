@@ -24,5 +24,8 @@ enum AuditedSettings {
     }
     static let spotlight = AuditedSetting<Bool>(name: "Spotlight indexing", describe: onOff)
     static let hideFromScreenSharing = AuditedSetting<Bool>(name: "Hide from screen sharing", describe: onOff)
+    static let recordingConsentPolicy = AuditedSetting<ConsentPolicy>(name: "Recording consent") {
+        $0.title.lowercased()
+    }
     static let rememberKeyOnMac = AuditedSetting<Bool>(name: "Unlock automatically on this Mac", describe: onOff)
 }

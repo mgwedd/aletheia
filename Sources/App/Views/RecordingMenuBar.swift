@@ -30,7 +30,8 @@ struct RecordingMenuBar: View {
     /// Why the last Start didn't begin recording, shown under the button.
     @State private var startProblem: String?
     /// Ticked in the menu for a patient who hasn't been attested yet.
-    @State private var consentTicked = false
+    /// Consent asked in place, for a patient whose next session needs it.
+    @State private var consent = ConsentCapture()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -221,12 +222,8 @@ struct RecordingMenuBar: View {
                 .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let patient = selectedPatient, !RecordingConsent.allowsRecording(patient) {
-                Toggle(RecordingConsent.attestationText, isOn: $consentTicked)
-                    .toggleStyle(.checkbox)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.text.color)
-                    .fixedSize(horizontal: false, vertical: true)
+            if let patient = selectedPatient, appModel.needsRecordingConsent(patient: patient, session: nil) {
+                consentFields
             }
             Button {
                 if let patient = selectedPatient { Task { await start(for: patient) } }
@@ -237,7 +234,7 @@ struct RecordingMenuBar: View {
             .buttonStyle(.themePrimary)
             .controlSize(.large)
             .disabled(selectedPatient == nil || !MenuBarContentPolicy.canStartRecording(isLocked: appLock.isLocked, isStarting: recorder.isStarting)
-                || !(RecordingConsent.allowsRecording(selectedPatient) || consentTicked))
+                || RecordingConsent.menuBarProblem(needsConsent: selectedNeedsConsent, capture: consent) != nil)
             if let startProblem {
                 Text(startProblem)
                     .font(Theme.Typography.caption)
@@ -251,6 +248,34 @@ struct RecordingMenuBar: View {
         }
     }
 
+    /// Who and how, then the confirmation: the consent sheet, in place.
+    private var consentFields: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(RecordingConsent.sheetTitle).eyebrowStyle()
+            Picker("Who consented", selection: $consent.party) {
+                ForEach(ConsentParty.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if consent.party.needsName {
+                ThemeTextField(placeholder: "Name", text: $consent.name)
+            }
+            ThemeSegmentedControl(
+                options: ConsentMethod.allCases.map { ThemeTab(value: $0, title: $0.title) },
+                selection: $consent.method)
+            Toggle(RecordingConsent.attestationText, isOn: $consent.confirmed)
+                .toggleStyle(.checkbox)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.text.color)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var selectedNeedsConsent: Bool {
+        selectedPatient.map { appModel.needsRecordingConsent(patient: $0, session: nil) } ?? false
+    }
+
     private var selectedPatient: Patient? {
         appModel.patients.first { $0.id == selectedPatientID } ?? appModel.patients.first
     }
@@ -258,7 +283,7 @@ struct RecordingMenuBar: View {
     private var patientSelection: Binding<UUID> {
         Binding(
             get: { selectedPatient?.id ?? UUID() },
-            set: { selectedPatientID = $0; consentTicked = false }
+            set: { selectedPatientID = $0; consent = ConsentCapture() }
         )
     }
 
@@ -275,15 +300,24 @@ struct RecordingMenuBar: View {
             return
         }
         // Before creating a session, so a refused start leaves no empty one behind.
-        guard appModel.hasRecordingConsent(patientID: patient.id)
-                || (consentTicked && appModel.attestRecordingConsent(patientID: patient.id)) else {
-            startProblem = "Confirm you have this patient's consent before recording."
+        let needsConsent = appModel.needsRecordingConsent(patient: patient, session: nil)
+        if let problem = RecordingConsent.menuBarProblem(needsConsent: needsConsent, capture: consent) {
+            startProblem = problem
             return
         }
         guard let store = appModel.store,
               let session = appModel.startNewSession(for: patient) else {
             startProblem = "Couldn't create a session. Check the data folder in Settings."
             return
+        }
+        if needsConsent {
+            do {
+                try appModel.recordConsent(consent, patient: patient, session: session)
+                consent = ConsentCapture()
+            } catch {
+                startProblem = error.localizedDescription
+                return
+            }
         }
         startProblem = await recorder.start(
             micURL: store.micRecordingURL(for: patient, session: session),
