@@ -740,9 +740,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 ## Backups (BAK)
 
-- **BAK-001** When the user opens Settings → Backups, a banner says whether the data folder is kept out of Time Machine and iCloud backups (on by default).
+- **BAK-001** When the user opens Settings → Backups, a banner says whether the data folder is kept out of Time Machine and iCloud backups (on by default), and, in a build without encryption, that Back Up Now is not available so the user must arrange a backup.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01`
-- **BAK-002** When the user turns on "Keep my data out of Time Machine & iCloud backups", the data folder is excluded from those backups and the banner says to keep a copy of your own.
+- **BAK-002** When the user turns on "Keep my data out of Time Machine & iCloud backups", the data folder is excluded from those backups and the banner says nothing backs it up until the user arranges it (or uses Back Up Now where it is offered).
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/BackupExclusion.swift` · `qa: BACKUP-02`
 - **BAK-003** When the "Keep my data out of Time Machine & iCloud backups" choice is on, it is applied again whenever the data folder changes and at each launch.
   `surface: background` · `evidence: Sources/App/Services/BackupExclusion.swift, Sources/App/Services/AppSettings.swift` · `qa: BACKUP-02`
@@ -1256,7 +1256,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Views/PatientProfileEditor.swift, Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-06`
 - **PAT-021** When the therapist chooses Delete patient… in the editor, a "Delete <name>?" confirmation sheet requires typing the patient's name (trimmed, case-insensitive) before the Delete Patient button is enabled.
   `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift` · `qa: PATIENT-08`
-- **PAT-022** When a patient is deleted, their folder with every session, transcript, audio recording and note is permanently removed from disk, their chat threads, comments and notes are purged from the database, and the patient and their sessions are removed from the search index.
+- **PAT-022** When a patient is deleted, their folder with every session, transcript, audio recording and note is removed from disk (copies can remain in the .backups rolling snapshots and pre-migration copies, and in any Time Machine or other backups and exports), their chat threads, comments and notes are purged from the database, and the patient and their sessions are removed from the search index.
   `surface: background` · `evidence: Sources/App/Services/Store.swift, Sources/App/Views/PatientProfileEditor.swift` · `qa: PATIENT-08`
 - **PAT-023** When a patient is deleted and the database is open, a "pre-delete-patient" safety snapshot of the database is taken first, and if deletion fails an "Unable to delete patient" alert shows the reason.
   `surface: background` · `evidence: Sources/App/Services/Store.swift, Sources/App/Views/PatientProfileEditor.swift` · `qa: PATIENT-08`
@@ -1622,7 +1622,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AllRecordsExport.swift, Sources/App/Services/ExportJobCenter.swift` · `qa: EXPORT-01`
 - **EXP-024** When the user quits during an export, the export is cancelled ("Cancelling") and the app waits up to 2.5 seconds for it to stop, leaving no destination file or folder; if it hasn't stopped by then, quit proceeds and a hidden ".partial-" staging folder may remain.
   `surface: background` · `evidence: Sources/App/Services/ExportJobCenter.swift` · `qa: EXPORT-02`
-- **EXP-025** Settings → Backups offers an "Export All Records…" button with a caption saying it copies every patient's notes, transcripts, comments and kept recordings into ordinary files that open without Aletheia and never need a license key.
+- **EXP-025** Settings → Backups offers an "Export All Records…" button with a caption saying it copies every patient's notes, transcripts, kept recordings into ordinary files (private comments and psychotherapy notes are not included) that open without Aletheia and never need a license key.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, PRIVACY.md, SECURITY.md, README.md` · `qa: BACKUP-03`
 - **EXP-026** When a session has saved notes, its exported folder contains one "Note - <format name>.txt" per note, as plain text with Markdown formatting removed.
   `surface: invariant` · `evidence: Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-07`
@@ -1715,8 +1715,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/NetworkReachability.swift` · `qa: BUILD-07`
 - **NET-021** Apple Intelligence is turned off on purpose, the AI settings say so, and AI features run only in the engine built into the app on this Mac.
   `surface: invariant` · `evidence: README.md, Sources/App/Views/SettingsView.swift, Tests/AletheiaTests/AppleIntelligenceBlockTests.swift` · `qa: SETTINGS-06`
-- **NET-022** When the helper is asked for the license-revocation list, it refuses with "The license revocation list isn't configured yet." and makes no request; nothing in the app currently asks for it.
-  `surface: background` · `evidence: Sources/NetworkHelper/HelperFetcher.swift, Sources/NetworkHelper/AssetCatalog.swift, Sources/App/Services/Updates/RevocationFetchPolicy.swift` · `qa: BUILD-08`
+- **NET-022** While update checks are on, the app asks the helper for the signed license revocation list at most once a day; the helper fetches it from astrealabs.com with a plain GET and no identifier, and accepts it only if it starts with the list marker and is within the size cap.
+  `surface: background` · `evidence: Sources/NetworkHelper/HelperFetcher.swift, Sources/NetworkHelper/AssetCatalog.swift, Sources/App/Services/Updates/RevocationFetchPolicy.swift, Sources/App/Services/License/RevocationRefresher.swift` · `qa: BUILD-08`
 - **NET-023** When a build has network access but is otherwise sandboxed, the Network access card reads "Aletheia can connect to the internet" with a "Review" chip.
   `surface: ui` · `evidence: Sources/App/Services/NetworkHelper/NetworkAccessStatus.swift` · `qa: SECURITY-02`
 - **NET-024** When the app is not sandboxed (a development build) the card reads "Not sandboxed (development build)", and when entitlements cannot be read it reads "Couldn't check network access".
@@ -2059,7 +2059,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift:564` · `qa: SETTINGS-08`
 - **SET-040** In Backups, "Show backups folder in Finder" opens the hidden backups folder, or the data folder when no backups exist, and is disabled with no data folder.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-03`
-- **SET-041** In Backups, the Time Machine banner says "Your data folder is kept out of Time Machine and iCloud backups. Aletheia does not make its own backup copies yet, so keep a copy of your own." when the toggle is on, and otherwise "Aletheia does not make its own backup copies yet. Time Machine includes the data folder by default."
+- **SET-041** In Backups, the banner says "Your data folder is kept out of Time Machine and iCloud backups, and Back Up Now is not available in this version, so nothing backs it up yet. Arranging a backup is up to you: turn off the switch below to let Time Machine include the folder, onto an encrypted backup disk." when the toggle is on and the build has no encryption, and otherwise a variant for the other three combinations (toggle on or off, Back Up Now offered or not).
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01`
 - **SET-042** When the user chooses a data folder that syncs with iCloud, is managed by a third-party cloud service, is a network folder or is on an unencrypted removable disk, the choice is refused with "This folder syncs with iCloud. Choose a folder that stays on this Mac.", "This folder is managed by <provider>. Choose a folder that stays on this Mac.", "Network folders cannot hold Aletheia data. Choose a folder on this Mac." or "This removable disk is not encrypted. Choose an encrypted local disk." as it applies, and the data folder is unchanged.
   `surface: ui` · `evidence: Sources/App/Services/DataFolderPolicy.swift:29-37, Sources/App/Services/AppSettings.swift:510-513` · `qa: SETTINGS-13`
@@ -2073,6 +2073,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/DataFolderMoveView.swift:20-25, Sources/App/Views/DataFolderMoveView.swift:58-63` · `qa: SETTINGS-14`
 - **SET-047** On a fresh install, "Keep my data out of Time Machine & iCloud backups" is on.
   `surface: invariant` · `evidence: Sources/App/Services/AppSettings.swift` · `qa: SETTINGS-04`
+- **SET-048** In Settings > License key, **Get a Key…** opens https://astrealabs.com/aletheia/beta in the default browser, where a key is applied for or a lost one recovered, and the caption under it reads "Opens astrealabs.com/aletheia/beta in your browser, where you apply for a key or recover a lost one. Nothing from this Mac is sent. For help, copy the support address and write from your mail app; never include patient information."
+  `surface: ui` · `evidence: Sources/App/Views/LicenseViews.swift` · `qa: LICENSE-01`
 
 ## Appearance, accessibility & shortcuts (UX)
 
@@ -2183,7 +2185,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 ## Recording consent (CNS)
 
-- **CNS-001** When the user clicks Record Session and the session needs consent, a "Record consent" sheet opens before any recording starts, with Who consented, How (Verbal, Written) and When, the confirmation "I obtained this patient's consent to record the session and to process the recording with AI." and a "Read the consent guide…" link.
+- **CNS-001** When the user clicks Record Session and the session needs consent, a "Record consent" sheet opens before any recording starts, with Who consented, How (Verbal, Written) and When, the confirmation "I obtained consent from everyone in this session to record it and to process the recording with AI." and a "Read the consent guide…" link.
   `surface: ui` · `evidence: Sources/App/Views/RecordingConsentSheet.swift, Sources/App/Views/SessionDetailView.swift` · `qa: CONSENT-01`
 - **CNS-002** The sheet's Start recording button stays disabled until the confirmation is ticked; Cancel closes the sheet and records nothing.
   `surface: ui` · `evidence: Sources/App/Views/RecordingConsentSheet.swift` · `qa: CONSENT-01`
@@ -2211,7 +2213,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Services/AppModel.swift` · `qa: CONSENT-05`
 - **CNS-014** When the menu bar panel's chosen patient needs consent, the panel shows Who consented, How and the confirmation in place, and Start recording stays disabled until it is ticked.
   `surface: ui` · `evidence: Sources/App/Views/RecordingMenuBar.swift` · `qa: CONSENT-06`
-- **CNS-015** When Start recording is pressed in the menu bar with consent confirmed, the new session's consent record is saved before the recorder starts; pressing it unconfirmed shows "Confirm you have this patient's consent before recording." and starts nothing.
+- **CNS-015** When Start recording is pressed in the menu bar with consent confirmed, the new session's consent record is saved before the recorder starts; pressing it unconfirmed shows "Confirm you have consent from everyone in this session before recording." and starts nothing.
   `surface: background` · `evidence: Sources/App/Views/RecordingMenuBar.swift, Sources/App/Services/AppModel.swift` · `qa: CONSENT-06`
 - **CNS-016** The patient profile editor has a "Recording consent" choice of Use default, First session or Every session; Use default follows Settings.
   `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift, Sources/App/Models/PatientProfileDraft.swift` · `qa: CONSENT-07`

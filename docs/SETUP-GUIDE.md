@@ -1,7 +1,8 @@
 # Aletheia — Setup and Troubleshooting
 
 Aletheia has a setup checklist that appears on first launch and walks you
-through the data folder, permissions, and model downloads. This guide does
+through the license key, the data folder, permissions, model downloads, and
+the Terms and Privacy Policy, in that order. This guide does
 not repeat it. It covers what the checklist assumes, what to do when a step
 does not finish, and where to look when something stops working later.
 
@@ -21,15 +22,22 @@ responsibility; the app does not handle them for you.
 
 ## Getting the app
 
-- **Ready-made build:** download the `.dmg` from the
-  [Releases page](https://github.com/mgwedd/aletheia/releases) and drag
+- **Beta build:** apply at [astrealabs.com/aletheia/beta](https://astrealabs.com/aletheia/beta).
+  You are sent a license key and a download link. Open the `.dmg` and drag
   Aletheia to Applications.
+- **License key:** paste it into the first checklist step, or later under
+  **Settings → License key**. It is checked on this Mac. When it expires you get
+  a grace period in which recording and the AI keep working; a renewed key is
+  emailed to you before it ends. After that, new recordings and the AI pause,
+  and everything already recorded stays readable, searchable and exportable.
+  **Get a Key…** in the app opens the beta page, where a lost key is recovered.
 - **From source:** see the Developer quickstart in the [README](../README.md).
 
 ### macOS will not open it
 
-The app is not notarized by Apple, so the first launch is blocked. This is
-expected. In Applications, **right-click Aletheia, choose Open, then confirm
+Released builds are signed and notarized by Apple, so this should not happen.
+If macOS does block a build that is not notarized (a test build, for example),
+in Applications, **right-click Aletheia, choose Open, then confirm
 Open** in the dialog. After that, double-clicking works.
 
 If there is no Open button, go to **System Settings → Privacy & Security**,
@@ -39,12 +47,12 @@ scroll to the message about Aletheia, and click **Open Anyway**.
 
 Start with the built-in checks. They are faster than guessing:
 
-- **Settings → Status** lists in plain language what is ready and what is
+- **Settings → Security** lists in plain language what is ready and what is
   not.
 - **Help → Aletheia Doctor** runs a health check of the data folder, the
   database, the encryption key store, snapshots, and the AI engine. Its
-  report contains no client information, so it is safe to copy into a
-  support request.
+  report is meant to carry no client information; read it before copying it
+  into a support request.
 
 ### Recording
 
@@ -60,7 +68,7 @@ Start with the built-in checks. They are faster than guessing:
 
 | Symptom | Likely cause and fix |
 |---|---|
-| Transcribe is unavailable | The speech model is not downloaded. Open **Settings → Speech-to-Text Model** and download it. |
+| Transcribe is unavailable | The speech model is not downloaded. Open **Settings → AI and models** and download it. |
 | Download fails or stalls | Check your connection and free disk space, then retry. Models are verified against a pinned checksum, so a partial or altered file is rejected rather than used. |
 | Slow on a long session | Expected on smaller Macs. A larger model is slower. A smaller one is faster and a little less accurate; change it in Settings. |
 | Names or terms are wrong | The transcript is editable. Fix errors in place; summaries and chat use your edited text. |
@@ -94,26 +102,33 @@ Start with the built-in checks. They are faster than guessing:
 
 ## Backups
 
-Aletheia does not yet make backup copies of its own. Your data folder is
-backed up by Time Machine by default; keep those backups on an encrypted
-disk. **Settings → Backups → Export All Records** writes a folder of ordinary,
+Aletheia keeps its data folder out of Time Machine and iCloud device backups
+by default, and **Back Up Now** needs at-rest encryption, which released builds
+do not have. Nothing backs your records up for you, so arrange your own: turn
+off **Keep my data out of Time Machine & iCloud backups** in **Settings →
+Backups** and back up to an encrypted disk. Deleting a patient does not reach
+copies in `.backups`, Time Machine or exports. **Settings → Backups → Export All Records** writes a folder of ordinary,
 unencrypted files you can keep or hand over; store it somewhere protected. See [DATA-SAFETY.md](DATA-SAFETY.md) for what is and is not covered.
 
 ## Updating
 
 The app checks for new versions on launch and when you switch back to it.
-The check downloads a small file from GitHub and sends no client data.
+The check downloads a small file from GitHub and sends no client data. While
+update checks are on, the app also fetches a signed list of revoked license
+keys from astrealabs.com at most once a day, with no identifier.
 To update, choose the update when offered: the app downloads the new `.dmg`
 (through its sandboxed network helper, verified before it opens) and you replace
 the app in Applications. You can also download the `.dmg` from the Releases page.
 **Help → Report a Bug** opens a feedback form in your browser; it carries only
-the app, macOS and chip versions, never client data.
+the app, macOS and chip versions, never client data. Reports can become public
+GitHub issues, so never put client information in one.
 
 ## Still stuck
 
 1. Run **Aletheia Doctor** and keep the report.
 2. Note your macOS version and Mac model (**Apple menu → About This Mac**).
-3. Email support@astrealabs.com with the Doctor report. Do not include client
+3. Email support@astrealabs.com with the Doctor report. The report redacts
+   client and session names it finds, but read it first. Do not include client
    names, transcripts, notes, audio, or screenshots that show client details.
 
 ## Related

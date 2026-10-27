@@ -166,7 +166,7 @@ final class HelpTipsTests: XCTestCase {
         for kept in ["Require Touch ID or your Mac password to open.",
                      "Aletheia locks after 15 minutes of inactivity by default",
                      "current medications are provided to the assistant",
-                     "Off by default, so Time Machine includes your data folder",
+                     "On by default, which keeps your data folder out of Time Machine and iCloud",
                      "FileVault encrypts everything on this Mac at rest"] {
             XCTAssertTrue(settings.contains(kept), kept)
         }

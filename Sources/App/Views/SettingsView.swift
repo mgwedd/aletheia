@@ -918,9 +918,7 @@ struct SettingsView: View {
     private var backupsPane: some View {
         HStack(alignment: .center, spacing: 14) {
             Chip("Time Machine", tone: .info)
-            Text(settings.keepDataOutOfSystemBackups
-                 ? "Your data folder is kept out of Time Machine and iCloud backups. Use Back up now to save an encrypted copy to a folder on this Mac or an external disk."
-                 : "Time Machine includes the data folder by default. You can also use Back up now to save an encrypted copy to a folder of your choice.")
+            Text(BackupsBanner.text(excluded: settings.keepDataOutOfSystemBackups, backUpNowOffered: encryptionOffered))
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.text.color)
                 .fixedSize(horizontal: false, vertical: true)
@@ -930,7 +928,7 @@ struct SettingsView: View {
         SettingsRowsCard {
             SettingsSwitchRow(
                 title: BackupExclusion.settingTitle,
-                detail: "Off by default, so Time Machine includes your data folder — without it you'd have only one copy. Your data folder can hold unencrypted patient data (and audio/transcript files), so keep your Time Machine backups on an encrypted disk. Turn this on only if you'd rather keep the folder out of macOS system backups and rely on your own copy instead.",
+                detail: "On by default, which keeps your data folder out of Time Machine and iCloud, so nothing backs it up until you arrange it. Turn this off to let Time Machine include the folder, and keep those backups on an encrypted disk: the folder holds patient data, and a backup also keeps copies of anything you later delete.",
                 isOn: $settings.keepDataOutOfSystemBackups
             )
             .padding(.vertical, 12)
@@ -948,7 +946,7 @@ struct SettingsView: View {
     private var exportAllSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Export all records").eyebrowStyle()
-            SettingsCaption("Copies every patient's notes, transcripts, comments and kept recordings into a folder of ordinary files that open without Aletheia. This never needs a license key. The copy isn't encrypted by Aletheia, so save it to this Mac with FileVault on or to an encrypted external drive.")
+            SettingsCaption("Copies every patient's notes, transcripts and kept recordings (private comments and psychotherapy notes are not included) into a folder of ordinary files that open without Aletheia. This never needs a license key. The copy isn't encrypted by Aletheia, so save it to this Mac with FileVault on or to an encrypted external drive.")
             HStack(spacing: 8) {
                 Button("Export All Records…") { requireAuth(.exportAllRecords) { chooseExportAllFolder() } }
                     .buttonStyle(.themed)

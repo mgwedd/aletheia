@@ -14,7 +14,7 @@ enum ConsentGuideContent {
         Section(
             title: "1. Informed Consent Standards",
             icon: "doc.text.magnifyingglass",
-            text: "Professional ethics codes (including APA, ACA, NASW, and AAMFT) require obtaining explicit informed consent before recording therapy sessions in any medium. Inform your client of the purpose of the recording, how transcripts are generated, and who has access."),
+            text: "Professional ethics codes (including APA, ACA, NASW, and AAMFT) expect informed consent before you record therapy sessions. Tell your client why you record, that the recording is transcribed and drafted into notes by AI on this Mac, and who has access. If anyone else takes part (a family member, an interpreter), get consent from them too."),
         Section(
             title: "2. Jurisdiction & Wiretapping Laws",
             icon: "building.columns",
@@ -26,12 +26,12 @@ enum ConsentGuideContent {
         Section(
             title: "4. Client Rights & Revocation",
             icon: "hand.raised",
-            text: "Clients have the right to decline recording, ask to pause or stop recording at any point during a session, or request that previous session recordings or transcripts be deleted from your records."),
+            text: "Clients can decline recording and can ask you to pause or stop at any point during a session. Clients also have the right to see and get a copy of their records and to ask for corrections (amendments). Records you hold may have to be kept for a set time under state law or your board's rules, so do not promise a client that a recording or transcript will be deleted on request."),
     ]
 
-    static let sampleClause = "“I use an on-device clinical documentation tool (Aletheia) to transcribe our session audio and assist in preparing clinical progress notes. The app does not send audio or notes to external servers or cloud AI providers; they are stored on this computer, and copies exist only where I export them or my own backups make them. You may request to pause or stop recording at any time.”"
+    static let sampleClause = "“I use an on-device clinical documentation tool (Aletheia) to transcribe our session audio and to help me draft clinical progress notes, using AI software that runs on my computer. The app does not send audio or notes to external servers or cloud AI providers; they are stored on this computer, and copies exist only where I export them or my own backups make them. The recording is deleted once it is transcribed; the transcript and notes are kept in your record. You may ask me to pause or stop recording at any time.”"
 
     static let scriptIntro = "Read this aloud and wait for a clear answer before you start recording. Adapt it to your practice."
 
-    static let script = "“Before we start, I would like to record today's session so that I can write my clinical notes. The recording is stored on my computer and is used only for documentation. Do you agree to be recorded? You can say no, and you can ask me to pause or stop at any time.”"
+    static let script = "“Before we start, I would like to record today's session so that I can write my clinical notes. The recording stays on my computer, where AI software turns it into a transcript and a draft of my notes. The recording is deleted after it is transcribed; the transcript and notes are kept in your record. Do you agree to be recorded? You can say no, and you can ask me to pause or stop at any time.”"
 }

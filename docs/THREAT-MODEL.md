@@ -13,8 +13,10 @@ It describes what the code does today; the protections in use are listed in
 - **Keys**: the passphrase-wrapped data key and its keystore file, the optional
   copy in the login Keychain, and the 24-word recovery key (shown once, kept by
   the user). The key that seals the audit ledger lives in the login Keychain.
-- **Audit ledger**: the record of unlocks, exports and deletions (no clinical
-  text).
+- **Audit ledger**: the record of security events (unlocks and failed unlocks,
+  exports, deletions, opening and saving records, consent attestations, signing,
+  settings and folder changes, the kind of AI work run; entries for overriding a retention warning and changing a Part 2 flag are defined but not yet recorded). It holds no clinical
+  text and is not a full history of every edit.
 
 ## Trust boundaries and threats
 
@@ -43,11 +45,14 @@ access; the app hands it a write-only file handle for each download.
   from `ggerganov/whisper.cpp` at a fixed commit; the Llama and Gemma GGUF files
   from `ggml-org` at fixed commits), the update feed
   (`appcast.json` of the latest GitHub release), and the release archive named
-  by that feed when it is a release asset of this repository.
+  by that feed when it is a release asset of this repository, and the signed
+  license revocation list (`astrealabs.com`), fetched at most daily while update
+  checks are on, with no identifier. The helper sends the default URLSession
+  User-Agent, and any host sees the Mac's IP address.
 - **How it is asked**: the app sends an integer asset ID. No URL, string or
   data crosses the connection.
-- **Limits**: https only, on GitHub and Hugging Face hosts (and the CDNs they
-  redirect to); plain GET with no body, cookies, cache or credentials; a
+- **Limits**: https only, on GitHub, Hugging Face and astrealabs.com hosts (and
+  the CDNs they redirect to); plain GET with no body, cookies, cache or credentials; a
   redirect that leaves the host list is refused; the feed is capped at 256 KB.
 
 | Threat | What happens |

@@ -64,7 +64,7 @@ final class LegalTests: XCTestCase {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         for path in ["PRIVACY.md", "docs/HIPAA-SAFEGUARDS.md"] {
-            let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+            let text = Self.withoutSettingTitle(try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8))
             XCTAssertFalse(text.localizedCaseInsensitiveContains("iCloud backup"), path)
             XCTAssertFalse(text.localizedCaseInsensitiveContains("end-to-end encrypted backup to your own iCloud"), path)
         }
@@ -78,7 +78,7 @@ final class LegalTests: XCTestCase {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         for path in ["PRIVACY.md", "SECURITY.md", "docs/ENCRYPTION.md", "docs/HIPAA-SAFEGUARDS.md"] {
-            let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+            let text = Self.withoutSettingTitle(try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8))
             XCTAssertFalse(text.localizedCaseInsensitiveContains("iCloud backup"), path)
             XCTAssertFalse(text.contains("Extra Encryption"), path)
             XCTAssertFalse(text.localizedCaseInsensitiveContains("re-locks when it's hidden"), path)
@@ -99,10 +99,17 @@ final class LegalTests: XCTestCase {
         }
     }
 
+    /// The docs quote the Settings switch that keeps the data folder out of
+    /// iCloud and Time Machine backups; that title is not an offer of an iCloud backup.
+    static func withoutSettingTitle(_ text: String) -> String {
+        let flat = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return flat.replacingOccurrences(of: BackupExclusion.settingTitle, with: "")
+    }
+
     /// The legal documents describe backups as local-only: no iCloud backup is offered.
     func testDocumentsDoNotOfferAnICloudBackup() throws {
         for name in ["PRIVACY.md", "TERMS.md", "SECURITY.md"] {
-            let text = try doc(name).lowercased()
+            let text = Self.withoutSettingTitle(try doc(name)).lowercased()
             XCTAssertFalse(text.contains("icloud backup"), "\(name) must not offer an iCloud backup")
             XCTAssertFalse(text.contains("backup to your own"), "\(name) must not describe an upload")
         }
@@ -317,7 +324,7 @@ final class LegalTests: XCTestCase {
         "Connecticut Gen. Stat. §52-570d",
         "not a complete list",
         "Before we start, I would like to record today's session so that I can write my clinical notes.",
-        "The recording is stored on my computer and is used only for documentation.",
+        "The recording stays on my computer, where AI software turns it into a transcript and a draft of my notes.",
         "Do you agree to be recorded?",
         "you can ask me to pause or stop at any time",
     ]

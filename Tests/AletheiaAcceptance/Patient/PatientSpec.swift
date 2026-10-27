@@ -91,6 +91,7 @@ final class PatientSpec: AcceptanceCase {
         then(try when.askToDeletePatient(jane, typing: "Jan")).deleteIsDisabled()
         then(try when.askToDeletePatient(jane, typing: "")).deleteIsDisabled()
         let confirmation = try when.askToDeletePatient(jane, typing: "  jane doe ")
+        then(confirmation).namesTheCopiesThatRemain()
         then(confirmation).deleteIsEnabled()
         try confirmation.confirm()
 

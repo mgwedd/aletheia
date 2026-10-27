@@ -1,35 +1,16 @@
 import AppKit
 import SwiftUI
 
-/// How someone gets a new or renewed key: an email to support, drafted in their
-/// own mail app. They see it and send it themselves; the app sends nothing.
+/// Where someone gets a new or renewed key: the beta application page on
+/// astrealabs.com, opened in their browser. The app sends nothing.
 enum LicenseLinks {
     static let supportAddress = "support@astrealabs.com"
 
-    /// A `mailto:` draft asking for a key. With a license, it asks for a renewal and
-    /// names the license ID and end date so support can find it; nothing else about
-    /// the license, and nothing about patients, is included.
-    static func keyRequestEmail(for token: LicenseToken?) -> URL {
-        var lines: [String]
-        if let token {
-            lines = ["Hi,", "", "Please renew my Aletheia license.", "", "License ID: \(token.lid)"]
-            if let expiresAt = token.expiresAt { lines.append("Ends: \(expiresAt.licenseText)") }
-        } else {
-            lines = ["Hi,", "", "I would like a license key for Aletheia."]
-        }
-        lines += ["", "Thanks"]
-        var components = URLComponents()
-        components.scheme = "mailto"
-        components.path = supportAddress
-        components.queryItems = [
-            URLQueryItem(name: "subject", value: token == nil ? "Aletheia license key" : "Aletheia license renewal"),
-            URLQueryItem(name: "body", value: lines.joined(separator: "\n")),
-        ]
-        return components.url!
-    }
+    /// The page where a key is applied for. A lost key is recovered there too.
+    static let applicationURL = URL(string: "https://astrealabs.com/aletheia/beta")!
 
-    static func requestKey(for token: LicenseToken?) {
-        NSWorkspace.shared.open(keyRequestEmail(for: token))
+    static func requestKey() {
+        NSWorkspace.shared.open(applicationURL)
     }
 
     static func copySupportAddress() {
@@ -141,7 +122,7 @@ struct LicenseBanner: View {
                         .controlSize(.small)
                 }
                 if Self.offersNewKey(for: status) {
-                    Button("Get a Key…") { LicenseLinks.requestKey(for: status.token) }
+                    Button("Get a Key…") { LicenseLinks.requestKey() }
                         .buttonStyle(.themed)
                         .controlSize(.small)
                 }
@@ -212,7 +193,7 @@ struct LicensePane: View {
     @EnvironmentObject private var license: LicenseState
     @EnvironmentObject private var settings: AppSettings
 
-    static let requestCaption = "Drafts an email to \(LicenseLinks.supportAddress) in your mail app. It includes your license ID and end date, nothing else. No mail app set up? Copy the address and write from anywhere."
+    static let requestCaption = "Opens astrealabs.com/aletheia/beta in your browser, where you apply for a key or recover a lost one. Nothing from this Mac is sent. For help, write to support@astrealabs.com from your mail app; never include patient information."
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -294,9 +275,9 @@ struct LicensePane: View {
                 LicenseEntryView(buttonTitle: "Replace")
                 SettingsCaption("The key is checked on this Mac and never sent anywhere.")
                 HStack(spacing: 8) {
-                    Button("Get a Key…") { LicenseLinks.requestKey(for: license.status.token) }
+                    Button("Get a Key…") { LicenseLinks.requestKey() }
                         .buttonStyle(.themed)
-                    Button("Copy Address") { LicenseLinks.copySupportAddress() }
+                    Button("Copy Support Address") { LicenseLinks.copySupportAddress() }
                         .buttonStyle(.themed)
                 }
                 SettingsCaption(Self.requestCaption)

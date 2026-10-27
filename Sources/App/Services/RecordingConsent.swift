@@ -4,14 +4,14 @@ import Foundation
 /// applies, and whether a session must ask before it records. Pure, so it is
 /// unit-tested.
 enum RecordingConsent {
-    static let attestationText = "I obtained this patient's consent to record the session and to process the recording with AI."
+    static let attestationText = "I obtained consent from everyone in this session to record it and to process the recording with AI."
 
     static let sheetTitle = "Record consent"
     static let startRecordingTitle = "Start recording"
     static let chooseAudioTitle = "Choose Audio File…"
     static let saveConsentTitle = "Save"
     static let changeTitle = "Change…"
-    static let notConfirmedMessage = "Confirm you have this patient's consent before recording."
+    static let notConfirmedMessage = "Confirm you have consent from everyone in this session before recording."
     static let noConsentRecorded = "No consent recorded."
     static let unreadableRecord = "The consent record can't be read."
     /// The heading of the consent section in exports, and the archive's file name.

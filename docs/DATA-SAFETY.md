@@ -89,7 +89,7 @@ The Device KEK is the request "recoverable unless they fully reset the machine":
 
 ### Non-hostile onboarding rules
 
-1. **Passphrase first, device path opt-in.** First-run's opt-out encryption sets a passphrase
+1. **Passphrase first, device path opt-in.** In developer builds, first-run's encryption offer sets a passphrase
    *and* offers the device path ("Remember on this Mac", default off) — the
    passphrase is the only path unless the clinician opts in.
 2. **Prove the passphrase is saved before it can matter.** After set-up, ask the
@@ -105,8 +105,8 @@ The Device KEK is the request "recoverable unless they fully reset the machine":
 
 ### HIPAA posture
 
-- Keys never leave the Mac in usable form; the escrow path uploads only
-  ciphertext. Transmission-security (§164.312(e)) holds.
+- Keys never leave the Mac in usable form. A cloud escrow path is not built; if
+  one ever is, it would upload only ciphertext. Transmission-security (§164.312(e)) holds.
 - Multiple recovery paths satisfy the *availability* half of the encryption
   safeguard and support the contingency plan (§164.308(a)(7)) without weakening
   confidentiality — each path independently requires either this device's auth
@@ -162,10 +162,10 @@ and attested it is correct.**
 | **Snapshot-before-migrate** (DB via `VACUUM INTO`) — refuse to migrate if the pre-image can't be written | **in place** (dormant until a v2+ migration ships: v1 is the baseline, so no pre-image is taken today) | `MigrationBackup` (pure policy) + `SQLitePersistenceCore` |
 | **Snapshot before an encryption on/off conversion** (rolling window of 5); on a successful *enable* the plaintext pre-image is deleted, on failure it is kept as the way back | **in place** | `DatabaseSnapshotManager` + `DataMigrator` |
 | **One backup home** (`.backups/`, a sub-folder per kind) and one-shot adoption of the older locations | **in place** | `BackupLayout` |
-| **Local end-to-end-encrypted archive** (sealed with the user's key) | **in place** via Settings › Backups › Back up now (user-chosen local folder; no schedule) | `LocalEncryptedBackupService`, `BackupCoordinator`, `EncryptedBackupArchive` |
+| **Local encrypted archive** (sealed with the user's key) | **in place, developer builds only**: Settings › Backups › Back Up Now needs at-rest encryption, so released builds do not offer it (user-chosen local folder; no schedule) | `LocalEncryptedBackupService`, `BackupCoordinator`, `EncryptedBackupArchive` |
 | **Attest-then-prune** UX + **Restore previous version** | next | `MigrationBackup.prunable` ready; needs Settings + a post-update banner. Nothing prunes migration pre-images today. |
 | **Snapshot the small JSON** (patient/session) alongside the DB | next | copy referenced JSON into the same pre-image set |
-| **Whole-folder atomicity** across DB + files | partial | Back Up Now archives the whole folder (the database as a consistent snapshot, other files as they are at that moment) and Restore from backup recovers it into an empty folder |
+| **Whole-folder atomicity** across DB + files | partial | Back Up Now (developer builds) archives the whole folder (the database as a consistent snapshot, other files as they are at that moment) and Restore from backup recovers it into an empty folder |
 
 ### Where backups live (one layout)
 
@@ -181,15 +181,18 @@ defined; no other type hard-codes them.
                   kept until the clinician attests; never auto-pruned
     snapshots/    rolling DB snapshots           <UTC>-<reason>.sqlite
                   newest 5 kept (e.g. pre-encryption-change)
-    archives/     end-to-end-encrypted archives  <UTC>-<reason>.aletheiabackup
+    archives/     encrypted archives  <UTC>-<reason>.aletheiabackup
                   newest 5 kept
 ```
 
 - **Separate folders make retention safe.** The rolling-5 prune lists only
   `snapshots/`, so it can never delete an archive or a migration pre-image.
-- **Time Machine sees the whole data root**, so `.backups/` is covered (or
-  excluded) by the same data-root setting as everything else; the layout does
-  not change that.
+- **The data-root setting covers everything under it**, so `.backups/` is
+  excluded from Time Machine and iCloud device backups by default, together
+  with the rest of the data folder, and included only if the clinician turns
+  the exclusion off. A released build therefore makes no backup by default:
+  the clinician arranges one (to an encrypted disk). These copies, Time Machine
+  and exports can still hold a patient after the patient is deleted in the app.
 - **It is hidden.** `.backups/` does not show in Finder (older builds' `Backups/`
   did; Cmd-Shift-. shows hidden files). The app should say where backups live
   rather than rely on the user finding the folder.

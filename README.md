@@ -13,11 +13,11 @@ Aletheia records a video-call therapy session, transcribes it, drafts a progress
 ### Privacy First
 
 - No patient content leaves the Mac. Recording, transcription, notes and chat are all local.
-- The app makes a few requests that carry no patient data: a check for new versions (a plain download of a small file from GitHub), and downloads of the speech and AI models you choose to install.
-- The app runs in the macOS App Sandbox and spawns no subprocesses. It has no network entitlement: the update check and model downloads run in a separate sandboxed helper that can reach only GitHub and Hugging Face. Settings > Security shows this from the app's own signature.
-- Raw audio is deleted after transcription unless you opt in to keeping it and encryption is on.
+- The app makes a few requests that carry no patient data: a check for new versions (a plain download of a small file from GitHub), and downloads of the speech and AI models you choose to install. Aletheia also fetches a signed list of revoked license keys from astrealabs.com at most once a day while update checks are on; it carries no identifier.
+- The app runs in the macOS App Sandbox and spawns no subprocesses. It has no network entitlement: the update check and model downloads run in a separate sandboxed helper that can reach only GitHub, Hugging Face and astrealabs.com (the revocation list). Settings > Security shows this from the app's own signature.
+- Raw audio is deleted once it is transcribed. If transcription finds no text, the audio is kept so you can retry, until you delete it. Keeping audio after transcription needs at-rest encryption, which released builds do not have.
 - Apple Intelligence is deliberately disabled so every AI path is provably on-device.
-- The app has no backup feature of its own. Time Machine includes the data folder by default. See [docs/DATA-SAFETY.md](docs/DATA-SAFETY.md).
+- Aletheia keeps its data folder out of Time Machine and iCloud device backups by default, and Back Up Now needs at-rest encryption, which released builds do not have. Nothing backs your records up for you: arrange your own, to an encrypted disk. See [docs/DATA-SAFETY.md](docs/DATA-SAFETY.md).
 
 Aletheia is a tool, not legal or clinical advice. Read [CONSENT.md](CONSENT.md) before recording anyone.
 
@@ -29,20 +29,22 @@ You need a Mac running **macOS 14 or newer**, and 4 to 8 GB of free disk space f
 
 ### 1. Install Aletheia
 
-Download the latest `Aletheia-<version>.dmg` from the [Releases page](https://github.com/mgwedd/aletheia/releases), open it, and drag **Aletheia** into **Applications**.
+Aletheia is in a limited beta. Apply at [astrealabs.com/aletheia/beta](https://astrealabs.com/aletheia/beta); you receive a license key and a download link by email. Open `Aletheia-<version>.dmg`, and drag **Aletheia** into **Applications**.
 
-The app is not notarized by Apple, so macOS will hesitate. **Right-click Aletheia, choose Open,** then confirm. You only do this once.
+Released builds are signed and notarized by Apple, so Aletheia opens like any other Mac app. A build that is not notarized (for example a test build) needs a right-click, **Open**, then confirm, once.
 
 ### 2. Set up with the checklist
 
-On first launch Aletheia shows a checklist. Work down it:
+On first launch Aletheia shows a checklist. Work down it, starting at the top:
 
-1. **Data folder:** click **Use the standard location** (the default), or **Choose another folder…**. The folder must be on this Mac: iCloud Drive, other cloud-synced folders, network locations and unencrypted removable drives are refused.
-2. **Microphone:** click **Allow Microphone**.
-3. **Call audio capture:** click **Allow**. macOS calls this "Screen Recording", but Aletheia only uses it to hear your video call. It does not capture the screen.
-4. **Transcription model:** click **Download**.
-5. **AI model:** click **Download**. Aletheia fetches the model that fits your Mac (3–6 GB, once) and runs it inside the app. Nothing else to install. Wait for the row to turn green.
-6. **Terms & Privacy:** read and accept.
+1. **License key:** paste the key from your email and click **Check license**.
+2. **Data folder:** click **Use the standard location** (the default), or **Choose another folder…**. The folder must be on this Mac: iCloud Drive, other cloud-synced folders, network locations and unencrypted removable drives are refused. Aletheia keeps the folder out of Time Machine and iCloud device backups by default and does not back it up for you.
+3. **Microphone:** click **Allow Microphone**.
+4. **Call audio capture:** click **Allow**. macOS calls this "Screen Recording", but Aletheia only uses it to hear your video call. It does not capture the screen.
+5. **Transcription model:** click **Download**.
+6. **AI model:** click **Download**. Aletheia fetches the model that fits your Mac (3–6 GB, once) and runs it inside the app. Nothing else to install. Wait for the row to turn green.
+7. **Protect your data:** the at-rest encryption offer appears only in developer builds. In released builds, protect the folder with FileVault, which Aletheia checks for.
+8. **Terms & Privacy:** read and accept, then click **Finish setup**.
 
 After the downloads, Aletheia works offline. If a row will not turn green, see the [Setup guide](docs/SETUP-GUIDE.md).
 
@@ -58,7 +60,7 @@ After the downloads, Aletheia works offline. If a row will not turn green, see t
 
 Always read the transcript and note before relying on them. Names and clinical terms are often misheard, and AI drafts can be wrong.
 
-If something looks wrong, open **Help → Aletheia Doctor…** for a health report that contains no patient information.
+If something looks wrong, open **Help → Aletheia Doctor…** for a health report that is meant to carry no patient information. It redacts patient and session names it finds, but check it before you send it to anyone, and do not share your screen while it is open.
 
 ---
 
@@ -81,7 +83,7 @@ flowchart LR
     UI <--> DB
   end
   NET(["Internet"])
-  Mac -. "update check · model downloads<br/>(no patient data)" .-> NET
+  Mac -. "update check · model downloads · license revocation list<br/>(no patient data)" .-> NET
 ```
 
 ### What a note or answer reads
@@ -118,20 +120,20 @@ A digest is an AI-written summary of one session, stored as `digest.json` beside
 ```
 <data folder>/
   .aletheia.json                  schema version stamp
-  Aletheia.sqlite                 notes, comments and chat threads
-  audit.log                       PHI-free event log
+  Aletheia.sqlite                 notes, comments, chat threads and the audit ledger
+  search.sqlite                   local full-text search index
   .aletheia-keystore.json         only when encryption is on
   .backups/{migrations,snapshots,archives}/
-  Patients/<Patient-Slug>/
+  Patients/<patient folder>/      an opaque UUID name
     patient.json
     YYYY-MM-DD_Session/
-      session.json  mic.caf  call.caf  transcript.txt  summary.txt
+      session.json  consent.json  mic.caf  call.caf  transcript.txt  transcript.raw.txt  summary.txt
       note.<format>.txt  digest.json
 ```
 
-`mic.caf` and `call.caf` are deleted after transcription by default. Schema changes are append-only migrations, with a pre-migration copy of the database in `.backups/migrations`. The SQLite file is a single `records` table of `(kind, id, owner, item, payload)`.
+`mic.caf` and `call.caf` are deleted once transcribed (kept if transcription finds no text, until you delete them). The audit ledger is a table in `Aletheia.sqlite`; an old `audit.log` file is imported once and renamed. Schema changes are append-only migrations, with a pre-migration copy of the database in `.backups/migrations`. The SQLite file is a single `records` table of `(kind, id, owner, item, payload)`.
 
-Back Up Now writes an encrypted archive of the whole data folder, and Restore from backup recovers it into a new, empty folder. The app has no delete-session action.
+Back Up Now writes an encrypted archive of the whole data folder, and Restore from backup recovers it into a new, empty folder; both need at-rest encryption, so Back Up Now is unavailable in released builds. Deleting a patient removes their files, but database snapshots in `.backups`, any Time Machine or other backup, and exports can still hold them. The app has no delete-session action.
 
 ### Transcription
 
@@ -158,9 +160,9 @@ The only third-party dependencies are the official whisper.cpp and llama.cpp XCF
 
 ### Storage protection
 
-- **Sandbox, lock, audit:** App Sandbox is on; the optional app lock uses LocalAuthentication; the audit log records events (unlock, encryption changes, export) without content; deletions are not recorded.
+- **Sandbox, lock, audit:** App Sandbox is on; the app lock uses LocalAuthentication; the audit log records security events (unlocks and failed unlocks, exports, deletions, opening and saving records, consent attestations, signing, settings and folder changes, the kind of AI work run; overriding a retention warning and changing a Part 2 flag are not yet recorded) without patient content, and is tamper-evident but not a full history of every edit.
 - **Encryption (dev tier only):** AES-256-GCM in 1 MiB chunks, with a random data key wrapped by a passphrase (PBKDF2-HMAC-SHA256, 600,000 iterations). See [docs/ENCRYPTION.md](docs/ENCRYPTION.md).
-- **Backups:** rolling database snapshots and pre-migration copies are kept in `.backups`. Time Machine is the supported backup.
+- **Backups:** the five newest rolling database snapshots are kept in `.backups`, and pre-migration copies stay there until removed. The data folder is kept out of Time Machine and iCloud device backups by default; backing it up is the clinician's job (turn the exclusion off and use an encrypted disk).
 
 ### Build tiers
 
@@ -168,9 +170,9 @@ Features are grouped into tiers chosen at compile time. Each includes the one be
 
 ```mermaid
 flowchart LR
-  P["production<br/>recording · transcription · notes · chat · source citations<br/>search · export · app lock · audit log · Doctor"]
+  P["production<br/>recording · transcription · built-in AI · notes · chat<br/>source citations · search · export · app lock · audit log · Doctor"]
   V["preview<br/>+ Spotlight<br/>medications · suggested questions"]
-  D["dev<br/>+ built-in model · Reminders/Calendar<br/>extra encryption · App Intents"]
+  D["dev<br/>+ Reminders/Calendar<br/>at-rest encryption · Back Up Now · App Intents"]
   P --> V --> D
 ```
 
@@ -268,4 +270,4 @@ Merging to `main` is enough once Smoke Test passes on the merge commit: Auto Rel
 - Patient-wide chat on a long history reads summaries and search passages, not every transcript; sessions with no summary yet may be represented only by their opening.
 - A session longer than the Mac's prompt budget cannot be summarized in one pass.
 - No CoreML encoder is bundled; transcription uses CPU/Metal.
-- Encryption is in the dev tier only, and release builds are notarized only when signing secrets are configured.
+- Encryption is in the dev tier only, and tagged releases require signing and notarization secrets, while other builds are ad-hoc signed.
