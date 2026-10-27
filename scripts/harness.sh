@@ -52,7 +52,7 @@ BIN="$APP/Contents/MacOS/Aletheia"
 
 # The Debug app is sandboxed: it can only write inside its own container, so the
 # fixture reference text and the output dir both live there.
-WORK="$HOME/Library/Containers/com.aletheia.app/Data/tmp/harness.$$"
+WORK="$HOME/Library/Containers/com.astrealabs.aletheia/Data/tmp/harness.$$"
 mkdir -p "$WORK"
 [ -n "$OUT" ] || OUT="$WORK/out"
 mkdir -p "$OUT"

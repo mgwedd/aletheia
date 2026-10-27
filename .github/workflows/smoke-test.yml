@@ -297,7 +297,7 @@ jobs:
       # xcodebuild hands TEST_RUNNER_-prefixed variables to the test process.
       - name: Choose the ledger folder
         run: |
-          echo "TEST_RUNNER_ACCEPTANCE_LEDGER_DIR=$HOME/Library/Containers/com.aletheia.app/Data/tmp/acceptance-ledger" >> "$GITHUB_ENV"
+          echo "TEST_RUNNER_ACCEPTANCE_LEDGER_DIR=$HOME/Library/Containers/com.astrealabs.aletheia/Data/tmp/acceptance-ledger" >> "$GITHUB_ENV"
 
       - name: Install tools (XcodeGen, xcbeautify)
         run: brew install xcodegen xcbeautify

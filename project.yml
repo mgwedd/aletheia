@@ -1,6 +1,6 @@
 name: Aletheia
 options:
-  bundleIdPrefix: com.aletheia
+  bundleIdPrefix: com.astrealabs
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -74,7 +74,7 @@ targets:
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.astrealabs.aletheia
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         # `info:`/`entitlements:` target keys tell XcodeGen to *generate* the
@@ -128,7 +128,7 @@ targets:
       - path: Sources/WhisperEngine
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.WhisperEngine
+        PRODUCT_BUNDLE_IDENTIFIER: com.astrealabs.aletheia.WhisperEngine
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - package: WhisperCpp
@@ -149,7 +149,7 @@ targets:
       - path: Sources/NetworkHelperShared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.networkhelper
+        PRODUCT_BUNDLE_IDENTIFIER: com.astrealabs.aletheia.networkhelper
         PRODUCT_NAME: NetworkHelper
         # Hand-maintained files, pointed at directly (see the Aletheia target).
         INFOPLIST_FILE: Sources/NetworkHelper/Info.plist
@@ -169,7 +169,7 @@ targets:
       - path: Sources/NetworkHelper/HelperTasks.swift
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.appTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.astrealabs.aletheia.tests
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: Aletheia
@@ -188,7 +188,7 @@ targets:
       - path: Tests/AletheiaAcceptance
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.appAcceptance
+        PRODUCT_BUNDLE_IDENTIFIER: com.astrealabs.aletheia.acceptance
         GENERATE_INFOPLIST_FILE: YES
         # XCTest creates this class when the bundle loads; it registers the
         # ledger observer (Tests/AletheiaAcceptance/Ledger).
@@ -206,7 +206,7 @@ targets:
       - path: Tests/AletheiaUITests
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.aletheia.appUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.astrealabs.aletheia.uitests
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: Aletheia
     dependencies:

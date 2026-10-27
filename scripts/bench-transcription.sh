@@ -51,7 +51,7 @@ if [ -z "$AUDIO" ]; then
 fi
 [ -f "$AUDIO" ] || { echo "Not a file: $AUDIO" >&2; exit 2; }
 
-MODELS_DIR="$HOME/Library/Containers/com.aletheia.app/Data/Library/Application Support/Aletheia"
+MODELS_DIR="$HOME/Library/Containers/com.astrealabs.aletheia/Data/Library/Application Support/Aletheia"
 MISSING=()
 for model in ${MODELS//,/ }; do
     [ -f "$MODELS_DIR/ggml-$model.bin" ] || MISSING+=("$model")
@@ -64,7 +64,7 @@ fi
 
 # The app is sandboxed: stage a clone of the audio (APFS clone, no extra disk)
 # and its output inside its container, then move the results out.
-WORK="$HOME/Library/Containers/com.aletheia.app/Data/tmp/bench.$$"
+WORK="$HOME/Library/Containers/com.astrealabs.aletheia/Data/tmp/bench.$$"
 mkdir -p "$WORK/out" && chmod 700 "$WORK"
 STAGED="$WORK/audio.${AUDIO##*.}"
 cp -c "$AUDIO" "$STAGED" 2>/dev/null || cp "$AUDIO" "$STAGED"
