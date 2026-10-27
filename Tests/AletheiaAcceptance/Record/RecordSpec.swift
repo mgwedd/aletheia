@@ -2,16 +2,20 @@ import XCTest
 
 final class RecordSpec: AcceptanceCase {
     private var bench: RecordingBench!
+    private var importing: ImportBench!
 
     override func setUp() async throws {
         try await super.setUp()
         continueAfterFailure = true
         bench = try given.recordingBench()
+        importing = try given.importBench()
     }
 
     override func tearDown() async throws {
         bench?.cleanUp()
         bench = nil
+        importing?.cleanUp()
+        importing = nil
         try await super.tearDown()
     }
 
@@ -181,5 +185,95 @@ final class RecordSpec: AcceptanceCase {
 
     func test_RECORD_14() async throws {
         try pending("seam: the capture hook writes fixed stand-in bytes, so sound made during a pause cannot be told apart from sound after it")
+    }
+
+    func test_RECORD_15() async throws {
+        // Partial: the picker and the transcription the view starts are the
+        // view's own; the gates, the import and what it leaves are checked.
+        let visit = try await given.aPatientWithASession()
+        given.recordingConsent(of: visit)
+        let file = try given.anAudioFile(importing)
+        let original = try Data(contentsOf: file)
+        then(importing).offersImport(for: visit)
+
+        then(when.pressImportAudio(on: importing, visit)).opensTheFilePicker()
+        when.pick(file, on: importing, into: visit)
+
+        then(importing).hasNoFailure()
+        try then(importing).becameTheRecording(of: visit)
+        then(importing).leftTheOriginalAlone(file, original)
+        then(importing).startsTranscriptionOnItsOwn()
+        then(importing).offersNoImport(for: visit)
+    }
+
+    func test_RECORD_16() async throws {
+        let visit = try await given.aPatientWithASession()
+
+        let first = when.pressImportAudio(on: importing, visit)
+
+        then(first).asksForConsentFirst()
+        then(importing).savedNothing(for: visit)
+        then(when.confirmRecordingConsent(on: importing, visit)).opensTheFilePicker()
+    }
+
+    func test_RECORD_17() async throws {
+        let visit = try await given.aPatientWithASession()
+        given.recordingConsent(of: visit)
+        let file = try given.aFileThatIsNotAudio(importing)
+
+        when.pick(file, on: importing, into: visit)
+
+        then(importing).refusedAsNotAudio()
+        then(importing).savedNothing(for: visit)
+    }
+
+    func test_RECORD_18() async throws {
+        let visit = try await given.aPatientWithASession()
+        given.recordingConsent(of: visit)
+        let existing = Data("recorded in the app".utf8)
+        try given.aRecording(existing, in: visit, importing)
+        let file = try given.anAudioFile(importing)
+
+        then(importing).offersNoImport(for: visit)
+        when.pick(file, on: importing, into: visit)
+
+        then(importing).refusedToReplaceTheRecording()
+        then(importing).keptTheRecording(of: visit, existing)
+    }
+
+    func test_RECORD_19() async throws {
+        let visit = try await given.aPatientWithASession()
+        given.recordingConsent(of: visit)
+        try given.aSignedNote(in: visit, importing)
+        let file = try given.anAudioFile(importing)
+
+        when.pick(file, on: importing, into: visit)
+
+        then(importing).refusedBecauseTheNoteIsSigned()
+        then(importing).savedNothing(for: visit)
+    }
+
+    func test_RECORD_20() async throws {
+        let visit = try await given.aPatientWithASession()
+        given.recordingConsent(of: visit)
+        given.fileVaultIsOff()
+
+        let step = when.pressImportAudio(on: importing, visit)
+
+        then(step).isRefused()
+        then(importing).showsTurnOnFileVaultAlert()
+        then(importing).savedNothing(for: visit)
+    }
+
+    func test_RECORD_21() async throws {
+        let visit = try await given.aPatientWithASession()
+        given.recordingConsent(of: visit)
+        given.noLicenseKey()
+
+        let step = when.pressImportAudio(on: importing, visit)
+
+        then(step).isRefusedForLicense()
+        then(importing).saysALicenseKeyIsNeeded()
+        then(importing).savedNothing(for: visit)
     }
 }

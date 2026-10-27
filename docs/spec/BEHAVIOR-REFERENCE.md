@@ -6,7 +6,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 | Theme | Count |
 |---|---|
-| Recording (REC) | 77 |
+| Recording (REC) | 87 |
 | Set-aside recordings (SAR) | 15 |
 | Voice input (VOI) | 17 |
 | Transcription (TRN) | 91 |
@@ -193,6 +193,26 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:246` · `qa: RECORD-09`
 - **REC-077** When the user first presses Record, the system asks for microphone permission.
   `surface: ui` · `evidence: Sources/App/Services/SessionRecorder.swift:280, Sources/App/Services/MicRecorder.swift:59` · `qa: RECORD-01`
+- **REC-078** When a session has no transcript and no recording and no recording is running, the action bar shows Import Audio… beside Record Session; while a file is being converted both buttons are disabled and a small spinner shows.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:529-547` · `qa: RECORD-15`
+- **REC-079** When the user picks an audio file in Import Audio…, it is converted in the private scratch folder and sealed into the session as its microphone recording (mic.caf), the original file is only read, and no converted copy is left in scratch.
+  `surface: background` · `evidence: Sources/App/Services/AudioImport.swift:31, Sources/App/Services/Store.swift:661` · `qa: RECORD-15`
+- **REC-080** When an import succeeds and "Transcribe automatically" is on, transcription of the session starts by itself, as after a finished recording.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:1783` · `qa: RECORD-15`
+- **REC-081** When an import succeeds, the activity log gains a phiCreated entry for the session with detail "audio recording".
+  `surface: background` · `evidence: Sources/App/Services/Store.swift:669` · `qa: RECORD-15`
+- **REC-082** When the user clicks Import Audio… for a patient without a recording-consent attestation, the consent sheet (button "Continue") appears first and the file picker opens only after the attestation; cancelling leaves no import pending, so a later Record Session shows its own sheet.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift:433-447, Sources/App/Views/SessionDetailView.swift:1740, Sources/App/Services/AppModel.swift:600` · `qa: RECORD-16`
+- **REC-083** When the picked file cannot be read as audio or holds no sound, the "Something went wrong" alert says "Aletheia couldn't read that file as audio. Try an M4A, MP3, WAV, AIFF or CAF file." and nothing is written to the session or left in scratch.
+  `surface: ui` · `evidence: Sources/App/Services/AudioImport.swift:7-14, Sources/App/Services/AudioImport.swift:43` · `qa: RECORD-17`
+- **REC-084** When a session already has a recording (or a transcript), Import Audio… is not offered; if an import is attempted anyway it is refused with "This session already has a recording. Import into a new session instead." and the existing recording is untouched.
+  `surface: invariant` · `evidence: Sources/App/Services/TranscriptionProgress.swift:116, Sources/App/Services/Store.swift:664-667` · `qa: RECORD-18`
+- **REC-085** When the session's note is signed, an import is refused with "This note is signed and can't be changed. Reopen it as a new draft to edit it." and nothing is saved.
+  `surface: invariant` · `evidence: Sources/App/Services/Store.swift:662` · `qa: RECORD-19`
+- **REC-086** When FileVault is off, Import Audio… raises the "Turn on FileVault" alert instead of opening the picker, the same gate as Record Session.
+  `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:600, Sources/App/Services/AppModel.swift:528` · `qa: RECORD-20`
+- **REC-087** Without a license key, Import Audio… shows the license alert instead of opening the picker, the same gate as Record Session.
+  `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:606, Sources/App/Services/SessionRecorder.swift:238` · `qa: RECORD-21`
 
 ## Set-aside recordings (SAR)
 

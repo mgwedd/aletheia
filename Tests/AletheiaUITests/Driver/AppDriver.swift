@@ -6,13 +6,20 @@ struct Scenario: Encodable, Equatable {
     struct PatientSeed: Encodable, Equatable {
         var name: String
         var sessions: Int?
+        var recordingConsent: Bool?
     }
 
     var run: String
     var patients: [PatientSeed] = []
     var fileVault: String?
     var tier: String?
+    /// "on" for a licensed app; unset is the unlicensed app.
+    var license: String?
     var aiReplies: [String]?
+    /// What Import Audio… is handed instead of the open panel: "clip" or "notAudio".
+    var importFile: String?
+    /// The patient whose newest session is on screen at launch.
+    var open: String?
 }
 
 /// The facts the app publishes through its invisible `fixture-probe` element.

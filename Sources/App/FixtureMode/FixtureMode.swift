@@ -1,4 +1,5 @@
 #if DEBUG
+import AVFoundation
 import Foundation
 import SwiftUI
 
@@ -9,6 +10,8 @@ struct FixtureScenario: Decodable, Equatable {
     struct PatientSeed: Decodable, Equatable {
         var name: String
         var sessions: Int?
+        /// True when the patient has already attested to recording consent.
+        var recordingConsent: Bool?
     }
 
     /// Names the throwaway data folder and defaults domain. Launching again
@@ -22,12 +25,24 @@ struct FixtureScenario: Decodable, Equatable {
     /// "off" (default) or "on". Off by default: the unlock sheet is the
     /// system's, which a UI test cannot answer, so it would cover the app.
     var appLock: String?
+    /// "off" (default) or "on". On counts as a license that lets the app
+    /// record and run the AI; off is the unlicensed app.
+    var license: String?
 
     /// Replies the scripted AI engine gives, in order; the last repeats.
     var aiReplies: [String]?
 
+    /// What "Import Audio…" is handed instead of the system open panel:
+    /// "clip" (a two-second tone) or "notAudio" (a text file named like audio).
+    var importFile: String?
+
+    /// The patient whose newest session is on screen at launch, so a test of a
+    /// session screen does not depend on finding rows in the sidebar.
+    var open: String?
+
     var buildTier: BuildTier { tier == "production" ? .production : .dev }
     var appLockOn: Bool { appLock == "on" }
+    var licenseOn: Bool { license == "on" }
 
     struct Malformed: Error, CustomStringConvertible {
         let detail: String
@@ -120,6 +135,50 @@ enum FixtureMode {
             }
         }
         model.refreshPatients()
+        for seed in scenario?.patients ?? [] where seed.recordingConsent == true {
+            if let patient = model.patients.first(where: { $0.name == seed.name }) {
+                _ = model.attestRecordingConsent(patientID: patient.id)
+            }
+        }
+    }
+
+    /// Opens the scenario's `open` patient at their newest session.
+    @MainActor static func openRequestedSession(_ model: AppModel) {
+        guard let name = scenario?.open,
+              let patient = model.patients.first(where: { $0.name == name }) else { return }
+        let newest = (try? model.store?.listSessions(for: patient))?.max { $0.date < $1.date }
+        AppNavigator.shared.requestOpen(patientID: patient.id)
+        if let newest { AppNavigator.shared.requestOpenSession(patientID: patient.id, sessionID: newest.id) }
+    }
+
+    /// The file "Import Audio…" is given in a fixture run, written fresh into
+    /// the fixture's own folder. Nil when the scenario names none.
+    static func importFile() -> URL? {
+        guard let kind = scenario?.importFile else { return nil }
+        let url = support.appendingPathComponent(kind == "clip" ? "import-clip.wav" : "import-notes.m4a")
+        try? FileManager.default.removeItem(at: url)
+        if kind == "clip" {
+            try? writeTone(to: url)
+        } else {
+            try? SecureFS.write(Data("these words are not audio".utf8), to: url)
+        }
+        return url
+    }
+
+    private static func writeTone(to url: URL, seconds: Double = 2, rate: Double = 16_000) throws {
+        let frames = AVAudioFrameCount(seconds * rate)
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
+              let samples = buffer.floatChannelData?[0] else { return }
+        buffer.frameLength = frames
+        for frame in 0..<Int(frames) {
+            samples[frame] = 0.3 * sin(2 * .pi * 440 * Float(frame) / Float(rate))
+        }
+        let file = try AVAudioFile(forWriting: url, settings: [
+            AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: rate, AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+        ])
+        try file.write(from: buffer)
     }
 }
 

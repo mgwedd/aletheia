@@ -119,6 +119,7 @@ struct AletheiaApp: App {
         if FixtureMode.isActive {
             appModel.diskProbe = FixtureMode.disk
             FixtureMode.seed(appModel)
+            FixtureMode.openRequestedSession(appModel)
         }
         #else
         let appModel = AppModel(settings: settings, encryption: encryption)
@@ -143,6 +144,7 @@ struct AletheiaApp: App {
         _transcription = StateObject(wrappedValue: transcription)
         let recorder = SessionRecorder()
         recorder.licenseRefusal = { [weak license] in license?.newWorkRefusal }
+        appModel.newRecordingRefusal = { [weak recorder] in recorder?.newRecordingRefusal }
         recorder.onStopped = { [weak transcription] in transcription?.startAfterRecording($0) }
         recorder.onNotice = { [weak appModel] in appModel?.noteRecordingProblem($0) }
         // Also a system notification, so it's noticed when the app isn't

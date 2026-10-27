@@ -234,6 +234,9 @@ final class SessionRecorder: ObservableObject {
     /// Why a new recording may not start because of the license, or nil. Set by the app.
     var licenseRefusal: (() -> String?)?
 
+    /// Why a new recording, made here or imported from a file, may not start, or nil.
+    var newRecordingRefusal: String? { licenseRefusal?() }
+
     /// Files are open (recording, paused, stopped by a capture error, or
     /// still being finalized by a Stop).
     var hasOpenRecording: Bool { stagingMicURL != nil || micURL != nil }

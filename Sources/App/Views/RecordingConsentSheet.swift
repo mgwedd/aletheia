@@ -5,6 +5,8 @@ import SwiftUI
 /// recording. Aletheia stores the date of the attestation, not the consent
 /// itself.
 struct RecordingConsentSheet: View {
+    /// The primary button's title: what happens once the clinician attests.
+    var confirmTitle = "Start recording"
     var onCancel: () -> Void
     var onConfirm: () -> Void
 
@@ -32,7 +34,7 @@ struct RecordingConsentSheet: View {
                 Button("Cancel", action: onCancel)
                     .buttonStyle(.themed)
                     .keyboardShortcut(.cancelAction)
-                Button("Start recording", action: onConfirm)
+                Button(confirmTitle, action: onConfirm)
                     .buttonStyle(.themePrimary)
                     .disabled(!confirmed)
             }
