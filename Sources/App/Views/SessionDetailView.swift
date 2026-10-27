@@ -578,13 +578,15 @@ struct SessionDetailView: View {
                     }
                     .help(recordBlocker ?? "Record this session's audio")
                     .disabled(recordBlocker != nil || isImportingAudio)
-                    Button {
-                        requestAudioImport()
-                    } label: {
-                        Label("Import Audio…", systemImage: "square.and.arrow.down")
+                    if appModel.importsAudio() {
+                        Button {
+                            requestAudioImport()
+                        } label: {
+                            Label("Import Audio…", systemImage: "square.and.arrow.down")
+                        }
+                        .help(recordBlocker ?? "Use an audio file you already have as this session's recording")
+                        .disabled(recordBlocker != nil || isImportingAudio)
                     }
-                    .help(recordBlocker ?? "Use an audio file you already have as this session's recording")
-                    .disabled(recordBlocker != nil || isImportingAudio)
                     if isImportingAudio {
                         ProgressView().controlSize(.small)
                     }

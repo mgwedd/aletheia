@@ -145,6 +145,12 @@ struct AletheiaApp: App {
         let recorder = SessionRecorder()
         recorder.licenseRefusal = { [weak license] in license?.newWorkRefusal }
         appModel.newRecordingRefusal = { [weak recorder] in recorder?.newRecordingRefusal }
+        appModel.importsAudio = { [weak license] in
+            #if DEBUG
+            if FixtureMode.scenario?.testLicense == true { return true }
+            #endif
+            return license?.isTestLicense ?? false
+        }
         recorder.onStopped = { [weak transcription] in transcription?.startAfterRecording($0) }
         recorder.onNotice = { [weak appModel] in appModel?.noteRecordingProblem($0) }
         // Also a system notification, so it's noticed when the app isn't

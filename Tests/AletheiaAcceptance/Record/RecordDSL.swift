@@ -420,6 +420,11 @@ final class ImportBench {
 
     /// Whether the session screen offers Import Audio… beside Record Session.
     func offersImport(for visit: PatientSession) -> Bool {
+        app.appModel.importsAudio() && offersRecord(for: visit)
+    }
+
+    /// Whether the session screen offers Record Session.
+    func offersRecord(for visit: PatientSession) -> Bool {
         let hasRecording = [store.micRecordingURL(for: visit.patient, session: visit.session),
                             store.callRecordingURL(for: visit.patient, session: visit.session)]
             .contains { FileManager.default.fileExists(atPath: $0.path) }
@@ -520,6 +525,17 @@ extension Given {
         UserDefaults().removePersistentDomain(forName: suite)
         let license = LicenseState(settings: settings)
         app.appModel.newRecordingRefusal = { license.newWorkRefusal }
+        app.appModel.importsAudio = { license.isTestLicense }
+    }
+
+    /// The Mac holds a current test license, which offers Import Audio….
+    func aTestLicense() {
+        app.appModel.importsAudio = { true }
+    }
+
+    /// The Mac holds a customer license.
+    func aCustomerLicense() {
+        app.appModel.importsAudio = { false }
     }
 
     /// The session's progress note is written and signed.
@@ -641,6 +657,11 @@ extension When {
 
     func offersImport(for visit: PatientSession) {
         expect(subject.offersImport(for: visit), "Import Audio… is not offered")
+    }
+
+    func offersRecordButNoImport(for visit: PatientSession) {
+        expect(subject.offersRecord(for: visit), "Record Session is not offered")
+        expect(!subject.offersImport(for: visit), "Import Audio… is offered without a test license")
     }
 
     func offersNoImport(for visit: PatientSession) {

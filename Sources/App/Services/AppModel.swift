@@ -602,7 +602,12 @@ final class AppModel: ObservableObject {
     /// (nil) allows it.
     var newRecordingRefusal: (() -> String?)?
 
+    /// Whether Import Audio… is offered. It is a tool for trying a build, so
+    /// only a test license turns it on; the app points this at the license.
+    var importsAudio: () -> Bool = { false }
+
     func beginAudioImport(patient: Patient, session: SessionRecord) -> AudioImportStart {
+        guard importsAudio() else { return .refused("Importing audio needs a test license.") }
         if let refusal = newRecordingRefusal?() { return .refused(refusal) }
         guard authorizeNewPHI() else { return .blocked }
         return needsRecordingConsent(patient: patient, session: session) ? .needsConsent : .ready

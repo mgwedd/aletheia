@@ -9,6 +9,7 @@ final class RecordSpec: AcceptanceCase {
         continueAfterFailure = true
         bench = try given.recordingBench()
         importing = try given.importBench()
+        given.aTestLicense()   // Import Audio… is offered only with a test license
     }
 
     override func tearDown() async throws {
@@ -267,14 +268,9 @@ final class RecordSpec: AcceptanceCase {
 
     func test_RECORD_21() async throws {
         let visit = try await given.aPatientWithASession()
-        given.recordingConsent(of: visit)
         given.noLicenseKey()
 
-        let step = when.pressImportAudio(on: importing, visit)
-
-        then(step).isRefusedForLicense()
-        then(importing).saysALicenseKeyIsNeeded()
-        then(importing).savedNothing(for: visit)
+        then(importing).offersRecordButNoImport(for: visit)
     }
 
     func test_RECORD_22() async throws {
@@ -301,5 +297,12 @@ final class RecordSpec: AcceptanceCase {
 
         then(importing).refusedAsTooManyFiles()
         then(importing).savedNothing(for: visit)
+    }
+
+    func test_RECORD_24() async throws {
+        let visit = try await given.aPatientWithASession()
+        given.aCustomerLicense()
+
+        then(importing).offersRecordButNoImport(for: visit)
     }
 }
