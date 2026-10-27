@@ -69,7 +69,7 @@ BIN="$APP/Contents/MacOS/Aletheia"
 [ -x "$BIN" ] || { echo "No app binary at $BIN (build the Debug config first, or pass --app)" >&2; exit 2; }
 
 # The app is sandboxed: stage the transcript and its output in its container.
-STAGE="$HOME/Library/Containers/com.aletheia.app/Data/tmp"
+STAGE="$HOME/Library/Containers/com.astrealabs.aletheia/Data/tmp"
 # Leftovers from runs that were killed; a run still going keeps its own.
 for dir in "$STAGE"/eval.*; do
     [ -d "$dir" ] || continue

@@ -31,7 +31,7 @@ Concise, non-obvious rules for this repo. (Obvious stuff omitted on purpose.)
 
 ## Names & project generation
 - Product/display name, Xcode target, scheme, and Swift module are all
-  **Aletheia**; the bundle-id prefix is **`com.aletheia`**. The app source dir
+  **Aletheia**; the bundle ID is **`com.astrealabs.aletheia`** (helpers and tests nest under it). The app source dir
   is `Sources/App`, the test source dir is `Tests/AletheiaTests`.
 - **No `.xcodeproj` is checked in.** `project.yml` (repo root) is the source of
   truth; XcodeGen generates the project. Edit `project.yml`, not a pbxproj.

@@ -13,8 +13,8 @@ import Foundation
 
 enum NetworkHelperConstants {
     /// CFBundleIdentifier of the XPC service, which is also its service name.
-    static let serviceName = "com.aletheia.networkhelper"
-    static let errorDomain = "com.aletheia.networkhelper"
+    static let serviceName = "com.astrealabs.aletheia.networkhelper"
+    static let errorDomain = "com.astrealabs.aletheia.networkhelper"
 }
 
 /// Implemented by the app and handed to the helper with each download, so the
