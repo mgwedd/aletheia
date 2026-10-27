@@ -80,7 +80,7 @@ enum HelperAllowlist {
         "githubusercontent.com",
         "huggingface.co",
         "hf.co",
-        // TODO: drop the apex once the revocation list is served from aletheia.astrealabs.com.
+        // First-party hosts, matched exactly (see `exactOnly`).
         "astrealabs.com",
         "aletheia.astrealabs.com",
     ]
