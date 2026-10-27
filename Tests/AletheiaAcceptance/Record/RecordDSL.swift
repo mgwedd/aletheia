@@ -502,7 +502,7 @@ extension Given {
         let settings = AppSettings(defaults: UserDefaults(suiteName: suite)!)
         UserDefaults().removePersistentDomain(forName: suite)
         let license = LicenseState(settings: settings)
-        app.appModel.licenseRefusal = { license.newWorkRefusal }
+        app.appModel.newRecordingRefusal = { license.newWorkRefusal }
     }
 
     /// The session's progress note is written and signed.

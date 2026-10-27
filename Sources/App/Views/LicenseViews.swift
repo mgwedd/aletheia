@@ -127,10 +127,13 @@ struct LicenseBanner: View {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(Theme.warn.color)
+                // A floor on the width: measured at no width, the text wraps one
+                // letter per line and makes the window taller than the screen.
                 Text(text)
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.text.color)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(minWidth: 240, alignment: .leading)
                 Spacer()
                 if Self.offersExport(for: status) {
                     Button("Export All Records…", action: onExportRecords)
