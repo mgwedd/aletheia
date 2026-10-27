@@ -156,7 +156,7 @@ enum FixtureMode {
         if kind == "clip" {
             try? writeTone(to: url)
         } else {
-            try? Data("these words are not audio".utf8).write(to: url)
+            try? SecureFS.write(Data("these words are not audio".utf8), to: url)
         }
         return url
     }
