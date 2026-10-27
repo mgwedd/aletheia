@@ -38,9 +38,13 @@ requirement changes, so their tests should too.
 
 - Tests talk only to the DSL and driver (Given, When, Then). They never name an
   app type, view, file layout or function.
-- If reorganizing code without changing behaviour forces an edit to an
-  acceptance or UI test, that test is weak: it is coupled to internals. Move
-  the coupling under the DSL or driver so the test body stays as written.
-- When reviewing a diff, flag any edit to a test body that isn't explained by a
-  changed criterion.
+- The harness under the DSL and driver (fixture mode, probes, launch setup,
+  element lookups) is expected to need small adjustments as the implementation
+  changes. That is its job.
+- Anything more than that is a warning sign. If reorganizing code without
+  changing behaviour forces edits to acceptance or UI test bodies, or large
+  rewrites of the DSL or driver, the tests are coupled to internals. Move the
+  coupling down into the harness so the test bodies stay as written.
+- When reviewing a diff, flag edits to test bodies that a changed criterion
+  doesn't explain, and harness churn out of proportion to the code change.
 - Unit tests (`Tests/AletheiaTests`) are free to change with internals.
