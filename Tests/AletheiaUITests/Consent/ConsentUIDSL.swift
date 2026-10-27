@@ -36,9 +36,11 @@ struct ApplyToPatientsOnScreen {
 }
 
 extension Given {
-    /// Jane Doe and Adam Lee, each with one session, FileVault on.
+    /// Jane Doe and Adam Lee, each with one session, on a licensed app with
+    /// FileVault on. Without a license the app refuses before asking for consent.
     func janeAndAdamWithASessionEach() {
         app.seed {
+            $0.license = "on"
             $0.fileVault = "on"
             $0.patients = [.init(name: "Jane Doe", sessions: 1), .init(name: "Adam Lee", sessions: 1)]
         }
