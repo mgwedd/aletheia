@@ -9,6 +9,15 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.66.0] - 2026-10-27
+
+### Added
+- offer Import Audio only with a test license (#530)
+- import a microphone and call track together (#529)
+
+### Fixed
+- ship under the com.astrealabs.aletheia bundle ID (#531)
+
 ## [2.65.0] - 2026-10-27
 
 ### Added
