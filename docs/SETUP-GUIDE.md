@@ -24,13 +24,13 @@ responsibility; the app does not handle them for you.
 - **Ready-made build:** download the `.dmg` from the
   [Releases page](https://github.com/mgwedd/aletheia/releases) and drag
   Aletheia to Applications.
-- **From source:** see the Developer quickstart in the [README](../README.md).
+- **From source:** see [Build and test](../README.md#build-and-test) in the README.
 
 ### macOS will not open it
 
-The app is not notarized by Apple, so the first launch is blocked. This is
-expected. In Applications, **right-click Aletheia, choose Open, then confirm
-Open** in the dialog. After that, double-clicking works.
+Released builds are signed and notarized, so they open normally. A build you
+made yourself is not: **right-click Aletheia, choose Open, then confirm Open**
+in the dialog. After that, double-clicking works.
 
 If there is no Open button, go to **System Settings → Privacy & Security**,
 scroll to the message about Aletheia, and click **Open Anyway**.
