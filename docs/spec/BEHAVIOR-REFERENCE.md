@@ -740,9 +740,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 ## Backups (BAK)
 
-- **BAK-001** When the user opens Settings → Backups, a banner says whether the data folder is kept out of Time Machine and iCloud backups (on by default).
+- **BAK-001** When the user opens Settings → Backups, a banner says whether the data folder is kept out of Time Machine and iCloud backups (on by default), and, in a build without encryption, that Back Up Now is not available so the user must arrange a backup.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01`
-- **BAK-002** When the user turns on "Keep my data out of Time Machine & iCloud backups", the data folder is excluded from those backups and the banner says to keep a copy of your own.
+- **BAK-002** When the user turns on "Keep my data out of Time Machine & iCloud backups", the data folder is excluded from those backups and the banner says nothing backs it up until the user arranges it (or uses Back Up Now where it is offered).
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/BackupExclusion.swift` · `qa: BACKUP-02`
 - **BAK-003** When the "Keep my data out of Time Machine & iCloud backups" choice is on, it is applied again whenever the data folder changes and at each launch.
   `surface: background` · `evidence: Sources/App/Services/BackupExclusion.swift, Sources/App/Services/AppSettings.swift` · `qa: BACKUP-02`
@@ -1256,7 +1256,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Views/PatientProfileEditor.swift, Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-06`
 - **PAT-021** When the therapist chooses Delete patient… in the editor, a "Delete <name>?" confirmation sheet requires typing the patient's name (trimmed, case-insensitive) before the Delete Patient button is enabled.
   `surface: ui` · `evidence: Sources/App/Views/PatientProfileEditor.swift` · `qa: PATIENT-08`
-- **PAT-022** When a patient is deleted, their folder with every session, transcript, audio recording and note is permanently removed from disk, their chat threads, comments and notes are purged from the database, and the patient and their sessions are removed from the search index.
+- **PAT-022** When a patient is deleted, their folder with every session, transcript, audio recording and note is removed from disk (copies can remain in the .backups safety snapshots and in any Time Machine or other backups and exports), their chat threads, comments and notes are purged from the database, and the patient and their sessions are removed from the search index.
   `surface: background` · `evidence: Sources/App/Services/Store.swift, Sources/App/Views/PatientProfileEditor.swift` · `qa: PATIENT-08`
 - **PAT-023** When a patient is deleted and the database is open, a "pre-delete-patient" safety snapshot of the database is taken first, and if deletion fails an "Unable to delete patient" alert shows the reason.
   `surface: background` · `evidence: Sources/App/Services/Store.swift, Sources/App/Views/PatientProfileEditor.swift` · `qa: PATIENT-08`
@@ -2059,7 +2059,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift:564` · `qa: SETTINGS-08`
 - **SET-040** In Backups, "Show backups folder in Finder" opens the hidden backups folder, or the data folder when no backups exist, and is disabled with no data folder.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-03`
-- **SET-041** In Backups, the Time Machine banner says "Your data folder is kept out of Time Machine and iCloud backups. Aletheia does not make its own backup copies yet, so keep a copy of your own." when the toggle is on, and otherwise "Aletheia does not make its own backup copies yet. Time Machine includes the data folder by default."
+- **SET-041** In Backups, the banner says "Your data folder is kept out of Time Machine and iCloud backups, and Back Up Now is not available in this version, so nothing backs it up yet. Arranging a backup is up to you: turn off the switch below to let Time Machine include the folder, onto an encrypted backup disk." when the toggle is on and the build has no encryption, and otherwise a variant for the other three combinations (toggle on or off, Back Up Now offered or not).
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01`
 - **SET-042** When the user chooses a data folder that syncs with iCloud, is managed by a third-party cloud service, is a network folder or is on an unencrypted removable disk, the choice is refused with "This folder syncs with iCloud. Choose a folder that stays on this Mac.", "This folder is managed by <provider>. Choose a folder that stays on this Mac.", "Network folders cannot hold Aletheia data. Choose a folder on this Mac." or "This removable disk is not encrypted. Choose an encrypted local disk." as it applies, and the data folder is unchanged.
   `surface: ui` · `evidence: Sources/App/Services/DataFolderPolicy.swift:29-37, Sources/App/Services/AppSettings.swift:510-513` · `qa: SETTINGS-13`

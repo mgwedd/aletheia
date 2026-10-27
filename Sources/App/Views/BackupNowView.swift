@@ -23,7 +23,9 @@ struct BackupNowView: View {
                 Spacer()
             }
             if !available {
-                SettingsCaption("Turn on and unlock encryption to make encrypted backups.")
+                SettingsCaption(appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
+                    ? "Turn on and unlock encryption to make encrypted backups."
+                    : "Back Up Now is not available in this version, because it needs encryption, which released builds do not include. Back up the data folder yourself (see the Time Machine switch above) to an encrypted disk.")
             }
             if let message { SettingsCaption(message) }
         }

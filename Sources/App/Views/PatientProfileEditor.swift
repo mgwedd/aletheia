@@ -283,7 +283,7 @@ struct PatientProfileEditor: View {
                         Text("Delete this patient and all data")
                             .font(Theme.Typography.body.weight(.semibold))
                             .foregroundStyle(Theme.text.color)
-                        Text("Permanently removes this patient, along with all of their sessions, transcripts, audio recordings, and notes. This cannot be undone.")
+                        Text("Deletes this patient, along with all of their sessions, transcripts, audio recordings, and notes. This cannot be undone. Copies can remain in Aletheia's safety snapshots and in any backups or exports you made.")
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.muted.color)
                             .fixedSize(horizontal: false, vertical: true)

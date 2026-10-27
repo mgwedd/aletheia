@@ -914,13 +914,25 @@ struct SettingsView: View {
 
     // MARK: - Backups
 
+    /// The banner at the top of Settings > Backups. Back Up Now needs at-rest
+    /// encryption, which released builds do not include, so the banner says who
+    /// is responsible for a backup rather than pointing at a button that is absent.
+    static func backupsBanner(excluded: Bool, backUpNowOffered: Bool) -> String {
+        if excluded {
+            return backUpNowOffered
+                ? "Your data folder is kept out of Time Machine and iCloud backups. Use Back Up Now to save an encrypted copy to a folder on this Mac or an external disk, or turn off the switch below to let Time Machine include the folder."
+                : "Your data folder is kept out of Time Machine and iCloud backups, and Back Up Now is not available in this version, so nothing backs it up yet. Arranging a backup is up to you: turn off the switch below to let Time Machine include the folder, onto an encrypted backup disk."
+        }
+        return backUpNowOffered
+            ? "Time Machine includes the data folder. Keep those backups on an encrypted disk. You can also use Back Up Now to save an encrypted copy to a folder of your choice."
+            : "Time Machine includes the data folder. Keep those backups on an encrypted disk: Aletheia does not encrypt the folder itself in this version, and Back Up Now is not available."
+    }
+
     @ViewBuilder
     private var backupsPane: some View {
         HStack(alignment: .center, spacing: 14) {
             Chip("Time Machine", tone: .info)
-            Text(settings.keepDataOutOfSystemBackups
-                 ? "Your data folder is kept out of Time Machine and iCloud backups. Use Back up now to save an encrypted copy to a folder on this Mac or an external disk."
-                 : "Time Machine includes the data folder by default. You can also use Back up now to save an encrypted copy to a folder of your choice.")
+            Text(Self.backupsBanner(excluded: settings.keepDataOutOfSystemBackups, backUpNowOffered: encryptionOffered))
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.text.color)
                 .fixedSize(horizontal: false, vertical: true)
@@ -930,7 +942,7 @@ struct SettingsView: View {
         SettingsRowsCard {
             SettingsSwitchRow(
                 title: BackupExclusion.settingTitle,
-                detail: "Off by default, so Time Machine includes your data folder — without it you'd have only one copy. Your data folder can hold unencrypted patient data (and audio/transcript files), so keep your Time Machine backups on an encrypted disk. Turn this on only if you'd rather keep the folder out of macOS system backups and rely on your own copy instead.",
+                detail: "On by default, which keeps your data folder out of Time Machine and iCloud, so nothing backs it up until you arrange it. Turn this off to let Time Machine include the folder, and keep those backups on an encrypted disk: the folder holds patient data, and a backup also keeps copies of anything you later delete.",
                 isOn: $settings.keepDataOutOfSystemBackups
             )
             .padding(.vertical, 12)

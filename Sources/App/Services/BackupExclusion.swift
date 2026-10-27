@@ -4,9 +4,9 @@ import Foundation
 /// `isExcludedFromBackup` resource value — which keeps it out of Time Machine
 /// and out of iCloud's device backup.
 ///
-/// By default the data folder is **kept out** of system backups: Aletheia keeps
-/// its own encrypted backup archives, and the folder can hold plaintext PHI when
-/// at-rest encryption is off. A clinician who prefers Time Machine to include the
+/// By default the data folder is **kept out** of system backups: the folder can
+/// hold plaintext PHI when at-rest encryption is off, and Aletheia's own
+/// encrypted backup (Back Up Now) exists only in builds that include encryption. A clinician who prefers Time Machine to include the
 /// folder can turn the exclusion off (and should use an **encrypted disk**).
 enum BackupExclusion {
     /// The `UserDefaults` key holding the user's explicit choice.

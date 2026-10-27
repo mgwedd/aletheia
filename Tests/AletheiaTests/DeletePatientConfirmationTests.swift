@@ -7,7 +7,10 @@ final class DeletePatientConfirmationTests: XCTestCase {
         let text = c.paragraphs.joined(separator: " ")
         XCTAssertTrue(text.contains("required to be kept"))
         XCTAssertTrue(text.contains("after the last visit"))
-        XCTAssertTrue(text.contains("permanently delete"))
+        XCTAssertTrue(text.contains("deletes this patient"))
+        XCTAssertTrue(text.contains(".backups"))
+        XCTAssertTrue(text.contains("Time Machine"))
+        XCTAssertTrue(text.contains("securely erase"))
         XCTAssertTrue(text.contains("cannot be undone"))
         XCTAssertTrue(text.contains("Cancel keeps everything"))
     }

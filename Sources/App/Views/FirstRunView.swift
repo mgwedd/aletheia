@@ -45,7 +45,7 @@ struct FirstRunView: View {
                     if settings.dataRootURL == nil {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Data folder").font(Theme.Typography.headline)
-                            Text("Keep client records in a local folder. Time Machine can back up this folder to an encrypted disk.")
+                            Text("Keep client records in a local folder. Aletheia keeps this folder out of Time Machine and iCloud by default and does not back it up for you; to back it up, turn that off in Settings > Backups and use an encrypted disk.")
                                 .foregroundStyle(Theme.muted.color)
                             HStack(spacing: 12) {
                                 Button("Use the standard location") {

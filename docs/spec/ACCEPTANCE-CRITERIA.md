@@ -216,14 +216,14 @@ Before you start: a developer build, or a data folder that is already encrypted;
 
 ## 14. Backups, data folder and upgrades (BACKUP)
 Before you start: some patients and sessions in the data folder, and a copy of it to experiment on.
-- **BACKUP-01** Open **Settings** > **Backups** → a banner says the data folder is kept out of Time Machine and iCloud backups, and that Aletheia keeps encrypted backup archives.
-- **BACKUP-02** Turn off the option to keep your data out of backups, then on again → while it is off, the banner says Time Machine includes the folder; once on, it says the folder is left out of Time Machine and iCloud backups.
+- **BACKUP-01** Open **Settings** > **Backups** → a banner says the data folder is kept out of Time Machine and iCloud backups, that Back Up Now is not available in a released build, and that arranging a backup is up to you.
+- **BACKUP-02** Turn off the option to keep your data out of backups, then on again → while it is off, the banner says Time Machine includes the folder and to use an encrypted disk; once on, it says the folder is left out of Time Machine and iCloud backups.
 - **BACKUP-03** Click **Show backups folder in Finder** → the hidden backups folder opens.
 - **BACKUP-04** Delete a patient and open the backups folder → a database snapshot taken just before is there.
 - **BACKUP-05** Open a data folder written by an older version → it opens and upgrades in place with patients and sessions intact.
 - **BACKUP-06** Open a data folder written by a newer version → an "Update Aletheia" alert appears and the files are left untouched.
 - **BACKUP-07** Corrupt one patient.json in a data folder copy and open it → the sidebar says one record couldn't be read, everything else opens and the damaged file is unchanged.
-- **BACKUP-08** With encryption on, click **Back up now** and pick another folder → an archive is written there and no session text is readable in it.
+- **BACKUP-08** In a dev build with encryption on, click **Back up now** and pick another folder → an archive is written there and no session text is readable in it.
 - **BACKUP-09** Restore a backup archive on this Mac → it unlocks with Touch ID or your passphrase; on a new Mac, your recovery key unlocks it.
 
 ## 15. Settings (SETTINGS)

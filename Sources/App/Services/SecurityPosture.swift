@@ -119,7 +119,9 @@ enum SecurityPosture {
             level: localEncryptedBackup ? .secure : .informational,
             detail: localEncryptedBackup
                 ? "An encrypted backup copy has been made, sealed with your key."
-                : "No encrypted backup copy yet. Use Back up now in Settings > Backups to save one to a local folder, or keep Time Machine backups on an encrypted disk."))
+                : encryptionOffered
+                    ? "No encrypted backup copy yet. Use Back Up Now in Settings > Backups to save one to a local folder, or keep Time Machine backups on an encrypted disk."
+                    : "Back Up Now is not available in this version, and the data folder is kept out of Time Machine by default, so nothing backs it up until you arrange it. Turn off the exclusion in Settings > Backups and use an encrypted backup disk."))
 
         // FileVault: read in-process from the data folder's volume
         // (`DiskEncryptionProbe`). Unknown stays a standing recommendation.

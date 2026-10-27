@@ -7,7 +7,10 @@ struct DeletePatientConfirmation: Equatable {
     let lastSessionDate: Date?
 
     static let permanenceNotice =
-        "This will permanently delete this patient and all of their recorded sessions, clinical notes, transcripts, audio, and AI conversations from disk. It cannot be undone."
+        "This deletes this patient and all of their recorded sessions, clinical notes, transcripts, audio, and AI conversations from Aletheia. It cannot be undone from within the app."
+
+    static let copiesNotice =
+        "Copies can remain outside the live data: the database snapshots Aletheia keeps in the hidden .backups folder (the five most recent, including one taken just before this delete) until newer ones replace them, and any Time Machine or other backups and exports you made. Deleting files on a Mac does not securely erase them."
 
     static let retentionNotice =
         "Clinical records are usually required to be kept for a set period, set by state rules and often several years after the last visit. Check the rules that apply to you before deleting."
@@ -29,6 +32,6 @@ struct DeletePatientConfirmation: Equatable {
 
     /// Everything the sheet says, in reading order.
     var paragraphs: [String] {
-        [Self.permanenceNotice, Self.retentionNotice, lastSessionLine, Self.keepNotice]
+        [Self.permanenceNotice, Self.copiesNotice, Self.retentionNotice, lastSessionLine, Self.keepNotice]
     }
 }
