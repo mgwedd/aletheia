@@ -18,7 +18,13 @@ struct ConsentSheetOnScreen {
     let driver: AppDriver
     let confirmTitle: String
 
-    var title: XCUIElement { driver.app.staticTexts[Copy.consentSheetTitle].firstMatch }
+    /// The title is a header, which macOS may not report as a plain static
+    /// text, and its words may sit in its value rather than its label.
+    var title: XCUIElement {
+        driver.app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@ OR value == %@", Copy.consentSheetTitle, Copy.consentSheetTitle))
+            .firstMatch
+    }
     var confirmation: XCUIElement { driver.app.checkBoxes[Copy.consentConfirmation].firstMatch }
     var confirmButton: XCUIElement { driver.button(confirmTitle) }
 }
