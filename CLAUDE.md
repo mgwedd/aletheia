@@ -19,6 +19,16 @@ Concise, non-obvious rules for this repo. (Obvious stuff omitted on purpose.)
 - **Ready → open (not draft).** Only keep a PR in draft while actively working on
   it; a PR that's ready for Michael to review/merge is a normal open PR.
 
+## Acceptance criteria and UI tests (see `.claude/rules/acceptance-tests.md`)
+- `docs/spec/ACCEPTANCE-CRITERIA.md` is the product's requirements; the
+  acceptance and XCUI tests are their executable form. Every feature or
+  substantial change ships a criterion + acceptance test + XCUI test, named by ID.
+- **Tests change when behaviour changes, and only then.** A refactor that keeps
+  behaviour should touch at most the harness (small DSL/driver/fixture
+  adjustments); edits to test bodies mean the tests are coupled to internals.
+  The corollary: a feature change that leaves its acceptance tests untouched
+  means coverage is missing — add or update the criterion and its tests.
+
 ## Names & project generation
 - Product/display name, Xcode target, scheme, and Swift module are all
   **Aletheia**; the bundle-id prefix is **`com.aletheia`**. The app source dir
