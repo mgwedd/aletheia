@@ -68,6 +68,7 @@ Before you start: a session with no transcript, a Mac that can play some audio, 
 - **RECORD-18** Open a session that already has a recording → it offers neither **Record Session** nor **Import Audio…**, and an import into it is refused, leaving the recording as it was.
 - **RECORD-19** Import audio into a session whose note is signed → it is refused with an alert and nothing is saved.
 - **RECORD-20** Click **Import Audio…** on a Mac with FileVault off → no picker opens and a "Turn on FileVault" alert appears.
+- **RECORD-21** Click **Import Audio…** without a license key → an alert says a license key is needed, no picker opens and nothing is saved.
 
 
 ## 5. Transcribe (TRANSCRIBE)

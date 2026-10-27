@@ -390,6 +390,8 @@ final class ImportBench {
     enum Step: Equatable {
         /// The Turn on FileVault alert is up and nothing else happens.
         case refused
+        /// An alert says a license key is needed and nothing else happens.
+        case refusedForLicense
         /// The consent sheet opens first; the picker waits for it.
         case asksForConsent
         case opensFilePicker
@@ -428,6 +430,9 @@ final class ImportBench {
     func press(for visit: PatientSession) -> Step {
         switch app.appModel.beginAudioImport(patientID: visit.patient.id) {
         case .blocked: return .refused
+        case .refused(let message):
+            failure = message
+            return .refusedForLicense
         case .needsConsent: return .asksForConsent
         case .ready: return .opensFilePicker
         }
@@ -491,6 +496,15 @@ extension Given {
         try bytes.write(to: bench.store.micRecordingURL(for: visit.patient, session: visit.session))
     }
 
+    /// No license key has been added on this Mac.
+    func noLicenseKey() {
+        let suite = "aletheia-acceptance-license-\(UUID().uuidString)"
+        let settings = AppSettings(defaults: UserDefaults(suiteName: suite)!)
+        UserDefaults().removePersistentDomain(forName: suite)
+        let license = LicenseState(settings: settings)
+        app.appModel.licenseRefusal = { license.newWorkRefusal }
+    }
+
     /// The session's progress note is written and signed.
     func aSignedNote(in visit: PatientSession, _ bench: ImportBench) throws {
         try bench.store.saveGeneratedNote("S: calm", for: visit.patient, session: visit.session, format: .soap)
@@ -526,6 +540,7 @@ extension When {
     func opensTheFilePicker() { expectEqual(subject, .opensFilePicker, "what Import Audio… did") }
     func asksForConsentFirst() { expectEqual(subject, .asksForConsent, "what Import Audio… did") }
     func isRefused() { expectEqual(subject, .refused, "what Import Audio… did") }
+    func isRefusedForLicense() { expectEqual(subject, .refusedForLicense, "what Import Audio… did") }
 }
 
 @MainActor extension Then where Subject == ImportBench {
@@ -560,6 +575,11 @@ extension When {
     func refusedAsNotAudio() {
         expect(subject.failure?.contains(Copy.couldntReadAsAudio) == true,
                "the alert does not say the file couldn't be read as audio: \(subject.failure ?? "nil")")
+    }
+
+    func saysALicenseKeyIsNeeded() {
+        expect(subject.failure?.contains(Copy.needsLicenseKey) == true,
+               "the alert does not say a license key is needed: \(subject.failure ?? "nil")")
     }
 
     func refusedBecauseTheNoteIsSigned() {

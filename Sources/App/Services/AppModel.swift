@@ -595,9 +595,14 @@ final class AppModel: ObservableObject {
     /// Where an audio import for this patient may go next: refused (FileVault
     /// is off, and the alert is raised), held for the recording-consent
     /// attestation, or free to open the file picker.
-    enum AudioImportStart: Equatable { case blocked, needsConsent, ready }
+    enum AudioImportStart: Equatable { case blocked, refused(String), needsConsent, ready }
+
+    /// Why new audio may not come in because of the license, or nil. Set by the
+    /// app; unset (nil) allows it. Recording asks the same question.
+    var licenseRefusal: (() -> String?)?
 
     func beginAudioImport(patientID: UUID) -> AudioImportStart {
+        if let refusal = licenseRefusal?() { return .refused(refusal) }
         guard authorizeNewPHI() else { return .blocked }
         return hasRecordingConsent(patientID: patientID) ? .ready : .needsConsent
     }

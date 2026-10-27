@@ -264,4 +264,16 @@ final class RecordSpec: AcceptanceCase {
         then(importing).showsTurnOnFileVaultAlert()
         then(importing).savedNothing(for: visit)
     }
+
+    func test_RECORD_21() async throws {
+        let visit = try await given.aPatientWithASession()
+        given.recordingConsent(of: visit)
+        given.noLicenseKey()
+
+        let step = when.pressImportAudio(on: importing, visit)
+
+        then(step).isRefusedForLicense()
+        then(importing).saysALicenseKeyIsNeeded()
+        then(importing).savedNothing(for: visit)
+    }
 }

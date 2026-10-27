@@ -4,4 +4,5 @@ extension Copy {
     static let couldntReadAsAudio = "couldn't read that file as audio"
     static let noteIsSigned = "note is signed"
     static let alreadyHasRecording = "already has a recording"
+    static let needsLicenseKey = "needs a license key"
 }

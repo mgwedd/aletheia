@@ -144,6 +144,7 @@ struct AletheiaApp: App {
         _transcription = StateObject(wrappedValue: transcription)
         let recorder = SessionRecorder()
         recorder.licenseRefusal = { [weak license] in license?.newWorkRefusal }
+        appModel.licenseRefusal = { [weak license] in license?.newWorkRefusal }
         recorder.onStopped = { [weak transcription] in transcription?.startAfterRecording($0) }
         recorder.onNotice = { [weak appModel] in appModel?.noteRecordingProblem($0) }
         // Also a system notification, so it's noticed when the app isn't

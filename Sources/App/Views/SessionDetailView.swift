@@ -1740,6 +1740,7 @@ struct SessionDetailView: View {
     private func requestAudioImport() {
         switch appModel.beginAudioImport(patientID: patient.id) {
         case .blocked: return
+        case .refused(let message): errorMessage = message
         case .needsConsent:
             consentForImport = true
             showRecordingConsent = true

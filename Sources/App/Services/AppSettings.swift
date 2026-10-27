@@ -444,6 +444,8 @@ final class AppSettings: ObservableObject {
     private convenience init() {
         #if DEBUG
         if FixtureMode.isActive {
+            // Grandfathered stands in for a license; the scenario decides.
+            FixtureMode.defaults.set(FixtureMode.scenario?.licenseOn ?? false, forKey: Keys.licenseGrandfathered)
             self.init(defaults: FixtureMode.defaults)
             FixtureMode.prepare(self)
             return

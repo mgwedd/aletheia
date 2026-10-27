@@ -6,7 +6,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 | Theme | Count |
 |---|---|
-| Recording (REC) | 86 |
+| Recording (REC) | 87 |
 | Set-aside recordings (SAR) | 15 |
 | Voice input (VOI) | 17 |
 | Transcription (TRN) | 91 |
@@ -211,6 +211,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/Store.swift:662` · `qa: RECORD-19`
 - **REC-086** When FileVault is off, Import Audio… raises the "Turn on FileVault" alert instead of opening the picker, the same gate as Record Session.
   `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:600, Sources/App/Services/AppModel.swift:528` · `qa: RECORD-20`
+- **REC-087** Without a license key, Import Audio… shows the license alert instead of opening the picker, the same gate as Record Session.
+  `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:605, Sources/App/AletheiaApp.swift:147` · `qa: RECORD-21`
 
 ## Set-aside recordings (SAR)
 

@@ -1,6 +1,6 @@
 import XCTest
 
-/// RECORD-15 to RECORD-20 through the real window. The system open panel
+/// RECORD-15 to RECORD-21 through the real window. The system open panel
 /// cannot be answered by a UI test, so the scenario's `importFile` hands
 /// Import Audio… a fixture file at the point where the panel would return one.
 final class ImportAudioTests: XCTestCase {
@@ -20,12 +20,13 @@ final class ImportAudioTests: XCTestCase {
     private let importButton = "Import Audio…"
     private let recordButton = "Record Session"
 
-    private func scenario(consent: Bool, importFile: String?, fileVault: String? = nil) {
+    private func scenario(consent: Bool, importFile: String?, fileVault: String? = nil, license: String = "on") {
         app.seed {
             $0.patients = [.init(name: "Jane Doe", sessions: 1, recordingConsent: consent)]
             $0.importFile = importFile
             $0.fileVault = fileVault
             $0.open = "Jane Doe"
+            $0.license = license
         }
     }
 
@@ -88,5 +89,17 @@ final class ImportAudioTests: XCTestCase {
 
         XCTAssertTrue(app.exists(app.app.staticTexts["Turn on FileVault"]), "no FileVault alert")
         XCTAssertFalse(hasRecordingFile(app.probe), "audio was imported with FileVault off")
+    }
+
+    func test_RECORD_21_withoutALicenseTheImportIsRefused() {
+        scenario(consent: true, importFile: "clip", license: "off")
+        openTheSession()
+
+        app.tap(importButton)
+
+        XCTAssertTrue(app.exists(app.app.staticTexts["Something went wrong"]), "no alert")
+        XCTAssertTrue(app.exists(app.app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "needs a license key")).firstMatch), "the alert does not say a license key is needed")
+        XCTAssertFalse(hasRecordingFile(app.probe), "audio was imported without a license")
     }
 }
