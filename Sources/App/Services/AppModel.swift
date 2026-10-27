@@ -602,6 +602,10 @@ final class AppModel: ObservableObject {
     /// (nil) allows it.
     var newRecordingRefusal: (() -> String?)?
 
+    /// Whether Import Audio… takes a microphone and call track together. Only a
+    /// test license allows it; the app points this at the license.
+    var importsTwoTracks: () -> Bool = { false }
+
     func beginAudioImport(patient: Patient, session: SessionRecord) -> AudioImportStart {
         if let refusal = newRecordingRefusal?() { return .refused(refusal) }
         guard authorizeNewPHI() else { return .blocked }

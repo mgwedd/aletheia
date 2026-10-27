@@ -25,8 +25,9 @@ struct FixtureScenario: Decodable, Equatable {
     /// "off" (default) or "on". Off by default: the unlock sheet is the
     /// system's, which a UI test cannot answer, so it would cover the app.
     var appLock: String?
-    /// "off" (default) or "on". On counts as a license that lets the app
-    /// record and run the AI; off is the unlicensed app.
+    /// "off" (default), "on" or "test". On counts as a license that lets the
+    /// app record and run the AI; test is that and a test license; off is the
+    /// unlicensed app.
     var license: String?
 
     /// Replies the scripted AI engine gives, in order; the last repeats.
@@ -47,7 +48,8 @@ struct FixtureScenario: Decodable, Equatable {
 
     var buildTier: BuildTier { tier == "production" ? .production : .dev }
     var appLockOn: Bool { appLock == "on" }
-    var licenseOn: Bool { license == "on" }
+    var licenseOn: Bool { license == "on" || license == "test" }
+    var testLicense: Bool { license == "test" }
 
     struct Malformed: Error, CustomStringConvertible {
         let detail: String

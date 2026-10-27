@@ -173,7 +173,7 @@ final class AudioImportTests: XCTestCase {
         let call = try toneFile(named: "Recording - call.caf", seconds: 3)
         let mic = try toneFile(named: "Recording - microphone.caf", seconds: 2)
 
-        try store.importRecordings(from: [call, mic], for: patient, session: session)
+        try store.importRecordings(from: [call, mic], allowingTwoTracks: true, for: patient, session: session)
 
         XCTAssertEqual(try seconds(at: store.micRecordingURL(for: patient, session: session), store), 2, accuracy: 0.2)
         XCTAssertEqual(try seconds(at: store.callRecordingURL(for: patient, session: session), store), 3, accuracy: 0.2)
@@ -182,15 +182,15 @@ final class AudioImportTests: XCTestCase {
 
     func testTheFileNamedCallIsTheCallTrack() throws {
         let a = URL(fileURLWithPath: "/x/Call.caf"), b = URL(fileURLWithPath: "/x/Me.caf")
-        XCTAssertEqual(try AudioImport.tracks(for: [a, b]).call, a)
-        XCTAssertEqual(try AudioImport.tracks(for: [b, a]).call, a)
+        XCTAssertEqual(try AudioImport.tracks(for: [a, b], allowingTwo: true).call, a)
+        XCTAssertEqual(try AudioImport.tracks(for: [b, a], allowingTwo: true).call, a)
         let mic = URL(fileURLWithPath: "/x/mic.caf"), call = URL(fileURLWithPath: "/x/call.caf")
-        XCTAssertEqual(try AudioImport.tracks(for: [call, mic]).mic, mic)
+        XCTAssertEqual(try AudioImport.tracks(for: [call, mic], allowingTwo: true).mic, mic)
     }
 
     func testWithoutACallNameTheFirstByNameIsTheMicrophone() throws {
         let one = URL(fileURLWithPath: "/x/track 1.wav"), two = URL(fileURLWithPath: "/x/track 2.wav")
-        let tracks = try AudioImport.tracks(for: [two, one])
+        let tracks = try AudioImport.tracks(for: [two, one], allowingTwo: true)
         XCTAssertEqual(tracks.mic, one)
         XCTAssertEqual(tracks.call, two)
     }
@@ -201,8 +201,25 @@ final class AudioImportTests: XCTestCase {
         let session = try store.createSession(for: patient)
         let files = try (1...3).map { try toneFile(named: "track \($0).wav", seconds: 1) }
 
-        XCTAssertThrowsError(try store.importRecordings(from: files, for: patient, session: session)) {
+        XCTAssertThrowsError(try store.importRecordings(from: files, allowingTwoTracks: true, for: patient, session: session)) {
             XCTAssertEqual($0 as? AudioImportError, .tooManyFiles)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: session).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.callRecordingURL(for: patient, session: session).path))
+    }
+
+    func testWithoutATestLicenseTwoFilesAreRefusedAndNothingIsWritten() throws {
+        let store = Store(root: root)
+        let patient = try store.createPatient(name: "Alex Doe")
+        let session = try store.createSession(for: patient)
+        let mic = try toneFile(named: "mic.caf", seconds: 1)
+        let call = try toneFile(named: "call.caf", seconds: 1)
+
+        XCTAssertThrowsError(try store.importRecordings(from: [mic, call], for: patient, session: session)) {
+            XCTAssertEqual($0 as? AudioImportError, .oneFileOnly)
+        }
+        XCTAssertThrowsError(try AudioImport.tracks(for: [mic, call, mic], allowingTwo: false)) {
+            XCTAssertEqual($0 as? AudioImportError, .oneFileOnly)
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: session).path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.callRecordingURL(for: patient, session: session).path))
@@ -216,7 +233,7 @@ final class AudioImportTests: XCTestCase {
         let call = base.appendingPathComponent("call.caf")
         try Data("not audio at all".utf8).write(to: call)
 
-        XCTAssertThrowsError(try store.importRecordings(from: [mic, call], for: patient, session: session)) {
+        XCTAssertThrowsError(try store.importRecordings(from: [mic, call], allowingTwoTracks: true, for: patient, session: session)) {
             XCTAssertEqual($0 as? AudioImportError, .unreadable)
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: session).path))

@@ -11,6 +11,9 @@ struct LicenseToken: Equatable {
     let sub: String
     let tier: String
     let issuedAt: Date
+
+    /// A short-lived license the owner issues from the site's admin to try a build.
+    var isTest: Bool { tier == "test" }
     /// Nil for a key issued without an expiry: it never lapses (it can still be revoked).
     let expiresAt: Date?
     /// Terms documents the licensee accepted when the license was issued. Empty

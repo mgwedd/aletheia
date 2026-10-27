@@ -446,7 +446,9 @@ final class ImportBench {
     /// The same call the view makes with the picked files.
     func importFiles(_ files: [URL], into visit: PatientSession) {
         do {
-            try store.importRecordings(from: files, for: visit.patient, session: visit.session)
+            try store.importRecordings(
+                from: files, allowingTwoTracks: app.appModel.importsTwoTracks(),
+                for: visit.patient, session: visit.session)
             failure = nil
         } catch {
             failure = error.localizedDescription
@@ -520,6 +522,16 @@ extension Given {
         UserDefaults().removePersistentDomain(forName: suite)
         let license = LicenseState(settings: settings)
         app.appModel.newRecordingRefusal = { license.newWorkRefusal }
+    }
+
+    /// The Mac holds a current test license, which takes two tracks at once.
+    func aTestLicense() {
+        app.appModel.importsTwoTracks = { true }
+    }
+
+    /// The Mac holds a customer license.
+    func aCustomerLicense() {
+        app.appModel.importsTwoTracks = { false }
     }
 
     /// The session's progress note is written and signed.
@@ -597,6 +609,11 @@ extension When {
     func refusedAsTooManyFiles() {
         expect(subject.failure?.contains(Copy.oneFileOrTwo) == true,
                "the alert does not ask for one file or two: \(subject.failure ?? "nil")")
+    }
+
+    func refusedAsMoreThanOneFile() {
+        expect(subject.failure == Copy.oneFileOnly,
+               "the alert does not ask for one audio file: \(subject.failure ?? "nil")")
     }
 
     func leftTheOriginalAlone(_ file: URL, _ original: Data) {

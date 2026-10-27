@@ -280,6 +280,7 @@ final class RecordSpec: AcceptanceCase {
     func test_RECORD_22() async throws {
         let visit = try await given.aPatientWithASession()
         given.recordingConsent(of: visit)
+        given.aTestLicense()
         let tracks = try given.anExportedPairOfTracks(importing)
         let originals = try [tracks.mic, tracks.call].map { try Data(contentsOf: $0) }
 
@@ -295,11 +296,24 @@ final class RecordSpec: AcceptanceCase {
     func test_RECORD_23() async throws {
         let visit = try await given.aPatientWithASession()
         given.recordingConsent(of: visit)
+        given.aTestLicense()
         let files = try given.threeAudioFiles(importing)
 
         when.pick(files, on: importing, into: visit)
 
         then(importing).refusedAsTooManyFiles()
+        then(importing).savedNothing(for: visit)
+    }
+
+    func test_RECORD_24() async throws {
+        let visit = try await given.aPatientWithASession()
+        given.recordingConsent(of: visit)
+        given.aCustomerLicense()
+        let tracks = try given.anExportedPairOfTracks(importing)
+
+        when.pick([tracks.call, tracks.mic], on: importing, into: visit)
+
+        then(importing).refusedAsMoreThanOneFile()
         then(importing).savedNothing(for: visit)
     }
 }

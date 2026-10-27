@@ -1,6 +1,6 @@
 import XCTest
 
-/// RECORD-15 to RECORD-23 through the real window. The system open panel
+/// RECORD-15 to RECORD-24 through the real window. The system open panel
 /// cannot be answered by a UI test, so the scenario's `importFile` hands
 /// Import Audio… fixture files at the point where the panel would return them.
 final class ImportAudioTests: XCTestCase {
@@ -59,7 +59,7 @@ final class ImportAudioTests: XCTestCase {
     }
 
     func test_RECORD_22_twoFilesBecomeTheMicrophoneAndCallTracks() {
-        scenario(consent: true, importFile: "twoTracks")
+        scenario(consent: true, importFile: "twoTracks", license: "test")
         openTheSession()
 
         app.tap(importButton)
@@ -71,7 +71,7 @@ final class ImportAudioTests: XCTestCase {
     }
 
     func test_RECORD_23_threeFilesAreRefused() {
-        scenario(consent: true, importFile: "threeFiles")
+        scenario(consent: true, importFile: "threeFiles", license: "test")
         openTheSession()
 
         app.tap(importButton)
@@ -79,6 +79,17 @@ final class ImportAudioTests: XCTestCase {
         XCTAssertTrue(app.exists(app.app.staticTexts["Something went wrong"]), "no alert")
         XCTAssertTrue(app.exists(alertText(containing: "Pick one audio file, or two")), "the alert does not ask for one file or two")
         XCTAssertFalse(hasRecordingFile(app.probe), "audio was imported from three files")
+    }
+
+    func test_RECORD_24_customerLicenseTakesOneFile() {
+        scenario(consent: true, importFile: "twoTracks", license: "on")
+        openTheSession()
+
+        app.tap(importButton)
+
+        XCTAssertTrue(app.exists(app.app.staticTexts["Something went wrong"]), "no alert")
+        XCTAssertTrue(app.exists(alertText(containing: "Pick one audio file.")), "the alert does not ask for one audio file")
+        XCTAssertFalse(hasRecordingFile(app.probe), "audio was imported from two files without a test license")
     }
 
     func test_RECORD_16_consentSheetComesBeforeTheFile() {

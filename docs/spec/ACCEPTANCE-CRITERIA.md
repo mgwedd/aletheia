@@ -69,8 +69,9 @@ Before you start: a session with no transcript, a Mac that can play some audio, 
 - **RECORD-19** Import audio into a session whose note is signed → it is refused with an alert and nothing is saved.
 - **RECORD-20** Click **Import Audio…** on a Mac with FileVault off → no picker opens and a "Turn on FileVault" alert appears.
 - **RECORD-21** Click **Import Audio…** without a license key → an alert says a license key is needed, no picker opens and nothing is saved.
-- **RECORD-22** Click **Import Audio…** and pick two files, a microphone track and a call track (such as the two `.caf` files Aletheia exports) → the one named "call" becomes the call audio, the other the microphone, and neither original is touched.
-- **RECORD-23** Pick three or more files in **Import Audio…** → an alert asks for one file or two, and nothing is saved.
+- **RECORD-22** With a test license, click **Import Audio…** and pick two files, a microphone track and a call track (such as the two `.caf` files Aletheia exports) → the one named "call" becomes the call audio, the other the microphone, and neither original is touched.
+- **RECORD-23** With a test license, pick three or more files in **Import Audio…** → an alert asks for one file or two, and nothing is saved.
+- **RECORD-24** With a customer license, pick two files in **Import Audio…** → an alert asks for one audio file, and nothing is saved.
 
 
 ## 5. Transcribe (TRANSCRIBE)

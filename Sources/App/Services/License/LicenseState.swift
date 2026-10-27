@@ -68,6 +68,10 @@ final class LicenseState: ObservableObject {
         }
     }
 
+    /// A current test license is in use. It unlocks tools for trying a build,
+    /// such as importing a microphone and call track together.
+    var isTestLicense: Bool { status.isActive && status.token?.isTest == true }
+
     /// Re-reads the stored token against the clock. Call when the app becomes active
     /// so an expiry that passed while it was open takes effect.
     func refresh() {

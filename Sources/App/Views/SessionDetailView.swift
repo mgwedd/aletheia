@@ -456,7 +456,7 @@ struct SessionDetailView: View {
                 }
             )
         }
-        .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio], allowsMultipleSelection: true) { result in
+        .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio], allowsMultipleSelection: appModel.importsTwoTracks()) { result in
             if case let .success(urls) = result, !urls.isEmpty { importAudio(from: urls) }
         }
         .exportConfirmation($pendingExport, settings: settings)
@@ -1813,10 +1813,11 @@ struct SessionDetailView: View {
         guard let store = appModel.store else { return }
         isImportingAudio = true
         let patient = patient, session = session
+        let allowingTwo = appModel.importsTwoTracks()
         Task {
             let failure: String? = await Task.detached(priority: .userInitiated) {
                 do {
-                    try store.importRecordings(from: urls, for: patient, session: session)
+                    try store.importRecordings(from: urls, allowingTwoTracks: allowingTwo, for: patient, session: session)
                     return nil
                 } catch {
                     return error.localizedDescription

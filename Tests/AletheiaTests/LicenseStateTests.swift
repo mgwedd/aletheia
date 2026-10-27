@@ -104,6 +104,20 @@ final class LicenseStateTests: XCTestCase {
         XCTAssertTrue(LicenseBanner.text(for: state.status)?.contains("stays open") ?? false)
     }
 
+    func testOnlyACurrentTestTierLicenseIsATestLicense() throws {
+        let state = makeState()
+        XCTAssertFalse(state.isTestLicense, "no license")
+        state.install(try token())
+        XCTAssertFalse(state.isTestLicense, "a customer license")
+        let test = try LicenseTestMint.token(
+            LicenseTestMint.payload(lid: "lid-2", sub: "a@example.com", tier: "test", exp: now.addingTimeInterval(2 * day)), key: key)
+        state.install(test)
+        XCTAssertTrue(state.isTestLicense)
+        clock = now.addingTimeInterval(17 * day)
+        state.refresh()
+        XCTAssertFalse(state.isTestLicense, "an expired test license")
+    }
+
     func testBadStoredTokenIsInvalidNotCrashing() {
         // A token whose payload is not JSON.
         settings.licenseToken = ["ALET1", Base64URL.encode(Data("notjson".utf8)), "AAAA"].joined(separator: ".")

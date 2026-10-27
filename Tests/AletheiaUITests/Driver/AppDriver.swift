@@ -13,7 +13,7 @@ struct Scenario: Encodable, Equatable {
     var patients: [PatientSeed] = []
     var fileVault: String?
     var tier: String?
-    /// "on" for a licensed app; unset is the unlicensed app.
+    /// "on" for a licensed app, "test" for a test license; unset is the unlicensed app.
     var license: String?
     var aiReplies: [String]?
     /// What Import Audio… is handed instead of the open panel: "clip", "twoTracks", "threeFiles" or "notAudio".
