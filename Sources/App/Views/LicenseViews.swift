@@ -193,7 +193,7 @@ struct LicensePane: View {
     @EnvironmentObject private var license: LicenseState
     @EnvironmentObject private var settings: AppSettings
 
-    static let requestCaption = "Opens astrealabs.com/aletheia/beta in your browser, where you apply for a key or recover a lost one. Nothing from this Mac is sent. For help, copy the support address and write from your mail app; never include patient information."
+    static let requestCaption = "Opens astrealabs.com/aletheia/beta in your browser, where you apply for a key or recover a lost one. Nothing from this Mac is sent. For help, write to support@astrealabs.com from your mail app; never include patient information."
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

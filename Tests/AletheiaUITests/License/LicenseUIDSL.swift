@@ -3,7 +3,7 @@ import XCTest
 extension Copy {
     static let licensePane = "License key"
     static let licenseGetAKey = "Get a Key…"
-    static let licenseRequestCaption = "Opens astrealabs.com/aletheia/beta in your browser, where you apply for a key or recover a lost one. Nothing from this Mac is sent. For help, copy the support address and write from your mail app; never include patient information."
+    static let licenseRequestCaption = "Opens astrealabs.com/aletheia/beta in your browser, where you apply for a key or recover a lost one. Nothing from this Mac is sent. For help, write to support@astrealabs.com from your mail app; never include patient information."
 }
 
 /// Settings > License key on screen.

@@ -47,7 +47,8 @@ for a 14-day grace period and then stop; a revoked key has no grace period.
 your existing records never require a license key, with no time limit. After a
 key expires or is revoked you can keep using the App for these, and you can
 export your records at once (Settings → Backups → Export All Records; see
-Exports in section 4 for what it leaves out).
+Exports in section 4 for what it leaves out), so you can always open, read, search, export, and
+delete your existing records.
 
 **Pre-release versions.** Beta and other pre-release versions are provided for
 evaluation, may contain more errors than a final release, and may change
@@ -68,8 +69,8 @@ You are solely responsible for:
 
 - **Consent.** Obtaining informed consent to record, and to process the
   recording with AI, before you start recording, as required by your
-  jurisdiction and licensing board. Where the law requires the consent of every
-  party to a recording, you are responsible for getting consent from every
+  jurisdiction and licensing board. Where the law requires the
+  consent of every party to a recording, you are responsible for getting consent from every
   party, including every person on a video call or in the room. The App asks
   you to attest that you have this consent, and saves your attestation with the
   session, but it cannot check that anyone agreed. See [CONSENT.md](CONSENT.md).
