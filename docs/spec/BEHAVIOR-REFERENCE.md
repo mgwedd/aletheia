@@ -2,7 +2,7 @@
 
 The detailed layer under [ACCEPTANCE-CRITERIA.md](ACCEPTANCE-CRITERIA.md): every observable behavior, edge case and exact on-screen message, by theme, with pointers into the source. Read the QA walkthrough first; come here when writing or debugging a fitness function.
 
-IDs are a theme prefix plus a three-digit number (for example EXP-029) and never change once assigned. Each item carries `surface` (ui, background or invariant), `evidence` (repo paths, a pointer for readers and not checked by any gate) and `qa` (the walkthrough check that rolls it up; the acceptance suite's coverage test requires it to name a real check). A `TODO` marks a doc/code conflict or an unclear point, collected under Open questions.
+IDs are a theme prefix plus a three-digit number (for example EXP-029) and never change once assigned. Each item carries `surface` (ui, background or invariant), `evidence` (repo paths, a pointer for readers and not checked by any gate) and `qa` (the walkthrough check that rolls it up; the acceptance suite's coverage test requires it to name a real check).
 
 | Theme | Count |
 |---|---|
@@ -126,7 +126,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **REC-043** When a recording stops and encryption is off, the staged audio is moved into the session folder.
   `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:444, Sources/App/Services/Crypto/FileProtector.swift:177` · `qa: BUILD-11`
 - **REC-044** When a recording cannot be encrypted on stop (for example the encrypted folder is locked), the audio stays in the private staging folder, never as plaintext in the session folder, and is added to the session, encrypted, the next time Aletheia opens.
-  `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:460, Sources/App/Services/OrphanAudioSweep.swift:45` · `qa: ENCRYPT-10` · ⚠ TODO: the recorder builds a user-facing "kept but couldn't be encrypted yet" message, but no screen displays it; the code does not tell the user, docs imply it does
+  `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:460, Sources/App/Services/OrphanAudioSweep.swift:45` · `qa: ENCRYPT-10`
 - **REC-045** When a recording could not be encrypted on stop, automatic transcription does not start for it.
   `surface: background` · `evidence: Sources/App/Services/SessionRecorder.swift:437` · `qa: ENCRYPT-10`
 - **REC-046** When the app is force-quit or crashes mid-recording, the audio captured up to that moment stays readable and is recovered into its session at the next launch.
@@ -148,7 +148,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **REC-054** When a call-audio stream fails during a recording while the microphone is still running, the pane shows "Only your microphone is being recorded." with the reason and the recording continues.
   `surface: ui` · `evidence: Sources/App/Services/SessionRecorder.swift:294, Sources/App/Views/SessionDetailView.swift:558` · `qa: RECORD-05`
 - **REC-055** When the microphone input device changes during a recording, the recording continues into the same file; if restarting the input fails, no message appears on the recording screens or menu bar, and the failure shows only as "First failure" in Doctor's call-audio diagnostics.
-  `surface: background` · `evidence: Sources/App/Services/MicRecorder.swift:94, Sources/App/Services/MicFileWriter.swift:36` · `qa: RECORD-02` · ⚠ TODO: restart after a device change is best-effort; if it fails the failure is only counted internally and never shown
+  `surface: background` · `evidence: Sources/App/Services/MicRecorder.swift:94, Sources/App/Services/MicFileWriter.swift:36` · `qa: RECORD-02`
 - **REC-056** When the microphone is recorded, it is captured without Apple voice processing, so the audio is not altered by echo cancellation.
   `surface: invariant` · `evidence: Sources/App/Services/MicRecorder.swift:140` · `qa: RECORD-02`
 - **REC-057** When the app captures call audio, it records only audio from the Mac's output and stores no screen video or images.
@@ -309,7 +309,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **TRN-021** When Settings > Keep raw audio after transcription is on and encryption is on, the recording is kept after a successful transcription.
   `surface: background` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift, Sources/App/Views/SettingsView.swift:187` · `qa: TRANSCRIBE-12`
 - **TRN-022** When encryption is off, the Keep raw audio setting is disabled so it cannot be turned on.
-  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift:187-194, Sources/App/Views/Settings/SettingsComponents.swift:75` · `qa: TRANSCRIBE-12` · ⚠ TODO: the row is hidden altogether when the encryption feature is not part of the build; whether any shipped build lacks it is not decidable from the repo
+  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift:187-194, Sources/App/Views/Settings/SettingsComponents.swift:75` · `qa: TRANSCRIBE-12`
 - **TRN-023** When a recording cannot be deleted after a successful transcription, the transcript is kept, the Transcript tab shows "The transcript is saved, but the recording couldn't be deleted and is still in your data folder. Delete it from the session folder to remove it." and a "Recording still on disk" notification is posted.
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:250-260, Sources/App/Services/Notifications/SessionNotifications.swift:51` · `qa: TRANSCRIBE-09`
 - **TRN-024** When a transcription produces no speech or only whitespace, the recording is kept regardless of the retention setting.
@@ -651,7 +651,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **DAT-001** When the data folder was written by an older version, opening it upgrades it in place and records the new version.
   `surface: background` · `evidence: Sources/App/Services/DataSchema.swift, Sources/App/Services/Persistence/SchemaMigrator.swift, Sources/App/Services/Store.swift` · `qa: BACKUP-05`
 - **DAT-002** When the data folder or database was written by a newer version, this version does not change it and an "Update Aletheia" alert tells the user to update before adding or changing anything.
-  `surface: ui` · `evidence: Sources/App/Services/Store.swift, Sources/App/Views/RootView.swift, Sources/App/Services/DataSchema.swift` · `qa: BACKUP-06` · ⚠ TODO: the data-format doc comment says an older app must not rewrite such a folder, but the code only shows the alert and does not block saving; the code is on the alert-only side.
+  `surface: ui` · `evidence: Sources/App/Services/Store.swift, Sources/App/Views/RootView.swift, Sources/App/Services/DataSchema.swift` · `qa: BACKUP-06`
 - **DAT-003** When an upgrade changes patient folder names, patients and sessions keep their identity and a copy of the original patient and session information files is retained.
   `surface: background` · `evidence: Sources/App/Services/PatientFolderMigration.swift, Sources/App/Services/BackupLayout.swift` · `qa: BACKUP-05`
 - **DAT-004** When a patient record cannot be read during an upgrade, it is left untouched, reported as damaged, and the upgrade is tried again on the next open.
@@ -720,7 +720,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 ## Backups (BAK)
 
 - **BAK-001** When the user opens Settings → Backups, a banner says whether the data folder is kept out of Time Machine and iCloud backups (on by default).
-  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01` · ⚠ TODO: the banner text still says Aletheia makes no backup copies of its own, which conflicts with BACKUP-01 and BAK-007; wording to confirm
+  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01`
 - **BAK-002** When the user turns on "Keep my data out of Time Machine & iCloud backups", the data folder is excluded from those backups and the banner says to keep a copy of your own.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/BackupExclusion.swift` · `qa: BACKUP-02`
 - **BAK-003** When the "Keep my data out of Time Machine & iCloud backups" choice is on, it is applied again whenever the data folder changes and at each launch.
@@ -732,13 +732,13 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **BAK-006** When the Backups pane is shown, it explains that safety copies of the database are saved in a hidden backups folder before a database format change or an encryption change.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: BACKUP-01`
 - **BAK-007** Backup archives are encrypted and are written to `.backups/archives/`; database safety copies still go to `.backups/snapshots` and `.backups/migrations`.
-  `surface: invariant` · `evidence: Sources/App/Services/Crypto/BackupService.swift, Sources/App/Services/Crypto/BackupCoordinator.swift` · `qa: BACKUP-08` · ⚠ TODO: the code has no archive wiring yet, so BACKUP-08 cannot pass until it does
+  `surface: invariant` · `evidence: Sources/App/Services/Crypto/BackupService.swift, Sources/App/Services/Crypto/BackupCoordinator.swift` · `qa: BACKUP-08`
 - **BAK-008** When older backup folders exist, they are moved into the current hidden backups layout without overwriting anything.
   `surface: background` · `evidence: Sources/App/Services/BackupLayout.swift` · `qa: BACKUP-04`
 - **BAK-009** When Doctor warns that the data folder is kept out of Time Machine, its next step names the pane "Settings > Backups" and the toggle "Keep my data out of Time Machine & iCloud backups".
-  `surface: ui` · `evidence: Sources/App/Services/Features/Doctor/DoctorRunner.swift` · `qa: BACKUP-02` · ⚠ DEFECT: today Doctor says "Settings > Snapshots & Backups"; its fitness function fails until fixed
+  `surface: ui` · `evidence: Sources/App/Services/Features/Doctor/DoctorRunner.swift` · `qa: BACKUP-02`
 - **BAK-010** When a backup archive is restored, it unlocks with Touch ID or the passphrase, or with the recovery key on a new Mac.
-  `surface: ui` · `evidence: Sources/App/Services/Crypto/BackupService.swift, Sources/App/Services/Crypto/BackupCoordinator.swift` · `qa: BACKUP-09` · ⚠ TODO: no restore path is wired yet (see BAK-007)
+  `surface: ui` · `evidence: Sources/App/Services/Crypto/BackupService.swift, Sources/App/Services/Crypto/BackupCoordinator.swift` · `qa: BACKUP-09`
 
 ## Progress notes (NOT)
 
@@ -940,7 +940,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **DIG-028** Summary text is fenced as reference material (not instructions) whenever it is given to the AI.
   `surface: invariant` · `evidence: Sources/App/Services/UntrustedText.swift, Sources/App/Services/Prompts+Digest.swift` · `qa: NOTE-16`
 - **DIG-029** Patient-wide questions that read a history too long to send whole use stored summaries (recent sessions individually, older ones merged by month) when they exist; sessions without a summary yet contribute only their transcript openings.
-  `surface: background` · `evidence: Sources/App/Services/Digest/PatientZoom.swift, Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: CHAT-12` · ⚠ TODO: README line 114 says "Notes and chat read transcripts, not digests", but the code reads digests in patient chat and long-session notes; the code is the source of truth here
+  `surface: background` · `evidence: Sources/App/Services/Digest/PatientZoom.swift, Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: CHAT-12`
 - **DIG-031** The "N of M ready" count treats a current summary built by any model as ready, even if the model in use has since changed.
   `surface: ui` · `evidence: Sources/App/Services/Digest/DigestScheduler.swift, Sources/App/Services/Store.swift` · `qa: DIGEST-01`
 - **DIG-032** When a recording ends while the user's own pause is still on and summary work is pending, the pause stays, and an info alert says transcription is paused with work pending.
@@ -960,7 +960,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CHT-003** When a chat is empty, it shows "Ask a question about <title>" and "The AI only knows what's in the transcript(s) here.", and the input placeholder reads "Ask about <title>…" (the title is "this session" for a session chat).
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:171-174, Sources/App/Views/ChatPaneView.swift:264, Sources/App/Views/SessionDetailView.swift:1433` · `qa: CHAT-08`
 - **CHT-004** When the user presses Return, Enter, Shift-Return or Option-Return in the chat box, the question is sent.
-  `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-02` · ⚠ TODO: the modifier-key variants were taken from the draft and not re-confirmed in the key handler
+  `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-02`
 - **CHT-005** When the chat box is empty or holds only whitespace, or an answer is being written, the question cannot be sent.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:91` · `qa: CHAT-02`
 - **CHT-006** When a question is sent, it appears as a message bubble on the trailing side, and the answer appears as formatted Markdown.
@@ -986,7 +986,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CHT-016** When no thread is selected, the window shows "No Chat Selected" with a New Chat button, and when there are no threads the sidebar shows "No chats yet".
   `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift:146-154, Sources/App/Views/PatientChatView.swift:186` · `qa: CHAT-09`
 - **CHT-017** When patient chat threads are saved, they are stored in the local database, and an older single-conversation chat file is imported once.
-  `surface: invariant` · `evidence: Sources/App/Services/Repositories/ChatRepository.swift, Sources/App/Models/ChatThread.swift` · `qa: CHAT-09` · ⚠ TODO: encryption of the stored threads when encryption is on not re-traced
+  `surface: invariant` · `evidence: Sources/App/Services/Repositories/ChatRepository.swift, Sources/App/Models/ChatThread.swift` · `qa: CHAT-09`
 - **CHT-018** When the patient page or patient chat is shown, it shows summary-preparation progress for that patient's history.
   `surface: ui` · `evidence: Sources/App/Views/SummaryStatusRow.swift, Sources/App/Views/PatientChatView.swift` · `qa: CHAT-08`
 - **CHT-019** When a question fails, "Something went wrong" (or the engine-problem alert) appears and the question stays in the chat; choosing Retry on the engine alert removes the unanswered turn and asks it again.
@@ -1010,7 +1010,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CHT-028** When an answer is still streaming, the raw text is shown, and the dates and Sources line appear when it finishes.
   `surface: ui` · `evidence: Sources/App/Services/Citations.swift, Sources/App/Views/PatientChatView.swift` · `qa: CHAT-11`
 - **CHT-029** When the source-citations feature is not registered, the raw answer is shown without dates or a Sources line.
-  `surface: ui` · `evidence: Sources/App/Services/SourceCitationsFeatureModule.swift` · `qa: CHAT-11` · ⚠ TODO: feature is production-tier, so this state occurs only in a build that omits it
+  `surface: ui` · `evidence: Sources/App/Services/SourceCitationsFeatureModule.swift` · `qa: CHAT-11`
 - **CHT-030** When a patient answer finishes, it shows what was read, for example "Read: notes and comments from 22 sessions · transcript passages from 6 of 22 sessions (search: 14 mentions)", followed by the effort level.
   `surface: ui` · `evidence: Sources/App/Services/Citations.swift:170-192, Sources/App/Views/PatientChatView.swift` · `qa: CHAT-12`
 - **CHT-031** When some sessions' transcripts could not be read, the what-was-read label says "N sessions could not be read, so answers may be incomplete".
@@ -1018,7 +1018,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CHT-032** When a session chat answer finishes, it shows a "Read:" line saying what part of the session was read.
   `surface: ui` · `evidence: Sources/App/Services/Digest/LocalToolLoop.swift:1071, Sources/App/Views/SessionDetailView.swift` · `qa: CHAT-03`
 - **CHT-033** When a search finds no match for a word the user asked about, the AI is told to say "no match found in the recorded sessions" rather than that the topic was never discussed.
-  `surface: ui` · `evidence: Sources/App/Services/Prompts+Search.swift:8-20` · `qa: CHAT-12` · ⚠ TODO: this is a model instruction, so the wording of the reply cannot be guaranteed; test only that the search block carries this instruction
+  `surface: ui` · `evidence: Sources/App/Services/Prompts+Search.swift:8-20` · `qa: CHAT-12`
 - **CHT-034** When a patient question is about one thing found by search and the transcripts total more than 18,000 characters, the chat sends the matching passages rather than whole transcripts, while a question that reads across sessions, or transcripts totalling 18,000 characters or less, are sent whole when they fit.
   `surface: background` · `evidence: Sources/App/Services/PatientContextRetriever.swift:50-55, Sources/App/Services/PatientContextRetriever.swift:105-120` · `qa: CHAT-12`
 - **CHT-035** When transcripts, summaries and drafts are put in front of the model, they are fenced as reference material, any look-alike fence text inside them is neutralised, and the therapist's own question is not fenced.
@@ -1038,9 +1038,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CHT-042** When a compaction is stopped or fails, it is discarded and the conversation stays as it was.
   `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift:463-487, Sources/App/Views/SessionDetailView.swift:1874-1904` · `qa: CHAT-13`
 - **CHT-043** When the suggested-questions feature is in the build, an empty chat shows suggested starter questions (separate sets for a session and a patient) that disappear once the conversation has messages.
-  `surface: ui` · `evidence: Sources/App/Services/SuggestedQuestionsFeatureModule.swift:20, Sources/App/Views/PatientChatView.swift:82, Sources/App/Views/SessionDetailView.swift:1436` · `qa: CHAT-01` · ⚠ TODO: the feature is preview-tier, so release builds show no suggestions; the README does not say so
+  `surface: ui` · `evidence: Sources/App/Services/SuggestedQuestionsFeatureModule.swift:20, Sources/App/Views/PatientChatView.swift:82, Sources/App/Views/SessionDetailView.swift:1436` · `qa: CHAT-01`
 - **CHT-044** When the question asks for a diagram, flowchart or drawing, the AI is given diagram guidance, and otherwise it is not.
-  `surface: background` · `evidence: Sources/App/Services/Prompts.swift:40-43` · `qa: CHAT-14` · ⚠ TODO: a prompt-selection rule, not directly visible; test only the prompt-building decision
+  `surface: background` · `evidence: Sources/App/Services/Prompts.swift:40-43` · `qa: CHAT-14`
 - **CHT-046** When the user chats, the question, answer and transcript text stay on the Mac, and the main app has no network entitlement.
   `surface: invariant` · `evidence: scripts/check-entitlements.sh, Sources/App/Services/Integrations/Integrations.swift` · `qa: BUILD-07`
 - **CHT-047** When the engine reports a known problem during a question (missing or unloadable model, out of memory), the engine-problem alert appears, and a successful fix asks the question again once.
@@ -1061,11 +1061,11 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CHT-055** When an answer is being written, pressing Esc stops it, and when no answer is being written Esc does nothing in the chat.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:26-30, Sources/App/Views/ChatPaneView.swift:127` · `qa: CHAT-04`
 - **CHT-056** When the user cancels a question that is still waiting in the queue, the unanswered question is removed from the chat.
-  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift:319, Sources/App/Views/SessionDetailView.swift:1785` · `qa: CHAT-05` · ⚠ TODO: removal on cancel confirmed for patient chat (line 319); session-chat equivalent not separately traced
+  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift:319, Sources/App/Views/SessionDetailView.swift:1785` · `qa: CHAT-05`
 - **CHT-057** When an answer is being written, switching threads, New Chat and Delete are disabled.
   `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift` · `qa: CHAT-09`
 - **CHT-058** When the Up or Down arrow key is pressed in the thread list, the selection moves to the neighbouring thread.
-  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift` · `qa: CHAT-09` · ⚠ TODO: arrow-key selection taken from the draft, not re-traced
+  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift` · `qa: CHAT-09`
 - **CHT-059** When the effort is changed in session chat, patient chat or notes, each of the three keeps its own setting.
   `surface: ui` · `evidence: Sources/App/Models/AnswerEffort.swift` · `qa: CHAT-18`
 - **CHT-060** When a session is short enough to fit, the session chat reads it whole.
@@ -1083,7 +1083,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CHT-066** When a therapist-typed field is under that limit but too big for the room, only the parts matching the question are sent, and the coverage label says they were excerpted.
   `surface: ui` · `evidence: Sources/App/Services/TherapistInput.swift` · `qa: CHAT-12`
 - **CHT-067** When a question follows a compaction, the session material is read fresh for that question and not taken from the summary.
-  `surface: background` · `evidence: Sources/App/Services/ChatMemory.swift` · `qa: CHAT-13` · ⚠ TODO: stated in the doc comment; not traced to the prompt assembly
+  `surface: background` · `evidence: Sources/App/Services/ChatMemory.swift` · `qa: CHAT-13`
 - **CHT-068** When the patient being asked about has been deleted, the chat window shows "This patient is no longer available." with a Close button.
   `surface: ui` · `evidence: Sources/App/Views/PatientChatWindow.swift:30-33` · `qa: CHAT-10`
 - **CHT-069** When the user copies a code block in an answer, its Copy button changes to "Copied"; other answer text has no Copy button.
@@ -1098,13 +1098,13 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **AIE-001** When AI features run, the only engine used is the built-in on-device engine.
   `surface: invariant` · `evidence: Sources/App/Services/Integrations/Integrations.swift, Sources/App/Services/Integrations/AssistantBackend.swift` · `qa: SETTINGS-06`
 - **AIE-002** When "Automatic" or "Built-in model" is chosen on any Mac, the built-in engine is used and Apple Intelligence is never used or offered.
-  `surface: invariant` · `evidence: Sources/App/Services/Integrations/Integrations.swift, Sources/App/Services/Integrations/AssistantBackend.swift` · `qa: SETTINGS-06` · ⚠ TODO: unreachable Apple Intelligence code remains in the codebase while the README says it is blocked; the code is on the blocked side
+  `surface: invariant` · `evidence: Sources/App/Services/Integrations/Integrations.swift, Sources/App/Services/Integrations/AssistantBackend.swift` · `qa: SETTINGS-06`
 - **AIE-003** When AI features run, no AI text is sent over the network, and the main app has no network access.
   `surface: invariant` · `evidence: scripts/check-entitlements.sh, Sources/NetworkHelper/HelperFetcher.swift` · `qa: SETTINGS-06`
 - **AIE-004** When the built-in engine is not linked into a build, AI actions fail with "The built-in AI model isn't available in this build of Aletheia." and no other engine is tried.
   `surface: ui` · `evidence: Sources/App/Services/Integrations/UnavailableAssistant.swift` · `qa: NOTE-09`
 - **AIE-005** When a Mac has 16 GB or more, the recommended model is Llama 3.1 8B Instruct (about 6 GB download), and otherwise Gemma 4 E2B (about 2.8 GB), in every build tier.
-  `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModel.swift, Sources/App/Services/ModelAdvisor.swift` · `qa: SETTINGS-07` · ⚠ TODO: README's AI-backends table lists llama3.1:8b / llama3.2:3b / llama3.2:1b and "dev + built-in model"; the README's later embedded-model section and the code agree on 8B or Gemma 4 E2B in every tier, and the code is the authority
+  `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModel.swift, Sources/App/Services/ModelAdvisor.swift` · `qa: SETTINGS-07`
 - **AIE-006** When the app is installed, the AI model is not bundled, and nothing is fetched until the user starts a download.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModelDownloader.swift` · `qa: SETTINGS-07`
 - **AIE-007** When a model downloads, only the sandboxed helper contacts the network, from a fixed list of https hosts, and the request carries no patient data.
@@ -1150,7 +1150,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **AIE-027** When "Copy Details" is used, it copies only technical information (problem, detail, backend, model, app version, macOS version) and no patient data.
   `surface: invariant` · `evidence: Sources/App/Services/AIEngineProblem.swift` · `qa: NOTE-09`
 - **AIE-028** When the out-of-memory alert appears, its message advises a smaller model.
-  `surface: ui` · `evidence: Sources/App/Services/AIEngineProblem.swift` · `qa: NOTE-09` · ⚠ TODO: the message names a "Fast (3B) model in Settings › AI and models" that no longer matches the models or Settings layout in the code
+  `surface: ui` · `evidence: Sources/App/Services/AIEngineProblem.swift` · `qa: NOTE-09`
 - **AIE-029** When the patient page or patient chat is shown and the model file is missing, a banner appears with a download button, progress, status text and the license link, and it re-checks when it appears and when the app becomes active.
   `surface: ui` · `evidence: Sources/App/Views/AIEngineProblemAlert.swift, Sources/App/Views/PatientChatView.swift, Sources/App/Views/PatientDetailView.swift` · `qa: SETTINGS-08`
 - **AIE-030** When the menu-bar engine status is shown, it reads "Checking AI engine…", then "Built-in engine running · <model>", or "… running · <model> not downloaded" when the file is missing.
@@ -1168,7 +1168,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **AIE-036** When the built-in engine loads, its window is a power of two of at least 8,192 sized to the prompt plus reply, never over the Mac's budget or the model's own maximum, and over that cap it fails rather than cutting text.
   `surface: invariant` · `evidence: Sources/App/Services/Llama/LlamaContextSize.swift, Sources/App/Services/Llama/LlamaEngine.swift` · `qa: NOTE-14`
 - **AIE-037** When a fine-tuned adapter is paired with a different base model than it was made for, it is refused with a message.
-  `surface: invariant` · `evidence: Sources/App/Services/Llama/FineTunedModel.swift` · `qa: SETTINGS-06` · ⚠ TODO: no screen or download exposes adapters today, so no user-visible path
+  `surface: invariant` · `evidence: Sources/App/Services/Llama/FineTunedModel.swift` · `qa: SETTINGS-06`
 - **AIE-038** When transcript text is given to the model, it is wrapped as reference material so instructions inside it are treated as data.
   `surface: invariant` · `evidence: Sources/App/Services/UntrustedText.swift` · `qa: NOTE-16`
 - **AIE-040** When a model download is offered in Settings, the model's license link is visible there before the download is started.
@@ -1428,11 +1428,11 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **SRC-031** When results are ranked inside a group, the best match comes first by relevance, then by more matching passages, then by newer session; patients are listed alphabetically and sessions newest first.
   `surface: ui` · `evidence: Sources/App/Services/Search/GlobalSearch.swift, Sources/App/Services/Search/GlobalSearchEngine.swift` · `qa: SEARCH-07`
 - **SRC-032** When the README lists typo tolerance, sound-alike names, quoted phrases, "wor*" prefixes and date phrases, those apply to the assistant's retrieval over a patient's history, not to the sidebar or home search field, which has no typo tolerance, sound-alike names or quoted phrases.
-  `surface: invariant` · `evidence: README.md:97-102, Sources/App/Services/Search/SessionSearch.swift, Sources/App/Services/Search/GlobalSearchQuery.swift` · `qa: CHAT-12` · ⚠ TODO: README bullets read as if they described search generally; confirm the wording should name the assistant.
+  `surface: invariant` · `evidence: README.md:97-102, Sources/App/Services/Search/SessionSearch.swift, Sources/App/Services/Search/GlobalSearchQuery.swift` · `qa: CHAT-12`
 - **SRC-033** When the assistant looks up a patient's history, a misspelled word, a similar-sounding name, a quoted phrase, a word prefix ending in * and a date phrase such as a month all narrow or widen what is found.
   `surface: background` · `evidence: Sources/App/Services/Search/SessionSearch.swift, README.md:97-102` · `qa: CHAT-12`
 - **SRC-034** When an index exists, the sidebar and home search read original text only for the results they show, so cost stays about the same for 10 sessions as for 1,000.
-  `surface: background` · `evidence: Sources/App/Services/Store.swift, Sources/App/Services/Search/GlobalSearchEngine.swift` · `qa: SEARCH-10` · ⚠ TODO: a performance promise made in a code comment; no measured target in docs.
+  `surface: background` · `evidence: Sources/App/Services/Store.swift, Sources/App/Services/Search/GlobalSearchEngine.swift` · `qa: SEARCH-10`
 - **SRC-035** When the index is missing or cannot be read, the sidebar and home search fall back to scanning every file with plain substring matching (no stems or date words) and no "incomplete" line, stopping early if the query is superseded.
   `surface: background` · `evidence: Sources/App/Services/Store.swift, Sources/App/Services/TextSearch.swift` · `qa: SEARCH-10`
 - **SRC-036** When the index is still being checked or built, or a transcript has changed since it was indexed, a line above the results says "Checking the search index; results may be incomplete." or "Indexing N sessions; results may be incomplete." ("Indexing 1 session" for one).
@@ -1545,7 +1545,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CMT-030** When Resolve is pressed, the comment loses its transcript highlight, and Reopen brings it and the highlight back.
   `surface: ui` · `evidence: Sources/App/Views/CommentsRailView.swift, Sources/App/Services/TranscriptHighlighter.swift` · `qa: COMMENT-06`
 - **CMT-031** When a progress note is drafted, comments are included only if "Include comments in drafts" is on (it is on by default), although the composer says "Comments are included when the progress note is drafted."
-  `surface: background` · `evidence: Sources/App/Views/SessionDetailView.swift:1678, Sources/App/Views/SettingsView.swift:706` · `qa: NOTE-04` · ⚠ TODO: the composer note ignores the setting, and the session chat sends comments regardless of it; confirm intent.
+  `surface: background` · `evidence: Sources/App/Views/SessionDetailView.swift:1678, Sources/App/Views/SettingsView.swift:706` · `qa: NOTE-04`
 - **CMT-032** When the transcript text changes or becomes edited while the composer is open, the composer closes.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift` · `qa: COMMENT-02`
 - **CMT-033** When a patient is deleted, the comments on all of their sessions are purged from the database.
@@ -1602,7 +1602,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **EXP-024** When the user quits during an export, the export is cancelled ("Cancelling") and the app waits up to 2.5 seconds for it to stop, leaving no destination file or folder; if it hasn't stopped by then, quit proceeds and a hidden ".partial-" staging folder may remain.
   `surface: background` · `evidence: Sources/App/Services/ExportJobCenter.swift` · `qa: EXPORT-02`
 - **EXP-025** Settings → Backups offers an "Export All Records…" button with a caption saying it copies every patient's notes, transcripts, comments and kept recordings into ordinary files that open without Aletheia and never need a license key.
-  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, PRIVACY.md, SECURITY.md, README.md` · `qa: BACKUP-03` · ⚠ TODO: README line 20 says Aletheia has "no backup feature of its own", which conflicts with the Backups pane and PRIVACY.md/SECURITY.md
+  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, PRIVACY.md, SECURITY.md, README.md` · `qa: BACKUP-03`
 - **EXP-026** When a session has saved notes, its exported folder contains one "Note - <format name>.txt" per note, as plain text with Markdown formatting removed.
   `surface: invariant` · `evidence: Sources/App/Services/PatientArchive.swift` · `qa: EXPORT-07`
 - **EXP-027** When a session has comments or a psychotherapy note, its all-records folder still holds neither: they stay out of the clinical record and are exported only on their own.
@@ -1693,9 +1693,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **NET-020** The app monitors only whether the Mac is online and never sends probe requests to test connectivity.
   `surface: invariant` · `evidence: Sources/App/Services/NetworkReachability.swift` · `qa: BUILD-07`
 - **NET-021** Apple Intelligence is turned off on purpose, the AI settings say so, and AI features run only in the engine built into the app on this Mac.
-  `surface: invariant` · `evidence: README.md, Sources/App/Views/SettingsView.swift, Tests/AletheiaTests/AppleIntelligenceBlockTests.swift` · `qa: SETTINGS-06` · ⚠ TODO: the setup checklist and tool-health code still contain an Apple Intelligence readiness path though the feature is blocked
+  `surface: invariant` · `evidence: README.md, Sources/App/Views/SettingsView.swift, Tests/AletheiaTests/AppleIntelligenceBlockTests.swift` · `qa: SETTINGS-06`
 - **NET-022** When the helper is asked for the license-revocation list, it refuses with "The license revocation list isn't configured yet." and makes no request; nothing in the app currently asks for it.
-  `surface: background` · `evidence: Sources/NetworkHelper/HelperFetcher.swift, Sources/NetworkHelper/AssetCatalog.swift, Sources/App/Services/Updates/RevocationFetchPolicy.swift` · `qa: BUILD-08` · ⚠ TODO: revocation fetch policy exists in the app but has no caller; README says there is no license key
+  `surface: background` · `evidence: Sources/NetworkHelper/HelperFetcher.swift, Sources/NetworkHelper/AssetCatalog.swift, Sources/App/Services/Updates/RevocationFetchPolicy.swift` · `qa: BUILD-08`
 - **NET-023** When a build has network access but is otherwise sandboxed, the Network access card reads "Aletheia can connect to the internet" with a "Review" chip.
   `surface: ui` · `evidence: Sources/App/Services/NetworkHelper/NetworkAccessStatus.swift` · `qa: SECURITY-02`
 - **NET-024** When the app is not sandboxed (a development build) the card reads "Not sandboxed (development build)", and when entitlements cannot be read it reads "Couldn't check network access".
@@ -1987,7 +1987,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **SET-013** When the user opens Formats, they can set the default progress note format and the summary length, and turn on or off comments in drafts, patient background and preparing summaries on battery.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-10`
 - **SET-014** When the user opens Backups, the pane shows "Keep my data out of Time Machine & iCloud backups" (on by default) and the caption "Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder."
-  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/BackupExclusion.swift, Sources/App/Services/Store.swift:386` · `qa: BACKUP-01` · ⚠ TODO: the caption under-describes: a safety snapshot is also taken before a patient is deleted
+  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/BackupExclusion.swift, Sources/App/Services/Store.swift:386` · `qa: BACKUP-01`
 - **SET-015** When the user turns on "Keep my data out of Time Machine & iCloud backups", the data folder is excluded from those backups now and again on later launches, and an explicit off is respected.
   `surface: background` · `evidence: Sources/App/Services/BackupExclusion.swift, Sources/App/Services/AppSettings.swift:351` · `qa: BACKUP-02`
 - **SET-016** When the user opens General → Status, they can toggle "Show recording diagnostics", which is off by default and adds a call-audio readout of permission and stream state to the recording screen.
@@ -2159,35 +2159,3 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: project.yml, scripts/check-entitlements.sh` · `qa: BUILD-02`
 - **BLD-017** Microphone and Speech-recognition purpose strings are present in every build.
   `surface: invariant` · `evidence: Sources/App/Resources/Info.plist` · `qa: BUILD-03`
-
-## Open questions
-
-- **REC-044**: the recorder builds a user-facing "kept but couldn't be encrypted yet" message, but no screen displays it (code), while docs and the original spec imply the user is told
-- **REC-055**: restart after a mid-recording input-device change is best-effort; if it fails the failure is only counted internally and never shown to the user
-- **TRN-022**: the Keep raw audio row is hidden entirely when the encryption feature is not in the build; whether any shipped build lacks it is not decidable from the repo
-- **DAT-002**: the data-format doc comment says an older app must not rewrite a newer folder, but the code only shows an alert and does not block saving; the code is on the alert-only side.
-- **BAK-007**: the spec says backup archives are encrypted (BACKUP-08); SECURITY.md describes an archives folder and an encrypted iCloud destination as built but not active, and the code has no wiring, so no archives are produced yet.
-- **BAK-001**: the Backups banner text still says Aletheia makes no backup copies of its own, which conflicts with BACKUP-01 and BAK-007; confirm the wording.
-- **BAK-009**: the Time Machine row's next step says "Settings > Snapshots & Backups" but the pane is named "Backups"; the code uses the wrong name.
-- **DIG-029**: README line 114 says "Notes and chat read transcripts, not digests", but the code reads digests in patient chat and long-session notes; the code is the source of truth here
-- **AIE-002**: unreachable Apple Intelligence code remains though the README says it is blocked; the code is on the blocked side.
-- **AIE-005**: README AI-backends table (llama3.1:8b / llama3.2:3b / llama3.2:1b, "dev + built-in model") conflicts with the code (Llama 3.1 8B at 16 GB+, Gemma 4 E2B otherwise, every tier); the code is authoritative.
-- **AIE-028**: the out-of-memory message names a "Fast (3B) model" that no longer exists.
-- **AIE-037**: adapters are not exposed in any screen.
-- **CHT-004**: Shift-Return and Option-Return sending were taken from the draft and not re-confirmed in the key handler.
-- **CHT-029**: the source-citations feature is production-tier, so the "feature off" state occurs only in a build that omits it.
-- **CHT-033**: model instruction, not an enforced guarantee; only the prompt content can be asserted.
-- **CHT-043**: suggested questions are preview-tier and absent from release builds; the README does not say so.
-- **CHT-044**: prompt-selection rule, not directly observable.
-- **CHT-056**: removal-on-cancel is confirmed for patient chat; the session-chat path was not separately traced.
-- **CHT-058**: arrow-key thread selection was not re-traced.
-- **CHT-067**: stated in a doc comment; not traced to prompt assembly.
-- **CHT-017**: encryption of stored threads when encryption is on was not re-traced.
-- **PAT-033**: Return in the New Patient field creates a patient with a blank name although the Add button is disabled for blank names; the code allows it, the interface implies it should not.
-- **SRC-032**: README bullets read as if they described search generally; confirm the wording should name the assistant.
-- **SRC-034**: a performance promise made in a code comment; no measured target in docs.
-- **CMT-031**: the composer note ignores the "Include comments in drafts" setting, and the session chat sends comments regardless of it; confirm intent.
-- **EXP-025**: README line 20 ("no backup feature of its own") conflicts with the Backups pane and PRIVACY.md/SECURITY.md
-- **NET-021**: the setup checklist and tool-health code still contain an Apple Intelligence readiness path though the feature is blocked
-- **NET-022**: revocation fetch policy exists in the app but has no caller; README says there is no license key
-- **SET-014**: the caption under-describes: a safety snapshot is also taken before a patient is deleted
