@@ -149,4 +149,78 @@ final class AudioImportTests: XCTestCase {
         XCTAssertEqual(entries.map(\.0), [.phiCreated])
         XCTAssertEqual(entries.first?.1, session.id.uuidString)
     }
+
+    // MARK: Two tracks
+
+    /// A tone file under `name`, as the user would pick it.
+    private func toneFile(named name: String, seconds: Double) throws -> URL {
+        let url = base.appendingPathComponent(name)
+        try FileManager.default.moveItem(at: try toneFile(seconds: seconds, ext: "caf"), to: url)
+        return url
+    }
+
+    private func seconds(at url: URL, _ store: Store) throws -> Double {
+        let readable = try store.readableRecording(at: url)
+        defer { if readable.isTemporary { try? FileManager.default.removeItem(at: readable.url) } }
+        return Double(try AudioResampler.loadWhisperSamples(from: readable.url).count) / 16_000
+    }
+
+    func testTwoFilesBecomeTheMicrophoneAndCallTracks() throws {
+        let protector = FileProtector(key: SymmetricKey(size: .bits256))
+        let store = Store(root: root, protector: protector)
+        let patient = try store.createPatient(name: "Alex Doe")
+        let session = try store.createSession(for: patient)
+        let call = try toneFile(named: "Recording - call.caf", seconds: 3)
+        let mic = try toneFile(named: "Recording - microphone.caf", seconds: 2)
+
+        try store.importRecordings(from: [call, mic], for: patient, session: session)
+
+        XCTAssertEqual(try seconds(at: store.micRecordingURL(for: patient, session: session), store), 2, accuracy: 0.2)
+        XCTAssertEqual(try seconds(at: store.callRecordingURL(for: patient, session: session), store), 3, accuracy: 0.2)
+        XCTAssertTrue(scratchIsEmpty(), "no converted copy is left in scratch space")
+    }
+
+    func testTheFileNamedCallIsTheCallTrack() throws {
+        let a = URL(fileURLWithPath: "/x/Call.caf"), b = URL(fileURLWithPath: "/x/Me.caf")
+        XCTAssertEqual(try AudioImport.tracks(for: [a, b]).call, a)
+        XCTAssertEqual(try AudioImport.tracks(for: [b, a]).call, a)
+        let mic = URL(fileURLWithPath: "/x/mic.caf"), call = URL(fileURLWithPath: "/x/call.caf")
+        XCTAssertEqual(try AudioImport.tracks(for: [call, mic]).mic, mic)
+    }
+
+    func testWithoutACallNameTheFirstByNameIsTheMicrophone() throws {
+        let one = URL(fileURLWithPath: "/x/track 1.wav"), two = URL(fileURLWithPath: "/x/track 2.wav")
+        let tracks = try AudioImport.tracks(for: [two, one])
+        XCTAssertEqual(tracks.mic, one)
+        XCTAssertEqual(tracks.call, two)
+    }
+
+    func testThreeFilesAreRefusedAndNothingIsWritten() throws {
+        let store = Store(root: root)
+        let patient = try store.createPatient(name: "Alex Doe")
+        let session = try store.createSession(for: patient)
+        let files = try (1...3).map { try toneFile(named: "track \($0).wav", seconds: 1) }
+
+        XCTAssertThrowsError(try store.importRecordings(from: files, for: patient, session: session)) {
+            XCTAssertEqual($0 as? AudioImportError, .tooManyFiles)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: session).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.callRecordingURL(for: patient, session: session).path))
+    }
+
+    func testWhenOneOfTwoFilesIsNotAudioNothingIsWritten() throws {
+        let store = Store(root: root)
+        let patient = try store.createPatient(name: "Alex Doe")
+        let session = try store.createSession(for: patient)
+        let mic = try toneFile(named: "mic.caf", seconds: 1)
+        let call = base.appendingPathComponent("call.caf")
+        try Data("not audio at all".utf8).write(to: call)
+
+        XCTAssertThrowsError(try store.importRecordings(from: [mic, call], for: patient, session: session)) {
+            XCTAssertEqual($0 as? AudioImportError, .unreadable)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.micRecordingURL(for: patient, session: session).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.callRecordingURL(for: patient, session: session).path))
+        XCTAssertTrue(scratchIsEmpty())
+    }
 }

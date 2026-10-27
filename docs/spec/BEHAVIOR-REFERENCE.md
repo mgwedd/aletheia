@@ -214,6 +214,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:600, Sources/App/Services/AppModel.swift:528` · `qa: RECORD-20`
 - **REC-087** Without a license key, Import Audio… shows the license alert instead of opening the picker, the same gate as Record Session.
   `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:606, Sources/App/Services/SessionRecorder.swift:238` · `qa: RECORD-21`
+- **REC-088** When the user picks two files in Import Audio…, the one whose name mentions "call" is sealed as the session's call track (call.caf) and the other as its microphone track (mic.caf); when neither or both names mention "call", the first by name is the microphone. Both are converted before either is sealed, so a file that isn't audio leaves nothing behind.
+  `surface: background` · `evidence: Sources/App/Services/AudioImport.swift, Sources/App/Services/Store.swift` · `qa: RECORD-22`
+- **REC-089** When the user picks three or more files in Import Audio…, the import is refused with "Pick one audio file, or two: the microphone track and the call track." and nothing is saved.
+  `surface: ui` · `evidence: Sources/App/Services/AudioImport.swift` · `qa: RECORD-23`
 
 ## Set-aside recordings (SAR)
 

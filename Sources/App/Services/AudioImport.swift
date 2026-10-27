@@ -5,6 +5,8 @@ enum AudioImportError: LocalizedError, Equatable {
     case unreadable
     /// The session already has a recording; importing would replace it.
     case sessionHasRecording
+    /// More than two files were picked; a session has a microphone and a call track.
+    case tooManyFiles
 
     var errorDescription: String? {
         switch self {
@@ -12,30 +14,64 @@ enum AudioImportError: LocalizedError, Equatable {
             return "Aletheia couldn't read that file as audio. Try an M4A, MP3, WAV, AIFF or CAF file."
         case .sessionHasRecording:
             return "This session already has a recording. Import into a new session instead."
+        case .tooManyFiles:
+            return "Pick one audio file, or two: the microphone track and the call track."
         }
     }
 }
 
-/// Brings an audio file the user picked into a session as its microphone
-/// recording, so it can be transcribed like one recorded in the app.
+/// Brings the audio the user picked into a session, so it can be transcribed
+/// like one recorded in the app. One file becomes the microphone recording;
+/// two become the microphone and call tracks, as Aletheia records and exports
+/// them.
 ///
-/// The file is converted to the recording format in the private scratch folder
+/// Each file is converted to the recording format in the private scratch folder
 /// (never next to the original), then sealed into the session folder the same
 /// way a finished recording is. The original file is only read.
 enum AudioImport {
     /// Frames converted per pass, so a long session never sits in memory whole.
     private static let chunkFrames: AVAudioFrameCount = 1 << 16
 
-    /// Converts `source` and seals it to `destination` with `protector`.
-    /// Throws `AudioImportError.unreadable` for a file that isn't usable audio.
-    static func importRecording(from source: URL, to destination: URL, protector: FileProtector) throws {
-        let scoped = source.startAccessingSecurityScopedResource()
-        defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+    /// Which picked file is which track. A file whose name mentions "call"
+    /// is the call track and the other the microphone; when the names don't
+    /// tell them apart, the first by name is the microphone.
+    static func tracks(for sources: [URL]) throws -> (mic: URL, call: URL?) {
+        switch sources.count {
+        case 1: return (sources[0], nil)
+        case 2:
+            let named = sources.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+            let isCall = named.map { $0.deletingPathExtension().lastPathComponent.localizedCaseInsensitiveContains("call") }
+            if isCall[0] && !isCall[1] { return (named[1], named[0]) }
+            return (named[0], named[1])
+        case 0: throw AudioImportError.unreadable
+        default: throw AudioImportError.tooManyFiles
+        }
+    }
 
-        let scratch = try PrivateStaging.scratchFile(prefix: "import", ext: "caf")
-        defer { PrivateStaging.remove(scratch) }
-        try convert(source, to: scratch)
-        try protector.sealLargeFile(from: scratch, to: destination)
+    /// Converts each `(source, destination)` pair and seals it with `protector`.
+    /// Every file is converted before any is sealed, so a file that isn't
+    /// usable audio leaves nothing behind. Throws `AudioImportError.unreadable`
+    /// for a file that isn't usable audio.
+    static func importRecordings(_ pairs: [(source: URL, destination: URL)], protector: FileProtector) throws {
+        var scratches: [URL] = []
+        defer { scratches.forEach(PrivateStaging.remove) }
+        for pair in pairs {
+            let scoped = pair.source.startAccessingSecurityScopedResource()
+            defer { if scoped { pair.source.stopAccessingSecurityScopedResource() } }
+            let scratch = try PrivateStaging.scratchFile(prefix: "import", ext: "caf")
+            scratches.append(scratch)
+            try convert(pair.source, to: scratch)
+        }
+        var sealed: [URL] = []
+        do {
+            for (scratch, pair) in zip(scratches, pairs) {
+                try protector.sealLargeFile(from: scratch, to: pair.destination)
+                sealed.append(pair.destination)
+            }
+        } catch {
+            for url in sealed { try? FileManager.default.removeItem(at: url) }
+            throw error
+        }
     }
 
     /// Writes `source` to `destination` as a CAF file: AAC when the source fits

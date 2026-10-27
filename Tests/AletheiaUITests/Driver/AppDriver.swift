@@ -16,7 +16,7 @@ struct Scenario: Encodable, Equatable {
     /// "on" for a licensed app; unset is the unlicensed app.
     var license: String?
     var aiReplies: [String]?
-    /// What Import Audio… is handed instead of the open panel: "clip" or "notAudio".
+    /// What Import Audio… is handed instead of the open panel: "clip", "twoTracks", "threeFiles" or "notAudio".
     var importFile: String?
     /// The patient whose newest session is on screen at launch.
     var open: String?

@@ -456,8 +456,8 @@ struct SessionDetailView: View {
                 }
             )
         }
-        .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio]) { result in
-            if case let .success(url) = result { importAudio(from: url) }
+        .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio], allowsMultipleSelection: true) { result in
+            if case let .success(urls) = result, !urls.isEmpty { importAudio(from: urls) }
         }
         .exportConfirmation($pendingExport, settings: settings)
         .exportResultAlert($exportResult)
@@ -1799,7 +1799,7 @@ struct SessionDetailView: View {
         #if DEBUG
         // A UI test cannot answer the system open panel; a fixture run hands
         // over its own clip instead.
-        if let fixture = FixtureMode.importFile() {
+        if let fixture = FixtureMode.importFiles() {
             importAudio(from: fixture)
             return
         }
@@ -1807,16 +1807,16 @@ struct SessionDetailView: View {
         showAudioImporter = true
     }
 
-    /// Converts and seals the picked file off the main thread, then transcribes
-    /// it when "Transcribe automatically" is on, as a finished recording would be.
-    private func importAudio(from url: URL) {
+    /// Converts and seals the picked files off the main thread, then transcribes
+    /// them when "Transcribe automatically" is on, as a finished recording would be.
+    private func importAudio(from urls: [URL]) {
         guard let store = appModel.store else { return }
         isImportingAudio = true
         let patient = patient, session = session
         Task {
             let failure: String? = await Task.detached(priority: .userInitiated) {
                 do {
-                    try store.importRecording(from: url, for: patient, session: session)
+                    try store.importRecordings(from: urls, for: patient, session: session)
                     return nil
                 } catch {
                     return error.localizedDescription
