@@ -8,6 +8,9 @@ import XCTest
 struct BackupProtection {
     let folderIsExcluded: Bool
     let settingIsOn: Bool
+    /// The Settings > Backups banner, as this build shows it.
+    let banner: String
+    let backUpNowOffered: Bool
 }
 
 /// A patient record that was damaged on disk.
@@ -129,9 +132,13 @@ extension Given {
 
 extension When {
     func lookAtBackupProtection() -> BackupProtection {
-        BackupProtection(
+        let offered = app.appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id)
+        return BackupProtection(
             folderIsExcluded: BackupExclusion.isExcluded(at: app.root),
-            settingIsOn: app.settings.keepDataOutOfSystemBackups)
+            settingIsOn: app.settings.keepDataOutOfSystemBackups,
+            banner: BackupsBanner.text(
+                excluded: app.settings.keepDataOutOfSystemBackups, backUpNowOffered: offered),
+            backUpNowOffered: offered)
     }
 
     func keepDataOutOfBackups(_ on: Bool) { app.settings.keepDataOutOfSystemBackups = on }
@@ -157,6 +164,10 @@ extension When {
     /// Turns encryption on, then backs up to a new folder outside the data folder.
     /// Reports which files in that folder contain `secret` as readable text.
     func backUpNowToAnotherFolder(containingSecret secret: String) async throws -> BackupResult {
+        // BACKUP-08 is for a dev build: Back Up Now needs at-rest encryption.
+        XCTAssertTrue(
+            app.appModel.featureRegistry.contains(id: AtRestEncryptionFeatureModule.id),
+            "BACKUP-08 needs a build that includes at-rest encryption")
         try app.encryption.enable(passphrase: "correct horse battery staple 7", iterations: 100_000)
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("aletheia-backup-target-\(UUID().uuidString)", isDirectory: true)
@@ -211,12 +222,37 @@ extension Then where Subject == BackupProtection {
     func leavesFolderOutOfBackupsByDefault() {
         expect(subject.settingIsOn, "expected the keep-out-of-backups option to be on by default")
         expect(subject.folderIsExcluded, "expected the data folder to be left out of Time Machine and iCloud backups by default")
+        bannerSaysFolderIsLeftOut()
+        bannerSaysWhoArrangesBackups()
     }
     func leavesFolderInBackups() {
         expect(!subject.folderIsExcluded, "expected the data folder to be included in Time Machine while the keep-out option is off")
+        let b = subject.banner.lowercased()
+        expect(b.contains(Copy.backupBannerIncluded), "expected the banner to say Time Machine includes the folder, got: \(subject.banner)")
+        expect(b.contains(Copy.backupBannerEncryptedDisk), "expected the banner to say to use an encrypted disk, got: \(subject.banner)")
     }
     func leavesFolderOutOfBackups() {
         expect(subject.folderIsExcluded, "expected the data folder to be left out of Time Machine and iCloud backups (option on: \(subject.settingIsOn))")
+        bannerSaysFolderIsLeftOut()
+    }
+}
+
+extension Then where Subject == BackupProtection {
+    fileprivate func bannerSaysFolderIsLeftOut() {
+        expect(subject.banner.lowercased().contains(Copy.backupBannerKeptOut), "expected the banner to say the folder is kept out of Time Machine and iCloud backups, got: \(subject.banner)")
+    }
+
+    /// A released build has no Back Up Now, so the banner must say so and leave the
+    /// arranging to the clinician; a build that has it points at the button instead.
+    fileprivate func bannerSaysWhoArrangesBackups() {
+        let b = subject.banner.lowercased()
+        if subject.backUpNowOffered {
+            expect(b.contains(Copy.backupBannerUseBackUpNow), "expected the banner to point at Back Up Now, got: \(subject.banner)")
+        } else {
+            expect(b.contains(Copy.backupBannerNotAvailable), "expected the banner to say Back Up Now is not available, got: \(subject.banner)")
+            expect(b.contains(Copy.backupBannerUpToYou), "expected the banner to say arranging a backup is up to you, got: \(subject.banner)")
+            expect(b.contains(Copy.backupBannerEncryptedDisk), "expected the banner to mention an encrypted disk, got: \(subject.banner)")
+        }
     }
 }
 

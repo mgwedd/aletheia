@@ -2,10 +2,12 @@ import XCTest
 
 final class BackupSpec: AcceptanceCase {
     func test_BACKUP_01() async throws {
+        given.buildIs(.release)
         then(when.lookAtBackupProtection()).leavesFolderOutOfBackupsByDefault()
     }
 
     func test_BACKUP_02() async throws {
+        given.buildIs(.release)
         when.keepDataOutOfBackups(false)
         then(when.lookAtBackupProtection()).leavesFolderInBackups()
 

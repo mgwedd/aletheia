@@ -26,7 +26,7 @@ enum ConsentGuideContent {
         Section(
             title: "4. Client Rights & Revocation",
             icon: "hand.raised",
-            text: "Clients can decline recording and can ask you to pause or stop at any point during a session. Under HIPAA they can also see and get a copy of their records and ask for corrections (amendments). Records you hold may have to be kept for a set time under state law or your board's rules, so do not promise a client that a recording or transcript will be deleted on request."),
+            text: "Clients can decline recording and can ask you to pause or stop at any point during a session. Clients also have the right to see and get a copy of their records and to ask for corrections (amendments). Records you hold may have to be kept for a set time under state law or your board's rules, so do not promise a client that a recording or transcript will be deleted on request."),
     ]
 
     static let sampleClause = "“I use an on-device clinical documentation tool (Aletheia) to transcribe our session audio and to help me draft clinical progress notes, using AI software that runs on my computer. The app does not send audio or notes to external servers or cloud AI providers; they are stored on this computer, and copies exist only where I export them or my own backups make them. The recording is deleted once it is transcribed; the transcript and notes are kept in your record. You may ask me to pause or stop recording at any time.”"
