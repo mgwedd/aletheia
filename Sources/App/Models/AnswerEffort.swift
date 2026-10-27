@@ -39,7 +39,8 @@ enum AnswerEffort: String, CaseIterable, Identifiable, Codable, Hashable {
     // MARK: - What each level does
 
     /// Maximum read-only lookups (`LocalToolLoop`) when refining a long-session
-    /// or patient-wide answer. Lookups are local reads, not model calls. Notes make none.
+    /// or patient-wide answer, or a Detailed or Focus note. Lookups are local reads,
+    /// not model calls.
     var maxToolCalls: Int {
         switch self {
         case .fast: return 0

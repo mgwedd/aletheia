@@ -98,7 +98,6 @@ struct ChatPaneView: View {
             Text("AI generated responses can be inaccurate. Double-check responses.")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
-                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
