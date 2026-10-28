@@ -127,8 +127,7 @@ final class ChatSpec: AcceptanceCase {
             of: try await given.patient(named: "Jane Doe"),
             transcript: AssistantDesk.transcript(minutes: 45, about: "sleep"))
         desk.model.summarizesConversation(as: "Earlier: sleep was discussed.")
-        // Longer than a quarter of the window of any model the app runs.
-        desk.model.fallback(String(repeating: "She described her week in some detail. ", count: 700))
+        desk.model.answersPastAQuarterOfTheWindow()
         let ask = desk.askTab(of: session)
 
         ask.ask("What was said about sleep?")

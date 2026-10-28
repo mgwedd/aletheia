@@ -45,3 +45,15 @@ extension Then where Subject == AskPane {
 extension Then where Subject == SteeredModel {
     func wasNeverAsked() { expect(subject.requests.isEmpty, "the AI model was asked \(subject.requests.count) time(s)") }
 }
+
+extension SteeredModel {
+    /// Answers every question with text just past a quarter of the window of
+    /// the model this Mac runs, so the next question compacts first. The
+    /// window follows the Mac's memory, so a fixed length would be too short
+    /// on one Mac and longer than the whole window on another.
+    func answersPastAQuarterOfTheWindow() {
+        let sentence = "She described her week in some detail. "
+        let count = ChatMemory.budget() / sentence.count + 20
+        fallback(String(repeating: sentence, count: count))
+    }
+}

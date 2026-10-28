@@ -440,7 +440,7 @@ enum FixtureProbe {
         /// and the final prompt, joined, one entry per request.
         var aiRequests: [String]
         /// Lines the transcript on screen is laid out in; 0 when there is none.
-        var transcriptLines: Int
+        var transcriptLines: Int = 0
     }
 
     /// Stable text: keys sorted, so equal facts always read the same.
