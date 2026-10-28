@@ -54,6 +54,8 @@ struct Scenario: Encodable, Equatable {
     /// The patient whose newest session is on screen at launch.
     var open: String?
     var consentPolicy: String?
+    var memoryGB: Int?
+    var llamaModel: String?
 }
 
 /// The facts the app publishes through its invisible `fixture-probe` element.

@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.67.0] - 2026-10-28
+
+### Added
+- add MedLlama 2 and MedGemma opt-in model downloads (#535)
+
 ## [2.66.0] - 2026-10-27
 
 ### Added

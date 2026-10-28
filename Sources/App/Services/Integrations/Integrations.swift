@@ -131,6 +131,7 @@ final class Integrations: ObservableObject {
         let settings = settings
         let model = activeModelName
         var service = AssistantService(assistant: makeAssistant(), model: model, systemPrompt: settings.systemPrompt)
+        service.budget = ContextBudget(tokens: ModelAdvisor.contextBudgetTokens(for: settings.hardware, model: settings.llamaModel))
         service.clientName = clientName
         service.report = { event in
             if case .finished(let stats) = event {

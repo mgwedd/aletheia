@@ -355,3 +355,21 @@ Use of this model is subject to the Llama 3.1 Community License and its Acceptab
 - Full text: https://www.apache.org/licenses/LICENSE-2.0
 
 Neither model card names a copyright holder.
+
+### MedLlama 2 7B
+
+- File: `MedLlama-2-7B.q4_K_S.gguf` (shown in Aletheia as MedLlama 2 7B)
+- Source: https://huggingface.co/garcianacho/MedLlama-2-7B-GGUF (a GGUF conversion of https://huggingface.co/llSourcell/medllama2_7b, fine-tuned from Meta's Llama 2 7B on the MedQA dataset, pinned to one repository revision)
+- License: Llama 2 Community License: https://github.com/meta-llama/llama-models/blob/main/models/llama2/LICENSE (`llSourcell/medllama2_7b` also lists `mit` on its model card)
+- Acceptable Use Policy: https://github.com/meta-llama/llama-models/blob/main/models/llama2/USE_POLICY.md
+
+Llama 2 is licensed under the LLAMA 2 Community License, Copyright © Meta Platforms, Inc. All Rights Reserved.
+
+### MedGemma 4B and MedGemma 27B
+
+- Files: `medgemma-4b-it-Q4_K_M.gguf` (shown in Aletheia as MedGemma 4B) and `medgemma-27b-text-it-Q4_K_M.gguf` (shown in Aletheia as MedGemma 27B)
+- Source: https://huggingface.co/unsloth/medgemma-4b-it-GGUF and https://huggingface.co/unsloth/medgemma-27b-text-it-GGUF (GGUF conversions of Google's `google/medgemma-4b-it` and `google/medgemma-27b-text-it`, each pinned to one repository revision)
+- License: Health AI Developer Foundations Terms of Use: https://developers.google.com/health-ai-developer-foundations/terms
+- Prohibited Use Policy: https://developers.google.com/health-ai-developer-foundations/prohibited-use-policy
+
+Use of MedGemma is subject to Google's Health AI Developer Foundations Terms of Use and Prohibited Use Policy.

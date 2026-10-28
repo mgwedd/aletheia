@@ -59,9 +59,10 @@ def prop(name):
     return dict(re.findall(r'case \.(\w+): return "([^"]+)"', m.group(1)))
 repo, revs, shas, fnames = prop("repo"), prop("revision"), prop("expectedSHA256"), prop("fileName")
 for case in sorted(shas):
-    components.append(sec("models", type="machine-learning-model", name="ggml-org/%s:%s" % (repo[case], fnames[case]),
+    r = repo[case] if "/" in repo[case] else "ggml-org/" + repo[case]
+    components.append(sec("models", type="machine-learning-model", name="%s:%s" % (r, fnames[case]),
         version=revs[case], hashes=[{"alg": "SHA-256", "content": shas[case]}],
-        externalReferences=[{"type": "distribution", "url": "https://huggingface.co/ggml-org/%s/tree/%s" % (repo[case], revs[case])}]))
+        externalReferences=[{"type": "distribution", "url": "https://huggingface.co/%s/tree/%s" % (r, revs[case])}]))
 
 # workflow actions
 seen = {}

@@ -23,6 +23,9 @@ final class LlamaModelTests: XCTestCase {
     func testExpectedBytesMatchThePinnedSizes() {
         XCTAssertEqual(LlamaModel.llama31_8b.expectedBytes, 6_036_116_480)
         XCTAssertEqual(LlamaModel.gemma4_e2b.expectedBytes, 2_841_481_184)
+        XCTAssertEqual(LlamaModel.medllama2_7b.expectedBytes, 3_856_740_032)
+        XCTAssertEqual(LlamaModel.medgemma_4b.expectedBytes, 2_489_894_720)
+        XCTAssertEqual(LlamaModel.medgemma_27b.expectedBytes, 16_546_405_376)
         for model in LlamaModel.allCases {
             XCTAssertEqual(Int64(model.approximateSizeMB), (model.expectedBytes + 500_000) / 1_000_000, "\(model)")
         }
@@ -34,7 +37,7 @@ final class LlamaModelTests: XCTestCase {
             let url = model.downloadURL.absoluteString
             XCTAssertTrue(url.contains("/resolve/\(model.revision)/\(model.fileName)"), url)
             XCTAssertFalse(url.contains("/resolve/main/"), url)
-            XCTAssertTrue(url.hasPrefix("https://huggingface.co/ggml-org/"), url)
+            XCTAssertTrue(url.hasPrefix("https://huggingface.co/"), url)
         }
     }
 
@@ -56,6 +59,38 @@ final class LlamaModelTests: XCTestCase {
         XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 15)), .gemma4_e2b)
         XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 16)), .llama31_8b)
         XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 64)), .llama31_8b)
+    }
+
+    func testMedGemmaSizeFollowsMemory() {
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 8)), .medgemma_4b)
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 16)), .medgemma_4b)
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 24)), .medgemma_4b)
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 31)), .medgemma_4b)
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 32)), .medgemma_27b)
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 64)), .medgemma_27b)
+    }
+
+    func testOfferedModelsIncludeMedLlama2AndHardwareSizedMedGemma() {
+        XCTAssertEqual(
+            LlamaModel.offered(for: Self.mac(gb: 16)),
+            [.llama31_8b, .gemma4_e2b, .medllama2_7b, .medgemma_4b]
+        )
+        XCTAssertEqual(
+            LlamaModel.offered(for: Self.mac(gb: 32)),
+            [.llama31_8b, .gemma4_e2b, .medllama2_7b, .medgemma_27b]
+        )
+        XCTAssertEqual(
+            LlamaModel.offered(for: Self.mac(gb: 16), including: .medgemma_27b),
+            [.llama31_8b, .gemma4_e2b, .medllama2_7b, .medgemma_4b, .medgemma_27b]
+        )
+    }
+
+    func testContextWindowsMatchTrainedLengths() {
+        XCTAssertEqual(LlamaModel.llama31_8b.contextWindowTokens, 131_072)
+        XCTAssertEqual(LlamaModel.gemma4_e2b.contextWindowTokens, 131_072)
+        XCTAssertEqual(LlamaModel.medllama2_7b.contextWindowTokens, 4_096)
+        XCTAssertEqual(LlamaModel.medgemma_4b.contextWindowTokens, 131_072)
+        XCTAssertEqual(LlamaModel.medgemma_27b.contextWindowTokens, 131_072)
     }
 
     func testFileNamesAreUnique() {
