@@ -50,6 +50,9 @@ struct FixtureScenario: Decodable, Equatable {
     /// exercise memory-dependent model choices deterministically.
     var memoryGB: Int?
 
+    /// Overrides the selected built-in Llama model by its raw identifier.
+    var llamaModel: String?
+
     var buildTier: BuildTier { tier == "production" ? .production : .dev }
     var appLockOn: Bool { appLock == "on" }
     var licenseOn: Bool { license == "on" || license == "test" }
@@ -141,6 +144,9 @@ enum FixtureMode {
         settings.dataRootURL = root
         settings.hasCompletedFirstRun = true
         if !settings.hasAcceptedCurrentLegal { settings.recordLegalAcceptance() }
+        if let modelRaw = scenario?.llamaModel, let model = LlamaModel(rawValue: modelRaw) {
+            settings.llamaModel = model
+        }
         // Only on a run's first launch, so a relaunch keeps what the test changed.
         if isFirstLaunchOfRun {
             settings.appLockEnabled = scenario?.appLockOn ?? false

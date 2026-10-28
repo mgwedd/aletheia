@@ -29,6 +29,7 @@ struct ModelLicenseLink: View {
                     .foregroundStyle(Theme.muted.color)
                 Link(licenseName, destination: licenseURL)
                     .tint(Theme.accent.color)
+                    .accessibilityIdentifier("model-license-link")
                 if let usePolicyURL {
                     Text("·")
                         .foregroundStyle(Theme.muted.color)
