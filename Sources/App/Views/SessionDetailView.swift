@@ -78,7 +78,6 @@ private struct NoteProgressRow: View {
                 ThemeProgressBar(value: highWater.clamp(NoteProgress.fraction(progress, now: context.date, speed: speed)))
                     .frame(maxWidth: 240)
             }
-            .accessibilityElement(children: .combine)
         }
     }
 }
