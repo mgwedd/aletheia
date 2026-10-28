@@ -455,7 +455,7 @@ final class AppSettings: ObservableObject {
         if FixtureMode.isActive {
             // Grandfathered stands in for a license; the scenario decides.
             FixtureMode.defaults.set(FixtureMode.scenario?.licenseOn ?? false, forKey: Keys.licenseGrandfathered)
-            self.init(defaults: FixtureMode.defaults)
+            self.init(defaults: FixtureMode.defaults, hardware: FixtureMode.hardware)
             FixtureMode.prepare(self)
             return
         }
@@ -464,9 +464,8 @@ final class AppSettings: ObservableObject {
     }
 
     /// Test seam: the shared instance uses `UserDefaults.standard`.
-    init(defaults: UserDefaults) {
+    init(defaults: UserDefaults, hardware: HardwareCapabilities = .current()) {
         self.defaults = defaults
-        let hardware = HardwareCapabilities.current()
         let recommendation = ModelAdvisor.recommend(for: hardware)
         self.hardware = hardware
         self.recommendation = recommendation

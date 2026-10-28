@@ -1213,6 +1213,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/ModelLicenseLink.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-07`
 - **AIE-046** When a background summary job is running and a note or question arrives, the summary yields and the note or question runs next.
   `surface: background` · `evidence: Sources/App/Services/InferenceQueue.swift` · `qa: NOTE-08`
+- **AIE-047** In Settings, the built-in model picker also offers MedLlama 2 7B (about 3.9 GB, 4K context window, under the Llama 2 Community License) and MedGemma (128K context window, under the Health AI Developer Foundations Terms), choosing MedGemma 4B (about 2.5 GB) on Macs with under 32 GB of memory and MedGemma 27B (about 16.5 GB) at 32 GB or more.
+  `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModel.swift, Sources/App/Services/ModelAdvisor.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-15`
 
 ## Patients (PAT)
 

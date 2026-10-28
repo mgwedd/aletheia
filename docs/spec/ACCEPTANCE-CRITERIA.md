@@ -246,6 +246,7 @@ Before you start: setup finished.
 - **SETTINGS-12** Open **Licenses & Legal** → the Terms of Use and Privacy Policy links, **Consent Guide…** and third-party notices are there.
 - **SETTINGS-13** Choose an iCloud Drive or cloud-synced folder as the data folder → it is refused, asking for a folder that stays on this Mac; the current folder is kept.
 - **SETTINGS-14** Open Aletheia with its data folder now synced → a **Move data to this Mac** sheet offers to copy and verify it, then keep or delete the old one.
+- **SETTINGS-15** Open **AI and models** > **Built-in model** → you can also choose MedLlama 2 7B (under the Llama 2 Community License) or MedGemma (under the Health AI Developer Foundations Terms, 4B on Macs under 32 GB and 27B at 32 GB or more).
 
 ## 16. Security panel, activity log and Doctor (SECURITY)
 Before you start: a data folder with some activity (unlock, export, delete a patient).
