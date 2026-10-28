@@ -486,10 +486,14 @@ final class AppSettings: ObservableObject {
         }
         assistantBackend = backend
         Self.removeRetiredKeys(from: defaults)
-        if let raw = defaults.string(forKey: Keys.llamaModel), let model = LlamaModel(rawValue: raw) {
+        let storedModel = defaults.string(forKey: Keys.llamaModel)
+        if let raw = storedModel, let model = LlamaModel(rawValue: raw),
+           model != .medgemma_27b || (hardware.isAppleSilicon && hardware.physicalMemoryGB >= 32) {
             llamaModel = model
         } else {
-            llamaModel = .recommended(for: hardware)
+            let defaultModel = LlamaModel.recommended(for: hardware)
+            llamaModel = defaultModel
+            if storedModel != nil { defaults.set(defaultModel.rawValue, forKey: Keys.llamaModel) }
         }
         let savedPrompt = defaults.string(forKey: Keys.systemPrompt)
         systemPrompt = (savedPrompt?.isEmpty == false) ? savedPrompt! : Prompts.defaultSystemPrompt

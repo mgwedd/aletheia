@@ -62,6 +62,17 @@ enum TranscriptSections {
     static let targetSeconds = 600
     static let maxCharacters = 12_000
 
+    /// Keep the ten-minute sections stable for retrieval and cached digest
+    /// anchors, but shrink dense sections if a model's effective window needs
+    /// it. Reserve the real digest prompt wrapper plus extra estimate margin;
+    /// `availableCharacters` already holds back reply and ten percent.
+    static func maxCharacters(for budget: ContextBudget, systemPrompt: String, clientName: String) -> Int {
+        let wrapper = Prompts.sectionDigest(text: "", anchor: "[00:00–00:00]", clientName: clientName)
+        let reserved = ContextBudget.weightedLength(of: systemPrompt)
+            + ContextBudget.weightedLength(of: wrapper)
+        return max(1, min(maxCharacters, budget.availableCharacters(reserving: reserved + 2_000)))
+    }
+
     static func split(
         _ transcript: String,
         targetSeconds: Int = targetSeconds,

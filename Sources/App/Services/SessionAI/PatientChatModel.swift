@@ -112,7 +112,7 @@ final class PatientChatModel: ObservableObject {
         guard let threadID = selectedThreadID else { return }
         // Past ChatMemory's budget, compact first so the answer still has the
         // whole conversation, the earlier part in summary.
-        if ChatMemory.needsCompaction(messages) {
+        if ChatMemory.needsCompaction(messages, window: integrations.makeAssistantService().budget) {
             compact("") { [weak self] in self?.send(question) }
             return
         }

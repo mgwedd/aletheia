@@ -1,13 +1,10 @@
 import XCTest
 
 extension Copy {
-    static let medLlama2ID = "medllama-2-7b-q4_k_s"
-    static let medGemma4BID = "medgemma-4b-it-q4_k_m"
+    static let medGemma4BID = "medgemma-1.5-4b-it-q4_k_m"
     static let medGemma27BID = "medgemma-27b-text-it-q4_k_m"
-    static let medLlama2Option = "MedLlama 2 7B — medical, 8 GB+ Macs"
-    static let medGemma4BOption = "MedGemma 4B (Instruct) — medical, 8 GB+ Macs"
-    static let medGemma27BOption = "MedGemma 27B (Instruct) — medical, 32 GB+ Macs"
-    static let llama2License = "Llama 2 Community License"
+    static let medGemma4BOption = "MedGemma 1.5 4B — faster, 8 GB+ Macs"
+    static let medGemma27BOption = "MedGemma 27B — higher quality, 32 GB+ Apple silicon"
     static let healthAIFoundationsTerms = "Health AI Developer Foundations Terms"
 }
 

@@ -95,7 +95,9 @@ enum LongSessionNote {
                 patientBackground: fields.background,
                 verbosity: verbosity, instructions: instructions, clientName: service.clientName)
         }
-        if readsWhole(transcript), service.fits(prompt: prompt(.transcript(transcript))) {
+        let sectionLimit = TranscriptSections.maxCharacters(
+            for: service.budget, systemPrompt: service.systemPrompt, clientName: service.clientName)
+        if readsWhole(transcript, maxCharacters: sectionLimit), service.fits(prompt: prompt(.transcript(transcript))) {
             if let note = fields.coverageNote { coverage(note) }
             return service.streamDigest(prompt: prompt(.transcript(transcript)), task: .note, grammar: format.grammar)
         }
@@ -357,8 +359,8 @@ enum LongSessionNote {
     }
 
     /// Whether `transcript` is short enough to send whole (if it also fits).
-    nonisolated static func readsWhole(_ transcript: String) -> Bool {
-        TranscriptSections.split(transcript).count <= wholeReadSections
+    nonisolated static func readsWhole(_ transcript: String, maxCharacters: Int = TranscriptSections.maxCharacters) -> Bool {
+        TranscriptSections.split(transcript, maxCharacters: maxCharacters).count <= wholeReadSections
     }
 
     /// Every section's digest in order, each on a line led by its times.

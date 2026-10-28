@@ -12,9 +12,8 @@ enum AssetID: Int, CaseIterable {
     case whisperLargeV3 = 4
     case llama31_8b = 10
     case gemma4_e2b = 11
-    case medllama2_7b = 12
-    case medgemma_4b = 13
     case medgemma_27b = 14
+    case medgemma15_4b = 15
     /// The release archive named by the update feed.
     case updateArchive = 20
 
@@ -31,8 +30,7 @@ enum AssetID: Int, CaseIterable {
         switch model {
         case .llama31_8b: self = .llama31_8b
         case .gemma4_e2b: self = .gemma4_e2b
-        case .medllama2_7b: self = .medllama2_7b
-        case .medgemma_4b: self = .medgemma_4b
+        case .medgemma15_4b: self = .medgemma15_4b
         case .medgemma_27b: self = .medgemma_27b
         }
     }

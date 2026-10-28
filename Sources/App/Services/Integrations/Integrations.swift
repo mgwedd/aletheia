@@ -67,7 +67,8 @@ final class Integrations: ObservableObject {
 
     private func builtInAssistant() -> Assistant {
         #if canImport(llama)
-        return LlamaAssistant(modelURL: llamaModelURL, expectedModelBytes: settings.llamaModel.expectedBytes, engineOverride: engineOverride)
+        return LlamaAssistant(modelURL: llamaModelURL, expectedModelBytes: settings.llamaModel.expectedBytes,
+                              budget: selectedModelBudget, engineOverride: engineOverride)
         #else
         return UnavailableAssistant()
         #endif
@@ -79,6 +80,9 @@ final class Integrations: ObservableObject {
 
     /// The built-in model the user chose, and where its weights live.
     var llamaModel: LlamaModel { settings.llamaModel }
+    private var selectedModelBudget: ContextBudget {
+        ContextBudget(tokens: ModelAdvisor.contextBudgetTokens(for: settings.hardware, model: settings.llamaModel))
+    }
     var llamaModelURL: URL {
         #if DEBUG
         if FixtureMode.isActive { return FixtureMode.modelURL }
@@ -131,7 +135,7 @@ final class Integrations: ObservableObject {
         let settings = settings
         let model = activeModelName
         var service = AssistantService(assistant: makeAssistant(), model: model, systemPrompt: settings.systemPrompt)
-        service.budget = ContextBudget(tokens: ModelAdvisor.contextBudgetTokens(for: settings.hardware, model: settings.llamaModel))
+        service.budget = selectedModelBudget
         service.clientName = clientName
         service.report = { event in
             if case .finished(let stats) = event {

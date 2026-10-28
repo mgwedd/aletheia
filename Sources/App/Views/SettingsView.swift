@@ -618,6 +618,22 @@ struct SettingsView: View {
                         .buttonStyle(.themed)
                     }
                 }
+                ForEach(LlamaRuntime.retiredDownloadedModels()) { retired in
+                    SettingsHairline()
+                    HStack {
+                        SettingsCaption("\(retired.name) is also on disk (~\(retired.approximateSizeMB) MB).")
+                        Spacer()
+                        Button("Remove \(retired.name)") {
+                            do {
+                                try LlamaRuntime.removeRetiredModel(retired)
+                                Task { await runHealthChecks() }
+                            } catch {
+                                errorMessage = error.localizedDescription
+                            }
+                        }
+                        .buttonStyle(.themed)
+                    }
+                }
             }
         }
     }

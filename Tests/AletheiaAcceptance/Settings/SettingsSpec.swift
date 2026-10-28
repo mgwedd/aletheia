@@ -83,10 +83,10 @@ final class SettingsSpec: AcceptanceCase {
 
     func test_SETTINGS_15() async throws {
         then(when.lookAtBuiltInModels(onMacWithMemoryGB: 16))
-            .offersMedicalModels(medLlama: Copy.medLlama2, medGemma: Copy.medGemma4B)
-        then(when.lookAtBuiltInModels(onMacWithMemoryGB: 32))
-            .offersMedicalModels(medLlama: Copy.medLlama2, medGemma: Copy.medGemma27B)
+            .offersMedicalModels(Copy.medGemma4B)
+        then(when.lookAtBuiltInModels(onMacWithMemoryGB: 48))
+            .offersMedicalModels(Copy.medGemma27B)
         then(when.lookAtMedicalModelLicenses())
-            .usesTerms(medLlamaLicense: Copy.llama2License, medGemmaTerms: Copy.healthAIFoundationsTerms)
+            .usesTerms(medGemmaTerms: Copy.healthAIFoundationsTerms)
     }
 }

@@ -7,6 +7,33 @@ import Foundation
 /// linked in (`Packages/LlamaCpp`), as every shipping build is. It's driven by
 /// `#if canImport(llama)`.
 enum LlamaRuntime {
+    /// Previously downloadable weights remain on disk after a catalog upgrade
+    /// until the user removes them in Settings.
+    struct RetiredModelFile: Identifiable {
+        let name: String
+        let fileName: String
+        let approximateSizeMB: Int
+        var id: String { fileName }
+    }
+
+    static let retiredModelFiles: [RetiredModelFile] = [
+        .init(name: "MedLlama 2 7B", fileName: "MedLlama-2-7B.q4_K_S.gguf", approximateSizeMB: 3857),
+        .init(name: "MedGemma 4B", fileName: "medgemma-4b-it-Q4_K_M.gguf", approximateSizeMB: 2490),
+    ]
+
+    static func retiredDownloadedModels(in directory: URL = modelsDirectory) -> [RetiredModelFile] {
+        retiredModelFiles.filter { FileManager.default.fileExists(atPath: directory.appendingPathComponent($0.fileName).path) }
+    }
+
+    static func removeRetiredModel(_ model: RetiredModelFile, in directory: URL = modelsDirectory) throws {
+        guard retiredModelFiles.contains(where: { $0.fileName == model.fileName }) else { return }
+        unloadAll()
+        let url = directory.appendingPathComponent(model.fileName)
+        try? FileManager.default.removeItem(at: ModelFileInstaller.partialURL(for: url))
+        try? FileManager.default.removeItem(at: ModelFileInstaller.legacyResumeDataURL(for: url))
+        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+    }
+
     /// Whether the llama.cpp module is linked into this build.
     static var isBuilt: Bool {
         #if canImport(llama)

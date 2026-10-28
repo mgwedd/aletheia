@@ -14,6 +14,36 @@ final class BuiltInEngineOnlyTests: XCTestCase {
     // MARK: Migration
 
     @MainActor
+    func testRetiredMedicalSelectionMovesToCurrentDefault() {
+        let hardware = HardwareCapabilities(isAppleSilicon: true, physicalMemoryGB: 16, coreCount: 8, chipDescription: "Test")
+        for retired in ["medllama-2-7b-q4_k_s", "medgemma-4b-it-q4_k_m"] {
+            let defaults = freshDefaults()
+            defaults.set(retired, forKey: "llamaModel")
+            let settings = AppSettings(defaults: defaults, hardware: hardware)
+            XCTAssertEqual(settings.llamaModel, .medgemma15_4b)
+            XCTAssertEqual(defaults.string(forKey: "llamaModel"), LlamaModel.medgemma15_4b.rawValue)
+        }
+    }
+
+    @MainActor
+    func testExplicitGeneralSelectionSurvivesUpgrade() {
+        let defaults = freshDefaults()
+        defaults.set(LlamaModel.llama31_8b.rawValue, forKey: "llamaModel")
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.llamaModel, .llama31_8b)
+    }
+
+    @MainActor
+    func testLargeModelOnInsufficientHardwareMovesToSmallModel() {
+        let defaults = freshDefaults()
+        defaults.set(LlamaModel.medgemma_27b.rawValue, forKey: "llamaModel")
+        let hardware = HardwareCapabilities(isAppleSilicon: false, physicalMemoryGB: 32, coreCount: 8, chipDescription: "Intel")
+        let settings = AppSettings(defaults: defaults, hardware: hardware)
+        XCTAssertEqual(settings.llamaModel, .medgemma15_4b)
+        XCTAssertEqual(defaults.string(forKey: "llamaModel"), LlamaModel.medgemma15_4b.rawValue)
+    }
+
+    @MainActor
     func testStoredServerBackendMigratesToAutomaticAndIsRewritten() {
         let defaults = freshDefaults()
         defaults.set("ollama", forKey: "assistantBackend") // legacy-key

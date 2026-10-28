@@ -25,7 +25,7 @@ Aletheia is a tool, not legal or clinical advice. Read [CONSENT.md](CONSENT.md) 
 
 ## For therapists
 
-You need a Mac running **macOS 14 or newer**, and 4 to 8 GB of free disk space for the downloads. Apple Silicon with 16 GB of memory gives the best results; 8 GB works with smaller models, which the app picks for you.
+You need a Mac running **macOS 14 or newer**. The default AI download needs about 2.5 GB of disk space on most Macs, or about 16.5 GB on Apple silicon with 48 GB+ memory; transcription needs additional space. Apple silicon with 16 GB of memory gives good results; 8 GB uses the smaller medical model.
 
 ### 1. Install Aletheia
 
@@ -88,7 +88,7 @@ flowchart LR
 
 ### What a note or answer reads
 
-- **Context window.** The prompt is never truncated silently. Each Mac has a prompt budget: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB or more (one tier lower on Intel). A prompt over budget fails with a clear message and nothing is sent.
+- **Context window.** The prompt is never truncated silently. Each Mac has a prompt budget: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB or more (one tier lower on Intel). MedGemma 27B uses 32K on 32 GB Macs to leave room for its weights. A prompt over budget fails with a clear message and nothing is sent.
 - **Token estimate.** The budget check counts by script: about 3 Latin characters a token, but about a token per character for Japanese, Chinese, Korean and similar scripts.
 - **Tripwire.** If the engine reports reading well under what was sent, or reading right up to its window's limit, the answer shows a notice that the model may not have read everything.
 - **Progress.** A note shows one line and a progress bar while it is generated; chat shows the stage, elapsed time and token counts.
@@ -152,11 +152,11 @@ The only third-party dependencies are the official whisper.cpp and llama.cpp XCF
 
 | Mac | Speech model | AI model |
 |---|---|---|
-| Apple Silicon, 16 GB+ | medium.en | llama3.1:8b |
-| Apple Silicon, 8 GB+ | small.en | llama3.2:3b |
-| Intel, 16 GB+ | small.en | llama3.1:8b |
-| Other, 8 GB+ | base.en | llama3.2:3b |
-| Under 8 GB | base.en | llama3.2:1b |
+| Apple silicon, 48 GB+ | medium.en | MedGemma 27B text |
+| Apple silicon, 16–47 GB | medium.en | MedGemma 1.5 4B |
+| Apple silicon, 8–15 GB | small.en | MedGemma 1.5 4B |
+| Intel, 16 GB+ | small.en | MedGemma 1.5 4B |
+| Other Macs | base.en | MedGemma 1.5 4B |
 
 ### Storage protection
 
@@ -248,12 +248,14 @@ CI runs on macOS runners (the only place the Swift code compiles). To save macOS
 
 The official llama.cpp XCFramework (`Packages/LlamaCpp`, pinned by URL and checksum) is linked into every build. The built-in model is the default AI engine in every build: setup downloads it inside Aletheia, with nothing else to install.
 
-Models come from ggml-org on Hugging Face, pinned to a revision and verified by SHA-256 before install:
+Built-in models come from pinned GGUF conversions on Hugging Face and are verified by SHA-256 before install:
 
 | Mac | Default model |
 |---|---|
-| 16 GB+ | Llama 3.1 8B Instruct Q4_0 (~6.0 GB) |
-| Under 16 GB | Gemma 4 E2B Q4_0 (~2.8 GB) |
+| Apple silicon, 48 GB+ | MedGemma 27B text Q4_K_M (~16.5 GB) |
+| All other Macs | MedGemma 1.5 4B Q4_K_M (~2.5 GB) |
+
+MedGemma 27B is also selectable on 32 GB+ Apple silicon. Existing general-model selections remain available to those users. MedLlama 2 and the original MedGemma 4B are retired; saved selections move to the current medical default.
 
 The engine applies the model's chat template. The context is sized to the prompt plus the reply, rounded up to a power of two (8K minimum) and capped at the context budget and the model's limit; a prompt over budget fails rather than being truncated. Flash attention and an 8-bit KV cache are on. The model unloads on app lock, on a model or backend change, and after 30 minutes idle.
 

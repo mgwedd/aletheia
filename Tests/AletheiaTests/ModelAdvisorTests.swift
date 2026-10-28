@@ -9,26 +9,26 @@ final class ModelAdvisorTests: XCTestCase {
     func testAppleSiliconHighMemoryGetsLargerModels() {
         let r = ModelAdvisor.recommend(for: hardware(appleSilicon: true, memGB: 16))
         XCTAssertEqual(r.whisperModel, .mediumEn)
-        XCTAssertEqual(r.medGemmaModel, .medgemma_4b)
+        XCTAssertEqual(r.medGemmaModel, .medgemma15_4b)
     }
 
-    func testAppleSilicon32GBGetsLargerMedGemma() {
+    func testAppleSilicon32GBKeepsResponsiveDefault() {
         let r = ModelAdvisor.recommend(for: hardware(appleSilicon: true, memGB: 32))
         XCTAssertEqual(r.whisperModel, .mediumEn)
-        XCTAssertEqual(r.medGemmaModel, .medgemma_27b)
+        XCTAssertEqual(r.medGemmaModel, .medgemma15_4b)
     }
 
     func testAppleSilicon8GBGetsMidTier() {
         let r = ModelAdvisor.recommend(for: hardware(appleSilicon: true, memGB: 8))
         XCTAssertEqual(r.whisperModel, .smallEn)
-        XCTAssertEqual(r.medGemmaModel, .medgemma_4b)
+        XCTAssertEqual(r.medGemmaModel, .medgemma15_4b)
     }
 
     func testContextBudgetCapsAtModelContextWindow() {
         let mac32 = hardware(appleSilicon: true, memGB: 32)
-        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac32, model: .medllama2_7b), 4_096)
-        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac32, model: .medgemma_27b), 65_536)
-        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac32, model: .medgemma_4b), 65_536)
+        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac32, model: .medgemma_27b), 32_768)
+        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac32, model: .medgemma15_4b), 65_536)
+        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: hardware(appleSilicon: true, memGB: 48), model: .medgemma_27b), 65_536)
     }
 
     func testIntel16GBKeepsTranscriptionLighter() {
