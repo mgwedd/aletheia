@@ -112,6 +112,20 @@ final class ThirdPartyNoticesTests: XCTestCase {
         XCTAssertEqual(LlamaModel.gemma4_e2b.licenseName, "Apache License 2.0")
     }
 
+    func testMedicalModelsCarryTheirLicensesAndPolicies() {
+        XCTAssertEqual(LlamaModel.medllama2_7b.licenseName, "Llama 2 Community License")
+        XCTAssertNotNil(LlamaModel.medllama2_7b.acceptableUseURL)
+        XCTAssertEqual(LlamaModel.medgemma_4b.licenseName, "Health AI Developer Foundations Terms")
+        XCTAssertEqual(LlamaModel.medgemma_27b.licenseName, "Health AI Developer Foundations Terms")
+        XCTAssertEqual(
+            LlamaModel.medgemma_4b.licenseURL.absoluteString,
+            "https://developers.google.com/health-ai-developer-foundations/terms"
+        )
+        XCTAssertEqual(LlamaModel.medgemma_27b.licenseURL, LlamaModel.medgemma_4b.licenseURL)
+        XCTAssertNotNil(LlamaModel.medgemma_4b.acceptableUseURL)
+        XCTAssertEqual(LlamaModel.medgemma_27b.acceptableUseURL, LlamaModel.medgemma_4b.acceptableUseURL)
+    }
+
     // MARK: - The notices name every model and package
 
     func testEveryModelIsNamedInTheNotices() throws {

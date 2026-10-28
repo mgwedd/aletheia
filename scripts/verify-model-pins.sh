@@ -27,15 +27,14 @@
 # it is meant for CI (see .github/workflows/verify-model-pins.yml), not every build.
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PINS_FILE="Sources/App/Services/WhisperModelPins.swift"
 SETTINGS_FILE="Sources/App/Services/AppSettings.swift"
 LLAMA_FILE="Sources/App/Services/Llama/LlamaModel.swift"
-LLAMA_ORG="ggml-org"
-LLAMA_EXPECTED_COUNT=2
+LLAMA_EXPECTED_COUNT=5
 # The one exact line that builds the LLM download URL from the pinned revision.
-LLAMA_URL_LINE='        URL(string: "https://huggingface.co/ggml-org/\(repo)/resolve/\(revision)/\(fileName)")!'
+LLAMA_URL_LINE='        URL(string: "https://huggingface.co/\(repo)/resolve/\(revision)/\(fileName)")!'
 HF_REPO="ggerganov/whisper.cpp"
 README_URL="https://raw.githubusercontent.com/ggerganov/whisper.cpp/master/models/README.md"
 # "<Swift case>|<raw value>" pairs; must mirror `enum WhisperModel` exactly
@@ -216,7 +215,7 @@ extract_llama() {
   local fields cases c prop v row out=""
   [ -f "$LLAMA_FILE" ] || die "missing $LLAMA_FILE"
   grep -qxF -- "$LLAMA_URL_LINE" "$LLAMA_FILE" \
-    || die "downloadURL in $LLAMA_FILE must be exactly the revision-pinned resolve/\\(revision) URL under ${LLAMA_ORG}"
+    || die "downloadURL in $LLAMA_FILE must be exactly the revision-pinned resolve/\\(revision) URL on huggingface.co"
   [ "$(grep -c 'resolve/' "$LLAMA_FILE" || true)" -eq 1 ] || die "unexpected extra resolve/ URL in $LLAMA_FILE"
   fields=$(llama_fields)
   cases=$(awk '/^enum LlamaModel/ { i = 1; next } i && /^}/ { i = 0 } i && /^    case [A-Za-z0-9_]+ = "/ { sub(/^    case /, ""); sub(/ =.*/, ""); print }' "$LLAMA_FILE")
@@ -273,10 +272,10 @@ check_llama_models() {
   summary "|---|---|---|---|"
   while IFS='|' read -r c repo rev sha bytes file; do
     [ -n "$c" ] || continue
-    echo "==> ${c}: ${LLAMA_ORG}/${repo} @ ${rev}"
+    echo "==> ${c}: ${repo} @ ${rev}"
     summary "| \`${c}\` | \`${rev}\` | \`${sha}\` | ${bytes} |"
     if ! tree=$(curl --fail --location --silent --show-error --retry 3 --retry-all-errors \
-      "https://huggingface.co/api/models/${LLAMA_ORG}/${repo}/tree/${rev}"); then
+      "https://huggingface.co/api/models/${repo}/tree/${rev}"); then
       fail "${c}: revision ${rev} does not resolve on Hugging Face (tree API failed)"
       continue
     fi
@@ -310,8 +309,8 @@ enum LlamaModel: String {
     }
     private var repo: String {
         switch self {
-        case .a1: return "A-GGUF"
-        case .b2: return "B-GGUF"
+        case .a1: return "ggml-org/A-GGUF"
+        case .b2: return "ggml-org/B-GGUF"
         }
     }
     var revision: String {
@@ -327,7 +326,7 @@ enum LlamaModel: String {
         }
     }
     var downloadURL: URL {
-        URL(string: "https://huggingface.co/ggml-org/\(repo)/resolve/\(revision)/\(fileName)")!
+        URL(string: "https://huggingface.co/\(repo)/resolve/\(revision)/\(fileName)")!
     }
 }
 SWIFT
@@ -338,8 +337,9 @@ SWIFT
   }
 
   LLAMA_FILE="$d/Llama.swift"
+  LLAMA_EXPECTED_COUNT=2
   rows=$(extract_llama)
-  [ "$(count_lines "$rows")" -eq 2 ] && printf '%s\n' "$rows" | grep -qx "a1|A-GGUF|0aba27dd2f1c7f4941a94a5c59d80e0a256f9ff8|${good}|6036116480|a.gguf"
+  [ "$(count_lines "$rows")" -eq 2 ] && printf '%s\n' "$rows" | grep -qx "a1|ggml-org/A-GGUF|0aba27dd2f1c7f4941a94a5c59d80e0a256f9ff8|${good}|6036116480|a.gguf"
   check "llama pins parse from source" $?
 
   FAILURES=0
