@@ -366,7 +366,7 @@ extension When {
     func lookAtMedicalModelLicenses() -> MedicalModelLicenses {
         let models: [LlamaModel] = [.medgemma15_4b, .medgemma_27b, .apertus8b_meditronFO]
         let https = models.allSatisfy {
-            $0.licenseURL.scheme == "https" && $0.acceptableUseURL?.scheme == "https"
+            $0.licenseURL.scheme == "https" && ($0.acceptableUseURL.map { $0.scheme == "https" } ?? true)
         }
         return MedicalModelLicenses(
             medGemma4BLicense: LlamaModel.medgemma15_4b.licenseName,
