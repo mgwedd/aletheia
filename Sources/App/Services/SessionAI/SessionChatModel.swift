@@ -175,13 +175,17 @@ final class SessionChatModel: ObservableObject {
                 alert(.message(error.localizedDescription))
             },
             onFinish: { [self] text in
-                isSending = false
                 guard !runner.wasStopped, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    isSending = false
                     messages.removeAll { $0.id == summaryID }
                     return
                 }
                 appModel.attemptSave("chat") { try store.saveSessionChat(messages, for: patient, session: session) }
-                next?()
+                if let next {
+                    DispatchQueue.main.async { next() }
+                } else {
+                    isSending = false
+                }
             },
             onCancelledWhileQueued: { [self] in isSending = false }
         )
