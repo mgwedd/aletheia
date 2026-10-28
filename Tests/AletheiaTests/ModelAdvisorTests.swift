@@ -29,6 +29,8 @@ final class ModelAdvisorTests: XCTestCase {
         XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac32, model: .medgemma_27b), 32_768)
         XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac32, model: .medgemma15_4b), 65_536)
         XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: hardware(appleSilicon: true, memGB: 48), model: .medgemma_27b), 65_536)
+        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: hardware(appleSilicon: true, memGB: 32), model: .apertus8b_meditronFO), 65_536)
+        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: hardware(appleSilicon: true, memGB: 16), model: .apertus8b_meditronFO), 32_768)
     }
 
     func testIntel16GBKeepsTranscriptionLighter() {

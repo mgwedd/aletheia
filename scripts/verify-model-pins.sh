@@ -32,7 +32,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 PINS_FILE="Sources/App/Services/WhisperModelPins.swift"
 SETTINGS_FILE="Sources/App/Services/AppSettings.swift"
 LLAMA_FILE="Sources/App/Services/Llama/LlamaModel.swift"
-LLAMA_EXPECTED_COUNT=4
+LLAMA_EXPECTED_COUNT=5
 # The one exact line that builds the LLM download URL from the pinned revision.
 LLAMA_URL_LINE='        URL(string: "https://huggingface.co/\(repo)/resolve/\(revision)/\(fileName)")!'
 HF_REPO="ggerganov/whisper.cpp"

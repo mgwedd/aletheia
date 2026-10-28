@@ -3,8 +3,10 @@ import XCTest
 extension Copy {
     static let medGemma4BID = "medgemma-1.5-4b-it-q4_k_m"
     static let medGemma27BID = "medgemma-27b-text-it-q4_k_m"
-    static let medGemma4BOption = "MedGemma 1.5 4B — faster, 8 GB+ Macs"
-    static let medGemma27BOption = "MedGemma 27B — higher quality, 32 GB+ Apple silicon"
+    static let apertus8BID = "apertus-8b-meditronfo-q4_k_m"
+    static let medGemma4BOption = "MedGemma 1.5 4B — default for supported Macs"
+    static let medGemma27BOption = "MedGemma 27B text — higher quality, 32 GB+ Apple silicon"
+    static let apertus8BOption = "Apertus 8B MeditronFO — Experimental, 16 GB+ Macs"
     static let healthAIFoundationsTerms = "Health AI Developer Foundations Terms"
 }
 

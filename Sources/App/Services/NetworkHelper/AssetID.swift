@@ -14,6 +14,7 @@ enum AssetID: Int, CaseIterable {
     case gemma4_e2b = 11
     case medgemma_27b = 14
     case medgemma15_4b = 15
+    case apertus8b_meditronFO = 16
     /// The release archive named by the update feed.
     case updateArchive = 20
 
@@ -32,6 +33,7 @@ enum AssetID: Int, CaseIterable {
         case .gemma4_e2b: self = .gemma4_e2b
         case .medgemma15_4b: self = .medgemma15_4b
         case .medgemma_27b: self = .medgemma_27b
+        case .apertus8b_meditronFO: self = .apertus8b_meditronFO
         }
     }
 }

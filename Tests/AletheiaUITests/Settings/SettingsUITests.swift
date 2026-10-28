@@ -8,6 +8,11 @@ final class SettingsUITests: AcceptanceCase {
         then(paneGemma4B).showsSelectedModel(Copy.medGemma4BOption)
         then(paneGemma4B).showsLicense(Copy.healthAIFoundationsTerms)
 
+        given.licensedAppWithMemory(gb: 16, model: Copy.apertus8BID)
+        let paneApertus = when.openAIAndModelsSettings()
+        then(paneApertus).showsSelectedModel(Copy.apertus8BOption)
+        then(paneApertus).showsLicense("Apache License 2.0")
+
         given.licensedAppWithMemory(gb: 32, model: Copy.medGemma27BID)
         let paneGemma27B = when.openAIAndModelsSettings()
         then(paneGemma27B).showsSelectedModel(Copy.medGemma27BOption)

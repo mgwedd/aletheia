@@ -356,9 +356,16 @@ Use of this model is subject to the Llama 3.1 Community License and its Acceptab
 
 Neither model card names a copyright holder.
 
-### MedGemma 1.5 4B and MedGemma 27B
+### Apertus 8B MeditronFO
 
-- Files: `medgemma-1.5-4b-it-Q4_K_M.gguf` (shown in Aletheia as MedGemma 1.5 4B) and `medgemma-27b-text-it-Q4_K_M.gguf` (shown in Aletheia as MedGemma 27B)
+- File: `Apertus-8B-MeditronFO.Q4_K_M.gguf` (shown in Aletheia as Apertus 8B MeditronFO)
+- Source: https://huggingface.co/mradermacher/Apertus-8B-MeditronFO-GGUF (Q4_K_M GGUF conversion of EPFLiGHT's Apertus 8B MeditronFO, pinned to one repository revision)
+- License: Apache License 2.0, as listed by both the GGUF conversion and publisher's model card: https://huggingface.co/EPFLiGHT/Apertus-8B-MeditronFO
+- Full text: https://www.apache.org/licenses/LICENSE-2.0
+
+### MedGemma 1.5 4B and MedGemma 27B text
+
+- Files: `medgemma-1.5-4b-it-Q4_K_M.gguf` (shown in Aletheia as MedGemma 1.5 4B) and `medgemma-27b-text-it-Q4_K_M.gguf` (shown in Aletheia as MedGemma 27B text)
 - Source: https://huggingface.co/unsloth/medgemma-1.5-4b-it-GGUF and https://huggingface.co/unsloth/medgemma-27b-text-it-GGUF (GGUF conversions of Google's `google/medgemma-1.5-4b-it` and `google/medgemma-27b-text-it`, each pinned to one repository revision)
 - License: Health AI Developer Foundations Terms of Use: https://developers.google.com/health-ai-developer-foundations/terms
 - Prohibited Use Policy: https://developers.google.com/health-ai-developer-foundations/prohibited-use-policy

@@ -488,7 +488,7 @@ final class AppSettings: ObservableObject {
         Self.removeRetiredKeys(from: defaults)
         let storedModel = defaults.string(forKey: Keys.llamaModel)
         if let raw = storedModel, let model = LlamaModel(rawValue: raw),
-           model != .medgemma_27b || (hardware.isAppleSilicon && hardware.physicalMemoryGB >= 32) {
+           model.isSupported(on: hardware) {
             llamaModel = model
         } else {
             let defaultModel = LlamaModel.recommended(for: hardware)
