@@ -360,12 +360,10 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
         textView.isSelectable = isEnabled
         scroll.alphaValue = isEnabled ? 1 : 0.55
 
-        // Drive focus from the binding, only where it disagrees with the window.
+        // Drive focus from the binding when programmatic focus is requested.
         let isFirstResponder = textView.window?.firstResponder === textView
         if isFocused, !isFirstResponder, isEnabled, let window = textView.window {
             DispatchQueue.main.async { window.makeFirstResponder(textView) }
-        } else if !isFocused, isFirstResponder {
-            DispatchQueue.main.async { textView.window?.makeFirstResponder(nil) }
         }
     }
 
