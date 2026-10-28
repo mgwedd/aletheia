@@ -55,3 +55,10 @@ The corollary: tests change when behaviour changes. If a diff changes what a
 user can see or do and no criterion, acceptance test or UI test changes with
 it, coverage is missing. Add or update the criterion and its tests in the same
 PR, and flag it in review when a feature change arrives without them.
+
+Bug fixes count when they change what a user sees or can do in a way no
+criterion describes yet. Criteria aren't exhaustive, though: a fix that is
+internal, or that brings the app back in line with an existing criterion,
+needs no new one. A project hook reminds you once when a `feat`/`fix` commit
+changes `Sources/App` without touching the criteria or tests. Decide, then
+either add them or run the same commit again.
