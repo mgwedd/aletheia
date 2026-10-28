@@ -25,7 +25,7 @@ struct AskTabOnScreen {
         driver.app.descendants(matching: .any).matching(identifier: "chat.disclaimer").firstMatch
     }
     var effortBar: XCUIElement { driver.element(labelContaining: Copy.effortLabel) }
-    var compactedCard: XCUIElement { driver.text(containing: Copy.compactedChip) }
+    var compactedCard: XCUIElement { driver.anything(containing: Copy.compactedChip) }
 }
 
 extension Given {
@@ -64,7 +64,7 @@ extension When {
 
 extension Then where Subject == AskTabOnScreen {
     func showsText(_ words: String) {
-        expect(subject.driver.waitFor(subject.driver.text(containing: words), timeout: 60), "\"\(words)\" never appeared")
+        expect(subject.driver.waitFor(subject.driver.anything(containing: words), timeout: 60), "\"\(words)\" never appeared")
     }
 
     func statusReads(_ words: String) {

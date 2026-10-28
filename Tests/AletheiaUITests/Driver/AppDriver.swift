@@ -189,6 +189,12 @@ final class AppDriver {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", words, words)).firstMatch
     }
 
+    /// Any element whose label or value contains `words`, including a card
+    /// whose children are combined into one element.
+    func anything(containing words: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", words, words)).firstMatch
+    }
+
     /// Any element whose label contains `words` (status lines carry theirs as a label).
     func element(labelContaining words: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", words)).firstMatch

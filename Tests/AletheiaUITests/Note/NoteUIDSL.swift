@@ -18,7 +18,11 @@ extension Copy {
 struct NotesTabOnScreen {
     let driver: AppDriver
 
-    var lengthButton: XCUIElement { driver.element(labelStarting: Copy.lengthButtonPrefix) }
+    /// A pop-up button carries its text as a title, a menu button as a label.
+    var lengthButton: XCUIElement {
+        driver.app.descendants(matching: .any).matching(NSPredicate(
+            format: "label BEGINSWITH %@ OR title BEGINSWITH %@", Copy.lengthButtonPrefix, Copy.lengthButtonPrefix)).firstMatch
+    }
     var generateButton: XCUIElement { driver.element(labelStarting: Copy.generateButtonPrefix) }
     var processingStatus: XCUIElement { driver.element(labelContaining: Copy.processingTranscript) }
     var coverage: XCUIElement { driver.text(containing: "Read: ") }
