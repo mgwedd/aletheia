@@ -242,4 +242,20 @@ final class ThemeTextAreaTests: XCTestCase {
         XCTAssertEqual(textView.string, "hello")
         XCTAssertFalse(textView.showsPlaceholder)
     }
+
+    func testContentHeightPreservesContainerWidthWhenMeasuringDifferentWidth() throws {
+        let (textView, _, _) = makeTextView(text: "Some sample text for measuring", width: 320)
+        let initialWidth = textView.textContainer?.containerSize.width
+        let heightForNarrow = textView.contentHeight(forWidth: 200)
+        let heightForWide = textView.contentHeight(forWidth: 500)
+        XCTAssertGreaterThan(heightForNarrow, heightForWide)
+        XCTAssertEqual(textView.textContainer?.containerSize.width, initialWidth, "measuring must restore container width")
+    }
+
+    func testSetFrameHeightDoesNotChangeContainerWidthWhenViewWidthUnchanged() throws {
+        let (textView, _, _) = makeTextView(text: "Hello", width: 320)
+        let initialContainerWidth = textView.textContainer?.containerSize.width
+        textView.setFrameSize(NSSize(width: 320, height: 200))
+        XCTAssertEqual(textView.textContainer?.containerSize.width, initialContainerWidth, "changing height must not alter text container width")
+    }
 }

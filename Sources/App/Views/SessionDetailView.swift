@@ -1442,7 +1442,7 @@ struct SessionDetailView: View {
                 OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: { note.generate() })
             }
 
-            if summaryText.isEmpty && !noteRunner.isStreaming {
+            if summaryText.isEmpty && !noteRunner.isStreaming && !noteRunner.isQueued {
                 // Scrolls in a short window so the tab never outgrows it.
                 ScrollView { emptyNoteCard }
             } else if summaryText.isEmpty {
@@ -1464,7 +1464,7 @@ struct SessionDetailView: View {
                 RichNoteEditor(markdown: $note.noteDraft, fonts: .serif, minHeight: 200, fills: true, label: "Edit note")
                     .padding([.horizontal, .bottom], 20)
             } else {
-                if noteRunner.isStreaming {
+                if noteRunner.isStreaming || noteRunner.isQueued {
                     noteWorkingRow
                 } else if noteRunner.progress.stats?.possiblyTruncated == true {
                     Text(AIRunStats.truncationNotice)

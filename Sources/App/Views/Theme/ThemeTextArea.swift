@@ -158,8 +158,10 @@ final class ThemeTextAreaTextView: PatientTextView {
         didSet { if trailingInset != oldValue { updateContainerWidth() } }
     }
 
+    private var isMeasuring = false
+
     private func updateContainerWidth() {
-        guard let container = textContainer else { return }
+        guard !isMeasuring, let container = textContainer else { return }
         let width = ThemeTextAreaMetrics.containerWidth(forViewWidth: frame.width, trailingInset: trailingInset)
         if container.containerSize.width != width {
             container.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
@@ -168,8 +170,11 @@ final class ThemeTextAreaTextView: PatientTextView {
     }
 
     override func setFrameSize(_ newSize: NSSize) {
+        let widthChanged = abs(newSize.width - frame.width) > 0.001
         super.setFrameSize(newSize)
-        updateContainerWidth()
+        if widthChanged {
+            updateContainerWidth()
+        }
     }
 
     /// The placeholder's attributes: the typed text's, in the muted color.
@@ -248,10 +253,20 @@ final class ThemeTextAreaTextView: PatientTextView {
     /// The height the text needs at `width`, padding included, never less than one line.
     func contentHeight(forWidth width: CGFloat) -> CGFloat {
         guard let container = textContainer, let layout = layoutManager else { return 0 }
-        container.containerSize = NSSize(
-            width: ThemeTextAreaMetrics.containerWidth(forViewWidth: width, trailingInset: trailingInset),
-            height: CGFloat.greatestFiniteMagnitude
-        )
+        let targetWidth = ThemeTextAreaMetrics.containerWidth(forViewWidth: width, trailingInset: trailingInset)
+        let previousWidth = container.containerSize.width
+        if abs(targetWidth - previousWidth) > 0.001 {
+            isMeasuring = true
+            container.containerSize = NSSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude)
+            layout.ensureLayout(for: container)
+            let used = layout.usedRect(for: container)
+            let oneLine = layout.defaultLineHeight(for: ThemeTextAreaMetrics.font(for: face)) + ThemeTextAreaMetrics.lineSpacing
+            let extra = layout.extraLineFragmentRect
+            let text = max(used.height, extra.isEmpty ? 0 : extra.maxY, oneLine)
+            container.containerSize = NSSize(width: previousWidth, height: CGFloat.greatestFiniteMagnitude)
+            isMeasuring = false
+            return ThemeTextAreaMetrics.height(forContentHeight: text)
+        }
         layout.ensureLayout(for: container)
         let used = layout.usedRect(for: container)
         let oneLine = layout.defaultLineHeight(for: ThemeTextAreaMetrics.font(for: face)) + ThemeTextAreaMetrics.lineSpacing
