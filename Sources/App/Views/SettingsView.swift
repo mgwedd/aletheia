@@ -594,6 +594,7 @@ struct SettingsView: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        .accessibilityIdentifier("built-in-model-picker")
                         .frame(width: 280)
                     },
                     license: ModelLicenseLink(settings.llamaModel),

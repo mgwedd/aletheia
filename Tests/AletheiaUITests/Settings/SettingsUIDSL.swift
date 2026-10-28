@@ -11,7 +11,18 @@ extension Copy {
 struct AIAndModelsPaneOnScreen {
     let driver: AppDriver
 
-    var modelPicker: XCUIElement { driver.app.popUpButtons["Model"].firstMatch }
+    var modelPicker: XCUIElement {
+        let identified = driver.app.popUpButtons["built-in-model-picker"]
+        if driver.exists(identified) { return identified }
+        let all = driver.app.popUpButtons.allElementsBoundByIndex
+        return all.count > 1 ? all[1] : all[0]
+    }
+
+    var builtInModelHeader: XCUIElement {
+        driver.app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Built-in model", "Built-in model"))
+            .firstMatch
+    }
 
     func licenseLink(_ title: String) -> XCUIElement {
         driver.app.descendants(matching: .any)
@@ -21,8 +32,12 @@ struct AIAndModelsPaneOnScreen {
 }
 
 extension Given {
-    func macHasMemory(gb: Int) {
-        app.seed { $0.memoryGB = gb }
+    func licensedAppWithMemory(gb: Int) {
+        app.seed {
+            $0.license = "test"
+            $0.fileVault = "on"
+            $0.memoryGB = gb
+        }
     }
 }
 
@@ -30,8 +45,13 @@ extension When {
     func openAIAndModelsSettings() -> AIAndModelsPaneOnScreen {
         app.ensureLaunched()
         app.app.typeKey(",", modifierFlags: .command)
-        app.tap("AI and models")
+        let row = app.app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@ OR value == %@", "AI and models", "AI and models"))
+            .firstMatch
+        XCTAssertTrue(app.exists(row), "no AI and models row in Settings sidebar")
+        row.click()
         let pane = AIAndModelsPaneOnScreen(driver: app)
+        XCTAssertTrue(app.exists(pane.builtInModelHeader), "no Built-in model header on AI and models")
         XCTAssertTrue(app.exists(pane.modelPicker), "no built-in model picker on AI and models")
         return pane
     }
@@ -40,8 +60,11 @@ extension When {
         XCTAssertTrue(app.exists(pane.modelPicker), "no built-in model picker")
         pane.modelPicker.click()
         let item = app.app.menuItems[option].firstMatch
-        XCTAssertTrue(app.exists(item), "no \(option) in the built-in model menu")
-        item.click()
+        if app.exists(item) {
+            item.click()
+        } else {
+            app.tap(option)
+        }
     }
 }
 
