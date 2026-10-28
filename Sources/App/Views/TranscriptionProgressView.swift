@@ -44,7 +44,9 @@ struct TranscriptionProgressView: View {
 
     private var percent: Int { Int(job.progress.fraction * 100) }
 
-    private let title = "Transcribing…"
+    /// What the band is called; also read by the acceptance harness.
+    static let title = "Transcribing…"
+    private var title: String { Self.title }
 
     /// "42% · about 2 min left"; the estimate only appears once the model has one.
     private var progressText: String {

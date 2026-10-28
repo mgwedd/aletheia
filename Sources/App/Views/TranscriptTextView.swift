@@ -91,6 +91,9 @@ struct TranscriptTextView: NSViewRepresentable {
         textView.textContainer?.containerSize = NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer?.widthTracksTextView = true
         scroll.documentView = textView
+        #if DEBUG
+        FixtureMode.transcriptView = textView
+        #endif
 
         // Plain text only: pasted styling is dropped, and nothing rewrites what
         // the therapist types (smart quotes, dashes, auto-correct) — the

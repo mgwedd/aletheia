@@ -8,3 +8,6 @@ extension Copy {
     static let transcribingMic = "Transcribing mic"
     static let encryptionIsOffNotice = "the kept recording is not encrypted"
 }
+extension Copy {
+    static let transcribingTitle = "Transcribing…"
+}

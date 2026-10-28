@@ -463,8 +463,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/WhisperTranscriber.swift:57-76, Sources/App/Services/TranscriptionProgress.swift:46-52` · `qa: TRANSCRIBE-02`
 - **TRN-085** When a transcription is running, the background search-index sweep waits.
   `surface: background` · `evidence: Sources/App/Views/RootView.swift:278-296` · `qa: TRANSCRIBE-04`
-- **TRN-086** When a transcription is running, the progress band's title reads "Transcribing <session date and time> · Whisper <model name>" such as "Whisper base.en".
-  `surface: ui` · `evidence: Sources/App/Views/TranscriptionProgressView.swift:48-55, Sources/App/Services/TranscriptionCoordinator.swift:86` · `qa: TRANSCRIBE-02`
+- **TRN-086** When a transcription is running, the progress band's title reads just "Transcribing…", with no session date or model name to crowd it.
+  `surface: ui` · `evidence: Sources/App/Views/TranscriptionProgressView.swift` · `qa: TRANSCRIBE-19`
 - **TRN-087** When a session has no recording file and is not being transcribed, no Transcribe button is shown.
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionProgress.swift:134-136, Sources/App/Views/SessionDetailView.swift:476` · `qa: TRANSCRIBE-01`
 - **TRN-088** When another session is recording, the Transcribe button is disabled with the tooltip "Another session is recording. Stop it first".
@@ -477,6 +477,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:212-227, Sources/App/Views/SessionDetailView.swift:1588` · `qa: TRANSCRIBE-05`
 - **TRN-092** When a successful transcription deletes a raw audio recording for the first time, a one-time notice tells the user it was deleted after transcription, and the notice is not shown again.
   `surface: ui` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:44-60` · `qa: TRANSCRIBE-18`
+- **TRN-093** When a call turn is shown under the patient's first name, the turn lays out like any other: it wraps across the pane's width, whatever the name's length.
+  `surface: ui` · `evidence: Sources/App/Views/TranscriptTextView.swift` · `qa: TRANSCRIBE-20`
 
 ## Encryption at rest (ENC)
 
@@ -787,7 +789,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Markdown/NoteMarkdown.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-04`
 - **NOT-011** A Length menu offers Concise, Natural (the default) and Detailed, and the chosen length controls how long the next generated note is.
   `surface: ui` · `evidence: Sources/App/Models/SummaryVerbosity.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-06`
-- **NOT-012** The menu button reads "Length: <length> · <effort>" (for example "Length: Natural · Normal"), and the menu also offers an "AI effort" choice of Fast, Normal and Focus.
+- **NOT-012** The menu button reads "Length: <length> · <effort>" (for example "Length: Natural · Normal"), a click anywhere on it opens the menu, and the menu also offers an "AI effort" choice of Fast, Normal and Focus.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Models/AnswerEffort.swift` · `qa: NOTE-06`
 - **NOT-013** Each format's instructions can be edited from the menu ("Edit <format> Prompt…", marked "(customized)" once changed) in a sheet titled "<format> prompt" whose caption says the transcript, your notes and comments, and the length setting are added automatically after the instructions.
   `surface: ui` · `evidence: Sources/App/Views/NoteInstructionsSheet.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-07`
@@ -1059,7 +1061,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 - **CHT-038** When one therapist-typed field (question, notes, comments or background) is longer than 300,000 characters (about 100 pages), the request is refused with a message.
   `surface: ui` · `evidence: Sources/App/Services/TherapistInput.swift` · `qa: NOTE-14`
 - **CHT-039** When the messages since the last summary pass a quarter of the model's room (6,144 characters on an 8K window, 12,288 on 16K, at most 24,000), the conversation is compacted before the next question is sent.
-  `surface: background` · `evidence: Sources/App/Services/ChatMemory.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-13`
+  `surface: background` · `evidence: Sources/App/Services/ChatMemory.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-22`
 - **CHT-040** When the chat has history, a Compact button appears and compacts the conversation on demand.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:98-101` · `qa: CHAT-13`
 - **CHT-041** When a conversation has been compacted, a "Conversation compacted" card appears and the summary stands in for the older messages.
@@ -2255,3 +2257,5 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/Store.swift, Sources/App/Services/Crypto/DataMigrator.swift` · `qa: CONSENT-12`
 - **CNS-028** A consent record that is present but unreadable is reported as an error, never as no consent.
   `surface: invariant` · `evidence: Sources/App/Services/Store.swift` · `qa: CONSENT-12`
+- **CNS-029** The session header's consent line wraps onto more lines when the header is narrow, and is never cut off.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift` · `qa: CONSENT-13`

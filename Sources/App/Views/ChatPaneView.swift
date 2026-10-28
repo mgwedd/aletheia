@@ -88,6 +88,9 @@ struct ChatPaneView: View {
     /// Whether the mic is drawn, reported by the mic itself.
     @State private var micShown = false
 
+    /// Under every conversation; also read by the acceptance harness.
+    static let accuracyNotice = "AI generated responses can be inaccurate. Double-check responses."
+
     private var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
     }
@@ -95,7 +98,7 @@ struct ChatPaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             conversation
-            Text("AI generated responses can be inaccurate. Double-check responses.")
+            Text(Self.accuracyNotice)
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
                 .frame(maxWidth: .infinity, alignment: .leading)

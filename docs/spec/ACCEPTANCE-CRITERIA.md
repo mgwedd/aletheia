@@ -95,6 +95,8 @@ Before you start: a session that has a recording and no transcript.
 - **TRANSCRIBE-16** Turn on "Keep raw audio after transcription" with encryption off → the recording is still deleted once the transcript is saved, so audio is never left readable on disk.
 - **TRANSCRIBE-17** Re-transcribe a silent recording that already has a transcript → the earlier transcript and the recording are kept, and the tab says no speech was detected.
 - **TRANSCRIBE-18** Transcribe a recording for the first time with raw audio not kept → a one-time notice says the recording was deleted after transcription, and it is not shown again.
+- **TRANSCRIBE-19** Watch the progress band while a session transcribes → its title reads just "Transcribing…", with no date or model name.
+- **TRANSCRIBE-20** Open the transcript of a call where the client spoke at length → each of their turns starts with the client's first name and wraps across the pane like your own.
 
 ## 6. Comment on the transcript (COMMENT)
 Before you start: a session with a saved transcript and no comments.
@@ -114,7 +116,7 @@ Before you start: a session with a transcript, the AI model downloaded, and a co
 - **NOTE-03** Click **Generate SOAP note** → text streams in under a status line with elapsed time, and **Stop** appears.
 - **NOTE-04** Read the finished SOAP note → it has Subjective, Objective, Assessment and Plan, with speakers as "You" and the client's first name.
 - **NOTE-05** Click **Stop** while text is streaming → the text written so far is kept.
-- **NOTE-06** Open the **Length** menu → Concise, Natural and Detailed appear with an AI effort choice.
+- **NOTE-06** Click anywhere on the **Length** button, not only its icon → its menu opens with Concise, Natural and Detailed and an AI effort choice.
 - **NOTE-07** Choose **Edit SOAP Prompt…** → a sheet lets you save your own instructions, and **Reset to Default** restores them.
 - **NOTE-08** Request a note while a chat answer is running → a waiting status with **Cancel** appears, and the note starts when the answer ends.
 - **NOTE-09** Move the AI model out of its folder and click **Generate** → an alert says it isn't downloaded and offers **Download Model**.
@@ -150,6 +152,7 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-19** Write a line about the client in **My Notes**, then ask "What have I noted about <name>?" in **Ask** → the answer quotes that line at once and says the AI never reads My Notes.
 - **CHAT-20** Ask a question on a long session → the status moves through reading the session part by part, analyzing, and "Preparing the answer" before the answer appears.
 - **CHAT-21** Open **Ask** on a session with a conversation → **Compact** sits on the effort bar, and "AI generated responses can be inaccurate. Double-check responses." shows at the bottom left of the conversation.
+- **CHAT-22** Keep asking on one session until the conversation passes a quarter of what the AI model can read at once → the earlier messages compact into a "Conversation compacted" card before the next answer.
 
 ## 9. Summaries prepared in the background (DIGEST)
 Before you start: a patient whose sessions have transcripts too long for this Mac to read at once, and the AI model downloaded.
@@ -335,6 +338,7 @@ Before you start: setup finished, FileVault on, and patients "Jane Doe" and "Ada
 - **CONSENT-10** Export the session as PDF, Word or Markdown, and export all records → each includes a "Recording consent" section with who, how and when.
 - **CONSENT-11** Sign the session's note → the session's consent can no longer be changed, and saving a new one is refused.
 - **CONSENT-12** Record consent with encryption on (dev build), then quit and reopen → the session folder holds a sealed consent.json that reads back unchanged.
+- **CONSENT-13** Narrow the window on a session with consent on file → the "Consent:" line in the session header wraps onto more lines instead of being cut off.
 
 ## 22. License key (LICENSE)
 Before you start: setup finished.

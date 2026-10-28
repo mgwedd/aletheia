@@ -7,6 +7,24 @@ struct Scenario: Encodable, Equatable {
         var name: String
         var sessions: Int?
         var recordingConsent: Bool?
+        /// A recorded consent for the first session.
+        var consentRecorded: Bool?
+        /// The first session's transcript, stored form: "[mm:ss] You: …" or "[mm:ss] Call audio: …".
+        var transcript: String?
+        var myNotes: String?
+        /// The conversation already on the first session's Ask tab.
+        var chat: [ChatSeed]?
+    }
+
+    struct ChatSeed: Encodable, Equatable {
+        /// "user", "assistant" or "summary".
+        var role: String
+        var text: String
+    }
+
+    struct AIRule: Encodable, Equatable {
+        var whenPromptContains: String
+        var reply: String
     }
 
     var run: String
@@ -16,6 +34,21 @@ struct Scenario: Encodable, Equatable {
     /// "on" for a licensed app, "test" for a test license; unset is the unlicensed app.
     var license: String?
     var aiReplies: [String]?
+    /// Replies given to any request whose prompt contains the text, ahead of `aiReplies`.
+    var aiRules: [AIRule]?
+    /// How long each AI stage lasts, so a test can watch the status line move.
+    var aiStageMs: Int?
+    /// Streamed requests report reading the prompt in this many parts.
+    var aiParts: Int?
+    /// The model's reading window in tokens, in place of the Mac's own.
+    var contextTokens: Int?
+    /// Transcription that never finishes, so its progress band stays up.
+    var slowTranscription: Bool?
+    /// "concise", "natural" or "detailed".
+    var noteLength: String?
+    /// "fast", "normal" or "focus", for notes and for Ask.
+    var noteEffort: String?
+    var chatEffort: String?
     /// What Import Audio… is handed instead of the open panel: "clip", "twoTracks", "threeFiles" or "notAudio".
     var importFile: String?
     /// The patient whose newest session is on screen at launch.
@@ -39,6 +72,8 @@ struct ProbeSnapshot: Decodable, Equatable {
     var files: [String]
     var patients: [PatientFacts]
     var aiRequests: [String]
+    /// Lines the transcript on screen is laid out in.
+    var transcriptLines: Int
 }
 
 /// Drives the real Debug app. The test owns the world through the scenario and
@@ -97,7 +132,7 @@ final class AppDriver {
         guard !json.isEmpty,
               let snapshot = try? JSONDecoder().decode(ProbeSnapshot.self, from: Data(json.utf8)) else {
             XCTFail("the fixture probe could not be read: \"\(json.prefix(200))\"")
-            return ProbeSnapshot(files: [], patients: [], aiRequests: [])
+            return ProbeSnapshot(files: [], patients: [], aiRequests: [], transcriptLines: 0)
         }
         return snapshot
     }
@@ -145,5 +180,26 @@ final class AppDriver {
         let expectation = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "isEnabled == %@", NSNumber(value: enabled)), object: element)
         return XCTWaiter().wait(for: [expectation], timeout: Self.timeout) == .completed
+    }
+
+    // MARK: Looking for text
+
+    /// Static text whose words contain `words`.
+    func text(containing words: String) -> XCUIElement {
+        app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", words, words)).firstMatch
+    }
+
+    /// Any element whose label contains `words` (status lines carry theirs as a label).
+    func element(labelContaining words: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", words)).firstMatch
+    }
+
+    /// Any element whose label starts with `prefix`.
+    func element(labelStarting prefix: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+    }
+
+    func waitFor(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        element.waitForExistence(timeout: timeout)
     }
 }

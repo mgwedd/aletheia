@@ -43,6 +43,13 @@ struct NotePane {
     let asksBeforeReplacing: Bool
 }
 
+/// What the Length button's menu offers.
+struct LengthMenu {
+    let label: String
+    let lengths: [String]
+    let efforts: [String]
+}
+
 /// Everything on a session's Ask tab at one moment.
 struct AskPane {
     struct Bubble: Equatable {
@@ -58,6 +65,12 @@ struct AskPane {
     let offersCancel: Bool
     /// The "Read:" line and other caveats under the answer.
     let notices: [String]
+    /// The line over the bar while an answer is being prepared, "Reading the session · part 2 of 3 · 0:04".
+    let statusLine: String?
+    /// Whether the conversation can be compacted from the effort bar.
+    let offersCompact: Bool
+    /// The caution under the conversation.
+    let accuracyNotice: String
 
     var questions: [String] { bubbles.filter { $0.who == .you }.map(\.text) }
     var answers: [String] { bubbles.filter { $0.who == .assistant }.map(\.text) }
@@ -117,6 +130,20 @@ final class AssistantDesk {
             index += 1
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// A transcript of a `minutes`-long session, one exchange every half minute, that mentions `topic` throughout.
+    static func transcript(minutes: Int, about topic: String) -> String {
+        (0..<(minutes * 2)).map { index in
+            let stamp = String(format: "[%02d:%02d]", (index * 30) / 60, (index * 30) % 60)
+            let speaker = index % 2 == 0 ? "Y" : "C"
+            return "\(stamp) \(speaker): Tell me more about \(topic) this week, number \(index)."
+        }.joined(separator: "\n")
+    }
+
+    /// Writes `text` in the session's My Notes, which saves as it goes.
+    func writeInMyNotes(_ text: String, for stored: StoredSession) {
+        app.appModel.saveNote(sessionID: stored.session.id, text: text)
     }
 
     static func transcript(_ said: [Said]) -> String {
@@ -245,6 +272,22 @@ final class NotesTab {
         desk.settings.setNoteInstructions(Prompts.defaultInstructions(for: format), for: format)
     }
 
+    /// Writes a note at `length` and `effort` and waits for it to end, replacing any note already there.
+    func generate(_ length: NoteLength, at effort: Effort) async throws {
+        chooseLength(length.setting)
+        chooseEffort(effort.setting)
+        model.requestGenerate()
+        if model.confirmRegenerate { confirmReplacing() }
+        try await waitUntilIdle()
+    }
+
+    /// What the Length button opens.
+    var lengthMenu: LengthMenu {
+        LengthMenu(
+            label: NoteWords.lengthLabel(length: desk.settings.summaryVerbosity, effort: desk.settings.noteEffort),
+            lengths: NoteWords.lengthChoices, efforts: NoteWords.effortChoices)
+    }
+
     func chooseLength(_ length: SummaryVerbosity) { desk.settings.summaryVerbosity = length }
     func chooseEffort(_ effort: AnswerEffort) { desk.settings.noteEffort = effort }
 
@@ -282,7 +325,18 @@ final class NotesTab {
     // MARK: Waiting
 
     func waitUntilIdle() async throws {
-        try await desk.waitFor("the note to finish") { !self.model.runner.isStreaming && !self.model.runner.isQueued }
+        try await desk.waitFor("the note to finish", within: 30) { !self.model.runner.isStreaming && !self.model.runner.isQueued }
+    }
+
+    func waitForStatus(containing text: String) async throws {
+        do {
+            try await desk.waitFor("the status to mention \"\(text)\"") { self.pane.statusLine?.contains(text) == true }
+        } catch {
+            let now = pane
+            throw EventuallyTimeout(
+                what: "the status to mention \"\(text)\"; it read \(String(describing: now.statusLine)), waiting: \(now.isWaiting) \(String(describing: now.waitingStatus)), writing: \(now.isWriting), requests: \(desk.model.startedCount)",
+                seconds: 10)
+        }
     }
 
     func waitUntilWriting() async throws {
@@ -337,7 +391,11 @@ final class AskTab {
             waitingStatus: model.runner.queuedStatus,
             offersStop: model.runner.isStreaming,
             offersCancel: model.runner.isQueued,
-            notices: model.notices)
+            notices: model.notices,
+            statusLine: model.runner.isStreaming
+                ? AIProgressFormat.statusLine(model.runner.progress, now: Date()) : nil,
+            offersCompact: ChatMemory.hasHistory(model.messages),
+            accuracyNotice: ChatPaneView.accuracyNotice)
     }
 
     fileprivate static func who(_ role: ChatRole) -> AskPane.Bubble.Who {
@@ -352,12 +410,18 @@ final class AskTab {
         ((try? desk.store)?.loadSessionChat(for: stored.patient, session: stored.session)) ?? []
     }
 
+    func waitForStatus(startingWith text: String) async throws {
+        try await desk.waitFor("the status to read \"\(text)…\"") {
+            self.pane.statusLine?.hasPrefix(text) == true
+        }
+    }
+
     func waitUntilAnswering() async throws {
         try await desk.waitFor("the answer to start") { self.model.runner.isStreaming }
     }
 
     func waitUntilIdle() async throws {
-        try await desk.waitFor("the answer to finish") { !self.model.runner.isStreaming && !self.model.runner.isQueued && !self.model.isSending }
+        try await desk.waitFor("the answer to finish", within: 30) { !self.model.runner.isStreaming && !self.model.runner.isQueued && !self.model.isSending }
     }
 
     func waitForAlert() async throws -> ShownAlert {
