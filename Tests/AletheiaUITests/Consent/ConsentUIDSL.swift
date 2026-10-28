@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 extension Copy {
@@ -149,11 +150,25 @@ extension Given {
 }
 
 extension When {
+    /// Reads the line with the window as wide as the screen, so a later
+    /// narrowing within the window's minimum width has room to wrap it.
     func readConsentLine() -> ConsentLineOnScreen {
         app.ensureLaunched()
+        widenWindowToTheScreen()
         let line = ConsentLineOnScreen(driver: app)
         XCTAssertTrue(app.exists(line.line), "no consent line in the session header")
         return line
+    }
+
+    /// Stretches the window across the screen: left edge to the screen's left,
+    /// then right edge to its right.
+    private func widenWindowToTheScreen() {
+        guard let screen = NSScreen.main?.frame else { return }
+        let window = app.app.windows.firstMatch
+        let left = window.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+        left.click(forDuration: 0.1, thenDragTo: left.withOffset(CGVector(dx: screen.minX - window.frame.minX, dy: 0)))
+        let right = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+        right.click(forDuration: 0.1, thenDragTo: right.withOffset(CGVector(dx: screen.maxX - 1 - window.frame.maxX, dy: 0)))
     }
 
     /// Makes the window `width` points wide, by dragging its right edge.

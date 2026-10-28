@@ -47,7 +47,7 @@ final class ConsentUITests: AcceptanceCase {
         let wide = when.readConsentLine()
         let wideHeight = wide.line.frame.height
 
-        when.narrowWindow(to: 640)
+        when.narrowWindow(to: 900)
 
         then(wide).wrapsOnto(moreLinesThan: wideHeight)
     }

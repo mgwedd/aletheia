@@ -61,37 +61,21 @@ struct PatientDetailView: View {
     }
 
     var body: some View {
-        HSplitView {
+        // A plain row, not a split view: a split view kept the list column at
+        // its first width and pushed the session past the edge of a small window.
+        HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 header
                     .padding(.horizontal, 20)
                     .frame(minHeight: 52)
 
                 VStack(alignment: .leading, spacing: 22) {
-                    PatientProfileCard(
-                        patient: storedPatient,
-                        showsMedications: showsMedications,
-                        onEdit: onEditProfile
-                    )
-
-                    // Side by side when they fit, stacked when the column is narrow.
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 8) {
-                            askAllButton
-                            exportButton
-                            psychotherapyExportButton
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            askAllButton
-                            exportButton
-                            psychotherapyExportButton
-                        }
+                    // Scrolls when the window is too short for it and the
+                    // session list, so the column never outgrows the window.
+                    ViewThatFits(in: .vertical) {
+                        profileSection
+                        ScrollView { profileSection }
                     }
-                    SummaryStatusRow(scheduler: integrations.digestScheduler, patientID: patient.id)
-
-                    Rectangle()
-                        .fill(Theme.line.color)
-                        .frame(height: 1)
 
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -126,13 +110,16 @@ struct PatientDetailView: View {
                 .padding(.bottom, 20)
             }
             .background(Theme.panel.color)
-            // Capped so the list column can't swallow the split when the right
-            // pane is momentarily small, and pinned to the top so a short column
-            // isn't centred in a tall window.
-            .frame(minWidth: 320, idealWidth: 380, maxWidth: 600, maxHeight: .infinity, alignment: .top)
+            // Narrow enough that the session keeps its room in a small window, and
+            // pinned to the top so a short column isn't centred in a tall window.
+            .frame(minWidth: 320, idealWidth: 380, maxWidth: 380, maxHeight: .infinity, alignment: .top)
+
+            Rectangle()
+                .fill(Theme.line.color)
+                .frame(width: 1)
 
             // One frame for both states: swapping a session for the placeholder
-            // must not change the pane's size, or the split view re-lays out.
+            // must not change the pane's size.
             Group {
                 if let selectedSession {
                     SessionDetailView(
@@ -270,6 +257,36 @@ struct PatientDetailView: View {
         .help("Save your psychotherapy notes and private comments on their own, apart from the clinical record. You'll confirm you have authorization first.")
     }
 
+    /// The profile, the patient-wide actions and the summary status.
+    private var profileSection: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            PatientProfileCard(
+                patient: storedPatient,
+                showsMedications: showsMedications,
+                onEdit: onEditProfile
+            )
+
+            // Side by side when they fit, stacked when the column is narrow.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    askAllButton
+                    exportButton
+                    psychotherapyExportButton
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    askAllButton
+                    exportButton
+                    psychotherapyExportButton
+                }
+            }
+            SummaryStatusRow(scheduler: integrations.digestScheduler, patientID: patient.id)
+
+            Rectangle()
+                .fill(Theme.line.color)
+                .frame(height: 1)
+        }
+    }
+
     /// The session list. Selection is by id and goes through `guardedSelection`,
     /// so the unsaved-transcript prompt still guards every switch.
     private var sessionList: some View {
@@ -287,8 +304,8 @@ struct PatientDetailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         // Never let the list collapse to a sliver when the editors above
-        // it claim the space; it takes whatever is left, at least 180pt.
-        .frame(minHeight: 180, maxHeight: .infinity)
+        // it claim the space; it takes whatever is left, at least 120pt.
+        .frame(minHeight: 120, maxHeight: .infinity)
         // Rows carry their own 8pt inset, so the list reaches 8pt past the
         // column's gutter and the selected fill lines up with the fields above.
         .padding(.horizontal, -8)

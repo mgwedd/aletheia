@@ -41,9 +41,10 @@ enum ChatComposerLayout {
 /// decides what "send" means (which transcript/context to include).
 ///
 ///   scope caption    what the answers are drawn from
-///   conversation     questions in trailing bubbles, answers plain on the panel
+///   conversation     questions in trailing bubbles, answers plain on the panel;
+///                    suggestion pills while the chat is empty
 ///   notices          caller-supplied caveats (coverage, unreadable sessions)
-///   composer         suggestion pills (empty chat only) · field · Send / Stop
+///   composer         effort bar · field · Send / Stop
 struct ChatPaneView: View {
     let title: String
     @Binding var messages: [ChatMessage]
@@ -134,6 +135,17 @@ struct ChatPaneView: View {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     if messages.isEmpty {
                         emptyState
+                        // In the scrolling area, not the composer, so a short
+                        // window keeps the field in view.
+                        if !suggestions.isEmpty {
+                            SuggestionFlowLayout(spacing: 8) {
+                                ForEach(suggestions, id: \.self) { suggestion in
+                                    Button(suggestion) { onSend(suggestion) }
+                                        .buttonStyle(SuggestionPillStyle())
+                                        .disabled(isSending)
+                                }
+                            }
+                        }
                     }
                     ForEach(messages) { message in
                         ChatBubble(message: message).id(message.id)
@@ -225,15 +237,6 @@ struct ChatPaneView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if messages.isEmpty && !suggestions.isEmpty {
-                SuggestionFlowLayout(spacing: 8) {
-                    ForEach(suggestions, id: \.self) { suggestion in
-                        Button(suggestion) { onSend(suggestion) }
-                            .buttonStyle(SuggestionPillStyle())
-                            .disabled(isSending)
-                    }
-                }
-            }
             if effort != nil || showsCompact {
                 effortRow(effort)
             }
@@ -316,7 +319,7 @@ struct ChatPaneView: View {
                     options: AnswerEffort.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
                     selection: effort
                 )
-                .frame(width: 240)
+                .frame(maxWidth: 240)
                 .disabled(isSending)
                 .help(effort.wrappedValue.blurb(for: effortFeature))
                 .accessibilityLabel(AnswerEffort.label)
