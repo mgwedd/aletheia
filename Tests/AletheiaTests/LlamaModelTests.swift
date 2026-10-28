@@ -96,7 +96,7 @@ final class LlamaModelTests: XCTestCase {
         XCTAssertEqual(LlamaModel.offered(for: intel), [.medgemma15_4b, .apertus8b_meditronFO])
         XCTAssertEqual(
             LlamaModel.offered(for: Self.mac(gb: 16), including: .llama31_8b),
-            [.medgemma15_4b, .llama31_8b]
+            [.medgemma15_4b, .apertus8b_meditronFO, .llama31_8b]
         )
     }
 
