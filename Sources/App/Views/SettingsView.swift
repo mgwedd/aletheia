@@ -588,7 +588,7 @@ struct SettingsView: View {
                     row,
                     picker: SettingsRow(title: "Model") {
                         Picker("Model", selection: $settings.llamaModel) {
-                            ForEach(LlamaModel.allCases) { model in
+                            ForEach(LlamaModel.offered(for: settings.hardware, including: settings.llamaModel)) { model in
                                 Text(model.displayName).tag(model)
                             }
                         }

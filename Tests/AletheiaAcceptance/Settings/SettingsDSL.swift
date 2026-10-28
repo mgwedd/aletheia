@@ -118,6 +118,21 @@ struct LegalPane {
     let noticesLoaded: Bool
 }
 
+/// The built-in models offered for a Mac of a given memory size.
+struct OfferedBuiltInModels {
+    let shortNames: [String]
+    let medGemmaShortName: String
+    let medLlamaBudgetTokens: Int
+}
+
+/// License terms for the medical models.
+struct MedicalModelLicenses {
+    let medLlamaLicense: String
+    let medGemma4BLicense: String
+    let medGemma27BLicense: String
+    let allUseHTTPS: Bool
+}
+
 /// The appearance after a choice and a relaunch.
 struct AppearanceChoice {
     let appliedName: NSAppearance.Name?
@@ -338,6 +353,29 @@ extension When {
             choices: DataFolderMoveChoice.allCases.map(\.title),
             originalGoneAfterDelete: goneAfterDelete)
     }
+
+    func lookAtBuiltInModels(onMacWithMemoryGB memoryGB: Int) -> OfferedBuiltInModels {
+        let hardware = HardwareCapabilities(
+            isAppleSilicon: true, physicalMemoryGB: memoryGB, coreCount: 8, chipDescription: "Apple M-Test")
+        let offered = LlamaModel.offered(for: hardware)
+        let recommendation = ModelAdvisor.recommend(for: hardware)
+        return OfferedBuiltInModels(
+            shortNames: offered.map(\.shortName),
+            medGemmaShortName: recommendation.medGemmaModel.shortName,
+            medLlamaBudgetTokens: ModelAdvisor.contextBudgetTokens(for: hardware, model: .medllama2_7b))
+    }
+
+    func lookAtMedicalModelLicenses() -> MedicalModelLicenses {
+        let models: [LlamaModel] = [.medllama2_7b, .medgemma_4b, .medgemma_27b]
+        let https = models.allSatisfy {
+            $0.licenseURL.scheme == "https" && $0.acceptableUseURL?.scheme == "https"
+        }
+        return MedicalModelLicenses(
+            medLlamaLicense: LlamaModel.medllama2_7b.licenseName,
+            medGemma4BLicense: LlamaModel.medgemma_4b.licenseName,
+            medGemma27BLicense: LlamaModel.medgemma_27b.licenseName,
+            allUseHTTPS: https)
+    }
 }
 
 // MARK: - Then
@@ -488,5 +526,23 @@ extension Then where Subject == FolderMove {
         expect(subject.originalStillThere, "the original should stay until you delete it")
         expectEqual(subject.choices, ["Keep original for now", "Delete original folder…"], "the choices after the copy")
         expect(subject.originalGoneAfterDelete, "choosing Delete should remove the original")
+    }
+}
+
+extension Then where Subject == OfferedBuiltInModels {
+    func offersMedicalModels(medLlama: String, medGemma: String) {
+        expect(subject.shortNames.contains(medLlama), "\(medLlama) should be offered: \(subject.shortNames)")
+        expect(subject.shortNames.contains(medGemma), "\(medGemma) should be offered: \(subject.shortNames)")
+        expectEqual(subject.medGemmaShortName, medGemma, "the MedGemma size chosen for this Mac")
+        expectEqual(subject.medLlamaBudgetTokens, 4_096, "MedLlama 2's 4K context window cap")
+    }
+}
+
+extension Then where Subject == MedicalModelLicenses {
+    func usesTerms(medLlamaLicense: String, medGemmaTerms: String) {
+        expectEqual(subject.medLlamaLicense, medLlamaLicense, "MedLlama 2's license")
+        expectEqual(subject.medGemma4BLicense, medGemmaTerms, "MedGemma 4B's license")
+        expectEqual(subject.medGemma27BLicense, medGemmaTerms, "MedGemma 27B's license")
+        expect(subject.allUseHTTPS, "every medical model's license and acceptable-use link should use https")
     }
 }

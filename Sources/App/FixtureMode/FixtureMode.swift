@@ -46,6 +46,10 @@ struct FixtureScenario: Decodable, Equatable {
     /// Settings > General > Recording consent: "firstSession" (default) or "everySession".
     var consentPolicy: String?
 
+    /// Overrides the detected Mac memory (in GB) when set, so UI tests can
+    /// exercise memory-dependent model choices deterministically.
+    var memoryGB: Int?
+
     var buildTier: BuildTier { tier == "production" ? .production : .dev }
     var appLockOn: Bool { appLock == "on" }
     var licenseOn: Bool { license == "on" || license == "test" }
@@ -120,6 +124,17 @@ enum FixtureMode {
 
     static let disk = FixtureDisk(state: scenario?.fileVault)
     static let deviceKeys = ProcessMemoryDeviceKeyStore()
+
+    static var hardware: HardwareCapabilities {
+        let current = HardwareCapabilities.current()
+        guard let memoryGB = scenario?.memoryGB else { return current }
+        return HardwareCapabilities(
+            isAppleSilicon: current.isAppleSilicon,
+            physicalMemoryGB: memoryGB,
+            coreCount: current.coreCount,
+            chipDescription: current.chipDescription
+        )
+    }
 
     /// Settings as a user who finished first run in a chosen folder.
     static func prepare(_ settings: AppSettings) {

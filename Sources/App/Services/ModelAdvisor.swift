@@ -2,6 +2,7 @@ import Foundation
 
 struct ModelRecommendation: Equatable {
     let whisperModel: WhisperModel
+    let medGemmaModel: LlamaModel
     let summary: String
 }
 
@@ -29,14 +30,22 @@ enum ModelAdvisor {
             whisper = .baseEn
         }
 
+        let medGemma = medGemma(for: hardware)
         let summary = "\(hardware.shortDescription) → \(whisper.shortName) transcription and \(LlamaModel.recommended(for: hardware).shortName) for summaries."
-        return ModelRecommendation(whisperModel: whisper, summary: summary)
+        return ModelRecommendation(whisperModel: whisper, medGemmaModel: medGemma, summary: summary)
+    }
+
+    /// The MedGemma variant that fits `hardware`: 27B on 32 GB+ Macs, 4B on
+    /// lower-memory Macs.
+    static func medGemma(for hardware: HardwareCapabilities) -> LlamaModel {
+        LlamaModel.medGemma(for: hardware)
     }
 
     /// Tokens of prompt this Mac can have the model read at once: 16K on 8 GB,
     /// 32K on 16 GB, 64K on 32 GB or more. An Intel Mac, which runs the model
-    /// far slower, gets one tier lower. Never below 8K.
-    static func contextBudgetTokens(for hardware: HardwareCapabilities) -> Int {
+    /// far slower, gets one tier lower. Never below 8K, or above `model`'s own
+    /// context window when a model is specified.
+    static func contextBudgetTokens(for hardware: HardwareCapabilities, model: LlamaModel? = nil) -> Int {
         let tokens: Int
         switch hardware.physicalMemoryGB {
         case 32...: tokens = 65_536
@@ -44,7 +53,9 @@ enum ModelAdvisor {
         case 8...: tokens = 16_384
         default: tokens = 8_192
         }
-        return hardware.isAppleSilicon ? tokens : max(8_192, tokens / 2)
+        let hardwareTokens = hardware.isAppleSilicon ? tokens : max(8_192, tokens / 2)
+        guard let model else { return hardwareTokens }
+        return min(hardwareTokens, model.contextWindowTokens)
     }
 
     static func current() -> ModelRecommendation {
