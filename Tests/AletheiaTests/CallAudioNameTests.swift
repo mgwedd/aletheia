@@ -46,13 +46,43 @@ final class CallAudioNameTests: XCTestCase {
 
         let label = (stored as NSString).range(of: "Call audio")
         let glyphs = layout.glyphRange(forCharacterRange: label, actualCharacterRange: nil)
+        XCTAssertEqual(layout.numberOfGlyphs, (stored as NSString).length, "one glyph per character, so line layout holds")
         var drawn = 0
         for g in glyphs.location..<NSMaxRange(glyphs) where layout.propertyForGlyph(at: g) != .null { drawn += 1 }
-        XCTAssertEqual(drawn, 4, "Jane's four letters, not the label's ten")
+        XCTAssertEqual(drawn, 1, "one blank the name is drawn into, not the label's ten letters")
         let width = layout.boundingRect(forGlyphRange: glyphs, in: try XCTUnwrap(textView.textContainer)).width
         let expected = ("Jane" as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold)]).width
         XCTAssertEqual(width, expected, accuracy: 4)
 
+        window.orderOut(nil)
+    }
+
+    /// A long call-audio turn wraps at the text column like any other turn,
+    /// not one letter per line.
+    func testALongNamedTurnWrapsNormally() throws {
+        let long = "[00:08] Call audio: " + String(repeating: "Okay, you have my consent. Yeah. ", count: 12)
+        var text = long
+        let binding = Binding(get: { text }, set: { text = $0 })
+        let window = TestWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = NSHostingView(rootView: Host(text: binding))
+        window.contentView?.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        let textView = try XCTUnwrap(find(in: try XCTUnwrap(window.contentView)))
+        let layout = try XCTUnwrap(textView.layoutManager)
+        layout.ensureLayout(for: try XCTUnwrap(textView.textContainer))
+
+        var lines = 0
+        var narrowest = CGFloat.greatestFiniteMagnitude
+        var glyph = 0
+        while glyph < layout.numberOfGlyphs {
+            var range = NSRange()
+            let used = layout.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: &range)
+            lines += 1
+            if NSMaxRange(range) < layout.numberOfGlyphs { narrowest = min(narrowest, used.width) }
+            glyph = NSMaxRange(range)
+        }
+        XCTAssertLessThan(lines, 12, "wrapped into \(lines) lines")
+        XCTAssertGreaterThan(narrowest, 300, "a full line holds many words")
         window.orderOut(nil)
     }
 

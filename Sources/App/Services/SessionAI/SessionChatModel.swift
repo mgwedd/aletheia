@@ -58,13 +58,23 @@ final class SessionChatModel: ObservableObject {
 
     func send(_ question: String) {
         guard let store = appModel.store else { return }
+        let userMessage = ChatMessage(role: .user, text: question)
+        // A question about My Notes is answered from them here, without the
+        // model, which never reads them.
+        if let reply = MyNotesLookup.answer(question: question, notes: material.myNotes) {
+            messages.append(userMessage)
+            messages.append(ChatMessage(role: .assistant, text: reply, fromMyNotes: true))
+            coverage = nil
+            let saved = messages
+            appModel.attemptSave("chat") { try store.saveSessionChat(saved, for: self.patient, session: self.session) }
+            return
+        }
         // Past ChatMemory's budget, compact first so the answer still has the
         // whole conversation, the earlier part in summary.
         if ChatMemory.needsCompaction(messages) {
             compact("") { [weak self] in self?.send(question) }
             return
         }
-        let userMessage = ChatMessage(role: .user, text: question)
         messages.append(userMessage)
         isSending = true
         let assistantID = UUID()
@@ -165,13 +175,17 @@ final class SessionChatModel: ObservableObject {
                 alert(.message(error.localizedDescription))
             },
             onFinish: { [self] text in
-                isSending = false
                 guard !runner.wasStopped, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    isSending = false
                     messages.removeAll { $0.id == summaryID }
                     return
                 }
                 appModel.attemptSave("chat") { try store.saveSessionChat(messages, for: patient, session: session) }
-                next?()
+                if let next {
+                    DispatchQueue.main.async { next() }
+                } else {
+                    isSending = false
+                }
             },
             onCancelledWhileQueued: { [self] in isSending = false }
         )

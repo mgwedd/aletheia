@@ -7,7 +7,13 @@ import Foundation
 struct ContextBudget: Equatable {
     var tokens: Int
 
+    #if DEBUG
+    /// A UI test can set the window (see `FixtureScenario.contextTokens`).
+    static let current = ContextBudget(
+        tokens: FixtureMode.scenario?.contextTokens ?? ModelAdvisor.contextBudgetTokens(for: .current()))
+    #else
     static let current = ContextBudget(tokens: ModelAdvisor.contextBudgetTokens(for: .current()))
+    #endif
 
     /// Room kept for the reply and the prompt's own wrapper.
     static let replyHeadroomTokens = 2048

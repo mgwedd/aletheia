@@ -14,7 +14,7 @@ final class AnswerEffortTests: XCTestCase {
                 XCTAssertTrue(blurb.contains("read whole"), name)
 
                 // Lookups: named with their count and rounds where the code makes them, never elsewhere.
-                if feature != .note && effort.maxToolCalls > 0 {
+                if effort.maxToolCalls > 0 {
                     let rounds = effort.maxRefinementRounds
                     XCTAssertTrue(
                         blurb.contains("up to \(effort.maxToolCalls) lookups in \(rounds) round\(rounds == 1 ? "" : "s")"),

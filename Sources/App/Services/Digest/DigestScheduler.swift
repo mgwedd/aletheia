@@ -327,18 +327,19 @@ final class DigestScheduler: ObservableObject {
             if Task.isCancelled { break }
             result.patients[patient.id] = patient
             let sessions = (try? store.listSessions(for: patient)) ?? []
-            var items: [(session: SessionRecord, characters: Int, ready: Bool)] = []
+            var items: [(session: SessionRecord, characters: Int, readsWhole: Bool, ready: Bool)] = []
             var history = 0
             for session in sessions {
                 guard let read = try? store.readTranscript(for: patient, session: session),
                       !read.isEmpty else { continue }
                 let ready = store.anyCurrentDigest(for: patient, session: session, transcript: read) != nil
-                items.append((session, read.count, ready))
+                items.append((session, read.count, LongSessionNote.readsWhole(read), ready))
                 history += read.count
             }
             var count = Count(ready: 0, needed: 0)
             for item in items where DigestSchedulePolicy.needsSummary(
-                transcriptCharacters: item.characters, historyCharacters: history, room: room
+                transcriptCharacters: item.characters, historyCharacters: history, room: room,
+                readsWhole: item.readsWhole
             ) {
                 count.needed += 1
                 if item.ready {

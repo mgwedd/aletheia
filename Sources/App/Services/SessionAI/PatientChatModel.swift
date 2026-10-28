@@ -294,13 +294,17 @@ final class PatientChatModel: ObservableObject {
                 alert(.message(error.localizedDescription))
             },
             onFinish: { [self] text in
-                isSending = false
                 guard !runner.wasStopped, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    isSending = false
                     messages.removeAll { $0.id == summaryID }
                     return
                 }
                 persist(threadID: threadID)
-                next?()
+                if let next {
+                    DispatchQueue.main.async { next() }
+                } else {
+                    isSending = false
+                }
             },
             onCancelledWhileQueued: { [self] in isSending = false }
         )

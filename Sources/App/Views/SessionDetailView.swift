@@ -78,7 +78,6 @@ private struct NoteProgressRow: View {
                 ThemeProgressBar(value: highWater.clamp(NoteProgress.fraction(progress, now: context.date, speed: speed)))
                     .frame(maxWidth: 240)
             }
-            .accessibilityElement(children: .combine)
         }
     }
 }
@@ -319,7 +318,7 @@ struct SessionDetailView: View {
                 .themeDivider(.bottom)
             // Above the tab content, so progress shows on every tab.
             if let job = transcription.job(for: session.id) {
-                TranscriptionProgressView(job: job, sessionDate: session.date) {
+                TranscriptionProgressView(job: job) {
                     transcription.cancel(sessionID: session.id)
                 }
             } else if isQueued {
@@ -338,9 +337,11 @@ struct SessionDetailView: View {
                 case .ask: chatTab
                 }
             }
+            
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Theme.panel.color)
         }
+        
         .navigationTitle(Self.dateFormatter.string(from: session.date))
         .background(Theme.window.color)
         .onChange(of: selectedTab) { refreshConsent() }
@@ -463,7 +464,28 @@ struct SessionDetailView: View {
         .exportResultAlert($exportResult)
     }
 
+    /// Title and consent line on one row when they fit; in a narrow column the
+    /// consent line goes under the title, wrapping if it must.
     private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                headerTitle
+                Spacer(minLength: 0)
+                consentStatus(alignment: .trailing).fixedSize()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                headerTitle
+                consentStatus(alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 6)
+        .frame(minHeight: 52)
+        .background(Theme.window.color)
+    }
+
+    private var headerTitle: some View {
         HStack(spacing: 10) {
             Text(Self.dateFormatter.string(from: session.date))
                 .font(Theme.Typography.headline)
@@ -476,22 +498,18 @@ struct SessionDetailView: View {
             } else {
                 Chip(headerDetail)
             }
-            Spacer(minLength: 0)
-            consentStatus
         }
-        .padding(.horizontal, 20)
-        .frame(height: 52)
-        .background(Theme.window.color)
     }
 
     /// "Consent: verbal, from the patient · …", with Change… until a note is signed.
-    private var consentStatus: some View {
+    private func consentStatus(alignment: TextAlignment) -> some View {
         HStack(spacing: 6) {
+            // Wraps rather than cutting off when the header is narrow.
             Text(consentLine)
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
-                .lineLimit(1)
-                .truncationMode(.tail)
+                .multilineTextAlignment(alignment)
+                .fixedSize(horizontal: false, vertical: true)
             if canChangeConsent {
                 Button(RecordingConsent.changeTitle) {
                     // A note may have been signed since the line was drawn.
@@ -1273,20 +1291,31 @@ struct SessionDetailView: View {
         }
     }
 
+    private func notesPanePicker(locked: Bool) -> some View {
+        ThemeSegmentedControl(
+            options: NotesPane.all.map { ThemeTab(value: $0, title: $0.label) },
+            selection: notesPaneBinding,
+            sizing: .fitted
+        )
+        .disabled(locked)
+        .opacity(locked ? 0.55 : 1)
+        .accessibilityLabel("Note")
+        .hoverTip(showingMyNotes ? HelpTips.myNotes : nil)
+    }
+
     /// The Notes tab: one picker across the drafted formats and the therapist's
     /// own notes. Switching is locked while a note is generating or being edited.
     private var notesTab: some View {
         let locked = noteRunner.isStreaming || noteRunner.isQueued || isEditingNote
         return VStack(alignment: .leading, spacing: 14) {
-            ThemeSegmentedControl(
-                options: NotesPane.all.map { ThemeTab(value: $0, title: $0.label) },
-                selection: notesPaneBinding,
-                sizing: .fitted
-            )
-            .disabled(locked)
-            .opacity(locked ? 0.55 : 1)
-            .accessibilityLabel("Note")
-            .hoverTip(showingMyNotes ? HelpTips.myNotes : nil)
+            // Scrolls sideways when the column is too narrow for every format,
+            // rather than widening the column past the window.
+            ViewThatFits(in: .horizontal) {
+                notesPanePicker(locked: locked)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    notesPanePicker(locked: locked)
+                }
+            }
             .padding([.horizontal, .top], 20)
 
             if showingMyNotes {
@@ -1412,8 +1441,9 @@ struct SessionDetailView: View {
                 OutdatedNoteBanner(canRegenerate: !transcriptText.isEmpty, onRegenerate: { note.generate() })
             }
 
-            if summaryText.isEmpty && !noteRunner.isStreaming {
-                emptyNoteCard
+            if summaryText.isEmpty && !noteRunner.isStreaming && !noteRunner.isQueued {
+                // Scrolls in a short window so the tab never outgrows it.
+                ScrollView { emptyNoteCard }
             } else if summaryText.isEmpty {
                 noteWorkingRow
             } else if isEditingNote {
@@ -1433,7 +1463,7 @@ struct SessionDetailView: View {
                 RichNoteEditor(markdown: $note.noteDraft, fonts: .serif, minHeight: 200, fills: true, label: "Edit note")
                     .padding([.horizontal, .bottom], 20)
             } else {
-                if noteRunner.isStreaming {
+                if noteRunner.isStreaming || noteRunner.isQueued {
                     noteWorkingRow
                 } else if noteRunner.progress.stats?.possiblyTruncated == true {
                     Text(AIRunStats.truncationNotice)
@@ -1648,6 +1678,9 @@ struct SessionDetailView: View {
                 systemImage: "text.alignleft"
             )
         }
+        // One native pull-down control, so a click anywhere on it opens the
+        // menu; the default style only answered clicks on the icon.
+        .menuStyle(.borderlessButton)
         .fixedSize()
         .help("How long the note is, and the AI effort for a long session. \(settings.noteEffort.displayName): \(settings.noteEffort.blurb(for: .note)) Regenerate to apply a change.")
     }

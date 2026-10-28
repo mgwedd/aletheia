@@ -144,6 +144,7 @@ private final class EvalRunLog: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         switch event {
         case .reading(let tokens): pending = tokens
+        case .prefill: break
         case .finished(let stats): calls.append(.init(estimatedTokens: pending, stats: stats))
         }
     }

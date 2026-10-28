@@ -168,8 +168,11 @@ final class ThemeTextAreaTextView: PatientTextView {
     }
 
     override func setFrameSize(_ newSize: NSSize) {
+        let widthChanged = abs(newSize.width - frame.width) > 0.001
         super.setFrameSize(newSize)
-        updateContainerWidth()
+        if widthChanged {
+            updateContainerWidth()
+        }
     }
 
     /// The placeholder's attributes: the typed text's, in the muted color.
@@ -193,6 +196,8 @@ final class ThemeTextAreaTextView: PatientTextView {
         NSAttributedString(string: placeholder, attributes: placeholderAttributes)
             .draw(with: NSRect(origin: placeholderOrigin, size: NSSize(width: width, height: 10_000)), options: [.usesLineFragmentOrigin])
     }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
@@ -248,14 +253,29 @@ final class ThemeTextAreaTextView: PatientTextView {
     /// The height the text needs at `width`, padding included, never less than one line.
     func contentHeight(forWidth width: CGFloat) -> CGFloat {
         guard let container = textContainer, let layout = layoutManager else { return 0 }
-        container.containerSize = NSSize(
-            width: ThemeTextAreaMetrics.containerWidth(forViewWidth: width, trailingInset: trailingInset),
-            height: CGFloat.greatestFiniteMagnitude
-        )
-        layout.ensureLayout(for: container)
-        let used = layout.usedRect(for: container)
-        let oneLine = layout.defaultLineHeight(for: ThemeTextAreaMetrics.font(for: face)) + ThemeTextAreaMetrics.lineSpacing
-        let extra = layout.extraLineFragmentRect
+        let targetWidth = ThemeTextAreaMetrics.containerWidth(forViewWidth: width, trailingInset: trailingInset)
+        if abs(targetWidth - container.containerSize.width) < 0.001 {
+            layout.ensureLayout(for: container)
+            let used = layout.usedRect(for: container)
+            let oneLine = layout.defaultLineHeight(for: ThemeTextAreaMetrics.font(for: face)) + ThemeTextAreaMetrics.lineSpacing
+            let extra = layout.extraLineFragmentRect
+            let text = max(used.height, extra.isEmpty ? 0 : extra.maxY, oneLine)
+            return ThemeTextAreaMetrics.height(forContentHeight: text)
+        }
+
+        // Measure on a dedicated offscreen container so the live container's
+        // geometry is never mutated during a layout pass, which would trigger
+        // a layout invalidation liveloop.
+        let storage = NSTextStorage(string: string, attributes: ThemeTextAreaMetrics.attributes(face: face, color: Theme.text.nsColor))
+        let measureLayout = NSLayoutManager()
+        let measureContainer = NSTextContainer(containerSize: NSSize(width: targetWidth, height: .greatestFiniteMagnitude))
+        measureContainer.lineFragmentPadding = ThemeTextAreaMetrics.lineFragmentPadding
+        measureLayout.addTextContainer(measureContainer)
+        storage.addLayoutManager(measureLayout)
+        measureLayout.ensureLayout(for: measureContainer)
+        let used = measureLayout.usedRect(for: measureContainer)
+        let oneLine = measureLayout.defaultLineHeight(for: ThemeTextAreaMetrics.font(for: face)) + ThemeTextAreaMetrics.lineSpacing
+        let extra = measureLayout.extraLineFragmentRect
         let text = max(used.height, extra.isEmpty ? 0 : extra.maxY, oneLine)
         return ThemeTextAreaMetrics.height(forContentHeight: text)
     }
@@ -345,12 +365,10 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
         textView.isSelectable = isEnabled
         scroll.alphaValue = isEnabled ? 1 : 0.55
 
-        // Drive focus from the binding, only where it disagrees with the window.
+        // Drive focus from the binding when programmatic focus is requested.
         let isFirstResponder = textView.window?.firstResponder === textView
         if isFocused, !isFirstResponder, isEnabled, let window = textView.window {
             DispatchQueue.main.async { window.makeFirstResponder(textView) }
-        } else if !isFocused, isFirstResponder {
-            DispatchQueue.main.async { textView.window?.makeFirstResponder(nil) }
         }
     }
 

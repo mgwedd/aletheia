@@ -25,6 +25,14 @@ enum LongSessionNote {
     static let passageFloor = 4_000
     /// The most of the material room the digest may take.
     static let digestShare = 2_500
+    /// A transcript of more than this many digest sections (about ten minutes
+    /// each) is never sent whole, even when it fits: a local model given a long
+    /// transcript in one piece writes about only part of it. The note reads the
+    /// digest of every section and passages instead.
+    static let wholeReadSections = 3
+    /// The most material a note is given on the digest path, in characters, so
+    /// a large window doesn't bury the section digests under passages.
+    static let readRoom = 36_000
 
     /// How the Focus check ended.
     enum CheckOutcome: Equatable {
@@ -64,6 +72,8 @@ enum LongSessionNote {
         service: AssistantService,
         builder: DigestBuilder,
         sessionID: UUID,
+        sessionDate: Date = Date(),
+        folderName: String = "",
         loadDigest: @escaping () async -> SessionDigest?,
         saveDigest: @escaping (SessionDigest) throws -> Void,
         sectionCache: SectionCacheAccess? = nil,
@@ -85,7 +95,7 @@ enum LongSessionNote {
                 patientBackground: fields.background,
                 verbosity: verbosity, instructions: instructions, clientName: service.clientName)
         }
-        if service.fits(prompt: prompt(.transcript(transcript))) {
+        if readsWhole(transcript), service.fits(prompt: prompt(.transcript(transcript))) {
             if let note = fields.coverageNote { coverage(note) }
             return service.streamDigest(prompt: prompt(.transcript(transcript)), task: .note, grammar: format.grammar)
         }
@@ -107,26 +117,29 @@ enum LongSessionNote {
                     let transcriptCopy = transcript
                     let flaggedCost = await offMain { strongCost(in: transcriptCopy, phrases: riskPhrases) }
                     try Task.checkCancellation()
-                    var room = total
+                    // Never short of the risk lines.
+                    var room = min(total, max(readRoom, flaggedCost + digestShare))
+                    var checkReserve = 0
                     var plannedCheck: CheckOutcome?
                     if let cap = effort.materialCap(for: .note) {
-                        // Fast: a compact prompt, but never short of the risk lines.
-                        room = min(total, max(cap, flaggedCost + digestShare))
+                        // Fast: a compact prompt.
+                        room = min(room, max(cap, flaggedCost + digestShare))
                     } else if effort.checksDraft(for: .note) {
-                        let reserve = min(draftReserve, total / 3)
+                        let reserve = min(draftReserve, room / 3)
                         let digestSize = min(digest.sessionDigest.count, digestShare)
-                        if total - reserve - digestSize < passageFloor {
+                        if room - reserve - digestSize < passageFloor {
                             plannedCheck = .noRoom
                         } else {
-                            room = total - reserve
+                            room = room - reserve
+                            checkReserve = reserve
                         }
                     }
                     // Risk lines get their room first (every flagged line, then neighbours from
                     // `riskLimit`); the digest shrinks, or goes, to fit what is left.
                     let riskLimit = min(riskReserve, room / 3)
                     let strongBudget = min(flaggedCost, room * 2 / 3)
-                    let (digestText, cut) = fit(
-                        digest.sessionDigest, to: room - strongBudget - riskLimit - Prompts.longSessionDigestOverhead)
+                    let (digestText, cut) = digestMaterial(
+                        digest, room: room - strongBudget - riskLimit - Prompts.longSessionDigestOverhead)
                     let omitted = cut && digestText.isEmpty
                     let shortened = cut && !omitted
                     let limit = room - (digestText.isEmpty ? 0 : digestText.count + Prompts.longSessionDigestOverhead)
@@ -136,16 +149,44 @@ enum LongSessionNote {
                             phrases: riskPhrases, strongBudget: strongBudget)
                     }
                     try Task.checkCancellation()
-                    let material = SessionMaterial.excerpts(digest: digestText, passages: found.text)
                     let totalLines = nonBlankLines(transcript).count
+                    var lookups = 0
                     @MainActor func label(_ check: CheckOutcome?) -> String {
                         coverageLabel(
                             digestParts: digest.sections.count, digestShortened: shortened, digestOmitted: omitted,
                             passageLines: found.lineCount, totalLines: totalLines, effort: effort,
-                            droppedRisk: found.droppedRisk, check: check)
+                            lookups: lookups, droppedRisk: found.droppedRisk, check: check)
                             + (fields.coverageNote.map { " " + $0 } ?? "")
                     }
                     coverage(label(plannedCheck))
+
+                    // Detailed or Focus: with every part's summary and the risk lines in, the
+                    // model reads parts in full, in the room left over. The risk scan stays fixed.
+                    var followUps = ""
+                    if looksCloser(effort: effort, verbosity: verbosity) {
+                        let base = Prompts.sessionMaterial(.excerpts(digest: digestText, passages: found.text))
+                        let scope = LocalToolScope(sessions: [
+                            LocalToolSession(
+                                id: sessionID, tag: "S1", date: sessionDate, folderName: folderName,
+                                transcript: transcript, digest: digest, notes: notes,
+                                comments: AssistantService.formatComments(comments))
+                        ])
+                        let refinement = try await LocalToolLoop.refine(
+                            question: lookupTask(format),
+                            initialContext: base,
+                            scope: scope,
+                            effort: effort,
+                            characterBudget: max(0, total - checkReserve - base.count - 80),
+                            service: service,
+                            builder: builder,
+                            live: live)
+                        if !refinement.additionalContext.isEmpty {
+                            followUps = refinement.additionalContext
+                            lookups = refinement.outcomes.filter { !$0.isError }.count
+                            coverage(label(plannedCheck))
+                        }
+                    }
+                    let material = SessionMaterial.excerpts(digest: digestText, passages: found.text, followUps: followUps)
 
                     // The draft, streamed into the pane as it is written.
                     let draftStats = StatsBox()
@@ -301,13 +342,63 @@ enum LongSessionNote {
         var value: AIRunStats?
     }
 
-    /// `text` cut at a line break to fit `limit` characters, and whether it was cut.
+    /// Whether a long-session note reads parts in full after the summaries: at
+    /// Length Detailed or at Focus, never at Fast.
+    nonisolated static func looksCloser(effort: AnswerEffort, verbosity: SummaryVerbosity) -> Bool {
+        effort.maxToolCalls > 0 && (verbosity == .detailed || effort == .focus)
+    }
+
+    /// What the lookup planner is preparing for. A note covers the whole session, so
+    /// close reads are spread over it, not drawn to one stretch.
+    nonisolated static func lookupTask(_ format: ProgressNoteFormat) -> String {
+        "Write a \(format.displayName) covering the whole session, start to end. The material has a "
+            + "summary of every part. Read in full the parts whose summary is too thin to write from, "
+            + "spread across the session so no part is left out."
+    }
+
+    /// Whether `transcript` is short enough to send whole (if it also fits).
+    nonisolated static func readsWhole(_ transcript: String) -> Bool {
+        TranscriptSections.split(transcript).count <= wholeReadSections
+    }
+
+    /// Every section's digest in order, each on a line led by its times.
+    static func sectionDigests(_ digest: SessionDigest) -> String {
+        func clock(_ seconds: Int) -> String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
+        return digest.sections.enumerated().map { index, section in
+            let span = section.start.map { start in "[\(clock(start))–\(clock(section.end ?? start))]" }
+                ?? "[part \(index + 1) of \(digest.sections.count)]"
+            return span + " " + section.digest
+        }.joined(separator: "\n")
+    }
+
+    /// The digest the note reads: every section's digest when they fit `room`
+    /// (task, then section A, B … N, then the note); else the merged session
+    /// digest, shortened evenly across the session if need be.
+    static func digestMaterial(_ digest: SessionDigest, room: Int) -> (text: String, shortened: Bool) {
+        let sections = sectionDigests(digest)
+        if digest.sections.count > 1, sections.count <= room { return (sections, false) }
+        return fit(digest.sessionDigest, to: room)
+    }
+
+    /// `text` fitted to `limit` characters, and whether it was cut. A text too
+    /// long keeps whole lines spread over all of it (both ends first, then
+    /// midpoints), in order, so no stretch of the session is dropped as a block.
     static func fit(_ text: String, to limit: Int) -> (text: String, shortened: Bool) {
         guard text.count > limit else { return (text, false) }
         guard limit > 40 else { return ("", true) }
-        let cut = text.prefix(limit - 20)
-        let whole = cut.lastIndex(of: "\n").map { String(cut[..<$0]) } ?? String(cut)
-        return (whole + "\n[digest shortened]", true)
+        let marker = "[digest shortened]"
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var room = limit - marker.count - 1
+        var kept = Set<Int>()
+        for index in spread(Array(lines.indices)) where lines[index].count + 1 <= room {
+            kept.insert(index)
+            room -= lines[index].count + 1
+        }
+        if kept.isEmpty {
+            // One line longer than the room: its start.
+            return (String(text.prefix(limit - marker.count - 1)) + "\n" + marker, true)
+        }
+        return (kept.sorted().map { lines[$0] }.joined(separator: "\n") + "\n" + marker, true)
     }
 
     nonisolated static func nonBlankLines(_ text: String) -> [Substring] {
@@ -523,13 +614,14 @@ enum LongSessionNote {
     /// applies (not Focus).
     static func coverageLabel(
         digestParts: Int, digestShortened: Bool = false, digestOmitted: Bool = false, passageLines: Int,
-        totalLines: Int, effort: AnswerEffort, droppedRisk: Int = 0, check: CheckOutcome?
+        totalLines: Int, effort: AnswerEffort, lookups: Int = 0, droppedRisk: Int = 0, check: CheckOutcome?
     ) -> String {
         let summary = digestOmitted
             ? "no summary of the whole session (it didn't fit)"
             : "a summary of the whole session (\(digestParts) part\(digestParts == 1 ? "" : "s")"
                 + (digestShortened ? ", shortened to fit" : "") + ")"
-        var text = "Read: \(summary) plus \(passageLines) of \(totalLines) transcript lines · \(effort.displayName). "
+        let followUps = lookups > 0 ? " and \(lookups) follow-up lookup\(lookups == 1 ? "" : "s")" : ""
+        var text = "Read: \(summary) plus \(passageLines) of \(totalLines) transcript lines\(followUps) · \(effort.displayName). "
             + "Details outside those lines may be missing."
         if droppedRisk > 0 {
             text += " \(droppedRisk) risk-flagged line\(droppedRisk == 1 ? "" : "s") didn't fit or were shortened; check the transcript for risk."

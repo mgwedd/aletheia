@@ -18,6 +18,9 @@ struct AIRunStats: Equatable {
     var reusedPrefix = false
     /// The window the run was given (the engine's context size); 0 when unknown.
     var contextTokens = 0
+    /// Set only on the engine's mid-read reports (never on the final one):
+    /// which batch of the prompt it is feeding the model.
+    var prefill: PrefillProgress?
 
     /// Prompt tokens read per second. Needs enough tokens to be a real
     /// measurement; a short prompt's timing is mostly noise. Nil for a run that
@@ -79,8 +82,19 @@ struct AIRunStats: Equatable {
     }
 }
 
+/// How far the engine is through reading a prompt, which it feeds to the model
+/// in batches: `part` of `total` is the batch being read, and `complete` is set
+/// once the last one is in and the model is about to write.
+struct PrefillProgress: Equatable {
+    var part: Int
+    var total: Int
+    var complete = false
+}
+
 /// What a backend tells the UI while a run is going.
 enum AIRunEvent {
+    /// The engine moved through the prompt (see `PrefillProgress`).
+    case prefill(PrefillProgress)
     /// The prompt is built and about to be read; `estimatedTokens` is `ContextBudget.estimatedTokens`.
     case reading(estimatedTokens: Int)
     case finished(AIRunStats)
@@ -111,6 +125,11 @@ struct AIRunProgress: Equatable {
     /// ("1 mention, in the Oct 13 session"). Kept across stages; built from
     /// search results, never by a model.
     var lead: String?
+    /// Where the engine is in reading the current prompt; nil before it reports.
+    var prefill: PrefillProgress?
+    /// One or two words from the question that matched the material, shown while
+    /// the last part is read. Chosen by search matching, never by a model.
+    var analyzing: String?
 
     /// Advances to a new read/write stage, keeping a one-line summary of the
     /// stage that just finished in `completedStages`.

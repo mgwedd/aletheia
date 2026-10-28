@@ -54,10 +54,14 @@ final class ChatStreamRunner: ObservableObject {
     /// Lets a multi-stage run (digest, passages, check) report its own stage.
     /// A change from a stage that has since been replaced (`started` no longer
     /// matches) is dropped; nil applies to whatever is current.
+    /// A change that leaves the stage as it was (a step count, the
+    /// "Analyzing" words) keeps the engine's own events coming, so a one-call
+    /// run still shows its reading progress and stats.
     func update(started: Date?, _ change: (inout AIRunProgress) -> Void) {
-        externalStages = true
         if let started, let current = progress.startedAt, started != current { return }
+        let stage = progress.startedAt
         change(&progress)
+        if started != nil || progress.startedAt != stage { externalStages = true }
     }
 
     func apply(_ event: AIRunEvent, run: UUID) {
@@ -67,6 +71,8 @@ final class ChatStreamRunner: ObservableObject {
         switch event {
         case .reading(let tokens):
             progress.estimatedPromptTokens = tokens
+        case .prefill(let prefill):
+            progress.prefill = prefill
         case .finished(let stats):
             progress.stats = stats
             if let written = stats.outputTokens { progress.tokensWritten = written }

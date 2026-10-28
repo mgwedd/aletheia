@@ -6,10 +6,13 @@ import Foundation
 /// conversation is compacted again (the view does this before sending, and the
 /// therapist can at any time with /compact).
 enum ChatMemory {
-    /// Characters of messages since the last compaction before the next send
-    /// compacts first (about 4,000 tokens), leaving the window to the source
-    /// material, which is what answers should rest on.
-    static let budget = 12_000
+    /// Characters (weighted like `ContextBudget`) of messages since the last compaction before the next send
+    /// compacts first: a quarter of the model's window, so the rest is left to
+    /// the source material, which is what answers should rest on. 6,144 on an
+    /// 8K window, 12,288 on 16K, capped at 24,000 on larger ones.
+    static func budget(for window: ContextBudget = .current) -> Int {
+        min(24_000, max(3_000, window.tokens * ContextBudget.charactersPerToken / 4))
+    }
 
     /// The latest summary, if any, and the messages after it.
     static func remembered(_ messages: [ChatMessage]) -> (summary: String?, recent: [ChatMessage]) {
@@ -17,8 +20,9 @@ enum ChatMemory {
         return (messages[index].text, Array(messages[(index + 1)...]))
     }
 
-    static func needsCompaction(_ messages: [ChatMessage]) -> Bool {
-        remembered(messages).recent.reduce(0) { $0 + $1.text.count } > budget
+    static func needsCompaction(_ messages: [ChatMessage], window: ContextBudget = .current) -> Bool {
+        remembered(messages).recent.filter(\.reachesModel)
+            .reduce(0) { $0 + ContextBudget.weightedLength(of: $1.text) } > budget(for: window)
     }
 
     /// The `/compact` command and its optional focus, or nil for a question.

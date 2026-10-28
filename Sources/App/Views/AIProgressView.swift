@@ -20,6 +20,22 @@ enum AIProgressFormat {
         return min(0.95, max(0, elapsed / total))
     }
 
+    /// The words for "Analyzing …": up to two of the question's search terms that
+    /// occur in `material`, in the order asked. Plain matching, no model.
+    static func analyzingWords(question: String, in material: String) -> String? {
+        var words: [String] = []
+        for term in SessionSearch.terms(from: question).prefix(4) {
+            let text = term.text
+            let whole = "\\b" + NSRegularExpression.escapedPattern(for: text) + "\\b"
+            guard !text.isEmpty,
+                  material.range(of: whole, options: TextSearch.compareOptions.union(.regularExpression)) != nil
+            else { continue }
+            words.append(contentsOf: term.words.prefix(2 - words.count))
+            if words.count >= 2 { break }
+        }
+        return words.isEmpty ? nil : words.joined(separator: " ")
+    }
+
     /// The status line for work before any model runs: "Searching 12 sessions
     /// for “dream”… · 0:03".
     static func busyLine(_ notice: String, since: Date, now: Date) -> String {
@@ -34,6 +50,16 @@ enum AIProgressFormat {
     static func statusLine(_ progress: AIRunProgress, now: Date) -> String {
         let elapsed = elapsed(now.timeIntervalSince(progress.runStartedAt ?? progress.startedAt ?? now))
         guard progress.firstTokenAt == nil else { return "\(progress.writeTitle)… · \(elapsed)" }
+        if let prefill = progress.prefill {
+            if prefill.complete { return "Preparing the answer · \(elapsed)" }
+            if prefill.total > 1 {
+                if prefill.part >= prefill.total, let words = progress.analyzing, !words.isEmpty {
+                    return "Analyzing \(words) · \(elapsed)"
+                }
+                let reading = "\(progress.readTitle) · part \(prefill.part) of \(prefill.total)"
+                return "\([progress.lead, reading].compactMap { $0 }.joined(separator: ". ")) · \(elapsed)"
+            }
+        }
         let activity = [progress.lead, progress.readTitle + "…"].compactMap { $0 }.joined(separator: ". ")
         return "\(activity) · \(elapsed)"
     }

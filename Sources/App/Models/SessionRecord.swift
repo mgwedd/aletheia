@@ -43,11 +43,19 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     let role: ChatRole
     let text: String
     let date: Date
+    /// True for a reply read straight from My Notes on this Mac (`MyNotesLookup`).
+    /// It is shown, but never sent to the model or counted toward compaction,
+    /// so My Notes stay out of every prompt. Nil in chats saved before it.
+    let fromMyNotes: Bool?
 
-    init(id: UUID = UUID(), role: ChatRole, text: String, date: Date = Date()) {
+    init(id: UUID = UUID(), role: ChatRole, text: String, date: Date = Date(), fromMyNotes: Bool? = nil) {
         self.id = id
         self.role = role
         self.text = text
         self.date = date
+        self.fromMyNotes = fromMyNotes
     }
+
+    /// Whether the message may go into a prompt.
+    var reachesModel: Bool { fromMyNotes != true }
 }

@@ -297,6 +297,7 @@ final class DigestBuilder: ObservableObject {
                 live(started) { progress in
                     switch event {
                     case .reading(let tokens): progress.estimatedPromptTokens = tokens
+                    case .prefill(let prefill): progress.prefill = prefill
                     case .finished(let stats):
                         progress.stats = stats
                         if let written = stats.outputTokens { progress.tokensWritten = written }

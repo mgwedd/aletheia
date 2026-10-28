@@ -39,6 +39,8 @@ struct RecordedSession {
 struct TranscriptionBand {
     let isRunning: Bool
     let isWaiting: Bool
+    /// What the band is called.
+    let title: String
     let stage: String?
     let percent: Int?
     let menuBarLine: String?
@@ -257,6 +259,7 @@ final class TranscriptionDesk {
         return TranscriptionBand(
             isRunning: job != nil,
             isWaiting: coordinator.isWaiting(recorded.session.id),
+            title: TranscriptionProgressView.title,
             stage: job?.progress.stage.title,
             percent: job.map { Int($0.progress.fraction * 100) },
             menuBarLine: coordinator.statusLine)
@@ -371,6 +374,7 @@ extension Then where Subject == TranscriptionBand {
     }
     func isTranscribing() { expect(subject.isRunning, "expected the session to be transcribing") }
     func isNotTranscribing() { expect(!subject.isRunning && !subject.isWaiting, "expected no transcription for the session") }
+    func isTitled(_ title: String) { expectEqual(subject.title, title, "the band's title") }
     func showsStage(_ stage: String) { expectEqual(subject.stage, stage, "the stage") }
     func showsPercent(_ percent: Int) { expectEqual(subject.percent, percent, "the percentage") }
     func menuBarShows(_ line: String) { expectEqual(subject.menuBarLine, line, "the menu bar line") }
@@ -396,6 +400,13 @@ extension Then where Subject == TranscriptReading {
     func hasLine(_ stamp: String, from speaker: String, saying text: String) {
         let want = "[\(stamp)] \(speaker): \(text)"
         expect(subject.lines.contains(want), "expected the line \"\(want)\", found \(subject.lines)")
+    }
+    /// Every line the client spoke is led by their first name, whole on one line.
+    func clientTurnsStartWith(_ name: String, saying text: String) {
+        let turns = subject.lines.filter { $0.contains(text) }
+        expect(!turns.isEmpty, "the client's turn is missing: \(subject.lines)")
+        let bad = turns.filter { $0.range(of: #"^\[\d{2}:\d{2}\] "# + NSRegularExpression.escapedPattern(for: name) + ": ", options: .regularExpression) == nil }
+        expect(bad.isEmpty, "turns that do not start with \"\(name):\": \(bad)")
     }
     func neverNamesSpeaker(_ speaker: String) {
         expect(!subject.text.contains("\(speaker):"), "the transcript still names \"\(speaker)\"")

@@ -12,6 +12,29 @@ struct FixtureScenario: Decodable, Equatable {
         var sessions: Int?
         /// True when the patient has already attested to recording consent.
         var recordingConsent: Bool?
+        /// A recorded consent for the patient's first session, so its header
+        /// shows the "Consent: verbal, from the patient" line.
+        var consentRecorded: Bool?
+        /// The first session's transcript, in the stored form
+        /// ("[mm:ss] You: …" for the microphone, "[mm:ss] Call audio: …" for the call).
+        var transcript: String?
+        /// The first session's My Notes.
+        var myNotes: String?
+        /// The conversation already held on the first session's Ask tab.
+        var chat: [ChatSeed]?
+    }
+
+    struct ChatSeed: Decodable, Equatable {
+        /// "user", "assistant" or "summary".
+        var role: String
+        var text: String
+    }
+
+    /// A reply the scripted AI gives to any request whose prompt contains
+    /// `whenPromptContains`, ahead of the in-order `aiReplies`.
+    struct AIRule: Decodable, Equatable {
+        var whenPromptContains: String
+        var reply: String
     }
 
     /// Names the throwaway data folder and defaults domain. Launching again
@@ -32,6 +55,23 @@ struct FixtureScenario: Decodable, Equatable {
 
     /// Replies the scripted AI engine gives, in order; the last repeats.
     var aiReplies: [String]?
+    var aiRules: [AIRule]?
+    /// How long each stage of an AI request lasts, so a test can watch the
+    /// status line move. Zero or unset: answers at once.
+    var aiStageMs: Int?
+    /// Streamed requests report reading the prompt in this many parts (one
+    /// part, or unset, reports none), then "preparing the answer".
+    var aiParts: Int?
+    /// The model's reading window in tokens, in place of the Mac's own.
+    var contextTokens: Int?
+    /// Transcription that runs until it is cancelled, so its progress band
+    /// stays on screen.
+    var slowTranscription: Bool?
+    /// Settings > Notes: "concise", "natural" or "detailed".
+    var noteLength: String?
+    /// AI effort for notes and for Ask: "fast", "normal" or "focus".
+    var noteEffort: String?
+    var chatEffort: String?
 
     /// What "Import Audio…" is handed instead of the system open panel:
     /// "clip" (a two-second tone), "twoTracks" (a microphone and a call track,
@@ -113,16 +153,30 @@ enum FixtureMode {
     /// A fresh run: first launch for this run name.
     static var isFirstLaunchOfRun: Bool { !FileManager.default.fileExists(atPath: seededMarker.path) }
 
-    static let engine = FixtureScriptedEngine(replies: scenario?.aiReplies ?? [])
+    static let engine = FixtureScriptedEngine(
+        replies: scenario?.aiReplies ?? [], rules: scenario?.aiRules ?? [],
+        stageMs: scenario?.aiStageMs ?? 0, parts: scenario?.aiParts ?? 0)
+
+    /// The transcript view on screen, so the probe can count its laid-out lines.
+    @MainActor static weak var transcriptView: NSTextView?
+
+    /// The transcriber the fixture build uses, or nil for the real one.
+    static var transcriber: Transcribing? {
+        scenario?.slowTranscription == true ? FixtureSlowTranscriber() : nil
+    }
 
     /// The assistant the fixture build uses: the real prompt-building over the
     /// scripted engine. The model file is a placeholder so it reads as present.
-    static var assistant: Assistant {
+    static var modelURL: URL {
         let model = support.appendingPathComponent("fixture-model.gguf")
         if !FileManager.default.fileExists(atPath: model.path) {
             FileManager.default.createFile(atPath: model.path, contents: Data())
         }
-        return LlamaAssistant(modelURL: model, engineOverride: engine)
+        return model
+    }
+
+    static var assistant: Assistant {
+        LlamaAssistant(modelURL: modelURL, engineOverride: engine)
     }
 
     static let disk = FixtureDisk(state: scenario?.fileVault)
@@ -153,6 +207,15 @@ enum FixtureMode {
             if let policy = scenario?.consentPolicy.flatMap(ConsentPolicy.init(rawValue:)) {
                 settings.recordingConsentPolicy = policy
             }
+            if let length = scenario?.noteLength.flatMap(SummaryVerbosity.init(rawValue:)) {
+                settings.summaryVerbosity = length
+            }
+            if let effort = scenario?.noteEffort.flatMap(AnswerEffort.init(rawValue:)) {
+                settings.noteEffort = effort
+            }
+            if let effort = scenario?.chatEffort.flatMap(AnswerEffort.init(rawValue:)) {
+                settings.sessionChatEffort = effort
+            }
         }
     }
 
@@ -161,16 +224,34 @@ enum FixtureMode {
         guard isFirstLaunchOfRun else { return }
         defer { FileManager.default.createFile(atPath: seededMarker.path, contents: Data()) }
         guard let store = model.store else { return }
+        var firstSessions: [(seed: FixtureScenario.PatientSeed, patient: Patient, session: SessionRecord)] = []
         for seed in scenario?.patients ?? [] {
             guard let patient = try? store.createPatient(name: seed.name) else { continue }
-            for offset in 0..<(seed.sessions ?? 0) {
-                _ = try? store.createSession(for: patient, on: Date().addingTimeInterval(Double(offset) * 86_400))
+            let hasContent = seed.transcript != nil || seed.myNotes != nil || seed.chat != nil || seed.consentRecorded == true
+            var first: SessionRecord?
+            for offset in 0..<max(seed.sessions ?? 0, hasContent ? 1 : 0) {
+                let made = try? store.createSession(for: patient, on: Date().addingTimeInterval(Double(offset) * 86_400))
+                if first == nil { first = made }
             }
+            if let first { firstSessions.append((seed, patient, first)) }
         }
         model.refreshPatients()
         for seed in scenario?.patients ?? [] where seed.recordingConsent == true {
             if let patient = model.patients.first(where: { $0.name == seed.name }) {
                 model.updatePatient(id: patient.id) { $0.recordingConsentAttestedAt = Date() }
+            }
+        }
+        for (seed, patient, session) in firstSessions {
+            if let transcript = seed.transcript { try? store.saveTranscript(transcript, for: patient, session: session) }
+            if let notes = seed.myNotes { model.saveNote(sessionID: session.id, text: notes) }
+            if let chat = seed.chat {
+                let messages = chat.map { ChatMessage(role: ChatRole(rawValue: $0.role) ?? .user, text: $0.text) }
+                try? store.saveSessionChat(messages, for: patient, session: session)
+            }
+            if seed.consentRecorded == true {
+                var capture = ConsentCapture()
+                capture.confirmed = true
+                _ = try? model.recordConsent(capture, patient: patient, session: session)
             }
         }
     }
@@ -247,17 +328,28 @@ final class FixtureClock {
 
 /// A local model that answers from a script, in order (the last reply
 /// repeats), and keeps every request it was given so a test can see exactly
-/// what context reached the model.
+/// what context reached the model. A rule answers first when the prompt
+/// contains its text. With a stage time it takes that long over each stage
+/// (and over each part it reports reading), so a test can watch the status
+/// line move.
 final class FixtureScriptedEngine: LocalLLMEngine {
     static let defaultReply = "Fixture reply."
 
     var state: LocalLLMEngineState = .ready
     private let replies: [String]
+    private let rules: [FixtureScenario.AIRule]
+    private let stage: UInt64
+    private let parts: Int
     private let lock = NSLock()
     private var received: [LocalLLMRequest] = []
     private var next = 0
 
-    init(replies: [String] = []) { self.replies = replies }
+    init(replies: [String] = [], rules: [FixtureScenario.AIRule] = [], stageMs: Int = 0, parts: Int = 0) {
+        self.replies = replies
+        self.rules = rules
+        self.stage = UInt64(max(0, stageMs)) * 1_000_000
+        self.parts = parts
+    }
 
     var requests: [LocalLLMRequest] {
         lock.lock(); defer { lock.unlock() }
@@ -267,12 +359,63 @@ final class FixtureScriptedEngine: LocalLLMEngine {
     func load() async throws {}
     func unload() {}
 
-    func generate(_ request: LocalLLMRequest) async throws -> String {
+    private func reply(to request: LocalLLMRequest) -> String {
         lock.lock(); defer { lock.unlock() }
         received.append(request)
+        let asked = ([request.system] + request.turns.map { "\($0)" } + [request.prompt]).joined(separator: "\n")
+        if let rule = rules.first(where: { asked.contains($0.whenPromptContains) }) { return rule.reply }
         guard !replies.isEmpty else { return Self.defaultReply }
         defer { next += 1 }
         return replies[min(next, replies.count - 1)]
+    }
+
+    func generate(_ request: LocalLLMRequest) async throws -> String {
+        if stage > 0 { try await Task.sleep(nanoseconds: stage) }
+        return reply(to: request)
+    }
+
+    func stream(
+        _ request: LocalLLMRequest,
+        onStats: (@Sendable (AIRunStats) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    // Reading the prompt: each part, then the last one done, as the real engine reports.
+                    if parts > 1, let onStats {
+                        for part in 1...parts {
+                            var stats = AIRunStats()
+                            stats.prefill = PrefillProgress(part: part, total: parts)
+                            onStats(stats)
+                            try await Task.sleep(nanoseconds: max(stage, 200_000_000))
+                        }
+                        var stats = AIRunStats()
+                        stats.prefill = PrefillProgress(part: parts, total: parts, complete: true)
+                        onStats(stats)
+                    }
+                    if stage > 0 { try await Task.sleep(nanoseconds: stage) }
+                    continuation.yield(reply(to: request))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
+/// Transcription that reports a little progress and then waits to be cancelled.
+struct FixtureSlowTranscriber: Transcribing {
+    var isReady: Bool { true }
+
+    func transcribeSession(
+        micURL: URL?, callURL: URL?, onProgress: @escaping (TranscriptionProgress) -> Void
+    ) async throws -> String {
+        onProgress(TranscriptionProgress(stage: .transcribingMic, fraction: 0.1))
+        while true {
+            try await Task.sleep(nanoseconds: 500_000_000)
+        }
     }
 }
 
@@ -321,6 +464,8 @@ enum FixtureProbe {
         /// Every prompt the AI engine was given: system text, earlier turns
         /// and the final prompt, joined, one entry per request.
         var aiRequests: [String]
+        /// Lines the transcript on screen is laid out in; 0 when there is none.
+        var transcriptLines: Int = 0
     }
 
     /// Stable text: keys sorted, so equal facts always read the same.
@@ -360,7 +505,21 @@ enum FixtureProbe {
         let asked = FixtureMode.engine.requests.map { request in
             ([request.system] + request.turns.map { "\($0)" } + [request.prompt]).joined(separator: "\n")
         }
-        return Snapshot(files: files(under: FixtureMode.root), patients: patients, aiRequests: asked)
+        return Snapshot(files: files(under: FixtureMode.root), patients: patients, aiRequests: asked,
+                        transcriptLines: transcriptLineCount())
+    }
+
+    /// Lines in the laid-out transcript on screen, so a test can tell a turn that wraps
+    /// across the pane from one stacked a letter to a line.
+    @MainActor static func transcriptLineCount() -> Int {
+        guard let view = FixtureMode.transcriptView, let layout = view.layoutManager,
+              let container = view.textContainer else { return 0 }
+        layout.ensureLayout(for: container)
+        var lines = 0
+        layout.enumerateLineFragments(forGlyphRange: NSRange(location: 0, length: layout.numberOfGlyphs)) { _, _, _, _, _ in
+            lines += 1
+        }
+        return lines
     }
 
     @MainActor static func snapshotJSON(appModel: AppModel) -> String {

@@ -251,6 +251,8 @@ jobs:
 
       - name: Notarize and staple
         if: env.HAS_SIGNING == 'true' && env.HAS_NOTARIZATION == 'true'
+        # Backstop above notarytool's own 2h wait, plus stapling and checks.
+        timeout-minutes: 150
         env:
           ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
@@ -271,15 +273,19 @@ jobs:
 
           # notarytool exits 0 even when Apple rejects the build, so read the
           # status, and print Apple's log (the only place the reason appears).
+          # Output streams to the log as it comes, so the submission ID shows
+          # while Apple's queue is slow. A timed-out wait doesn't cancel the
+          # submission; check it later with `notarytool info <id>`.
+          NOTARY_LOG="$RUNNER_TEMP/notarytool.log"
           set +e
-          OUT="$(xcrun notarytool submit "$DMG" \
+          xcrun notarytool submit "$DMG" \
             --key "$KEY_PATH" \
             --key-id "$ASC_API_KEY_ID" \
             --issuer "$ASC_API_ISSUER_ID" \
-            --wait 2>&1)"
-          STATUS=$?
+            --wait --timeout 2h 2>&1 | tee "$NOTARY_LOG"
+          STATUS=${PIPESTATUS[0]}
           set -e
-          echo "$OUT"
+          OUT="$(cat "$NOTARY_LOG")"
           if [ "$STATUS" -ne 0 ] || ! echo "$OUT" | grep -q 'status: Accepted'; then
             SUB_ID="$(echo "$OUT" | awk '/^ *id:/ {print $2; exit}')"
             if [ -n "$SUB_ID" ]; then

@@ -196,4 +196,8 @@ final class ConsentSpec: AcceptanceCase {
 
         then(try when.quitAndReopen(reading: written, of: jane)).isSealedAndReadsBack()
     }
+
+    func test_CONSENT_13() async throws {
+        try pending("layout: checked by the UI test test_CONSENT_13, as wrapping needs the header on screen")
+    }
 }

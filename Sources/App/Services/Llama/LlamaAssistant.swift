@@ -108,6 +108,12 @@ final class LlamaAssistant: Assistant {
     /// or question doesn't wait for them. The idle unload still applies.
     func warmUp(model _: String) {
         guard missingModel == nil else { return }
+        if let engineOverride {
+            Task.detached(priority: .utility) {
+                try? await engineOverride.load()
+            }
+            return
+        }
         let engine = engine
         Task.detached(priority: .utility) {
             try? await engine.load()

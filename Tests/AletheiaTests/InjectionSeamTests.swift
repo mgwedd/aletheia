@@ -16,7 +16,10 @@ private final class StubNotifier: AppNotifying {
 
 private final class StubEngine: LocalLLMEngine {
     var state: LocalLLMEngineState = .notLoaded
-    func load() async throws {}
+    private let lock = NSLock()
+    private var loadCount = 0
+    var loads: Int { lock.lock(); defer { lock.unlock() }; return loadCount }
+    func load() async throws { lock.lock(); loadCount += 1; lock.unlock() }
     func unload() {}
     func generate(_ request: LocalLLMRequest) async throws -> String { "stub reply" }
 }
@@ -65,6 +68,14 @@ final class InjectionSeamTests: XCTestCase {
         let integrations = Integrations(settings: makeSettings(), engine: StubEngine())
         let reply = try await integrations.makeAssistant().generate(model: "m", system: "s", prompt: "p")
         XCTAssertEqual(reply, "stub reply")
+    }
+
+    func testWarmUpLoadsTheInjectedEngineInsteadOfTheRealOne() async throws {
+        let engine = StubEngine()
+        let integrations = Integrations(settings: makeSettings(), engine: engine)
+        integrations.makeAssistant().warmUp(model: "m")
+        for _ in 0..<100 where engine.loads == 0 { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertEqual(engine.loads, 1)
     }
 
     func testWithoutAnInjectedEngineTheModelFileDecidesAvailability() async {

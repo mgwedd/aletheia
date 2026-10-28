@@ -128,7 +128,11 @@ struct AletheiaApp: App {
         settings.onAuditedChange = { [weak appModel] detail in
             appModel?.recordAudit(.securitySettingChanged, detail: detail)
         }
+        #if DEBUG
+        let integrations = Integrations(settings: settings, transcriber: FixtureMode.transcriber)
+        #else
         let integrations = Integrations(settings: settings)
+        #endif
         _integrations = StateObject(wrappedValue: integrations)
         let license = LicenseState(settings: settings)
         _license = StateObject(wrappedValue: license)

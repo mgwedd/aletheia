@@ -973,6 +973,8 @@ enum LongSessionChat {
         }
         if service.budget.fits(system: system, prompt: PromptTurn.flattened(turns, then: makePrompt(.transcript(transcript)))) {
             coverage(fields.coverageNote)
+            let words = AIProgressFormat.analyzingWords(question: question, in: transcript)
+            live(nil) { $0.analyzing = words }
             return service.streamAnswer(system: system, turns: turns, prompt: makePrompt(.transcript(transcript)))
         }
 

@@ -463,8 +463,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/WhisperTranscriber.swift:57-76, Sources/App/Services/TranscriptionProgress.swift:46-52` · `qa: TRANSCRIBE-02`
 - **TRN-085** When a transcription is running, the background search-index sweep waits.
   `surface: background` · `evidence: Sources/App/Views/RootView.swift:278-296` · `qa: TRANSCRIBE-04`
-- **TRN-086** When a transcription is running, the progress band's title reads "Transcribing <session date and time> · Whisper <model name>" such as "Whisper base.en".
-  `surface: ui` · `evidence: Sources/App/Views/TranscriptionProgressView.swift:48-55, Sources/App/Services/TranscriptionCoordinator.swift:86` · `qa: TRANSCRIBE-02`
+- **TRN-086** When a transcription is running, the progress band's title reads just "Transcribing…", with no session date or model name to crowd it.
+  `surface: ui` · `evidence: Sources/App/Views/TranscriptionProgressView.swift` · `qa: TRANSCRIBE-19`
 - **TRN-087** When a session has no recording file and is not being transcribed, no Transcribe button is shown.
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionProgress.swift:134-136, Sources/App/Views/SessionDetailView.swift:476` · `qa: TRANSCRIBE-01`
 - **TRN-088** When another session is recording, the Transcribe button is disabled with the tooltip "Another session is recording. Stop it first".
@@ -477,6 +477,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/TranscriptionCoordinator.swift:212-227, Sources/App/Views/SessionDetailView.swift:1588` · `qa: TRANSCRIBE-05`
 - **TRN-092** When a successful transcription deletes a raw audio recording for the first time, a one-time notice tells the user it was deleted after transcription, and the notice is not shown again.
   `surface: ui` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:44-60` · `qa: TRANSCRIBE-18`
+- **TRN-093** When a call turn is shown under the patient's first name, the turn lays out like any other: it wraps across the pane's width, whatever the name's length.
+  `surface: ui` · `evidence: Sources/App/Views/TranscriptTextView.swift` · `qa: TRANSCRIBE-20`
 
 ## Encryption at rest (ENC)
 
@@ -787,7 +789,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Markdown/NoteMarkdown.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-04`
 - **NOT-011** A Length menu offers Concise, Natural (the default) and Detailed, and the chosen length controls how long the next generated note is.
   `surface: ui` · `evidence: Sources/App/Models/SummaryVerbosity.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-06`
-- **NOT-012** The menu button reads "Length: <length> · <effort>" (for example "Length: Natural · Normal"), and the menu also offers an "AI effort" choice of Fast, Normal and Focus.
+- **NOT-012** The menu button reads "Length: <length> · <effort>" (for example "Length: Natural · Normal"), a click anywhere on it opens the menu, and the menu also offers an "AI effort" choice of Fast, Normal and Focus.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Models/AnswerEffort.swift` · `qa: NOTE-06`
 - **NOT-013** Each format's instructions can be edited from the menu ("Edit <format> Prompt…", marked "(customized)" once changed) in a sheet titled "<format> prompt" whose caption says the transcript, your notes and comments, and the length setting are added automatically after the instructions.
   `surface: ui` · `evidence: Sources/App/Views/NoteInstructionsSheet.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-07`
@@ -839,9 +841,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Views/SettingsView.swift` · `qa: NOTE-04`
 - **NOT-037** The transcript and summaries given to the AI are treated as material to summarize, not as instructions, so text inside a transcript that tells the AI to do something does not change how the note is written.
   `surface: invariant` · `evidence: Sources/App/Services/UntrustedText.swift, Sources/App/Services/Prompts.swift` · `qa: NOTE-16`
-- **NOT-038** A session short enough for this Mac to read at once gets its note in a single pass reading the whole transcript at every effort level.
+- **NOT-038** A session of up to three ten-minute parts (about 30 minutes) that this Mac can read at once gets its note in a single pass reading the whole transcript at every effort level.
   `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Services/ContextBudget.swift` · `qa: NOTE-14`
-- **NOT-039** A session too long for this Mac to read at once gets its note from the session summary plus transcript passages, with lines mentioning a risk phrase (suicide, self-harm or violence wording, or the therapist's own added phrases) prioritized first, then the best passages for each section.
+- **NOT-039** A longer session, or one too long for this Mac to read at once, gets its note from the summary of every part of the session (shortened evenly across the session if they don't all fit) plus transcript passages, with lines mentioning a risk phrase (suicide, self-harm or violence wording, or the therapist's own added phrases) prioritized first, then the best passages for each section.
   `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-14`
 - **NOT-040** Risk phrases are editable in Settings: the therapist can add, remove, clear (after confirming "Clear all risk phrases?") and reset (after confirming "Reset risk phrases?") them; empty and duplicate phrases are ignored, and matching is whole-word, case-insensitive and ignores apostrophe style.
   `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-09`
@@ -907,6 +909,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-14`
 - **NOT-072** When risk-flagged lines did not all fit in a long-session note, the coverage line says so and tells the therapist to check the transcript for risk.
   `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-14`
+- **NOT-073** A long-session note at Length Detailed (at Normal or Focus) or at Focus effort reads parts of the transcript in full after the part summaries and risk lines are in, chosen across the whole session, with the room left over; its coverage line adds "and N follow-up lookups". Fast, and Concise or Natural at Normal, make no lookups.
+  `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: NOTE-17`
 
 ## Digests (DIG)
 
@@ -1056,8 +1060,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/ContextBudget.swift, Sources/App/Services/HardwareCapabilities.swift` · `qa: CHAT-12`
 - **CHT-038** When one therapist-typed field (question, notes, comments or background) is longer than 300,000 characters (about 100 pages), the request is refused with a message.
   `surface: ui` · `evidence: Sources/App/Services/TherapistInput.swift` · `qa: NOTE-14`
-- **CHT-039** When more than 12,000 characters have built up since the last summary, the conversation is compacted before the next question is sent.
-  `surface: background` · `evidence: Sources/App/Services/ChatMemory.swift:12, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-13`
+- **CHT-039** When the messages since the last summary pass a quarter of the model's room (6,144 characters on an 8K window, 12,288 on 16K, at most 24,000), the conversation is compacted before the next question is sent.
+  `surface: background` · `evidence: Sources/App/Services/ChatMemory.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-22`
 - **CHT-040** When the chat has history, a Compact button appears and compacts the conversation on demand.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:98-101` · `qa: CHAT-13`
 - **CHT-041** When a conversation has been compacted, a "Conversation compacted" card appears and the summary stands in for the older messages.
@@ -1119,6 +1123,12 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Views/ChatStreamRunner.swift:253` · `qa: CHAT-06`
 - **CHT-072** When text containing line breaks is pasted into the chat box and sent, each run of line breaks in the sent question becomes a single space.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:35` · `qa: CHAT-02`
+- **CHT-073** When an Ask question is about the therapist's own notes ("What have I noted about…", "my notes"), the answer comes straight from My Notes on this Mac, at once and with no AI: the paragraphs that mention the question's words, quoted, or the notes in full when short and nothing matches, under a line saying My Notes stay private and the AI never reads them.
+  `surface: ui` · `evidence: Sources/App/Services/SessionAI/MyNotesLookup.swift, Sources/App/Services/SessionAI/SessionChatModel.swift` · `qa: CHAT-19`
+- **CHT-074** While the model reads a prompt longer than one batch, the status shows "Reading the session · part N of M", then on the last part "Analyzing <one or two of the question's words found in the session>" (plain matching, never the model), then "Preparing the answer" until the first words appear. Notes show the parts and "Preparing the answer" too.
+  `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Models/AIRunStats.swift, Sources/App/Views/AIProgressView.swift` · `qa: CHAT-20`
+- **CHT-075** The Compact button sits on the same bar as the AI effort control, apart from it, and "AI generated responses can be inaccurate. Double-check responses." always shows in small muted text at the bottom left of the conversation, in Light, Dark and Increase Contrast.
+  `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-21`
 
 ## AI engine & models (AIE)
 
@@ -2249,3 +2259,5 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/Store.swift, Sources/App/Services/Crypto/DataMigrator.swift` · `qa: CONSENT-12`
 - **CNS-028** A consent record that is present but unreadable is reported as an error, never as no consent.
   `surface: invariant` · `evidence: Sources/App/Services/Store.swift` · `qa: CONSENT-12`
+- **CNS-029** The session header's consent line wraps onto more lines when the header is narrow, and is never cut off.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift` · `qa: CONSENT-13`

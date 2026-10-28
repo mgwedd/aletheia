@@ -201,27 +201,23 @@ struct AIEngineBanner: View {
             Color.clear.frame(height: 0)
             if let problem {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundStyle(Theme.warn.color)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(problem.title)
-                                .font(Theme.Typography.headline)
-                                .foregroundStyle(Theme.text.color)
-                            Text(problem.message)
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(Theme.muted.color)
-                                .fixedSize(horizontal: false, vertical: true)
-                            if problem.action == .downloadBuiltInModel {
-                                ModelLicenseLink(integrations.llamaModel)
-                            }
+                    // Beside the text when there is room for both; in a narrow
+                    // column the button goes under it so the text keeps the width.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            icon
+                            details(problem).frame(minWidth: 280, idealWidth: 280, maxWidth: .infinity, alignment: .leading)
+                            Spacer(minLength: 8)
+                            actionButton(problem)
                         }
-                        Spacer(minLength: 8)
-                        Button(problem.actionTitle) { fix(problem) }
-                            .buttonStyle(.themePrimary)
-                            .controlSize(.small)
-                            .disabled(controller.isWorking)
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            icon
+                            VStack(alignment: .leading, spacing: 8) {
+                                details(problem)
+                                actionButton(problem)
+                            }
+                            Spacer(minLength: 0)
+                        }
                     }
                     if controller.isWorking {
                         AIEngineProgressView(controller: controller)
@@ -243,6 +239,34 @@ struct AIEngineBanner: View {
         } message: {
             Text(controller.failure ?? "")
         }
+    }
+
+    private var icon: some View {
+        Image(systemName: "exclamationmark.triangle")
+            .foregroundStyle(Theme.warn.color)
+            .accessibilityHidden(true)
+    }
+
+    private func details(_ problem: AIEngineProblem) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(problem.title)
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
+            Text(problem.message)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
+            if problem.action == .downloadBuiltInModel {
+                ModelLicenseLink(integrations.llamaModel)
+            }
+        }
+    }
+
+    private func actionButton(_ problem: AIEngineProblem) -> some View {
+        Button(problem.actionTitle) { fix(problem) }
+            .buttonStyle(.themePrimary)
+            .controlSize(.small)
+            .disabled(controller.isWorking)
     }
 
     private func check() async {

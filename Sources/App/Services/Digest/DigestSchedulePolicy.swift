@@ -76,10 +76,13 @@ enum DigestSchedulePolicy {
 
     /// Whether a session needs a summary: it has a transcript, and either the
     /// transcript is too long to send whole (`room`) or its patient's history
-    /// is (then the patient chat reads summaries). A short session of a short
-    /// history never needs one: everything is read whole.
-    static func needsSummary(transcriptCharacters: Int, historyCharacters: Int, room: Int) -> Bool {
-        transcriptCharacters > 0 && (transcriptCharacters > room || historyCharacters > room)
+    /// is (then the patient chat reads summaries), or it is too long for its
+    /// note to read whole (`readsWhole` false, `LongSessionNote.readsWhole`). A
+    /// short session of a short history never needs one: everything is read whole.
+    static func needsSummary(
+        transcriptCharacters: Int, historyCharacters: Int, room: Int, readsWhole: Bool = true
+    ) -> Bool {
+        transcriptCharacters > 0 && (transcriptCharacters > room || historyCharacters > room || !readsWhole)
     }
 
     /// One session waiting for its summary.

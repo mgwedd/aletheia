@@ -41,4 +41,14 @@ final class ConsentUITests: AcceptanceCase {
         then(app.waitForProbe { $0.patients.allSatisfy { $0.consentPolicy == "everySession" } })
             .everyPatientHasPolicy("everySession")
     }
+
+    func test_CONSENT_13_narrowWindowWrapsTheConsentLine() {
+        given.janeWithConsentRecorded()
+        let wide = when.readConsentLine()
+        let wideHeight = wide.line.frame.height
+
+        when.narrowWindow(to: 900)
+
+        then(wide).wrapsOnto(moreLinesThan: wideHeight)
+    }
 }

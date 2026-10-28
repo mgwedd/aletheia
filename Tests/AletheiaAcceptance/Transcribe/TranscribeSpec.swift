@@ -237,4 +237,30 @@ final class TranscribeSpec: AcceptanceCase {
     func test_TRANSCRIBE_18() async throws {
         try pending("the one-time notice that raw audio was deleted after transcription isn't built yet (TRN-092)")
     }
+
+    func test_TRANSCRIBE_19() async throws {
+        let desk = try given.transcriptionDesk(speechModel: .ready)
+        let session = try desk.recordSession(of: try await given.patient(named: "Jane Doe"))
+        try desk.pressTranscribe(session)
+        try await desk.modelReports(0.3)
+
+        then(desk.band(of: session)).isTranscribing()
+        then(desk.band(of: session)).isTitled(Copy.transcribingTitle)
+
+        desk.modelWillHear(intake)
+        then(try await desk.waitForResult(of: session)).finishedNormally()
+    }
+
+    func test_TRANSCRIBE_20() async throws {
+        // That the turns wrap across the pane like the therapist's own is layout: checked by the UI test.
+        let desk = try given.transcriptionDesk(speechModel: .ready)
+        let session = try desk.recordSession(of: try await given.patient(named: "Jane Doe"))
+        let atLength = String(repeating: "It has been a long week and I keep going over what happened at work. ", count: 8)
+        desk.modelWillHear([("You", 5, "How have you been?"), ("Call audio", 9, atLength)])
+
+        _ = try await desk.transcribe(session)
+        let reading = try desk.readTranscript(of: session)
+
+        then(reading).clientTurnsStartWith("Jane", saying: atLength.trimmingCharacters(in: .whitespaces))
+    }
 }

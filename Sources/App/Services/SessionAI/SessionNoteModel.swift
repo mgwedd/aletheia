@@ -258,6 +258,9 @@ final class SessionNoteModel: ObservableObject {
             return
         }
         noteStopping = false
+        // Cancel any background digest in flight for this session so this note
+        // doesn't wait behind it, and builds the digest inline with live progress.
+        integrations.digests.cancel(session.id)
         let format = settings.progressNoteFormat
         generatingFormat = format
         noteHighWater = ProgressHighWater()
@@ -303,6 +306,8 @@ final class SessionNoteModel: ObservableObject {
                     service: service,
                     builder: integrations.digests,
                     sessionID: session.id,
+                    sessionDate: session.date,
+                    folderName: session.folderName,
                     loadDigest: {
                         await Task.detached { store.digest(for: patient, session: session, model: model) }.value
                     },

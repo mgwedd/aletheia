@@ -382,6 +382,99 @@ final class AIProgressTests: XCTestCase {
         XCTAssertEqual(AIProgressFormat.statusLine(compact, now: t0),
                        "Reading the conversation… · 0:00")
     }
+
+    // MARK: Prefill progress
+
+    func testPrefillStatusWalksPartsThenAnalyzingThenPreparing() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        var progress = AIRunProgress(readTitle: "Reading the session", writeTitle: "Writing the answer", startedAt: t0)
+        progress.analyzing = "sleep"
+        let now = t0.addingTimeInterval(8)
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: now), "Reading the session… · 0:08")
+        progress.prefill = PrefillProgress(part: 2, total: 6)
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: now), "Reading the session · part 2 of 6 · 0:08")
+        progress.prefill = PrefillProgress(part: 6, total: 6)
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: now), "Analyzing sleep · 0:08")
+        progress.prefill = PrefillProgress(part: 6, total: 6, complete: true)
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: now), "Preparing the answer · 0:08")
+        progress.firstTokenAt = t0.addingTimeInterval(9)
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: now), "Writing the answer… · 0:08")
+    }
+
+    func testPrefillLastPartWithoutMatchedWordsKeepsPartLine() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        var progress = AIRunProgress(readTitle: "Reading the session", startedAt: t0)
+        progress.prefill = PrefillProgress(part: 3, total: 3)
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: t0), "Reading the session · part 3 of 3 · 0:00")
+    }
+
+    func testSinglePartPromptKeepsPlainReadingUntilComplete() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        var progress = AIRunProgress(readTitle: "Reading the session", startedAt: t0)
+        progress.prefill = PrefillProgress(part: 1, total: 1)
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: t0), "Reading the session… · 0:00")
+        progress.prefill = PrefillProgress(part: 1, total: 1, complete: true)
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: t0), "Preparing the answer · 0:00")
+    }
+
+    func testPrefillKeepsLeadBeforePartLine() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        var progress = AIRunProgress(readTitle: "Reading the session", startedAt: t0)
+        progress.lead = "Generating SOAP note"
+        progress.prefill = PrefillProgress(part: 1, total: 4)
+        XCTAssertEqual(AIProgressFormat.statusLine(progress, now: t0),
+                       "Generating SOAP note. Reading the session · part 1 of 4 · 0:00")
+    }
+
+    func testNewStageClearsPrefillAndAnalyzing() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        var progress = AIRunProgress(readTitle: "Reading", startedAt: t0)
+        progress.prefill = PrefillProgress(part: 2, total: 2, complete: true)
+        progress.analyzing = "sleep"
+        progress.beginStage(readTitle: "Reading again", writeTitle: "Writing", startedAt: t0.addingTimeInterval(5))
+        XCTAssertNil(progress.prefill)
+        XCTAssertNil(progress.analyzing)
+    }
+
+    func testAnalyzingWordsAreQuestionTermsFoundInTheMaterial() {
+        let transcript = "We talked about sleep and the dream she had about her mother."
+        XCTAssertEqual(AIProgressFormat.analyzingWords(question: "sleep", in: transcript), "sleep")
+        XCTAssertEqual(AIProgressFormat.analyzingWords(question: "sleep dream mother", in: transcript), "sleep dream")
+        XCTAssertNil(AIProgressFormat.analyzingWords(question: "tomorrow", in: transcript))
+    }
+
+    /// Setting the "Analyzing" words within the current stage keeps the
+    /// engine's reading progress and stats coming.
+    @MainActor
+    func testSameStageUpdateKeepsEngineEvents() async throws {
+        let runner = ChatStreamRunner()
+        let report = runner.reporter
+        runner.update(started: nil) { $0.analyzing = "sleep" }
+        report(.prefill(PrefillProgress(part: 1, total: 3)))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(runner.progress.analyzing, "sleep")
+        XCTAssertEqual(runner.progress.prefill, PrefillProgress(part: 1, total: 3))
+    }
+
+    /// A run that begins its own stage filters the engine's events itself.
+    @MainActor
+    func testNewStageStopsEngineEvents() async throws {
+        let runner = ChatStreamRunner()
+        let report = runner.reporter
+        runner.update(started: nil) { $0.startedAt = Date() }
+        report(.prefill(PrefillProgress(part: 1, total: 3)))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertNil(runner.progress.prefill)
+    }
+
+    @MainActor
+    func testPrefillEventReachesRunnerProgress() async throws {
+        let runner = ChatStreamRunner()
+        let report = runner.reporter
+        report(.prefill(PrefillProgress(part: 2, total: 6)))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(runner.progress.prefill, PrefillProgress(part: 2, total: 6))
+    }
 }
 
 private final class EventLog: @unchecked Sendable {

@@ -79,7 +79,12 @@ final class Integrations: ObservableObject {
 
     /// The built-in model the user chose, and where its weights live.
     var llamaModel: LlamaModel { settings.llamaModel }
-    var llamaModelURL: URL { LlamaRuntime.modelURL(for: settings.llamaModel) }
+    var llamaModelURL: URL {
+        #if DEBUG
+        if FixtureMode.isActive { return FixtureMode.modelURL }
+        #endif
+        return LlamaRuntime.modelURL(for: settings.llamaModel)
+    }
 
     /// Downloads the chosen built-in model (joining a download already running).
     func downloadBuiltInModel(onProgress: @escaping (Double) -> Void = { _ in }) async throws {

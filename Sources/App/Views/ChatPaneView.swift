@@ -41,9 +41,10 @@ enum ChatComposerLayout {
 /// decides what "send" means (which transcript/context to include).
 ///
 ///   scope caption    what the answers are drawn from
-///   conversation     questions in trailing bubbles, answers plain on the panel
+///   conversation     questions in trailing bubbles, answers plain on the panel;
+///                    suggestion pills while the chat is empty
 ///   notices          caller-supplied caveats (coverage, unreadable sessions)
-///   composer         suggestion pills (empty chat only) · field · Send / Stop
+///   composer         effort bar · field · Send / Stop
 struct ChatPaneView: View {
     let title: String
     @Binding var messages: [ChatMessage]
@@ -88,6 +89,9 @@ struct ChatPaneView: View {
     /// Whether the mic is drawn, reported by the mic itself.
     @State private var micShown = false
 
+    /// Under every conversation; also read by the acceptance harness.
+    static let accuracyNotice = "AI generated responses can be inaccurate. Double-check responses."
+
     private var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
     }
@@ -95,18 +99,13 @@ struct ChatPaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             conversation
-            if onCompact != nil, ChatMemory.hasHistory(messages) {
-                HStack(spacing: 8) {
-                    Spacer(minLength: 8)
-                    Button("Compact") { onCompact?("") }
-                        .buttonStyle(.themed)
-                        .controlSize(.small)
-                        .disabled(isSending)
-                        .hoverTip(HelpTips.compact, arrowEdge: .top)
-                }
+            Text(Self.accuracyNotice)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
-            }
+                .accessibilityIdentifier("chat.disclaimer")
             if !notices.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(notices, id: \.self) { notice in
@@ -136,6 +135,17 @@ struct ChatPaneView: View {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     if messages.isEmpty {
                         emptyState
+                        // In the scrolling area, not the composer, so a short
+                        // window keeps the field in view.
+                        if !suggestions.isEmpty {
+                            SuggestionFlowLayout(spacing: 8) {
+                                ForEach(suggestions, id: \.self) { suggestion in
+                                    Button(suggestion) { onSend(suggestion) }
+                                        .buttonStyle(SuggestionPillStyle())
+                                        .disabled(isSending)
+                                }
+                            }
+                        }
                     }
                     ForEach(messages) { message in
                         ChatBubble(message: message).id(message.id)
@@ -227,16 +237,7 @@ struct ChatPaneView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if messages.isEmpty && !suggestions.isEmpty {
-                SuggestionFlowLayout(spacing: 8) {
-                    ForEach(suggestions, id: \.self) { suggestion in
-                        Button(suggestion) { onSend(suggestion) }
-                            .buttonStyle(SuggestionPillStyle())
-                            .disabled(isSending)
-                    }
-                }
-            }
-            if let effort {
+            if effort != nil || showsCompact {
                 effortRow(effort)
             }
             HStack(alignment: .bottom, spacing: 10) {
@@ -302,20 +303,35 @@ struct ChatPaneView: View {
         return true
     }
 
-    private func effortRow(_ effort: Binding<AnswerEffort>) -> some View {
+    private var showsCompact: Bool {
+        onCompact != nil && ChatMemory.hasHistory(messages)
+    }
+
+    /// The bar above the field: the Fast / Normal / Focus selector at the
+    /// leading edge, Compact at the trailing edge.
+    private func effortRow(_ effort: Binding<AnswerEffort>?) -> some View {
         HStack(spacing: 10) {
-            Text(AnswerEffort.label)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.muted.color)
-            ThemeSegmentedControl(
-                options: AnswerEffort.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
-                selection: effort
-            )
-            .frame(width: 240)
-            .disabled(isSending)
-            .help(effort.wrappedValue.blurb(for: effortFeature))
-            .accessibilityLabel(AnswerEffort.label)
-            Spacer(minLength: 0)
+            if let effort {
+                Text(AnswerEffort.label)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                ThemeSegmentedControl(
+                    options: AnswerEffort.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
+                    selection: effort
+                )
+                .frame(maxWidth: 240)
+                .disabled(isSending)
+                .help(effort.wrappedValue.blurb(for: effortFeature))
+                .accessibilityLabel(AnswerEffort.label)
+            }
+            Spacer(minLength: 16)
+            if showsCompact {
+                Button("Compact") { onCompact?("") }
+                    .buttonStyle(.themed)
+                    .controlSize(.small)
+                    .disabled(isSending)
+                    .hoverTip(HelpTips.compact, arrowEdge: .top)
+            }
         }
     }
 
