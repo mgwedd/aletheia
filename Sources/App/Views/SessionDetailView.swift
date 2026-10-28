@@ -1679,10 +1679,9 @@ struct SessionDetailView: View {
                 systemImage: "text.alignleft"
             )
         }
-        // Drawn by the themed button style, whose shape takes the click: the
-        // default menu style only answered clicks on the icon.
-        .menuStyle(.button)
-        .buttonStyle(.themed)
+        // One native pull-down control, so a click anywhere on it opens the
+        // menu; the default style only answered clicks on the icon.
+        .menuStyle(.borderlessButton)
         .fixedSize()
         .help("How long the note is, and the AI effort for a long session. \(settings.noteEffort.displayName): \(settings.noteEffort.blurb(for: .note)) Regenerate to apply a change.")
     }

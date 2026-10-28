@@ -41,7 +41,7 @@ final class ChatUITests: AcceptanceCase {
     }
 
     func test_CHAT_22_longConversationCompactsBeforeTheNextAnswer() {
-        let filler = String(repeating: "We talked about sleep, work and the move. ", count: 12)
+        let filler = String(repeating: "We talked about sleep, work and the move. ", count: 30)
         given.aSessionToAskAbout(
             chat: (0..<5).map { .init(role: $0 % 2 == 0 ? "user" : "assistant", text: "\($0). " + filler) },
             replies: ["Earlier the conversation covered sleep, work and the move.", "She named the deadline."],
