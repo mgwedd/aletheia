@@ -115,6 +115,9 @@ final class ThirdPartyNoticesTests: XCTestCase {
     func testMedicalModelsCarryTheirLicensesAndPolicies() {
         XCTAssertEqual(LlamaModel.medgemma15_4b.licenseName, "Health AI Developer Foundations Terms")
         XCTAssertEqual(LlamaModel.medgemma_27b.licenseName, "Health AI Developer Foundations Terms")
+        XCTAssertEqual(LlamaModel.apertus8b_meditronFO.licenseName, "Apache License 2.0")
+        XCTAssertEqual(LlamaModel.apertus8b_meditronFO.licenseURL.absoluteString,
+                       "https://www.apache.org/licenses/LICENSE-2.0")
         XCTAssertEqual(
             LlamaModel.medgemma15_4b.licenseURL.absoluteString,
             "https://developers.google.com/health-ai-developer-foundations/terms"

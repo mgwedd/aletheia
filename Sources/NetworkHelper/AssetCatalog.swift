@@ -14,6 +14,7 @@ enum HelperAsset: Int, CaseIterable {
     case gemma4_e2b = 11
     case medgemma_27b = 14
     case medgemma15_4b = 15
+    case apertus8b_meditronFO = 16
     /// The release archive. Its URL is not in this table: the helper reads it
     /// from the appcast it fetches itself.
     case updateArchive = 20
@@ -45,6 +46,11 @@ enum HelperAsset: Int, CaseIterable {
                 repo: "unsloth/medgemma-27b-text-it-GGUF",
                 revision: "334fbf6811c963d223f6ac107a459347353f068d",
                 file: "medgemma-27b-text-it-Q4_K_M.gguf")
+        case .apertus8b_meditronFO:
+            return Self.llama(
+                repo: "mradermacher/Apertus-8B-MeditronFO-GGUF",
+                revision: "8a227f00a1c2e0471f7f4237dac01b9107eecc51",
+                file: "Apertus-8B-MeditronFO.Q4_K_M.gguf")
         case .updateArchive: return nil
         }
     }

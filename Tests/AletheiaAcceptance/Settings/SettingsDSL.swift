@@ -128,6 +128,7 @@ struct OfferedBuiltInModels {
 struct MedicalModelLicenses {
     let medGemma4BLicense: String
     let medGemma27BLicense: String
+    let apertus8BLicense: String
     let allUseHTTPS: Bool
 }
 
@@ -363,13 +364,14 @@ extension When {
     }
 
     func lookAtMedicalModelLicenses() -> MedicalModelLicenses {
-        let models: [LlamaModel] = [.medgemma15_4b, .medgemma_27b]
+        let models: [LlamaModel] = [.medgemma15_4b, .medgemma_27b, .apertus8b_meditronFO]
         let https = models.allSatisfy {
             $0.licenseURL.scheme == "https" && $0.acceptableUseURL?.scheme == "https"
         }
         return MedicalModelLicenses(
             medGemma4BLicense: LlamaModel.medgemma15_4b.licenseName,
             medGemma27BLicense: LlamaModel.medgemma_27b.licenseName,
+            apertus8BLicense: LlamaModel.apertus8b_meditronFO.licenseName,
             allUseHTTPS: https)
     }
 }
@@ -526,6 +528,10 @@ extension Then where Subject == FolderMove {
 }
 
 extension Then where Subject == OfferedBuiltInModels {
+    func includesModel(_ name: String) {
+        expect(subject.shortNames.contains(name), "\(name) should be offered: \(subject.shortNames)")
+    }
+
     func offersMedicalModels(_ medGemma: String) {
         expect(subject.shortNames.contains(medGemma), "\(medGemma) should be offered: \(subject.shortNames)")
         expectEqual(subject.medGemmaShortName, medGemma, "the MedGemma size chosen for this Mac")
@@ -537,6 +543,7 @@ extension Then where Subject == MedicalModelLicenses {
     func usesTerms(medGemmaTerms: String) {
         expectEqual(subject.medGemma4BLicense, medGemmaTerms, "MedGemma 1.5 4B's license")
         expectEqual(subject.medGemma27BLicense, medGemmaTerms, "MedGemma 27B's license")
+        expectEqual(subject.apertus8BLicense, "Apache License 2.0", "Apertus 8B MeditronFO's license")
         expect(subject.allUseHTTPS, "every medical model's license and acceptable-use link should use https")
     }
 }

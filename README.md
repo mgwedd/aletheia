@@ -255,7 +255,9 @@ Built-in models come from pinned GGUF conversions on Hugging Face and are verifi
 | Apple silicon, 48 GB+ | MedGemma 27B text Q4_K_M (~16.5 GB) |
 | All other Macs | MedGemma 1.5 4B Q4_K_M (~2.5 GB) |
 
-MedGemma 27B is also selectable on 32 GB+ Apple silicon. Existing general-model selections remain available to those users. MedLlama 2 and the original MedGemma 4B are retired; saved selections move to the current medical default.
+The picker also offers Apertus 8B MeditronFO Q4_K_M (~5.1 GB) as **Experimental** on Macs with 16 GB+ memory. Its configured context is 64K tokens; the effective prompt budget can be lower on smaller Macs. MedGemma 27B text is selectable on 32 GB+ Apple silicon and becomes the default at 48 GB+. Existing general-model selections remain available to those users. MedLlama 2 and the original MedGemma 4B are retired; saved selections move to the current medical default.
+
+MedGemma is available for commercial development under Google's Health AI Developer Foundations Terms and Prohibited Use Policy. Review those terms and the distribution notice requirements before a paid release.
 
 The engine applies the model's chat template. The context is sized to the prompt plus the reply, rounded up to a power of two (8K minimum) and capped at the context budget and the model's limit; a prompt over budget fails rather than being truncated. Flash attention and an 8-bit KV cache are on. The model unloads on app lock, on a model or backend change, and after 30 minutes idle.
 

@@ -84,6 +84,8 @@ final class SettingsSpec: AcceptanceCase {
     func test_SETTINGS_15() async throws {
         then(when.lookAtBuiltInModels(onMacWithMemoryGB: 16))
             .offersMedicalModels(Copy.medGemma4B)
+        then(when.lookAtBuiltInModels(onMacWithMemoryGB: 16))
+            .includesModel(Copy.apertus8B)
         then(when.lookAtBuiltInModels(onMacWithMemoryGB: 48))
             .offersMedicalModels(Copy.medGemma27B)
         then(when.lookAtMedicalModelLicenses())

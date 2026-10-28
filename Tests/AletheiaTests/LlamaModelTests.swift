@@ -25,6 +25,7 @@ final class LlamaModelTests: XCTestCase {
         XCTAssertEqual(LlamaModel.gemma4_e2b.expectedBytes, 2_841_481_184)
         XCTAssertEqual(LlamaModel.medgemma15_4b.expectedBytes, 2_489_894_976)
         XCTAssertEqual(LlamaModel.medgemma_27b.expectedBytes, 16_546_405_376)
+        XCTAssertEqual(LlamaModel.apertus8b_meditronFO.expectedBytes, 5_057_886_624)
         for model in LlamaModel.allCases {
             XCTAssertEqual(Int64(model.approximateSizeMB), (model.expectedBytes + 500_000) / 1_000_000, "\(model)")
         }
@@ -74,15 +75,25 @@ final class LlamaModelTests: XCTestCase {
         XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 64)), .medgemma_27b)
     }
 
+    func testExperimentalApertusRequiresSixteenGBOnAnyMac() {
+        XCTAssertFalse(LlamaModel.apertus8b_meditronFO.isSupported(on: Self.mac(gb: 8)))
+        XCTAssertTrue(LlamaModel.apertus8b_meditronFO.isSupported(on: Self.mac(gb: 16)))
+        let intel = HardwareCapabilities(isAppleSilicon: false, physicalMemoryGB: 16, coreCount: 8, chipDescription: "Intel")
+        XCTAssertTrue(LlamaModel.apertus8b_meditronFO.isSupported(on: intel))
+        XCTAssertFalse(LlamaModel.medgemma_27b.isSupported(on: intel))
+    }
+
     func testCuratedOfferAndPriorGeneralSelection() {
         XCTAssertEqual(
             LlamaModel.offered(for: Self.mac(gb: 16)),
-            [.medgemma15_4b]
+            [.medgemma15_4b, .apertus8b_meditronFO]
         )
         XCTAssertEqual(
             LlamaModel.offered(for: Self.mac(gb: 32)),
-            [.medgemma15_4b, .medgemma_27b]
+            [.medgemma15_4b, .apertus8b_meditronFO, .medgemma_27b]
         )
+        let intel = HardwareCapabilities(isAppleSilicon: false, physicalMemoryGB: 16, coreCount: 8, chipDescription: "Intel")
+        XCTAssertEqual(LlamaModel.offered(for: intel), [.medgemma15_4b, .apertus8b_meditronFO])
         XCTAssertEqual(
             LlamaModel.offered(for: Self.mac(gb: 16), including: .llama31_8b),
             [.medgemma15_4b, .llama31_8b]
@@ -94,6 +105,7 @@ final class LlamaModelTests: XCTestCase {
         XCTAssertEqual(LlamaModel.gemma4_e2b.contextWindowTokens, 131_072)
         XCTAssertEqual(LlamaModel.medgemma15_4b.contextWindowTokens, 131_072)
         XCTAssertEqual(LlamaModel.medgemma_27b.contextWindowTokens, 131_072)
+        XCTAssertEqual(LlamaModel.apertus8b_meditronFO.contextWindowTokens, 65_536)
     }
 
     func testFileNamesAreUnique() {

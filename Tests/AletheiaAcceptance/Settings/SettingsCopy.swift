@@ -5,6 +5,7 @@ extension Copy {
     static let automaticEngine = "Automatic (recommended)"
     static let builtInEngine = "Built-in model"
     static let medGemma4B = "MedGemma 1.5 4B"
-    static let medGemma27B = "MedGemma 27B"
+    static let medGemma27B = "MedGemma 27B text"
+    static let apertus8B = "Apertus 8B MeditronFO"
     static let healthAIFoundationsTerms = "Health AI Developer Foundations Terms"
 }
