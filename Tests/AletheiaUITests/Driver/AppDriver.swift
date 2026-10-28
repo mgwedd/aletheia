@@ -192,7 +192,9 @@ final class AppDriver {
     /// Any element whose label or value contains `words`, including a card
     /// whose children are combined into one element.
     func anything(containing words: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", words, words)).firstMatch
+        app.descendants(matching: .any).matching(NSPredicate(
+            format: "label CONTAINS %@ OR (elementType == %lu AND value CONTAINS %@)",
+            words, XCUIElement.ElementType.staticText.rawValue, words)).firstMatch
     }
 
     /// Any element whose label contains `words` (status lines carry theirs as a label).

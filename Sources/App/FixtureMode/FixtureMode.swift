@@ -160,12 +160,16 @@ enum FixtureMode {
 
     /// The assistant the fixture build uses: the real prompt-building over the
     /// scripted engine. The model file is a placeholder so it reads as present.
-    static var assistant: Assistant {
+    static var modelURL: URL {
         let model = support.appendingPathComponent("fixture-model.gguf")
         if !FileManager.default.fileExists(atPath: model.path) {
             FileManager.default.createFile(atPath: model.path, contents: Data())
         }
-        return LlamaAssistant(modelURL: model, engineOverride: engine)
+        return model
+    }
+
+    static var assistant: Assistant {
+        LlamaAssistant(modelURL: modelURL, engineOverride: engine)
     }
 
     static let disk = FixtureDisk(state: scenario?.fileVault)
