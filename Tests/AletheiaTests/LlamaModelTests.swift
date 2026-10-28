@@ -23,8 +23,7 @@ final class LlamaModelTests: XCTestCase {
     func testExpectedBytesMatchThePinnedSizes() {
         XCTAssertEqual(LlamaModel.llama31_8b.expectedBytes, 6_036_116_480)
         XCTAssertEqual(LlamaModel.gemma4_e2b.expectedBytes, 2_841_481_184)
-        XCTAssertEqual(LlamaModel.medllama2_7b.expectedBytes, 3_856_740_032)
-        XCTAssertEqual(LlamaModel.medgemma_4b.expectedBytes, 2_489_894_720)
+        XCTAssertEqual(LlamaModel.medgemma15_4b.expectedBytes, 2_489_894_976)
         XCTAssertEqual(LlamaModel.medgemma_27b.expectedBytes, 16_546_405_376)
         for model in LlamaModel.allCases {
             XCTAssertEqual(Int64(model.approximateSizeMB), (model.expectedBytes + 500_000) / 1_000_000, "\(model)")
@@ -44,9 +43,10 @@ final class LlamaModelTests: XCTestCase {
     /// AppSettings loads with `LlamaModel(rawValue:) ?? .recommended(for:)`, so a
     /// persisted raw value from a retired model must not resolve (and not crash).
     func testRetiredRawValuesFallBackToRecommended() {
-        for legacy in ["llama-3.2-1b-instruct-q4_k_m", "llama-3.2-3b-instruct-q4_k_m"] {
+        for legacy in ["llama-3.2-1b-instruct-q4_k_m", "llama-3.2-3b-instruct-q4_k_m",
+                       "medllama-2-7b-q4_k_s", "medgemma-4b-it-q4_k_m"] {
             XCTAssertNil(LlamaModel(rawValue: legacy))
-            XCTAssertEqual(LlamaModel(rawValue: legacy) ?? .recommended(for: Self.mac(gb: 16)), .llama31_8b)
+            XCTAssertEqual(LlamaModel(rawValue: legacy) ?? .recommended(for: Self.mac(gb: 16)), .medgemma15_4b)
         }
     }
 
@@ -55,41 +55,44 @@ final class LlamaModelTests: XCTestCase {
     }
 
     func testRecommendedFollowsMemory() {
-        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 8)), .gemma4_e2b)
-        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 15)), .gemma4_e2b)
-        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 16)), .llama31_8b)
-        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 64)), .llama31_8b)
+        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 8)), .medgemma15_4b)
+        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 16)), .medgemma15_4b)
+        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 32)), .medgemma15_4b)
+        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 48)), .medgemma_27b)
+        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 64)), .medgemma_27b)
+        let intel = HardwareCapabilities(isAppleSilicon: false, physicalMemoryGB: 64, coreCount: 8, chipDescription: "Intel")
+        XCTAssertEqual(LlamaModel.recommended(for: intel), .medgemma15_4b)
     }
 
     func testMedGemmaSizeFollowsMemory() {
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 8)), .medgemma_4b)
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 16)), .medgemma_4b)
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 24)), .medgemma_4b)
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 31)), .medgemma_4b)
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 32)), .medgemma_27b)
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 8)), .medgemma15_4b)
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 16)), .medgemma15_4b)
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 24)), .medgemma15_4b)
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 31)), .medgemma15_4b)
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 32)), .medgemma15_4b)
+        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 48)), .medgemma_27b)
         XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 64)), .medgemma_27b)
     }
 
-    func testOfferedModelsIncludeMedLlama2AndHardwareSizedMedGemma() {
+    func testCuratedOfferAndPriorGeneralSelection() {
         XCTAssertEqual(
             LlamaModel.offered(for: Self.mac(gb: 16)),
-            [.llama31_8b, .gemma4_e2b, .medllama2_7b, .medgemma_4b]
+            [.medgemma15_4b]
         )
         XCTAssertEqual(
             LlamaModel.offered(for: Self.mac(gb: 32)),
-            [.llama31_8b, .gemma4_e2b, .medllama2_7b, .medgemma_27b]
+            [.medgemma15_4b, .medgemma_27b]
         )
         XCTAssertEqual(
-            LlamaModel.offered(for: Self.mac(gb: 16), including: .medgemma_27b),
-            [.llama31_8b, .gemma4_e2b, .medllama2_7b, .medgemma_4b, .medgemma_27b]
+            LlamaModel.offered(for: Self.mac(gb: 16), including: .llama31_8b),
+            [.medgemma15_4b, .llama31_8b]
         )
     }
 
     func testContextWindowsMatchTrainedLengths() {
         XCTAssertEqual(LlamaModel.llama31_8b.contextWindowTokens, 131_072)
         XCTAssertEqual(LlamaModel.gemma4_e2b.contextWindowTokens, 131_072)
-        XCTAssertEqual(LlamaModel.medllama2_7b.contextWindowTokens, 4_096)
-        XCTAssertEqual(LlamaModel.medgemma_4b.contextWindowTokens, 131_072)
+        XCTAssertEqual(LlamaModel.medgemma15_4b.contextWindowTokens, 131_072)
         XCTAssertEqual(LlamaModel.medgemma_27b.contextWindowTokens, 131_072)
     }
 
@@ -100,6 +103,21 @@ final class LlamaModelTests: XCTestCase {
 }
 
 final class LlamaRuntimeTests: XCTestCase {
+    func testRetiredDownloadsCanBeRemovedWithoutDeletingTheCurrentModel() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let retired = try XCTUnwrap(LlamaRuntime.retiredModelFiles.first)
+        let oldURL = dir.appendingPathComponent(retired.fileName)
+        let currentURL = dir.appendingPathComponent(LlamaModel.medgemma15_4b.fileName)
+        try Data("old".utf8).write(to: oldURL)
+        try Data("current".utf8).write(to: currentURL)
+        XCTAssertEqual(LlamaRuntime.retiredDownloadedModels(in: dir).map(\.id), [retired.id])
+        try LlamaRuntime.removeRetiredModel(retired, in: dir)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: currentURL.path))
+    }
+
     func testModelURLIsUnderModelsDirectoryWithFileName() {
         let url = LlamaRuntime.modelURL(for: .llama31_8b)
         XCTAssertEqual(url.lastPathComponent, LlamaModel.llama31_8b.fileName)

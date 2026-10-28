@@ -159,7 +159,9 @@ final class DigestBuilder: ObservableObject {
         inline: Bool = false,
         cache: SectionDigestCache? = nil
     ) async throws -> SessionDigest {
-        let sections = TranscriptSections.split(transcript)
+        let sectionLimit = TranscriptSections.maxCharacters(
+            for: service.budget, systemPrompt: service.systemPrompt, clientName: service.clientName)
+        let sections = TranscriptSections.split(transcript, maxCharacters: sectionLimit)
         // One call per section, plus the final merge. Merging a long session
         // takes more rounds than that; `merge` raises the total as it finds them.
         let totalSteps = sections.count + 1

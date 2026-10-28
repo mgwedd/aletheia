@@ -1056,7 +1056,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/UntrustedText.swift, Sources/App/Services/Prompts.swift` · `qa: NOTE-16`
 - **CHT-036** When a session is too long for what this Mac can read at once, the question fails with a message beginning "This session is longer than this Mac can read at once", instead of silently dropping text.
   `surface: ui` · `evidence: Sources/App/Services/ContextBudget.swift` · `qa: NOTE-14`
-- **CHT-037** When the reading budget is set, it scales with the Mac's memory: 16K tokens at 8 GB, 32K at 16 GB, 64K at 32 GB or more, one tier lower on Intel Macs, and never below 8K.
+- **CHT-037** When the reading budget is set, it scales with the Mac's memory: 16K tokens at 8 GB, 32K at 16 GB, 64K at 32 GB or more, one tier lower on Intel Macs, and never below 8K. It is capped by the selected model's context and at 32K for MedGemma 27B on 32–47 GB Macs. Chat compaction uses this same effective budget.
   `surface: invariant` · `evidence: Sources/App/Services/ContextBudget.swift, Sources/App/Services/HardwareCapabilities.swift` · `qa: CHAT-12`
 - **CHT-038** When one therapist-typed field (question, notes, comments or background) is longer than 300,000 characters (about 100 pages), the request is refused with a message.
   `surface: ui` · `evidence: Sources/App/Services/TherapistInput.swift` · `qa: NOTE-14`
@@ -1140,7 +1140,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: scripts/check-entitlements.sh, Sources/NetworkHelper/HelperFetcher.swift` · `qa: SETTINGS-06`
 - **AIE-004** When the built-in engine is not linked into a build, AI actions fail with "The built-in AI model isn't available in this build of Aletheia." and no other engine is tried.
   `surface: ui` · `evidence: Sources/App/Services/Integrations/UnavailableAssistant.swift` · `qa: NOTE-09`
-- **AIE-005** When a Mac has 16 GB or more, the recommended model is Llama 3.1 8B Instruct (about 6 GB download), and otherwise Gemma 4 E2B (about 2.8 GB), in every build tier.
+- **AIE-005** The recommended model is MedGemma 1.5 4B (about 2.5 GB) except on Apple silicon with 48 GB or more, which gets MedGemma 27B text (about 16.5 GB), in every build tier.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModel.swift, Sources/App/Services/ModelAdvisor.swift` · `qa: SETTINGS-07`
 - **AIE-006** When the app is installed, the AI model is not bundled, and nothing is fetched until the user starts a download.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModelDownloader.swift` · `qa: SETTINGS-07`
@@ -1158,7 +1158,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/ModelLicenseLink.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-07`
 - **AIE-013** When a speech-to-text model is recommended, Apple silicon with 16 GB or more gets medium.en, Apple silicon with 8 GB or more small.en, Intel with 16 GB or more small.en, and anything else base.en.
   `surface: ui` · `evidence: Sources/App/Services/ModelAdvisor.swift, Sources/App/Services/HardwareCapabilities.swift` · `qa: SETTINGS-05`
-- **AIE-014** When the prompt room is set, it scales with the Mac's memory: 16K tokens at 8 GB, 32K at 16 GB, 64K at 32 GB or more, one tier lower on Intel, and never below 8K.
+- **AIE-014** When the prompt room is set, it scales with the Mac's memory: 16K tokens at 8 GB, 32K at 16 GB, 64K at 32 GB or more, one tier lower on Intel, and never below 8K. The selected model may cap it further; MedGemma 27B uses 32K on 32–47 GB Macs. Digest section caps and chat compaction use the effective budget.
   `surface: invariant` · `evidence: Sources/App/Services/ContextBudget.swift` · `qa: NOTE-14`
 - **AIE-015** When a prompt is over the Mac's budget or the model's own limit, the request fails with an explanatory message rather than being cut short.
   `surface: invariant` · `evidence: Sources/App/Services/ContextBudget.swift, Sources/App/Services/Llama/LlamaContextSize.swift` · `qa: NOTE-14`
@@ -1223,7 +1223,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/ModelLicenseLink.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-07`
 - **AIE-046** When a background summary job is running and a note or question arrives, the summary yields and the note or question runs next.
   `surface: background` · `evidence: Sources/App/Services/InferenceQueue.swift` · `qa: NOTE-08`
-- **AIE-047** In Settings, the built-in model picker also offers MedLlama 2 7B (about 3.9 GB, 4K context window, under the Llama 2 Community License) and MedGemma (128K context window, under the Health AI Developer Foundations Terms), choosing MedGemma 4B (about 2.5 GB) on Macs with under 32 GB of memory and MedGemma 27B (about 16.5 GB) at 32 GB or more.
+- **AIE-047** The built-in model picker offers MedGemma 1.5 4B (about 2.5 GB) on every Mac and MedGemma 27B (about 16.5 GB) on 32 GB+ Apple silicon. The 4B is the default through 32 GB and on Intel; 27B is the default at 48 GB+ Apple silicon. Both have a 128K native context and use the Health AI Developer Foundations Terms. Previously selected general models remain available to their users; retired MedLlama 2 and MedGemma 1 4B selections migrate to the new default.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModel.swift, Sources/App/Services/ModelAdvisor.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-15`
 
 ## Patients (PAT)

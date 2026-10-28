@@ -10,6 +10,7 @@ import llama
 final class LlamaAssistant: Assistant {
     private let modelURL: URL
     private let expectedModelBytes: Int64?
+    private let budget: ContextBudget
     private let maxTokensOverride: Int?
     private let engineOverride: LocalLLMEngine?
 
@@ -53,7 +54,8 @@ final class LlamaAssistant: Assistant {
             modelURL: modelURL,
             adapterURL: nil,
             expectedModelBytes: expectedModelBytes,
-            sampling: LocalLLMSampling(maxTokens: maxTokensOverride ?? ContextBudget.replyHeadroomTokens)
+            sampling: LocalLLMSampling(maxTokens: maxTokensOverride ?? ContextBudget.replyHeadroomTokens),
+            budget: budget
         )
         Self.engines[modelURL] = created
         return created
@@ -66,10 +68,12 @@ final class LlamaAssistant: Assistant {
     /// `maxTokens` defaults to nil so each `AITask` picks its own reply cap
     /// (`ContextBudget.replyHeadroomTokens` for notes and chat, smaller caps for
     /// digests and compaction). Passing an explicit value overrides the task cap.
-    init(modelURL: URL, expectedModelBytes: Int64? = nil, maxTokens: Int? = nil, engineOverride: LocalLLMEngine? = nil) {
+    init(modelURL: URL, expectedModelBytes: Int64? = nil, maxTokens: Int? = nil,
+         budget: ContextBudget = .current, engineOverride: LocalLLMEngine? = nil) {
         self.modelURL = modelURL
         self.expectedModelBytes = expectedModelBytes
         self.maxTokensOverride = maxTokens
+        self.budget = budget
         self.engineOverride = engineOverride
     }
 

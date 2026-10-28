@@ -26,6 +26,17 @@ private func transcript(minutes: Int, step: Int = 60, stamp: (Int) -> String = {
 }
 
 final class TranscriptSectionsTests: XCTestCase {
+    func testSectionCapUsesEffectiveModelBudget() {
+        let system = Prompts.defaultSystemPrompt
+        let small = TranscriptSections.maxCharacters(
+            for: ContextBudget(tokens: 4_096), systemPrompt: system, clientName: "Jane")
+        let normal = TranscriptSections.maxCharacters(
+            for: ContextBudget(tokens: 16_384), systemPrompt: system, clientName: "Jane")
+        XCTAssertLessThan(small, TranscriptSections.maxCharacters)
+        XCTAssertEqual(normal, TranscriptSections.maxCharacters)
+        let sections = TranscriptSections.split(String(repeating: "x", count: 20_000), maxCharacters: small)
+        XCTAssertTrue(sections.allSatisfy { ContextBudget.weightedLength(of: $0.text) <= small })
+    }
     func testSplitsAtTenMinutes() {
         let sections = TranscriptSections.split(transcript(minutes: 25))
         XCTAssertEqual(sections.count, 3)

@@ -12,9 +12,8 @@ enum HelperAsset: Int, CaseIterable {
     case whisperLargeV3 = 4
     case llama31_8b = 10
     case gemma4_e2b = 11
-    case medllama2_7b = 12
-    case medgemma_4b = 13
     case medgemma_27b = 14
+    case medgemma15_4b = 15
     /// The release archive. Its URL is not in this table: the helper reads it
     /// from the appcast it fetches itself.
     case updateArchive = 20
@@ -36,16 +35,11 @@ enum HelperAsset: Int, CaseIterable {
                 repo: "ggml-org/gemma-4-E2B-it-GGUF",
                 revision: "b4243c156154b6dca9324415f8c7ccc098b4aed1",
                 file: "gemma-4-E2B-it-Q4_0.gguf")
-        case .medllama2_7b:
+        case .medgemma15_4b:
             return Self.llama(
-                repo: "garcianacho/MedLlama-2-7B-GGUF",
-                revision: "d2790389ba379e2d3d8ed8912c6849b168414100",
-                file: "MedLlama-2-7B.q4_K_S.gguf")
-        case .medgemma_4b:
-            return Self.llama(
-                repo: "unsloth/medgemma-4b-it-GGUF",
-                revision: "fa17ea2647ef236db91adfe1465a61ab6562cf2c",
-                file: "medgemma-4b-it-Q4_K_M.gguf")
+                repo: "unsloth/medgemma-1.5-4b-it-GGUF",
+                revision: "3855f948626b7ae42bccd082757f15078c53e758",
+                file: "medgemma-1.5-4b-it-Q4_K_M.gguf")
         case .medgemma_27b:
             return Self.llama(
                 repo: "unsloth/medgemma-27b-text-it-GGUF",

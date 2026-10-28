@@ -35,16 +35,14 @@ enum ModelAdvisor {
         return ModelRecommendation(whisperModel: whisper, medGemmaModel: medGemma, summary: summary)
     }
 
-    /// The MedGemma variant that fits `hardware`: 27B on 32 GB+ Macs, 4B on
-    /// lower-memory Macs.
+    /// The curated medical default for this Mac.
     static func medGemma(for hardware: HardwareCapabilities) -> LlamaModel {
         LlamaModel.medGemma(for: hardware)
     }
 
-    /// Tokens of prompt this Mac can have the model read at once: 16K on 8 GB,
-    /// 32K on 16 GB, 64K on 32 GB or more. An Intel Mac, which runs the model
-    /// far slower, gets one tier lower. Never below 8K, or above `model`'s own
-    /// context window when a model is specified.
+    /// Memory-based maximum context. The 27B's weights leave less room for a
+    /// cache at 32 GB, so its window stays at 32K until 48 GB. Intel gets one
+    /// tier lower. The engine still checks the real tokenizer and GGUF limit.
     static func contextBudgetTokens(for hardware: HardwareCapabilities, model: LlamaModel? = nil) -> Int {
         let tokens: Int
         switch hardware.physicalMemoryGB {
@@ -55,7 +53,8 @@ enum ModelAdvisor {
         }
         let hardwareTokens = hardware.isAppleSilicon ? tokens : max(8_192, tokens / 2)
         guard let model else { return hardwareTokens }
-        return min(hardwareTokens, model.contextWindowTokens)
+        let modelMemoryCap = model == .medgemma_27b && hardware.physicalMemoryGB < 48 ? 32_768 : hardwareTokens
+        return min(hardwareTokens, modelMemoryCap, model.contextWindowTokens)
     }
 
     static func current() -> ModelRecommendation {
