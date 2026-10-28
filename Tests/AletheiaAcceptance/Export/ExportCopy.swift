@@ -5,4 +5,5 @@ extension Copy {
     static let exportReadMe = "Read me.txt"
     static let exportTranscript = "Transcript.txt"
     static let exportDiskNotEncrypted = "This disk isn't encrypted"
+    static let nothingToExportPsychotherapy = "No psychotherapy notes to export"
 }

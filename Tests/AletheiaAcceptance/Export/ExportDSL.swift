@@ -170,6 +170,15 @@ struct ExportMenu {
     let preselected: String
 }
 
+/// What clicking Export psychotherapy notes… showed first, and what it wrote.
+struct PsychotherapyExportAsk {
+    /// The alert shown instead of going on, if any.
+    let alertTitle: String?
+    /// Whether the authorization confirmation (and then the save panel) comes next.
+    let goesOnToConfirmation: Bool
+    let filesWritten: Int
+}
+
 /// The save panel for a patient's zip.
 struct ZipSavePanel {
     let suggestedName: String
@@ -305,6 +314,18 @@ extension When {
 
     func askToSavePatientZip(_ patient: Patient) -> ZipSavePanel {
         ZipSavePanel(suggestedName: FileSaver.fileName(patient.name, "Records") + ".zip")
+    }
+
+    /// Clicks Export psychotherapy notes… on the patient's page.
+    func askToExportPsychotherapyNotes(_ patient: Patient) throws -> PsychotherapyExportAsk {
+        let store = try XCTUnwrap(app.appModel.store)
+        let sessions = try store.listSessions(for: patient)
+        let before = app.probe.files().count
+        let goesOn = PsychotherapyExport.hasAnythingToExport(store: store, sessions: sessions)
+        return PsychotherapyExportAsk(
+            alertTitle: goesOn ? nil : PsychotherapyExport.nothingToExportTitle,
+            goesOnToConfirmation: goesOn,
+            filesWritten: app.probe.files().count - before)
     }
 
     func lookAtToast(_ run: ExportRun) -> ExportToast { ExportToast(state: run.state, run: run) }
@@ -447,6 +468,20 @@ extension Then where Subject == ExportMenu {
     func offers(_ titles: [String], preselecting preselected: String) {
         expectEqual(subject.titles, titles, "the formats offered")
         expectEqual(subject.preselected, preselected, "the format preselected")
+    }
+}
+
+extension Then where Subject == PsychotherapyExportAsk {
+    func saysThereIsNothingToExport() {
+        expectEqual(subject.alertTitle, Copy.nothingToExportPsychotherapy, "the alert")
+    }
+    func goesNoFurther() {
+        expect(!subject.goesOnToConfirmation, "it went on to the authorization confirmation and save panel")
+        expectEqual(subject.filesWritten, 0, "files written")
+    }
+    func goesOnToConfirmAuthorization() {
+        expect(subject.goesOnToConfirmation, "it did not go on to the authorization confirmation")
+        expectEqual(subject.alertTitle, nil, "the alert")
     }
 }
 

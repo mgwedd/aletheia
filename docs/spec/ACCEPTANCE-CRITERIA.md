@@ -187,6 +187,7 @@ Before you start: two patients with transcripts, notes and comments, one session
 - **EXPORT-10** Click **Export** on a note and choose PDF, Word or Markdown → a save panel suggests a name and the file opens correctly.
 - **EXPORT-11** Export a whole session from its header → the file holds the patient's name, date, Summary and Transcript.
 - **EXPORT-12** Pick a folder on a disk that isn't encrypted → a "This disk isn't encrypted" warning appears and nothing has been written to the folder.
+- **EXPORT-13** Click **Export psychotherapy notes…** for a patient with no psychotherapy notes or private comments → "No psychotherapy notes to export" appears before any confirmation or save panel, and nothing is written.
 
 ## 12. Lock and privacy shield (LOCK)
 Before you start: a Mac that can authenticate with Touch ID or a password.
