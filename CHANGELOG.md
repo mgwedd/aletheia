@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.69.0] - 2026-10-29
+
+### Added
+- offer experimental Apertus medical model (#537)
+
 ## [2.68.0] - 2026-10-28
 
 ### Added
