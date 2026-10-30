@@ -129,8 +129,8 @@ final class HelpTipsTests: XCTestCase {
     /// Compaction isn't a word therapists use; the tip says, in one sentence, what it does and why.
     func testCompactTipExplainsWhatAndWhy() throws {
         let text = HelpTips.compact.text
-        XCTAssertTrue(text.contains("summary"))
-        XCTAssertTrue(text.contains("fast"))
+        XCTAssertTrue(text.contains("Compressing the conversation"))
+        XCTAssertTrue(text.contains("longer conversations"))
         XCTAssertEqual(text.filter { ".!?".contains($0) }.count, 1, "one sentence")
         let pane = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
