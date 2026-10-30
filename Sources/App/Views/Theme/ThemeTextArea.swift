@@ -266,6 +266,11 @@ final class ThemeTextAreaTextView: PatientTextView {
             return ThemeTextAreaMetrics.height(forContentHeight: text)
         }
 
+        // SwiftUI asks for the same few widths many times in one layout pass;
+        // building a text system for each answer made a long pass take minutes.
+        if measured.text != string || measured.face != face { measured = (string, face, [:]) }
+        if let height = measured.heights[targetWidth] { return height }
+
         // Measure on a dedicated offscreen container so the live container's
         // geometry is never mutated during a layout pass, which would trigger
         // a layout invalidation liveloop.
@@ -280,8 +285,14 @@ final class ThemeTextAreaTextView: PatientTextView {
         let oneLine = measureLayout.defaultLineHeight(for: ThemeTextAreaMetrics.font(for: face)) + ThemeTextAreaMetrics.lineSpacing
         let extra = measureLayout.extraLineFragmentRect
         let text = max(used.height, extra.isEmpty ? 0 : extra.maxY, oneLine)
-        return ThemeTextAreaMetrics.height(forContentHeight: text)
+        let height = ThemeTextAreaMetrics.height(forContentHeight: text)
+        if measured.heights.count >= 16 { measured.heights.removeAll() }
+        measured.heights[targetWidth] = height
+        return height
     }
+
+    /// Offscreen heights by container width, for `measured.text` in `measured.face`.
+    private var measured: (text: String, face: ThemeTextArea.Face, heights: [CGFloat: CGFloat]) = ("", .body, [:])
 }
 
 // MARK: - Representable
@@ -365,14 +376,23 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
             textView.applyStyle()
         }
 
-        textView.isEditable = isEnabled
-        textView.isSelectable = isEnabled
-        scroll.alphaValue = isEnabled ? 1 : 0.55
+        // Only write what changed: each write invalidates the text view, and
+        // re-enabling the box after a failed compaction kept the window busy.
+        if textView.isEditable != isEnabled { textView.isEditable = isEnabled }
+        if textView.isSelectable != isEnabled { textView.isSelectable = isEnabled }
+        let alpha: CGFloat = isEnabled ? 1 : 0.55
+        if scroll.alphaValue != alpha { scroll.alphaValue = alpha }
 
-        // Drive focus from the binding when programmatic focus is requested.
+        // Drive focus from the binding when programmatic focus is requested,
+        // one request at a time.
         let isFirstResponder = textView.window?.firstResponder === textView
-        if isFocused, !isFirstResponder, isEnabled, let window = textView.window {
-            DispatchQueue.main.async { window.makeFirstResponder(textView) }
+        if isFocused, !isFirstResponder, isEnabled, !context.coordinator.focusRequested, let window = textView.window {
+            context.coordinator.focusRequested = true
+            DispatchQueue.main.async { [weak textView, coordinator = context.coordinator] in
+                coordinator.focusRequested = false
+                guard let textView, textView.isEditable, window.firstResponder !== textView else { return }
+                window.makeFirstResponder(textView)
+            }
         }
     }
 
@@ -392,6 +412,8 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: ThemeTextAreaRepresentable
+        /// A first-responder request is queued for the next turn.
+        var focusRequested = false
 
         init(_ parent: ThemeTextAreaRepresentable) { self.parent = parent }
 
@@ -402,10 +424,14 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
             textView.modifiedReturnSubmits = representable.modifiedReturnSubmits
             textView.tabMovesFocus = representable.tabMovesFocus
             textView.trailingInset = representable.trailingInset
-            textView.setAccessibilityLabel(representable.accessibilityLabel)
-            if let identifier = representable.accessibilityIdentifier {
+            if textView.accessibilityLabel() != representable.accessibilityLabel {
+                textView.setAccessibilityLabel(representable.accessibilityLabel)
+            }
+            if let identifier = representable.accessibilityIdentifier,
+               textView.accessibilityIdentifier() != identifier {
                 textView.setAccessibilityIdentifier(identifier)
             }
+            guard textView.onFocusChange == nil else { return }
             textView.onFocusChange = { [weak self] focused in
                 guard let self else { return }
                 DispatchQueue.main.async {

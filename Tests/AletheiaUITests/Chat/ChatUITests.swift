@@ -118,6 +118,21 @@ final class ChatUITests: AcceptanceCase {
         then(tab).showsText("She named the deadline.")
         then(tab).showsCompactedCardAboveTheAnswer()
     }
+
+    func test_CHAT_23_aFailedCompactionPutsTheQuestionBackInTheBox() {
+        executionTimeAllowance = 120
+        let filler = String(repeating: "We talked about sleep, work and the move. ", count: 30)
+        given.aSessionToAskAbout(
+            chat: (0..<5).map { .init(role: $0 % 2 == 0 ? "user" : "assistant", text: "\($0). " + filler) },
+            replies: ["She named the deadline."],
+            contextTokens: 6_000,
+            rules: [.init(whenPromptContains: Copy.summaryRequest, reply: "")])
+        let tab = when.openAskTab()
+
+        when.ask("What did she say about the deadline?", on: tab)
+
+        then(tab).hasInTheBox("What did she say about the deadline?")
+    }
 }
 
 extension Then where Subject == AskTabOnScreen {

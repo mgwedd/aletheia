@@ -289,4 +289,23 @@ final class ChatSpec: AcceptanceCase {
 
         then(ask.pane).compactedBefore(answering: "And about work?")
     }
+
+    func test_CHAT_23() async throws {
+        let desk = given.assistantDesk()
+        let session = try desk.session(
+            of: try await given.patient(named: "Jane Doe"),
+            transcript: AssistantDesk.transcript(minutes: 45, about: "sleep"))
+        desk.model.failsToSummarize()
+        desk.model.answersPastAQuarterOfTheWindow()
+        let ask = desk.askTab(of: session)
+        ask.ask("What was said about sleep?")
+        try await ask.waitUntilIdle()
+
+        ask.ask("And about work?")
+        try await ask.waitUntilIdle()
+
+        then(ask.pane).hasNotCompacted()
+        then(ask.pane).neverAsked("And about work?")
+        then(ask.pane).hasInTheBox("And about work?")
+    }
 }

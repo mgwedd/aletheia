@@ -153,6 +153,7 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-20** Ask a question on a long session → the status moves through reading the session part by part, analyzing, and "Preparing the answer" before the answer appears.
 - **CHAT-21** Open **Ask** on a session with a conversation → **Compact** sits on the effort bar, and "AI generated responses can be inaccurate. Double-check responses." shows at the bottom left of the conversation.
 - **CHAT-22** Keep asking on one session until the conversation passes a quarter of what the AI model can read at once → the earlier messages compact into a "Conversation compacted" card before the next answer.
+- **CHAT-23** Ask on a conversation that needs compacting, and the summary fails or is stopped → the question goes back into the box unsent; nothing typed is lost.
 
 ## 9. Summaries prepared in the background (DIGEST)
 Before you start: a patient whose sessions have transcripts too long for this Mac to read at once, and the AI model downloaded.
@@ -255,6 +256,7 @@ Before you start: setup finished.
 - **SETTINGS-13** Choose an iCloud Drive or cloud-synced folder as the data folder → it is refused, asking for a folder that stays on this Mac; the current folder is kept.
 - **SETTINGS-14** Open Aletheia with its data folder now synced → a **Move data to this Mac** sheet offers to copy and verify it, then keep or delete the old one.
 - **SETTINGS-15** Open **AI and models** > **Built-in model** → MedGemma 1.5 4B is the default through 32 GB and on Intel; MedGemma 27B is offered on 32 GB+ Apple silicon and becomes the default at 48 GB+. Both use the Health AI Developer Foundations Terms.
+- **SETTINGS-16** Update from a version that defaulted to Llama 3.1 8B (or Gemma 4 E2B), having downloaded it and never chosen a model → **Built-in model** still shows it selected; MedGemma is offered, not switched to. With nothing downloaded, MedGemma is the default.
 
 ## 16. Security panel, activity log and Doctor (SECURITY)
 Before you start: a data folder with some activity (unlock, export, delete a patient).

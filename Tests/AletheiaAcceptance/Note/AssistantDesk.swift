@@ -83,6 +83,8 @@ struct AskPane {
     let accuracyNotice: String
     /// The prompt over an empty conversation.
     let emptyTitle: String?
+    /// A question handed back to the box, unsent.
+    let questionInBox: String?
 
     var questions: [String] { bubbles.filter { $0.who == .you }.map(\.text) }
     var answers: [String] { bubbles.filter { $0.who == .assistant }.map(\.text) }
@@ -461,7 +463,8 @@ final class AskTab {
                 ? AIProgressFormat.statusLine(model.runner.progress, now: Date()) : nil,
             offersCompact: ChatMemory.hasHistory(model.messages),
             accuracyNotice: ChatPaneView.accuracyNotice,
-            emptyTitle: model.messages.isEmpty ? ChatWords.emptyTitle(about: ChatWords.thisSession) : nil)
+            emptyTitle: model.messages.isEmpty ? ChatWords.emptyTitle(about: ChatWords.thisSession) : nil,
+            questionInBox: model.returnedQuestion)
     }
 
     fileprivate static func who(_ role: ChatRole) -> AskPane.Bubble.Who {

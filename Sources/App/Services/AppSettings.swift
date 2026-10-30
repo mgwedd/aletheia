@@ -455,16 +455,24 @@ final class AppSettings: ObservableObject {
         if FixtureMode.isActive {
             // Grandfathered stands in for a license; the scenario decides.
             FixtureMode.defaults.set(FixtureMode.scenario?.licenseOn ?? false, forKey: Keys.licenseGrandfathered)
-            self.init(defaults: FixtureMode.defaults, hardware: FixtureMode.hardware)
+            self.init(
+                defaults: FixtureMode.defaults, hardware: FixtureMode.hardware,
+                isDownloaded: FixtureMode.isDownloaded)
             FixtureMode.prepare(self)
             return
         }
         #endif
-        self.init(defaults: .standard)
+        self.init(defaults: .standard) {
+            FileManager.default.fileExists(atPath: LlamaRuntime.modelURL(for: $0).path)
+        }
     }
 
     /// Test seam: the shared instance uses `UserDefaults.standard`.
-    init(defaults: UserDefaults, hardware: HardwareCapabilities = .current()) {
+    /// `isDownloaded` says whether a model's weights are on this Mac.
+    init(
+        defaults: UserDefaults, hardware: HardwareCapabilities = .current(),
+        isDownloaded: (LlamaModel) -> Bool = { _ in false }
+    ) {
         self.defaults = defaults
         let recommendation = ModelAdvisor.recommend(for: hardware)
         self.hardware = hardware
@@ -490,6 +498,12 @@ final class AppSettings: ObservableObject {
         if let raw = storedModel, let model = LlamaModel(rawValue: raw),
            model.isSupported(on: hardware) {
             llamaModel = model
+        } else if storedModel == nil,
+                  let kept = LlamaModel.previousDefault(on: hardware, isDownloaded: isDownloaded) {
+            // Never chosen, so it followed the old default: keep the model
+            // already downloaded rather than switch to one that isn't.
+            llamaModel = kept
+            defaults.set(kept.rawValue, forKey: Keys.llamaModel)
         } else {
             let defaultModel = LlamaModel.recommended(for: hardware)
             llamaModel = defaultModel

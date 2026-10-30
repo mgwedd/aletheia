@@ -18,4 +18,10 @@ final class SettingsUITests: AcceptanceCase {
         then(paneGemma27B).showsSelectedModel(Copy.medGemma27BOption)
         then(paneGemma27B).showsLicense(Copy.healthAIFoundationsTerms)
     }
+
+    func test_SETTINGS_16_anUpdateKeepsTheDownloadedModel() {
+        given.updatedAppWithMemory(gb: 16, downloaded: Copy.llama8BID)
+        let pane = when.openAIAndModelsSettings()
+        then(pane).showsSelectedModel(Copy.llama8BOption)
+    }
 }

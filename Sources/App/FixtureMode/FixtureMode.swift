@@ -76,6 +76,11 @@ enum FixtureMode {
     static let disk = FixtureDisk(state: scenario?.fileVault)
     static let deviceKeys = ProcessMemoryDeviceKeyStore()
 
+    /// Whether a model counts as downloaded; only the scenario says so.
+    static func isDownloaded(_ model: LlamaModel) -> Bool {
+        scenario?.downloadedModels?.contains(model.rawValue) ?? false
+    }
+
     static var hardware: HardwareCapabilities {
         let current = HardwareCapabilities.current()
         guard let memoryGB = scenario?.memoryGB else { return current }

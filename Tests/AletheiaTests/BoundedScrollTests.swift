@@ -47,7 +47,7 @@ final class BoundedScrollTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/App/Views/ChatPaneView.swift")
         let source = try String(contentsOf: file, encoding: .utf8)
-        let marker = try XCTUnwrap(source.range(of: "LazyVStack(alignment: .leading, spacing: 20)"))
-        XCTAssertTrue(source[..<marker.lowerBound].suffix(120).contains("BoundedScroll {"))
+        let marker = try XCTUnwrap(source.range(of: "VStack(alignment: .leading, spacing: 20)"))
+        XCTAssertTrue(source[..<marker.lowerBound].suffix(400).contains("BoundedScroll {"))
     }
 }

@@ -1062,6 +1062,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/TherapistInput.swift` · `qa: NOTE-14`
 - **CHT-039** When the messages since the last summary pass a quarter of the model's room (6,144 characters on an 8K window, 12,288 on 16K, at most 24,000), the conversation is compacted before the next question is sent.
   `surface: background` · `evidence: Sources/App/Services/ChatMemory.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-22`
+- **CHT-076** When the compaction a send started fails, is stopped, comes back empty or is cancelled while waiting, the question is not sent and goes back into the empty Ask box.
+  `surface: ui` · `evidence: Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/SessionAI/PatientChatModel.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-23`
 - **CHT-040** When the chat has history, a Compact button appears and compacts the conversation on demand.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:98-101` · `qa: CHAT-13`
 - **CHT-041** When a conversation has been compacted, a "Conversation compacted" card appears and the summary stands in for the older messages.
@@ -1225,6 +1227,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/InferenceQueue.swift` · `qa: NOTE-08`
 - **AIE-047** The built-in model picker offers MedGemma 1.5 4B (about 2.5 GB) on every Mac and MedGemma 27B (about 16.5 GB) on 32 GB+ Apple silicon. The 4B is the default through 32 GB and on Intel; 27B is the default at 48 GB+ Apple silicon. Both have a 128K native context and use the Health AI Developer Foundations Terms. Previously selected general models remain available to their users; retired MedLlama 2 and MedGemma 1 4B selections migrate to the new default.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModel.swift, Sources/App/Services/ModelAdvisor.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-15`
+- **AIE-048** When no built-in model was ever chosen and the previous default (Llama 3.1 8B from 16 GB, else Gemma 4 E2B) is downloaded while this Mac's MedGemma default is not, that model stays selected and is saved as the choice.
+  `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-16`
 
 ## Patients (PAT)
 

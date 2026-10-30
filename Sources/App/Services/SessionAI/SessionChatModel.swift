@@ -8,6 +8,9 @@ final class SessionChatModel: ObservableObject {
     let runner = ChatStreamRunner()
 
     @Published var messages: [ChatMessage] = []
+    /// A question held for a compaction that failed or was stopped; the
+    /// composer takes it back so nothing typed is lost.
+    @Published var returnedQuestion: String?
     @Published var isSending = false
     /// What part of the session the last answer read.
     @Published var coverage: String?
@@ -72,7 +75,7 @@ final class SessionChatModel: ObservableObject {
         // Past ChatMemory's budget, compact first so the answer still has the
         // whole conversation, the earlier part in summary.
         if ChatMemory.needsCompaction(messages, window: integrations.makeAssistantService().budget) {
-            compact("") { [weak self] in self?.send(question) }
+            compact("", then: { [weak self] in self?.send(question) }, otherwise: { [weak self] in self?.returnedQuestion = question })
             return
         }
         messages.append(userMessage)
@@ -151,9 +154,9 @@ final class SessionChatModel: ObservableObject {
 
     /// Replaces the conversation so far with the model's summary of it
     /// (`/compact`, the Compact button, or a send past the budget), then runs
-    /// `next`. A stopped or failed summary is discarded: a partial one would
-    /// stand in for messages it doesn't cover.
-    func compact(_ focus: String, then next: (() -> Void)? = nil) {
+    /// `next`, or `abandoned` if it doesn't finish. A stopped or failed summary
+    /// is discarded: a partial one would stand in for messages it doesn't cover.
+    func compact(_ focus: String, then next: (() -> Void)? = nil, otherwise abandoned: (() -> Void)? = nil) {
         guard let store = appModel.store, !messages.isEmpty else { return }
         isSending = true
         let summaryID = UUID()
@@ -168,16 +171,22 @@ final class SessionChatModel: ObservableObject {
             readTitle: "Reading the conversation",
             writeTitle: "Summarizing the conversation",
             makeStream: { service.streamCompaction(history: history, focus: focus) },
-            onReveal: { [self] text in messages.upsert(id: summaryID, role: .summary, text: text) },
+            // No card until the summary has words: an empty one would only flash.
+            onReveal: { [self] text in
+                guard !text.isEmpty else { return }
+                messages.upsert(id: summaryID, role: .summary, text: text)
+            },
             onError: { [self] error in
                 isSending = false
                 messages.removeAll { $0.id == summaryID }
+                abandoned?()
                 alert(.message(error.localizedDescription))
             },
             onFinish: { [self] text in
                 guard !runner.wasStopped, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     isSending = false
                     messages.removeAll { $0.id == summaryID }
+                    abandoned?()
                     return
                 }
                 if let at = messages.firstIndex(where: { $0.id == summaryID }) { messages.removeSubrange(..<at) }
@@ -188,7 +197,10 @@ final class SessionChatModel: ObservableObject {
                     isSending = false
                 }
             },
-            onCancelledWhileQueued: { [self] in isSending = false }
+            onCancelledWhileQueued: { [self] in
+                isSending = false
+                abandoned?()
+            }
         )
     }
 }

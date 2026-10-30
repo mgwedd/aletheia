@@ -1773,7 +1773,8 @@ struct SessionDetailView: View {
             onCompact: { chat.compact($0) },
             progress: chatRunner.progress,
             effort: $settings.sessionChatEffort,
-            isSessionRecording: recorder.isRecording
+            isSessionRecording: recorder.isRecording,
+            returnedQuestion: $chat.returnedQuestion
         )
     }
 

@@ -108,6 +108,14 @@ extension Then where Subject == AskPane {
         let older = subject.bubbles.prefix(summary).map(\.text)
         expect(older.isEmpty, "the card does not replace the older messages; still shown above it: \(older)")
     }
+
+    func hasInTheBox(_ question: String) {
+        expectEqual(subject.questionInBox, question, "the question back in the box")
+    }
+
+    func neverAsked(_ question: String) {
+        expect(!subject.questions.contains(question), "\"\(question)\" was sent anyway")
+    }
 }
 
 extension Then where Subject == ShownAlert {
@@ -139,6 +147,11 @@ extension Then where Subject == AssistantDesk {
 }
 
 extension SteeredModel {
+    /// Asked to summarize a conversation so far, it fails.
+    func failsToSummarize() {
+        answer("Write a summary that will replace it", with: .fails(SummaryFailed()))
+    }
+
     /// Answers every question with text just past a quarter of the window of
     /// the model this Mac runs, so the next question compacts first. The
     /// window follows the Mac's memory, so a fixed length would be too short
@@ -158,4 +171,8 @@ extension When {
     func removePatient(_ patient: Patient) throws {
         try app.appModel.deletePatient(patient)
     }
+}
+
+struct SummaryFailed: LocalizedError {
+    var errorDescription: String? { "The summary could not be written." }
 }
