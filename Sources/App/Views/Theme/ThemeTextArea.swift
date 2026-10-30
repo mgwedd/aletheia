@@ -372,14 +372,23 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
             textView.applyStyle()
         }
 
-        textView.isEditable = isEnabled
-        textView.isSelectable = isEnabled
-        scroll.alphaValue = isEnabled ? 1 : 0.55
+        // Only write what changed: each write invalidates the text view, and
+        // re-enabling the box after a failed compaction kept the window busy.
+        if textView.isEditable != isEnabled { textView.isEditable = isEnabled }
+        if textView.isSelectable != isEnabled { textView.isSelectable = isEnabled }
+        let alpha: CGFloat = isEnabled ? 1 : 0.55
+        if scroll.alphaValue != alpha { scroll.alphaValue = alpha }
 
-        // Drive focus from the binding when programmatic focus is requested.
+        // Drive focus from the binding when programmatic focus is requested,
+        // one request at a time.
         let isFirstResponder = textView.window?.firstResponder === textView
-        if isFocused, !isFirstResponder, isEnabled, let window = textView.window {
-            DispatchQueue.main.async { window.makeFirstResponder(textView) }
+        if isFocused, !isFirstResponder, isEnabled, !context.coordinator.focusRequested, let window = textView.window {
+            context.coordinator.focusRequested = true
+            DispatchQueue.main.async { [weak textView, coordinator = context.coordinator] in
+                coordinator.focusRequested = false
+                guard let textView, textView.isEditable, window.firstResponder !== textView else { return }
+                window.makeFirstResponder(textView)
+            }
         }
     }
 
@@ -399,6 +408,8 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: ThemeTextAreaRepresentable
+        /// A first-responder request is queued for the next turn.
+        var focusRequested = false
 
         init(_ parent: ThemeTextAreaRepresentable) { self.parent = parent }
 
@@ -409,7 +420,10 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
             textView.modifiedReturnSubmits = representable.modifiedReturnSubmits
             textView.tabMovesFocus = representable.tabMovesFocus
             textView.trailingInset = representable.trailingInset
-            textView.setAccessibilityLabel(representable.accessibilityLabel)
+            if textView.accessibilityLabel() != representable.accessibilityLabel {
+                textView.setAccessibilityLabel(representable.accessibilityLabel)
+            }
+            guard textView.onFocusChange == nil else { return }
             textView.onFocusChange = { [weak self] focused in
                 guard let self else { return }
                 DispatchQueue.main.async {

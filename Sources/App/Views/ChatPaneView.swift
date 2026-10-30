@@ -89,8 +89,8 @@ struct ChatPaneView: View {
     @State private var inputFocused = false
     /// Bumped on send so dictation stops writing into the cleared draft.
     @State private var voiceResetToken = 0
-    /// Whether the mic is drawn, reported by the mic itself.
-    @State private var micShown = false
+    /// Whether this Mac can dictate, reported by the mic itself.
+    @State private var micAvailable = false
 
     /// Under every conversation; also read by the acceptance harness.
     static let accuracyNotice = "AI generated responses can be inaccurate. Double-check responses."
@@ -285,6 +285,8 @@ struct ChatPaneView: View {
             onEscape: escapeStops,
             modifiedReturnSubmits: true,
             tabMovesFocus: true,
+            // Kept while the mic hides for a send: room that came and went
+            // re-wrapped the text in the update that re-enabled the box.
             trailingInset: trailingAccessoryShown ? ChatComposerLayout.accessoryWidth : 0,
             isFocused: $inputFocused
         )
@@ -300,16 +302,16 @@ struct ChatPaneView: View {
                     isSessionRecording: isSessionRecording,
                     resetToken: voiceResetToken,
                     input: voiceInput,
-                    onShownChange: { micShown = $0 }
+                    onAvailableChange: { micAvailable = $0 }
                 )
             }
             .padding(.trailing, 6)
         }
     }
 
-    /// Stop or the mic is drawn over the box's trailing edge.
+    /// Stop or the mic can be drawn over the box's trailing edge.
     private var trailingAccessoryShown: Bool {
-        micShown || ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .stop
+        micAvailable || ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .stop
     }
 
     /// Esc while an answer is being made stops it; true when it did.

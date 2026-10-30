@@ -14,8 +14,9 @@ struct VoiceMicControl: View {
     var isSessionRecording: Bool
     /// Changes when the draft is sent, so a late result can't refill the box.
     var resetToken: Int
-    /// Told whenever the mic appears or disappears, so the box can keep room for it.
-    var onShownChange: (Bool) -> Void = { _ in }
+    /// Told whether this Mac can dictate at all (it may still be hidden for a
+    /// send or a recording), so the box can keep room for it.
+    var onAvailableChange: (Bool) -> Void = { _ in }
 
     @StateObject private var dictation: VoiceDictation
     @State private var isPressed = false
@@ -27,19 +28,20 @@ struct VoiceMicControl: View {
         isSessionRecording: Bool,
         resetToken: Int,
         input: VoiceInput?,
-        onShownChange: @escaping (Bool) -> Void = { _ in }
+        onAvailableChange: @escaping (Bool) -> Void = { _ in }
     ) {
         _draft = draft
         self.isSending = isSending
         self.isSessionRecording = isSessionRecording
         self.resetToken = resetToken
-        self.onShownChange = onShownChange
+        self.onAvailableChange = onAvailableChange
         // Evaluated once, when the view first appears.
         _dictation = StateObject(wrappedValue: VoiceDictation(input: input ?? SpeechVoiceInput()))
     }
 
     var body: some View {
         let shown = dictation.showsMic(isSending: isSending, isSessionRecording: isSessionRecording)
+        let available = dictation.showsMic(isSending: false, isSessionRecording: false)
         return Group {
             if shown {
                 MicButtonFace(isRecording: dictation.isRecording)
@@ -53,7 +55,7 @@ struct VoiceMicControl: View {
                     .accessibilityAddTraits(.isButton)
             }
         }
-        .onChange(of: shown, initial: true) { _, now in onShownChange(now) }
+        .onChange(of: available, initial: true) { _, now in onAvailableChange(now) }
         .onChange(of: dictation.isRecording) { _, recording in
             recording ? installEscMonitor() : removeEscMonitor()
         }
