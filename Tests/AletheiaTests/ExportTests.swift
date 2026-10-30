@@ -160,7 +160,7 @@ final class ExportWiringTests: XCTestCase {
     func testNoteCopyIsRichAndConfirmsInAPopup() throws {
         let session = try source("Views/SessionDetailView.swift")
         XCTAssertTrue(try source("Services/SessionAI/SessionNoteModel.swift")
-            .contains("RichClipboard.write(RichClipboard.payload(markdown: summaryText)"))
+            .contains("RichClipboard.write(RichClipboard.payload(markdown: text)"))
         XCTAssertTrue(session.contains("note.copyNote()"))
         XCTAssertTrue(session.contains(".popover(isPresented: Binding(get: { note.copyFeedback.justCopied }"))
         XCTAssertTrue(session.contains("Label(CardWords.copied, systemImage: \"checkmark.circle.fill\")"))
