@@ -71,6 +71,9 @@ extension Given {
             $0.aiStreamsWords = streamsWords
             $0.aiModelMissing = modelMissing
             $0.aiStageMs = stageMs
+            // A summary built in the background before Generate is pressed
+            // would leave the note nothing to build; the note builds its own.
+            $0.summariesPaused = true
             if plansLookups {
                 $0.aiRules = [.init(whenPromptContains: Copy.lookupPlanPrompt, reply: Copy.lookupPlan)]
             }

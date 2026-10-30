@@ -213,16 +213,20 @@ final class AppDriver {
     }
 
     /// Any element whose label or value contains `words`, including a card
-    /// whose children are combined into one element.
+    /// whose children are combined into one element and a text view (the
+    /// note pane) that shows its text as its value.
     func anything(containing words: String) -> XCUIElement {
+        onScreen.matching(NSPredicate(
+            format: "label CONTAINS %@ OR ((elementType == %lu OR elementType == %lu) AND value CONTAINS %@)",
+            words, XCUIElement.ElementType.staticText.rawValue, XCUIElement.ElementType.textView.rawValue, words)).firstMatch
+    }
+
+    /// Any element whose label contains `words` (status lines carry theirs as a
+    /// label), or a plain line of text, which carries its words as a value.
+    func element(labelContaining words: String) -> XCUIElement {
         onScreen.matching(NSPredicate(
             format: "label CONTAINS %@ OR (elementType == %lu AND value CONTAINS %@)",
             words, XCUIElement.ElementType.staticText.rawValue, words)).firstMatch
-    }
-
-    /// Any element whose label contains `words` (status lines carry theirs as a label).
-    func element(labelContaining words: String) -> XCUIElement {
-        onScreen.matching(NSPredicate(format: "label CONTAINS %@", words)).firstMatch
     }
 
     /// Every element but the invisible probe, whose label logs what the app

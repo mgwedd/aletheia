@@ -34,7 +34,7 @@ struct SummariesOnScreen {
     let driver: AppDriver
 
     var row: XCUIElement { driver.anything(containing: Copy.digestSummaryRow) }
-    var rowText: String { row.label }
+    var rowText: String { row.label.isEmpty ? (row.value as? String ?? "") : row.label }
     var pauseButton: XCUIElement { driver.button(Copy.digestPause) }
     var resumeButton: XCUIElement { driver.button(Copy.digestResume) }
     var processing: XCUIElement { driver.element(labelContaining: Copy.processingTranscript) }

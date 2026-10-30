@@ -115,6 +115,7 @@ enum FixtureMode {
             if let effort = scenario?.chatEffort.flatMap(AnswerEffort.init(rawValue:)) {
                 settings.sessionChatEffort = effort
             }
+            if let paused = scenario?.summariesPaused { settings.summariesPaused = paused }
         }
     }
 

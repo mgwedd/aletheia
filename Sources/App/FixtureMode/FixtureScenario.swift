@@ -69,6 +69,8 @@ struct FixtureScenario: Codable, Equatable {
     var aiStreamsWords: Bool?
     /// The model's reading window in tokens, in place of the Mac's own.
     var contextTokens: Int?
+    /// Settings: background summaries start paused, so a note builds its own.
+    var summariesPaused: Bool?
     /// Transcription that runs until it is cancelled, so its progress band
     /// stays on screen.
     var slowTranscription: Bool?
