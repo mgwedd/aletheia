@@ -565,7 +565,8 @@ final class PatientChatTab {
                 ?? (model.runner.isStreaming ? AIProgressFormat.statusLine(model.runner.progress, now: Date()) : nil),
             offersCompact: ChatMemory.hasHistory(model.messages),
             accuracyNotice: ChatPaneView.accuracyNotice,
-            emptyTitle: model.messages.isEmpty ? ChatWords.emptyTitle(about: patient.name) : nil)
+            emptyTitle: model.messages.isEmpty ? ChatWords.emptyTitle(about: patient.name) : nil,
+            questionInBox: model.returnedQuestion)
     }
 
     /// Whether the window for this patient would show "no longer available".
