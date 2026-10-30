@@ -26,19 +26,17 @@ final class IdleAutoLockTimeoutTests: XCTestCase {
         XCTAssertEqual(IdleAutoLockTimeout.sixtyMinutes.displayName, "60 minutes")
     }
 
-    /// `AppSettings` is a UserDefaults-backed singleton with no dependency
-    /// injection point, so this round-trips through the real
-    /// `UserDefaults.standard` and restores the prior value afterward rather
-    /// than leaving test-only state behind for other tests.
+    /// Round-trips through the shared settings' store and restores the prior
+    /// value afterward rather than leaving test-only state behind for other tests.
     func testIdleAutoLockMinutesPersistsAcrossSettingChanges() {
         let settings = AppSettings.shared
         let original = settings.idleAutoLockMinutes
         defer { settings.idleAutoLockMinutes = original }
 
         settings.idleAutoLockMinutes = IdleAutoLockTimeout.thirtyMinutes.rawValue
-        XCTAssertEqual(UserDefaults.standard.integer(forKey: "idleAutoLockMinutes"), 30)
+        XCTAssertEqual(AppSettings.sharedDefaults.integer(forKey: "idleAutoLockMinutes"), 30)
 
         settings.idleAutoLockMinutes = IdleAutoLockTimeout.off.rawValue
-        XCTAssertEqual(UserDefaults.standard.integer(forKey: "idleAutoLockMinutes"), 0)
+        XCTAssertEqual(AppSettings.sharedDefaults.integer(forKey: "idleAutoLockMinutes"), 0)
     }
 }

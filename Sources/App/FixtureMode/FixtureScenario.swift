@@ -107,6 +107,8 @@ struct FixtureScenario: Codable, Equatable {
     /// Built-in models (raw identifiers) whose weights count as downloaded
     /// when settings first load.
     var downloadedModels: [String]?
+    /// Every model download fails, as it does when the network helper can't be reached.
+    var modelDownloadFails: Bool?
 
     /// Setup was finished and the terms accepted, but no data folder is chosen
     /// on the run's first launch, so the Set up Aletheia sheet is up.

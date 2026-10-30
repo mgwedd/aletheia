@@ -87,3 +87,56 @@ extension Then where Subject == AIAndModelsPaneOnScreen {
         expect(val.contains(name) || subject.driver.exists(subject.driver.app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@ OR title CONTAINS %@", name, name, name)).firstMatch), "expected model \(name) to be selected, got \(val)")
     }
 }
+
+/// The alert a failed model download shows.
+struct DownloadFailureAlertOnScreen {
+    let driver: AppDriver
+    /// Alerts come as a sheet or a dialog depending on the window. Looked up
+    /// there, not app-wide: the alert's buttons are mirrored on the Touch Bar,
+    /// and that copy can't be clicked.
+    func button(_ title: String) -> XCUIElement {
+        let sheet = driver.app.sheets.buttons[title].firstMatch
+        let dialog = driver.app.dialogs.buttons[title].firstMatch
+        let either = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in sheet.exists || dialog.exists }, object: nil)
+        _ = XCTWaiter().wait(for: [either], timeout: 5)
+        return dialog.exists ? dialog : sheet
+    }
+}
+
+extension Given {
+    /// Licensed, with model downloads failing as if the network helper were unreachable.
+    func licensedAppWhoseDownloadsFail() {
+        app.seed {
+            $0.license = "test"
+            $0.fileVault = "on"
+            $0.modelDownloadFails = true
+        }
+    }
+}
+
+extension When {
+    func startADownload(on pane: AIAndModelsPaneOnScreen) -> DownloadFailureAlertOnScreen {
+        let download = app.app.buttons.matching(identifier: "settings.model.download").firstMatch
+        XCTAssertTrue(app.exists(download), "no Download button on AI and models")
+        download.click()
+        return DownloadFailureAlertOnScreen(driver: app)
+    }
+
+    func tryAgain(_ alert: DownloadFailureAlertOnScreen) -> DownloadFailureAlertOnScreen {
+        let button = alert.button("Try Again")
+        XCTAssertTrue(app.exists(button), "no Try Again on the alert")
+        button.click()
+        // The old alert goes, and the failed retry brings a new one.
+        _ = button.waitForNonExistence(timeout: 5)
+        return DownloadFailureAlertOnScreen(driver: app)
+    }
+}
+
+extension Then where Subject == DownloadFailureAlertOnScreen {
+    func offers(_ titles: [String]) {
+        for title in titles {
+            expect(subject.driver.exists(subject.button(title)), "no \(title) on the download alert")
+        }
+    }
+}

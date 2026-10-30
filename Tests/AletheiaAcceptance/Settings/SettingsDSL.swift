@@ -20,7 +20,33 @@ private final class ProgressHelperFake: NetworkHelping, @unchecked Sendable {
     }
 }
 
+/// A network helper that can't be reached, counting the downloads asked of it.
+private final class UnreachableHelperFake: NetworkHelping, @unchecked Sendable {
+    private(set) var downloads = 0
+    func fetchAppcast() async throws -> Data { throw ModelDownloadError.downloadFailed("unreachable") }
+    func fetchRevocations() async throws -> Data { throw ModelDownloadError.downloadFailed("unreachable") }
+    func download(
+        _ asset: AssetID, expectedSHA256: String, to destination: URL,
+        onProgress: @escaping @Sendable (Double) -> Void
+    ) async throws {
+        downloads += 1
+        throw ModelDownloadError.downloadFailed("The network helper isn't available.")
+    }
+}
+
 // MARK: - Subjects
+
+/// A failed model download, as its alert shows it.
+struct FailedDownload {
+    let title: String
+    let reason: String
+    let actions: [String]
+    /// Downloads the helper was asked for after choosing Try Again.
+    let downloadsAfterTryAgain: Int
+    let downloadsBefore: Int
+    /// Where Report a Bug goes.
+    let reportedTo: URL?
+}
 
 /// The panes Settings lists in its sidebar.
 struct SettingsSidebarList {
@@ -197,6 +223,36 @@ extension When {
         return DownloadProgress(midway: midway, finished: finished, finishedFraction: downloader.progress)
     }
 
+    /// A speech model download while the network helper can't be reached;
+    /// then each of the alert's actions.
+    func downloadSpeechModelThatFails() async throws -> FailedDownload {
+        let helper = UnreachableHelperFake()
+        let downloader = WhisperModelDownloader(helper: helper)
+        let model = app.settings.whisperModel
+        let target = app.root.appendingPathComponent("speech-model.bin")
+        var retried: Task<Void, Never>?
+        func attempt() async -> ModelDownloadFailure? {
+            do {
+                try await downloader.download(model, to: target)
+                return nil
+            } catch {
+                return ModelDownloadFailure(error) {
+                    retried = Task { _ = await attempt() }
+                }
+            }
+        }
+        let first = await attempt()
+        let failure = try XCTUnwrap(first, "the download should have failed")
+        let before = helper.downloads
+        var opened: URL?
+        failure.perform(.reportBug) { opened = $0 }
+        failure.perform(.tryAgain)
+        await retried?.value
+        return FailedDownload(
+            title: ModelDownloadFailure.title, reason: failure.reason,
+            actions: ModelDownloadFailure.Action.allCases.map(\.title),
+            downloadsAfterTryAgain: helper.downloads, downloadsBefore: before, reportedTo: opened)
+    }
 
     /// The data folder row, and the folder in use after the app is quit and reopened.
     func chooseDataFolderThenRelaunch() throws -> DataFolderRow {
@@ -431,6 +487,25 @@ extension Then where Subject == DownloadProgress {
         expectEqual(ModelCardPresentation.percentText(subject.finishedFraction), "100%", "the bar's caption when full")
         expectEqual(subject.finished.chip, "Installed", "the card's label once downloaded")
         expect(subject.finished.rows.contains(.installed), "the Installed row should replace the bar")
+    }
+}
+
+extension Then where Subject == FailedDownload {
+    func saysWhy() {
+        expect(subject.title.contains("download"), "the alert's title: \(subject.title)")
+        expectEqual(subject.reason, "The network helper isn't available.", "the reason shown")
+    }
+
+    func offersTryAgainAndReportABug() {
+        expectEqual(subject.actions, ["Try Again", "Report a Bug"], "the alert's actions")
+    }
+
+    func tryAgainStartsTheDownloadAgain() {
+        expectEqual(subject.downloadsAfterTryAgain, subject.downloadsBefore + 1, "downloads after Try Again")
+    }
+
+    func reportABugOpensTheBugForm() {
+        expectEqual(subject.reportedTo, FeedbackLink.url(.bug), "where Report a Bug goes")
     }
 }
 

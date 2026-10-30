@@ -90,19 +90,19 @@ final class SettingsPaneTests: XCTestCase {
 
         settings.includeCommentsInDrafts = false
         XCTAssertFalse(settings.includeCommentsInDrafts)
-        XCTAssertEqual(UserDefaults.standard.bool(forKey: "includeCommentsInDrafts"), false)
+        XCTAssertEqual(AppSettings.sharedDefaults.bool(forKey: "includeCommentsInDrafts"), false)
 
         settings.includeCommentsInDrafts = true
         XCTAssertTrue(settings.includeCommentsInDrafts)
-        XCTAssertEqual(UserDefaults.standard.bool(forKey: "includeCommentsInDrafts"), true)
+        XCTAssertEqual(AppSettings.sharedDefaults.bool(forKey: "includeCommentsInDrafts"), true)
 
         settings.includePatientBackground = false
         XCTAssertFalse(settings.includePatientBackground)
-        XCTAssertEqual(UserDefaults.standard.bool(forKey: "includePatientBackground"), false)
+        XCTAssertEqual(AppSettings.sharedDefaults.bool(forKey: "includePatientBackground"), false)
 
         settings.includePatientBackground = true
         XCTAssertTrue(settings.includePatientBackground)
-        XCTAssertEqual(UserDefaults.standard.bool(forKey: "includePatientBackground"), true)
+        XCTAssertEqual(AppSettings.sharedDefaults.bool(forKey: "includePatientBackground"), true)
     }
 }
 

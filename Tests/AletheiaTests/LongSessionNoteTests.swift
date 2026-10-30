@@ -415,10 +415,10 @@ final class LongSessionNoteTests: XCTestCase {
         defer { settings.riskPhrases = original }
         settings.resetRiskPhrases()
         XCTAssertEqual(settings.riskPhrases, defaultPhrases)
-        XCTAssertNil(UserDefaults.standard.object(forKey: "riskPhrases"), "the defaults are stored as never set")
+        XCTAssertNil(AppSettings.sharedDefaults.object(forKey: "riskPhrases"), "the defaults are stored as never set")
         settings.riskPhrases = []
-        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: "riskPhrases"), [])
-        XCTAssertEqual(AppSettings.loadRiskPhrases(from: .standard), [])
+        XCTAssertEqual(AppSettings.sharedDefaults.stringArray(forKey: "riskPhrases"), [])
+        XCTAssertEqual(AppSettings.loadRiskPhrases(from: AppSettings.sharedDefaults), [])
         settings.addRiskPhrase("  my phrase ")
         settings.addRiskPhrase("MY PHRASE")
         settings.addRiskPhrase("my   phrase")
@@ -426,10 +426,10 @@ final class LongSessionNoteTests: XCTestCase {
         settings.addRiskPhrase("don't like it")
         settings.addRiskPhrase("Don\u{2019}t  like it")
         XCTAssertEqual(settings.riskPhrases, ["my phrase", "don't like it"])
-        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: "riskPhrases"), ["my phrase", "don't like it"])
+        XCTAssertEqual(AppSettings.sharedDefaults.stringArray(forKey: "riskPhrases"), ["my phrase", "don't like it"])
         settings.resetRiskPhrases()
         XCTAssertEqual(settings.riskPhrases, defaultPhrases)
-        XCTAssertNil(UserDefaults.standard.object(forKey: "riskPhrases"))
+        XCTAssertNil(AppSettings.sharedDefaults.object(forKey: "riskPhrases"))
     }
 
     func testAnEmptyListFlagsNoLines() {
