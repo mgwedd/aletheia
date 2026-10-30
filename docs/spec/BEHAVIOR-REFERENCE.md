@@ -1688,6 +1688,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift` · `qa: EXPORT-10`
 - **EXP-048** When an all-records export starts while another is running, the second request is ignored and the first continues.
   `surface: invariant` · `evidence: Sources/App/Services/ExportJobCenter.swift` · `qa: EXPORT-02`
+- **EXP-049** When the user clicks "Export psychotherapy notes…" and none of the patient's sessions has a psychotherapy note or private comment, an alert titled "No psychotherapy notes to export" says so before the authorization confirmation or save panel, and nothing is written or logged as a failed export. If the export fails for this reason anyway, the toast explains it in plain words.
+  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Services/PsychotherapyExport.swift` · `qa: EXPORT-13`
 
 ## Network, privacy invariants & helper (NET)
 

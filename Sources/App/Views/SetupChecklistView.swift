@@ -14,7 +14,8 @@ struct SetupChecklistView: View {
     @State private var isChecking = false
     @State private var busyAction: SetupAction?
     @State private var errorMessage: String?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    private var reduceMotion: Bool { QuietUI.reducesMotion(systemReduceMotion) }
 
     //   ━━━━━━━━━━━━━━━━━━━━━━──────────────  2 of 6 done
     //   ┌──────────────────────────────────────────────────┐

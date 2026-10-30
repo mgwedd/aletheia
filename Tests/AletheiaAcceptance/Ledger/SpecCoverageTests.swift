@@ -35,7 +35,10 @@ final class SpecCoverageTests: XCTestCase {
 
     /// How many `test_<JOURNEY>_<NN>` methods each check has, read from the
     /// Objective-C runtime: every subclass of `AcceptanceCase`, its own methods.
-    static func discoverTests() -> (counts: [String: Int], problems: [String]) {
+    static func discoverTests() -> (counts: [String: Int], problems: [String]) { discovered }
+
+    /// The runtime's classes do not change during a run: walked once.
+    private static let discovered: (counts: [String: Int], problems: [String]) = {
         var counts: [String: Int] = [:]
         var problems: [String] = []
         for cls in subclasses(of: AcceptanceCase.self) {
@@ -54,7 +57,7 @@ final class SpecCoverageTests: XCTestCase {
             }
         }
         return (counts, problems)
-    }
+    }()
 
     /// Subclasses of `base`, found by walking every registered class as a raw
     /// pointer. Some runtime classes cannot be retained, so a strong `AnyClass`

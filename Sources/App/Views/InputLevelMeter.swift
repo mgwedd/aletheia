@@ -25,7 +25,9 @@ private struct InputLevelMeter: View {
     let level: Float
     let fill: Color
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+
+    private var reduceMotion: Bool { QuietUI.reducesMotion(systemReduceMotion) }
 
     private var fraction: CGFloat {
         CGFloat(min(1, max(0, level)))

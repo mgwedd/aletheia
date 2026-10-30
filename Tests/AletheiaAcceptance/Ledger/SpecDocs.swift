@@ -121,11 +121,14 @@ enum SpecDocs {
     /// refers to as `Copy.name`. `files` maps a file name to its text.
     static func unusedCopyEntries(files: [String: String]) -> [String] {
         var unused: [String] = []
-        let rest = files.filter { !$0.key.hasSuffix("Copy.swift") }.values.joined(separator: "\n")
+        // Every `Copy.name` the other files mention, gathered in one pass.
+        var used = Set<String>()
+        for (name, text) in files where !name.hasSuffix("Copy.swift") {
+            used.formUnion(text.allCaptures(#"\bCopy\.(\w+)"#))
+        }
         for (_, text) in files.sorted(by: { $0.key < $1.key }).filter({ $0.key.hasSuffix("Copy.swift") }) {
-            for entry in text.allCaptures(#"static (?:let|var|func) (\w+)"#) {
-                let used = rest.range(of: #"\bCopy\.\#(entry)\b"#, options: .regularExpression) != nil
-                if !used { unused.append("Copy.\(entry) is used by no test") }
+            for entry in text.allCaptures(#"static (?:let|var|func) (\w+)"#) where !used.contains(entry) {
+                unused.append("Copy.\(entry) is used by no test")
             }
         }
         return unused
@@ -161,7 +164,10 @@ enum SpecDocs {
 
     /// Sources of the acceptance suite by file name, excluding this folder (which
     /// mentions the things it scans for).
-    static func suiteSources() -> [String: String] {
+    static func suiteSources() -> [String: String] { cachedSources }
+
+    /// Read once per run.
+    private static let cachedSources: [String: String] = {
         let suite = repoRoot.appendingPathComponent("Tests/AletheiaAcceptance")
         let ledger = suite.appendingPathComponent("Ledger").path
         var found: [String: String] = [:]
@@ -171,17 +177,31 @@ enum SpecDocs {
             found[String(url.path.dropFirst(suite.path.count + 1))] = try? String(contentsOf: url, encoding: .utf8)
         }
         return found.compactMapValues { $0 }
-    }
+    }()
 
     private static func read(_ relativePath: String) -> String {
         (try? String(contentsOf: repoRoot.appendingPathComponent(relativePath), encoding: .utf8)) ?? ""
     }
 }
 
+/// Each pattern compiled once per run.
+private enum CompiledPatterns {
+    private static let lock = NSLock()
+    private static var compiled: [String: NSRegularExpression] = [:]
+
+    static func regex(_ pattern: String) -> NSRegularExpression? {
+        lock.lock(); defer { lock.unlock() }
+        if let regex = compiled[pattern] { return regex }
+        let regex = try? NSRegularExpression(pattern: pattern)
+        compiled[pattern] = regex
+        return regex
+    }
+}
+
 extension String {
     /// Capture groups of the first match, or nil.
     func captures(_ pattern: String) -> [String]? {
-        guard let regex = try? NSRegularExpression(pattern: pattern),
+        guard let regex = CompiledPatterns.regex(pattern),
               let match = regex.firstMatch(in: self, range: NSRange(startIndex..., in: self)) else { return nil }
         return (1..<match.numberOfRanges).map { index in
             Range(match.range(at: index), in: self).map { String(self[$0]) } ?? ""
@@ -190,7 +210,7 @@ extension String {
 
     /// First capture group of every match.
     func allCaptures(_ pattern: String) -> [String] {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        guard let regex = CompiledPatterns.regex(pattern) else { return [] }
         return regex.matches(in: self, range: NSRange(startIndex..., in: self)).compactMap { match in
             Range(match.range(at: 1), in: self).map { String(self[$0]) }
         }
