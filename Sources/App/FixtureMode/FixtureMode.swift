@@ -445,4 +445,38 @@ enum FixtureProbe {
         return lines
     }
 }
+/// Temporary: what the digest scheduler and builder did, newest last, shown
+/// in a fixture run's element tree.
+@MainActor
+final class FixtureDigestLog: ObservableObject {
+    static let shared = FixtureDigestLog()
+    @Published private(set) var text = ""
+    private var lines: [String] = []
+    private let start = Date()
+
+    static func note(_ line: String) {
+        guard FixtureMode.isActive else { return }
+        let log = shared
+        let t = Int(Date().timeIntervalSince(log.start) * 10)
+        let entry = "\(t / 10).\(t % 10) \(line)"
+        if log.lines.last?.hasSuffix(" " + line) == true { return }
+        log.lines.append(entry)
+        if log.lines.count > 22 { log.lines.removeFirst() }
+        log.text = log.lines.joined(separator: " | ")
+    }
+}
+
+struct FixtureDigestLogOverlay: View {
+    @ObservedObject private var log = FixtureDigestLog.shared
+
+    var body: some View {
+        Color.clear
+            .frame(width: 2, height: 2)
+            .accessibilityElement()
+            .accessibilityIdentifier("fixture-digest-log")
+            .accessibilityLabel("DLOG " + log.text)
+            .allowsHitTesting(false)
+    }
+}
+
 #endif

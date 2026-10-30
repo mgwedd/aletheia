@@ -124,6 +124,9 @@ final class DigestScheduler: ObservableObject {
     /// A transcript was saved (recorded, transcribed or edited): its patient
     /// is looked at again, and the session goes first if it needs a summary.
     func transcriptSaved(patient: Patient, session: SessionRecord) {
+        #if DEBUG
+        FixtureDigestLog.note("saved")
+        #endif
         sessionOpened(patient: patient, session: session)
     }
 
@@ -139,6 +142,10 @@ final class DigestScheduler: ObservableObject {
             let result = await Task.detached(priority: .utility) {
                 DigestScheduler.scanSessions(store: store, patients: [patient], room: room)
             }.value
+            #if DEBUG
+            let c = result.counts[patient.id]
+            FixtureDigestLog.note("pscan r\(c?.ready ?? -1)n\(c?.needed ?? -1)w\(result.work.count)")
+            #endif
             self?.merge(result, patient: patient.id)
             self?.evaluate()
         }
@@ -191,6 +198,9 @@ final class DigestScheduler: ObservableObject {
         wasLocked = now.locked
 
         let reason = DigestSchedulePolicy.pauseReason(now)
+        #if DEBUG
+        FixtureDigestLog.note("ev \(reason.map { "\($0)" } ?? "go") L\(loop != nil ? 1 : 0)S\(scanning != nil ? 1 : 0)w\(work.count)")
+        #endif
         if pauseReason != reason { pauseReason = reason }
 
         // Looking for work reads and decrypts transcripts but asks nothing of the
@@ -223,6 +233,9 @@ final class DigestScheduler: ObservableObject {
             }.value
             guard let self else { return }
             self.scanning = nil
+            #if DEBUG
+            FixtureDigestLog.note("fscan w\(result.work.count) \(result.counts.values.map { "r\($0.ready)n\($0.needed)" })")
+            #endif
             self.apply(result)
             if self.work.isEmpty {
                 self.preparingNow = false
@@ -274,9 +287,15 @@ final class DigestScheduler: ObservableObject {
                     for: patient, session: session, transcript: transcript, store: store, service: service)
             else {
                 // No transcript any more, or a note is building this one itself.
+                #if DEBUG
+                FixtureDigestLog.note("eD nil")
+                #endif
                 work.removeAll { $0.sessionID == session.id }
                 continue
             }
+            #if DEBUG
+            FixtureDigestLog.note("eD task")
+            #endif
             buildingSessionID = session.id
             buildingPatientID = patient.id
             await build.value
