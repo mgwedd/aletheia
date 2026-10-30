@@ -103,8 +103,8 @@ extension Then where Subject == PatientPageOnScreen {
 
     /// With no session open, the list takes the whole page.
     func fillsThePageWithTheList() {
-        let column = subject.list, window = subject.window
-        subject.driver.settles { column.frame.width >= 0.9 * window.frame.width }
+        let column = subject.list, frame = subject.window
+        subject.driver.settles { column.frame.width >= 0.9 * frame.frame.width }
         let list = subject.list.frame.width
         let window = subject.window.frame.width
         expect(list >= 0.9 * window, "the list is \(list) wide in a window \(window) wide")
