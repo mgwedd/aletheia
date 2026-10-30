@@ -12,6 +12,9 @@ final class PatientChatModel: ObservableObject {
     @Published private(set) var selectedThreadID: UUID?
     /// Working copy of the selected thread's messages, written back when a turn finishes.
     @Published var messages: [ChatMessage] = []
+    /// A question held for a compaction that failed or was stopped; the
+    /// composer takes it back so nothing typed is lost.
+    @Published var returnedQuestion: String?
     @Published private(set) var isSending = false
     /// Shown while the sessions are being decrypted and searched, before the model starts.
     @Published private(set) var searchingNotice: String?
@@ -113,7 +116,7 @@ final class PatientChatModel: ObservableObject {
         // Past ChatMemory's budget, compact first so the answer still has the
         // whole conversation, the earlier part in summary.
         if ChatMemory.needsCompaction(messages, window: integrations.makeAssistantService().budget) {
-            compact("") { [weak self] in self?.send(question) }
+            compact("", then: { [weak self] in self?.send(question) }, otherwise: { [weak self] in self?.returnedQuestion = question })
             return
         }
 
@@ -274,7 +277,7 @@ final class PatientChatModel: ObservableObject {
     /// the Compact button, or a send past the budget), then runs `next`. A
     /// stopped or failed summary is discarded: a partial one would stand in
     /// for messages it doesn't cover.
-    func compact(_ focus: String, then next: (() -> Void)? = nil) {
+    func compact(_ focus: String, then next: (() -> Void)? = nil, otherwise abandoned: (() -> Void)? = nil) {
         guard let threadID = selectedThreadID, !messages.isEmpty else { return }
         isSending = true
         let summaryID = UUID()
@@ -291,12 +294,14 @@ final class PatientChatModel: ObservableObject {
             onError: { [self] error in
                 isSending = false
                 messages.removeAll { $0.id == summaryID }
+                abandoned?()
                 alert(.message(error.localizedDescription))
             },
             onFinish: { [self] text in
                 guard !runner.wasStopped, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     isSending = false
                     messages.removeAll { $0.id == summaryID }
+                    abandoned?()
                     return
                 }
                 persist(threadID: threadID)
@@ -306,7 +311,10 @@ final class PatientChatModel: ObservableObject {
                     isSending = false
                 }
             },
-            onCancelledWhileQueued: { [self] in isSending = false }
+            onCancelledWhileQueued: { [self] in
+                isSending = false
+                abandoned?()
+            }
         )
     }
 

@@ -56,6 +56,7 @@ struct Scenario: Encodable, Equatable {
     var consentPolicy: String?
     var memoryGB: Int?
     var llamaModel: String?
+    var downloadedModels: [String]?
 }
 
 /// The facts the app publishes through its invisible `fixture-probe` element.

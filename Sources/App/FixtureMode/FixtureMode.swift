@@ -92,6 +92,9 @@ struct FixtureScenario: Decodable, Equatable {
 
     /// Overrides the selected built-in Llama model by its raw identifier.
     var llamaModel: String?
+    /// Built-in models (raw identifiers) whose weights count as downloaded
+    /// when settings first load.
+    var downloadedModels: [String]?
 
     var buildTier: BuildTier { tier == "production" ? .production : .dev }
     var appLockOn: Bool { appLock == "on" }
@@ -181,6 +184,11 @@ enum FixtureMode {
 
     static let disk = FixtureDisk(state: scenario?.fileVault)
     static let deviceKeys = ProcessMemoryDeviceKeyStore()
+
+    /// Whether a model counts as downloaded; only the scenario says so.
+    static func isDownloaded(_ model: LlamaModel) -> Bool {
+        scenario?.downloadedModels?.contains(model.rawValue) ?? false
+    }
 
     static var hardware: HardwareCapabilities {
         let current = HardwareCapabilities.current()

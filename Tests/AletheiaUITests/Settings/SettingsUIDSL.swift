@@ -4,6 +4,8 @@ extension Copy {
     static let medGemma4BID = "medgemma-1.5-4b-it-q4_k_m"
     static let medGemma27BID = "medgemma-27b-text-it-q4_k_m"
     static let apertus8BID = "apertus-8b-meditronfo-q4_k_m"
+    static let llama8BID = "meta-llama-3.1-8b-instruct-q4_0"
+    static let llama8BOption = "Llama 3.1 8B (Instruct) — previous selection"
     static let medGemma4BOption = "MedGemma 1.5 4B — default for supported Macs"
     static let medGemma27BOption = "MedGemma 27B text — higher quality, 32 GB+ Apple silicon"
     static let apertus8BOption = "Apertus 8B MeditronFO — Experimental, 16 GB+ Macs"
@@ -45,6 +47,18 @@ extension Given {
             $0.fileVault = "on"
             $0.memoryGB = gb
             $0.llamaModel = model
+        }
+    }
+}
+
+extension Given {
+    /// Updated from a version that defaulted to `model`, downloaded and never chosen.
+    func updatedAppWithMemory(gb: Int, downloaded model: String) {
+        app.seed {
+            $0.license = "test"
+            $0.fileVault = "on"
+            $0.memoryGB = gb
+            $0.downloadedModels = [model]
         }
     }
 }

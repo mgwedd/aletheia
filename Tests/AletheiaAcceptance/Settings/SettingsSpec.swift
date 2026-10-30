@@ -91,4 +91,13 @@ final class SettingsSpec: AcceptanceCase {
         then(when.lookAtMedicalModelLicenses())
             .usesTerms(medGemmaTerms: Copy.healthAIFoundationsTerms)
     }
+
+    func test_SETTINGS_16() async throws {
+        let afterUpdate = when.openAfterUpdating(onMacWithMemoryGB: 16, downloaded: [Copy.llama8B])
+        then(afterUpdate).keeps(Copy.llama8B)
+        then(afterUpdate).stillOffers(Copy.medGemma4B)
+
+        then(when.openAfterUpdating(onMacWithMemoryGB: 8, downloaded: [Copy.gemmaE2B])).keeps(Copy.gemmaE2B)
+        then(when.openAfterUpdating(onMacWithMemoryGB: 16, downloaded: [])).selects(Copy.medGemma4B)
+    }
 }

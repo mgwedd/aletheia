@@ -84,7 +84,8 @@ struct PatientChatView: View {
                         progress: chatRunner.progress,
                         effort: $settings.patientChatEffort,
                         effortFeature: .patientChat,
-                        isSessionRecording: recorder.isRecording
+                        isSessionRecording: recorder.isRecording,
+                        returnedQuestion: $chat.returnedQuestion
                     )
                     .frame(minWidth: 360)
                 } else {

@@ -81,6 +81,9 @@ struct ChatPaneView: View {
     var isSessionRecording = false
     /// The dictation engine; nil uses on-device Apple Speech. Tests pass a fake.
     var voiceInput: VoiceInput? = nil
+    /// A question the model handed back unsent (its compaction failed); it
+    /// goes back into the box, then is cleared.
+    var returnedQuestion: Binding<String?>? = nil
 
     @State private var draft: String = ""
     @State private var inputFocused = false
@@ -125,6 +128,14 @@ struct ChatPaneView: View {
         .selectablePatientText()
         // Esc from anywhere else in the pane; idle, it is left alone.
         .onExitCommand(perform: ChatComposerLayout.escapeStops(isSending: isSending, canStop: onStop != nil) ? { _ = escapeStops() } : nil)
+        .onAppear(perform: takeReturnedQuestion)
+        .onChange(of: returnedQuestion?.wrappedValue) { _, _ in takeReturnedQuestion() }
+    }
+
+    private func takeReturnedQuestion() {
+        guard let returnedQuestion, let question = returnedQuestion.wrappedValue else { return }
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { draft = question }
+        returnedQuestion.wrappedValue = nil
     }
 
     // MARK: Conversation
