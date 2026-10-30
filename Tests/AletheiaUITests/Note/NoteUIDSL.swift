@@ -69,6 +69,8 @@ extension Given {
             $0.noteEffort = effort
             $0.aiReplies = replies
             $0.aiStreamsWords = streamsWords
+            // Held open so Stop is still there to click once the app goes idle.
+            $0.aiHoldsOpen = streamsWords
             $0.aiModelMissing = modelMissing
             $0.aiStageMs = stageMs
             // A summary built in the background before Generate is pressed

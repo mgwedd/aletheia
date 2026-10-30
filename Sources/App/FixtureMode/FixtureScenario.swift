@@ -67,6 +67,8 @@ struct FixtureScenario: Codable, Equatable {
     var aiModelMissing: Bool?
     /// Streamed replies arrive a word at a time, one word per `aiStageMs`.
     var aiStreamsWords: Bool?
+    /// A word-streamed reply stays open after its last word until stopped.
+    var aiHoldsOpen: Bool?
     /// The model's reading window in tokens, in place of the Mac's own.
     var contextTokens: Int?
     /// Settings: background summaries start paused, so a note builds its own.
