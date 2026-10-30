@@ -10,6 +10,10 @@ extension Copy {
     static let readingTheSession = "Reading the session · part 1 of 3"
     static let analyzing = "Analyzing"
     static let myNotesHeader = "My Notes stay private, so the AI never reads them."
+    static let askEmptyTitle = "Ask a question about this session"
+    static let readLead = "Read:"
+    static let stopButton = "Stop"
+    static let modelMissingTitle = "The AI model isn't downloaded"
 }
 
 /// The Ask tab on screen, found by the identifiers the app gives its parts.
@@ -22,12 +26,13 @@ struct AskTabOnScreen {
     var disclaimer: XCUIElement { driver.element(id: "chat.disclaimer") }
     var effortBar: XCUIElement { driver.element(id: "chat.effort") }
     var compactedCard: XCUIElement { driver.element(id: "chat.compacted") }
+    var stop: XCUIElement { driver.app.buttons[Copy.stopButton].firstMatch }
 }
 
 extension Given {
     func aSessionToAskAbout(
         myNotes: String? = nil, chat: [Scenario.ChatSeed]? = nil, replies: [String]? = nil,
-        stageMs: Int? = nil, parts: Int? = nil, contextTokens: Int? = nil
+        stageMs: Int? = nil, parts: Int? = nil, contextTokens: Int? = nil, modelMissing: Bool? = nil
     ) {
         app.seed {
             $0.license = "test"
@@ -39,6 +44,7 @@ extension Given {
             $0.aiStageMs = stageMs
             $0.aiParts = parts
             $0.contextTokens = contextTokens
+            $0.aiModelMissing = modelMissing
         }
     }
 }
@@ -60,6 +66,14 @@ extension When {
 extension Then where Subject == AskTabOnScreen {
     func showsText(_ words: String) {
         expect(subject.driver.waitFor(subject.driver.anything(containing: words), timeout: 60), "\"\(words)\" never appeared")
+    }
+
+    func showsStop() {
+        expect(subject.driver.waitFor(subject.stop, timeout: 30), "no Stop button while the answer is being written")
+    }
+
+    func doesNotShowText(_ words: String) {
+        expect(!subject.driver.exists(subject.driver.anything(containing: words)), "\"\(words)\" is still shown")
     }
 
     func statusReads(_ words: String) {

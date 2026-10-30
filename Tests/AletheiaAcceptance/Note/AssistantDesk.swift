@@ -1,4 +1,5 @@
 @testable import Aletheia
+import AppKit
 import Foundation
 import XCTest
 
@@ -50,6 +51,13 @@ struct LengthMenu {
     let efforts: [String]
 }
 
+/// What a Copy put on the pasteboard, and what the button then said.
+struct CopiedNote {
+    let plain: String
+    let rich: NSAttributedString?
+    let buttonTitle: String
+}
+
 /// Everything on a session's Ask tab at one moment.
 struct AskPane {
     struct Bubble: Equatable {
@@ -71,6 +79,8 @@ struct AskPane {
     let offersCompact: Bool
     /// The caution under the conversation.
     let accuracyNotice: String
+    /// The prompt over an empty conversation.
+    let emptyTitle: String?
 
     var questions: [String] { bubbles.filter { $0.who == .you }.map(\.text) }
     var answers: [String] { bubbles.filter { $0.who == .assistant }.map(\.text) }
@@ -182,6 +192,7 @@ final class AssistantDesk {
 
     func notesTab(of stored: StoredSession) -> NotesTab { NotesTab(desk: self, stored: stored) }
     func askTab(of stored: StoredSession) -> AskTab { AskTab(desk: self, stored: stored) }
+    func patientChat(of patient: Patient) -> PatientChatTab { PatientChatTab(desk: self, patient: patient) }
 
     /// What the screen would put in front of a session's note and chat prompts.
     fileprivate func material(of stored: StoredSession) throws -> SessionInputs {
@@ -250,9 +261,9 @@ final class NotesTab {
 
     // MARK: Actions
 
-    func pick(_ format: ProgressNoteFormat) {
-        desk.settings.progressNoteFormat = format
-        model.showSaved(for: format)
+    func pick(_ format: NoteFormat) {
+        desk.settings.progressNoteFormat = format.progress
+        model.showSaved(for: format.progress)
     }
 
     func generate() { model.requestGenerate() }
@@ -279,21 +290,46 @@ final class NotesTab {
         inputs.myNotes = text
     }
 
-    func saveOwnInstructions(_ text: String, for format: ProgressNoteFormat) {
-        desk.settings.setNoteInstructions(text, for: format)
+    func saveOwnInstructions(_ text: String, for format: NoteFormat) {
+        desk.settings.setNoteInstructions(text, for: format.progress)
     }
 
-    func resetInstructionsToDefault(for format: ProgressNoteFormat) {
-        desk.settings.setNoteInstructions(Prompts.defaultInstructions(for: format), for: format)
+    func resetInstructionsToDefault(for format: NoteFormat) {
+        desk.settings.setNoteInstructions(Prompts.defaultInstructions(for: format.progress), for: format.progress)
     }
 
     /// Writes a note at `length` and `effort` and waits for it to end, replacing any note already there.
     func generate(_ length: NoteLength, at effort: Effort) async throws {
         chooseLength(length.setting)
-        chooseEffort(effort.setting)
+        chooseEffort(effort)
         model.requestGenerate()
         if model.confirmRegenerate { confirmReplacing() }
         try await waitUntilIdle()
+    }
+
+    /// What the Notes picker offers, in order.
+    var pickerChoices: [String] { NotesPane.all.map(\.label) }
+
+    /// The instructions the next note of `format` is written with.
+    func instructionsInEffect(for format: NoteFormat) -> String {
+        desk.settings.noteInstructions[format.progress.rawValue] ?? Prompts.defaultInstructions(for: format.progress)
+    }
+
+    /// Whether `format` has its own instructions saved.
+    func hasOwnInstructions(for format: NoteFormat) -> Bool {
+        desk.settings.noteInstructions[format.progress.rawValue] != nil
+    }
+
+    /// Presses Copy, and returns what went on the pasteboard.
+    func copy() -> CopiedNote {
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name(UUID().uuidString))
+        model.copyNote(to: pasteboard)
+        let rtf = pasteboard.data(forType: .rtf)
+        return CopiedNote(
+            plain: pasteboard.string(forType: .string) ?? "",
+            rich: rtf.flatMap { try? NSAttributedString(
+                data: $0, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) },
+            buttonTitle: model.copyFeedback.title)
     }
 
     /// What the Length button opens.
@@ -304,7 +340,8 @@ final class NotesTab {
     }
 
     func chooseLength(_ length: SummaryVerbosity) { desk.settings.summaryVerbosity = length }
-    func chooseEffort(_ effort: AnswerEffort) { desk.settings.noteEffort = effort }
+    func chooseEffort(_ effort: Effort) { desk.settings.noteEffort = effort.setting }
+    var effort: AnswerEffort { desk.settings.noteEffort }
 
     // MARK: Reading
 
@@ -359,6 +396,10 @@ final class NotesTab {
         }
     }
 
+    func waitUntilWaiting() async throws {
+        try await desk.waitFor("the note to wait its turn") { self.model.runner.isQueued }
+    }
+
     func waitUntilWriting() async throws {
         try await desk.waitFor("the note to start", describe: describePane) { self.model.runner.isStreaming }
     }
@@ -399,7 +440,8 @@ final class AskTab {
     func stop() { model.stop() }
     func cancelWaiting() { model.stop() }
     func compact() { model.compact("") }
-    func chooseEffort(_ effort: AnswerEffort) { desk.settings.sessionChatEffort = effort }
+    func chooseEffort(_ effort: Effort) { desk.settings.sessionChatEffort = effort.setting }
+    var effort: AnswerEffort { desk.settings.sessionChatEffort }
 
     var pane: AskPane {
         AskPane(
@@ -415,7 +457,8 @@ final class AskTab {
             statusLine: model.runner.isStreaming
                 ? AIProgressFormat.statusLine(model.runner.progress, now: Date()) : nil,
             offersCompact: ChatMemory.hasHistory(model.messages),
-            accuracyNotice: ChatPaneView.accuracyNotice)
+            accuracyNotice: ChatPaneView.accuracyNotice,
+            emptyTitle: model.messages.isEmpty ? ChatWords.emptyTitle(about: ChatWords.thisSession) : nil)
     }
 
     fileprivate static func who(_ role: ChatRole) -> AskPane.Bubble.Who {
@@ -461,6 +504,79 @@ final class AskTab {
 
     func waitUntilShowing(_ text: String) async throws {
         try await desk.waitFor("the conversation to show \"\(text)\"", describe: describePane) {
+            self.model.messages.contains { $0.text.contains(text) }
+        }
+    }
+}
+
+// MARK: - Patient chat
+
+/// The patient-wide chat ("Ask about <name>"), on the real patient chat model.
+@MainActor
+final class PatientChatTab {
+    private let desk: AssistantDesk
+    private let patient: Patient
+    let model = PatientChatModel()
+    private(set) var alerts: [ShownAlert] = []
+
+    fileprivate init(desk: AssistantDesk, patient: Patient) {
+        self.desk = desk
+        self.patient = patient
+        model.configure(
+            appModel: desk.app.appModel, integrations: desk.integrations, settings: desk.settings, patient: patient)
+        model.alert = { [weak self] in self?.alerts.append(AssistantDesk.shown($0)) }
+        model.reloadThreads()
+    }
+
+    // MARK: Actions
+
+    func startNewThread() { model.startNewThread() }
+    func ask(_ question: String) { model.send(question) }
+    func stop() { model.stop() }
+    func cancelWaiting() { model.stop() }
+    func compact() { model.compact("") }
+    func rename(_ thread: ChatThread, to title: String) { model.rename(thread, to: title) }
+    func delete(_ thread: ChatThread) { model.delete(thread) }
+    func chooseEffort(_ effort: Effort) { desk.settings.patientChatEffort = effort.setting }
+    var effort: AnswerEffort { desk.settings.patientChatEffort }
+
+    // MARK: Reading
+
+    var threadTitles: [String] { model.threads.map(\.displayTitle) }
+
+    var pane: AskPane {
+        AskPane(
+            bubbles: model.messages.map {
+                AskPane.Bubble(who: AskTab.who($0.role), text: $0.text)
+            },
+            isAnswering: model.runner.isStreaming,
+            isWaiting: model.runner.isQueued,
+            waitingStatus: model.runner.queuedStatus,
+            offersStop: model.runner.isStreaming,
+            offersCancel: model.runner.isQueued,
+            notices: model.notices,
+            statusLine: model.searchingNotice
+                ?? (model.runner.isStreaming ? AIProgressFormat.statusLine(model.runner.progress, now: Date()) : nil),
+            offersCompact: ChatMemory.hasHistory(model.messages),
+            accuracyNotice: ChatPaneView.accuracyNotice,
+            emptyTitle: model.messages.isEmpty ? ChatWords.emptyTitle(about: patient.name) : nil)
+    }
+
+    /// Whether the window for this patient would show "no longer available".
+    var windowShowsPatientGone: Bool {
+        PatientChatWindow.patient(id: patient.id, in: desk.app.appModel.patients) == nil
+    }
+
+    // MARK: Waiting
+
+    func waitUntilIdle() async throws {
+        try await desk.waitFor("the answer to finish", within: 30) {
+            !self.model.isSending && !self.model.runner.isStreaming && !self.model.runner.isQueued
+        }
+    }
+
+    func waitUntilShowing(_ text: String) async throws {
+        try await desk.waitFor("the conversation to show \"\(text)\"") {
             self.model.messages.contains { $0.text.contains(text) }
         }
     }
