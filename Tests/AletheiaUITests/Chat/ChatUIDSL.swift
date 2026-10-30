@@ -68,7 +68,7 @@ extension When {
 extension Then where Subject == AskTabOnScreen {
     func hasInTheBox(_ question: String) {
         let field = subject.field
-        let held = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in (field.value as? String) == question }, object: nil)
+        let held = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", question), object: field)
         expect(XCTWaiter().wait(for: [held], timeout: 60) == .completed,
                "the Ask box reads \"\(field.value as? String ?? "")\", not the question")
     }

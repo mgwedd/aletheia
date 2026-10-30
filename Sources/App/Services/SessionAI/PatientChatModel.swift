@@ -290,7 +290,11 @@ final class PatientChatModel: ObservableObject {
             readTitle: "Reading the conversation",
             writeTitle: "Summarizing the conversation",
             makeStream: { service.streamCompaction(history: history, focus: focus) },
-            onReveal: { [self] text in messages.upsert(id: summaryID, role: .summary, text: text) },
+            // No card until the summary has words: an empty one would only flash.
+            onReveal: { [self] text in
+                guard !text.isEmpty else { return }
+                messages.upsert(id: summaryID, role: .summary, text: text)
+            },
             onError: { [self] error in
                 isSending = false
                 messages.removeAll { $0.id == summaryID }
