@@ -148,7 +148,11 @@ struct ChatPaneView: View {
     private var conversation: some View {
         ScrollViewReader { proxy in
             BoundedScroll {
-                LazyVStack(alignment: .leading, spacing: 20) {
+                // Not lazy: pinned to the bottom, a lazy stack swapped rows in
+                // and out as their measured heights replaced its estimates, and
+                // each swap moved the bottom again, so layout never settled.
+                // Compaction keeps a conversation short enough to lay out whole.
+                VStack(alignment: .leading, spacing: 20) {
                     if messages.isEmpty {
                         emptyState
                         // In the scrolling area, not the composer, so a short
@@ -353,7 +357,7 @@ struct ChatPaneView: View {
         }
     }
 
-    /// Unanimated jump to the latest message, repeated once the lazy stack has
+    /// Unanimated jump to the latest message, repeated once the stack has
     /// measured what it just loaded (the first attempt can land short).
     private static let bottomID = "chat-bottom"
 
