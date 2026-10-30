@@ -232,71 +232,80 @@ struct AletheiaApp: App {
         )
     }
 
+    private var mainWindow: some View {
+        RootView()
+            .noWritingTools()
+            .background(MainWindowCapture())
+            .environmentObject(settings)
+            .environmentObject(appModel)
+            .environmentObject(integrations)
+            .environmentObject(updateService)
+            .environmentObject(recorder)
+            .environmentObject(transcription)
+            .environmentObject(encryption)
+            .environmentObject(exports)
+            .environmentObject(license)
+            .sheet(isPresented: showFirstRun) {
+                FirstRunView()
+                    .noWritingTools()
+                    .environmentObject(settings)
+                    .environmentObject(appModel)
+                    .environmentObject(integrations)
+                    // A sheet gets a fresh environment on macOS, so the
+                    // objects FirstRunView (and the encryption setup sheet it
+                    // presents) reads must be injected here explicitly.
+                    .environmentObject(encryption)
+                    .environmentObject(license)
+            }
+            .sheet(isPresented: Binding(
+                get: { DataFolderPolicy.presentsMoveSheet(requested: showDataFolderMove, appLocked: appLock.isLocked) },
+                // Hidden by the app lock: keep the request so it shows again after unlock.
+                set: { if !$0 && !appLock.isLocked { showDataFolderMove = false } }
+            )) {
+                DataFolderMoveView()
+                    .environmentObject(settings)
+                    .environmentObject(appModel)
+                    .noWritingTools()
+            }
+            .frame(minWidth: 900, minHeight: 600)
+            .onAppear {
+                showDataFolderMove = settings.dataRootURL != nil && settings.dataRootVerdict != .ok
+            }
+            .task {
+                // Separate from the update check, so a slow one doesn't hold it up.
+                Task { await revocations.refreshIfDue() }
+                if settings.autoCheckForUpdates {
+                    await updateService.checkForUpdates()
+                }
+            }
+            .onChange(of: license.licenseCoversCurrentTerms, initial: true) { _, covers in
+                FirstRunGate.recordAcceptanceCoveredByLicense(
+                    settings: settings, covers: covers, token: license.status.token)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                // An expiry that passed while the app was open takes effect now.
+                if phase == .active { license.refresh() }
+                // Activation can trigger another update check. AppLock
+                // handles hide (when enabled), idle, sleep, and screen lock.
+                if phase == .active, settings.autoCheckForUpdates {
+                    Task { await updateService.checkForUpdates() }
+                }
+                if phase == .active {
+                    Task { await revocations.refreshIfDue() }
+                }
+            }
+            .spotlightContinuation(enabled: appModel.featureRegistry.contains(id: SpotlightFeatureModule.id))
+            .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
+    }
+
     var body: some Scene {
         WindowGroup(id: MainWindow.id) {
-            RootView()
-                .noWritingTools()
-                .background(MainWindowCapture())
-                .environmentObject(settings)
-                .environmentObject(appModel)
-                .environmentObject(integrations)
-                .environmentObject(updateService)
-                .environmentObject(recorder)
-                .environmentObject(transcription)
-                .environmentObject(encryption)
-                .environmentObject(exports)
-                .environmentObject(license)
-                .sheet(isPresented: showFirstRun) {
-                    FirstRunView()
-                        .noWritingTools()
-                        .environmentObject(settings)
-                        .environmentObject(appModel)
-                        .environmentObject(integrations)
-                        // A sheet gets a fresh environment on macOS, so the
-                        // objects FirstRunView (and the encryption setup sheet it
-                        // presents) reads must be injected here explicitly.
-                        .environmentObject(encryption)
-                        .environmentObject(license)
-                }
-                .sheet(isPresented: Binding(
-                    get: { DataFolderPolicy.presentsMoveSheet(requested: showDataFolderMove, appLocked: appLock.isLocked) },
-                    // Hidden by the app lock: keep the request so it shows again after unlock.
-                    set: { if !$0 && !appLock.isLocked { showDataFolderMove = false } }
-                )) {
-                    DataFolderMoveView()
-                        .environmentObject(settings)
-                        .environmentObject(appModel)
-                        .noWritingTools()
-                }
-                .frame(minWidth: 900, minHeight: 600)
-                .onAppear {
-                    showDataFolderMove = settings.dataRootURL != nil && settings.dataRootVerdict != .ok
-                }
-                .task {
-                    // Separate from the update check, so a slow one doesn't hold it up.
-                    Task { await revocations.refreshIfDue() }
-                    if settings.autoCheckForUpdates {
-                        await updateService.checkForUpdates()
-                    }
-                }
-                .onChange(of: license.licenseCoversCurrentTerms, initial: true) { _, covers in
-                    FirstRunGate.recordAcceptanceCoveredByLicense(
-                        settings: settings, covers: covers, token: license.status.token)
-                }
-                .onChange(of: scenePhase) { _, phase in
-                    // An expiry that passed while the app was open takes effect now.
-                    if phase == .active { license.refresh() }
-                    // Activation can trigger another update check. AppLock
-                    // handles hide (when enabled), idle, sleep, and screen lock.
-                    if phase == .active, settings.autoCheckForUpdates {
-                        Task { await updateService.checkForUpdates() }
-                    }
-                    if phase == .active {
-                        Task { await revocations.refreshIfDue() }
-                    }
-                }
-                .spotlightContinuation(enabled: appModel.featureRegistry.contains(id: SpotlightFeatureModule.id))
-                .modifier(LockCover(appLock: appLock, encryption: encryption, settings: settings, appModel: appModel))
+            // While hosting unit tests the app shares the user's container and
+            // settings: it must not open their records or save its window
+            // layout (the sidebar split) over theirs.
+            if TestHost.showsMainWindow() {
+                mainWindow
+            }
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
