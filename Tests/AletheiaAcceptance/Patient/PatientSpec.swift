@@ -155,4 +155,19 @@ final class PatientSpec: AcceptanceCase {
         then(try when.readStoredPatient(jane)).hasMedications(["Sertraline 50 mg"])
         then(try when.openPage(of: jane)).profileShowsOnly(["Notes"])
     }
+
+    func test_PATIENT_13() async throws {
+        then(when.dragSidebarEdge(by: 60)).movesTheSidebarBy(60)
+        then(when.dragSidebarEdge(by: -40)).movesTheSidebarBy(-40)
+        then(when.dragSidebarEdge(by: 5000)).staysUsable()
+        then(when.dragSidebarEdge(by: -80)).staysUsable()
+        then(when.dragSidebarEdge(by: -5000)).collapsesTheSidebar()
+        then(when.dragFromWindowEdge(by: 40)).leavesTheSidebarHidden()
+        then(when.dragFromWindowEdge(by: 300)).bringsTheSidebarBack()
+    }
+
+    func test_PATIENT_14() async throws {
+        then(when.dragSidebarEdgeAndReopen(by: 70)).reopensShowing(widenedBy: 70)
+        then(when.hideSidebarAndReopen()).reopensHidden()
+    }
 }

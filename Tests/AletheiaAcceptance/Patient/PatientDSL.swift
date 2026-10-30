@@ -323,3 +323,104 @@ extension Then where Subject == DataLocation {
 
     func exists() { expect(subject.probe.exists(subject.url), "expected \(subject.url.lastPathComponent) to exist") }
 }
+
+// MARK: - Sidebar width
+
+/// The patients sidebar's width before and after its edge was dragged.
+struct SidebarDrag {
+    let before: CGFloat
+    let after: CGFloat
+    let narrowest: CGFloat
+    let widest: CGFloat
+    /// Dragged far enough left, the sidebar collapses instead.
+    let collapsed: Bool
+}
+
+extension When {
+    func dragSidebarEdge(by points: CGFloat) -> SidebarDrag {
+        let before = SidebarLayout.idealWidth
+        return SidebarDrag(
+            before: before,
+            after: SidebarLayout.width(proposed: before + points),
+            narrowest: SidebarLayout.minWidth,
+            widest: SidebarLayout.maxWidth,
+            collapsed: before + points < SidebarLayout.collapseWidth)
+    }
+}
+
+/// The hidden sidebar after a drag from the window's left edge.
+struct SidebarReveal {
+    let shown: Bool
+    let width: CGFloat
+}
+
+extension When {
+    func dragFromWindowEdge(by points: CGFloat) -> SidebarReveal {
+        let shown = points >= SidebarLayout.collapseWidth
+        return SidebarReveal(shown: shown, width: shown ? SidebarLayout.width(proposed: points) : 0)
+    }
+}
+
+extension Then where Subject == SidebarReveal {
+    func bringsTheSidebarBack() {
+        expect(subject.shown, "the sidebar stayed hidden after a drag from the window's edge")
+        expect(subject.width >= SidebarLayout.minWidth, "the sidebar came back \(subject.width) wide")
+    }
+
+    func leavesTheSidebarHidden() {
+        expect(!subject.shown, "a short drag from the window's edge showed the sidebar")
+    }
+}
+
+/// The patients sidebar as Aletheia lays it out after a quit and reopen.
+struct ReopenedSidebar {
+    let shown: Bool
+    let width: CGFloat
+    /// Its width before the edge was dragged.
+    let startWidth: CGFloat = SidebarLayout.idealWidth
+}
+
+extension When {
+    func dragSidebarEdgeAndReopen(by points: CGFloat) -> ReopenedSidebar {
+        app.settings.sidebarWidth = Double(SidebarLayout.width(proposed: SidebarLayout.idealWidth + points))
+        return reopenSidebar()
+    }
+
+    func hideSidebarAndReopen() -> ReopenedSidebar {
+        app.settings.sidebarShown = false
+        return reopenSidebar()
+    }
+
+    private func reopenSidebar() -> ReopenedSidebar {
+        app.relaunch(tier: app.tier)
+        return ReopenedSidebar(shown: app.settings.sidebarShown, width: CGFloat(app.settings.sidebarWidth))
+    }
+}
+
+extension Then where Subject == ReopenedSidebar {
+    func reopensShowing(widenedBy points: CGFloat) {
+        expect(subject.shown, "the sidebar reopened hidden")
+        expectEqual(subject.width - subject.startWidth, points, "how much wider the sidebar reopened")
+    }
+
+    func reopensHidden() {
+        expect(!subject.shown, "the sidebar reopened showing after it was hidden")
+    }
+}
+
+extension Then where Subject == SidebarDrag {
+    func movesTheSidebarBy(_ points: CGFloat) {
+        expectEqual(subject.after - subject.before, points, "how far the sidebar's edge moved")
+    }
+
+    func staysUsable() {
+        expect(!subject.collapsed, "the sidebar collapsed")
+        expect(subject.after >= subject.narrowest, "the sidebar narrowed to \(subject.after), under \(subject.narrowest)")
+        expect(subject.after <= subject.widest, "the sidebar widened to \(subject.after), over \(subject.widest)")
+        expect(subject.narrowest >= 200, "the sidebar's narrowest width \(subject.narrowest) cuts off patient names")
+    }
+
+    func collapsesTheSidebar() {
+        expect(subject.collapsed, "the sidebar stayed open after its edge was dragged far past its narrowest width")
+    }
+}

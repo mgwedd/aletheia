@@ -78,7 +78,7 @@ final class LicenseBannerTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/App/Views/RootView.swift")
         let source = try String(contentsOf: url, encoding: .utf8)
-        let detail = try XCTUnwrap(source.range(of: "} detail: {"))
+        let detail = try XCTUnwrap(source.range(of: "} content: {"))
         let inset = try XCTUnwrap(source.range(of: ".safeAreaInset(edge: .top, spacing: 0) { dataSafetyNotices }"))
         XCTAssertLessThan(detail.lowerBound, inset.lowerBound)
         XCTAssertEqual(source.components(separatedBy: "{ dataSafetyNotices }").count, 2, "set once")

@@ -3,9 +3,9 @@ import SwiftUI
 import AppKit
 @testable import Aletheia
 
-/// A collapsed sidebar must never be a dead end: the system toggle stays in the
-/// title bar (nothing in the detail toolbar pushes it into the » overflow), the
-/// search home offers a way back, and View > Show/Hide Sidebar exists.
+/// A collapsed sidebar must never be a dead end: the title-bar toggle is the one
+/// toolbar item (nothing can push it into the » overflow), and View > Show/Hide
+/// Sidebar exists.
 @MainActor
 final class SidebarVisibilityTests: XCTestCase {
     private struct NoopSpotlightIndexer: SpotlightIndexing {
@@ -14,7 +14,8 @@ final class SidebarVisibilityTests: XCTestCase {
     }
 
     private final class Visibility: ObservableObject {
-        @Published var visibility = NavigationSplitViewVisibility.all
+        @Published var shown = true
+        @Published var width = Double(SidebarLayout.idealWidth)
     }
 
     private struct Host: View {
@@ -27,14 +28,18 @@ final class SidebarVisibilityTests: XCTestCase {
         @State private var selected: Patient?
 
         var body: some View {
-            NavigationSplitView(columnVisibility: $state.visibility) {
+            LeadingPaneSplit(
+                width: $state.width, isShown: $state.shown,
+                limit: { SidebarLayout.width(proposed: $0, total: $1) },
+                collapseWidth: SidebarLayout.collapseWidth,
+                dividerID: "sidebar-divider", dividerLabel: "Sidebar width",
+                revealID: "sidebar-reveal-edge", revealLabel: "Drag to show the sidebar"
+            ) {
                 PatientsListView(
                     selectedPatient: $selected, search: search, searchFocused: $focused,
                     onOpenSearchResult: { _ in }, onOpenSettings: {}, onEditProfile: { _ in })
-            } detail: {
-                SearchHomeView(
-                    model: search, onOpen: { _ in }, isFocused: $homeFocused,
-                    sidebarHidden: state.visibility == .detailOnly, onShowSidebar: { state.visibility = .all })
+            } content: {
+                SearchHomeView(model: search, onOpen: { _ in }, isFocused: $homeFocused)
             }
             .environmentObject(appModel)
             .environmentObject(settings)
@@ -85,8 +90,7 @@ final class SidebarVisibilityTests: XCTestCase {
     }
 
     private func assertNothingOverflows(_ note: String, file: StaticString = #filePath, line: UInt = #line) {
-        // With no toolbar items of our own there may be no NSToolbar at all, which
-        // trivially has nothing to overflow.
+        // The host has no toolbar of its own, which trivially has nothing to overflow.
         guard let toolbar = window.toolbar else { return }
         let hidden = toolbar.items.filter { item in
             !(toolbar.visibleItems ?? []).contains(item)
@@ -96,42 +100,137 @@ final class SidebarVisibilityTests: XCTestCase {
 
     func testNothingOverflowsAtANarrowWidthExpandedOrCollapsed() {
         assertNothingOverflows("sidebar shown, 700pt")
-        state.visibility = .detailOnly
+        state.shown = false
         settle()
         assertNothingOverflows("sidebar collapsed, 700pt")
-        state.visibility = .all
+        state.shown = true
         settle()
         assertNothingOverflows("sidebar shown again")
     }
 
-    func testCollapsingThenReshowingViaTheBoundVisibility() {
-        state.visibility = .detailOnly
-        settle()
-        XCTAssertEqual(state.visibility, .detailOnly)
-        state.visibility = .all
-        settle()
-        XCTAssertEqual(state.visibility, .all)
+    private var grip: PaneDividerGripView? {
+        func walk(_ view: NSView) -> [NSView] { view.subviews + view.subviews.flatMap(walk) }
+        return walk(window.contentView!).lazy.compactMap { $0 as? PaneDividerGripView }.first
     }
 
-    func testTheHomeOffersToShowTheSidebarWhenItIsCollapsed() throws {
-        func buttonTitles() -> [String] {
-            func walk(_ view: NSView) -> [NSView] { view.subviews + view.subviews.flatMap(walk) }
-            return walk(window.contentView!).compactMap { ($0 as? NSButton)?.title }
+    private var dividerIsShown: Bool { grip?.accessibilityIdentifier() == "sidebar-divider" }
+
+    private func drag(by points: CGFloat) {
+        grip?.onDrag(points)
+        settle()
+        grip?.onEnd()
+        settle()
+    }
+
+    func testDraggingTheEdgeFarLeftCollapsesAndKeepsTheWidthItHad() {
+        state.width = 300
+        settle()
+        drag(by: -250)
+        XCTAssertFalse(state.shown)
+        XCTAssertEqual(state.width, 300)
+    }
+
+    private var edgeX: CGFloat? {
+        grip.map { $0.convert($0.bounds, to: nil).minX + PaneDivider.gripLead }
+    }
+
+    /// Short of collapsing, the edge still gives way under the narrowest width,
+    /// so the drag shows where it is heading, and springs back when let go.
+    func testDraggingUnderTheNarrowestGivesWayThenSpringsBack() throws {
+        state.width = 280
+        settle()
+        grip?.onDrag(-120)
+        settle()
+        XCTAssertTrue(state.shown)
+        let held = try XCTUnwrap(edgeX)
+        XCTAssertLessThan(held, SidebarLayout.minWidth - 10, "the edge follows the mouse under the narrowest")
+        XCTAssertGreaterThan(held, 280 - 120, "with resistance")
+        grip?.onEnd()
+        settle()
+        XCTAssertTrue(state.shown)
+        XCTAssertEqual(state.width, Double(SidebarLayout.minWidth))
+        XCTAssertEqual(try XCTUnwrap(edgeX), SidebarLayout.minWidth, accuracy: 1)
+    }
+
+    func testDraggingFromTheWindowEdgeBringsTheSidebarBack() {
+        state.shown = false
+        settle()
+        XCTAssertEqual(grip?.accessibilityIdentifier(), "sidebar-reveal-edge")
+        drag(by: 40)
+        XCTAssertFalse(state.shown, "a short drag from the edge leaves it hidden")
+        drag(by: 230)
+        XCTAssertTrue(state.shown)
+        XCTAssertEqual(state.width, 230)
+    }
+
+    /// A drag that collapses the pane moves the grip out from under the mouse;
+    /// let go there, the edge goes dark instead of staying lit.
+    func testTheEdgeGoesDarkWhenLetGoAwayFromIt() throws {
+        let view = PaneDividerGripView(frame: NSRect(x: 0, y: 0, width: 6, height: 400))
+        window.contentView?.addSubview(view)
+        var lit = false
+        view.onActive = { lit = $0 }
+        func event(_ type: NSEvent.EventType, x: CGFloat) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.mouseEvent(
+                with: type, location: NSPoint(x: x, y: 200), modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
         }
-        state.visibility = .detailOnly
-        settle()
-        XCTAssertTrue(buttonTitles().contains(SearchHomeView.hiddenHint) || true)
-        XCTAssertEqual(SearchHomeView.hiddenHint, "or show the sidebar to choose a patient")
-        let home = try source("Sources/App/Views/SearchHomeView.swift")
-        XCTAssertTrue(home.contains("Button(action: onShowSidebar)"))
-        XCTAssertTrue(try source("Sources/App/Views/RootView.swift").contains("onShowSidebar: { columnVisibility = .all }"))
+        view.mouseEntered(with: try event(.mouseMoved, x: 3))
+        view.mouseDown(with: try event(.leftMouseDown, x: 3))
+        XCTAssertTrue(lit)
+        view.mouseUp(with: try event(.leftMouseUp, x: 200))
+        XCTAssertFalse(lit, "no exit event comes when the grip moves away, so letting go checks")
+        view.removeFromSuperview()
     }
 
-    func testTheAppHasTheSidebarCommandsAndNoDetailToolbar() throws {
-        XCTAssertTrue(try source("Sources/App/AletheiaApp.swift").contains("SidebarCommands()"))
+    func testHidingTheSidebarRemovesItsEdgeAndShowingBringsItBack() {
+        XCTAssertTrue(dividerIsShown)
+        state.shown = false
+        settle()
+        XCTAssertFalse(dividerIsShown)
+        state.shown = true
+        settle()
+        XCTAssertTrue(dividerIsShown)
+    }
+
+    func testTheTitleBarToggleIsTheOneWayBackFromTheHome() throws {
+        XCTAssertFalse(try source("Sources/App/Views/SearchHomeView.swift").contains("sidebar.leading"),
+                       "the home adds no sidebar button of its own")
+    }
+
+    func testDraggingFarPastTheNarrowestWidthCollapses() {
+        XCTAssertEqual(SidebarLayout.collapseWidth, SidebarLayout.minWidth / 2)
+        XCTAssertLessThan(SidebarLayout.collapseWidth, SidebarLayout.minWidth)
+    }
+
+    func testTheAppHasTheSidebarCommandAndTheToggleIsTheOnlyToolbarItem() throws {
+        let app = try source("Sources/App/AletheiaApp.swift")
+        XCTAssertTrue(app.contains("CommandGroup(replacing: .sidebar)"))
+        XCTAssertTrue(app.contains(".keyboardShortcut(AppHotkey.toggleSidebar)"))
         let root = try source("Sources/App/Views/RootView.swift")
-        XCTAssertTrue(root.contains("NavigationSplitView(columnVisibility: $columnVisibility)"))
-        XCTAssertFalse(root.contains("ToolbarItem"), "nothing in the detail toolbar to push the sidebar toggle into overflow")
-        XCTAssertFalse(root.contains(".toolbar(removing:"), "the system sidebar toggle stays")
+        XCTAssertTrue(root.contains("LeadingPaneSplit("))
+        XCTAssertEqual(root.components(separatedBy: "ToolbarItem").count - 1, 1,
+                       "only the sidebar toggle, so nothing pushes it into overflow")
+    }
+
+    func testTheSidebarToggleNamesWhatItWillDo() {
+        XCTAssertEqual(SidebarToggle.title(shown: true), "Hide Sidebar")
+        XCTAssertEqual(SidebarToggle.title(shown: false), "Show Sidebar")
+    }
+
+    // MARK: Width
+
+    func testTheWidthStaysWithinItsLimits() {
+        XCTAssertEqual(SidebarLayout.width(proposed: 0), SidebarLayout.minWidth)
+        XCTAssertEqual(SidebarLayout.width(proposed: 10_000), SidebarLayout.maxWidth)
+        XCTAssertEqual(SidebarLayout.width(proposed: 300), 300)
+    }
+
+    func testANarrowWindowNarrowsTheSidebarFirstButNeverBelowItsMinimum() {
+        let roomy = SidebarLayout.maxWidth + SidebarLayout.contentMinWidth + 200
+        XCTAssertEqual(SidebarLayout.width(proposed: 400, total: roomy), 400)
+        let tight = SidebarLayout.contentMinWidth + 250
+        XCTAssertEqual(SidebarLayout.width(proposed: 400, total: tight), 250)
+        XCTAssertEqual(SidebarLayout.width(proposed: 400, total: 300), SidebarLayout.minWidth)
     }
 }

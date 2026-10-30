@@ -65,7 +65,6 @@ struct PatientsListView: View {
             .scrollContentBackground(.hidden)
         }
         .background(Theme.sidebar.color)
-        .navigationTitle("Patients")
         // An always-visible footer at the foot of the sidebar. The toolbar "+"
         // alone gets swept into the window's ">>" overflow when the pane is
         // narrow, so adding a patient looked impossible — this never hides.

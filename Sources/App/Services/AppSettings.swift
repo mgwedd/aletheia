@@ -111,6 +111,8 @@ final class AppSettings: ObservableObject {
         static let notificationsShowPatientNames = "notificationsShowPatientNames"
         static let skipSingleNoteExportConfirmation = "skipSingleNoteExportConfirmation"
         static let transcriptSplitRatio = "transcriptSplitRatio"
+        static let sidebarWidth = "sidebarWidth"
+        static let sidebarShown = "sidebarShown"
         static let includePatientBackground = "includePatientBackground"
         static let noteInstructions = "noteInstructions"
         static let modelSpeeds = "modelSpeeds"
@@ -255,6 +257,14 @@ final class AppSettings: ObservableObject {
     /// (the rest is the comments). Where the divider was last dragged.
     @Published var transcriptSplitRatio: Double {
         didSet { defaults.set(transcriptSplitRatio, forKey: Keys.transcriptSplitRatio) }
+    }
+    /// The patients sidebar's width, where its edge was last dragged.
+    @Published var sidebarWidth: Double {
+        didSet { defaults.set(sidebarWidth, forKey: Keys.sidebarWidth) }
+    }
+    /// Whether the patients sidebar is showing (View > Show/Hide Sidebar).
+    @Published var sidebarShown: Bool {
+        didSet { defaults.set(sidebarShown, forKey: Keys.sidebarShown) }
     }
     /// Whether the patient's clinical history, profile notes, and medications are included in AI context.
     /// On by default.
@@ -548,6 +558,9 @@ final class AppSettings: ObservableObject {
         transcriptSplitRatio = TranscriptSplit.sanitized(
             ratio: defaults.object(forKey: Keys.transcriptSplitRatio) as? Double ?? TranscriptSplit.defaultRatio
         )
+        sidebarWidth = Double(SidebarLayout.width(
+            proposed: (defaults.object(forKey: Keys.sidebarWidth) as? Double).map { CGFloat($0) } ?? SidebarLayout.idealWidth))
+        sidebarShown = defaults.object(forKey: Keys.sidebarShown) as? Bool ?? true
         includePatientBackground = defaults.object(forKey: Keys.includePatientBackground) as? Bool ?? true
         noteInstructions = defaults.dictionary(forKey: Keys.noteInstructions) as? [String: String] ?? [:]
         modelSpeeds = defaults.dictionary(forKey: Keys.modelSpeeds) as? [String: [String: Double]] ?? [:]
