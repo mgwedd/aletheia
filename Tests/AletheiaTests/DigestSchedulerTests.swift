@@ -410,8 +410,8 @@ final class DigestResumeTests: XCTestCase {
         defer { settings.prepareSummariesOnBattery = original }
 
         settings.prepareSummariesOnBattery = true
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: "prepareSummariesOnBattery"))
+        XCTAssertTrue(AppSettings.sharedDefaults.bool(forKey: "prepareSummariesOnBattery"))
         settings.prepareSummariesOnBattery = false
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: "prepareSummariesOnBattery"))
+        XCTAssertFalse(AppSettings.sharedDefaults.bool(forKey: "prepareSummariesOnBattery"))
     }
 }

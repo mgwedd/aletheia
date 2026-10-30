@@ -474,12 +474,23 @@ final class AppSettings: ObservableObject {
             return
         }
         #endif
-        self.init(defaults: .standard) {
+        self.init(defaults: Self.sharedDefaults) {
             FileManager.default.fileExists(atPath: LlamaRuntime.modelURL(for: $0).path)
         }
     }
 
-    /// Test seam: the shared instance uses `UserDefaults.standard`.
+    /// The store behind `shared`: the app's own preferences, or, while the app
+    /// hosts unit tests, a separate suite emptied at the start of each run. Tests
+    /// change the shared settings (a restore picks a new data folder), and those
+    /// changes must never reach the preferences a local build opens with.
+    static let sharedDefaults: UserDefaults = {
+        guard TestHost.isHostingTests() else { return .standard }
+        let suite = "com.astrealabs.aletheia.unit-tests"
+        UserDefaults.standard.removePersistentDomain(forName: suite)
+        return UserDefaults(suiteName: suite) ?? .standard
+    }()
+
+    /// Test seam: the shared instance uses `sharedDefaults`.
     /// `isDownloaded` says whether a model's weights are on this Mac.
     init(
         defaults: UserDefaults, hardware: HardwareCapabilities = .current(),

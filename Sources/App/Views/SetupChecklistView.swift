@@ -14,6 +14,7 @@ struct SetupChecklistView: View {
     @State private var isChecking = false
     @State private var busyAction: SetupAction?
     @State private var errorMessage: String?
+    @State private var downloadFailure: ModelDownloadFailure?
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     private var reduceMotion: Bool { QuietUI.reducesMotion(systemReduceMotion) }
 
@@ -73,6 +74,7 @@ struct SetupChecklistView: View {
         .onChange(of: settings.dataRootURL) { _, _ in
             Task { await refresh() }
         }
+        .modelDownloadFailureAlert($downloadFailure)
         .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -213,13 +215,13 @@ struct SetupChecklistView: View {
             do {
                 try await whisperDownloader.download(settings.whisperModel, to: settings.whisperModelPath)
             } catch {
-                errorMessage = error.localizedDescription
+                downloadFailure = ModelDownloadFailure(error) { Task { await perform(.downloadTranscriptionModel) } }
             }
         case .downloadBuiltInModel:
             do {
                 try await llamaDownloader.download(settings.llamaModel, to: LlamaRuntime.modelURL(for: settings.llamaModel))
             } catch {
-                errorMessage = error.localizedDescription
+                downloadFailure = ModelDownloadFailure(error) { Task { await perform(.downloadBuiltInModel) } }
             }
         case .enableAppleIntelligence:
             SystemSettingsLinks.openAppleIntelligenceSettings()
