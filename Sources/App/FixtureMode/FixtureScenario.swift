@@ -101,6 +101,10 @@ struct FixtureScenario: Codable, Equatable {
     /// when settings first load.
     var downloadedModels: [String]?
 
+    /// Setup was finished and the terms accepted, but no data folder is chosen
+    /// on the run's first launch, so the Set up Aletheia sheet is up.
+    var noDataFolder: Bool?
+
     var appLockOn: Bool { appLock == "on" }
     var licenseOn: Bool { license == "on" || license == "test" }
     var testLicense: Bool { license == "test" }

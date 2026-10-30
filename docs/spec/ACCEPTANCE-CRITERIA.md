@@ -18,6 +18,8 @@ Before you start: a Release build and a throwaway data folder, with no earlier A
 - **SETUP-10** Click **Finish setup**, quit and reopen → the sheet doesn't appear again.
 - **SETUP-11** Look for "Protect your data" (dev build) → it recommends encryption with a button that doesn't block **Finish setup**.
 - **SETUP-12** Finish setup, then open a build with newer terms → the **Set up Aletheia** sheet returns until the new terms are accepted, and each acceptance is dated on this Mac.
+- **SETUP-13** Read the Data folder step → it recommends the standard location on this Mac and says any other folder must be on this Mac, not in iCloud Drive, Dropbox, Google Drive, OneDrive or Box or on a network drive, and on an encrypted disk if external.
+- **SETUP-14** With the terms already accepted, click **Use the standard location** → the sheet stays up and says where client records will be kept until you click **Finish setup**.
 
 ## 2. Add a patient (PATIENT)
 Before you start: setup finished, a data folder chosen, and the disk encrypted with FileVault.
