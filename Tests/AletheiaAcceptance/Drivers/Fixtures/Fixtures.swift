@@ -1,22 +1,9 @@
 @testable import Aletheia
 import Foundation
 
-/// A FileVault answer the test controls.
-final class FixtureDisk: DiskEncryptionProbing {
-    enum State { case on, off, unknown }
-    var state: State = .on
-
-    func isDataVolumeEncrypted(_ url: URL) -> Bool? {
-        switch state {
-        case .on: return true
-        case .off: return false
-        case .unknown: return nil
-        }
-    }
-}
-
-/// A clock the test moves by hand.
-final class FixtureClock {
+/// The test's clock, starting at the real now. Kept in this module (not the
+/// app's `FixtureClock`) because spec files read it without importing the app.
+final class TestClock {
     private(set) var now: Date
     init(_ start: Date = Date()) { now = start }
     func advance(by seconds: TimeInterval) { now = now.addingTimeInterval(seconds) }

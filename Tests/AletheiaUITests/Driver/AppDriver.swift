@@ -1,62 +1,9 @@
 import XCTest
 
-/// What the test asks the app to start in. Encoded as the `ALETHEIA_FIXTURE`
-/// launch environment value; the app builds this state before its first window.
-struct Scenario: Encodable, Equatable {
-    struct PatientSeed: Encodable, Equatable {
-        var name: String
-        var sessions: Int?
-        var recordingConsent: Bool?
-        /// A recorded consent for the first session.
-        var consentRecorded: Bool?
-        /// The first session's transcript, stored form: "[mm:ss] You: …" or "[mm:ss] Call audio: …".
-        var transcript: String?
-        var myNotes: String?
-        /// The conversation already on the first session's Ask tab.
-        var chat: [ChatSeed]?
-    }
-
-    struct ChatSeed: Encodable, Equatable {
-        /// "user", "assistant" or "summary".
-        var role: String
-        var text: String
-    }
-
-    struct AIRule: Encodable, Equatable {
-        var whenPromptContains: String
-        var reply: String
-    }
-
-    var run: String
-    var patients: [PatientSeed] = []
-    var fileVault: String?
-    var tier: String?
-    /// "on" for a licensed app, "test" for a test license; unset is the unlicensed app.
-    var license: String?
-    var aiReplies: [String]?
-    /// Replies given to any request whose prompt contains the text, ahead of `aiReplies`.
-    var aiRules: [AIRule]?
-    /// How long each AI stage lasts, so a test can watch the status line move.
-    var aiStageMs: Int?
-    /// Streamed requests report reading the prompt in this many parts.
-    var aiParts: Int?
-    /// The model's reading window in tokens, in place of the Mac's own.
-    var contextTokens: Int?
-    /// Transcription that never finishes, so its progress band stays up.
-    var slowTranscription: Bool?
-    /// "concise", "natural" or "detailed".
-    var noteLength: String?
-    /// "fast", "normal" or "focus", for notes and for Ask.
-    var noteEffort: String?
-    var chatEffort: String?
-    /// What Import Audio… is handed instead of the open panel: "clip", "twoTracks", "threeFiles" or "notAudio".
-    var importFile: String?
-    /// The patient whose newest session is on screen at launch.
-    var open: String?
-    var consentPolicy: String?
-    var memoryGB: Int?
-    var llamaModel: String?
-}
+/// What the test asks the app to start in: the app's own `FixtureScenario`
+/// (compiled into this bundle too), encoded as the `ALETHEIA_FIXTURE` launch
+/// environment value; the app builds this state before its first window.
+typealias Scenario = FixtureScenario
 
 /// The facts the app publishes through its invisible `fixture-probe` element.
 /// The shape is the contract with `FixtureProbe.Snapshot` in the app.
@@ -85,7 +32,7 @@ final class AppDriver {
     static let timeout: TimeInterval = 20
 
     let app = XCUIApplication()
-    private(set) var scenario = Scenario(run: UUID().uuidString.lowercased())
+    private(set) var scenario = Scenario(run: UUID().uuidString.lowercased(), patients: [])
     private var launched = false
 
     // MARK: Given (before launch)

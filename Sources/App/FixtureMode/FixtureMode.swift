@@ -3,115 +3,8 @@ import AVFoundation
 import Foundation
 import SwiftUI
 
-/// The state a UI test asks the app to start in, passed as JSON in the
-/// `ALETHEIA_FIXTURE` environment variable of the launched app, for example
-/// `{"run":"a1","patients":[{"name":"Jane Doe","sessions":2}],"fileVault":"on"}`.
-struct FixtureScenario: Decodable, Equatable {
-    struct PatientSeed: Decodable, Equatable {
-        var name: String
-        var sessions: Int?
-        /// True when the patient has already attested to recording consent.
-        var recordingConsent: Bool?
-        /// A recorded consent for the patient's first session, so its header
-        /// shows the "Consent: verbal, from the patient" line.
-        var consentRecorded: Bool?
-        /// The first session's transcript, in the stored form
-        /// ("[mm:ss] You: …" for the microphone, "[mm:ss] Call audio: …" for the call).
-        var transcript: String?
-        /// The first session's My Notes.
-        var myNotes: String?
-        /// The conversation already held on the first session's Ask tab.
-        var chat: [ChatSeed]?
-    }
-
-    struct ChatSeed: Decodable, Equatable {
-        /// "user", "assistant" or "summary".
-        var role: String
-        var text: String
-    }
-
-    /// A reply the scripted AI gives to any request whose prompt contains
-    /// `whenPromptContains`, ahead of the in-order `aiReplies`.
-    struct AIRule: Decodable, Equatable {
-        var whenPromptContains: String
-        var reply: String
-    }
-
-    /// Names the throwaway data folder and defaults domain. Launching again
-    /// with the same run reopens the same data; a new run starts empty.
-    var run: String?
-    var patients: [PatientSeed]?
-    /// "on" (default), "off" or "unknown".
-    var fileVault: String?
-    /// "dev" (default) or "production".
-    var tier: String?
-    /// "off" (default) or "on". Off by default: the unlock sheet is the
-    /// system's, which a UI test cannot answer, so it would cover the app.
-    var appLock: String?
-    /// "off" (default), "on" or "test". On counts as a license that lets the
-    /// app record and run the AI; test is that and a test license; off is the
-    /// unlicensed app.
-    var license: String?
-
-    /// Replies the scripted AI engine gives, in order; the last repeats.
-    var aiReplies: [String]?
-    var aiRules: [AIRule]?
-    /// How long each stage of an AI request lasts, so a test can watch the
-    /// status line move. Zero or unset: answers at once.
-    var aiStageMs: Int?
-    /// Streamed requests report reading the prompt in this many parts (one
-    /// part, or unset, reports none), then "preparing the answer".
-    var aiParts: Int?
-    /// The model's reading window in tokens, in place of the Mac's own.
-    var contextTokens: Int?
-    /// Transcription that runs until it is cancelled, so its progress band
-    /// stays on screen.
-    var slowTranscription: Bool?
-    /// Settings > Notes: "concise", "natural" or "detailed".
-    var noteLength: String?
-    /// AI effort for notes and for Ask: "fast", "normal" or "focus".
-    var noteEffort: String?
-    var chatEffort: String?
-
-    /// What "Import Audio…" is handed instead of the system open panel:
-    /// "clip" (a two-second tone), "twoTracks" (a microphone and a call track,
-    /// as Aletheia exports them), "threeFiles" (three tones) or "notAudio" (a
-    /// text file named like audio).
-    var importFile: String?
-
-    /// The patient whose newest session is on screen at launch, so a test of a
-    /// session screen does not depend on finding rows in the sidebar.
-    var open: String?
-
-    /// Settings > General > Recording consent: "firstSession" (default) or "everySession".
-    var consentPolicy: String?
-
-    /// Overrides the detected Mac memory (in GB) when set, so UI tests can
-    /// exercise memory-dependent model choices deterministically.
-    var memoryGB: Int?
-
-    /// Overrides the selected built-in Llama model by its raw identifier.
-    var llamaModel: String?
-
+extension FixtureScenario {
     var buildTier: BuildTier { tier == "production" ? .production : .dev }
-    var appLockOn: Bool { appLock == "on" }
-    var licenseOn: Bool { license == "on" || license == "test" }
-    var testLicense: Bool { license == "test" }
-
-    struct Malformed: Error, CustomStringConvertible {
-        let detail: String
-        var description: String { "ALETHEIA_FIXTURE is not a valid scenario: \(detail)" }
-    }
-
-    /// Reads a scenario. Anything unreadable throws: a typo in a scenario must
-    /// stop the run, never silently start the app in some other state.
-    static func parse(_ json: String) throws -> FixtureScenario {
-        do {
-            return try JSONDecoder().decode(FixtureScenario.self, from: Data(json.utf8))
-        } catch {
-            throw Malformed(detail: String(describing: error))
-        }
-    }
 }
 
 /// Hermetic world for UI tests. Only compiled into Debug builds; Release has no
@@ -155,7 +48,8 @@ enum FixtureMode {
 
     static let engine = FixtureScriptedEngine(
         replies: scenario?.aiReplies ?? [], rules: scenario?.aiRules ?? [],
-        stageMs: scenario?.aiStageMs ?? 0, parts: scenario?.aiParts ?? 0)
+        stageMs: scenario?.aiStageMs ?? 0, parts: scenario?.aiParts ?? 0,
+        missing: scenario?.aiModelMissing == true, words: scenario?.aiStreamsWords == true)
 
     /// The transcript view on screen, so the probe can count its laid-out lines.
     @MainActor static weak var transcriptView: NSTextView?
@@ -305,16 +199,19 @@ enum FixtureMode {
     }
 }
 
-/// FileVault answer for the scenario.
+/// FileVault answer: from the scenario in a fixture run, set by the test in the acceptance suite.
 final class FixtureDisk: DiskEncryptionProbing {
-    private let state: String?
-    init(state: String?) { self.state = state }
+    enum State: String { case on, off, unknown }
+    var state: State
+
+    /// "off", "unknown", or anything else (including nil) for on.
+    init(state: String? = nil) { self.state = state.flatMap(State.init(rawValue:)) ?? .on }
 
     func isDataVolumeEncrypted(_ url: URL) -> Bool? {
         switch state {
-        case "off": return false
-        case "unknown": return nil
-        default: return true
+        case .on: return true
+        case .off: return false
+        case .unknown: return nil
         }
     }
 }
@@ -326,82 +223,41 @@ final class FixtureClock {
     func advance(by seconds: TimeInterval) { now = now.addingTimeInterval(seconds) }
 }
 
-/// A local model that answers from a script, in order (the last reply
-/// repeats), and keeps every request it was given so a test can see exactly
-/// what context reached the model. A rule answers first when the prompt
-/// contains its text. With a stage time it takes that long over each stage
-/// (and over each part it reports reading), so a test can watch the status
-/// line move.
+/// The scenario's scripted model (`ScriptedModel`): its rules answer first,
+/// then its replies in order (the last repeats). With a stage time it takes
+/// that long over each stage (and over each part it reports reading), so a
+/// test can watch the status line move.
 final class FixtureScriptedEngine: LocalLLMEngine {
     static let defaultReply = "Fixture reply."
 
-    var state: LocalLLMEngineState = .ready
-    private let replies: [String]
-    private let rules: [FixtureScenario.AIRule]
-    private let stage: UInt64
-    private let parts: Int
-    private let lock = NSLock()
-    private var received: [LocalLLMRequest] = []
-    private var next = 0
+    private let model: ScriptedModel
 
-    init(replies: [String] = [], rules: [FixtureScenario.AIRule] = [], stageMs: Int = 0, parts: Int = 0) {
-        self.replies = replies
-        self.rules = rules
-        self.stage = UInt64(max(0, stageMs)) * 1_000_000
-        self.parts = parts
+    init(replies: [String] = [], rules: [FixtureScenario.AIRule] = [], stageMs: Int = 0, parts: Int = 0,
+         missing: Bool = false, words: Bool = false) {
+        model = ScriptedModel(
+            fallback: replies.isEmpty ? [Self.defaultReply] : replies,
+            pace: .timed(nanoseconds: 200_000_000), stageMs: stageMs,
+            partsForEveryAnswer: parts, streamsWords: words)
+        if missing {
+            model.add(.init(marker: nil, answer: .fails(LocalLLMEngineError.modelNotDownloaded), once: false))
+        }
+        for rule in rules {
+            model.add(.init(marker: rule.whenPromptContains, answer: .writes(rule.reply), once: false))
+        }
     }
 
-    var requests: [LocalLLMRequest] {
-        lock.lock(); defer { lock.unlock() }
-        return received
-    }
+    var state: LocalLLMEngineState { model.state }
+    var requests: [LocalLLMRequest] { model.requests }
+    var requestTexts: [String] { model.requestTexts }
 
     func load() async throws {}
     func unload() {}
-
-    private func reply(to request: LocalLLMRequest) -> String {
-        lock.lock(); defer { lock.unlock() }
-        received.append(request)
-        let asked = ([request.system] + request.turns.map { "\($0)" } + [request.prompt]).joined(separator: "\n")
-        if let rule = rules.first(where: { asked.contains($0.whenPromptContains) }) { return rule.reply }
-        guard !replies.isEmpty else { return Self.defaultReply }
-        defer { next += 1 }
-        return replies[min(next, replies.count - 1)]
-    }
-
-    func generate(_ request: LocalLLMRequest) async throws -> String {
-        if stage > 0 { try await Task.sleep(nanoseconds: stage) }
-        return reply(to: request)
-    }
-
+    func generate(_ request: LocalLLMRequest) async throws -> String { try await model.generate(request) }
+    func stream(_ request: LocalLLMRequest) -> AsyncThrowingStream<String, Error> { model.stream(request) }
     func stream(
-        _ request: LocalLLMRequest,
-        onStats: (@Sendable (AIRunStats) -> Void)?
+        _ request: LocalLLMRequest, onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    // Reading the prompt: each part, then the last one done, as the real engine reports.
-                    if parts > 1, let onStats {
-                        for part in 1...parts {
-                            var stats = AIRunStats()
-                            stats.prefill = PrefillProgress(part: part, total: parts)
-                            onStats(stats)
-                            try await Task.sleep(nanoseconds: max(stage, 200_000_000))
-                        }
-                        var stats = AIRunStats()
-                        stats.prefill = PrefillProgress(part: parts, total: parts, complete: true)
-                        onStats(stats)
-                    }
-                    if stage > 0 { try await Task.sleep(nanoseconds: stage) }
-                    continuation.yield(reply(to: request))
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        model.stream(request, onStats: onStats)
     }
 }
 
@@ -502,9 +358,7 @@ enum FixtureProbe {
                 sessions: (try? appModel.store?.listSessions(for: patient).count) ?? 0,
                 consentPolicy: patient.recordingConsentPolicy?.rawValue)
         }
-        let asked = FixtureMode.engine.requests.map { request in
-            ([request.system] + request.turns.map { "\($0)" } + [request.prompt]).joined(separator: "\n")
-        }
+        let asked = FixtureMode.engine.requestTexts
         return Snapshot(files: files(under: FixtureMode.root), patients: patients, aiRequests: asked,
                         transcriptLines: transcriptLineCount())
     }

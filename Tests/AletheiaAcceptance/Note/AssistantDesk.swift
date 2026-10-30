@@ -91,8 +91,17 @@ final class AssistantDesk {
         self.app = app
         self.model = model
         let clock = app.clock
-        integrations = Integrations(
+        let integrations = Integrations(
             settings: app.settings, engine: model, notifier: notifier, now: { clock.now })
+        self.integrations = integrations
+        // At teardown: let held answers finish, then stop the scheduler and the
+        // queue together (as quitting does) and wait for both.
+        app.stopOnShutDown {
+            model.releaseEverything()
+            async let scheduler: Void = integrations.digestScheduler.shutDown()
+            async let queue: Void = integrations.inferenceQueue.shutDown()
+            _ = await (scheduler, queue)
+        }
     }
 
     var settings: AppSettings { app.settings }
