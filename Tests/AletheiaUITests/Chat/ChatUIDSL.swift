@@ -93,3 +93,67 @@ extension Then where Subject == AskTabOnScreen {
                "the status never read \"\(words)\"")
     }
 }
+
+// MARK: - Patient chat window
+
+extension Copy {
+    static let askAboutThisPatient = "Ask about this patient"
+}
+
+/// The patient chat window on screen: the Chats list, the divider and the chat.
+struct PatientChatOnScreen {
+    let driver: AppDriver
+    var list: XCUIElement { driver.element(id: "chat-threads-list") }
+    var chat: XCUIElement { driver.element(id: "chat-pane") }
+    var divider: XCUIElement { driver.element(id: "chat-threads-divider") }
+}
+
+/// The Chats list's width before and after its divider was dragged.
+struct ChatsListDragOnScreen {
+    let before: CGFloat
+    let after: CGFloat
+    let window: PatientChatOnScreen
+}
+
+extension When {
+    func openPatientChat() -> PatientChatOnScreen {
+        app.ensureLaunched()
+        app.tap(Copy.askAboutThisPatient)
+        let window = PatientChatOnScreen(driver: app)
+        XCTAssertTrue(app.exists(window.divider), "the patient chat window has no divider beside the Chats list")
+        return window
+    }
+
+    /// Drags the divider between the Chats list and the chat by `points`.
+    func dragChatsListEdge(of window: PatientChatOnScreen, by points: CGFloat) -> ChatsListDragOnScreen {
+        let before = window.list.frame.width
+        let start = window.divider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: points, dy: 0)))
+        // A drag under the narrowest springs back once let go.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        return ChatsListDragOnScreen(before: before, after: window.list.frame.width, window: window)
+    }
+}
+
+extension Then where Subject == PatientChatOnScreen {
+    /// The divider's grab area is wide enough to catch with the mouse.
+    func dividerIsEasyToGrab() {
+        expect(subject.divider.frame.width >= 12, "the divider's grab area is \(subject.divider.frame.width) wide")
+    }
+}
+
+extension Then where Subject == ChatsListDragOnScreen {
+    func widenedTheList() {
+        expect(subject.after > subject.before + 20, "the Chats list went from \(subject.before) to \(subject.after) wide")
+    }
+
+    func narrowedTheList() {
+        expect(subject.after < subject.before - 20, "the Chats list went from \(subject.before) to \(subject.after) wide")
+    }
+
+    func leftBothSidesUsable() {
+        expect(subject.after >= 200, "the Chats list narrowed to \(subject.after)")
+        expect(subject.after <= 320, "the Chats list widened to \(subject.after)")
+        expect(subject.window.chat.frame.width >= 360, "the chat narrowed to \(subject.window.chat.frame.width)")
+    }
+}

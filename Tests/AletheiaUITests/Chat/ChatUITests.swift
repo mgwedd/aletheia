@@ -133,6 +133,17 @@ final class ChatUITests: AcceptanceCase {
 
         then(tab).hasInTheBox("What did she say about the deadline?")
     }
+
+    func test_CHAT_24() {
+        given.aSessionToAskAbout()
+        let window = when.openPatientChat()
+        then(window).dividerIsEasyToGrab()
+
+        then(when.dragChatsListEdge(of: window, by: 60)).widenedTheList()
+        then(when.dragChatsListEdge(of: window, by: -40)).narrowedTheList()
+        then(when.dragChatsListEdge(of: window, by: 3000)).leftBothSidesUsable()
+        then(when.dragChatsListEdge(of: window, by: -3000)).leftBothSidesUsable()
+    }
 }
 
 extension Then where Subject == AskTabOnScreen {

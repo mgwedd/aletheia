@@ -23,11 +23,13 @@ enum SidebarLayout {
 }
 
 /// A resizable pane at the leading edge beside the rest of the window, with a
-/// visible line and the shared grab strip between them. Dragged under its
-/// narrowest, the pane follows the mouse with resistance, so it shows it is about
-/// to close; past `collapseWidth` it slides shut while the mouse is still down,
-/// keeping the width it had before the drag, and let go short of that it springs
-/// back. Dragged back out from the window's leading edge, it slides open.
+/// visible line and the shared grab strip between them: every draggable split
+/// with a leading pane uses it, so they look and drag alike. Dragged under its
+/// narrowest, the pane follows the mouse with resistance, then springs back when
+/// let go; one that collapses shows it is about to close, and past
+/// `collapseWidth` it slides shut while the mouse is still down, keeping the
+/// width it had before the drag. Dragged back out from the window's leading
+/// edge, it slides open.
 ///
 /// Its own row rather than a system split view: the system sidebar restored
 /// its layout at launch and sometimes came up blank. This one is laid out from
@@ -40,7 +42,8 @@ struct LeadingPaneSplit<Pane: View, Content: View>: View {
     @Binding var isShown: Bool
     /// The width for a proposed width in a window this wide.
     let limit: (_ proposed: CGFloat, _ total: CGFloat) -> CGFloat
-    let collapseWidth: CGFloat
+    /// Dragged narrower than this, the pane collapses; nil for one that never does.
+    let collapseWidth: CGFloat?
     let dividerID: String
     let dividerLabel: String
     /// The strip at the window's edge while the pane is hidden.
@@ -87,7 +90,7 @@ struct LeadingPaneSplit<Pane: View, Content: View>: View {
                         let start = dragStart ?? (isShown ? shown : 0)
                         if dragStart == nil { dragStart = start; widthBeforeDrag = width }
                         let proposed = start + translation
-                        if proposed < collapseWidth {
+                        if let collapseWidth, proposed < collapseWidth {
                             guard isShown else { return }
                             width = widthBeforeDrag ?? width
                             withAnimation(Self.slide) { stretchedWidth = nil; isShown = false }
@@ -117,5 +120,22 @@ struct LeadingPaneSplit<Pane: View, Content: View>: View {
                 .offset(x: isShown ? shown - PaneDivider.gripLead : 0)
             }
         }
+    }
+}
+
+extension LeadingPaneSplit {
+    /// A pane that never collapses: dragged under its narrowest it still gives
+    /// way, then springs back when let go.
+    init(
+        width: Binding<Double>,
+        limit: @escaping (_ proposed: CGFloat, _ total: CGFloat) -> CGFloat,
+        dividerID: String, dividerLabel: String,
+        @ViewBuilder pane: @escaping () -> Pane,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.init(
+            width: width, isShown: .constant(true), limit: limit, collapseWidth: nil,
+            dividerID: dividerID, dividerLabel: dividerLabel, revealID: "", revealLabel: "",
+            pane: pane, content: content)
     }
 }

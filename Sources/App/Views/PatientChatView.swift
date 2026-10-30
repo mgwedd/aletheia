@@ -13,6 +13,21 @@ import SwiftUI
 /// session summaries plus what a search of every session points at, read
 /// closer only where it looks worthwhile (see `PatientZoom`). Each session's
 /// own chat lives inside that session.
+/// How wide the Chats list beside a patient's chat may be dragged.
+enum ChatThreadsLayout {
+    static let minWidth: CGFloat = 200
+    static let idealWidth: CGFloat = 230
+    static let maxWidth: CGFloat = 320
+    /// What the chat beside it keeps, however wide the list is dragged.
+    static let chatMinWidth: CGFloat = 360
+
+    /// The list's width for `proposed` in a window `total` wide: within its
+    /// limits, and narrowing first when the chat would drop under its own.
+    static func width(proposed: CGFloat, total: CGFloat) -> CGFloat {
+        max(minWidth, min(min(max(proposed, minWidth), maxWidth), total - chatMinWidth))
+    }
+}
+
 struct PatientChatView: View {
     let patient: Patient
     var onDone: () -> Void
@@ -30,6 +45,8 @@ struct PatientChatView: View {
     @State private var pendingRetries = PendingRetries<String, () -> Void>()
     @State private var renamingThread: ChatThread?
     @State private var renameText = ""
+    /// The Chats list's width, dragged by its edge; kept per window.
+    @SceneStorage("chatThreadsWidth") private var threadListWidth = Double(ChatThreadsLayout.idealWidth)
 
     private var threads: [ChatThread] { chat.threads }
     private var selectedThreadID: UUID? { chat.selectedThreadID }
@@ -63,35 +80,14 @@ struct PatientChatView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 6)
 
-            HSplitView {
+            LeadingPaneSplit(
+                width: $threadListWidth,
+                limit: { ChatThreadsLayout.width(proposed: $0, total: $1) },
+                dividerID: "chat-threads-divider", dividerLabel: "Chats list width"
+            ) {
                 threadSidebar
-                    .frame(minWidth: 200, idealWidth: 230, maxWidth: 320)
-
-                if selectedThreadID != nil {
-                    ChatPaneView(
-                        title: patient.name,
-                        messages: $chat.messages,
-                        isSending: isSending,
-                        suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.patient : [],
-                        onSend: chat.send,
-                        onStop: chat.stop,
-                        queuedStatus: chatRunner.queuedStatus,
-                        notices: chat.notices,
-                        busyNotice: searchingNotice,
-                        busySince: searchingSince,
-                        busySteps: searchingNotice == nil ? nil : PatientAskSteps(effort: settings.patientChatEffort, layered: true).gathering,
-                        onCompact: { chat.compact($0) },
-                        progress: chatRunner.progress,
-                        effort: $settings.patientChatEffort,
-                        effortFeature: .patientChat,
-                        isSessionRecording: recorder.isRecording,
-                        returnedQuestion: $chat.returnedQuestion
-                    )
-                    .frame(minWidth: 360)
-                } else {
-                    noChatSelected
-                        .frame(minWidth: 360)
-                }
+            } content: {
+                chatPane
             }
         }
         .background(Theme.window.color)
@@ -125,6 +121,37 @@ struct PatientChatView: View {
         }, discard: {
             pendingRetries.clear()
         })
+    }
+
+    private var chatPane: some View {
+        Group {
+            if selectedThreadID != nil {
+                ChatPaneView(
+                    title: patient.name,
+                    messages: $chat.messages,
+                    isSending: isSending,
+                    suggestions: appModel.featureRegistry.contains(id: SuggestedQuestionsFeatureModule.id) ? SuggestedQuestions.patient : [],
+                    onSend: chat.send,
+                    onStop: chat.stop,
+                    queuedStatus: chatRunner.queuedStatus,
+                    notices: chat.notices,
+                    busyNotice: searchingNotice,
+                    busySince: searchingSince,
+                    busySteps: searchingNotice == nil ? nil : PatientAskSteps(effort: settings.patientChatEffort, layered: true).gathering,
+                    onCompact: { chat.compact($0) },
+                    progress: chatRunner.progress,
+                    effort: $settings.patientChatEffort,
+                    effortFeature: .patientChat,
+                    isSessionRecording: recorder.isRecording,
+                    returnedQuestion: $chat.returnedQuestion
+                )
+            } else {
+                noChatSelected
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("chat-pane")
     }
 
     private var noChatSelected: some View {
@@ -206,7 +233,10 @@ struct PatientChatView: View {
                 .disabled(isSending)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.sidebar.color)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("chat-threads-list")
     }
 
     private func moveSelection(_ direction: MoveCommandDirection) {
