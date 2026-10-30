@@ -80,7 +80,8 @@ extension When {
         // of the scroll view showing it, then type into whatever has focus.
         // The innermost scroll view holding it comes last.
         let shown = app.app.scrollViews.containing(NSPredicate(format: "value CONTAINS %@", "[00:")).allElementsBoundByIndex.last ?? transcript
-        shown.click()
+        // A coordinate click: the text view inside covers the scroll view, so an element click finds no clear spot.
+        shown.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         app.app.typeKey(.upArrow, modifierFlags: .command)
         app.app.typeText(line + "\n")
         app.tap(Copy.digestSave)

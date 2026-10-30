@@ -65,7 +65,7 @@ final class ScriptedModel: LocalLLMEngine, @unchecked Sendable {
     private let stageNanoseconds: UInt64
     /// When above one, every streamed `writes` answer first reads the prompt in this many parts.
     private let partsForEveryAnswer: Int
-    /// Streamed text arrives a word at a time.
+    /// Streamed text arrives a word at a time, then the answer stays open until stopped.
     private let streamsWords: Bool
 
     // MARK: Record
@@ -246,6 +246,9 @@ final class ScriptedModel: LocalLLMEngine, @unchecked Sendable {
             continuation.yield(shown)
             try await Task.sleep(nanoseconds: stageNanoseconds)
         }
+        // Stay open until stopped, still, so a UI test can click Stop mid-answer:
+        // XCUI clicks wait for the app to go idle, which it never does while words arrive.
+        await hold()
     }
 
     private func step() async throws {
