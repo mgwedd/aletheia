@@ -32,7 +32,7 @@ final class WhisperModelDownloader: ObservableObject {
 
     private let helper: NetworkHelping
 
-    init(helper: NetworkHelping = NetworkHelperClient.shared) {
+    init(helper: NetworkHelping = NetworkHelperClient.forModelDownloads) {
         self.helper = helper
     }
 

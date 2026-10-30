@@ -100,4 +100,12 @@ final class SettingsSpec: AcceptanceCase {
         then(when.openAfterUpdating(onMacWithMemoryGB: 8, downloaded: [Copy.gemmaE2B])).keeps(Copy.gemmaE2B)
         then(when.openAfterUpdating(onMacWithMemoryGB: 16, downloaded: [])).selects(Copy.medGemma4B)
     }
+
+    func test_SETTINGS_17() async throws {
+        let failed = try await when.downloadSpeechModelThatFails()
+        then(failed).saysWhy()
+        then(failed).offersTryAgainAndReportABug()
+        then(failed).tryAgainStartsTheDownloadAgain()
+        then(failed).reportABugOpensTheBugForm()
+    }
 }

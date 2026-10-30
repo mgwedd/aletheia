@@ -174,9 +174,8 @@ final class HelpTipsTests: XCTestCase {
         }
     }
 
-    /// The AI instructions tip opens above the section's header, not over the
-    /// instructions editor.
-    func testAIInstructionsTipIsAnchoredToTheSectionNotTheEditor() throws {
+    /// The AI instructions tip covers the whole section, not only the editor.
+    func testAIInstructionsTipIsOnTheSection() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let settings = try String(contentsOf: root.appendingPathComponent("Sources/App/Views/SettingsView.swift"), encoding: .utf8)
@@ -185,6 +184,26 @@ final class HelpTipsTests: XCTestCase {
         let card = settings[start.upperBound..<end.lowerBound]
         XCTAssertFalse(card.contains("minHeight: 140)\n                .hoverTip"), "tip is on the editor")
         XCTAssertTrue(card.contains("        }\n        // On the section"), "tip should follow the card's closing brace")
-        XCTAssertTrue(card.contains(".hoverTip(HelpTips.aiInstructions, arrowEdge: .top)"))
+        XCTAssertTrue(card.contains(".hoverTip(HelpTips.aiInstructions)"))
+    }
+
+    /// Every tip opens just below the pointer, clear of the cursor, whatever
+    /// the control's size.
+    func testTipsOpenJustBelowThePointer() {
+        let anchor = HoverTipPlacement.anchor(below: CGPoint(x: 120, y: 40))
+        XCTAssertEqual(anchor.minX, 120)
+        XCTAssertEqual(anchor.minY, 40 + HoverTipPlacement.gap)
+        XCTAssertGreaterThanOrEqual(HoverTipPlacement.gap, 16, "below the arrow cursor")
+    }
+
+    func testAShowingTipClosesWhenThePointerLeaves() {
+        var intent = HoverIntent()
+        let now = ContinuousClock.now
+        let deadline = intent.enter(at: now)
+        XCTAssertFalse(intent.wake(deadline, at: now + .seconds(1)))
+        XCTAssertTrue(intent.wake(deadline, at: now + .seconds(2)))
+        intent.exit()
+        XCTAssertFalse(intent.isShowing)
+        XCTAssertFalse(intent.wake(deadline, at: now + .seconds(3)), "an old deadline can't reopen it")
     }
 }
