@@ -127,6 +127,6 @@ final class SearchHomeHotkeyTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let root = try String(contentsOf: repo.appendingPathComponent("Sources/App/Views/RootView.swift"), encoding: .utf8)
         XCTAssertTrue(root.contains("isFocused: hasOpenPatient ? $searchFocused : $homeSearchFocused"))
-        XCTAssertTrue(root.contains("isFocused: $homeSearchFocused,"), "the search home is bound to the same state")
+        XCTAssertTrue(root.contains("isFocused: $homeSearchFocused"), "the search home is bound to the same state")
     }
 }

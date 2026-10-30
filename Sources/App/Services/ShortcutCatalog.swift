@@ -13,6 +13,8 @@ enum AppHotkey {
     static let newPatient = KeyboardShortcut("n", modifiers: .command)
     static let closeWindow = KeyboardShortcut("w", modifiers: .command)
     static let showShortcuts = KeyboardShortcut("/", modifiers: .command)
+    /// View > Show/Hide Sidebar.
+    static let toggleSidebar = KeyboardShortcut("s", modifiers: [.control, .command])
     static let saveComment = KeyboardShortcut(.return, modifiers: .command)
     /// Bound in `SessionDetailView` and `PatientProfileEditor` through these
     /// values; `ShortcutCatalogTests` fails if a literal ⌘S/⌘G binding returns.
@@ -73,6 +75,7 @@ enum ShortcutCatalog {
         ShortcutSection(title: "Windows", entries: [
             ShortcutEntry(title: "Settings", shortcut: settings),
             ShortcutEntry(title: "Close window", shortcut: AppHotkey.closeWindow),
+            ShortcutEntry(title: "Show or hide the sidebar", shortcut: AppHotkey.toggleSidebar),
             ShortcutEntry(title: "Keyboard shortcuts", shortcut: AppHotkey.showShortcuts),
         ]),
     ]

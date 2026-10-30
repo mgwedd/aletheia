@@ -43,7 +43,7 @@ extension When {
 
     /// Hides the patients sidebar (View > Hide Sidebar, ⌃⌘S), so a small
     /// screen still leaves the page room to drag its divider.
-    private func hideSidebar() {
+    func hideSidebar() {
         let sidebar = app.element(id: "sidebar-settings")
         app.app.typeKey("s", modifierFlags: [.control, .command])
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false OR isHittable == false"), object: sidebar)

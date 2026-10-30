@@ -1250,6 +1250,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/PatientsListView.swift` · `qa: SEARCH-02`
 - **PAT-009** When a patient is right-clicked in the sidebar, an "Edit Profile…" item opens the profile editor.
   `surface: ui` · `evidence: Sources/App/Views/PatientsListView.swift` · `qa: PATIENT-05`
+- **PAT-048** When the therapist drags the line between the patients sidebar and the page, a visible line with a 12-pt grab strip (as wide as every pane divider) resizes the sidebar, which stops between 220 and 440 pt wide; the strip shows the left-right resize cursor, and dragged under 110 pt the sidebar collapses, keeping the width it had before the drag; while hidden, a 6-pt strip at the window's left edge drags it back out once the drag passes 110 pt.
+  `surface: ui` · `evidence: Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/PaneDividerGrip.swift` · `qa: PATIENT-13`
+- **PAT-049** When Aletheia reopens, the patients sidebar is laid out from its saved width and shown or hidden state, never from a restored window layout, so it always shows the patients list; a window too narrow for both narrows the sidebar first, down to its minimum.
+  `surface: ui` · `evidence: Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Services/AppSettings.swift, Sources/App/Views/RootView.swift` · `qa: PATIENT-14`
 - **PAT-010** When a patient's page is open, the header shows their name and a count reading "No sessions", "1 session" or "N sessions".
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift` · `qa: PATIENT-03`
 - **PAT-011** When the therapist clicks the patient's name or the pencil on their page, the profile editor opens focused on the name.
@@ -1418,8 +1422,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/GlobalSearchField.swift, Sources/App/Views/PatientsListView.swift` · `qa: SEARCH-01`
 - **SRC-004** When no patient is open, the home screen shows a large search field reading "Search all patients, sessions and notes" with the ⌘F hint while it is unfocused, focused automatically unless the cursor is already in another text field.
   `surface: ui` · `evidence: Sources/App/Views/SearchHomeView.swift, Sources/App/Views/GlobalSearchField.swift` · `qa: SEARCH-01`
-- **SRC-005** When the sidebar is hidden and the home search field is empty, a button offers "or show the sidebar to choose a patient".
-  `surface: ui` · `evidence: Sources/App/Views/SearchHomeView.swift` · `qa: SEARCH-01`
+- **SRC-005** When the sidebar is hidden, the sidebar button at the top left of the title bar, **View > Show Sidebar** (⌃⌘S) or a drag from the window's left edge brings it back; the home screen adds no button of its own.
+  `surface: ui` · `evidence: Sources/App/Views/RootView.swift, Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/SearchHomeView.swift` · `qa: SEARCH-01`
 - **SRC-006** When text is typed in the sidebar search field or the home search field, both show the same query and the same results, and the first letter typed keeps the cursor in the field.
   `surface: ui` · `evidence: Sources/App/Views/SearchHomeView.swift, Sources/App/Services/Search/GlobalSearchModel.swift` · `qa: SEARCH-02`
 - **SRC-007** When a query is present, results show over the detail pane, and when it is cleared the previous screen returns.

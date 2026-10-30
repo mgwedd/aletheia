@@ -35,6 +35,8 @@ Before you start: setup finished, a data folder chosen, and the disk encrypted w
 - **PATIENT-10** Choose **Edit Profile…** and click **Add medication** twice (dev build) → two rows with Medication and Dose fields appear; **Remove medication** deletes one; none left reads "None recorded."
 - **PATIENT-11** Save medications with one row left blank (dev build) → the blank row is dropped, and the profile card lists the others as name and dose.
 - **PATIENT-12** Edit and save a patient in a Release build → no Medications table appears, and medications stored earlier by a dev build are kept.
+- **PATIENT-13** Drag the line between the patients sidebar and the page (a visible, easy-to-grab strip, as wide as every pane divider) → the sidebar widens or narrows with the drag, stopping between its narrowest and widest usable width; dragged far past its narrowest, it collapses, as **View > Hide Sidebar** does, and dragging from the window's left edge brings it back.
+- **PATIENT-14** Drag the sidebar's edge, or hide it with **View > Hide Sidebar** (⌃⌘S), then quit and reopen Aletheia → the sidebar comes back as it was left: showing the patients list at the width it was dragged to, or hidden until shown again.
 
 ## 3. Start a session (SESSION)
 Before you start: a patient with no sessions.

@@ -1,0 +1,121 @@
+import SwiftUI
+
+/// How wide the patients sidebar may be dragged.
+enum SidebarLayout {
+    static let minWidth: CGFloat = 220
+    static let idealWidth: CGFloat = 280
+    static let maxWidth: CGFloat = 440
+    /// What the page beside it keeps, however wide the sidebar is dragged.
+    static let contentMinWidth: CGFloat = 460
+    /// Dragged narrower than this, the sidebar collapses, as a system split view's does.
+    static let collapseWidth: CGFloat = minWidth / 2
+
+    static func width(proposed: CGFloat) -> CGFloat {
+        min(max(proposed, minWidth), maxWidth)
+    }
+
+    /// The width for `proposed` in a window `total` wide: within the sidebar's
+    /// limits, and narrowing first when the page beside it would drop under its own.
+    static func width(proposed: CGFloat, total: CGFloat) -> CGFloat {
+        let room = total - contentMinWidth
+        return max(minWidth, min(width(proposed: proposed), room))
+    }
+}
+
+/// A resizable pane at the leading edge beside the rest of the window, with a
+/// visible line and the shared grab strip between them. Dragged under its
+/// narrowest, the pane follows the mouse with resistance, so it shows it is about
+/// to close; past `collapseWidth` it slides shut while the mouse is still down,
+/// keeping the width it had before the drag, and let go short of that it springs
+/// back. Dragged back out from the window's leading edge, it slides open.
+///
+/// Its own row rather than a system split view: the system sidebar restored
+/// its layout at launch and sometimes came up blank. This one is laid out from
+/// `width` every time, clamps to the window on every layout (so a narrow
+/// window never pushes the page off screen), and clips each pane to its
+/// bounds, while overlays, popovers and sheets still draw outside them.
+struct LeadingPaneSplit<Pane: View, Content: View>: View {
+    /// Where the edge was last dragged; clamped by `limit` when laid out.
+    @Binding var width: Double
+    @Binding var isShown: Bool
+    /// The width for a proposed width in a window this wide.
+    let limit: (_ proposed: CGFloat, _ total: CGFloat) -> CGFloat
+    let collapseWidth: CGFloat
+    let dividerID: String
+    let dividerLabel: String
+    /// The strip at the window's edge while the pane is hidden.
+    let revealID: String
+    let revealLabel: String
+    @ViewBuilder let pane: () -> Pane
+    @ViewBuilder let content: () -> Content
+    /// Where the edge was when the drag began: 0 while the pane is hidden.
+    @State private var dragStart: CGFloat?
+    /// Restored when a drag collapses the pane.
+    @State private var widthBeforeDrag: Double?
+    /// The pane's width while a drag holds it under its narrowest.
+    @State private var stretchedWidth: CGFloat?
+
+    private static var slide: Animation { .easeInOut(duration: 0.2) }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let total = geometry.size.width
+            let shown = stretchedWidth ?? limit(CGFloat(width), total)
+            HStack(spacing: 0) {
+                if isShown {
+                    pane()
+                        .frame(width: shown)
+                        .frame(maxHeight: .infinity)
+                        .clipped()
+                        .transition(.move(edge: .leading))
+                    Rectangle()
+                        .fill(Theme.line.color)
+                        .frame(width: 1)
+                        .frame(maxHeight: .infinity)
+                }
+                content()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+            }
+            // One grip, shown or hidden, so a drag that collapses or reveals the
+            // pane keeps going with the same mouse press.
+            .overlay(alignment: .topLeading) {
+                PaneDividerGrip(
+                    accessibilityID: isShown ? dividerID : revealID,
+                    accessibilityLabel: isShown ? dividerLabel : revealLabel,
+                    onDrag: { translation in
+                        let start = dragStart ?? (isShown ? shown : 0)
+                        if dragStart == nil { dragStart = start; widthBeforeDrag = width }
+                        let proposed = start + translation
+                        if proposed < collapseWidth {
+                            guard isShown else { return }
+                            width = widthBeforeDrag ?? width
+                            withAnimation(Self.slide) { stretchedWidth = nil; isShown = false }
+                            return
+                        }
+                        let fitted = limit(proposed, total)
+                        if Double(fitted) != width { width = Double(fitted) }
+                        // Under the narrowest, give way half as fast as the mouse.
+                        let stretched = proposed < fitted ? fitted - (fitted - proposed) / 2 : nil
+                        if isShown {
+                            stretchedWidth = stretched
+                        } else {
+                            withAnimation(Self.slide) { stretchedWidth = stretched; isShown = true }
+                        }
+                    },
+                    onEnd: {
+                        dragStart = nil
+                        widthBeforeDrag = nil
+                        if stretchedWidth != nil {
+                            withAnimation(.spring(duration: 0.25)) { stretchedWidth = nil }
+                        }
+                    }
+                )
+                // Hidden, a narrower strip at the window's edge, to drag the pane back out.
+                .frame(width: isShown ? PaneDivider.gripWidth : PaneDivider.gripWidth / 2)
+                .frame(maxHeight: .infinity)
+                .offset(x: isShown ? shown - PaneDivider.gripLead : 0)
+            }
+        }
+    }
+}

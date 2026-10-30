@@ -11,10 +11,6 @@ struct SearchHomeView: View {
     let onOpen: (SearchHit) -> Void
     /// Owned by the root, so ⌘F lands here while this screen is showing.
     var isFocused: FocusState<Bool>.Binding
-    var sidebarHidden = false
-    var onShowSidebar: () -> Void = {}
-
-    static let hiddenHint = "or show the sidebar to choose a patient"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,13 +26,6 @@ struct SearchHomeView: View {
             if model.hasQuery {
                 GlobalSearchResultsView(model: model, onOpen: onOpen)
             } else {
-                if sidebarHidden {
-                    Button(action: onShowSidebar) {
-                        Label(Self.hiddenHint, systemImage: "sidebar.leading")
-                    }
-                    .buttonStyle(.themed)
-                    .padding(.top, 6)
-                }
                 Spacer(minLength: 0)
             }
         }

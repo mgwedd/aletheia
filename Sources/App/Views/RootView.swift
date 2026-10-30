@@ -1,5 +1,16 @@
 import SwiftUI
 
+/// Shows and hides the patients sidebar: the title-bar button and View > Show/Hide
+/// Sidebar (⌃⌘S). Dragging its edge far enough left hides it, and dragging
+/// from the window's left edge brings it back.
+enum SidebarToggle {
+    static func title(shown: Bool) -> String { shown ? "Hide Sidebar" : "Show Sidebar" }
+
+    @MainActor static func toggle(_ settings: AppSettings) {
+        withAnimation(.easeInOut(duration: 0.2)) { settings.sidebarShown.toggle() }
+    }
+}
+
 struct RootView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var settings: AppSettings
@@ -19,9 +30,6 @@ struct RootView: View {
     @State private var showUpdateDetails = false
     /// The license strip's text when the therapist closed it; it returns once the text changes.
     @State private var dismissedLicenseText: String?
-    /// Bound so the sidebar can be brought back from the detail pane's title bar
-    /// and from the search home (View > Show/Hide Sidebar is `SidebarCommands`).
-    @State private var columnVisibility = NavigationSplitViewVisibility.all
     /// The search field at the foot of the sidebar and its results (see `GlobalSearchField`).
     @StateObject private var search = GlobalSearchModel()
     @FocusState private var searchFocused: Bool
@@ -36,7 +44,16 @@ struct RootView: View {
     @State private var lockedProfileDraft: Patient?
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        LeadingPaneSplit(
+            width: $settings.sidebarWidth,
+            isShown: $settings.sidebarShown,
+            limit: { SidebarLayout.width(proposed: $0, total: $1) },
+            collapseWidth: SidebarLayout.collapseWidth,
+            dividerID: "sidebar-divider",
+            dividerLabel: "Sidebar width",
+            revealID: "sidebar-reveal-edge",
+            revealLabel: "Drag to show the sidebar"
+        ) {
             PatientsListView(
                 selectedPatient: $selectedPatient,
                 search: search,
@@ -45,7 +62,7 @@ struct RootView: View {
                 onOpenSettings: { showSettings = true },
                 onEditProfile: { editingFocus = .name; editingProfile = $0 }
             )
-        } detail: {
+        } content: {
             // Results cover the detail pane while there is a query, and the pane
             // stays underneath (so an open session keeps its unsaved edits).
             detailContent
@@ -62,9 +79,17 @@ struct RootView: View {
                 // the strips covered the top of the pane, hiding the search field
                 // once a query moved it there.
                 .safeAreaInset(edge: .top, spacing: 0) { dataSafetyNotices }
-                // No toolbar items here on purpose: a wide one (the old 280pt search
-                // field) pushed the system sidebar toggle into the » overflow menu,
-                // leaving a collapsed sidebar with no way back.
+        }
+        .toolbar {
+            // The one toolbar item, so nothing can push it into the » overflow
+            // and leave a hidden sidebar with no way back.
+            ToolbarItem(placement: .navigation) {
+                Button { SidebarToggle.toggle(settings) } label: {
+                    Label(SidebarToggle.title(shown: settings.sidebarShown), systemImage: "sidebar.leading")
+                }
+                .help(SidebarToggle.title(shown: settings.sidebarShown))
+                .accessibilityIdentifier("sidebar-toggle")
+            }
         }
         .modifier(GlobalSearchRunning(
             search: search, appModel: appModel, isFocused: hasOpenPatient ? $searchFocused : $homeSearchFocused))
@@ -167,8 +192,7 @@ struct RootView: View {
                 .background(Theme.window.color)
         } else {
             SearchHomeView(
-                model: search, onOpen: { openSearchResult($0) }, isFocused: $homeSearchFocused,
-                sidebarHidden: columnVisibility == .detailOnly, onShowSidebar: { columnVisibility = .all }
+                model: search, onOpen: { openSearchResult($0) }, isFocused: $homeSearchFocused
             )
         }
     }

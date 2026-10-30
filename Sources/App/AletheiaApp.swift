@@ -310,7 +310,10 @@ struct AletheiaApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             // View > Show/Hide Sidebar (⌃⌘S).
-            SidebarCommands()
+            CommandGroup(replacing: .sidebar) {
+                Button(SidebarToggle.title(shown: settings.sidebarShown)) { SidebarToggle.toggle(settings) }
+                    .keyboardShortcut(AppHotkey.toggleSidebar)
+            }
             // Stock File > Close Window (⌘W). Stated explicitly so it's always
             // present and works for the main, Doctor and Settings windows alike.
             CommandGroup(replacing: .saveItem) {

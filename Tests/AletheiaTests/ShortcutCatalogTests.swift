@@ -33,7 +33,7 @@ final class ShortcutCatalogTests: XCTestCase {
             AppHotkey.search, AppHotkey.newPatient, AppHotkey.closeWindow, AppHotkey.showShortcuts, AppHotkey.saveComment,
             AppHotkey.saveEdits, AppHotkey.generateNote, AppHotkey.bold, AppHotkey.italic,
             AppHotkey.bulletedList, AppHotkey.numberedList, AppHotkey.bodyText, AppHotkey.heading,
-            AppHotkey.subheading,
+            AppHotkey.subheading, AppHotkey.toggleSidebar,
         ]
         for shortcut in defined {
             XCTAssertTrue(listed.contains(ShortcutGlyphs.symbols(for: shortcut)), ShortcutGlyphs.symbols(for: shortcut))
@@ -48,6 +48,7 @@ final class ShortcutCatalogTests: XCTestCase {
         XCTAssertEqual(symbols["Save a comment"], "⌘↩")
         XCTAssertEqual(symbols["Close a sheet or search"], "esc")
         XCTAssertEqual(symbols["Keyboard shortcuts"], "⌘/")
+        XCTAssertEqual(symbols["Show or hide the sidebar"], "⌃⌘S")
     }
 
     // MARK: The listed keys are the bound keys
@@ -91,6 +92,7 @@ final class ShortcutCatalogTests: XCTestCase {
         let app = try source("Sources/App/AletheiaApp.swift")
         XCTAssertTrue(app.contains(".keyboardShortcut(AppHotkey.closeWindow)"))
         XCTAssertTrue(app.contains(".keyboardShortcut(AppHotkey.showShortcuts)"))
+        XCTAssertTrue(app.contains(".keyboardShortcut(AppHotkey.toggleSidebar)"))
         XCTAssertTrue(app.contains("Window(\"Keyboard Shortcuts\", id: ShortcutsWindow.id)"))
         XCTAssertTrue(app.contains("openWindow(id: ShortcutsWindow.id)"))
     }
