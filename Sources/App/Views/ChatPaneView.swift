@@ -134,8 +134,13 @@ struct ChatPaneView: View {
 
     private func takeReturnedQuestion() {
         guard let returnedQuestion, let question = returnedQuestion.wrappedValue else { return }
-        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { draft = question }
         returnedQuestion.wrappedValue = nil
+        // On the next turn: the question comes back in the same update that
+        // re-enables the box and brings back the mic, and filling the box in
+        // that update too sends layout into a loop.
+        DispatchQueue.main.async {
+            if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { draft = question }
+        }
     }
 
     // MARK: Conversation
