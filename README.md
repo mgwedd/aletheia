@@ -2,276 +2,115 @@
 
 **Session notes for therapists, written on your Mac and kept on your Mac.**
 
-Aletheia records a video-call therapy session, transcribes it, drafts a progress note, and lets you search and ask questions across a patient's history. The speech recognition and the AI both run on your computer. Patient data is never sent to a server, and there is no analytics or telemetry.
+Aletheia records a video-call therapy session, transcribes it, drafts a progress note, and answers questions across a patient's history. Speech recognition and the AI both run on your computer. Patient data never goes to a server.
 
-[For therapists](#for-therapists) · [How it works](#how-it-works) · [For developers](#for-developers) · [Setup guide](docs/SETUP-GUIDE.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
+![A session in Aletheia: the transcript beside the drafted progress note](docs/images/session.png)
 
 > **License:** source-available, not open source. All rights reserved; see [LICENSE](LICENSE), [Terms](TERMS.md) and [Privacy](PRIVACY.md).
 
----
+## TL;DR
 
-### Privacy First
+- **What:** a macOS 14+ app that turns a recorded session into a transcript, a progress note (narrative, SOAP, DAP, BIRP or GIRP) and a searchable history.
+- **Private by design:** no patient content leaves the Mac. No analytics, no telemetry, no AI server. The app has no network access of its own; a sandboxed helper fetches only updates, models and a signed license revocation list.
+- **Get it:** limited beta at [astrealabs.com/aletheia/beta](https://astrealabs.com/aletheia/beta).
 
-- No patient content leaves the Mac. Recording, transcription, notes and chat are all local.
-- The app makes a few requests that carry no patient data: a check for new versions (a plain download of a small file from GitHub), and downloads of the speech and AI models you choose to install. Aletheia also fetches a signed list of revoked license keys from astrealabs.com at most once a day while update checks are on; it carries no identifier.
-- The app runs in the macOS App Sandbox and spawns no subprocesses. It has no network entitlement: the update check and model downloads run in a separate sandboxed helper that can reach only GitHub, Hugging Face and astrealabs.com (the revocation list). Settings > Security shows this from the app's own signature.
-- Raw audio is deleted once it is transcribed. If transcription finds no text, the audio is kept so you can retry, until you delete it. Keeping audio after transcription needs at-rest encryption, which released builds do not have.
-- Apple Intelligence is deliberately disabled so every AI path is provably on-device.
-- Aletheia keeps its data folder out of Time Machine and iCloud device backups by default, and Back Up Now needs at-rest encryption, which released builds do not have. Nothing backs your records up for you: arrange your own, to an encrypted disk. See [docs/DATA-SAFETY.md](docs/DATA-SAFETY.md).
+| Topic | Read |
+|---|---|
+| Using it | [Setup guide](docs/SETUP-GUIDE.md) · [Recording consent](CONSENT.md) · [Data safety and backups](docs/DATA-SAFETY.md) |
+| Policies | [Privacy](PRIVACY.md) · [Terms](TERMS.md) · [License](LICENSE) · [Third-party notices](THIRD-PARTY-NOTICES.md) |
+| Security | [Security policy](SECURITY.md) · [Threat model](docs/THREAT-MODEL.md) · [Encryption](docs/ENCRYPTION.md) · [Safeguards](docs/HIPAA-SAFEGUARDS.md) |
+| How it works | [Architecture and developer reference](docs/ARCHITECTURE.md) · [Design decisions](docs/DESIGN-DECISIONS.md) · [Fine-tuning pipeline](docs/FINETUNING-PIPELINE.md) |
+| Requirements | [Acceptance criteria](docs/spec/ACCEPTANCE-CRITERIA.md) · [Behaviour reference](docs/spec/BEHAVIOR-REFERENCE.md) · [Test execution layer](docs/spec/EXECUTION-LAYER.md) |
+| History | [Changelog](CHANGELOG.md) |
 
-Aletheia is a tool, not legal or clinical advice. Read [CONSENT.md](CONSENT.md) before recording anyone.
+## A tour
 
----
+### Your caseload in one place
 
-## For therapists
+Every patient and session, with one search across transcripts, your notes and progress notes.
 
-You need a Mac running **macOS 14 or newer**. The default AI download needs about 2.5 GB of disk space on most Macs, or about 16.5 GB on Apple silicon with 48 GB+ memory; transcription needs additional space. Apple silicon with 16 GB of memory gives good results; 8 GB uses the smaller medical model.
+![The patient list and a patient's sessions](docs/images/patients.png)
 
-### 1. Install Aletheia
+### Record, transcribe, draft
 
-Aletheia is in a limited beta. Apply at [astrealabs.com/aletheia/beta](https://astrealabs.com/aletheia/beta); you receive a license key and a download link by email. Open `Aletheia-<version>.dmg`, and drag **Aletheia** into **Applications**.
+Click **Record Session** when the video call starts and **Stop** when it ends. Aletheia transcribes both sides of the call, then drafts a progress note in your format from the transcript and your own notes. Edit it, then copy it into your record or export it as PDF, Word or Markdown.
 
-Released builds are signed and notarized by Apple, so Aletheia opens like any other Mac app. A build that is not notarized (for example a test build) needs a right-click, **Open**, then confirm, once.
+![A transcript with the drafted progress note](docs/images/note.png)
 
-### 2. Set up with the checklist
+### Ask about a session or a patient
 
-On first launch Aletheia shows a checklist. Work down it, starting at the top:
+Ask a question of one session or a patient's whole history. Answers say which sessions they read.
 
-1. **License key:** paste the key from your email and click **Check license**.
-2. **Data folder:** click **Use the standard location** (the default), or **Choose another folder…**. The folder must be on this Mac: iCloud Drive, other cloud-synced folders, network locations and unencrypted removable drives are refused. Aletheia keeps the folder out of Time Machine and iCloud device backups by default and does not back it up for you.
-3. **Microphone:** click **Allow Microphone**.
-4. **Call audio capture:** click **Allow**. macOS calls this "Screen Recording", but Aletheia only uses it to hear your video call. It does not capture the screen.
-5. **Transcription model:** click **Download**.
-6. **AI model:** click **Download**. Aletheia fetches the model that fits your Mac (3–6 GB, once) and runs it inside the app. Nothing else to install. Wait for the row to turn green.
-7. **Protect your data:** the at-rest encryption offer appears only in developer builds. In released builds, protect the folder with FileVault, which Aletheia checks for.
-8. **Terms & Privacy:** read and accept, then click **Finish setup**.
+![Asking about a patient's history](docs/images/ask.png)
 
-After the downloads, Aletheia works offline. If a row will not turn green, see the [Setup guide](docs/SETUP-GUIDE.md).
+### What stays on your Mac
 
-### 3. Your first session
+- Recording, transcription, notes and answers all happen locally. Raw audio is deleted once it is transcribed.
+- The app runs in the macOS App Sandbox. Settings > Security shows what it can reach, read from its own signature.
+- Apple Intelligence is turned off, so every AI path is provably on-device.
+- The data folder stays out of Time Machine and iCloud device backups by default, and nothing backs it up for you: arrange your own, to an encrypted disk ([how](docs/DATA-SAFETY.md)).
 
-1. Click **Add Patient** (the + button) and enter a name.
-2. Click **New session**.
-3. Open your video call as usual, then click **Record Session** (or use the menu bar icon).
-4. Click **Stop** when finished. Transcription starts by itself if **Settings → General → Transcribe automatically when a recording ends** is on; otherwise click **Transcribe**.
-5. Open the **Notes** tab to jot your own notes and generate the progress note. Choose the format (narrative, SOAP, DAP, BIRP or GIRP) under **Settings → Note format**. Use the **Length** menu to make it shorter or longer, then **Regenerate** to apply. **Edit** it, then **Copy** to paste into your record (formatting is kept), or **Export** it as a PDF, Word or Markdown file. **Export** on the session saves the note and transcript together. On the patient page, **Export all records** builds a zip of the whole history in the background. ⌘S saves your edits and ⌘G generates or regenerates the note.
-6. Use the **Ask** tab to question this session, or **Ask about this patient** on the patient page. Answers say what was read.
-7. The **Search all patients** field at the foot of the sidebar (⌘F, wherever the cursor is; ⌥⌘F finds within the open transcript or note) searches patients, sessions, your notes, progress notes, comments and transcripts. Results appear in one grouped list; use the arrow keys to move and Return to open. **Help → Keyboard Shortcuts** (⌘/) lists every shortcut.
+Always read the transcript and note before relying on them: names and clinical terms are often misheard, and AI drafts can be wrong. Aletheia is a tool, not clinical advice. Read [CONSENT.md](CONSENT.md) before recording anyone.
 
-Always read the transcript and note before relying on them. Names and clinical terms are often misheard, and AI drafts can be wrong.
+## Getting started (therapists)
 
-If something looks wrong, open **Help → Aletheia Doctor…** for a health report that is meant to carry no patient information. It redacts patient and session names it finds, but check it before you send it to anyone, and do not share your screen while it is open.
+You need macOS 14 or newer. Apple silicon with 16 GB of memory gives good results; 8 GB uses a smaller model. The AI model takes about 2.5 GB on most Macs (16.5 GB on Apple silicon with 48 GB+ memory), plus space for transcription.
 
----
+1. Apply for the beta; you receive a license key and a download link by email.
+2. Open the `.dmg` and drag **Aletheia** into **Applications**.
+3. Work down the first-run checklist: license, data folder (**Use the standard location** is the default), microphone, call audio, the two model downloads, and the terms.
+4. **Add Patient**, **New session**, then **Record Session**.
 
-## How it works
+After the downloads, Aletheia works offline. If a checklist row won't turn green, see the [Setup guide](docs/SETUP-GUIDE.md). For anything else, **Help → Aletheia Doctor…** builds a health report meant to carry no patient information.
 
-### System overview
+## For code auditors
 
-```mermaid
-flowchart LR
-  subgraph Mac["Your Mac (sandboxed app)"]
-    UI["SwiftUI app<br/>window · menu bar · Doctor"]
-    REC["Recorder<br/>AVAudioEngine + ScreenCaptureKit"]
-    STT["Transcription<br/>Whisper (in-process)"]
-    AI["Assistant<br/>notes · chat · digests"]
-    DB[("Local data folder<br/>SQLite + files")]
-    LLM["Built-in llama.cpp<br/>(in-process)"]
-    UI --> REC --> STT --> DB
-    UI --> AI --> LLM
-    AI <--> DB
-    UI <--> DB
-  end
-  NET(["Internet"])
-  Mac -. "update check · model downloads · license revocation list<br/>(no patient data)" .-> NET
-```
+Aletheia is source-available so you can check its privacy claims yourself. Read the [threat model](docs/THREAT-MODEL.md) and [security policy](SECURITY.md) first.
 
-### What a note or answer reads
+### Run it
 
-- **Context window.** The prompt is never truncated silently. Each Mac has a prompt budget: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB or more (one tier lower on Intel). MedGemma 27B uses 32K on 32 GB Macs to leave room for its weights. A prompt over budget fails with a clear message and nothing is sent.
-- **Token estimate.** The budget check counts by script: about 3 Latin characters a token, but about a token per character for Japanese, Chinese, Korean and similar scripts.
-- **Tripwire.** If the engine reports reading well under what was sent, or reading right up to its window's limit, the answer shows a notice that the model may not have read everything.
-- **Progress.** A note shows one line and a progress bar while it is generated; chat shows the stage, elapsed time and token counts.
-- **Chat memory.** Past about 12,000 characters, older messages are replaced by a summary (also `/compact [focus]`). Source material is always sent fresh.
-- **One session** chat sends the session's transcript.
-- **Patient-wide chat** is sized from the Mac's budget less the instructions, conversation and question. Background, notes and comments (newest sessions first, up to a third of the room) come first; transcripts take the rest. If the transcripts fit, they go in whole, newest first. Otherwise the history is read by zoom level (`PatientZoom`): stored session summaries (newest first, older ones merged by month), then a search over every transcript for the question's names and words, then the summaries of the parts of sessions the hits fall in plus the transcript lines around the best hits. No transcript goes in whole. When search finds no lines to quote, the room kept for sessions with no summary yet goes to the openings of their transcripts. At Normal or Focus effort the model can also ask to read a transcript part in full. If too little room is left, the question is refused rather than cut.
-
-The search (`SessionSearch`) reads a persistent SQLite FTS5 index (`search.sqlite` in the data folder), keyed by content fingerprint and rebuilt if missing:
-
-- BM25 ranking over passages (a transcript line or a paragraph of notes);
-- whole-word matching with a stemmer, one-letter typo tolerance, and sound-alike matching for names, because Whisper misspells them;
-- quoted phrases match exactly; date phrases such as "past 6 months" narrow the sessions searched;
-- exact counts ("14 mentions in 6 of 22 sessions"), and the model may say a topic was not discussed only when the search found nothing, worded "no match found".
-
-Each patient-wide answer carries a coverage label built from what was actually sent, for example `Read: notes and comments from 22 sessions · transcript passages from 6 of 22 sessions (search: 14 mentions)`; on a long history it also names the summaries and transcript openings that were read. Sessions whose notes were cut short or left out, and unreadable sessions, are reported as such. There is no click-through from a search hit to a transcript moment.
-
-### Session digests
-
-A digest is an AI-written summary of one session, stored as `digest.json` beside its notes and never shown as the record. It is built in the background, at low priority behind notes and chat, after a transcription finishes or a transcript edit is saved.
-
-- The transcript is split into sections of about ten minutes (cut sooner at 12,000 characters). Each section gets a digest of topics, the patient's key statements, interventions, affect, risk flags and follow-ups, tied to its time range. The sections are then merged into one session digest of at most about 2,000 characters.
-- A digest is valid only for the transcript fingerprint, model and prompt version it was built from; otherwise it is ignored and rebuilt at the next trigger.
-- Progress shows as one line on the session ("Building digest · section 4 of 11"). A failed or cancelled build is retried at the next trigger. Finished section summaries are kept, so a build that is paused, quit, or taken over by a note or chat answer resumes from them.
-- A background scheduler also prepares missing summaries, newest session first, only while nothing else is using the model. It pauses while locked, recording, transcribing or busy, in Low Power Mode, and on battery unless **Prepare summaries on battery** is on in Settings. The patient page shows its status with Pause, Resume and Prepare now.
-- Digests are sealed like transcripts when encryption is on. Notes and chat read transcripts, not digests.
-
-### Where data lives
-
-```
-<data folder>/
-  .aletheia.json                  schema version stamp
-  Aletheia.sqlite                 notes, comments, chat threads and the audit ledger
-  search.sqlite                   local full-text search index
-  .aletheia-keystore.json         only when encryption is on
-  .backups/{migrations,snapshots,archives}/
-  Patients/<patient folder>/      an opaque UUID name
-    patient.json
-    YYYY-MM-DD_Session/
-      session.json  consent.json  mic.caf  call.caf  transcript.txt  transcript.raw.txt  summary.txt
-      note.<format>.txt  digest.json
-```
-
-`mic.caf` and `call.caf` are deleted once transcribed (kept if transcription finds no text, until you delete them). The audit ledger is a table in `Aletheia.sqlite`; an old `audit.log` file is imported once and renamed. Schema changes are append-only migrations, with a pre-migration copy of the database in `.backups/migrations`. The SQLite file is a single `records` table of `(kind, id, owner, item, payload)`.
-
-Back Up Now writes an encrypted archive of the whole data folder, and Restore from backup recovers it into a new, empty folder; both need at-rest encryption, so Back Up Now is unavailable in released builds. Deleting a patient removes their files, but database snapshots in `.backups`, any Time Machine or other backup, and exports can still hold them. The app has no delete-session action.
-
-### Transcription
-
-- [whisper.cpp](https://github.com/ggml-org/whisper.cpp) v1.9.5 runs in-process on the GPU via Metal.
-- Silero VAD v6.2.0 skips silence so long pauses cannot trigger repeated phantom lines.
-- Microphone ("You") and call audio ("Call audio") are captured as separate tracks and merged by timestamp.
-
-The only third-party dependencies are the official whisper.cpp and llama.cpp XCFrameworks (ggml-org, pinned by checksum). The Silero model is MIT-licensed, under 1 MB, pinned by SHA-256. A sandboxed native app can capture call audio with ScreenCaptureKit and run Whisper in-process, which keeps the privacy boundary small enough to audit.
-
-### AI backends and recommended models
-
-- **Built-in llama.cpp** is the default runtime, in-process. See [Embedded llama.cpp](#embedded-llamacpp).
-- **Apple Intelligence** is disabled via `Integrations.appleIntelligenceBlocked = true`.
-
-`ModelAdvisor` picks defaults from your hardware:
-
-| Mac | Speech model | AI model |
-|---|---|---|
-| Apple silicon, 48 GB+ | medium.en | MedGemma 27B text |
-| Apple silicon, 16–47 GB | medium.en | MedGemma 1.5 4B |
-| Apple silicon, 8–15 GB | small.en | MedGemma 1.5 4B |
-| Intel, 16 GB+ | small.en | MedGemma 1.5 4B |
-| Other Macs | base.en | MedGemma 1.5 4B |
-
-### Storage protection
-
-- **Sandbox, lock, audit:** App Sandbox is on; the app lock uses LocalAuthentication; the audit log records security events (unlocks and failed unlocks, exports, deletions, opening and saving records, consent attestations, signing, settings and folder changes, the kind of AI work run; overriding a retention warning and changing a Part 2 flag are not yet recorded) without patient content, and is tamper-evident but not a full history of every edit.
-- **Encryption (dev tier only):** AES-256-GCM in 1 MiB chunks, with a random data key wrapped by a passphrase (PBKDF2-HMAC-SHA256, 600,000 iterations). See [docs/ENCRYPTION.md](docs/ENCRYPTION.md).
-- **Backups:** the five newest rolling database snapshots are kept in `.backups`, and pre-migration copies stay there until removed. The data folder is kept out of Time Machine and iCloud device backups by default; backing it up is the clinician's job (turn the exclusion off and use an encrypted disk).
-
-### Build tiers
-
-Features are grouped into tiers chosen at compile time. Each includes the one before it; the released DMG is **production**.
-
-```mermaid
-flowchart LR
-  P["production<br/>recording · transcription · built-in AI · notes · chat<br/>source citations · search · export · app lock · audit log · Doctor"]
-  V["preview<br/>+ Spotlight<br/>medications · suggested questions"]
-  D["dev<br/>+ Reminders/Calendar<br/>at-rest encryption · Back Up Now · App Intents"]
-  P --> V --> D
-```
-
-Debug builds are `dev`; Release builds are `production`. Tiers are set by `ALETHEIA_PREVIEW` and `ALETHEIA_DEV` compilation conditions in `project.yml`.
-
----
-
-## For developers
-
-### Prerequisites
-
-- A Mac with full **Xcode 16+**
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`
-
-There is no checked-in `.xcodeproj`. `project.yml` is the source of truth.
-
-### Build and test
+You need macOS 14+, Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`). The Xcode project is generated from `project.yml` and is not checked in.
 
 ```bash
 git clone https://github.com/mgwedd/aletheia.git && cd aletheia
-./scripts/build.sh            # generates the project, Release build, ad-hoc signed → dist/Aletheia.app
-xcodegen generate && open Aletheia.xcodeproj    # or work in Xcode
-xcodebuild test -scheme Aletheia -destination 'platform=macOS'
+./scripts/build.sh                                  # the shipped (production) build, ad-hoc signed → dist/Aletheia.app
+xcodegen generate && open Aletheia.xcodeproj        # Debug builds run the dev tier, with every feature on
+scripts/run-tests.sh Aletheia                       # unit tests; AletheiaAcceptance and AletheiaUITests are the other schemes
+python3 scripts/make-demo-data.py                   # fictional patients with mock transcripts → ~/aletheia-demo-data
 ```
 
-To test a specific tier, pass `SWIFT_ACTIVE_COMPILATION_CONDITIONS` to `xcodebuild`: `"DEBUG"` (production), `"DEBUG ALETHEIA_PREVIEW"` or `"DEBUG ALETHEIA_PREVIEW ALETHEIA_DEV"`. The root `Package.swift` also supports `swift test`, always at the dev tier.
+Choose the demo folder under Settings > Data folder to try the app without real patient data.
 
-### Repository map
+### Codebase at a glance
 
 ```
-Sources/App/
-  AletheiaApp.swift       entry point: main window, Doctor, Settings, menu bar
-  Models/                 Patient, SessionRecord, ChatThread, …
-  Views/                  SwiftUI views
-  Services/               recorder, transcriber, assistant, store, app lock, settings
-    Digest/               section splitting and background digest builder
-    Search/               BM25 search over a persistent FTS5 index
-    Persistence/          SQLite core, schema migrator, migration backup
-    Repositories/         annotation and chat repositories
-    Crypto/               encryption, keystore, snapshots, backup
-    Integrations/         assistant/transcriber factory, backend selection
-    Features/             build tiers, feature registry, Doctor
-    Llama/                embedded llama.cpp backend
-Tests/AletheiaTests/      XCTest suite
-scripts/                  build, release, secret scan, entitlement, pin and CI-gating checks
-docs/                     setup, data safety, encryption, HIPAA safeguards
+Sources/
+  App/                 the app (SwiftUI). Has no network entitlement
+    Models/            patients, sessions, chats
+    Views/             screens; Theme/ holds colours and the text kit
+    Services/          recording, transcription, AI, storage, search, app lock, audit log
+      Crypto/          encryption, keystore, recovery key, backups
+      Persistence/     SQLite, schema migrations
+      Llama/           the built-in AI engine
+    Resources/         entitlements, assets
+  NetworkHelper/       sandboxed XPC service: the only code that reaches the internet
+  WhisperEngine/       on-device speech recognition
+Packages/              vendored llama.cpp and whisper.cpp
+Tests/                 unit (AletheiaTests), acceptance (AletheiaAcceptance), UI (AletheiaUITests)
+scripts/               build, release and the guard checks below
+.github/workflows/     CI, release, secret scan, pin checks
 ```
 
-### Continuous integration
+### Where each claim is enforced
 
-```mermaid
-flowchart LR
-  PR["Pull request"] --> S["Smoke test<br/>production + dev tiers (preview on main) · full tests on dev<br/>CI guards · secret/PHI scan"]
-  S --> M["Merge to main"]
-  M --> S2["Smoke test on main"]
-  S2 -- "passes" --> AR["Auto Release<br/>conventional commits → semver"]
-  AR --> TAG["v* tag"] --> REL["release.yml<br/>DMG · appcast.json · GitHub Release"]
-```
+| Claim | Code | Checked by |
+|---|---|---|
+| The app itself cannot reach the network | `Sources/App/Resources/Aletheia.entitlements` | `scripts/check-entitlements.sh`, `EntitlementsPlistTests` |
+| Only fixed assets are downloaded, by ID, never with patient data | `Sources/NetworkHelper` | `NetworkHelperSourceTests` |
+| No analytics or crash-reporting SDKs | dependency manifests, `Sources/` | `scripts/check-no-telemetry-sdk.sh` |
+| AI and transcription run on the Mac | `Services/Llama`, `Sources/WhisperEngine`, `Packages/` | `scripts/verify-model-pins.sh`, `scripts/check-runtime-pins.sh` |
+| Patient names stay off notifications, menu bar, Spotlight | `PatientLabel` | `scripts/check-patient-label.sh` |
+| Access to patient records is logged | `Services/AuditLog.swift` | `scripts/check-audit-wiring.sh` |
+| No secrets or patient files in the repo | n/a | `scripts/scan-secrets.sh` |
 
-CI runs on macOS runners (the only place the Swift code compiles). To save macOS time, a pull request builds the production and dev tiers only (preview is built on pushes to `main` and on a manual run); production and preview run only the tier-sensitive tests while dev runs the full suite, and the packaging job (`cd.yml`) runs on a pull request only when packaging inputs change. The path check is `scripts/ci-changes.sh`, applied as a job-level `if:` so a skipped job still reports success to branch protection; `scripts/check-ci-gating.sh` guards that wiring. The benchmarks workflow runs only when started by hand. `main` also requires CodeQL code-scanning results (GitHub's default setup, for the workflows and Python only). Developer ID signing and notarization run only when signing secrets are configured; otherwise the DMG is ad-hoc signed. Model downloads are pinned by commit and SHA-256, checked weekly by `verify-model-pins`.
-
-### Conventions
-
-- **Conventional Commits** drive releases: `feat` → minor; `fix`, `perf`, `revert` → patch; `!` or `BREAKING CHANGE` → major; everything else → no release. Squash-merge with the PR title as the subject.
-- **`CHANGELOG.md` is generated.** Do not edit it by hand.
-- **Privacy invariants:** PHI never leaves the Mac; no analytics; the app itself has no network access; only a bundled helper makes the update check and opt-in model downloads. Apple Intelligence stays disabled.
-- **Dependencies:** first-party and pinned. GitHub Actions are first-party only.
-- **Settings** follow the `AppSettings` pattern: UserDefaults-backed, `private enum Keys`, values loaded in `init`.
-- **Colors** come from `Theme` (`Sources/App/Views/Theme`); no color literals in screens.
-- Enable the pre-commit hook: `git config core.hooksPath scripts/hooks`. It runs `scripts/scan-secrets.sh`, a fail-closed check for secrets and PHI-like filenames.
-
-### Embedded llama.cpp
-
-The official llama.cpp XCFramework (`Packages/LlamaCpp`, pinned by URL and checksum) is linked into every build. The built-in model is the default AI engine in every build: setup downloads it inside Aletheia, with nothing else to install.
-
-Built-in models come from pinned GGUF conversions on Hugging Face and are verified by SHA-256 before install:
-
-| Mac | Default model |
-|---|---|
-| Apple silicon, 48 GB+ | MedGemma 27B text Q4_K_M (~16.5 GB) |
-| All other Macs | MedGemma 1.5 4B Q4_K_M (~2.5 GB) |
-
-The picker also offers Apertus 8B MeditronFO Q4_K_M (~5.1 GB) as **Experimental** on Macs with 16 GB+ memory. Its configured context is 64K tokens; the effective prompt budget can be lower on smaller Macs. MedGemma 27B text is selectable on 32 GB+ Apple silicon and becomes the default at 48 GB+. Existing general-model selections remain available to those users. MedLlama 2 and the original MedGemma 4B are retired; saved selections move to the current medical default.
-
-MedGemma is available for commercial development under Google's Health AI Developer Foundations Terms and Prohibited Use Policy. Review those terms and the distribution notice requirements before a paid release.
-
-The engine applies the model's chat template. The context is sized to the prompt plus the reply, rounded up to a power of two (8K minimum) and capped at the context budget and the model's limit; a prompt over budget fails rather than being truncated. Flash attention and an 8-bit KV cache are on. The model unloads on app lock, on a model or backend change, and after 30 minutes idle.
-
-### Releases
-
-Merging to `main` is enough once Smoke Test passes on the merge commit: Auto Release then computes the version, updates the changelog and tags it. It runs in the `release` environment and pushes the release commit and tag with the `RELEASE_DEPLOY_KEY` deploy key (which is on the branch ruleset's bypass list); the tag push starts `release.yml`. Only when that secret is unset does Auto Release dispatch `release.yml` explicitly. A failed or cancelled run releases nothing, and if `main` has moved on, the newer commit's run releases the whole range. A manual release can be dispatched from the Actions tab.
-
----
-
-## Known limitations
-
-- The Swift code compiles only on macOS CI; recording and transcription on real hardware need manual verification before each release.
-- Mic and call tracks are not sample-accurate with each other, so interleaved lines can be off by a short interval.
-- Patient-wide chat on a long history reads summaries and search passages, not every transcript; sessions with no summary yet may be represented only by their opening.
-- A session longer than the Mac's prompt budget cannot be summarized in one pass.
-- No CoreML encoder is bundled; transcription uses CPU/Metal.
-- Encryption is in the dev tier only, and tagged releases require signing and notarization secrets, while other builds are ad-hoc signed.
+The [architecture reference](docs/ARCHITECTURE.md) covers data flow, storage, build tiers and CI. Every feature ships an [acceptance criterion](docs/spec/ACCEPTANCE-CRITERIA.md), an acceptance test and a UI test.
