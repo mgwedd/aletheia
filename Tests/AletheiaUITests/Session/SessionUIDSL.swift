@@ -41,11 +41,15 @@ extension When {
         return page
     }
 
-    /// Hides the patients sidebar (View > Hide Sidebar), so a small screen
-    /// still leaves the page room to drag its divider.
+    /// Hides the patients sidebar (View > Hide Sidebar, ⌃⌘S), so a small
+    /// screen still leaves the page room to drag its divider.
     private func hideSidebar() {
-        app.click(app.app.menuBars.menuBarItems["View"], "View menu")
-        app.click(app.app.menuItems["Hide Sidebar"], "View > Hide Sidebar")
+        let sidebar = app.element(id: "sidebar-settings")
+        app.app.typeKey("s", modifierFlags: [.control, .command])
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false OR isHittable == false"), object: sidebar)
+        guard XCTWaiter().wait(for: [gone], timeout: AppDriver.timeout) == .completed else {
+            return app.fail("the patients sidebar did not hide")
+        }
     }
 
     /// Drags the divider between the session list and the session by `points`.
