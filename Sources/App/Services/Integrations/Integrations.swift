@@ -39,6 +39,7 @@ final class Integrations: ObservableObject {
         self.notifier = notifier ?? UserNotificationService()
         self.digests = DigestBuilder(queue: inferenceQueue)
         self.digestScheduler = DigestScheduler(builder: digests, queue: inferenceQueue, settings: settings, now: now)
+        self.digestScheduler.notifier = self.notifier
     }
 
     /// Speech-to-text: whisper.cpp with Metal (see `WhisperTranscriber`).

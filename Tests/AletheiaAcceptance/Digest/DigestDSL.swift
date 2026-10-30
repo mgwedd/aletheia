@@ -93,6 +93,9 @@ final class SummariesDesk {
     func recordAndStop(on stored: StoredSession) async throws {
         let bench = try RecordingBench(app: desk.app)
         self.bench = bench
+        let scheduler = scheduler
+        let appWiring = bench.recorder.onStopped
+        bench.recorder.onStopped = { appWiring?($0); scheduler.recordingStopped() }
         if let refusal = await bench.pressRecord(patient: patient, session: stored.session) {
             XCTFail("the recording did not start: \(refusal)")
             return
