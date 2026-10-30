@@ -55,6 +55,14 @@ struct HoverRest {
         guard let deadline else { return false }
         return intent.isDue(deadline, at: start + .milliseconds(Int(seconds * 1000)))
     }
+
+    /// Waits `seconds`, then reports whether the tip is on screen.
+    mutating func wait(seconds: Double) -> Bool {
+        guard let deadline else { return false }
+        return intent.wake(deadline, at: start + .milliseconds(Int(seconds * 1000)))
+    }
+
+    var isShowing: Bool { intent.isShowing }
 }
 
 // MARK: - When
@@ -250,6 +258,20 @@ extension When {
         var rest = subject
         rest.leave()
         expect(!rest.tipShows(after: 3), "the tip showed after the pointer left")
+    }
+
+    func opensJustBelowThePointer() {
+        let pointer = CGPoint(x: 120, y: 40)
+        let anchor = HoverTipPlacement.anchor(below: pointer)
+        expect(abs(anchor.midX - pointer.x) <= 1, "the tip isn't under the pointer")
+        expect(anchor.minY > pointer.y && anchor.minY <= pointer.y + 24, "the tip isn't just below the pointer")
+    }
+
+    func closesWhenThePointerLeaves() {
+        var rest = subject
+        expect(rest.wait(seconds: 2), "no tip after 2s")
+        rest.leave()
+        expect(!rest.isShowing, "the tip stayed after the pointer left")
     }
 }
 

@@ -263,6 +263,7 @@ Before you start: setup finished.
 - **SETTINGS-14** Open Aletheia with its data folder now synced → a **Move data to this Mac** sheet offers to copy and verify it, then keep or delete the old one.
 - **SETTINGS-15** Open **AI and models** > **Built-in model** → MedGemma 1.5 4B is the default through 32 GB and on Intel; MedGemma 27B is offered on 32 GB+ Apple silicon and becomes the default at 48 GB+. Both use the Health AI Developer Foundations Terms.
 - **SETTINGS-16** Update from a version that defaulted to Llama 3.1 8B (or Gemma 4 E2B), having downloaded it and never chosen a model → **Built-in model** still shows it selected; MedGemma is offered, not switched to. With nothing downloaded, MedGemma is the default.
+- **SETTINGS-17** A model download fails → an alert says why and offers **Try Again**, which starts the download again, and **Report a Bug**.
 
 ## 16. Security panel, activity log and Doctor (SECURITY)
 Before you start: a data folder with some activity (unlock, export, delete a patient).
@@ -313,7 +314,7 @@ Before you start: at least one patient and the app unlocked.
 - **MENUBAR-10** Press ⌘/ → a Keyboard Shortcuts window lists three groups.
 - **MENUBAR-11** Press ⌘N, ⌘G and Esc in their places → a patient is added, a note is generated and a sheet closes.
 - **MENUBAR-12** Choose **Help** > **Report a Bug…** → your browser opens the feedback page, with no patient information in the address.
-- **MENUBAR-13** Rest the pointer for two seconds on a control with a help tip → a "how this works" popover appears once.
+- **MENUBAR-13** Rest the pointer for two seconds on a control with a help tip → a "how this works" popover appears once, just below the pointer, and closes when the pointer leaves the control.
 - **MENUBAR-14** Quit with work running → no alert appears and interrupted work is saved for the next launch.
 - **MENUBAR-15** While a recording is running, open the panel and try to start another → no second recording starts and the first keeps recording.
 

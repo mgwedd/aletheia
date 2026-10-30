@@ -30,6 +30,7 @@ struct SettingsView: View {
     @State private var newRiskPhrase = ""
     @State private var riskEditor = RiskPhraseEditor()
     @State private var errorMessage: String?
+    @State private var downloadFailure: ModelDownloadFailure?
     /// How the last audit log export ended, shown until dismissed.
     @State private var exportResult: SaveOutcome?
     @State private var showEncryptionSetup = false
@@ -159,6 +160,7 @@ struct SettingsView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .modelDownloadFailureAlert($downloadFailure)
         .exportResultAlert($exportResult)
         .confirmationDialog(
             riskyExportFolder?.warnings.first?.title ?? "",
@@ -508,6 +510,7 @@ struct SettingsView: View {
                 Spacer()
                 Button("Download", action: download)
                     .buttonStyle(.themePrimary)
+                    .accessibilityIdentifier("settings.model.download")
             }
         case .installed:
             HStack {
@@ -650,9 +653,9 @@ struct SettingsView: View {
                     .disabled(settings.systemPrompt == Prompts.defaultSystemPrompt)
             }
         }
-        // On the section, opening above its header: on the editor the
-        // popover sat over the instructions being read.
-        .hoverTip(HelpTips.aiInstructions, arrowEdge: .top)
+        // On the section, not just the editor: the header and the button
+        // explain the same thing.
+        .hoverTip(HelpTips.aiInstructions)
     }
 
     private var riskPhrasesCard: some View {
@@ -1114,7 +1117,7 @@ struct SettingsView: View {
             try await whisperDownloader.download(settings.whisperModel, to: settings.whisperModelPath)
             await runHealthChecks()
         } catch {
-            errorMessage = error.localizedDescription
+            downloadFailure = ModelDownloadFailure(error) { Task { await downloadWhisperModel() } }
         }
     }
 
@@ -1123,7 +1126,7 @@ struct SettingsView: View {
             try await llamaDownloader.download(settings.llamaModel, to: LlamaRuntime.modelURL(for: settings.llamaModel))
             await runHealthChecks()
         } catch {
-            errorMessage = error.localizedDescription
+            downloadFailure = ModelDownloadFailure(error) { Task { await downloadLlamaModel() } }
         }
     }
 

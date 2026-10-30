@@ -25,7 +25,7 @@ final class LlamaModelDownloader: ObservableObject {
     /// The running `download`, so a second caller waits on it.
     @MainActor private var inFlight: (destination: URL, task: Task<Void, Error>)?
 
-    init(helper: NetworkHelping = NetworkHelperClient.shared) {
+    init(helper: NetworkHelping = NetworkHelperClient.forModelDownloads) {
         self.helper = helper
     }
 

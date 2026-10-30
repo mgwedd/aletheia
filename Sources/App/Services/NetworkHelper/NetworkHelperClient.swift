@@ -101,3 +101,13 @@ enum NetworkHelperClientError {
         return error
     }
 }
+
+extension NetworkHelperClient {
+    /// The helper model downloads go through; a fixture run can make it fail.
+    static var forModelDownloads: NetworkHelping {
+        #if DEBUG
+        if let helper = FixtureMode.modelDownloadHelper { return helper }
+        #endif
+        return shared
+    }
+}

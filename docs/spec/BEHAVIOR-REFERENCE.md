@@ -1231,6 +1231,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModel.swift, Sources/App/Services/ModelAdvisor.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-15`
 - **AIE-048** When no built-in model was ever chosen and the previous default (Llama 3.1 8B from 16 GB, else Gemma 4 E2B) is downloaded while this Mac's MedGemma default is not, that model stays selected and is saved as the choice.
   `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-16`
+- **AIE-049** When a model download fails, an alert says why and offers Try Again, which starts the same download again, Report a Bug and Cancel.
+  `surface: ui` · `evidence: Sources/App/Views/ModelDownloadFailureAlert.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-17`
 
 ## Patients (PAT)
 
