@@ -75,4 +75,18 @@ final class SettingsSeamsTests: XCTestCase {
         let reopened = AppSettings(defaults: defaults)
         XCTAssertEqual(reopened.dataRootURL?.resolvingSymlinksInPath().path, folder.resolvingSymlinksInPath().path)
     }
+
+    /// Tests change the shared settings; the app's own preferences (the data
+    /// folder a local build opens, among others) must stay as the developer left them.
+    func testTheSharedSettingsKeepTestChangesOutOfTheAppsOwnPreferences() {
+        XCTAssertFalse(AppSettings.sharedDefaults === UserDefaults.standard)
+        let settings = AppSettings.shared
+        let original = settings.idleAutoLockMinutes
+        defer { settings.idleAutoLockMinutes = original }
+        let before = UserDefaults.standard.object(forKey: "idleAutoLockMinutes") as? Int
+        let changed = original == 30 ? 0 : 30
+        settings.idleAutoLockMinutes = changed
+        XCTAssertEqual(AppSettings.sharedDefaults.integer(forKey: "idleAutoLockMinutes"), changed)
+        XCTAssertEqual(UserDefaults.standard.object(forKey: "idleAutoLockMinutes") as? Int, before)
+    }
 }

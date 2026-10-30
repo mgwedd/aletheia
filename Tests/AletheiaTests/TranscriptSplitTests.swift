@@ -167,7 +167,7 @@ final class TranscriptSplitTests: XCTestCase {
         let original = settings.transcriptSplitRatio
         defer { settings.transcriptSplitRatio = original }
         settings.transcriptSplitRatio = 0.55
-        XCTAssertEqual(UserDefaults.standard.double(forKey: "transcriptSplitRatio"), 0.55, accuracy: 1e-9)
+        XCTAssertEqual(AppSettings.sharedDefaults.double(forKey: "transcriptSplitRatio"), 0.55, accuracy: 1e-9)
     }
 }
 
