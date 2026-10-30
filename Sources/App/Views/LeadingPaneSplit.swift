@@ -110,7 +110,7 @@ struct LeadingPaneSplit<Pane: View, Content: View>: View {
                         dragStart = nil
                         widthBeforeDrag = nil
                         if stretchedWidth != nil {
-                            withAnimation(.spring(duration: 0.25)) { stretchedWidth = nil }
+                            withAnimation(.easeOut(duration: 0.25)) { stretchedWidth = nil }
                         }
                     }
                 )
