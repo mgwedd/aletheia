@@ -24,7 +24,7 @@ enum NotesPane: Hashable, Identifiable {
 
     var label: String {
         switch self {
-        case .mine: return NoteKind.psychotherapy.title
+        case .mine: return "My Notes"
         case .format(let format): return format.shortName
         }
     }

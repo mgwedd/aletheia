@@ -48,7 +48,7 @@ final class ProgressNoteFormatTests: XCTestCase {
     }
 
     func testNotesPaneOrderPutsThePsychotherapyNoteLast() {
-        XCTAssertEqual(NotesPane.all.map(\.label), ["Summary", "SOAP", "DAP", "BIRP", "GIRP", "Psychotherapy note"])
+        XCTAssertEqual(NotesPane.all.map(\.label), ["Summary", "SOAP", "DAP", "BIRP", "GIRP", "My Notes"])
         XCTAssertEqual(Set(NotesPane.all).count, NotesPane.all.count)
     }
 }
