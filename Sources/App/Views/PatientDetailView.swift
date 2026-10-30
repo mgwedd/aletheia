@@ -46,6 +46,7 @@ struct PatientDetailView: View {
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var exports: ExportJobCenter
     @State private var errorMessage: String?
+    @State private var showNothingToExport = false
     /// The selected session, resolved against the current listing so a session
     /// that has dropped out of it can't leave a dangling selection.
     private var selectedSession: SessionRecord? {
@@ -158,6 +159,11 @@ struct PatientDetailView: View {
         .onChange(of: transcription.outcomes) { _, _ in refresh() }
         .exportConfirmation($pendingExport, settings: settings)
         .dismissOnLock { pendingExport = nil }
+        .alert(PsychotherapyExport.nothingToExportTitle, isPresented: $showNothingToExport) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(PsychotherapyExport.nothingToExportMessage)
+        }
         .alert("Something went wrong", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -244,7 +250,11 @@ struct PatientDetailView: View {
 
     private var psychotherapyExportButton: some View {
         Button {
-            guard appModel.store != nil, !exports.isRunning else { return }
+            guard let store = appModel.store, !exports.isRunning else { return }
+            guard PsychotherapyExport.hasAnythingToExport(store: store, sessions: sessions) else {
+                showNothingToExport = true
+                return
+            }
             pendingExport = ExportConfirmation(
                 patientName: patient.name, noun: "session", count: sessions.count, fileType: "zip",
                 scope: .psychotherapy

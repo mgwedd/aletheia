@@ -583,6 +583,7 @@ struct SettingsView: View {
             SettingsCardHeader(title: "Built-in model (llama.cpp)") {
                 Chip(card.chip, tone: llamaDownloader.isDownloading ? .info : (installed ? .ok : .warn))
             }
+            .accessibilityIdentifier("settings.built-in-model")
             ForEach(Array(card.rows.enumerated()), id: \.offset) { _, row in
                 modelRow(
                     row,

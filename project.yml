@@ -204,6 +204,8 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - path: Tests/AletheiaUITests
+      # The launch scenario: the very type the Debug app decodes.
+      - path: Sources/App/FixtureMode/FixtureScenario.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.astrealabs.aletheia.uitests

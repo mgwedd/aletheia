@@ -14,18 +14,14 @@ extension Copy {
     static let lookupPlanPrompt = "You are preparing to answer"
 }
 
-/// The Notes tab on screen.
+/// The Notes tab on screen, found by the identifiers the app gives its parts.
 struct NotesTabOnScreen {
     let driver: AppDriver
 
-    /// A pop-up button carries its text as a title, a menu button as a label.
-    var lengthButton: XCUIElement {
-        driver.app.descendants(matching: .any).matching(NSPredicate(
-            format: "label BEGINSWITH %@ OR title BEGINSWITH %@", Copy.lengthButtonPrefix, Copy.lengthButtonPrefix)).firstMatch
-    }
-    var generateButton: XCUIElement { driver.element(labelStarting: Copy.generateButtonPrefix) }
-    var processingStatus: XCUIElement { driver.element(labelContaining: Copy.processingTranscript) }
-    var coverage: XCUIElement { driver.text(containing: "Read: ") }
+    var lengthButton: XCUIElement { driver.element(id: "notes.length") }
+    var generateButton: XCUIElement { driver.app.buttons["notes.generate"].firstMatch }
+    var processingStatus: XCUIElement { driver.status(containing: Copy.processingTranscript) }
+    var coverage: XCUIElement { driver.app.staticTexts["notes.coverage"].firstMatch }
 
     /// The coverage line's words, wherever XCUI reports them.
     var coverageText: String { coverage.label.isEmpty ? (coverage.value as? String ?? "") : coverage.label }
@@ -61,15 +57,14 @@ extension When {
 
     /// Presses the Generate button and waits for the note's coverage line; its text.
     func generateNote(on tab: NotesTabOnScreen) -> String {
-        XCTAssertTrue(app.exists(tab.generateButton), "no Generate button")
-        tab.generateButton.click()
+        app.click(tab.generateButton, "\(Copy.generateButtonPrefix)… button")
         XCTAssertTrue(app.waitFor(tab.coverage, timeout: 90), "the note never ended with a coverage line")
         return tab.coverageText
     }
 
     /// Clicks the right-hand end of the Length button, well away from its icon.
     func clickLengthButtonAwayFromItsIcon(on tab: NotesTabOnScreen) {
-        XCTAssertTrue(app.exists(tab.lengthButton), "no Length button")
+        XCTAssertTrue(app.exists(tab.lengthButton), "no \(Copy.lengthButtonPrefix) button")
         tab.lengthButton.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).click()
     }
 }
@@ -82,7 +77,7 @@ extension Then where Subject == NotesTabOnScreen {
     }
 
     func statusPasses(through words: String) {
-        expect(subject.driver.waitFor(subject.driver.element(labelContaining: words), timeout: 60),
+        expect(subject.driver.waitFor(subject.driver.status(containing: words), timeout: 60),
                "the status never read \"\(words)\"")
     }
 }

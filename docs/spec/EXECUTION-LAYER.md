@@ -143,6 +143,42 @@ held after `within` seconds. The coverage test rejects a fixed delay anywhere in
 `DSL/` or `Drivers/` other than that file. In UI code, wait on an element with
 a timeout. A flaky test is a bug in the fixture or the app; fix the root cause.
 
+## Harness
+
+How the two layers stay fast and independent of each other and of earlier runs.
+
+- **One scripted model, one scenario.** `Sources/App/FixtureMode/ScriptedModel.swift`
+  answers both layers: rules matched by a marker in the request, fallback
+  replies, held steps released one by one (a release with nothing held is kept
+  for the next hold), and `waitUntilAsked(count:)` instead of polling.
+  `FixtureScenario` is the one Codable scenario; the acceptance suite seeds it
+  in process and the UI driver passes it as JSON at launch.
+- **Teardown stops work.** Each acceptance test ends by stopping every AI
+  request, releasing every held step and resetting app statics, and keeps going
+  after a failed check (`continueAfterFailure`) so one failure cannot hang the
+  rest. The test clock never starts in the first hour of a day. The scratch
+  folder sits beside the data folder, never inside it.
+- **Quiet fixture UI.** In fixture mode live timelines stop ticking and motion
+  is reduced, and the probe is computed off the main actor and published only
+  when its JSON changes.
+- **Find by identifier.** UI tests find controls by accessibility identifier
+  (`chat.ask-field`, `chat.send`, `ai.status`, `notes.generate` and so on),
+  wait until a control is hittable before clicking, and paste long text rather
+  than typing it. `waitForProbe` decodes a probe value only when it changes and
+  fails the test when it times out.
+- **Say what was seen.** `eventually(..., describe:)` adds the last observed
+  state to its timeout. A UI wait that times out attaches a screenshot and the
+  element tree.
+- **Isolated runs.** `scripts/run-tests.sh <scheme>` takes a lock so only one
+  run uses the Mac at a time, gives each run its own derived data, result
+  bundle and ledger folder under `build/runs/`, and sets per-test limits (60 s,
+  120 s for a test that asks). Each UI launch ends any running copy of the app,
+  ignores saved window state, and fixture folders older than a day are removed.
+- **UI shards.** CI runs the UI classes in three shards of similar length;
+  the last runs every class the others don't name. A job named "UI tests"
+  passes only when all shards pass. A behavior the acceptance suite proves in
+  process isn't proved again slowly in XCUI, but every check keeps a UI test.
+
 ## Layout
 
 ```

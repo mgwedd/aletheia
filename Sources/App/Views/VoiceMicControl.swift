@@ -106,7 +106,8 @@ struct VoiceMicControl: View {
 /// while held, the recording tint with a soft pulse behind it.
 private struct MicButtonFace: View {
     let isRecording: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    private var reduceMotion: Bool { QuietUI.reducesMotion(systemReduceMotion) }
     @State private var isHovered = false
     @State private var pulse = false
 

@@ -4,8 +4,6 @@ extension Copy {
     static let askTab = "Ask"
     static let askField = "Ask about this session"
     static let sendButton = "Send"
-    static let compactButton = "Compact"
-    static let effortLabel = "AI effort"
     static let disclaimer = "AI generated responses can be inaccurate. Double-check responses."
     static let compactedChip = "Conversation compacted"
     /// Words in the request that asks the AI to summarize the conversation.
@@ -16,18 +14,16 @@ extension Copy {
     static let myNotesHeader = "My Notes stay private, so the AI never reads them."
 }
 
-/// The Ask tab on screen.
+/// The Ask tab on screen, found by the identifiers the app gives its parts.
 struct AskTabOnScreen {
     let driver: AppDriver
 
-    var field: XCUIElement { driver.app.textViews[Copy.askField].firstMatch }
-    var send: XCUIElement { driver.button(Copy.sendButton) }
-    var compact: XCUIElement { driver.button(Copy.compactButton) }
-    var disclaimer: XCUIElement {
-        driver.app.descendants(matching: .any).matching(identifier: "chat.disclaimer").firstMatch
-    }
-    var effortBar: XCUIElement { driver.element(labelContaining: Copy.effortLabel) }
-    var compactedCard: XCUIElement { driver.anything(containing: Copy.compactedChip) }
+    var field: XCUIElement { driver.app.textViews["chat.ask-field"].firstMatch }
+    var send: XCUIElement { driver.app.buttons["chat.send"].firstMatch }
+    var compact: XCUIElement { driver.app.buttons["chat.compact"].firstMatch }
+    var disclaimer: XCUIElement { driver.element(id: "chat.disclaimer") }
+    var effortBar: XCUIElement { driver.element(id: "chat.effort") }
+    var compactedCard: XCUIElement { driver.element(id: "chat.compacted") }
 }
 
 extension Given {
@@ -58,10 +54,9 @@ extension When {
     }
 
     func ask(_ question: String, on tab: AskTabOnScreen) {
-        XCTAssertTrue(app.exists(tab.field), "no Ask field")
-        tab.field.click()
-        tab.field.typeText(question)
-        tab.send.click()
+        app.click(tab.field, "\"\(Copy.askField)\" field")
+        app.enter(question, into: tab.field)
+        app.click(tab.send, "\(Copy.sendButton) button")
     }
 }
 
@@ -78,7 +73,7 @@ extension Then where Subject == AskTabOnScreen {
     }
 
     func statusReads(_ words: String) {
-        expect(subject.driver.waitFor(subject.driver.element(labelContaining: words), timeout: 60),
+        expect(subject.driver.waitFor(subject.driver.status(containing: words), timeout: 60),
                "the status never read \"\(words)\"")
     }
 }

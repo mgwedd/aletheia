@@ -163,4 +163,17 @@ final class ExportSpec: AcceptanceCase {
         then(choice).warnsTheDiskIsntEncrypted()
         then(choice).hasWrittenNothing()
     }
+
+    func test_EXPORT_13() async throws {
+        let jane = try await given.patient(named: "Jane Doe")
+        let sam = try await given.patient(named: "Sam Lee")
+        try given.exportSession(for: jane, notes: ["SOAP": "S: ok"])
+        try given.exportSession(for: sam, comment: "Revisit this")
+
+        let nothing = try when.askToExportPsychotherapyNotes(jane)
+        then(nothing).saysThereIsNothingToExport()
+        then(nothing).goesNoFurther()
+
+        then(try when.askToExportPsychotherapyNotes(sam)).goesOnToConfirmAuthorization()
+    }
 }
