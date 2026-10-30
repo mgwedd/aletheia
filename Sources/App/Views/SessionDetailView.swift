@@ -1476,6 +1476,7 @@ struct SessionDetailView: View {
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.muted.color)
                         .padding(.horizontal, 20)
+                        .accessibilityIdentifier("notes.coverage")
                 }
                 TranscriptSplitView(
                     hasComments: !noteComments.isEmpty,
@@ -1682,6 +1683,7 @@ struct SessionDetailView: View {
         // menu; the default style only answered clicks on the icon.
         .menuStyle(.borderlessButton)
         .fixedSize()
+        .accessibilityIdentifier("notes.length")
         .help("How long the note is, and the AI effort for a long session. \(settings.noteEffort.displayName): \(settings.noteEffort.blurb(for: .note)) Regenerate to apply a change.")
     }
 
@@ -1722,6 +1724,7 @@ struct SessionDetailView: View {
             }
             .buttonStyle(.themePrimary)
             .disabled(transcriptText.isEmpty || noteRunner.isQueued)
+            .accessibilityIdentifier("notes.generate")
             .shortcut(
                 AppHotkey.generateNote,
                 help: transcriptText.isEmpty ? "Transcribe the session first" : "Draft a \(format) note from the transcript"

@@ -97,6 +97,7 @@ struct AIStatusLineView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text)
         .accessibilityAddTraits(.updatesFrequently)
+        .accessibilityIdentifier("ai.status")
     }
 }
 

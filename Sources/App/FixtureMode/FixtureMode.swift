@@ -116,6 +116,7 @@ enum FixtureMode {
     /// Builds the scenario's data once per run, before the first window exists.
     @MainActor static func seed(_ model: AppModel) {
         guard isFirstLaunchOfRun else { return }
+        sweepStaleRuns()
         defer { FileManager.default.createFile(atPath: seededMarker.path, contents: Data()) }
         guard let store = model.store else { return }
         var firstSessions: [(seed: FixtureScenario.PatientSeed, patient: Patient, session: SessionRecord)] = []
@@ -147,6 +148,20 @@ enum FixtureMode {
                 capture.confirmed = true
                 _ = try? model.recordConsent(capture, patient: patient, session: session)
             }
+        }
+    }
+
+    /// Removes other runs' folders untouched for a day: a run that crashed or
+    /// was stopped never cleans up after itself, and each holds a data folder.
+    static func sweepStaleRuns(olderThan age: TimeInterval = 86_400) {
+        let parent = root.deletingLastPathComponent()
+        let ours: Set<String> = [root.lastPathComponent, support.lastPathComponent]
+        let cutoff = Date().addingTimeInterval(-age)
+        let folders = (try? FileManager.default.contentsOfDirectory(
+            at: parent, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for folder in folders where !ours.contains(folder.lastPathComponent) {
+            let modified = (try? folder.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            if let modified, modified < cutoff { try? FileManager.default.removeItem(at: folder) }
         }
     }
 

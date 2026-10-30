@@ -40,6 +40,8 @@ struct ThemeTextArea: View {
     var height: Height = .flexible(min: 90)
     var face: Face = .body
     var accessibilityLabel: String?
+    /// For UI tests to find the field without matching its words.
+    var accessibilityIdentifier: String?
     /// Return calls this instead of inserting a line (Shift or Option with
     /// Return still adds one unless `modifiedReturnSubmits`). Nil leaves Return as a newline.
     var onSubmit: (() -> Void)?
@@ -69,6 +71,7 @@ struct ThemeTextArea: View {
             height: height,
             face: face,
             accessibilityLabel: accessibilityLabel ?? (placeholder.isEmpty ? nil : placeholder),
+            accessibilityIdentifier: accessibilityIdentifier,
             onSubmit: onSubmit,
             onEscape: onEscape,
             modifiedReturnSubmits: modifiedReturnSubmits,
@@ -289,6 +292,7 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
     let height: ThemeTextArea.Height
     let face: ThemeTextArea.Face
     let accessibilityLabel: String?
+    let accessibilityIdentifier: String?
     let onSubmit: (() -> Void)?
     let onEscape: (() -> Bool)?
     let modifiedReturnSubmits: Bool
@@ -399,6 +403,9 @@ private struct ThemeTextAreaRepresentable: NSViewRepresentable {
             textView.tabMovesFocus = representable.tabMovesFocus
             textView.trailingInset = representable.trailingInset
             textView.setAccessibilityLabel(representable.accessibilityLabel)
+            if let identifier = representable.accessibilityIdentifier {
+                textView.setAccessibilityIdentifier(identifier)
+            }
             textView.onFocusChange = { [weak self] focused in
                 guard let self else { return }
                 DispatchQueue.main.async {

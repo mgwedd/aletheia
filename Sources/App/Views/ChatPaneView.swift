@@ -247,6 +247,7 @@ struct ChatPaneView: View {
                         .buttonStyle(.themePrimary)
                         .controlSize(.large)
                         .disabled(!canSend)
+                        .accessibilityIdentifier("chat.send")
                 }
             }
         }
@@ -265,6 +266,7 @@ struct ChatPaneView: View {
             placeholder: "Ask about \(title)…",
             height: .grows(min: ChatComposerLayout.minFieldHeight, max: ChatComposerLayout.maxFieldHeight),
             accessibilityLabel: "Ask about \(title)",
+            accessibilityIdentifier: "chat.ask-field",
             onSubmit: send,
             onEscape: escapeStops,
             modifiedReturnSubmits: true,
@@ -323,6 +325,7 @@ struct ChatPaneView: View {
                 .disabled(isSending)
                 .help(effort.wrappedValue.blurb(for: effortFeature))
                 .accessibilityLabel(AnswerEffort.label)
+                .accessibilityIdentifier("chat.effort")
             }
             Spacer(minLength: 16)
             if showsCompact {
@@ -331,6 +334,7 @@ struct ChatPaneView: View {
                     .controlSize(.small)
                     .disabled(isSending)
                     .hoverTip(HelpTips.compact, arrowEdge: .top)
+                    .accessibilityIdentifier("chat.compact")
             }
         }
     }
@@ -403,6 +407,7 @@ private struct ChatBubble: View {
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.line.color))
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("chat.compacted")
         } else if message.role == .user {
             // The therapist's own words, shown verbatim in a trailing bubble
             // at most 70% as wide as the pane.
