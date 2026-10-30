@@ -164,7 +164,7 @@ struct PatientDetailView: View {
                     )
                 }
             }
-            .frame(minWidth: PatientPageLayout.sessionMinWidth, maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("patient-session-pane")
             }

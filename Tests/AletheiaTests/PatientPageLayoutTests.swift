@@ -36,8 +36,10 @@ final class PatientPageLayoutTests: XCTestCase {
         XCTAssertEqual(PatientPageLayout.listWidth(proposed: 600, total: 800), 800 - 1 - PatientPageLayout.sessionMinWidth)
     }
 
-    func testListMinimumWinsWhenThePageIsTooNarrowForBoth() {
-        XCTAssertEqual(PatientPageLayout.listWidth(proposed: 380, total: 500), PatientPageLayout.listMinWidth)
+    func testAPageTooNarrowForBothIsSharedInProportionToTheirMinimums() {
+        let room = PatientPageLayout.listMinWidth + PatientPageLayout.sessionMinWidth
+        let width = PatientPageLayout.listWidth(proposed: 380, total: room / 2 + 1)
+        XCTAssertEqual(width, PatientPageLayout.listMinWidth / 2, accuracy: 0.001)
     }
 
     func testDamagedRecordsTitle() {

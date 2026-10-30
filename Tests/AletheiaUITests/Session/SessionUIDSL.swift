@@ -35,9 +35,17 @@ extension When {
     func showPatientPage(of name: String) -> PatientPageOnScreen {
         app.seed { $0.open = name }
         app.ensureLaunched()
+        hideSidebar()
         let page = PatientPageOnScreen(driver: app)
         XCTAssertTrue(app.exists(page.list), "\(name)'s page is not on screen")
         return page
+    }
+
+    /// Hides the patients sidebar (View > Hide Sidebar), so a small screen
+    /// still leaves the page room to drag its divider.
+    private func hideSidebar() {
+        app.click(app.app.menuBars.menuBarItems["View"], "View menu")
+        app.click(app.app.menuItems["Hide Sidebar"], "View > Hide Sidebar")
     }
 
     /// Drags the divider between the session list and the session by `points`.

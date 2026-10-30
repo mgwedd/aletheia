@@ -14,9 +14,14 @@ enum PatientPageLayout {
 
     /// The list's width for a dragged-to `proposed` width in a page `total`
     /// wide: never under its minimum, and never so wide the session drops
-    /// under its own.
+    /// under its own. A page too narrow for both minimums is shared in their
+    /// proportion, so the session never runs past the window.
     static func listWidth(proposed: CGFloat, total: CGFloat) -> CGFloat {
-        max(listMinWidth, min(proposed, total - dividerWidth - sessionMinWidth))
+        let room = total - dividerWidth
+        guard room >= listMinWidth + sessionMinWidth else {
+            return max(0, room) * listMinWidth / (listMinWidth + sessionMinWidth)
+        }
+        return min(max(proposed, listMinWidth), room - sessionMinWidth)
     }
 
     /// The list's width when it keeps `share` of a page `total` wide.

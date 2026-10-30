@@ -159,7 +159,7 @@ enum FixtureMode {
         let damaged = (scenario?.patients ?? []).filter { $0.damaged == true }.map(\.name)
         for patient in model.patients where damaged.contains(patient.name) {
             let file = store.patientDir(for: patient).appendingPathComponent("patient.json")
-            try? Data("{ not json".utf8).write(to: file)
+            try? SecureFS.write(Data("{ not json".utf8), to: file)
         }
         if !damaged.isEmpty { model.refreshPatients() }
     }

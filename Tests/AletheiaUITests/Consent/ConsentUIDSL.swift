@@ -155,6 +155,7 @@ extension When {
     func readConsentLine() -> ConsentLineOnScreen {
         app.ensureLaunched()
         widenWindowToTheScreen()
+        narrowTheSessionList()
         let line = ConsentLineOnScreen(driver: app)
         XCTAssertTrue(app.exists(line.line), "no consent line in the session header")
         return line
@@ -169,6 +170,15 @@ extension When {
         left.click(forDuration: 0.1, thenDragTo: left.withOffset(CGVector(dx: screen.minX - window.frame.minX, dy: 0)))
         let right = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
         right.click(forDuration: 0.1, thenDragTo: right.withOffset(CGVector(dx: screen.maxX - 1 - window.frame.maxX, dy: 0)))
+    }
+
+    /// The patient page opens split evenly; dragging its divider all the way
+    /// left gives the session header the most room the window allows.
+    private func narrowTheSessionList() {
+        let divider = app.element(id: "patient-page-divider")
+        guard app.exists(divider) else { return }
+        let start = divider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -3000, dy: 0)))
     }
 
     /// Makes the window `width` points wide, by dragging its right edge.
