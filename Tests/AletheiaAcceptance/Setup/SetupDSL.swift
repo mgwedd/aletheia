@@ -29,6 +29,13 @@ struct EncryptionStep {
     let finishWithFolderOnly: Bool
 }
 
+/// The Data folder step of the setup sheet, as it reads.
+struct DataFolderStep {
+    let rule: String
+    let recommendation: String
+    let chosen: String?
+}
+
 /// Finish setup, as the sheet's footer shows it.
 struct FinishButton {
     let enabled: Bool
@@ -179,7 +186,17 @@ extension When {
 
     func agreeToTerms() { app.settings.recordLegalAcceptance(at: app.clock.now) }
 
-    func finishSetup() { app.settings.hasCompletedFirstRun = true }
+    func finishSetup() { FirstRunGate.finish(settings: app.settings, license: nil) }
+
+    /// The setup sheet comes on screen.
+    func setupSheetAppears() { FirstRunGate.sheetAppeared(settings: app.settings) }
+
+    func readDataFolderStep() -> DataFolderStep {
+        DataFolderStep(
+            rule: FirstRunDataFolder.rule,
+            recommendation: FirstRunDataFolder.recommendation,
+            chosen: app.settings.dataRootURL.map(FirstRunDataFolder.chosen))
+    }
 
     /// The terms moved on since the last acceptance: what was accepted is now an older version.
     func openBuildWithNewerTerms() {
@@ -282,6 +299,23 @@ extension Then where Subject == EncryptionStep {
 
     func doesNotBlockFinish() {
         expect(subject.finishWithFolderOnly, "Finish setup should enable without setting up encryption")
+    }
+}
+
+extension Then where Subject == DataFolderStep {
+    func recommendsTheStandardLocationOnThisMac() {
+        expect(subject.recommendation.contains("standard location"), "the step should recommend the standard location: \(subject.recommendation)")
+        expect(subject.recommendation.contains("on this Mac"), "the recommendation should say it is on this Mac: \(subject.recommendation)")
+    }
+
+    func saysWhereOtherFoldersMayBe() {
+        for place in ["on this Mac", "iCloud Drive", "Dropbox", "Google Drive", "OneDrive", "Box", "network drive", "encrypted"] {
+            expect(subject.rule.contains(place), "the step should mention \(place): \(subject.rule)")
+        }
+    }
+
+    func saysRecordsWillBeKept(in path: String) {
+        expect(subject.chosen?.contains(path) == true, "the step should say records will be kept in \(path), found \(subject.chosen ?? "nothing")")
     }
 }
 

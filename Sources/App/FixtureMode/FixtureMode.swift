@@ -94,7 +94,7 @@ enum FixtureMode {
 
     /// Settings as a user who finished first run in a chosen folder.
     static func prepare(_ settings: AppSettings) {
-        settings.dataRootURL = root
+        settings.dataRootURL = scenario?.noDataFolder == true && isFirstLaunchOfRun ? nil : root
         settings.hasCompletedFirstRun = true
         if !settings.hasAcceptedCurrentLegal { settings.recordLegalAcceptance() }
         if let modelRaw = scenario?.llamaModel, let model = LlamaModel(rawValue: modelRaw) {
