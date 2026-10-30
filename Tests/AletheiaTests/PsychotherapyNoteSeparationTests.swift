@@ -79,6 +79,16 @@ final class PsychotherapyNoteSeparationTests: XCTestCase {
         ) { XCTAssertEqual($0 as? PsychotherapyExport.ExportError, .nothingToExport) }
     }
 
+    @MainActor func testExportErrorsReadInPlainWords() {
+        for error in [PsychotherapyExport.ExportError.notAuthorized, .nothingToExport] {
+            let message = ExportJobCenter.message(for: error)
+            XCTAssertFalse(message.contains("ExportError"), message)
+            XCTAssertFalse(message.contains("error 1"), message)
+        }
+        XCTAssertTrue(ExportJobCenter.message(for: PsychotherapyExport.ExportError.nothingToExport)
+            .contains("psychotherapy note or private comment"))
+    }
+
     func testArchiveHoldsOnlyPsychotherapyMaterialUnderItsTitle() throws {
         let entry = PsychotherapyNoteEntry(
             date: date(5), note: "Process notes.",

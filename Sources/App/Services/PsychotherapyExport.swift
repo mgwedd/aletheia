@@ -18,10 +18,24 @@ struct PsychotherapyNoteEntry: Equatable, Sendable {
 /// every call here refuses unless the therapist has confirmed she has the
 /// patient's authorization.
 enum PsychotherapyExport {
-    enum ExportError: Error, Equatable {
+    enum ExportError: LocalizedError, Equatable {
         case notAuthorized
         case nothingToExport
+
+        var errorDescription: String? {
+            switch self {
+            case .notAuthorized:
+                return "Psychotherapy notes are exported only after you confirm you have the patient's authorization."
+            case .nothingToExport:
+                return PsychotherapyExport.nothingToExportMessage
+            }
+        }
     }
+
+    /// Shown instead of the confirmation when no session has anything to export.
+    static let nothingToExportTitle = "No psychotherapy notes to export"
+    static let nothingToExportMessage =
+        "None of this patient's sessions has a psychotherapy note or private comment yet."
 
     /// The first line of every file this export writes.
     static let title = "Psychotherapy note: keep separate from the medical record"
@@ -122,6 +136,12 @@ enum PsychotherapyExport {
         progress(1, "Done")
         return PatientArchiveWriter.Outcome(
             sessionCount: entries.filter { !$0.isEmpty }.count, fileCount: files.count, byteCount: zip.count)
+    }
+
+    /// Whether any of `sessions` has a psychotherapy note or private comment,
+    /// checked before the confirmation and save panel are shown.
+    static func hasAnythingToExport(store: Store, sessions: [SessionRecord]) -> Bool {
+        sessions.contains { !load(store: store, session: $0).isEmpty }
     }
 
     /// Reads one session's entry out of a `Store`.
