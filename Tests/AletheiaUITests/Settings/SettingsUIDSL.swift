@@ -91,8 +91,17 @@ extension Then where Subject == AIAndModelsPaneOnScreen {
 /// The alert a failed model download shows.
 struct DownloadFailureAlertOnScreen {
     let driver: AppDriver
-    /// Alerts come as a sheet or a dialog depending on the window; the titles are unique.
-    func button(_ title: String) -> XCUIElement { driver.app.buttons[title].firstMatch }
+    /// Alerts come as a sheet or a dialog depending on the window. Looked up
+    /// there, not app-wide: the alert's buttons are mirrored on the Touch Bar,
+    /// and that copy can't be clicked.
+    func button(_ title: String) -> XCUIElement {
+        let sheet = driver.app.sheets.buttons[title].firstMatch
+        let dialog = driver.app.dialogs.buttons[title].firstMatch
+        let either = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in sheet.exists || dialog.exists }, object: nil)
+        _ = XCTWaiter().wait(for: [either], timeout: 5)
+        return dialog.exists ? dialog : sheet
+    }
 }
 
 extension Given {
