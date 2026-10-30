@@ -213,6 +213,8 @@ final class AppSettings: ObservableObject {
     }
     /// Temporary exception; always resets at launch.
     @Published var allowScreenSharingThisSession = false
+    /// Keeps the Set up Aletheia sheet up until Finish setup; resets at launch.
+    @Published var setupSheetHeldOpen = false
     /// HIPAA §164.312(a)(2)(iii) "automatic logoff": how many minutes of
     /// inactivity before `AppLock` re-engages, one of `IdleAutoLockTimeout`'s
     /// `allCases` values. `0` means "Never" (idle auto-lock off). Only takes
@@ -598,7 +600,10 @@ final class AppSettings: ObservableObject {
     }
 
     static var standardDataRoot: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        #if DEBUG
+        if FixtureMode.isActive { return FixtureMode.root }
+        #endif
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Aletheia/Data", isDirectory: true)
     }
 

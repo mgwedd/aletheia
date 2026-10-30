@@ -93,6 +93,10 @@ struct FixtureScenario: Decodable, Equatable {
     /// Overrides the selected built-in Llama model by its raw identifier.
     var llamaModel: String?
 
+    /// Setup was finished and the terms accepted, but no data folder is chosen
+    /// on the run's first launch, so the Set up Aletheia sheet is up.
+    var noDataFolder: Bool?
+
     var buildTier: BuildTier { tier == "production" ? .production : .dev }
     var appLockOn: Bool { appLock == "on" }
     var licenseOn: Bool { license == "on" || license == "test" }
@@ -195,7 +199,7 @@ enum FixtureMode {
 
     /// Settings as a user who finished first run in a chosen folder.
     static func prepare(_ settings: AppSettings) {
-        settings.dataRootURL = root
+        settings.dataRootURL = scenario?.noDataFolder == true && isFirstLaunchOfRun ? nil : root
         settings.hasCompletedFirstRun = true
         if !settings.hasAcceptedCurrentLegal { settings.recordLegalAcceptance() }
         if let modelRaw = scenario?.llamaModel, let model = LlamaModel(rawValue: modelRaw) {

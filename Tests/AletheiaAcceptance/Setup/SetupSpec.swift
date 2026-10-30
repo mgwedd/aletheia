@@ -106,4 +106,27 @@ final class SetupSpec: AcceptanceCase {
 
         then(when.openFirstRunGate()).sheetShows()
     }
+
+    func test_SETUP_13() async throws {
+        given.noDataFolderChosen()
+
+        let step = when.readDataFolderStep()
+
+        then(step).recommendsTheStandardLocationOnThisMac()
+        then(step).saysWhereOtherFoldersMayBe()
+    }
+
+    func test_SETUP_14() async throws {
+        when.agreeToTerms()
+        when.finishSetup()
+        given.noDataFolderChosen()
+        when.setupSheetAppears()
+
+        try await when.chooseFolder(app.root)
+
+        then(when.openFirstRunGate()).sheetShows()
+        then(when.readDataFolderStep()).saysRecordsWillBeKept(in: when.dataFolderPath)
+        when.finishSetup()
+        then(when.openFirstRunGate()).sheetIsGone()
+    }
 }

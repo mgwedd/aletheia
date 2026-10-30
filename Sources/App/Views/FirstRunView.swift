@@ -42,24 +42,8 @@ struct FirstRunView: View {
 
                     hairline
 
-                    if settings.dataRootURL == nil {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Data folder").font(Theme.Typography.headline)
-                            Text("Keep client records in a local folder. Aletheia keeps this folder out of Time Machine and iCloud by default and does not back it up for you; to back it up, turn that off in Settings > Backups and use an encrypted disk.")
-                                .foregroundStyle(Theme.muted.color)
-                            HStack(spacing: 12) {
-                                Button("Use the standard location") {
-                                    do {
-                                        try settings.useStandardDataRoot()
-                                        appModel.rebuildStore()
-                                    } catch { folderError = error.localizedDescription }
-                                }
-                                .buttonStyle(.themePrimary)
-                                Button("Choose another folder…") { _ = appModel.chooseDataFolder() }
-                                    .buttonStyle(.themed)
-                            }
-                        }
-                    }
+                    dataFolderSection
+
                     SetupChecklistView()
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -128,6 +112,7 @@ struct FirstRunView: View {
             Button("OK", role: .cancel) {}
         } message: { Text(folderError ?? "") }
         .onAppear {
+            FirstRunGate.sheetAppeared(settings: settings)
             if Legal.isAccepted(settings.acceptedLegalVersion) {
                 agreedToLegal = true
             }
@@ -155,8 +140,51 @@ struct FirstRunView: View {
     private func finish() {
         // Record acceptance locally (version + timestamp) at the exact moment
         // the user proceeds, then unlock the app.
-        settings.recordLegalAcceptance(license: license.status.token)
-        settings.hasCompletedFirstRun = true
+        FirstRunGate.finish(settings: settings, license: license.status.token)
+    }
+
+    /// Where client records go. Recommends the standard location, says what
+    /// any other folder must be, and once chosen says where they will be kept.
+    private var dataFolderSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Data folder")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
+            Text(FirstRunDataFolder.rule)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
+            if let root = settings.dataRootURL {
+                Label(FirstRunDataFolder.chosen(root), systemImage: "checkmark.circle.fill")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.accent.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("setup-data-folder-chosen")
+                Text(FirstRunDataFolder.moveLater)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+            } else {
+                Text(FirstRunDataFolder.recommendation)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 12) {
+                    Button(FirstRunDataFolder.standardButton) {
+                        do {
+                            try settings.useStandardDataRoot()
+                            appModel.rebuildStore()
+                        } catch { folderError = error.localizedDescription }
+                    }
+                    .buttonStyle(.themePrimary)
+                    Button(FirstRunDataFolder.otherButton) { _ = appModel.chooseDataFolder() }
+                        .buttonStyle(.themed)
+                }
+            }
+            Text(FirstRunDataFolder.backups)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var hairline: some View {

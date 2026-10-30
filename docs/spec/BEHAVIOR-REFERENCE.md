@@ -1996,6 +1996,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/ToolHealth.swift` · `qa: SETUP-09`
 - **STP-028** When the terms version changes after setup was finished, the setup sheet returns until the new terms are accepted, and every acceptance is kept with its date in the data folder.
   `surface: ui` · `evidence: Sources/App/AletheiaApp.swift, Sources/App/Services/Legal.swift` · `qa: SETUP-12`
+- **STP-029** When no data folder is chosen, the Data folder step says "Client records stay in one folder on this Mac. It can't be in iCloud Drive, Dropbox, Google Drive, OneDrive or Box, or on a network drive, and an external disk works only if it's encrypted." and "Recommended: the standard location, a private folder on this Mac that only Aletheia uses. There's nothing else to set up.", with "Use the standard location" and "Choose another folder…" buttons.
+  `surface: ui` · `evidence: Sources/App/Services/FirstRunGate.swift, Sources/App/Views/FirstRunView.swift` · `qa: SETUP-13`
+- **STP-030** When a data folder is chosen, the step stays on the sheet and says "Client records will be kept in the standard location on this Mac." (or the chosen folder's path) and "You can move it later in Settings."; the sheet stays up until Finish setup, even when the terms were already accepted.
+  `surface: ui` · `evidence: Sources/App/Services/FirstRunGate.swift, Sources/App/Views/FirstRunView.swift` · `qa: SETUP-14`
 
 ## Settings (SET)
 
