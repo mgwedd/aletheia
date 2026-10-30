@@ -74,7 +74,7 @@ struct RootView: View {
             ExportStatusToast(center: exports).padding(16)
         }
         #if DEBUG
-        .overlay(alignment: .topLeading) { if FixtureMode.isActive { FixtureProbeOverlay(); FixtureDigestLogOverlay().offset(x: 4) } }
+        .overlay(alignment: .topLeading) { if FixtureMode.isActive { FixtureProbeOverlay() } }
         #endif
         .dismissOnLock { showSettings = false }
         .sheet(isPresented: $showSettings) {

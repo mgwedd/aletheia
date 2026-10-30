@@ -82,17 +82,11 @@ final class DigestBuilder: ObservableObject {
             }.value
             guard let self, self.builds[session.id]?.id == id else { return }
             if loaded.current {
-                #if DEBUG
-                FixtureDigestLog.note("b current")
-                #endif
                 self.builds[session.id] = nil
                 return
             }
             let cache = SectionDigestCache(entries: loaded.sections, persist: stored.save)
             self.progress[session.id] = AIRunProgress(readTitle: "Reading", startedAt: Date())
-            #if DEBUG
-            FixtureDigestLog.note("b prog")
-            #endif
             do {
                 let digest = try await self.build(transcript: transcript, service: service, live: { started, change in
                     self.update(session.id, build: id, started: started, change)
@@ -109,9 +103,6 @@ final class DigestBuilder: ObservableObject {
                 }
             }
             // A replaced or cancelled build leaves its successor's state alone.
-            #if DEBUG
-            FixtureDigestLog.note("b end \(self.builds[session.id]?.id == id ? "own" : "gone") f\(self.failures[session.id] != nil ? 1 : 0)")
-            #endif
             guard self.builds[session.id]?.id == id else { return }
             self.builds[session.id] = nil
             self.progress[session.id] = nil
