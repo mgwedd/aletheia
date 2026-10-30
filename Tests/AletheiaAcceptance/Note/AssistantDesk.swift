@@ -29,6 +29,8 @@ struct ShownAlert {
 /// Everything on the Notes tab at one moment.
 struct NotePane {
     let text: String
+    /// The note as the reader shows it, with the Markdown rendered.
+    let shown: String
     /// "No SOAP note yet" and its button, when the pane is empty and idle.
     let emptyTitle: String?
     let generateButton: String?
@@ -352,6 +354,7 @@ final class NotesTab {
         let format = desk.settings.progressNoteFormat
         return NotePane(
             text: model.summaryText,
+            shown: NoteReaderView.rendered(model.summaryText).string,
             emptyTitle: idleAndEmpty ? NoteWords.emptyTitle(format: format) : nil,
             generateButton: idleAndEmpty ? NoteWords.generateButton(format: format) : nil,
             isWriting: streaming, isWaiting: queued,
@@ -405,7 +408,7 @@ final class NotesTab {
     }
 
     func waitUntilShowing(_ text: String) async throws {
-        try await desk.waitFor("the pane to show \"\(text)\"", describe: describePane) { self.model.summaryText.contains(text) }
+        try await desk.waitFor("the pane to show \"\(text)\"", describe: describePane) { self.pane.shown.contains(text) }
     }
 
     func waitForAlert() async throws -> ShownAlert {
