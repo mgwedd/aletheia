@@ -34,6 +34,8 @@ final class DigestScheduler: ObservableObject {
     private let builder: DigestBuilder
     private let queue: InferenceQueue
     private let settings: AppSettings
+    /// Where the "still paused" alert goes; set by `Integrations`.
+    var notifier: AppNotifying?
     private var context: () -> Context? = { nil }
     /// Recording, transcription, lock and power state (the scheduler adds the
     /// model, the user's pause, "Prepare now" and failures itself).
@@ -140,6 +142,13 @@ final class DigestScheduler: ObservableObject {
             self?.merge(result, patient: patient.id)
             self?.evaluate()
         }
+    }
+
+    /// A recording ended. The user's pause stays on, so if summaries are waiting, say so.
+    func recordingStopped() {
+        guard settings.summariesPaused, counts.values.contains(where: { $0.ready < $0.needed }) else { return }
+        guard let notifier else { return }
+        Task { await notifier.post(SessionNotifications.transcriptionPausedWithWorkPending()) }
     }
 
     func perform(_ action: DigestSchedulePolicy.Action, patientID: UUID) {

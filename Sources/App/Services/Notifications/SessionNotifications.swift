@@ -89,4 +89,14 @@ enum SessionNotifications {
             body: "Open Aletheia to see why."
         )
     }
+
+    /// A recording ended while the user's own pause on summaries is still on and
+    /// summaries are waiting. Generic: it never names the patient.
+    static func transcriptionPausedWithWorkPending() -> AppNotificationContent {
+        AppNotificationContent(
+            identifier: "digest-paused",
+            title: "Transcription is paused with summaries waiting",
+            body: "You paused summaries, so they stay paused. Press Resume on the patient's page to prepare them."
+        )
+    }
 }
