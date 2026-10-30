@@ -356,7 +356,7 @@ struct ChatPaneView: View {
                     .buttonStyle(.themed)
                     .controlSize(.small)
                     .disabled(isSending)
-                    .hoverTip(HelpTips.compact, arrowEdge: .top)
+                    .hoverTip(HelpTips.compact)
                     .accessibilityIdentifier("chat.compact")
             }
         }

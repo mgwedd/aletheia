@@ -24,4 +24,13 @@ final class SettingsUITests: AcceptanceCase {
         let pane = when.openAIAndModelsSettings()
         then(pane).showsSelectedModel(Copy.llama8BOption)
     }
+
+    func test_SETTINGS_17() {
+        given.licensedAppWhoseDownloadsFail()
+        let pane = when.openAIAndModelsSettings()
+        let alert = when.startADownload(on: pane)
+        then(alert).offers(["Try Again", "Report a Bug"])
+        let again = when.tryAgain(alert)
+        then(again).offers(["Try Again", "Report a Bug"])
+    }
 }

@@ -55,6 +55,11 @@ enum FixtureMode {
     /// The transcript view on screen, so the probe can count its laid-out lines.
     @MainActor static weak var transcriptView: NSTextView?
 
+    /// The network helper model downloads use, or nil for the real one.
+    static var modelDownloadHelper: NetworkHelping? {
+        scenario?.modelDownloadFails == true ? FixtureUnreachableHelper() : nil
+    }
+
     /// The transcriber the fixture build uses, or nil for the real one.
     static var transcriber: Transcribing? {
         scenario?.slowTranscription == true ? FixtureSlowTranscriber() : nil
@@ -449,6 +454,18 @@ enum FixtureProbe {
             lines += 1
         }
         return lines
+    }
+}
+/// A network helper that can't be reached: every call fails.
+struct FixtureUnreachableHelper: NetworkHelping {
+    private var unreachable: Error { ModelDownloadError.downloadFailed("The network helper isn't available.") }
+    func fetchAppcast() async throws -> Data { throw unreachable }
+    func fetchRevocations() async throws -> Data { throw unreachable }
+    func download(
+        _ asset: AssetID, expectedSHA256: String, to destination: URL,
+        onProgress: @escaping @Sendable (Double) -> Void
+    ) async throws {
+        throw unreachable
     }
 }
 #endif

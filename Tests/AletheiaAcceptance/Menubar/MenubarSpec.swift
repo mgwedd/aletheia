@@ -124,6 +124,8 @@ final class MenubarSpec: AcceptanceCase {
         then(rest).showsNothingAfter(seconds: 1.9)
         then(rest).showsTheTipAfter(seconds: 2)
         then(rest).showsNothingOnceThePointerLeaves()
+        then(rest).opensJustBelowThePointer()
+        then(rest).closesWhenThePointerLeaves()
     }
 
     func test_MENUBAR_14() async throws {

@@ -7,8 +7,9 @@ private let log = Logger(subsystem: "com.aletheia", category: "Tips")
 // MARK: - Tips
 
 /// A "how this works" line that used to sit in the layout. It now shows once,
-/// as a popover after the pointer rests on its control (`hoverTip(_:)`), and
-/// stays away after it has been read. The same text stays on the control as
+/// as a popover just below the pointer after it rests on its control
+/// (`hoverTip(_:)`), closes when the pointer leaves, and stays away after it
+/// has been read. The same text stays on the control as
 /// its VoiceOver hint, and as its tooltip once the tip has been read.
 ///
 /// Read state is keyed by `id` alone, so a tip whose text follows a selection
@@ -120,6 +121,8 @@ struct HoverIntent {
     let delay: Duration
     private var generation = 0
     private var armed: Deadline?
+    /// The tip is on screen: from its deadline until the pointer leaves.
+    private(set) var isShowing = false
 
     init(delay: Duration = HoverIntent.defaultDelay) {
         self.delay = delay
@@ -133,41 +136,65 @@ struct HoverIntent {
         return deadline
     }
 
-    /// The pointer left: nothing fires until it enters again.
+    /// The pointer left: a showing tip closes, and nothing fires until it
+    /// enters again.
     mutating func exit() {
         generation += 1
         armed = nil
+        isShowing = false
     }
 
     func isDue(_ deadline: Deadline, at now: ContinuousClock.Instant) -> Bool {
         armed == deadline && now >= deadline.instant
+    }
+
+    /// The view's timer woke at `now`: the tip shows if `deadline` is due.
+    mutating func wake(_ deadline: Deadline, at now: ContinuousClock.Instant) -> Bool {
+        if isDue(deadline, at: now) { isShowing = true }
+        return isShowing
+    }
+}
+
+/// Where a tip opens: just below the pointer, where a tooltip would, on every
+/// control. Anchored to the view's bounds instead, a tall control put the
+/// tip at its top or bottom center, far from the pointer.
+enum HoverTipPlacement {
+    /// Clears the arrow cursor drawn below the pointer's hotspot.
+    static let gap: CGFloat = 18
+
+    /// The point the popover's arrow touches, in the control's coordinates.
+    static func anchor(below pointer: CGPoint) -> CGRect {
+        CGRect(x: pointer.x, y: pointer.y + gap, width: 1, height: 1)
     }
 }
 
 // MARK: - Modifier
 
 extension View {
-    /// Shows `tip` in a popover once the pointer has rested on this view for
-    /// two seconds, until it has been read. Closing or dismissing the popover
-    /// counts as read; it doesn't come back.
-    func hoverTip(_ tip: HelpTip, arrowEdge: Edge = .bottom) -> some View {
-        modifier(HoverTipModifier(tip: tip, arrowEdge: arrowEdge))
+    /// Shows `tip` in a popover below the pointer once it has rested on this
+    /// view for two seconds, until it has been read. The popover closes when
+    /// the pointer leaves; once shown it counts as read and doesn't come back.
+    func hoverTip(_ tip: HelpTip) -> some View {
+        modifier(HoverTipModifier(tip: tip))
     }
 
     /// No tip when `tip` is nil.
     @ViewBuilder
-    func hoverTip(_ tip: HelpTip?, arrowEdge: Edge = .bottom) -> some View {
-        if let tip { modifier(HoverTipModifier(tip: tip, arrowEdge: arrowEdge)) } else { self }
+    func hoverTip(_ tip: HelpTip?) -> some View {
+        if let tip { modifier(HoverTipModifier(tip: tip)) } else { self }
     }
 }
 
 private struct HoverTipModifier: ViewModifier {
     let tip: HelpTip
-    let arrowEdge: Edge
 
     @State private var intent = HoverIntent()
     @State private var pending: Task<Void, Never>?
     @State private var isPresented = false
+    @State private var isInside = false
+    @State private var pointer = CGPoint.zero
+    /// Fixed when the tip opens, so it doesn't chase the pointer.
+    @State private var anchor = CGRect.zero
     /// TipKit's view of the tip: false once read (or if TipKit isn't set up).
     @State private var isUnread = false
 
@@ -177,14 +204,17 @@ private struct HoverTipModifier: ViewModifier {
             // earlier would only cover it.
             .help(isUnread ? "" : tip.text)
             .accessibilityHint(Text(tip.text))
-            .onHover(perform: hoverChanged)
-            .popover(isPresented: $isPresented, arrowEdge: arrowEdge) {
+            .onContinuousHover(coordinateSpace: .local, perform: hoverChanged)
+            .popover(isPresented: $isPresented, attachmentAnchor: .rect(.rect(anchor)), arrowEdge: .bottom) {
                 TipView(tip)
                     .tipViewStyle(ThemedTipViewStyle())
                     .tipBackground(Theme.raised.color)
             }
             .onChange(of: isPresented) { _, shown in
-                if !shown { tip.invalidate(reason: .tipClosed) }
+                if !shown {
+                    tip.invalidate(reason: .tipClosed)
+                    intent.exit()
+                }
             }
             .task(id: tip.id) {
                 for await shouldDisplay in tip.shouldDisplayUpdates {
@@ -194,56 +224,51 @@ private struct HoverTipModifier: ViewModifier {
             .onDisappear {
                 pending?.cancel()
                 intent.exit()
+                isPresented = false
             }
     }
 
-    private func hoverChanged(_ inside: Bool) {
-        pending?.cancel()
-        guard inside, isUnread else {
+    private func hoverChanged(_ phase: HoverPhase) {
+        switch phase {
+        case .active(let location):
+            pointer = location
+            guard !isInside else { return }
+            isInside = true
+            arm()
+        case .ended:
+            isInside = false
+            pending?.cancel()
             intent.exit()
-            return
+            isPresented = false
         }
+    }
+
+    private func arm() {
+        pending?.cancel()
+        guard isUnread else { return }
         let deadline = intent.enter(at: .now)
         pending = Task { @MainActor in
             try? await Task.sleep(until: deadline.instant, clock: .continuous)
-            if !Task.isCancelled, intent.isDue(deadline, at: .now) {
+            if !Task.isCancelled, intent.wake(deadline, at: .now) {
+                anchor = HoverTipPlacement.anchor(below: pointer)
                 isPresented = true
             }
         }
     }
 }
 
-/// The tip in the app's own colors, with a close button from the theme kit.
+/// The tip in the app's own colors. No close button: like a tooltip, it
+/// closes when the pointer leaves its control (or on Escape).
 private struct ThemedTipViewStyle: TipViewStyle {
     func makeBody(configuration: Configuration) -> some View {
-        ThemedTipCard(configuration: configuration)
-    }
-}
-
-private struct ThemedTipCard: View {
-    let configuration: TipViewStyleConfiguration
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 4) {
-                configuration.title?
-                    .font(Theme.Typography.control)
-                    .foregroundStyle(Theme.text.color)
-                configuration.message?
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.muted.color)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Button {
-                configuration.tip.invalidate(reason: .tipClosed)
-                dismiss()
-            } label: {
-                Label("Close tip", systemImage: "xmark")
-            }
-            .buttonStyle(.themeIcon)
-            .controlSize(.small)
+        VStack(alignment: .leading, spacing: 4) {
+            configuration.title?
+                .font(Theme.Typography.control)
+                .foregroundStyle(Theme.text.color)
+            configuration.message?
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.muted.color)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .frame(width: 300, alignment: .leading)
