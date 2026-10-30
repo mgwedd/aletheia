@@ -126,10 +126,12 @@ final class HelpTipsTests: XCTestCase {
         XCTAssertTrue(source.contains(".focusEffectDisabled()"))
     }
 
-    /// Compaction isn't a word therapists use; the tip says what it does and why.
+    /// Compaction isn't a word therapists use; the tip says, in one sentence, what it does and why.
     func testCompactTipExplainsWhatAndWhy() throws {
-        XCTAssertTrue(HelpTips.compact.text.contains("summary"))
-        XCTAssertTrue(HelpTips.compact.text.contains("/compact"))
+        let text = HelpTips.compact.text
+        XCTAssertTrue(text.contains("summary"))
+        XCTAssertTrue(text.contains("fast"))
+        XCTAssertEqual(text.filter { ".!?".contains($0) }.count, 1, "one sentence")
         let pane = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
