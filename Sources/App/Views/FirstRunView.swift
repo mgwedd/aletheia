@@ -101,7 +101,9 @@ struct FirstRunView: View {
             .background(Theme.panel.color)
             .themeDivider(.top)
         }
-        .frame(width: 720, height: 720)
+        // At most 720 tall, and shorter on a small display so Finish setup
+        // stays on screen; the steps above it scroll.
+        .frame(width: 720, height: Self.sheetHeight)
         .interactiveDismissDisabled()
         .background(Theme.panel.color)
         .textSelection(.enabled)
@@ -117,6 +119,11 @@ struct FirstRunView: View {
                 agreedToLegal = true
             }
         }
+    }
+
+    private static var sheetHeight: CGFloat {
+        let screen = NSScreen.main?.visibleFrame.height ?? 820
+        return min(720, max(480, screen - 100))
     }
 
     /// Primary once the required steps are done; the standard (disabled) style
