@@ -48,6 +48,8 @@ extension Given {
             $0.aiParts = parts
             $0.contextTokens = contextTokens
             $0.aiModelMissing = modelMissing
+            // With a stage time the answer is written a word at a time, so it is seen being written.
+            $0.aiStreamsWords = stageMs != nil ? true : nil
         }
     }
 }
@@ -83,7 +85,7 @@ extension Then where Subject == AskTabOnScreen {
     }
 
     func doesNotShowText(_ words: String) {
-        expect(!subject.driver.exists(subject.driver.anything(containing: words)), "\"\(words)\" is still shown")
+        expect(subject.driver.gone(subject.driver.anything(containing: words)), "\"\(words)\" is still shown")
     }
 
     func statusReads(_ words: String) {
