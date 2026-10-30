@@ -277,9 +277,9 @@ def self_test(root: Path) -> None:
                 bad.append(f"planting {text.strip()!r} in {path} was not caught ({expected})")
             (scratch / path).write_text(original, encoding="utf-8")
         # The date check reads Legal.currentVersion from the Swift source.
-        legal = scratch / "Sources/App/Services/Legal.swift"
-        legal.write_text(re.sub(r'currentVersion = "[^"]+"', 'currentVersion = "1970-01-01"',
-                                legal.read_text(encoding="utf-8")), encoding="utf-8")
+        version_file = scratch / "Sources/App/Services/Legal.swift"
+        version_file.write_text(re.sub(r'currentVersion = "[^"]+"', 'currentVersion = "1970-01-01"',
+                                version_file.read_text(encoding="utf-8")), encoding="utf-8")
         if not any("is older than" in f for f in run(scratch)):
             bad.append("an old Legal.currentVersion was not caught")
     if bad:
