@@ -365,13 +365,26 @@ jobs:
 
   # The UI tests: XCUITest drives the real Debug app in fixture mode (see
   # Sources/App/FixtureMode). The audio fixtures are rendered here with `say`,
-  # because committed audio is rejected by scan-secrets.sh.
-  ui-tests:
-    name: UI tests
+  # because committed audio is rejected by scan-secrets.sh. The classes run in
+  # three shards of about the same length; the last shard runs every class the
+  # first two don't name, so a new class is never left out. The "UI tests" job
+  # passes only when every shard passed.
+  ui-tests-shard:
+    name: UI tests (${{ matrix.shard }})
     needs: changes
     if: ${{ !cancelled() }}
     runs-on: ${{ needs.changes.outputs.code == 'false' && 'ubuntu-latest' || 'macos-15' }}
-    timeout-minutes: 15
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: chat-settings
+            only: "ChatUITests SettingsUITests"
+          - shard: import-transcribe-license
+            only: "ImportAudioTests TranscribeUITests LicenseUITests SpikeTests"
+          - shard: rest
+            skip: "ChatUITests SettingsUITests ImportAudioTests TranscribeUITests LicenseUITests SpikeTests"
     env:
       RUN_BUILD: ${{ needs.changes.outputs.code != 'false' }}
       NSUnbufferedIO: "YES"
@@ -407,8 +420,18 @@ jobs:
 
       - name: Run UI tests (dev tier)
         if: env.RUN_BUILD == 'true'
+        env:
+          ONLY_CLASSES: ${{ matrix.only }}
+          SKIP_CLASSES: ${{ matrix.skip }}
         run: |
           set -o pipefail
+          SELECT=()
+          if [ -n "$ONLY_CLASSES" ]; then
+            for c in $ONLY_CLASSES; do SELECT+=("-only-testing:AletheiaUITests/$c"); done
+          else
+            SELECT+=("-only-testing:AletheiaUITests")
+            for c in $SKIP_CLASSES; do SELECT+=("-skip-testing:AletheiaUITests/$c"); done
+          fi
           xcodebuild test \
             -project Aletheia.xcodeproj \
             -scheme AletheiaUITests \
@@ -420,6 +443,7 @@ jobs:
             -default-test-execution-time-allowance 60 \
             -maximum-test-execution-time-allowance 120 \
             -resultBundlePath build/UITestResults.xcresult \
+            "${SELECT[@]}" \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS="DEBUG ALETHEIA_PREVIEW ALETHEIA_DEV" \
             | xcbeautify --renderer github-actions
 
@@ -427,7 +451,21 @@ jobs:
         if: failure() && env.RUN_BUILD == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: UITestResults
+          name: UITestResults-${{ matrix.shard }}
           path: build/UITestResults.xcresult
           retention-days: 7
           if-no-files-found: ignore
+
+  ui-tests:
+    name: UI tests
+    needs: ui-tests-shard
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every UI test shard passed
+        env:
+          SHARDS: ${{ needs.ui-tests-shard.result }}
+        run: |
+          echo "UI test shards: $SHARDS"
+          [ "$SHARDS" = "success" ]
