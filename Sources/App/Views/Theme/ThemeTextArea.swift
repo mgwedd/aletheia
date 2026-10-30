@@ -263,6 +263,11 @@ final class ThemeTextAreaTextView: PatientTextView {
             return ThemeTextAreaMetrics.height(forContentHeight: text)
         }
 
+        // SwiftUI asks for the same few widths many times in one layout pass;
+        // building a text system for each answer made a long pass take minutes.
+        if measured.text != string || measured.face != face { measured = (string, face, [:]) }
+        if let height = measured.heights[targetWidth] { return height }
+
         // Measure on a dedicated offscreen container so the live container's
         // geometry is never mutated during a layout pass, which would trigger
         // a layout invalidation liveloop.
@@ -277,8 +282,14 @@ final class ThemeTextAreaTextView: PatientTextView {
         let oneLine = measureLayout.defaultLineHeight(for: ThemeTextAreaMetrics.font(for: face)) + ThemeTextAreaMetrics.lineSpacing
         let extra = measureLayout.extraLineFragmentRect
         let text = max(used.height, extra.isEmpty ? 0 : extra.maxY, oneLine)
-        return ThemeTextAreaMetrics.height(forContentHeight: text)
+        let height = ThemeTextAreaMetrics.height(forContentHeight: text)
+        if measured.heights.count >= 16 { measured.heights.removeAll() }
+        measured.heights[targetWidth] = height
+        return height
     }
+
+    /// Offscreen heights by container width, for `measured.text` in `measured.face`.
+    private var measured: (text: String, face: ThemeTextArea.Face, heights: [CGFloat: CGFloat]) = ("", .body, [:])
 }
 
 // MARK: - Representable
