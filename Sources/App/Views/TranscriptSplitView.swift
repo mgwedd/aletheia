@@ -1,7 +1,4 @@
 import SwiftUI
-#if canImport(AppKit)
-import AppKit
-#endif
 
 /// The transcript on the left and its comments on the right, per
 /// `TranscriptSplit`: the comments appear only when there are some, a
@@ -66,20 +63,17 @@ struct TranscriptSplitView<Transcript: View, Comments: View>: View {
     /// How the split animates when a side collapses or opens.
     private static var animation: Animation { .easeInOut(duration: 0.22) }
 
-    /// An invisible strip that takes the drag: over the divider (reaching into
-    /// the comments side, so it never covers the transcript's scroll bar), or,
-    /// when a side is collapsed, over the strip's inner edge, so the side can be
-    /// dragged back open. It is an AppKit view: the transcript and the comments
-    /// are AppKit scroll views, and a SwiftUI gesture laid over them never
-    /// receives the mouse. A click on it (no drag) acts as the strip's arrow.
+    /// The shared divider grip (`PaneDividerGrip`): over the divider, or, when a
+    /// side is collapsed, over the strip's inner edge, so the side can be
+    /// dragged back open. A click on it (no drag) acts as the strip's arrow.
     private func grip(layout: TranscriptSplit.Layout, total: CGFloat) -> some View {
         let x: CGFloat
         switch layout.strip {
-        case .transcript?: x = TranscriptSplit.stripWidth - Self.gripWidth
+        case .transcript?: x = TranscriptSplit.stripWidth - PaneDivider.gripWidth
         case .comments?: x = layout.transcript
-        case nil: x = layout.transcript - 1
+        case nil: x = layout.transcript - PaneDivider.gripLead
         }
-        return DividerGrip(
+        return PaneDividerGrip(
             onDrag: { translation in
                 let start = dragStart ?? TranscriptSplit.dragOrigin(layout, total: total)
                 dragStart = start
@@ -90,13 +84,11 @@ struct TranscriptSplitView<Transcript: View, Comments: View>: View {
             },
             onEnd: { dragStart = nil }
         )
-        .frame(width: Self.gripWidth)
+        .frame(width: PaneDivider.gripWidth)
         .frame(maxHeight: .infinity)
         .offset(x: x)
         .accessibilityHidden(true)
     }
-
-    private static var gripWidth: CGFloat { 8 }
 
     private func apply(_ result: TranscriptSplit.DragResult) {
         switch result {
@@ -163,53 +155,3 @@ private struct CollapsedStrip: View {
         .onHover { hovering = $0 }
     }
 }
-
-#if canImport(AppKit)
-/// The divider's drag handle: shows the left-right resize cursor and reports
-/// how far the mouse has moved since it went down.
-private struct DividerGrip: NSViewRepresentable {
-    let onDrag: (CGFloat) -> Void
-    let onClick: () -> Void
-    let onEnd: () -> Void
-
-    func makeNSView(context: Context) -> TranscriptSplitGripView { TranscriptSplitGripView() }
-    func updateNSView(_ nsView: TranscriptSplitGripView, context: Context) {
-        nsView.onDrag = onDrag
-        nsView.onClick = onClick
-        nsView.onEnd = onEnd
-    }
-}
-
-final class TranscriptSplitGripView: NSView {
-    var onDrag: (CGFloat) -> Void = { _ in }
-    var onClick: () -> Void = {}
-    var onEnd: () -> Void = {}
-    private var downX: CGFloat?
-    private var moved = false
-
-    override var mouseDownCanMoveWindow: Bool { false }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .resizeLeftRight)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        downX = event.locationInWindow.x
-        moved = false
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let downX else { return }
-        if abs(event.locationInWindow.x - downX) > 3 { moved = true }
-        onDrag(event.locationInWindow.x - downX)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        guard downX != nil else { return }
-        downX = nil
-        let wasClick = !moved
-        onEnd()
-        if wasClick { onClick() }
-    }
-}
-#endif

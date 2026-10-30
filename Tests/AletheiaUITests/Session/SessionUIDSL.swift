@@ -56,6 +56,18 @@ extension Then where Subject == PatientPageOnScreen {
                "the list does not say \"\(Copy.noSessionsYet)\"")
     }
 
+    func splitsEvenly() {
+        let list = subject.list.frame.width
+        let session = subject.sessionPane.frame.width
+        expect(abs(list - session) <= 0.05 * (list + session),
+               "the list opens \(list) wide beside a session \(session) wide")
+    }
+
+    /// The divider's grab area is wide enough to catch with the mouse.
+    func dividerIsEasyToGrab() {
+        expect(subject.divider.frame.width >= 12, "the divider's grab area is \(subject.divider.frame.width) wide")
+    }
+
     func showsNoEmptySessionPane() {
         expect(!subject.sessionPane.exists, "a session pane sits beside a list with no sessions")
         expect(!subject.driver.text(containing: Copy.selectASession).exists,

@@ -17,6 +17,9 @@ struct SessionListPage {
     let button: String
     /// Whether the session pane sits beside the list.
     let showsSessionPane: Bool
+    /// The list's width as it opens on a page `pageWidth` wide.
+    let listWidth: CGFloat
+    let pageWidth: CGFloat
 }
 
 /// The divider between a patient's session list and the open session, dragged.
@@ -99,6 +102,9 @@ extension When {
         }
     }
 
+    /// The patient page's width in these checks: a typical window, less the sidebar.
+    static let pageWidth: CGFloat = 1100
+
     /// Opens a patient page and reads what the empty session list says.
     func openPatientPage(of patient: Patient) throws -> SessionListPage {
         let count = try XCTUnwrap(app.appModel.store).listSessions(for: patient).count
@@ -106,13 +112,15 @@ extension When {
             showsEmptyState: SessionListEmptyState.isShown(sessionCount: count),
             title: SessionListEmptyState.title,
             button: SessionListEmptyState.newSessionButton,
-            showsSessionPane: PatientPageLayout.showsSessionPane(sessionCount: count))
+            showsSessionPane: PatientPageLayout.showsSessionPane(sessionCount: count),
+            listWidth: PatientPageLayout.listWidth(share: PatientPageLayout.defaultListShare, total: Self.pageWidth),
+            pageWidth: Self.pageWidth)
     }
 
     /// Drags the divider on a patient page `pageWidth` points wide by `points`
     /// (positive to the right), starting from the list's default width.
-    func dragColumnDivider(by points: CGFloat, pageWidth: CGFloat = 1100) -> ColumnDrag {
-        let before = PatientPageLayout.listWidth(proposed: PatientPageLayout.listIdealWidth, total: pageWidth)
+    func dragColumnDivider(by points: CGFloat, pageWidth: CGFloat = When.pageWidth) -> ColumnDrag {
+        let before = PatientPageLayout.listWidth(share: PatientPageLayout.defaultListShare, total: pageWidth)
         return ColumnDrag(
             pageWidth: pageWidth,
             listBefore: before,
@@ -202,6 +210,12 @@ extension Then where Subject == SessionListPage {
 
     func showsTheSessionBesideTheList() {
         expect(subject.showsSessionPane, "no session pane beside a list with sessions")
+    }
+
+    func splitsThePageEvenly() {
+        let session = subject.pageWidth - subject.listWidth - 1
+        expect(abs(subject.listWidth - session) <= 1,
+               "the list opens \(subject.listWidth) wide beside a session \(session) wide")
     }
 }
 

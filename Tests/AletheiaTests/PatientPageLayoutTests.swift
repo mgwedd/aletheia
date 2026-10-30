@@ -10,11 +10,30 @@ final class PatientPageLayoutTests: XCTestCase {
     func testDraggedWidthIsKeptInRange() {
         XCTAssertEqual(PatientPageLayout.listWidth(proposed: 450, total: 1200), 450)
         XCTAssertEqual(PatientPageLayout.listWidth(proposed: 100, total: 1200), PatientPageLayout.listMinWidth)
-        XCTAssertEqual(PatientPageLayout.listWidth(proposed: 2000, total: 1200), PatientPageLayout.listMaxWidth)
+        XCTAssertEqual(PatientPageLayout.listWidth(proposed: 2000, total: 1200), 1200 - 1 - PatientPageLayout.sessionMinWidth)
+    }
+
+    func testOpensSplitEvenly() {
+        XCTAssertEqual(PatientPageLayout.listWidth(share: PatientPageLayout.defaultListShare, total: 1101), 550)
+    }
+
+    func testABrokenShareFallsBackToAnEvenSplit() {
+        XCTAssertEqual(PatientPageLayout.listWidth(share: .nan, total: 1001), 500)
+        XCTAssertEqual(PatientPageLayout.listWidth(share: 7, total: 1001), 500)
+    }
+
+    func testADraggedWidthIsKeptAsAShareOfThePage() {
+        let share = PatientPageLayout.share(listWidth: 400, total: 1001)
+        XCTAssertEqual(PatientPageLayout.listWidth(share: share, total: 1001), 400, accuracy: 0.001)
+        XCTAssertEqual(PatientPageLayout.listWidth(share: share, total: 1501), 600, accuracy: 0.001)
+    }
+
+    func testDividerGripIsWideEnoughToGrab() {
+        XCTAssertGreaterThanOrEqual(PaneDivider.gripWidth, 12)
     }
 
     func testSessionKeepsItsMinimumInANarrowPage() {
-        XCTAssertEqual(PatientPageLayout.listWidth(proposed: 600, total: 800), 800 - PatientPageLayout.sessionMinWidth)
+        XCTAssertEqual(PatientPageLayout.listWidth(proposed: 600, total: 800), 800 - 1 - PatientPageLayout.sessionMinWidth)
     }
 
     func testListMinimumWinsWhenThePageIsTooNarrowForBoth() {

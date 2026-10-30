@@ -48,7 +48,7 @@ struct PatientDetailView: View {
     @State private var errorMessage: String?
     @State private var showNothingToExport = false
     /// The session list's width, dragged by the divider; kept per window.
-    @SceneStorage("patientListWidth") private var listWidth: Double = Double(PatientPageLayout.listIdealWidth)
+    @SceneStorage("patientListShare") private var listShare: Double = PatientPageLayout.defaultListShare
     @State private var dragStartWidth: CGFloat?
     /// The selected session, resolved against the current listing so a session
     /// that has dropped out of it can't leave a dangling selection.
@@ -70,7 +70,8 @@ struct PatientDetailView: View {
         // edge of a small window. This one re-clamps to the window every layout.
         GeometryReader { geometry in
         let showsSession = PatientPageLayout.showsSessionPane(sessionCount: sessions.count)
-        let width = PatientPageLayout.listWidth(proposed: CGFloat(listWidth), total: geometry.size.width)
+        let width = PatientPageLayout.listWidth(share: listShare, total: geometry.size.width)
+        ZStack(alignment: .topLeading) {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 header
@@ -133,7 +134,10 @@ struct PatientDetailView: View {
             .accessibilityIdentifier("patient-session-list-column")
 
             if showsSession {
-            columnDivider(width: width, total: geometry.size.width)
+            Rectangle()
+                .fill(Theme.line.color)
+                .frame(width: PatientPageLayout.dividerWidth)
+                .frame(maxHeight: .infinity)
 
             // One frame for both states: swapping a session for the placeholder
             // must not change the pane's size.
@@ -164,6 +168,10 @@ struct PatientDetailView: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("patient-session-pane")
             }
+        }
+        if showsSession {
+            columnDivider(width: width, total: geometry.size.width)
+        }
         }
         }
         .navigationTitle(storedPatient.name)
@@ -204,33 +212,22 @@ struct PatientDetailView: View {
     }
 
     /// The line between the session list and the session; drag it to resize.
+    /// The grab area over the line between the list and the session.
     private func columnDivider(width: CGFloat, total: CGFloat) -> some View {
-        Rectangle()
-            .fill(Theme.line.color)
-            .frame(width: 1)
-            .frame(maxHeight: .infinity)
-            .overlay {
-                Color.clear
-                    .frame(width: 9)
-                    .contentShape(Rectangle())
-                    .onHover { inside in
-                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-                    }
-                    .gesture(
-                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                            .onChanged { drag in
-                                let start = dragStartWidth ?? width
-                                dragStartWidth = start
-                                listWidth = Double(PatientPageLayout.listWidth(
-                                    proposed: start + drag.translation.width, total: total))
-                            }
-                            .onEnded { _ in dragStartWidth = nil }
-                    )
-            }
-            .zIndex(1)
-            .accessibilityElement()
-            .accessibilityIdentifier("patient-page-divider")
-            .accessibilityLabel("Session list width")
+        PaneDividerGrip(
+            accessibilityID: "patient-page-divider",
+            accessibilityLabel: "Session list width",
+            onDrag: { translation in
+                let start = dragStartWidth ?? width
+                dragStartWidth = start
+                let dragged = PatientPageLayout.listWidth(proposed: start + translation, total: total)
+                listShare = PatientPageLayout.share(listWidth: dragged, total: total)
+            },
+            onEnd: { dragStartWidth = nil }
+        )
+        .frame(width: PaneDivider.gripWidth)
+        .frame(maxHeight: .infinity)
+        .offset(x: width - PaneDivider.gripLead)
     }
 
     private struct SessionSelection {

@@ -79,7 +79,14 @@ final class TranscriptSplitGripTests: XCTestCase {
 
     func testTheDividerIsHitByTheGrip() {
         let hit = window.contentView?.hitTest(NSPoint(x: dividerX + 3, y: 300))
-        XCTAssertTrue(hit is TranscriptSplitGripView, "hit \(String(describing: hit))")
+        XCTAssertTrue(hit is PaneDividerGripView, "hit \(String(describing: hit))")
+    }
+
+    func testTheWholeSharedGripWidthIsHit() {
+        for x in [dividerX - PaneDivider.gripLead + 0.5, dividerX + PaneDivider.gripWidth - PaneDivider.gripLead - 2] {
+            let hit = window.contentView?.hitTest(NSPoint(x: x, y: 300))
+            XCTAssertTrue(hit is PaneDividerGripView, "x \(x) hit \(String(describing: hit))")
+        }
     }
 
     func testDraggingTheDividerResizesTheSplit() {
@@ -94,7 +101,7 @@ final class TranscriptSplitGripTests: XCTestCase {
         drag(from: dividerX + 3, by: past)
         XCTAssertEqual(model.collapsed, .comments)
         settleAnimation()
-        XCTAssertFalse(window.contentView?.hitTest(NSPoint(x: dividerX + 3, y: 300)) is TranscriptSplitGripView)
+        XCTAssertFalse(window.contentView?.hitTest(NSPoint(x: dividerX + 3, y: 300)) is PaneDividerGripView)
     }
 
     func testDraggingTheTranscriptTooNarrowSnapsItClosed() {
@@ -112,7 +119,7 @@ final class TranscriptSplitGripTests: XCTestCase {
         model.collapsed = .comments
         settleAnimation()
         let hit = window.contentView?.hitTest(NSPoint(x: commentsStripEdgeX, y: 300))
-        XCTAssertTrue(hit is TranscriptSplitGripView, "hit \(String(describing: hit))")
+        XCTAssertTrue(hit is PaneDividerGripView, "hit \(String(describing: hit))")
     }
 
     func testDraggingTheCollapsedCommentsStripOutwardsReopensThem() {

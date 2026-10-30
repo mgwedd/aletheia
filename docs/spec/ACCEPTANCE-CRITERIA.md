@@ -47,7 +47,7 @@ Before you start: a patient with no sessions.
 - **SESSION-07** Choose **Remind Me** > Tomorrow (dev build) → Reminders gains a "Follow up" item that names no patient.
 - **SESSION-08** Run the Shortcuts action "Show Today's Sessions" (dev build) → sessions are listed by initials, and when locked it refuses.
 - **SESSION-09** With FileVault off, click **New session** → an alert asks you to turn on FileVault and no session is created.
-- **SESSION-10** Open a patient with a session and drag the divider between the session list and the session → the list widens or narrows with it, and stops before either side gets too narrow to use.
+- **SESSION-10** Open a patient with a session → the page splits evenly between the session list and the session; drag the divider between them (an easy-to-grab strip, as wide as every pane divider) → the list widens or narrows with it, and stops before either side gets too narrow to use.
 
 ## 4. Record a session (RECORD)
 Before you start: a session with no transcript, a Mac that can play some audio, and microphone and call-audio permissions not yet decided.

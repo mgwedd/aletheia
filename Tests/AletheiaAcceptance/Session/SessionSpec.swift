@@ -98,7 +98,9 @@ final class SessionSpec: AcceptanceCase {
     func test_SESSION_10() async throws {
         let jane = try await given.patient(named: "Jane Doe")
         try when.clickNewSession(for: jane)
-        then(try when.openPatientPage(of: jane)).showsTheSessionBesideTheList()
+        let page = try when.openPatientPage(of: jane)
+        then(page).showsTheSessionBesideTheList()
+        then(page).splitsThePageEvenly()
 
         then(when.dragColumnDivider(by: 120)).movesTheListBy(120)
         then(when.dragColumnDivider(by: -60)).movesTheListBy(-60)
