@@ -71,6 +71,11 @@ self_test() {
     expect code true  .github/workflows/smoke-test.yml
     expect code true  scripts/build.sh
     expect code true  Sources/App/Views/Notes.md.swift
+    # Bundled into the app by project.yml, so not docs-only.
+    expect code true  TERMS.md
+    expect code true  PRIVACY.md
+    expect code true  THIRD-PARTY-NOTICES.md
+    expect code false docs/TERMS.md SECURITY.md CONSENT.md
     expect benchmarks true  Sources/App/Services/Search/SearchIndex.swift
     expect benchmarks true  Sources/App/Services/TranscriptCompactor.swift
     expect benchmarks true  Sources/App/Services/TextSearch.swift
@@ -275,23 +280,17 @@ else:
     for c in classes:
         if c not in known:
             bad(f"smoke-test.yml: subset names {c}, which is not a test class under Tests/AletheiaTests")
-# Docs-only changes skip the unit tests, so the acceptance job (macOS either way)
-# must run the two document-reading classes itself.
-acc = smoke["jobs"]["acceptance"]
-doc_step = next((s for s in acc["steps"] if s.get("name") == "Run the documentation unit tests"), None)
-if doc_step is None:
-    bad("smoke-test.yml: acceptance needs a 'Run the documentation unit tests' step")
-else:
-    if "needs.changes.outputs.code == 'false'" not in str(doc_step.get("if", "")):
-        bad("smoke-test.yml: the documentation unit tests must run when code == 'false'")
-    for c in ("DocsClaimsTests", "LegalTests"):
-        if f"-only-testing:AletheiaTests/{c}" not in doc_step.get("run", ""):
-            bad(f"smoke-test.yml: the documentation unit tests must include {c}")
 guard = [s.get("run", "") for s in smoke["jobs"]["entitlements-guard"]["steps"]]
 if not any("check-ci-gating.sh" in r and "--self-test" not in r for r in guard):
     bad("smoke-test.yml: entitlements-guard job must run scripts/check-ci-gating.sh")
 if not any("check-ci-gating.sh --self-test" in r for r in guard):
     bad("smoke-test.yml: entitlements-guard job must self-test scripts/check-ci-gating.sh")
+# Docs-only changes skip the build, so the document checks run in this
+# always-on Ubuntu job, not in the Swift tests.
+if not any("scripts/check-docs.py" in r and "--self-test" not in r for r in guard):
+    bad("smoke-test.yml: entitlements-guard job must run scripts/check-docs.py")
+if not any("scripts/check-docs.py --self-test" in r for r in guard):
+    bad("smoke-test.yml: entitlements-guard job must self-test scripts/check-docs.py")
 
 # cd.yml / bench.yml: changes job + job-level if, names unchanged
 def check_gated(path, jobid, jobname, area):

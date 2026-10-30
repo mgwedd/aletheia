@@ -121,8 +121,9 @@ blocks a release is a separate call.
 One `acceptance` job on a standard `macos-15` runner, sharded by journey with a
 matrix, each shard selecting its specs with `-only-testing`. The coverage test
 runs in its own shard and finishes in seconds. Docs-only changes still run it,
-because the docs are what it checks, and with the document unit tests
-(`DocsClaimsTests`, `LegalTests`), which the skipped unit-test job would otherwise not run. A final cheap job merges the shard ledgers
+because the docs are what it checks. What the public documents say is checked
+by `scripts/check-docs.py` in the always-on Ubuntu guard job, not by the skipped
+unit tests. A final cheap job merges the shard ledgers
 into the summary. Only first-party, SHA-pinned actions are used.
 
 ## Flake policy
