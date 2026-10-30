@@ -155,7 +155,10 @@ struct AletheiaApp: App {
             #endif
             return license?.isTestLicense ?? false
         }
-        recorder.onStopped = { [weak transcription] in transcription?.startAfterRecording($0) }
+        recorder.onStopped = { [weak transcription, weak integrations] in
+            integrations?.digestScheduler.recordingStopped()
+            transcription?.startAfterRecording($0)
+        }
         recorder.onNotice = { [weak appModel] in appModel?.noteRecordingProblem($0) }
         // Also a system notification, so it's noticed when the app isn't
         // focused (the therapist has likely switched to the call window).

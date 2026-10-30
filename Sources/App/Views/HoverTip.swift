@@ -34,7 +34,7 @@ enum HelpTips {
     static let compact = HelpTip(
         id: "chat.compact",
         heading: "Compact this chat",
-        text: "Replaces the conversation so far with a short summary of it, so you can keep asking. The AI can only read so much at once: a long chat gets slower and starts to lose its earliest details. Compacting keeps the key points and frees room. To keep one topic in detail, type /compact followed by it."
+        text: "Compressing the conversation improves the AI's understanding and performance in longer conversations."
     )
 
     // Settings. Safety and privacy lines (app lock, encryption, backups,

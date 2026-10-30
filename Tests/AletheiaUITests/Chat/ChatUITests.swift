@@ -2,6 +2,69 @@ import XCTest
 
 /// The Ask tab in the real app, driven with the scripted AI.
 final class ChatUITests: AcceptanceCase {
+    func test_CHAT_01_emptyAskTabOffersAQuestionBox() {
+        given.aSessionToAskAbout()
+        let tab = when.openAskTab()
+
+        then(tab).showsText(Copy.askEmptyTitle)
+        XCTAssertTrue(app.exists(tab.field), "no question box")
+    }
+
+    func test_CHAT_02_questionShowsAsBubbleAndTheAnswerStreamsWithStop() {
+        given.aSessionToAskAbout(replies: ["Sleep is the main concern."], stageMs: 1500)
+        let tab = when.openAskTab()
+
+        when.ask("What did she say about insomnia?", on: tab)
+
+        then(tab).showsText("What did she say about insomnia?")
+        then(tab).showsStop()
+        then(tab).showsText("Sleep is the main concern.")
+    }
+
+    func test_CHAT_03_answerCarriesAReadLine() {
+        given.aSessionToAskAbout(replies: ["She said it has been poor."])
+        let tab = when.openAskTab()
+
+        when.ask("What did she say about sleep?", on: tab)
+
+        then(tab).showsText("She said it has been poor.")
+        then(tab).showsText(Copy.readLead)
+    }
+
+    func test_CHAT_06_answerIsStillThereAfterARelaunch() {
+        given.aSessionToAskAbout(replies: ["She said it has been poor."])
+        let tab = when.openAskTab()
+        when.ask("What did she say about sleep?", on: tab)
+        then(tab).showsText("She said it has been poor.")
+
+        app.relaunch()
+
+        then(when.openAskTab()).showsText("She said it has been poor.")
+    }
+
+    func test_CHAT_13_compactReplacesTheEarlierMessages() {
+        given.aSessionToAskAbout(chat: [
+            .init(role: "user", text: "What did she say about sleep?"),
+            .init(role: "assistant", text: "She said it has been poor."),
+        ])
+        let tab = when.openAskTab()
+
+        tab.compact.click()
+
+        then(tab).showsText(Copy.compactedChip)
+        then(tab).doesNotShowText("She said it has been poor.")
+    }
+
+    func test_CHAT_16_missingModelShowsAnAlertAndKeepsTheQuestion() {
+        given.aSessionToAskAbout(modelMissing: true)
+        let tab = when.openAskTab()
+
+        when.ask("What did she say about sleep?", on: tab)
+
+        then(tab).showsText(Copy.modelMissingTitle)
+        then(tab).showsText("What did she say about sleep?")
+    }
+
     func test_CHAT_19_askingAboutMyNotesQuotesThemAtOnce() {
         let line = "Jane is worried about the move in March."
         given.aSessionToAskAbout(myNotes: line)

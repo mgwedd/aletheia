@@ -54,6 +54,9 @@ class AcceptanceCase: XCTestCase {
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
+        // The real app runs each AI stage at the fixture's pace; a whole build
+        // or note can take over the default minute.
+        executionTimeAllowance = 120
         check = Check.from(testName: name) ?? Check(id: "", sentence: "")
         app = AppDriver()
     }

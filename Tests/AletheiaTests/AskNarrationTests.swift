@@ -118,6 +118,20 @@ final class AskNarrationTests: XCTestCase {
         XCTAssertNil(DigestBuilder.statusProgress(named).lead)
     }
 
+    func testASectionKeepsItsLineWhileItsSummaryIsWritten() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        var section = AIRunProgress(readTitle: "Reading section 2 of 5", writeTitle: DigestBuilder.writeTitle, startedAt: t0)
+        section.firstTokenAt = t0.addingTimeInterval(5)
+        XCTAssertEqual(
+            AIProgressFormat.statusLine(DigestBuilder.statusProgress(section), now: t0.addingTimeInterval(12)),
+            "\(DigestBuilder.activityTitle). Reading section 2 of 5… · 0:12")
+        var merge = AIRunProgress(readTitle: DigestBuilder.mergeTitle, writeTitle: DigestBuilder.writeTitle, startedAt: t0)
+        merge.firstTokenAt = t0.addingTimeInterval(5)
+        XCTAssertEqual(
+            AIProgressFormat.statusLine(DigestBuilder.statusProgress(merge), now: t0.addingTimeInterval(12)),
+            "\(DigestBuilder.writeTitle)… · 0:12")
+    }
+
     // MARK: - Notes keep their title and bar
 
     func testTheNoteLineIsLedByItsTitle() {
@@ -128,6 +142,6 @@ final class AskNarrationTests: XCTestCase {
         progress.firstTokenAt = t0.addingTimeInterval(20)
         progress.tokensWritten = 64
         XCTAssertEqual(NoteProgress.statusLine(title: "Generating SOAP note", progress, now: t0.addingTimeInterval(30)),
-                       "Writing the note… · 0:30")
+                       "Generating SOAP note. Writing the note… · 0:30")
     }
 }

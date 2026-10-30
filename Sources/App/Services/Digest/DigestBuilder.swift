@@ -38,12 +38,18 @@ final class DigestBuilder: ObservableObject {
     static let writeTitle = "Writing summary"
 
     /// A background build's progress for its status line, led by
-    /// `activityTitle` while the model reads ("Processing transcript. Reading
-    /// part 2 of 5… · 0:12") unless the stage already names it.
+    /// `activityTitle` while it works through the transcript ("Processing
+    /// transcript. Reading section 2 of 5… · 0:12") unless the stage already
+    /// names it. A section keeps that line while its summary is written; only
+    /// the merge goes on to "Combining sections…" and "Writing summary…".
     static func statusProgress(_ progress: AIRunProgress) -> AIRunProgress {
         guard !progress.readTitle.hasPrefix(activityTitle) else { return progress }
         var led = progress
         led.lead = activityTitle
+        if progress.readTitle != mergeTitle {
+            led.firstTokenAt = nil
+            if led.prefill?.complete == true { led.prefill = nil }
+        }
         return led
     }
     static let mergeTitle = "Combining sections"

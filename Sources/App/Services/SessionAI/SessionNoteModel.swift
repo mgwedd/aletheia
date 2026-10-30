@@ -155,9 +155,11 @@ final class SessionNoteModel: ObservableObject {
     }
 
     /// Copy: the shown note with its formatting, to paste into an EHR or a document.
+    /// An unsigned note carries the draft stamp; one altered after signing is held back.
     func copyNote(to pasteboard: NSPasteboard = PHIPasteboard.general) {
-        guard mayLeave(message: NoteLifecycle.reviewToCopy) else { return }
-        RichClipboard.write(RichClipboard.payload(markdown: summaryText), to: pasteboard)
+        if case .altered = noteStatus { reviewBlock = NoteLifecycle.reviewToCopy; return }
+        let text = NoteLifecycle.stamped(summaryText, status: noteStatus)
+        RichClipboard.write(RichClipboard.payload(markdown: text), to: pasteboard)
         copyFeedback.flash()
     }
 
@@ -321,7 +323,8 @@ final class SessionNoteModel: ObservableObject {
                 )
             },
             onReveal: { [self] text in
-                if settings.progressNoteFormat == format { summaryText = text }
+                // Scrub speaker codes as it writes, so "Y:" never shows mid-note.
+                if settings.progressNoteFormat == format { summaryText = SpeakerCodes.scrub(text, clientName: patient.name) }
             },
             onError: { [self] error in
                 if let incident = AIEngineIncident.from(error: error) {

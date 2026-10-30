@@ -127,4 +127,11 @@ final class SessionNotificationsTests: XCTestCase {
         XCTAssertTrue(content.body.contains("was transcribed"))
         XCTAssertFalse(content.body.contains("wasn't transcribed"))
     }
+
+    func testPausedSummariesAlertNamesNoOne() {
+        let content = SessionNotifications.transcriptionPausedWithWorkPending()
+        XCTAssertTrue(content.title.localizedCaseInsensitiveContains("transcription"))
+        XCTAssertTrue(content.title.localizedCaseInsensitiveContains("paused"))
+        XCTAssertFalse((content.title + content.body).contains("Jane"))
+    }
 }

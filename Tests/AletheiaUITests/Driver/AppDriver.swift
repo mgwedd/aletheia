@@ -134,7 +134,13 @@ final class AppDriver {
 
     // MARK: Element helpers
 
-    func button(_ title: String) -> XCUIElement { app.buttons[title].firstMatch }
+    /// The button titled `title`, including one that shows its shortcut beside
+    /// the title (its label then reads "<title>, Shortcut: …").
+    func button(_ title: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(
+            format: "identifier == %@ OR label == %@ OR title == %@ OR label BEGINSWITH %@",
+            title, title, title, "\(title), Shortcut:")).firstMatch
+    }
 
     /// The element the app tagged with `identifier`, of any type.
     func element(id identifier: String) -> XCUIElement {
@@ -207,16 +213,26 @@ final class AppDriver {
     }
 
     /// Any element whose label or value contains `words`, including a card
-    /// whose children are combined into one element.
+    /// whose children are combined into one element and a text view (the
+    /// note pane) that shows its text as its value.
     func anything(containing words: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(
+        onScreen.matching(NSPredicate(
+            format: "label CONTAINS %@ OR ((elementType == %lu OR elementType == %lu) AND value CONTAINS %@)",
+            words, XCUIElement.ElementType.staticText.rawValue, XCUIElement.ElementType.textView.rawValue, words)).firstMatch
+    }
+
+    /// Any element whose label contains `words` (status lines carry theirs as a
+    /// label), or a plain line of text, which carries its words as a value.
+    func element(labelContaining words: String) -> XCUIElement {
+        onScreen.matching(NSPredicate(
             format: "label CONTAINS %@ OR (elementType == %lu AND value CONTAINS %@)",
             words, XCUIElement.ElementType.staticText.rawValue, words)).firstMatch
     }
 
-    /// Any element whose label contains `words` (status lines carry theirs as a label).
-    func element(labelContaining words: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", words)).firstMatch
+    /// Every element but the invisible probe, whose label logs what the app
+    /// sent the AI and so holds words the user no longer sees.
+    private var onScreen: XCUIElementQuery {
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier != %@", "fixture-probe"))
     }
 
     /// Any element whose label starts with `prefix`.

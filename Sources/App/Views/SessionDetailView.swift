@@ -24,7 +24,7 @@ enum NotesPane: Hashable, Identifiable {
 
     var label: String {
         switch self {
-        case .mine: return NoteKind.psychotherapy.title
+        case .mine: return "My Notes"
         case .format(let format): return format.shortName
         }
     }
@@ -1411,16 +1411,9 @@ struct SessionDetailView: View {
                         Button {
                             note.copyNote()
                         } label: {
-                            Label("Copy", systemImage: "doc.on.doc")
+                            Label(note.copyFeedback.title, systemImage: note.copyFeedback.justCopied ? "checkmark.circle.fill" : "doc.on.doc")
                         }
                         .help("Copy the note, with its formatting, to paste into your EHR or a document")
-                        .popover(isPresented: Binding(get: { note.copyFeedback.justCopied }, set: { if !$0 { note.copyFeedback.dismiss() } }), arrowEdge: .bottom) {
-                            Label(CardWords.copied, systemImage: "checkmark.circle.fill")
-                                .font(Theme.Typography.control)
-                                .foregroundStyle(Theme.text.color)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                        }
                         ExportButton(title: "Export progress note…", help: "Save this progress note as a PDF, Word or Markdown file. Your psychotherapy note is never included.") { exportNote(as: $0) }
                     }
                 }

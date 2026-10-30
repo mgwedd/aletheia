@@ -366,15 +366,15 @@ jobs:
   # The UI tests: XCUITest drives the real Debug app in fixture mode (see
   # Sources/App/FixtureMode). The audio fixtures are rendered here with `say`,
   # because committed audio is rejected by scan-secrets.sh. The classes run in
-  # three shards of about the same length; the last shard runs every class the
-  # first two don't name, so a new class is never left out. The "UI tests" job
+  # four shards of about the same length; the last shard runs every class the
+  # others don't name, so a new class is never left out. The "UI tests" job
   # passes only when every shard passed.
   ui-tests-shard:
     name: UI tests (${{ matrix.shard }})
     needs: changes
     if: ${{ !cancelled() }}
     runs-on: ${{ needs.changes.outputs.code == 'false' && 'ubuntu-latest' || 'macos-15' }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -383,8 +383,10 @@ jobs:
             only: "ChatUITests SettingsUITests"
           - shard: import-transcribe-license
             only: "ImportAudioTests TranscribeUITests LicenseUITests SpikeTests"
+          - shard: note-digest
+            only: "NoteUITests DigestUITests"
           - shard: rest
-            skip: "ChatUITests SettingsUITests ImportAudioTests TranscribeUITests LicenseUITests SpikeTests"
+            skip: "ChatUITests SettingsUITests ImportAudioTests TranscribeUITests LicenseUITests SpikeTests NoteUITests DigestUITests"
     env:
       RUN_BUILD: ${{ needs.changes.outputs.code != 'false' }}
       NSUnbufferedIO: "YES"
@@ -448,7 +450,7 @@ jobs:
             | xcbeautify --renderer github-actions
 
       - name: Upload UI test results on failure
-        if: failure() && env.RUN_BUILD == 'true'
+        if: (failure() || cancelled()) && env.RUN_BUILD == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: UITestResults-${{ matrix.shard }}

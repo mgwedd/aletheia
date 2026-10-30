@@ -308,6 +308,7 @@ final class PatientChatModel: ObservableObject {
                     abandoned?()
                     return
                 }
+                if let at = messages.firstIndex(where: { $0.id == summaryID }) { messages.removeSubrange(..<at) }
                 persist(threadID: threadID)
                 if let next {
                     DispatchQueue.main.async { next() }

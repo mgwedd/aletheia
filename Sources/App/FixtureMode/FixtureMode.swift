@@ -49,7 +49,8 @@ enum FixtureMode {
     static let engine = FixtureScriptedEngine(
         replies: scenario?.aiReplies ?? [], rules: scenario?.aiRules ?? [],
         stageMs: scenario?.aiStageMs ?? 0, parts: scenario?.aiParts ?? 0,
-        missing: scenario?.aiModelMissing == true, words: scenario?.aiStreamsWords == true)
+        missing: scenario?.aiModelMissing == true, words: scenario?.aiStreamsWords == true,
+        holdsOpen: scenario?.aiHoldsOpen == true)
 
     /// The transcript view on screen, so the probe can count its laid-out lines.
     @MainActor static weak var transcriptView: NSTextView?
@@ -115,6 +116,7 @@ enum FixtureMode {
             if let effort = scenario?.chatEffort.flatMap(AnswerEffort.init(rawValue:)) {
                 settings.sessionChatEffort = effort
             }
+            if let paused = scenario?.summariesPaused { settings.summariesPaused = paused }
         }
     }
 
@@ -253,11 +255,11 @@ final class FixtureScriptedEngine: LocalLLMEngine {
     private let model: ScriptedModel
 
     init(replies: [String] = [], rules: [FixtureScenario.AIRule] = [], stageMs: Int = 0, parts: Int = 0,
-         missing: Bool = false, words: Bool = false) {
+         missing: Bool = false, words: Bool = false, holdsOpen: Bool = false) {
         model = ScriptedModel(
             fallback: replies.isEmpty ? [Self.defaultReply] : replies,
             pace: .timed(nanoseconds: 200_000_000), stageMs: stageMs,
-            partsForEveryAnswer: parts, streamsWords: words)
+            partsForEveryAnswer: parts, streamsWords: words, holdsOpen: holdsOpen)
         if missing {
             model.add(.init(marker: nil, answer: .fails(LocalLLMEngineError.modelNotDownloaded), once: false))
         }

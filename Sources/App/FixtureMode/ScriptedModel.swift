@@ -67,6 +67,8 @@ final class ScriptedModel: LocalLLMEngine, @unchecked Sendable {
     private let partsForEveryAnswer: Int
     /// Streamed text arrives a word at a time.
     private let streamsWords: Bool
+    /// A word-streamed answer stays open, still, until stopped.
+    private let holdsOpen: Bool
 
     // MARK: Record
 
@@ -82,12 +84,13 @@ final class ScriptedModel: LocalLLMEngine, @unchecked Sendable {
     var state: LocalLLMEngineState { .ready }
 
     init(fallback: [String] = ["Understood."], pace: Pace = .held, stageMs: Int = 0,
-         partsForEveryAnswer: Int = 0, streamsWords: Bool = false) {
+         partsForEveryAnswer: Int = 0, streamsWords: Bool = false, holdsOpen: Bool = false) {
         self.fallbackReplies = fallback
         self.pace = pace
         self.stageNanoseconds = UInt64(max(0, stageMs)) * 1_000_000
         self.partsForEveryAnswer = partsForEveryAnswer
         self.streamsWords = streamsWords
+        self.holdsOpen = holdsOpen
     }
 
     // MARK: Steering
@@ -246,6 +249,9 @@ final class ScriptedModel: LocalLLMEngine, @unchecked Sendable {
             continuation.yield(shown)
             try await Task.sleep(nanoseconds: stageNanoseconds)
         }
+        // XCUI clicks wait for the app to go idle, which it never does while
+        // words arrive, so a test that clicks Stop mid-answer needs it held.
+        if holdsOpen { await hold() }
     }
 
     private func step() async throws {
