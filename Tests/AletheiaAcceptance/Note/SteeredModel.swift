@@ -5,10 +5,14 @@ import Foundation
 /// judges the quality of what a model would write: the checks are about what the
 /// app asks it, and what the app does with what comes back.
 ///
-/// Rules are tried in the order they were added; the first whose marker is found
-/// anywhere in the request (instructions, earlier turns or prompt) answers, and a
-/// rule made with `once` is used up by that answer. A request no rule matches gets
-/// `fallback`.
+/// A thin face over the app's `ScriptedModel` (the same rules the fixture runs
+/// of the UI tests use): rules are tried in the order they were added; the first
+/// whose marker is found anywhere in the request's text (instructions, earlier
+/// turns or prompt) answers, and a rule made with `once` is used up by that
+/// answer. A request no rule matches gets `fallback`.
+///
+/// Held answers are per request: `release()` (or `moveOn()`) lets the oldest held
+/// step go on, or, when nothing is held yet, is kept for the next step that holds.
 final class SteeredModel: LocalLLMEngine, @unchecked Sendable {
     /// How the model answers one request.
     enum Answer {
@@ -23,38 +27,38 @@ final class SteeredModel: LocalLLMEngine, @unchecked Sendable {
         case readsInParts(Int, thenWrites: String)
         /// Fails with this error before writing anything.
         case fails(Error)
+
+        var scripted: ScriptedModel.Answer {
+            switch self {
+            case .writes(let text): return .writes(text)
+            case .writesThenWaits(let text): return .writesThenHolds(text)
+            case .readsInParts(let parts, let text): return .readsInParts(parts, thenWrites: text)
+            case .fails(let error): return .fails(error)
+            }
+        }
     }
 
-    private struct Rule {
-        let marker: String?
-        let answer: Answer
-        let once: Bool
-    }
+    let model = ScriptedModel(pace: .held)
 
-    private let lock = NSLock()
-    private var rules: [Rule] = []
-    private var asked: [LocalLLMRequest] = []
-    private var releases = 0
-    private var started = 0
-    private var finished = 0
-    private var fallbackText = "Understood."
-
-    var state: LocalLLMEngineState { .ready }
+    var state: LocalLLMEngineState { model.state }
 
     // MARK: Steering
 
     func answer(_ marker: String? = nil, with answer: Answer, once: Bool = false) {
-        lock.lock(); rules.append(Rule(marker: marker, answer: answer, once: once)); lock.unlock()
+        model.add(.init(marker: marker, answer: answer.scripted, once: once))
     }
 
     func writes(_ text: String, whenAsked marker: String? = nil, once: Bool = false) {
         answer(marker, with: .writes(text), once: once)
     }
 
-    func fallback(_ text: String) { lock.lock(); fallbackText = text; lock.unlock() }
+    func fallback(_ text: String) { model.setFallback([text]) }
 
-    /// Lets every answer that is waiting finish.
-    func release() { lock.lock(); releases += 1; lock.unlock() }
+    /// Lets the oldest held answer go on (or the next one, if none is held yet).
+    func release() { model.release() }
+
+    /// Lets every held answer go on and every later one pass at once. For teardown.
+    func releaseEverything() { model.releaseEverything() }
 
     /// The first request the app makes is held (after it has written a little) until `release()`.
     func pausesOnTheFirstRequest(writing text: String = "Understood.") {
@@ -71,8 +75,11 @@ final class SteeredModel: LocalLLMEngine, @unchecked Sendable {
         answer("Write a summary that will replace it", with: .writes(text))
     }
 
+    /// Every request fails as it does when the model file is not on this Mac.
+    func failsAsNotDownloaded() { answer(nil, with: .fails(LocalLLMEngineError.modelNotDownloaded)) }
+
     /// Lets an answer that reads in parts take its next step.
-    func moveOn() { release() }
+    func moveOn() { model.release() }
 
     /// Answers by reading the prompt in `parts` parts, a step at a time (see `moveOn()`).
     func readsPromptInParts(_ parts: Int, thenWrites text: String, whenAsked marker: String? = nil, once: Bool = false) {
@@ -80,107 +87,39 @@ final class SteeredModel: LocalLLMEngine, @unchecked Sendable {
     }
 
     /// Drops every rule, so the model answers with its fallback again.
-    func clearRules() { lock.lock(); rules = []; lock.unlock() }
+    func clearRules() { model.clearRules() }
+
+    /// Returns once the app has asked the model `count` times in all.
+    func waitUntilAsked(count: Int, within seconds: Double = 30) async throws {
+        try await model.waitUntilAsked(count: count, within: seconds)
+    }
 
     // MARK: What it was asked
 
-    var requests: [LocalLLMRequest] { lock.lock(); defer { lock.unlock() }; return asked }
-    var requestTexts: [String] { requests.map(Self.text(of:)) }
+    var requests: [LocalLLMRequest] { model.requests }
+    var requestTexts: [String] { model.requestTexts }
     /// Requests that have begun being answered, and those that have been given a whole answer or an error.
-    var startedCount: Int { lock.lock(); defer { lock.unlock() }; return started }
-    var finishedCount: Int { lock.lock(); defer { lock.unlock() }; return finished }
+    var startedCount: Int { model.startedCount }
+    var finishedCount: Int { model.finishedCount }
+    /// Steps holding now, waiting for `release()`.
+    var heldCount: Int { model.heldCount }
 
-    static func text(of request: LocalLLMRequest) -> String {
-        ([request.system] + request.turns.map(\.text) + [request.prompt]).joined(separator: "\n")
-    }
+    static func text(of request: LocalLLMRequest) -> String { ScriptedModel.text(of: request) }
 
     // MARK: LocalLLMEngine
 
     func load() async throws {}
     func unload() {}
 
-    func generate(_ request: LocalLLMRequest) async throws -> String {
-        var last = ""
-        for try await text in stream(request) { last = text }
-        return last
-    }
+    func generate(_ request: LocalLLMRequest) async throws -> String { try await model.generate(request) }
 
-    func stream(_ request: LocalLLMRequest) -> AsyncThrowingStream<String, Error> {
-        stream(request, onStats: nil)
-    }
+    func stream(_ request: LocalLLMRequest) -> AsyncThrowingStream<String, Error> { model.stream(request) }
 
     func stream(
         _ request: LocalLLMRequest, onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {
-        let (answer, ticket) = take(request)
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                switch answer {
-                case .fails(let error):
-                    self.markFinished()
-                    continuation.finish(throwing: error)
-                case .writes(let text):
-                    continuation.yield(text)
-                    self.markFinished()
-                    continuation.finish()
-                case .readsInParts(let total, let text):
-                    func report(_ prefill: PrefillProgress) {
-                        var stats = AIRunStats()
-                        stats.prefill = prefill
-                        onStats?(stats)
-                    }
-                    report(PrefillProgress(part: 1, total: total))
-                    for part in 2...max(2, total) where part <= total {
-                        await self.wait(forRelease: ticket + part - 1)
-                        report(PrefillProgress(part: part, total: total))
-                    }
-                    await self.wait(forRelease: ticket + total)
-                    report(PrefillProgress(part: total, total: total, complete: true))
-                    await self.wait(forRelease: ticket + total + 1)
-                    if Task.isCancelled { self.markFinished(); continuation.finish(); return }
-                    continuation.yield(text)
-                    self.markFinished()
-                    continuation.finish()
-                case .writesThenWaits(let text):
-                    continuation.yield(text)
-                    while !Task.isCancelled, !self.wasReleased(since: ticket) {
-                        try? await Task.sleep(nanoseconds: 5_000_000)
-                    }
-                    self.markFinished()
-                    continuation.finish()
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        model.stream(request, onStats: onStats)
     }
-
-    private func take(_ request: LocalLLMRequest) -> (Answer, Int) {
-        lock.lock(); defer { lock.unlock() }
-        asked.append(request)
-        started += 1
-        let text = Self.text(of: request)
-        if let index = rules.firstIndex(where: { $0.marker.map(text.contains) ?? true }) {
-            let rule = rules[index]
-            if rule.once { rules.remove(at: index) }
-            return (rule.answer, releases)
-        }
-        return (.writes(fallbackText), releases)
-    }
-
-    private func wait(forRelease count: Int) async {
-        while !Task.isCancelled {
-            lock.lock(); let reached = releases >= count; lock.unlock()
-            if reached { return }
-            try? await Task.sleep(nanoseconds: 5_000_000)
-        }
-    }
-
-    private func wasReleased(since ticket: Int) -> Bool {
-        lock.lock(); defer { lock.unlock() }
-        return releases > ticket
-    }
-
-    private func markFinished() { lock.lock(); finished += 1; lock.unlock() }
 }
 
 /// Collects the notifications the app would post, without posting them.

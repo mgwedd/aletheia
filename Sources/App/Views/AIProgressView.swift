@@ -73,8 +73,8 @@ struct AIProgressView: View {
     let progress: AIRunProgress
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            AIStatusLineView(text: AIProgressFormat.statusLine(progress, now: context.date))
+        LiveTimeline { now in
+            AIStatusLineView(text: AIProgressFormat.statusLine(progress, now: now))
         }
     }
 }
@@ -97,13 +97,15 @@ struct AIStatusLineView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text)
         .accessibilityAddTraits(.updatesFrequently)
+        .accessibilityIdentifier("ai.status")
     }
 }
 
 /// A small dot that breathes while work runs; still under Reduce Motion.
 private struct PulsingDot: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @State private var dim = false
+    private var reduceMotion: Bool { QuietUI.reducesMotion(systemReduceMotion) }
 
     var body: some View {
         Circle()

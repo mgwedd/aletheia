@@ -41,7 +41,8 @@ final class ExportRun {
 
     /// Waits for `count` notifications to have been posted.
     fileprivate func untilNotified(_ count: Int = 1, timeout: TimeInterval = 5) async throws {
-        try await eventually(within: timeout, "\(count) notification(s) to be posted") { self.notifier.posted.count >= count }
+        try await eventually(within: timeout, "\(count) notification(s) to be posted",
+                                   describe: { "posted \(self.notifier.posted.count)" }) { self.notifier.posted.count >= count }
     }
 
     /// Everything inside the destination's parent, hidden staging folders included.

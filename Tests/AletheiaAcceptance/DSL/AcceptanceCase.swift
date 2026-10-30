@@ -54,7 +54,9 @@ class AcceptanceCase: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-        continueAfterFailure = false
+        // A failed expectation is recorded and the test runs on to its end, so
+        // teardown always runs and an async test never hangs on a stopped check.
+        continueAfterFailure = true
         check = Check.from(testName: name) ?? Check(id: "", sentence: "")
         app = try InProcessDriver()
     }

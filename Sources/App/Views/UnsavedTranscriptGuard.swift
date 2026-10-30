@@ -58,4 +58,9 @@ enum UnsavedTranscriptDrafts {
     static func take(for sessionID: UUID) -> String? {
         drafts.removeValue(forKey: sessionID)
     }
+
+    #if DEBUG
+    /// Forgets every draft, so one test's drafts never reach the next.
+    static func forgetAll() { drafts = [:] }
+    #endif
 }

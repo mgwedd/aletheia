@@ -23,11 +23,7 @@ struct AIAndModelsPaneOnScreen {
         return all.count > 1 ? all[1] : all[0]
     }
 
-    var builtInModelHeader: XCUIElement {
-        driver.app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@ OR title CONTAINS %@", "Built-in model", "Built-in model", "Built-in model"))
-            .firstMatch
-    }
+    var builtInModelHeader: XCUIElement { driver.element(id: "settings.built-in-model") }
 
     func licenseLink(_ title: String) -> XCUIElement {
         let byId = driver.app.descendants(matching: .any)["model-license-link"]
