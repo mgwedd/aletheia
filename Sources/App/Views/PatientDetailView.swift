@@ -77,6 +77,13 @@ struct PatientDetailView: View {
                         profileSection
                         ScrollView { profileSection }
                     }
+                    // Outside the scroll, so the summary status and its
+                    // Pause/Resume stay in view in a short window.
+                    SummaryStatusRow(scheduler: integrations.digestScheduler, patientID: patient.id)
+
+                    Rectangle()
+                        .fill(Theme.line.color)
+                        .frame(height: 1)
 
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -267,7 +274,7 @@ struct PatientDetailView: View {
         .help("Save your psychotherapy notes and private comments on their own, apart from the clinical record. You'll confirm you have authorization first.")
     }
 
-    /// The profile, the patient-wide actions and the summary status.
+    /// The profile and the patient-wide actions.
     private var profileSection: some View {
         VStack(alignment: .leading, spacing: 22) {
             PatientProfileCard(
@@ -289,11 +296,6 @@ struct PatientDetailView: View {
                     psychotherapyExportButton
                 }
             }
-            SummaryStatusRow(scheduler: integrations.digestScheduler, patientID: patient.id)
-
-            Rectangle()
-                .fill(Theme.line.color)
-                .frame(height: 1)
         }
     }
 

@@ -105,9 +105,13 @@ extension When {
         XCTAssertTrue(app.exists(tab.generateButton), "no Generate button")
         tab.generateButton.click()
         XCTAssertTrue(app.waitFor(tab.driver.anything(containing: words), timeout: 90), "the note never showed \"\(words)\"")
-        return tab.driver.app.descendants(matching: .any).allElementsBoundByIndex
-            .compactMap { ($0.value as? String).flatMap { $0.isEmpty ? nil : $0 } ?? ($0.label.isEmpty ? nil : $0.label) }
-            .joined(separator: "\n")
+        // One snapshot of the window: reading each element alone takes minutes.
+        func shownText(_ node: XCUIElementSnapshot) -> [String] {
+            let own = (node.value as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (node.label.isEmpty ? nil : node.label)
+            return (own.map { [$0] } ?? []) + node.children.flatMap { shownText($0) }
+        }
+        guard let root = try? tab.driver.app.snapshot() else { return "" }
+        return shownText(root).joined(separator: "\n")
     }
 
     /// Clicks the right-hand end of the Length button, well away from its icon.

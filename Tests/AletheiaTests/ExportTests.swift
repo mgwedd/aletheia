@@ -157,13 +157,12 @@ final class ExportWiringTests: XCTestCase {
         XCTAssertTrue(try source("Views/RootView.swift").contains("ExportStatusToast(center: exports)"))
     }
 
-    func testNoteCopyIsRichAndConfirmsInAPopup() throws {
+    func testNoteCopyIsRichAndTheButtonSaysCopied() throws {
         let session = try source("Views/SessionDetailView.swift")
         XCTAssertTrue(try source("Services/SessionAI/SessionNoteModel.swift")
             .contains("RichClipboard.write(RichClipboard.payload(markdown: text)"))
         XCTAssertTrue(session.contains("note.copyNote()"))
-        XCTAssertTrue(session.contains(".popover(isPresented: Binding(get: { note.copyFeedback.justCopied }"))
-        XCTAssertTrue(session.contains("Label(CardWords.copied, systemImage: \"checkmark.circle.fill\")"))
+        XCTAssertTrue(session.contains("Label(note.copyFeedback.title, systemImage:"))
         XCTAssertTrue(try source("Models/CopyFeedback.swift").contains("static let copied = \"Copied\""))
     }
 

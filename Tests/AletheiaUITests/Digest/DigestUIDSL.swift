@@ -76,9 +76,13 @@ extension When {
     func editTranscript(_ screen: SummariesOnScreen, adding line: String) {
         let transcript = app.app.textViews.matching(NSPredicate(format: "value CONTAINS %@", "[00:")).firstMatch
         guard app.waitFor(transcript, timeout: 10) else { return }
-        // The view is as tall as the whole transcript; its middle is off screen.
-        transcript.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 10)).click()
-        transcript.typeText(line + "\n")
+        // The text view is as tall as the whole transcript, so click the middle
+        // of the scroll view showing it, then type into whatever has focus.
+        // The innermost scroll view holding it comes last.
+        let shown = app.app.scrollViews.containing(NSPredicate(format: "value CONTAINS %@", "[00:")).allElementsBoundByIndex.last ?? transcript
+        shown.click()
+        app.app.typeKey(.upArrow, modifierFlags: .command)
+        app.app.typeText(line + "\n")
         app.tap(Copy.digestSave)
     }
 }

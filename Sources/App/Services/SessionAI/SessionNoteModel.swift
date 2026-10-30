@@ -323,7 +323,8 @@ final class SessionNoteModel: ObservableObject {
                 )
             },
             onReveal: { [self] text in
-                if settings.progressNoteFormat == format { summaryText = text }
+                // Scrub speaker codes as it writes, so "Y:" never shows mid-note.
+                if settings.progressNoteFormat == format { summaryText = SpeakerCodes.scrub(text, clientName: patient.name) }
             },
             onError: { [self] error in
                 if let incident = AIEngineIncident.from(error: error) {
