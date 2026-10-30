@@ -93,6 +93,8 @@ extension Then where Subject == PatientPageOnScreen {
     /// session takes the rest of the page.
     func givesTheSessionMostOfThePage() {
         expect(subject.driver.exists(subject.sessionPane), "no session pane beside the list")
+        let column = subject.list
+        subject.driver.settles { (290...370).contains(column.frame.width) }
         let list = subject.list.frame.width
         let session = subject.sessionPane.frame.width
         expect(list >= 290 && list <= 370, "the list opens \(list) wide")
@@ -101,6 +103,8 @@ extension Then where Subject == PatientPageOnScreen {
 
     /// With no session open, the list takes the whole page.
     func fillsThePageWithTheList() {
+        let column = subject.list, window = subject.window
+        subject.driver.settles { column.frame.width >= 0.9 * window.frame.width }
         let list = subject.list.frame.width
         let window = subject.window.frame.width
         expect(list >= 0.9 * window, "the list is \(list) wide in a window \(window) wide")
