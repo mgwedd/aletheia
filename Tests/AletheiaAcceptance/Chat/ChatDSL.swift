@@ -40,6 +40,14 @@ extension Then where Subject == AskPane {
         expect(summary < asked, "the summary comes after the question it should come before")
         expect(kinds.last?.who == .assistant && asked < kinds.count - 1, "the question has no answer after it")
     }
+
+    func hasInTheBox(_ question: String) {
+        expectEqual(subject.questionInBox, question, "the question back in the box")
+    }
+
+    func neverAsked(_ question: String) {
+        expect(!subject.questions.contains(question), "\"\(question)\" was sent anyway")
+    }
 }
 
 extension Then where Subject == SteeredModel {
@@ -47,6 +55,11 @@ extension Then where Subject == SteeredModel {
 }
 
 extension SteeredModel {
+    /// Asked to summarize a conversation so far, it fails.
+    func failsToSummarize() {
+        answer("Write a summary that will replace it", with: .fails(SummaryFailed()))
+    }
+
     /// Answers every question with text just past a quarter of the window of
     /// the model this Mac runs, so the next question compacts first. The
     /// window follows the Mac's memory, so a fixed length would be too short
@@ -56,4 +69,8 @@ extension SteeredModel {
         let count = ChatMemory.budget() / sentence.count + 20
         fallback(String(repeating: sentence, count: count))
     }
+}
+
+struct SummaryFailed: LocalizedError {
+    var errorDescription: String? { "The summary could not be written." }
 }

@@ -119,6 +119,14 @@ struct LegalPane {
 }
 
 /// The built-in models offered for a Mac of a given memory size.
+/// The built-in model settings has selected, and what else it offers.
+struct SelectedBuiltInModel {
+    let shortName: String
+    let offered: [String]
+    /// What is selected the launch after, once the weights' check no longer decides.
+    let shortNameNextLaunch: String
+}
+
 struct OfferedBuiltInModels {
     let shortNames: [String]
     let medGemmaShortName: String
@@ -363,6 +371,23 @@ extension When {
             medGemmaShortName: recommendation.medGemmaModel.shortName)
     }
 
+    /// Opens settings for the first time after an update, on a Mac with this
+    /// much memory, with these models (by short name) downloaded and no model
+    /// ever chosen.
+    func openAfterUpdating(onMacWithMemoryGB memoryGB: Int, downloaded: [String]) -> SelectedBuiltInModel {
+        let hardware = HardwareCapabilities(
+            isAppleSilicon: true, physicalMemoryGB: memoryGB, coreCount: 8, chipDescription: "Apple M-Test")
+        let suite = "acceptance.settings.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults, hardware: hardware) { downloaded.contains($0.shortName) }
+        let reopened = AppSettings(defaults: defaults, hardware: hardware) { _ in false }
+        return SelectedBuiltInModel(
+            shortName: settings.llamaModel.shortName,
+            offered: LlamaModel.offered(for: hardware, including: settings.llamaModel).map(\.shortName),
+            shortNameNextLaunch: reopened.llamaModel.shortName)
+    }
+
     func lookAtMedicalModelLicenses() -> MedicalModelLicenses {
         let models: [LlamaModel] = [.medgemma15_4b, .medgemma_27b, .apertus8b_meditronFO]
         let https = models.allSatisfy {
@@ -546,4 +571,17 @@ extension Then where Subject == MedicalModelLicenses {
         expectEqual(subject.apertus8BLicense, "Apache License 2.0", "Apertus 8B MeditronFO's license")
         expect(subject.allUseHTTPS, "every medical model's license and acceptable-use link should use https")
     }
+}
+
+extension Then where Subject == SelectedBuiltInModel {
+    func keeps(_ name: String) {
+        expectEqual(subject.shortName, name, "the selected built-in model")
+        expectEqual(subject.shortNameNextLaunch, name, "the selected built-in model, next launch")
+    }
+
+    func stillOffers(_ name: String) {
+        expect(subject.offered.contains(name), "\(name) should be offered: \(subject.offered)")
+    }
+
+    func selects(_ name: String) { expectEqual(subject.shortName, name, "the selected built-in model") }
 }

@@ -81,13 +81,16 @@ struct ChatPaneView: View {
     var isSessionRecording = false
     /// The dictation engine; nil uses on-device Apple Speech. Tests pass a fake.
     var voiceInput: VoiceInput? = nil
+    /// A question the model handed back unsent (its compaction failed); it
+    /// goes back into the box, then is cleared.
+    var returnedQuestion: Binding<String?>? = nil
 
     @State private var draft: String = ""
     @State private var inputFocused = false
     /// Bumped on send so dictation stops writing into the cleared draft.
     @State private var voiceResetToken = 0
-    /// Whether the mic is drawn, reported by the mic itself.
-    @State private var micShown = false
+    /// Whether this Mac can dictate, reported by the mic itself.
+    @State private var micAvailable = false
 
     /// Under every conversation; also read by the acceptance harness.
     static let accuracyNotice = "AI generated responses can be inaccurate. Double-check responses."
@@ -125,6 +128,19 @@ struct ChatPaneView: View {
         .selectablePatientText()
         // Esc from anywhere else in the pane; idle, it is left alone.
         .onExitCommand(perform: ChatComposerLayout.escapeStops(isSending: isSending, canStop: onStop != nil) ? { _ = escapeStops() } : nil)
+        .onAppear(perform: takeReturnedQuestion)
+        .onChange(of: returnedQuestion?.wrappedValue) { _, _ in takeReturnedQuestion() }
+    }
+
+    private func takeReturnedQuestion() {
+        guard let returnedQuestion, let question = returnedQuestion.wrappedValue else { return }
+        returnedQuestion.wrappedValue = nil
+        // On the next turn: the question comes back in the same update that
+        // re-enables the box and brings back the mic, and filling the box in
+        // that update too sends layout into a loop.
+        DispatchQueue.main.async {
+            if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { draft = question }
+        }
     }
 
     // MARK: Conversation
@@ -132,7 +148,11 @@ struct ChatPaneView: View {
     private var conversation: some View {
         ScrollViewReader { proxy in
             BoundedScroll {
-                LazyVStack(alignment: .leading, spacing: 20) {
+                // Not lazy: pinned to the bottom, a lazy stack swapped rows in
+                // and out as their measured heights replaced its estimates, and
+                // each swap moved the bottom again, so layout never settled.
+                // Compaction keeps a conversation short enough to lay out whole.
+                VStack(alignment: .leading, spacing: 20) {
                     if messages.isEmpty {
                         emptyState
                         // In the scrolling area, not the composer, so a short
@@ -161,10 +181,11 @@ struct ChatPaneView: View {
                 .padding(EdgeInsets(top: 20, leading: 20, bottom: 0, trailing: 20))
                 .background(ChatBottomFollower(followToken: messages.count))
             }
-            // A thread opens at its latest message, not its first. The anchor
-            // covers the first layout and later growth; the explicit jumps
-            // below cover a different thread arriving in this same view.
-            .defaultScrollAnchor(.bottom)
+            // A thread opens at its latest message, not its first: the follower
+            // pins the first layout and later growth, and these jumps cover a
+            // different thread arriving in this same view. No bottom scroll
+            // anchor: on a whole stack it drags a reader who scrolled up along
+            // with every new chunk.
             .onAppear { jumpToLatest(proxy) }
             .onChange(of: messages.first?.id) { _, _ in
                 jumpToLatest(proxy)
@@ -271,6 +292,8 @@ struct ChatPaneView: View {
             onEscape: escapeStops,
             modifiedReturnSubmits: true,
             tabMovesFocus: true,
+            // Kept while the mic hides for a send: room that came and went
+            // re-wrapped the text in the update that re-enabled the box.
             trailingInset: trailingAccessoryShown ? ChatComposerLayout.accessoryWidth : 0,
             isFocused: $inputFocused
         )
@@ -286,16 +309,16 @@ struct ChatPaneView: View {
                     isSessionRecording: isSessionRecording,
                     resetToken: voiceResetToken,
                     input: voiceInput,
-                    onShownChange: { micShown = $0 }
+                    onAvailableChange: { micAvailable = $0 }
                 )
             }
             .padding(.trailing, 6)
         }
     }
 
-    /// Stop or the mic is drawn over the box's trailing edge.
+    /// Stop or the mic can be drawn over the box's trailing edge.
     private var trailingAccessoryShown: Bool {
-        micShown || ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .stop
+        micAvailable || ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .stop
     }
 
     /// Esc while an answer is being made stops it; true when it did.
@@ -339,7 +362,7 @@ struct ChatPaneView: View {
         }
     }
 
-    /// Unanimated jump to the latest message, repeated once the lazy stack has
+    /// Unanimated jump to the latest message, repeated once the stack has
     /// measured what it just loaded (the first attempt can land short).
     private static let bottomID = "chat-bottom"
 

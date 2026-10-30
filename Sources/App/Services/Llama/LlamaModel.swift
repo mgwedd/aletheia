@@ -23,6 +23,15 @@ enum LlamaModel: String, CaseIterable, Identifiable, Codable, Hashable {
         hardware.isAppleSilicon && hardware.physicalMemoryGB >= 48 ? .medgemma_27b : .medgemma15_4b
     }
 
+    /// The model an earlier version picked for a user who never chose one
+    /// (Llama 3.1 8B from 16 GB, else Gemma 4 E2B), when it is downloaded and
+    /// this Mac's default is not.
+    static func previousDefault(on hardware: HardwareCapabilities, isDownloaded: (LlamaModel) -> Bool) -> LlamaModel? {
+        guard !isDownloaded(recommended(for: hardware)) else { return nil }
+        let previous: [LlamaModel] = hardware.physicalMemoryGB >= 16 ? [.llama31_8b, .gemma4_e2b] : [.gemma4_e2b, .llama31_8b]
+        return previous.first { $0.isSupported(on: hardware) && isDownloaded($0) }
+    }
+
     /// The default medical model for this Mac.
     static func medGemma(for hardware: HardwareCapabilities) -> LlamaModel {
         recommended(for: hardware)

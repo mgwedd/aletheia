@@ -71,6 +71,8 @@ struct AskPane {
     let offersCompact: Bool
     /// The caution under the conversation.
     let accuracyNotice: String
+    /// A question handed back to the box, unsent.
+    let questionInBox: String?
 
     var questions: [String] { bubbles.filter { $0.who == .you }.map(\.text) }
     var answers: [String] { bubbles.filter { $0.who == .assistant }.map(\.text) }
@@ -415,7 +417,8 @@ final class AskTab {
             statusLine: model.runner.isStreaming
                 ? AIProgressFormat.statusLine(model.runner.progress, now: Date()) : nil,
             offersCompact: ChatMemory.hasHistory(model.messages),
-            accuracyNotice: ChatPaneView.accuracyNotice)
+            accuracyNotice: ChatPaneView.accuracyNotice,
+            questionInBox: model.returnedQuestion)
     }
 
     fileprivate static func who(_ role: ChatRole) -> AskPane.Bubble.Who {

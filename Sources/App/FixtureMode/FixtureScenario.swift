@@ -97,6 +97,9 @@ struct FixtureScenario: Codable, Equatable {
 
     /// Overrides the selected built-in Llama model by its raw identifier.
     var llamaModel: String?
+    /// Built-in models (raw identifiers) whose weights count as downloaded
+    /// when settings first load.
+    var downloadedModels: [String]?
 
     var appLockOn: Bool { appLock == "on" }
     var licenseOn: Bool { license == "on" || license == "test" }
