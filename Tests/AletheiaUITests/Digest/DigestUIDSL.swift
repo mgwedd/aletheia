@@ -7,7 +7,6 @@ extension Copy {
     static let digestPausedWords = "paused"
     static let digestCouldntBuild = "Couldn't build the digest"
     static let digestRetry = "Retry"
-    static let digestEdit = "Edit"
     static let digestSave = "Save"
     static let digestAllReady = "Summaries: all 1 ready"
 }
@@ -50,7 +49,11 @@ extension Given {
             $0.license = "test"
             $0.fileVault = "on"
             $0.contextTokens = 8192
-            $0.aiStageMs = stageMs
+            // Each summary written word by word, so a build lasts long enough
+            // to see it under way.
+            $0.aiStageMs = stageMs ?? 300
+            $0.aiStreamsWords = true
+            $0.aiReplies = ["The client talked about how the week went at work and at home."]
             $0.aiModelMissing = modelMissing
             $0.patients = [.init(name: "Jane Doe", sessions: 1, transcript: DigestContent.longTranscript())]
             $0.open = "Jane Doe"
@@ -66,5 +69,16 @@ extension When {
 
     func openTranscriptTab(_ screen: SummariesOnScreen) {
         app.tap(Copy.transcriptTab)
+    }
+
+    /// Types `line` at the top of the transcript, which is always editable,
+    /// then saves the edit.
+    func editTranscript(_ screen: SummariesOnScreen, adding line: String) {
+        let transcript = app.app.textViews.matching(NSPredicate(format: "value CONTAINS %@", "[00:")).firstMatch
+        guard app.waitFor(transcript, timeout: 10) else { return }
+        // The view is as tall as the whole transcript; its middle is off screen.
+        transcript.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 10)).click()
+        transcript.typeText(line + "\n")
+        app.tap(Copy.digestSave)
     }
 }

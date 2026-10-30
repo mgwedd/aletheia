@@ -33,12 +33,8 @@ final class DigestUITests: AcceptanceCase {
         given.aLongSession()
         let screen = when.openSummaries()
         when.openTranscriptTab(screen)
-        screen.driver.tap(Copy.digestEdit)
-        let editor = screen.driver.app.textViews.firstMatch
-        XCTAssertTrue(screen.driver.waitFor(editor, timeout: 10))
-        editor.click()
-        editor.typeText("\nAn extra line added by the edit.")
-        screen.driver.tap(Copy.digestSave)
+        XCTAssertTrue(screen.driver.waitFor(screen.driver.element(labelContaining: Copy.digestAllReady), timeout: 90))
+        when.editTranscript(screen, adding: "An extra line added by the edit.")
 
         XCTAssertTrue(screen.driver.waitFor(screen.driver.element(labelContaining: Copy.processingTranscript), timeout: 30))
     }

@@ -166,7 +166,7 @@ extension Then where Subject == NotesTabOnScreen {
     }
 
     func isWaitingForChat() {
-        expect(subject.driver.waitFor(subject.driver.element(labelContaining: Copy.waitingForChat), timeout: 30),
+        expect(subject.driver.waitFor(subject.driver.anything(containing: Copy.waitingForChat), timeout: 30),
                "no waiting status for the chat answer")
         expect(subject.driver.exists(subject.driver.button(Copy.cancel)), "no Cancel button while waiting")
     }
