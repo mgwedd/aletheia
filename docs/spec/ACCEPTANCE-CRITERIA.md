@@ -38,7 +38,7 @@ Before you start: setup finished, a data folder chosen, and the disk encrypted w
 
 ## 3. Start a session (SESSION)
 Before you start: a patient with no sessions.
-- **SESSION-01** Open the patient with no sessions → the list says "No Sessions Yet" with a **New session** button.
+- **SESSION-01** Open the patient with no sessions → the list says "No Sessions Yet" with a **New session** button and fills the page, with no empty session pane beside it.
 - **SESSION-02** Click **New session** twice within 10 seconds → only one session is created; a second click after the 10-second debounce makes another, listed newest first with its date and time.
 - **SESSION-03** Record, stop and transcribe a session → its row reads "Recording in progress", then "Transcribing…", then shows a Transcript chip; saving a note adds a Note chip.
 - **SESSION-04** Click **Review in Settings…** on the set-aside recordings warning strip → Settings opens on its "Set-aside recordings" page.
@@ -47,6 +47,7 @@ Before you start: a patient with no sessions.
 - **SESSION-07** Choose **Remind Me** > Tomorrow (dev build) → Reminders gains a "Follow up" item that names no patient.
 - **SESSION-08** Run the Shortcuts action "Show Today's Sessions" (dev build) → sessions are listed by initials, and when locked it refuses.
 - **SESSION-09** With FileVault off, click **New session** → an alert asks you to turn on FileVault and no session is created.
+- **SESSION-10** Open a patient with a session and drag the divider between the session list and the session (an easy-to-grab strip, as wide as every pane divider) → the page starts split evenly, and the list widens or narrows with the drag, stopping before either side gets too narrow to use.
 
 ## 4. Record a session (RECORD)
 Before you start: a session with no transcript, a Mac that can play some audio, and microphone and call-audio permissions not yet decided.

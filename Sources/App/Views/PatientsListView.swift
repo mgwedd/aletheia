@@ -15,6 +15,8 @@ struct PatientsListView: View {
 
     @State private var showAddPatient = false
     @State private var newPatientName = ""
+    @State private var showDamagedRecords = false
+    @State private var reviewingDamagedRecord: UnreadableEntry?
 
     private var visibleUnreadableRecords: [UnreadableEntry] {
         (appModel.unreadablePatients + appModel.unreadableDatabaseRecords)
@@ -70,6 +72,8 @@ struct PatientsListView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .dismissOnLock {
             showAddPatient = false
+            showDamagedRecords = false
+            reviewingDamagedRecord = nil
             newPatientName = ""   // a typed name is patient data; it does not wait behind the lock
         }
         .sheet(isPresented: $showAddPatient) {
@@ -82,6 +86,16 @@ struct PatientsListView: View {
                 showAddPatient = false
             }
         }
+        .sheet(item: $reviewingDamagedRecord) { entry in
+            DamagedRecordReviewSheet(
+                entry: entry,
+                onDismissNotice: {
+                    settings.dismissDamagedRecord(id: entry.id)
+                    reviewingDamagedRecord = nil
+                },
+                onClose: { reviewingDamagedRecord = nil }
+            )
+        }
         .onAppear { appModel.refreshPatients() }
     }
 
@@ -90,15 +104,32 @@ struct PatientsListView: View {
             GlobalSearchField(model: search, isFocused: searchFocused, onOpen: onOpenSearchResult)
 
             if !visibleUnreadableRecords.isEmpty {
-                DamagedRecordsNotice(
-                    title: visibleUnreadableRecords.count == 1
-                        ? "1 record couldn't be read"
-                        : "\(visibleUnreadableRecords.count) records couldn't be read",
-                    entries: visibleUnreadableRecords,
-                    onDismiss: { entry in
-                        settings.dismissDamagedRecord(id: entry.id)
-                    }
-                )
+                // One line here; the full notice in a popover. Its list of
+                // paths in the footer could outgrow the sidebar and push the
+                // patient list off screen.
+                Button { showDamagedRecords = true } label: {
+                    Label(DamagedRecordsNotice.title(count: visibleUnreadableRecords.count), systemImage: "exclamationmark.triangle")
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.themed)
+                .foregroundStyle(Theme.warn.color)
+                .accessibilityIdentifier("sidebar-damaged-records")
+                .popover(isPresented: $showDamagedRecords, arrowEdge: .trailing) {
+                    DamagedRecordsNotice(
+                        title: DamagedRecordsNotice.title(count: visibleUnreadableRecords.count),
+                        entries: visibleUnreadableRecords,
+                        onDismiss: { entry in
+                            settings.dismissDamagedRecord(id: entry.id)
+                        },
+                        onReview: { entry in
+                            showDamagedRecords = false
+                            reviewingDamagedRecord = entry
+                        }
+                    )
+                    .frame(width: 420)
+                    .padding(12)
+                }
             }
 
             // In the footer, not the toolbar: toolbar items get swept into the
