@@ -333,6 +333,27 @@ jobs:
             "${ONLY[@]}" \
             | xcbeautify --renderer github-actions
 
+      # DocsClaimsTests and LegalTests are unit tests (they read README, the
+      # policy files and docs/), so the skipped Build & test job would otherwise
+      # never run them on a docs-only change. This job is already on macOS for
+      # the coverage tests, so it runs just those two classes here too.
+      - name: Run the documentation unit tests
+        if: needs.changes.outputs.code == 'false'
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Aletheia.xcodeproj \
+            -scheme Aletheia \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            -resultBundlePath build/DocsTestResults.xcresult \
+            -only-testing:AletheiaTests/DocsClaimsTests \
+            -only-testing:AletheiaTests/LegalTests \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS="DEBUG ALETHEIA_PREVIEW ALETHEIA_DEV" \
+            | xcbeautify --renderer github-actions
+
       - name: Acceptance summary
         if: always()
         run: |
@@ -359,7 +380,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: AcceptanceResults
-          path: build/AcceptanceResults.xcresult
+          path: |
+            build/AcceptanceResults.xcresult
+            build/DocsTestResults.xcresult
           retention-days: 7
           if-no-files-found: ignore
 

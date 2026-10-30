@@ -275,6 +275,18 @@ else:
     for c in classes:
         if c not in known:
             bad(f"smoke-test.yml: subset names {c}, which is not a test class under Tests/AletheiaTests")
+# Docs-only changes skip the unit tests, so the acceptance job (macOS either way)
+# must run the two document-reading classes itself.
+acc = smoke["jobs"]["acceptance"]
+doc_step = next((s for s in acc["steps"] if s.get("name") == "Run the documentation unit tests"), None)
+if doc_step is None:
+    bad("smoke-test.yml: acceptance needs a 'Run the documentation unit tests' step")
+else:
+    if "needs.changes.outputs.code == 'false'" not in str(doc_step.get("if", "")):
+        bad("smoke-test.yml: the documentation unit tests must run when code == 'false'")
+    for c in ("DocsClaimsTests", "LegalTests"):
+        if f"-only-testing:AletheiaTests/{c}" not in doc_step.get("run", ""):
+            bad(f"smoke-test.yml: the documentation unit tests must include {c}")
 guard = [s.get("run", "") for s in smoke["jobs"]["entitlements-guard"]["steps"]]
 if not any("check-ci-gating.sh" in r and "--self-test" not in r for r in guard):
     bad("smoke-test.yml: entitlements-guard job must run scripts/check-ci-gating.sh")
