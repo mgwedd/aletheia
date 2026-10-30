@@ -181,10 +181,11 @@ struct ChatPaneView: View {
                 .padding(EdgeInsets(top: 20, leading: 20, bottom: 0, trailing: 20))
                 .background(ChatBottomFollower(followToken: messages.count))
             }
-            // A thread opens at its latest message, not its first. The anchor
-            // covers the first layout and later growth; the explicit jumps
-            // below cover a different thread arriving in this same view.
-            .defaultScrollAnchor(.bottom)
+            // A thread opens at its latest message, not its first: the follower
+            // pins the first layout and later growth, and these jumps cover a
+            // different thread arriving in this same view. No bottom scroll
+            // anchor: on a whole stack it drags a reader who scrolled up along
+            // with every new chunk.
             .onAppear { jumpToLatest(proxy) }
             .onChange(of: messages.first?.id) { _, _ in
                 jumpToLatest(proxy)
