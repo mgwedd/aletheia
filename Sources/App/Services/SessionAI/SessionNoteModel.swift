@@ -155,9 +155,11 @@ final class SessionNoteModel: ObservableObject {
     }
 
     /// Copy: the shown note with its formatting, to paste into an EHR or a document.
+    /// An unsigned note carries the draft stamp; one altered after signing is held back.
     func copyNote(to pasteboard: NSPasteboard = PHIPasteboard.general) {
-        guard mayLeave(message: NoteLifecycle.reviewToCopy) else { return }
-        RichClipboard.write(RichClipboard.payload(markdown: summaryText), to: pasteboard)
+        if case .altered = noteStatus { reviewBlock = NoteLifecycle.reviewToCopy; return }
+        let text = NoteLifecycle.stamped(summaryText, status: noteStatus)
+        RichClipboard.write(RichClipboard.payload(markdown: text), to: pasteboard)
         copyFeedback.flash()
     }
 

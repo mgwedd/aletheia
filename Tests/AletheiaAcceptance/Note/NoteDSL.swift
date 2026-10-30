@@ -111,7 +111,7 @@ extension Then where Subject == NotePane {
 
     func keepsTheTextWrittenSoFar(_ text: String) {
         expect(!subject.isWriting, "the note is still being written")
-        expect(subject.text.contains(text), "the note lost the text written so far; it shows \"\(subject.text)\"")
+        expect(subject.shown.contains(text), "the note lost the text written so far; it shows \"\(subject.shown)\"")
     }
 
     func hasTheSoapSections(speakersAre name: String) {
@@ -148,7 +148,7 @@ extension Then where Subject == NotePane {
     }
 
     func showsText(_ text: String) {
-        expectEqual(subject.text, text, "the note")
+        expectEqual(subject.shown, text, "the note")
     }
 
     func keepsTheMarkdown(_ markdown: String) {

@@ -158,6 +158,6 @@ final class PsychotherapyNoteSeparationTests: XCTestCase {
         XCTAssertEqual(NoteKind.progress.title, "Progress note")
         XCTAssertEqual(NoteKind.psychotherapy.title, "Psychotherapy note")
         XCTAssertTrue(NoteKind.psychotherapyBanner.contains("separate from the clinical record"))
-        XCTAssertEqual(NotesPane.mine.label, "Psychotherapy note")
+        XCTAssertEqual(NotesPane.mine.label, "My Notes")
     }
 }
