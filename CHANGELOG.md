@@ -9,6 +9,11 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.69.3] - 2026-10-30
+
+### Fixed
+- own patients sidebar pane that always comes back on relaunch (#544)
+
 ## [2.69.2] - 2026-10-30
 
 ### Fixed
