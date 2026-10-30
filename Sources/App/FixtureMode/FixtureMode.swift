@@ -156,6 +156,12 @@ enum FixtureMode {
                 _ = try? model.recordConsent(capture, patient: patient, session: session)
             }
         }
+        let damaged = (scenario?.patients ?? []).filter { $0.damaged == true }.map(\.name)
+        for patient in model.patients where damaged.contains(patient.name) {
+            let file = store.patientDir(for: patient).appendingPathComponent("patient.json")
+            try? Data("{ not json".utf8).write(to: file)
+        }
+        if !damaged.isEmpty { model.refreshPatients() }
     }
 
     /// Removes other runs' folders untouched for a day: a run that crashed or

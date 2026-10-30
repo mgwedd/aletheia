@@ -1331,8 +1331,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 - **SES-001** When the therapist presses New session on a patient's page, and the disk is not known to be unencrypted, a session dated now is created, listed and opened; a further press within 10 seconds of the last one is ignored (file imports are not debounced).
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Services/Store.swift, Sources/App/Services/AppModel.swift` · `qa: SESSION-02`
-- **SES-002** When a patient has no sessions, the session list shows "No Sessions Yet" with a New session button, and the right pane says "Select a Session".
-  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift` · `qa: SESSION-01`
+- **SES-002** When a patient has no sessions, the session list shows "No Sessions Yet" with a New session button and takes the whole page; the session pane appears once there is a session. With sessions, the divider between list and session drags to resize the list (300–640 points, leaving the session at least 360), and the width is kept per window.
+  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift` · `qa: SESSION-01, SESSION-10`
 - **SES-003** When a new session is created, its folder is named by its date (yyyy-MM-dd) followed by "_Session", with "_Session-2", "_Session-3" and so on for further sessions on the same day.
   `surface: invariant` · `evidence: Sources/App/Services/Store.swift` · `qa: BUILD-10`
 - **SES-004** When a session is created, session.json (plaintext) holds a UUID and the date, assigned once and never derived from the folder name; a folder without one gets an id minted and saved.

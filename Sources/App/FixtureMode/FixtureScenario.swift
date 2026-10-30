@@ -23,6 +23,9 @@ struct FixtureScenario: Codable, Equatable {
         var myNotes: String?
         /// The conversation already held on the first session's Ask tab.
         var chat: [ChatSeed]?
+        /// The patient's record file overwritten with bytes that aren't JSON,
+        /// as a damaged disk or a bad copy leaves it.
+        var damaged: Bool?
     }
 
     struct ChatSeed: Codable, Equatable {

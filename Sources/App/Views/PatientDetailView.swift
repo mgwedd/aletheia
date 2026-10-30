@@ -47,6 +47,9 @@ struct PatientDetailView: View {
     @EnvironmentObject private var exports: ExportJobCenter
     @State private var errorMessage: String?
     @State private var showNothingToExport = false
+    /// The session list's width, dragged by the divider; kept per window.
+    @SceneStorage("patientListWidth") private var listWidth: Double = Double(PatientPageLayout.listIdealWidth)
+    @State private var dragStartWidth: CGFloat?
     /// The selected session, resolved against the current listing so a session
     /// that has dropped out of it can't leave a dangling selection.
     private var selectedSession: SessionRecord? {
@@ -62,8 +65,12 @@ struct PatientDetailView: View {
     }
 
     var body: some View {
-        // A plain row, not a split view: a split view kept the list column at
-        // its first width and pushed the session past the edge of a small window.
+        // A plain row with its own divider, not a split view: a split view kept
+        // the list column at its first width and pushed the session past the
+        // edge of a small window. This one re-clamps to the window every layout.
+        GeometryReader { geometry in
+        let showsSession = PatientPageLayout.showsSessionPane(sessionCount: sessions.count)
+        let width = PatientPageLayout.listWidth(proposed: CGFloat(listWidth), total: geometry.size.width)
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 header
@@ -118,13 +125,15 @@ struct PatientDetailView: View {
                 .padding(.bottom, 20)
             }
             .background(Theme.panel.color)
-            // Narrow enough that the session keeps its room in a small window, and
-            // pinned to the top so a short column isn't centred in a tall window.
-            .frame(minWidth: 320, idealWidth: 380, maxWidth: 380, maxHeight: .infinity, alignment: .top)
+            // Pinned to the top so a short column isn't centred in a tall window.
+            // With no sessions there is nothing to open beside it, so it takes the page.
+            .frame(width: showsSession ? width : nil, alignment: .top)
+            .frame(maxWidth: showsSession ? nil : .infinity, maxHeight: .infinity, alignment: .top)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("patient-session-list-column")
 
-            Rectangle()
-                .fill(Theme.line.color)
-                .frame(width: 1)
+            if showsSession {
+            columnDivider(width: width, total: geometry.size.width)
 
             // One frame for both states: swapping a session for the placeholder
             // must not change the pane's size.
@@ -151,7 +160,11 @@ struct PatientDetailView: View {
                     )
                 }
             }
-            .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: PatientPageLayout.sessionMinWidth, maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("patient-session-pane")
+            }
+        }
         }
         .navigationTitle(storedPatient.name)
         .onAppear {
@@ -188,6 +201,36 @@ struct PatientDetailView: View {
         } message: {
             Text("This session's transcript has changes you haven't saved.")
         }
+    }
+
+    /// The line between the session list and the session; drag it to resize.
+    private func columnDivider(width: CGFloat, total: CGFloat) -> some View {
+        Rectangle()
+            .fill(Theme.line.color)
+            .frame(width: 1)
+            .frame(maxHeight: .infinity)
+            .overlay {
+                Color.clear
+                    .frame(width: 9)
+                    .contentShape(Rectangle())
+                    .onHover { inside in
+                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                            .onChanged { drag in
+                                let start = dragStartWidth ?? width
+                                dragStartWidth = start
+                                listWidth = Double(PatientPageLayout.listWidth(
+                                    proposed: start + drag.translation.width, total: total))
+                            }
+                            .onEnded { _ in dragStartWidth = nil }
+                    )
+            }
+            .zIndex(1)
+            .accessibilityElement()
+            .accessibilityIdentifier("patient-page-divider")
+            .accessibilityLabel("Session list width")
     }
 
     private struct SessionSelection {

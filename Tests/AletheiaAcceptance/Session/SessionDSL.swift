@@ -15,6 +15,18 @@ struct SessionListPage {
     let showsEmptyState: Bool
     let title: String
     let button: String
+    /// Whether the session pane sits beside the list.
+    let showsSessionPane: Bool
+}
+
+/// The divider between a patient's session list and the open session, dragged.
+struct ColumnDrag {
+    let pageWidth: CGFloat
+    let listBefore: CGFloat
+    let listAfter: CGFloat
+    let listMinimum: CGFloat
+    let sessionMinimum: CGFloat
+    var sessionAfter: CGFloat { pageWidth - listAfter - 1 }
 }
 
 /// The result of clicking **New session**.
@@ -93,7 +105,20 @@ extension When {
         return SessionListPage(
             showsEmptyState: SessionListEmptyState.isShown(sessionCount: count),
             title: SessionListEmptyState.title,
-            button: SessionListEmptyState.newSessionButton)
+            button: SessionListEmptyState.newSessionButton,
+            showsSessionPane: PatientPageLayout.showsSessionPane(sessionCount: count))
+    }
+
+    /// Drags the divider on a patient page `pageWidth` points wide by `points`
+    /// (positive to the right), starting from the list's default width.
+    func dragColumnDivider(by points: CGFloat, pageWidth: CGFloat = 1100) -> ColumnDrag {
+        let before = PatientPageLayout.listWidth(proposed: PatientPageLayout.listIdealWidth, total: pageWidth)
+        return ColumnDrag(
+            pageWidth: pageWidth,
+            listBefore: before,
+            listAfter: PatientPageLayout.listWidth(proposed: before + points, total: pageWidth),
+            listMinimum: PatientPageLayout.listMinWidth,
+            sessionMinimum: PatientPageLayout.sessionMinWidth)
     }
 
     func tryNewSession(for patient: Patient) -> NewSessionAttempt {
@@ -169,6 +194,27 @@ extension Then where Subject == SessionListPage {
         expect(subject.showsEmptyState, "the empty state is not shown for a patient with no sessions")
         expectEqual(subject.title, "No Sessions Yet", "the empty state title")
         expectEqual(subject.button, "New session", "the button")
+    }
+
+    func showsNoEmptySessionPaneBesideIt() {
+        expect(!subject.showsSessionPane, "an empty session pane sits beside a list with no sessions")
+    }
+
+    func showsTheSessionBesideTheList() {
+        expect(subject.showsSessionPane, "no session pane beside a list with sessions")
+    }
+}
+
+extension Then where Subject == ColumnDrag {
+    func movesTheListBy(_ points: CGFloat) {
+        expectEqual(subject.listAfter - subject.listBefore, points, "how far the list's edge moved")
+    }
+
+    func stopsBeforeEitherSideIsTooNarrow() {
+        expect(subject.listAfter >= subject.listMinimum,
+               "the list narrowed to \(subject.listAfter), under its \(subject.listMinimum)")
+        expect(subject.sessionAfter >= subject.sessionMinimum,
+               "the session narrowed to \(subject.sessionAfter), under its \(subject.sessionMinimum)")
     }
 }
 

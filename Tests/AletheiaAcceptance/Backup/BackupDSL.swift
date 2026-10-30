@@ -72,6 +72,8 @@ struct OpenedPatientRecords {
 struct UnreadableFooter {
     let count: Int
     let visibleCount: Int
+    /// The one line the sidebar shows about them.
+    let title: String
     let listedNames: [String]
     let healthySessionTranscript: String?
 }
@@ -211,6 +213,7 @@ extension When {
         let visible = model.unreadablePatients.filter { !app.settings.isDamagedRecordDismissed(id: $0.id) }
         return UnreadableFooter(
             count: model.unreadablePatients.count, visibleCount: visible.count,
+            title: DamagedRecordsNotice.title(count: visible.count),
             listedNames: model.patients.map(\.name),
             healthySessionTranscript: session.flatMap { store.transcript(for: current, session: $0) })
     }
@@ -298,6 +301,7 @@ extension Then where Subject == OpenedFolder {
 extension Then where Subject == UnreadableFooter {
     func saysOneRecordCouldntBeRead() {
         expectEqual(subject.visibleCount, 1, "records the sidebar says couldn't be read")
+        expectEqual(subject.title, "1 record couldn't be read", "the sidebar's line about them")
     }
     func opensEverythingElse(_ healthy: String, transcript: String) {
         expectEqual(subject.listedNames, [healthy], "the patients listed")

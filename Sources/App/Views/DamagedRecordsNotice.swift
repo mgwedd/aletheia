@@ -11,8 +11,16 @@ struct DamagedRecordsNotice: View {
     let title: String
     let entries: [UnreadableEntry]
     var onDismiss: ((UnreadableEntry) -> Void)? = nil
+    /// Set when the notice sits in a popover: a sheet presented from there
+    /// attaches to the popover and can open off screen, so the host shows
+    /// the review on its window instead.
+    var onReview: ((UnreadableEntry) -> Void)? = nil
 
     @State private var reviewingEntry: UnreadableEntry?
+
+    static func title(count: Int) -> String {
+        count == 1 ? "1 record couldn't be read" : "\(count) records couldn't be read"
+    }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
@@ -92,10 +100,12 @@ struct DamagedRecordsNotice: View {
             Text(entry.fileURL.path)
                 .font(Theme.Typography.caption.monospaced())
                 .foregroundStyle(Theme.muted.color)
+                .lineLimit(2)
+                .truncationMode(.middle)
                 .textSelection(.enabled)
             HStack(spacing: 12) {
                 Button("Review") {
-                    reviewingEntry = entry
+                    if let onReview { onReview(entry) } else { reviewingEntry = entry }
                 }
                 .buttonStyle(.themed)
                 .controlSize(.small)

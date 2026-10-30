@@ -4,7 +4,9 @@ final class SessionSpec: AcceptanceCase {
     func test_SESSION_01() async throws {
         let jane = try await given.patient(named: "Jane Doe")
 
-        then(try when.openPatientPage(of: jane)).saysNoSessionsYetWithANewSessionButton()
+        let page = try when.openPatientPage(of: jane)
+        then(page).saysNoSessionsYetWithANewSessionButton()
+        then(page).showsNoEmptySessionPaneBesideIt()
     }
 
     func test_SESSION_02() async throws {
@@ -91,5 +93,16 @@ final class SessionSpec: AcceptanceCase {
         let attempt = when.tryNewSession(for: jane)
 
         then(attempt).wasBlockedByFileVault()
+    }
+
+    func test_SESSION_10() async throws {
+        let jane = try await given.patient(named: "Jane Doe")
+        try when.clickNewSession(for: jane)
+        then(try when.openPatientPage(of: jane)).showsTheSessionBesideTheList()
+
+        then(when.dragColumnDivider(by: 120)).movesTheListBy(120)
+        then(when.dragColumnDivider(by: -60)).movesTheListBy(-60)
+        then(when.dragColumnDivider(by: 5000)).stopsBeforeEitherSideIsTooNarrow()
+        then(when.dragColumnDivider(by: -5000)).stopsBeforeEitherSideIsTooNarrow()
     }
 }
