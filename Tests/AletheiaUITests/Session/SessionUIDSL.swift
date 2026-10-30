@@ -65,6 +65,12 @@ extension When {
     func openTheFirstSession(on page: PatientPageOnScreen) {
         app.click(page.firstSessionRow, "session in the list")
         XCTAssertTrue(app.exists(page.sessionPane), "the session did not open")
+        // The pane exists as soon as it starts sliding in; wait for the list
+        // to finish narrowing before anything measures it.
+        let list = page.list
+        let narrowed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in list.frame.width <= 370 }, object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [narrowed], timeout: AppDriver.timeout), .completed,
+                       "the list did not narrow beside the open session")
     }
 
     /// Drags the divider between the session list and the session by `points`.

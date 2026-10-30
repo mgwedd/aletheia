@@ -200,6 +200,14 @@ final class AppDriver {
             || timedOut("waited for this to be \(enabled ? "enabled" : "disabled"): \(element)")
     }
 
+    /// Waits for the layout to settle into `condition` and says whether it
+    /// did. The caller asserts afterwards, with its own message.
+    @discardableResult
+    func settles(_ condition: @escaping () -> Bool) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)
+        return XCTWaiter().wait(for: [expectation], timeout: Self.timeout) == .completed
+    }
+
     private func wait(for element: XCUIElement, _ predicate: String, timeout: TimeInterval) -> Bool {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: predicate), object: element)
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
