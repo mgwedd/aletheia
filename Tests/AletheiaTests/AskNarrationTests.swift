@@ -128,6 +128,6 @@ final class AskNarrationTests: XCTestCase {
         progress.firstTokenAt = t0.addingTimeInterval(20)
         progress.tokensWritten = 64
         XCTAssertEqual(NoteProgress.statusLine(title: "Generating SOAP note", progress, now: t0.addingTimeInterval(30)),
-                       "Writing the note… · 0:30")
+                       "Generating SOAP note. Writing the note… · 0:30")
     }
 }
