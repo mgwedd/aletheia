@@ -215,8 +215,14 @@ final class AssistantDesk {
 
     // MARK: Waiting
 
-    func waitFor(_ what: String, within seconds: TimeInterval = 10, _ condition: @MainActor () -> Bool) async throws {
-        try await eventually(within: seconds, what) { condition() }
+    /// Waits for `condition`; on a timeout the error says what `describe` saw,
+    /// or else what the model was asked and what it holds.
+    func waitFor(_ what: String, within seconds: TimeInterval = 10,
+                 describe: (@MainActor () -> String)? = nil, _ condition: @MainActor () -> Bool) async throws {
+        let model = self.model
+        try await eventually(within: seconds, what, describe: describe ?? {
+            "model asked \(model.startedCount), finished \(model.finishedCount), held \(model.heldCount)"
+        }) { condition() }
     }
 }
 
@@ -333,31 +339,36 @@ final class NotesTab {
 
     // MARK: Waiting
 
+    /// The pane in a line, for a timeout's message.
+    private func describePane() -> String {
+        let now = pane
+        return "status \(String(describing: now.statusLine)), waiting: \(now.isWaiting) \(String(describing: now.waitingStatus)), "
+            + "writing: \(now.isWriting), text: \"\(now.text.prefix(120))\", alerts: \(alerts.map(\.title)), "
+            + "model asked \(desk.model.startedCount), held \(desk.model.heldCount)"
+    }
+
     func waitUntilIdle() async throws {
-        try await desk.waitFor("the note to finish", within: 30) { !self.model.runner.isStreaming && !self.model.runner.isQueued }
+        try await desk.waitFor("the note to finish", within: 30, describe: describePane) {
+            !self.model.runner.isStreaming && !self.model.runner.isQueued
+        }
     }
 
     func waitForStatus(containing text: String) async throws {
-        do {
-            try await desk.waitFor("the status to mention \"\(text)\"") { self.pane.statusLine?.contains(text) == true }
-        } catch {
-            let now = pane
-            throw EventuallyTimeout(
-                what: "the status to mention \"\(text)\"; it read \(String(describing: now.statusLine)), waiting: \(now.isWaiting) \(String(describing: now.waitingStatus)), writing: \(now.isWriting), requests: \(desk.model.startedCount)",
-                seconds: 10)
+        try await desk.waitFor("the status to mention \"\(text)\"", describe: describePane) {
+            self.pane.statusLine?.contains(text) == true
         }
     }
 
     func waitUntilWriting() async throws {
-        try await desk.waitFor("the note to start") { self.model.runner.isStreaming }
+        try await desk.waitFor("the note to start", describe: describePane) { self.model.runner.isStreaming }
     }
 
     func waitUntilShowing(_ text: String) async throws {
-        try await desk.waitFor("the pane to show \"\(text)\"") { self.model.summaryText.contains(text) }
+        try await desk.waitFor("the pane to show \"\(text)\"", describe: describePane) { self.model.summaryText.contains(text) }
     }
 
     func waitForAlert() async throws -> ShownAlert {
-        try await desk.waitFor("an alert") { !self.alerts.isEmpty }
+        try await desk.waitFor("an alert", describe: describePane) { !self.alerts.isEmpty }
         return alerts[alerts.count - 1]
     }
 }
@@ -419,27 +430,37 @@ final class AskTab {
         ((try? desk.store)?.loadSessionChat(for: stored.patient, session: stored.session)) ?? []
     }
 
+    /// The pane in a line, for a timeout's message.
+    private func describePane() -> String {
+        let now = pane
+        return "status \(String(describing: now.statusLine)), waiting: \(now.isWaiting), answering: \(now.isAnswering), "
+            + "bubbles: \(now.bubbles.map { "\($0.who): \($0.text.prefix(60))" }), alerts: \(alerts.map(\.title)), "
+            + "model asked \(desk.model.startedCount), held \(desk.model.heldCount)"
+    }
+
     func waitForStatus(startingWith text: String) async throws {
-        try await desk.waitFor("the status to read \"\(text)…\"") {
+        try await desk.waitFor("the status to read \"\(text)…\"", describe: describePane) {
             self.pane.statusLine?.hasPrefix(text) == true
         }
     }
 
     func waitUntilAnswering() async throws {
-        try await desk.waitFor("the answer to start") { self.model.runner.isStreaming }
+        try await desk.waitFor("the answer to start", describe: describePane) { self.model.runner.isStreaming }
     }
 
     func waitUntilIdle() async throws {
-        try await desk.waitFor("the answer to finish", within: 30) { !self.model.runner.isStreaming && !self.model.runner.isQueued && !self.model.isSending }
+        try await desk.waitFor("the answer to finish", within: 30, describe: describePane) {
+            !self.model.runner.isStreaming && !self.model.runner.isQueued && !self.model.isSending
+        }
     }
 
     func waitForAlert() async throws -> ShownAlert {
-        try await desk.waitFor("an alert") { !self.alerts.isEmpty }
+        try await desk.waitFor("an alert", describe: describePane) { !self.alerts.isEmpty }
         return alerts[alerts.count - 1]
     }
 
     func waitUntilShowing(_ text: String) async throws {
-        try await desk.waitFor("the conversation to show \"\(text)\"") {
+        try await desk.waitFor("the conversation to show \"\(text)\"", describe: describePane) {
             self.model.messages.contains { $0.text.contains(text) }
         }
     }

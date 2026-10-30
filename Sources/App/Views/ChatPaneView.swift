@@ -214,8 +214,8 @@ struct ChatPaneView: View {
                         .frame(maxWidth: 240)
                 }
                 if let busySince {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        AIStatusLineView(text: AIProgressFormat.busyLine(busyNotice, since: busySince, now: context.date))
+                    LiveTimeline { now in
+                        AIStatusLineView(text: AIProgressFormat.busyLine(busyNotice, since: busySince, now: now))
                     }
                 } else {
                     AIStatusLineView(text: busyNotice)

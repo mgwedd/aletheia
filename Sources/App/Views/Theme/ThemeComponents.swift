@@ -330,7 +330,8 @@ struct ThemeProgressBar: View {
     /// 0...1; values outside are clamped.
     let value: Double
     var tint: Color = Theme.accent.color
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    private var reduceMotion: Bool { QuietUI.reducesMotion(systemReduceMotion) }
 
     var body: some View {
         GeometryReader { proxy in
@@ -363,7 +364,8 @@ struct UnderlineTabBar<Value: Hashable>: View {
     let tabs: [ThemeTab<Value>]
     @Binding var selection: Value
     @Namespace private var underline
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    private var reduceMotion: Bool { QuietUI.reducesMotion(systemReduceMotion) }
 
     var body: some View {
         HStack(spacing: 22) {
@@ -433,7 +435,8 @@ struct ThemeSegmentedControl<Value: Hashable>: View {
     @Binding var selection: Value
     var sizing: Sizing = .equal
     @Namespace private var thumb
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    private var reduceMotion: Bool { QuietUI.reducesMotion(systemReduceMotion) }
 
     var body: some View {
         HStack(spacing: 2) {

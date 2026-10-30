@@ -72,10 +72,10 @@ private struct NoteProgressRow: View {
     let highWater: ProgressHighWater
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        LiveTimeline { now in
             VStack(alignment: .leading, spacing: 6) {
-                AIStatusLineView(text: NoteProgress.statusLine(title: title, progress, now: context.date))
-                ThemeProgressBar(value: highWater.clamp(NoteProgress.fraction(progress, now: context.date, speed: speed)))
+                AIStatusLineView(text: NoteProgress.statusLine(title: title, progress, now: now))
+                ThemeProgressBar(value: highWater.clamp(NoteProgress.fraction(progress, now: now, speed: speed)))
                     .frame(maxWidth: 240)
             }
         }
@@ -674,18 +674,18 @@ struct SessionDetailView: View {
     /// Red dot and elapsed time while this session records; the dot holds
     /// still while paused.
     private var recordingTimer: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        LiveTimeline { now in
             HStack(spacing: 6) {
                 Circle()
                     .fill(Theme.recording.color)
                     .frame(width: 8, height: 8)
                     .opacity(recorder.isPaused ? 0.5 : 1)
-                Text(recordingElapsed(at: context.date))
+                Text(recordingElapsed(at: now))
                     .font(Theme.Typography.control.monospacedDigit())
                     .foregroundStyle(Theme.recording.color)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(recorder.isPaused ? "Paused" : "Recording, \(recordingElapsed(at: context.date))")
+            .accessibilityLabel(recorder.isPaused ? "Paused" : "Recording, \(recordingElapsed(at: now))")
         }
         .padding(.leading, 4)
     }
@@ -695,11 +695,11 @@ struct SessionDetailView: View {
     private var recordingPanel: some View {
         VStack(spacing: 14) {
             Chip(recorder.isPaused ? "Paused" : "Recording", tone: .recording, showsDot: true)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(recordingElapsed(at: context.date))
+            LiveTimeline { now in
+                Text(recordingElapsed(at: now))
                     .font(Theme.Typography.timer)
                     .foregroundStyle(recorder.isPaused ? Theme.muted.color : Theme.text.color)
-                    .accessibilityLabel("Elapsed \(recordingElapsed(at: context.date))")
+                    .accessibilityLabel("Elapsed \(recordingElapsed(at: now))")
             }
             InputLevelMeters(levels: recorder.levels, isPaused: recorder.isPaused)
             if let problem = recorder.callAudioProblem {

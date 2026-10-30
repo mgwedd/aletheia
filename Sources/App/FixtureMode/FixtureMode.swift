@@ -286,19 +286,66 @@ struct FixtureSpotlight: SpotlightIndexing {
 /// the app's container.
 struct FixtureProbeOverlay: View {
     @EnvironmentObject private var appModel: AppModel
+    @StateObject private var probe = FixtureProbeFeed()
 
     var body: some View {
-        // Redrawn twice a second, so files written without a model change still show.
-        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
-            Color.clear
-                .frame(width: 2, height: 2)
-                .accessibilityElement()
-                .accessibilityIdentifier("fixture-probe")
-                // The JSON rides in the label: XCUI reads a label back for any
-                // element, but not always a value.
-                .accessibilityLabel(FixtureProbe.snapshotJSON(appModel: appModel))
-                .allowsHitTesting(false)
+        Color.clear
+            .frame(width: 2, height: 2)
+            .accessibilityElement()
+            .accessibilityIdentifier("fixture-probe")
+            // The JSON rides in the label: XCUI reads a label back for any
+            // element, but not always a value.
+            .accessibilityLabel(probe.json)
+            .allowsHitTesting(false)
+            .task { await probe.run(appModel: appModel) }
+    }
+}
+
+/// Keeps the probe's JSON current without loading the main thread: twice a
+/// second the files and the store are read on a background task, the
+/// transcript's lines are counted (on main, where its layout lives) only when
+/// the transcript changed, and the label is republished only when the JSON did.
+@MainActor
+final class FixtureProbeFeed: ObservableObject {
+    @Published private(set) var json = "{}"
+    private var transcriptKey: TranscriptKey?
+    private var transcriptLines = 0
+
+    private struct TranscriptKey: Equatable {
+        let view: ObjectIdentifier
+        let text: Int
+        let width: CGFloat
+    }
+
+    func run(appModel: AppModel) async {
+        while !Task.isCancelled {
+            await refresh(appModel: appModel)
+            try? await Task.sleep(nanoseconds: 500_000_000)
         }
+    }
+
+    private func refresh(appModel: AppModel) async {
+        let store = appModel.store
+        let root = FixtureMode.root
+        let read = await Task.detached(priority: .utility) {
+            (FixtureProbe.files(under: root), FixtureProbe.patientFacts(store: store))
+        }.value
+        let snapshot = FixtureProbe.Snapshot(
+            files: read.0, patients: read.1, aiRequests: FixtureMode.engine.requestTexts,
+            transcriptLines: currentTranscriptLines())
+        let next = FixtureProbe.encode(snapshot)
+        if next != json { json = next }
+    }
+
+    private func currentTranscriptLines() -> Int {
+        guard let view = FixtureMode.transcriptView else { transcriptKey = nil; return 0 }
+        let key = TranscriptKey(view: ObjectIdentifier(view), text: view.string.hashValue,
+                                width: view.textContainer?.size.width ?? 0)
+        if key != transcriptKey {
+            transcriptKey = key
+            transcriptLines = FixtureProbe.transcriptLineCount()
+        }
+        return transcriptLines
     }
 }
 
@@ -347,20 +394,20 @@ enum FixtureProbe {
             .sorted()
     }
 
-    @MainActor static func snapshot(appModel: AppModel) -> Snapshot {
-        let stored = (try? appModel.store?.listPatients()) ?? []
-        let patients = stored.map { patient -> PatientFacts in
-            let dir = appModel.store?.patientDir(for: patient)
+    /// What the store holds about each patient. Safe off the main thread: the
+    /// store's listings also run from App Intents and background work.
+    static func patientFacts(store: Store?) -> [PatientFacts] {
+        guard let store else { return [] }
+        let stored = (try? store.listPatients()) ?? []
+        return stored.map { patient -> PatientFacts in
+            let dir = store.patientDir(for: patient)
             return PatientFacts(
                 name: patient.name, notes: patient.notes, clinicalHistory: patient.clinicalHistory,
                 medications: patient.medications.map { "\($0.name) \($0.dose)" },
-                folderExists: dir.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
-                sessions: (try? appModel.store?.listSessions(for: patient).count) ?? 0,
+                folderExists: FileManager.default.fileExists(atPath: dir.path),
+                sessions: (try? store.listSessions(for: patient).count) ?? 0,
                 consentPolicy: patient.recordingConsentPolicy?.rawValue)
         }
-        let asked = FixtureMode.engine.requestTexts
-        return Snapshot(files: files(under: FixtureMode.root), patients: patients, aiRequests: asked,
-                        transcriptLines: transcriptLineCount())
     }
 
     /// Lines in the laid-out transcript on screen, so a test can tell a turn that wraps
@@ -374,10 +421,6 @@ enum FixtureProbe {
             lines += 1
         }
         return lines
-    }
-
-    @MainActor static func snapshotJSON(appModel: AppModel) -> String {
-        encode(snapshot(appModel: appModel))
     }
 }
 #endif

@@ -243,7 +243,10 @@ final class TranscriptionDesk {
 
     /// Waits for the transcription to end and reports how.
     func waitForResult(of recorded: RecordedSession) async throws -> TranscriptionResult {
-        try await eventually("the transcription to end") { self.coordinator.outcomes[recorded.session.id] != nil }
+        try await eventually("the transcription to end",
+                             describe: { "outcomes for \(self.coordinator.outcomes.count) session(s)" }) {
+            self.coordinator.outcomes[recorded.session.id] != nil
+        }
         let outcome = try XCTUnwrap(coordinator.takeOutcome(for: recorded.session.id))
         return TranscriptionResult(
             outcome: outcome, notificationTitles: notifier.titles, onDisk: try onDisk(recorded))

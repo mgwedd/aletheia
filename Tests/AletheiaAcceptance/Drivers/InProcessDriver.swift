@@ -24,6 +24,9 @@ final class InProcessDriver {
     /// stopped in order before the data folder is closed.
     private var stoppers: [() async -> Void] = []
     private let originalScratch = PrivateStaging.root
+    /// Beside the data folder, never inside it: a backup archives the data
+    /// folder and stages its archive here.
+    private let scratch: URL
 
     init(tier: BuildTier = .dev) throws {
         root = FileManager.default.temporaryDirectory
@@ -31,7 +34,9 @@ final class InProcessDriver {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         probe = DataFolderProbe(root: root)
         // Process-wide state starts fresh for every test.
-        PrivateStaging.root = root.appendingPathComponent("Scratch", isDirectory: true)
+        scratch = root.deletingLastPathComponent()
+            .appendingPathComponent(root.lastPathComponent + "-scratch", isDirectory: true)
+        PrivateStaging.root = scratch
         SessionSearch.index = SearchIndex()
         defaultsSuite = "aletheia-acceptance-\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: defaultsSuite)!
@@ -89,5 +94,6 @@ final class InProcessDriver {
         PrivateStaging.root = originalScratch
         defaults.removePersistentDomain(forName: defaultsSuite)
         try? FileManager.default.removeItem(at: root)
+        try? FileManager.default.removeItem(at: scratch)
     }
 }
