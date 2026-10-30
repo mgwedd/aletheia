@@ -19,5 +19,12 @@ final class TestHostFixtureTests: XCTestCase {
         XCTAssertTrue(TestHost.runsInBackground(environment: xctest))
         XCTAssertEqual(TestHost.activationPolicy(environment: xctest), .prohibited)
     }
+
+    func testBackgroundTestHostLeavesTheMainWindowEmpty() {
+        XCTAssertFalse(TestHost.showsMainWindow(environment: xctest))
+        XCTAssertTrue(TestHost.showsMainWindow(environment: [:]))
+        XCTAssertTrue(TestHost.showsMainWindow(environment: xctest.merging(["ALETHEIA_FOREGROUND_TESTS": "1"]) { $1 }))
+        XCTAssertTrue(TestHost.showsMainWindow(environment: xctest.merging([FixtureMode.environmentKey: "{}"]) { $1 }))
+    }
 }
 #endif

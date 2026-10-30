@@ -43,6 +43,15 @@ enum TestHost {
         runsInBackground(environment: environment) ? .prohibited : nil
     }
 
+    /// False while hosting tests in the background. The test host shares the
+    /// user's container and settings, so its main window stays empty: it
+    /// doesn't open their records or save its layout over theirs.
+    static func showsMainWindow(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        !runsInBackground(environment: environment)
+    }
+
     /// Makes a window transparent and click-through while hosting tests in
     /// the background. It still lays out and draws, so tests can inspect it.
     @MainActor static func conceal(_ window: NSWindow, environment: [String: String] = ProcessInfo.processInfo.environment) {
