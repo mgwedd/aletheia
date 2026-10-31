@@ -134,8 +134,10 @@ struct PatientDetailView: View {
             .background(Theme.panel.color)
             // Pinned to the top so a short column isn't centred in a tall window.
             // With no session open there is nothing beside it, so it takes the page.
-            .frame(width: showsSession ? width : nil, alignment: .top)
-            .frame(maxWidth: showsSession ? nil : .infinity, maxHeight: .infinity, alignment: .top)
+            // One fixed width in both states: switching between a fixed and a
+            // flexible frame left the column at its full width on reopening.
+            .frame(width: showsSession ? width : geometry.size.width, alignment: .top)
+            .frame(maxHeight: .infinity, alignment: .top)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("patient-session-list-column")
 
