@@ -100,6 +100,9 @@ struct SessionDetailView: View {
     var initialNoteFormat: ProgressNoteFormat? = nil
     var initialShowingMyNotes: Bool = false
     var navigationToken: Int = 0
+    /// Closes the session, giving the patient's page back its full width.
+    /// `nil` where there is nothing to close back to.
+    var onClose: (() -> Void)? = nil
 
     init(
         patient: Patient,
@@ -111,7 +114,8 @@ struct SessionDetailView: View {
         initialSearchFocus: SearchMatchFocus? = nil,
         initialNoteFormat: ProgressNoteFormat? = nil,
         initialShowingMyNotes: Bool = false,
-        navigationToken: Int = 0
+        navigationToken: Int = 0,
+        onClose: (() -> Void)? = nil
     ) {
         self.patient = patient
         self.session = session
@@ -123,6 +127,7 @@ struct SessionDetailView: View {
         self.initialNoteFormat = initialNoteFormat
         self.initialShowingMyNotes = initialShowingMyNotes
         self.navigationToken = navigationToken
+        self.onClose = onClose
         self._selectedTab = State(initialValue: initialTab)
         self._showingMyNotes = State(initialValue: initialShowingMyNotes)
         self._focusedCommentID = State(initialValue: initialFocusedCommentID)
@@ -467,17 +472,28 @@ struct SessionDetailView: View {
     /// Title and consent line on one row when they fit; in a narrow column the
     /// consent line goes under the title, wrapping if it must.
     private var header: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                headerTitle
-                Spacer(minLength: 0)
-                consentStatus(alignment: .trailing).fixedSize()
+        HStack(spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    headerTitle
+                    Spacer(minLength: 0)
+                    consentStatus(alignment: .trailing).fixedSize()
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    headerTitle
+                    consentStatus(alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            VStack(alignment: .leading, spacing: 4) {
-                headerTitle
-                consentStatus(alignment: .leading)
+            if let onClose {
+                Button(action: onClose) {
+                    Label("Close Session", systemImage: "xmark")
+                }
+                .buttonStyle(.themeIcon)
+                .controlSize(.small)
+                .help("Close this session")
+                .accessibilityIdentifier("session-close")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 6)

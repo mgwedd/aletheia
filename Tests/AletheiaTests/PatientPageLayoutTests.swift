@@ -2,9 +2,9 @@
 import XCTest
 
 final class PatientPageLayoutTests: XCTestCase {
-    func testSessionPaneOnlyWithSessions() {
-        XCTAssertFalse(PatientPageLayout.showsSessionPane(sessionCount: 0))
-        XCTAssertTrue(PatientPageLayout.showsSessionPane(sessionCount: 1))
+    func testSessionPaneOnlyWhileASessionIsOpen() {
+        XCTAssertFalse(PatientPageLayout.showsSessionPane(hasOpenSession: false))
+        XCTAssertTrue(PatientPageLayout.showsSessionPane(hasOpenSession: true))
     }
 
     func testDraggedWidthIsKeptInRange() {
@@ -13,19 +13,21 @@ final class PatientPageLayoutTests: XCTestCase {
         XCTAssertEqual(PatientPageLayout.listWidth(proposed: 2000, total: 1200), 1200 - 1 - PatientPageLayout.sessionMinWidth)
     }
 
-    func testOpensSplitEvenly() {
-        XCTAssertEqual(PatientPageLayout.listWidth(share: PatientPageLayout.defaultListShare, total: 1101), 550)
+    func testOpensWithACompactListAndTheSessionTakingMostOfThePage() {
+        let list = PatientPageLayout.listWidth(proposed: PatientPageLayout.defaultListWidth, total: 1100)
+        XCTAssertEqual(list, 340)
+        XCTAssertGreaterThan(1100 - 1 - list, 2 * list)
     }
 
-    func testABrokenShareFallsBackToAnEvenSplit() {
-        XCTAssertEqual(PatientPageLayout.listWidth(share: .nan, total: 1001), 500)
-        XCTAssertEqual(PatientPageLayout.listWidth(share: 7, total: 1001), 500)
+    func testTheCompactListKeepsItsWidthAsTheWindowGrows() {
+        for total: CGFloat in [1000, 1400, 2000] {
+            XCTAssertEqual(PatientPageLayout.listWidth(proposed: PatientPageLayout.defaultListWidth, total: total), 340)
+        }
     }
 
-    func testADraggedWidthIsKeptAsAShareOfThePage() {
-        let share = PatientPageLayout.share(listWidth: 400, total: 1001)
-        XCTAssertEqual(PatientPageLayout.listWidth(share: share, total: 1001), 400, accuracy: 0.001)
-        XCTAssertEqual(PatientPageLayout.listWidth(share: share, total: 1501), 600, accuracy: 0.001)
+    func testABrokenStoredWidthFallsBackToTheDefault() {
+        XCTAssertEqual(PatientPageLayout.listWidth(proposed: .nan, total: 1100), PatientPageLayout.defaultListWidth)
+        XCTAssertEqual(PatientPageLayout.listWidth(proposed: .infinity, total: 1100), PatientPageLayout.defaultListWidth)
     }
 
     func testDividerGripIsWideEnoughToGrab() {

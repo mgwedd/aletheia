@@ -47,8 +47,14 @@ struct PatientDetailView: View {
     @EnvironmentObject private var exports: ExportJobCenter
     @State private var errorMessage: String?
     @State private var showNothingToExport = false
-    /// The session list's width, dragged by the divider; kept per window.
-    @SceneStorage("patientListShare") private var listShare: Double = PatientPageLayout.defaultListShare
+    /// The session list's width beside an open session, dragged by the divider; kept per window.
+    @SceneStorage("patientListWidth") private var listWidth: Double = Double(PatientPageLayout.defaultListWidth)
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    /// The session pane slides in and out, and the list narrows or widens with
+    /// it; with Reduce Motion the change is instant.
+    private var paneAnimation: Animation? {
+        QuietUI.reducesMotion(systemReduceMotion) ? nil : .easeInOut(duration: 0.3)
+    }
     /// The selected session, resolved against the current listing so a session
     /// that has dropped out of it can't leave a dangling selection.
     private var selectedSession: SessionRecord? {
@@ -67,25 +73,21 @@ struct PatientDetailView: View {
         // The shared leading split, laid out from the window every time: a
         // system split view kept the list column at its first width and pushed
         // the session past the edge of a small window.
-        GeometryReader { geometry in
-            let total = geometry.size.width
-            if PatientPageLayout.showsSessionPane(sessionCount: sessions.count) {
-                LeadingPaneSplit(
-                    width: Binding(
-                        get: { Double(PatientPageLayout.listWidth(share: listShare, total: total)) },
-                        set: { listShare = PatientPageLayout.share(listWidth: CGFloat($0), total: total) }),
-                    limit: { PatientPageLayout.listWidth(proposed: $0, total: $1) },
-                    dividerID: "patient-page-divider", dividerLabel: "Session list width"
-                ) {
-                    sessionListColumn
-                } content: {
-                    sessionPane
-                }
-            } else {
-                // With no sessions there is nothing to open beside it, so it takes the page.
-                sessionListColumn
-            }
+        let showsSession = PatientPageLayout.showsSessionPane(hasOpenSession: selectedSession != nil)
+        LeadingPaneSplit(
+            width: $listWidth,
+            limit: { PatientPageLayout.listWidth(proposed: $0, total: $1) },
+            dividerID: "patient-page-divider", dividerLabel: "Session list width",
+            // With no session open there is nothing beside the list, so it takes the page.
+            showsContent: showsSession
+        ) {
+            sessionListColumn
+        } content: {
+            sessionPane
         }
+        // The pane, its line and its grip slide together; with Reduce Motion
+        // the change is instant.
+        .animation(paneAnimation, value: showsSession)
         .navigationTitle(storedPatient.name)
         .onAppear {
             appModel.access.viewedPatient(patient.id)
@@ -184,9 +186,8 @@ struct PatientDetailView: View {
         .accessibilityIdentifier("patient-session-list-column")
     }
 
+    /// The open session. Its pane is shown only while a session is open.
     private var sessionPane: some View {
-        // One frame for both states: swapping a session for the placeholder
-        // must not change the pane's size.
         Group {
             if let selectedSession {
                 SessionDetailView(
@@ -199,31 +200,28 @@ struct PatientDetailView: View {
                     initialSearchFocus: sessionInitialSearchFocus?.sessionID == selectedSession.id ? sessionInitialSearchFocus?.focus : nil,
                     initialNoteFormat: sessionInitialNoteFormat,
                     initialShowingMyNotes: sessionInitialShowingMyNotes,
-                    navigationToken: sessionNavigationToken
+                    navigationToken: sessionNavigationToken,
+                    onClose: { requestSelection(nil) }
                 )
                 .id(selectedSession.id)
-            } else {
-                ContentUnavailableView(
-                    "Select a Session",
-                    systemImage: "waveform",
-                    description: Text("Choose a session on the left, or start a new one.")
-                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.window.color)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("patient-session-pane")
     }
 
+    /// A session to open, or `nil` to close the open one.
     private struct SessionSelection {
-        let id: UUID
+        let id: UUID?
     }
 
     /// The session list's selection, routed through `requestSelection` so a
     /// click on another session can't silently drop unsaved transcript edits.
     /// A click on the list's empty space reports `nil`; that is ignored so it
-    /// doesn't close the open session (selection only clears when the session
-    /// itself disappears, see `refresh`).
+    /// doesn't close the open session (it closes from the session's own Close
+    /// button, or when the session itself disappears, see `refresh`).
     private var guardedSelection: Binding<UUID?> {
         Binding(
             get: { selectedSessionID },
@@ -234,7 +232,7 @@ struct PatientDetailView: View {
         )
     }
 
-    private func requestSelection(_ id: UUID) {
+    private func requestSelection(_ id: UUID?) {
         guard id != selectedSessionID else { return }
         if editGuard.hasUnsavedEdits {
             pendingSelection = SessionSelection(id: id)

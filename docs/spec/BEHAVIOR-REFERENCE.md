@@ -1339,7 +1339,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 - **SES-001** When the therapist presses New session on a patient's page, and the disk is not known to be unencrypted, a session dated now is created, listed and opened; a further press within 10 seconds of the last one is ignored (file imports are not debounced).
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Services/Store.swift, Sources/App/Services/AppModel.swift` · `qa: SESSION-02`
-- **SES-002** When a patient has no sessions, the session list shows "No Sessions Yet" with a New session button and takes the whole page; the session pane appears once there is a session.
+- **SES-002** When a patient has no sessions, the session list shows "No Sessions Yet" with a New session button and takes the whole page.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift` · `qa: SESSION-01`
 - **SES-003** When a new session is created, its folder is named by its date (yyyy-MM-dd) followed by "_Session", with "_Session-2", "_Session-3" and so on for further sessions on the same day.
   `surface: invariant` · `evidence: Sources/App/Services/Store.swift` · `qa: BUILD-10`
@@ -1413,8 +1413,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:548, Sources/App/Services/DiskEncryption.swift:47` · `qa: SESSION-09`
 - **SES-038** When sessions are created by file import, the 10-second debounce on New session does not apply.
   `surface: ui` · `evidence: not yet traced to source` · `qa: SESSION-02`
-- **SES-039** When a patient has sessions, the page opens split evenly between list and session; the divider between them drags to resize the list (at least 300 points, leaving the session at least 360; a page too narrow for both shares its width in that proportion, so the session never runs past the window), and the split is kept per window. Dragged under its narrowest, the list gives way, then springs back when let go. Its grab area is 12 points wide, the same as every pane divider.
+- **SES-039** When a session is open, the list beside it opens 340 points wide and the session takes the rest; the divider between them drags to resize the list (at least 300 points, leaving the session at least 360; a page too narrow for both shares its width in that proportion, so the session never runs past the window), and the split is kept per window. Dragged under its narrowest, the list gives way, then springs back when let go. Its grab area is 12 points wide, the same as every pane divider.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift, Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/PaneDividerGrip.swift` · `qa: SESSION-10`
+- **SES-040** When no session is open (none chosen yet, or the patient has none), there is no session pane and the session list takes the whole page. Opening a session slides its pane in from the trailing edge as the list narrows to its compact width; the session's Close Session button (or the session leaving the list) slides it back out and the list takes the page again. With Reduce Motion on, the change is instant.
+  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift, Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/SessionDetailView.swift` · `qa: SESSION-11`
 
 ## Search (SRC)
 

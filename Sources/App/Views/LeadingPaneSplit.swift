@@ -49,6 +49,10 @@ struct LeadingPaneSplit<Pane: View, Content: View>: View {
     /// The strip at the window's edge while the pane is hidden.
     let revealID: String
     let revealLabel: String
+    /// Whether anything sits beside the pane. Without it the pane takes the
+    /// whole width, with no line or grip; it comes back sliding in from the
+    /// trailing edge.
+    var showsContent: Bool = true
     @ViewBuilder let pane: () -> Pane
     @ViewBuilder let content: () -> Content
     /// Where the edge was when the drag began: 0 while the pane is hidden.
@@ -66,23 +70,34 @@ struct LeadingPaneSplit<Pane: View, Content: View>: View {
             let shown = stretchedWidth ?? limit(CGFloat(width), total)
             HStack(spacing: 0) {
                 if isShown {
+                    // One fixed width with or without content beside it:
+                    // switching between a fixed and a flexible frame left the
+                    // pane at its full width when the content came back.
                     pane()
-                        .frame(width: shown)
+                        .frame(width: showsContent ? shown : total)
                         .frame(maxHeight: .infinity)
                         .clipped()
                         .transition(.move(edge: .leading))
-                    Rectangle()
-                        .fill(Theme.line.color)
-                        .frame(width: 1)
-                        .frame(maxHeight: .infinity)
                 }
-                content()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
+                if showsContent {
+                    HStack(spacing: 0) {
+                        if isShown {
+                            Rectangle()
+                                .fill(Theme.line.color)
+                                .frame(width: 1)
+                                .frame(maxHeight: .infinity)
+                        }
+                        content()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
+                    }
+                    .transition(.move(edge: .trailing))
+                }
             }
             // One grip, shown or hidden, so a drag that collapses or reveals the
             // pane keeps going with the same mouse press.
             .overlay(alignment: .topLeading) {
+                if showsContent {
                 PaneDividerGrip(
                     accessibilityID: isShown ? dividerID : revealID,
                     accessibilityLabel: isShown ? dividerLabel : revealLabel,
@@ -118,6 +133,8 @@ struct LeadingPaneSplit<Pane: View, Content: View>: View {
                 .frame(width: isShown ? PaneDivider.gripWidth : PaneDivider.gripWidth / 2)
                 .frame(maxHeight: .infinity)
                 .offset(x: isShown ? shown - PaneDivider.gripLead : 0)
+                .transition(.opacity)
+                }
             }
         }
     }
@@ -130,12 +147,13 @@ extension LeadingPaneSplit {
         width: Binding<Double>,
         limit: @escaping (_ proposed: CGFloat, _ total: CGFloat) -> CGFloat,
         dividerID: String, dividerLabel: String,
+        showsContent: Bool = true,
         @ViewBuilder pane: @escaping () -> Pane,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
             width: width, isShown: .constant(true), limit: limit, collapseWidth: nil,
             dividerID: dividerID, dividerLabel: dividerLabel, revealID: "", revealLabel: "",
-            pane: pane, content: content)
+            showsContent: showsContent, pane: pane, content: content)
     }
 }
