@@ -1064,6 +1064,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/ChatMemory.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-22`
 - **CHT-076** When the compaction a send started fails, is stopped, comes back empty or is cancelled while waiting, the question is not sent and goes back into the empty Ask box.
   `surface: ui` · `evidence: Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/SessionAI/PatientChatModel.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-23`
+- **CHT-077** In the patient chat window, the divider between the Chats list and the chat drags to resize the list (200 to 320 points, leaving the chat at least 360); dragged under its narrowest, the list gives way, then springs back when let go. The width is kept per window, and the grab area is 12 points wide, the same as every pane divider.
+  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift, Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/PaneDividerGrip.swift` · `qa: CHAT-24`
 - **CHT-040** When the chat has history, a Compact button appears and compacts the conversation on demand.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:98-101` · `qa: CHAT-13`
 - **CHT-041** When a conversation has been compacted, a "Conversation compacted" card appears and the summary stands in for the older messages.
@@ -1411,10 +1413,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:548, Sources/App/Services/DiskEncryption.swift:47` · `qa: SESSION-09`
 - **SES-038** When sessions are created by file import, the 10-second debounce on New session does not apply.
   `surface: ui` · `evidence: not yet traced to source` · `qa: SESSION-02`
-- **SES-039** When a session is open, the list beside it opens 340 points wide and the session takes the rest; the divider between them drags to resize the list (at least 300 points, leaving the session at least 360; a page too narrow for both shares its width in that proportion, so the session never runs past the window), and the split is kept per window. Its grab area is 12 points wide, the same as the transcript/comments divider.
-  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift, Sources/App/Views/PaneDividerGrip.swift` · `qa: SESSION-10`
+- **SES-039** When a session is open, the list beside it opens 340 points wide and the session takes the rest; the divider between them drags to resize the list (at least 300 points, leaving the session at least 360; a page too narrow for both shares its width in that proportion, so the session never runs past the window), and the split is kept per window. Dragged under its narrowest, the list gives way, then springs back when let go. Its grab area is 12 points wide, the same as every pane divider.
+  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift, Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/PaneDividerGrip.swift` · `qa: SESSION-10`
 - **SES-040** When no session is open (none chosen yet, or the patient has none), there is no session pane and the session list takes the whole page. Opening a session slides its pane in from the trailing edge as the list narrows to its compact width; the session's Close Session button (or the session leaving the list) slides it back out and the list takes the page again. With Reduce Motion on, the change is instant.
-  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift, Sources/App/Views/SessionDetailView.swift` · `qa: SESSION-11`
+  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift, Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/SessionDetailView.swift` · `qa: SESSION-11`
 
 ## Search (SRC)
 

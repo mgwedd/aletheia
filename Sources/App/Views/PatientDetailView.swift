@@ -49,7 +49,6 @@ struct PatientDetailView: View {
     @State private var showNothingToExport = false
     /// The session list's width beside an open session, dragged by the divider; kept per window.
     @SceneStorage("patientListWidth") private var listWidth: Double = Double(PatientPageLayout.defaultListWidth)
-    @State private var dragStartWidth: CGFloat?
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     /// The session pane slides in and out, and the list narrows or widens with
     /// it; with Reduce Motion the change is instant.
@@ -71,114 +70,24 @@ struct PatientDetailView: View {
     }
 
     var body: some View {
-        // A plain row with its own divider, not a split view: a split view kept
-        // the list column at its first width and pushed the session past the
-        // edge of a small window. This one re-clamps to the window every layout.
-        GeometryReader { geometry in
+        // The shared leading split, laid out from the window every time: a
+        // system split view kept the list column at its first width and pushed
+        // the session past the edge of a small window.
         let showsSession = PatientPageLayout.showsSessionPane(hasOpenSession: selectedSession != nil)
-        let width = PatientPageLayout.listWidth(proposed: CGFloat(listWidth), total: geometry.size.width)
-        ZStack(alignment: .topLeading) {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                    .padding(.horizontal, 20)
-                    .frame(minHeight: 52)
-
-                VStack(alignment: .leading, spacing: 22) {
-                    // Scrolls when the window is too short for it and the
-                    // session list, so the column never outgrows the window.
-                    ViewThatFits(in: .vertical) {
-                        profileSection
-                        ScrollView { profileSection }
-                    }
-                    // Outside the scroll, so the summary status and its
-                    // Pause/Resume stay in view in a short window.
-                    SummaryStatusRow(scheduler: integrations.digestScheduler, patientID: patient.id)
-
-                    Rectangle()
-                        .fill(Theme.line.color)
-                        .frame(height: 1)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("Sessions").eyebrowStyle()
-                            Spacer()
-                            Button {
-                                newSession()
-                            } label: {
-                                Label("New session", systemImage: "plus")
-                            }
-                            .buttonStyle(.themed)
-                        }
-
-                        if !visibleDamagedSessions.isEmpty {
-                            DamagedRecordsNotice(
-                                title: visibleDamagedSessions.count == 1
-                                    ? "1 session couldn't be read"
-                                    : "\(visibleDamagedSessions.count) sessions couldn't be read",
-                                entries: visibleDamagedSessions,
-                                onDismiss: { entry in
-                                    settings.dismissDamagedRecord(id: entry.id)
-                                }
-                            )
-                        }
-
-                        sessionList
-                    }
-                    .frame(maxHeight: .infinity)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 20)
-            }
-            .background(Theme.panel.color)
-            // Pinned to the top so a short column isn't centred in a tall window.
-            // With no session open there is nothing beside it, so it takes the page.
-            // One fixed width in both states: switching between a fixed and a
-            // flexible frame left the column at its full width on reopening.
-            .frame(width: showsSession ? width : geometry.size.width, alignment: .top)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("patient-session-list-column")
-
-            if showsSession, let selectedSession {
-                HStack(spacing: 0) {
-                    Rectangle()
-                        .fill(Theme.line.color)
-                        .frame(width: PatientPageLayout.dividerWidth)
-                        .frame(maxHeight: .infinity)
-
-                    SessionDetailView(
-                        patient: patient,
-                        session: selectedSession,
-                        onSessionUpdated: refresh,
-                        editGuard: editGuard,
-                        initialTab: sessionInitialTab,
-                        initialFocusedCommentID: sessionInitialFocusedCommentID,
-                        initialSearchFocus: sessionInitialSearchFocus?.sessionID == selectedSession.id ? sessionInitialSearchFocus?.focus : nil,
-                        initialNoteFormat: sessionInitialNoteFormat,
-                        initialShowingMyNotes: sessionInitialShowingMyNotes,
-                        navigationToken: sessionNavigationToken,
-                        onClose: { requestSelection(nil) }
-                    )
-                    .id(selectedSession.id)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Theme.window.color)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("patient-session-pane")
-                }
-                .transition(.move(edge: .trailing))
-            }
+        LeadingPaneSplit(
+            width: $listWidth,
+            limit: { PatientPageLayout.listWidth(proposed: $0, total: $1) },
+            dividerID: "patient-page-divider", dividerLabel: "Session list width",
+            // With no session open there is nothing beside the list, so it takes the page.
+            showsContent: showsSession
+        ) {
+            sessionListColumn
+        } content: {
+            sessionPane
         }
-        if showsSession {
-            columnDivider(width: width, total: geometry.size.width)
-                .transition(.opacity)
-        }
-        }
-        // One animation for the pane and its divider grip, so the grip
-        // never sits at its final place while the pane is still sliding.
+        // The pane, its line and its grip slide together; with Reduce Motion
+        // the change is instant.
         .animation(paneAnimation, value: showsSession)
-        }
         .navigationTitle(storedPatient.name)
         .onAppear {
             appModel.access.viewedPatient(patient.id)
@@ -216,23 +125,91 @@ struct PatientDetailView: View {
         }
     }
 
-    /// The line between the session list and the session; drag it to resize.
-    /// The grab area over the line between the list and the session.
-    private func columnDivider(width: CGFloat, total: CGFloat) -> some View {
-        PaneDividerGrip(
-            accessibilityID: "patient-page-divider",
-            accessibilityLabel: "Session list width",
-            onDrag: { translation in
-                let start = dragStartWidth ?? width
-                dragStartWidth = start
-                let dragged = PatientPageLayout.listWidth(proposed: start + translation, total: total)
-                listWidth = Double(dragged)
-            },
-            onEnd: { dragStartWidth = nil }
-        )
-        .frame(width: PaneDivider.gripWidth)
-        .frame(maxHeight: .infinity)
-        .offset(x: width - PaneDivider.gripLead)
+    /// The patient's profile and session list, pinned to the top so a short
+    /// column isn't centred in a tall window.
+    private var sessionListColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.horizontal, 20)
+                .frame(minHeight: 52)
+
+            VStack(alignment: .leading, spacing: 22) {
+                // Scrolls when the window is too short for it and the
+                // session list, so the column never outgrows the window.
+                ViewThatFits(in: .vertical) {
+                    profileSection
+                    ScrollView { profileSection }
+                }
+                // Outside the scroll, so the summary status and its
+                // Pause/Resume stay in view in a short window.
+                SummaryStatusRow(scheduler: integrations.digestScheduler, patientID: patient.id)
+
+                Rectangle()
+                    .fill(Theme.line.color)
+                    .frame(height: 1)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Sessions").eyebrowStyle()
+                        Spacer()
+                        Button {
+                            newSession()
+                        } label: {
+                            Label("New session", systemImage: "plus")
+                        }
+                        .buttonStyle(.themed)
+                    }
+
+                    if !visibleDamagedSessions.isEmpty {
+                        DamagedRecordsNotice(
+                            title: visibleDamagedSessions.count == 1
+                                ? "1 session couldn't be read"
+                                : "\(visibleDamagedSessions.count) sessions couldn't be read",
+                            entries: visibleDamagedSessions,
+                            onDismiss: { entry in
+                                settings.dismissDamagedRecord(id: entry.id)
+                            }
+                        )
+                    }
+
+                    sessionList
+                }
+                .frame(maxHeight: .infinity)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 20)
+        }
+        .background(Theme.panel.color)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("patient-session-list-column")
+    }
+
+    /// The open session. Its pane is shown only while a session is open.
+    private var sessionPane: some View {
+        Group {
+            if let selectedSession {
+                SessionDetailView(
+                    patient: patient,
+                    session: selectedSession,
+                    onSessionUpdated: refresh,
+                    editGuard: editGuard,
+                    initialTab: sessionInitialTab,
+                    initialFocusedCommentID: sessionInitialFocusedCommentID,
+                    initialSearchFocus: sessionInitialSearchFocus?.sessionID == selectedSession.id ? sessionInitialSearchFocus?.focus : nil,
+                    initialNoteFormat: sessionInitialNoteFormat,
+                    initialShowingMyNotes: sessionInitialShowingMyNotes,
+                    navigationToken: sessionNavigationToken,
+                    onClose: { requestSelection(nil) }
+                )
+                .id(selectedSession.id)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.window.color)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("patient-session-pane")
     }
 
     /// A session to open, or `nil` to close the open one.

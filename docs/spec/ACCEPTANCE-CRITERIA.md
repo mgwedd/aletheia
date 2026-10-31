@@ -160,6 +160,7 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-21** Open **Ask** on a session with a conversation → **Compact** sits on the effort bar, and "AI generated responses can be inaccurate. Double-check responses." shows at the bottom left of the conversation.
 - **CHAT-22** Keep asking on one session until the conversation passes a quarter of what the AI model can read at once → the earlier messages compact into a "Conversation compacted" card before the next answer.
 - **CHAT-23** Ask on a conversation that needs compacting, and the summary fails or is stopped → the question goes back into the box unsent; nothing typed is lost.
+- **CHAT-24** Open **Ask about this patient** and drag the divider between the **Chats** list and the chat (the same easy-to-grab strip as every pane divider) → the list widens or narrows with the drag, stopping before either side gets too narrow to use.
 
 ## 9. Summaries prepared in the background (DIGEST)
 Before you start: a patient whose sessions have transcripts too long for this Mac to read at once, and the AI model downloaded.

@@ -176,3 +176,46 @@ extension When {
 struct SummaryFailed: LocalizedError {
     var errorDescription: String? { "The summary could not be written." }
 }
+
+// MARK: - Chats list width
+
+/// The patient chat window's Chats list before and after its edge was dragged.
+struct ChatsListDrag {
+    let windowWidth: CGFloat
+    let before: CGFloat
+    let after: CGFloat
+    let narrowest: CGFloat
+    let widest: CGFloat
+    let chatMinimum: CGFloat
+    var chatAfter: CGFloat { windowWidth - after - 1 }
+}
+
+extension When {
+    /// The chat window as it usually opens, wider than its 640-point minimum.
+    static let chatWindowWidth: CGFloat = 900
+
+    func dragChatsListEdge(by points: CGFloat, windowWidth: CGFloat = When.chatWindowWidth) -> ChatsListDrag {
+        let before = ChatThreadsLayout.idealWidth
+        return ChatsListDrag(
+            windowWidth: windowWidth,
+            before: before,
+            after: ChatThreadsLayout.width(proposed: before + points, total: windowWidth),
+            narrowest: ChatThreadsLayout.minWidth,
+            widest: ChatThreadsLayout.maxWidth,
+            chatMinimum: ChatThreadsLayout.chatMinWidth)
+    }
+}
+
+extension Then where Subject == ChatsListDrag {
+    func movesTheListBy(_ points: CGFloat) {
+        expectEqual(subject.after - subject.before, points, "how far the Chats list's edge moved")
+    }
+
+    func staysUsable() {
+        expect(subject.after >= subject.narrowest, "the Chats list narrowed to \(subject.after), under \(subject.narrowest)")
+        expect(subject.after <= subject.widest, "the Chats list widened to \(subject.after), over \(subject.widest)")
+        expect(subject.narrowest >= 180, "the Chats list's narrowest width \(subject.narrowest) cuts off chat titles")
+        expect(subject.chatAfter >= subject.chatMinimum,
+               "the chat narrowed to \(subject.chatAfter), under its \(subject.chatMinimum)")
+    }
+}
