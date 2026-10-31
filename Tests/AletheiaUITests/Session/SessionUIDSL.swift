@@ -14,6 +14,18 @@ struct PatientPageOnScreen {
     var closeSession: XCUIElement { driver.element(id: "session-close") }
     var firstSessionRow: XCUIElement { driver.element(id: "session-row") }
     var window: XCUIElement { driver.app.windows.firstMatch }
+
+    /// How wide the list shows on screen: up to where the session starts
+    /// when one is open. The column's accessibility frame can lag behind a
+    /// narrowing, so the session pane's leading edge marks where it ends.
+    var listWidth: CGFloat {
+        let column = list.frame
+        guard sessionPane.exists else { return column.width }
+        return min(column.maxX, sessionPane.frame.minX) - column.minX
+    }
+
+    /// Both frames, for a failure message.
+    var layout: String { "list \(list.frame), session \(sessionPane.exists ? "\(sessionPane.frame)" : "none")" }
 }
 
 /// The session list's width before and after its divider was dragged.
@@ -67,21 +79,20 @@ extension When {
         XCTAssertTrue(app.exists(page.sessionPane), "the session did not open")
         // The pane exists as soon as it starts sliding in; wait for the list
         // to finish narrowing before anything measures it.
-        let list = page.list
-        let narrowed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in list.frame.width <= 370 }, object: nil)
+        let narrowed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in page.listWidth <= 370 }, object: nil)
         XCTAssertEqual(XCTWaiter().wait(for: [narrowed], timeout: AppDriver.timeout), .completed,
-                       "the list did not narrow beside the open session")
+                       "the list did not narrow beside the open session: \(page.layout)")
     }
 
     /// Drags the divider between the session list and the session by `points`.
     func dragColumnDivider(on page: PatientPageOnScreen, by points: CGFloat) -> ColumnDragOnScreen {
         XCTAssertTrue(app.exists(page.divider), "no divider between the session list and the session")
-        let before = page.list.frame.width
+        let before = page.listWidth
         let start = page.divider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: points, dy: 0)))
         // A drag under the narrowest springs back once let go.
         RunLoop.current.run(until: Date().addingTimeInterval(0.6))
-        return ColumnDragOnScreen(before: before, after: page.list.frame.width, page: page)
+        return ColumnDragOnScreen(before: before, after: page.listWidth, page: page)
     }
 }
 
@@ -95,11 +106,11 @@ extension Then where Subject == PatientPageOnScreen {
     /// session takes the rest of the page.
     func givesTheSessionMostOfThePage() {
         expect(subject.driver.exists(subject.sessionPane), "no session pane beside the list")
-        let column = subject.list
-        subject.driver.settles { (290...370).contains(column.frame.width) }
-        let list = subject.list.frame.width
+        let page = subject
+        subject.driver.settles { (290...370).contains(page.listWidth) }
+        let list = subject.listWidth
         let session = subject.sessionPane.frame.width
-        expect(list >= 290 && list <= 370, "the list opens \(list) wide")
+        expect(list >= 290 && list <= 370, "the list opens \(list) wide: \(subject.layout)")
         expect(session > list, "the session opens \(session) wide beside a list \(list) wide")
     }
 
