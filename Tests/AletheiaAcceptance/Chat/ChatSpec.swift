@@ -308,4 +308,11 @@ final class ChatSpec: AcceptanceCase {
         then(ask.pane).neverAsked("And about work?")
         then(ask.pane).hasInTheBox("And about work?")
     }
+
+    func test_CHAT_24() async throws {
+        then(when.dragChatsListEdge(by: 60)).movesTheListBy(60)
+        then(when.dragChatsListEdge(by: -20)).movesTheListBy(-20)
+        then(when.dragChatsListEdge(by: 5000)).staysUsable()
+        then(when.dragChatsListEdge(by: -5000)).staysUsable()
+    }
 }

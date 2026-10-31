@@ -58,6 +58,8 @@ extension When {
         let before = page.list.frame.width
         let start = page.divider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: points, dy: 0)))
+        // A drag under the narrowest springs back once let go.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
         return ColumnDragOnScreen(before: before, after: page.list.frame.width, page: page)
     }
 }
