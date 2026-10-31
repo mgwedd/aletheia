@@ -54,6 +54,12 @@ jobs:
         run: ./scripts/check-audit-wiring.sh --self-test
       - name: Check audit actions are recorded
         run: ./scripts/check-audit-wiring.sh
+      # Public documents match the app (README, policies, docs/). Here and not in
+      # the Swift tests, so docs-only changes, which skip the build, still run it.
+      - name: Self-test the document checks
+        run: python3 scripts/check-docs.py --self-test
+      - name: Check the documents
+        run: python3 scripts/check-docs.py
       # The workflows' macOS gating: tier test subsets, path-gated benchmark and
       # packaging jobs (job-level `if:`, never `on.paths`), unchanged job names.
       - name: Self-test the CI gating guard
@@ -359,7 +365,8 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: AcceptanceResults
-          path: build/AcceptanceResults.xcresult
+          path: |
+            build/AcceptanceResults.xcresult
           retention-days: 7
           if-no-files-found: ignore
 
