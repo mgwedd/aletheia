@@ -237,7 +237,8 @@ extension Then where Subject == AskTabOnScreen {
         let field = subject.field.frame
         expect(notice.frame.minY >= field.maxY, "the accuracy notice is not under the question box: \(notice.frame) vs \(field)")
         expect(notice.frame.minX <= field.minX + 8, "the accuracy notice is not at the left of the question box: \(notice.frame) vs \(field)")
-        expect(notice.frame.height <= 16, "the accuracy notice is not small print: \(notice.frame)")
+        // Small print: at most two 10pt lines, as a narrow pane wraps it.
+        expect(notice.frame.height <= 30, "the accuracy notice is not small print: \(notice.frame)")
     }
 
     func showsCompactedCardAboveTheAnswer() {

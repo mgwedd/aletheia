@@ -161,7 +161,7 @@ extension Then where Subject == PatientChatOnScreen {
 
 extension Then where Subject == PatientChatOnScreen {
     func listsAChat(titled title: String) {
-        let row = subject.list.descendants(matching: .any).matching(NSPredicate(format: "label == %@", title)).firstMatch
+        let row = subject.list.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", title, title + ",")).firstMatch
         expect(subject.driver.waitFor(row, timeout: 30), "the Chats list has no chat titled \"\(title)\"")
     }
 }

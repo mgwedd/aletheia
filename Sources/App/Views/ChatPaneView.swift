@@ -178,12 +178,13 @@ struct ChatPaneView: View {
                         progressIndicator
                             .id("sending-indicator")
                     }
-                    // Zero-height end marker: scrolling to it lands on the true
-                    // bottom, under the stack's spacing, not 20pt short of it.
-                    Color.clear.frame(height: 0).id(Self.bottomID)
+                    // End marker: scrolling to it lands on the true bottom. Its
+                    // height is the room under the last row, so the progress
+                    // line is never clipped; padding below it would leave a
+                    // jump to the latest message short of the end.
+                    Color.clear.frame(height: 16).id(Self.bottomID)
                 }
-                // Room under the last row, so the progress line is never clipped.
-                .padding(EdgeInsets(top: 20, leading: 20, bottom: 16, trailing: 20))
+                .padding(EdgeInsets(top: 20, leading: 20, bottom: 0, trailing: 20))
                 .background(ChatBottomFollower(followToken: messages.count))
             }
             // A thread opens at its latest message, not its first: the follower

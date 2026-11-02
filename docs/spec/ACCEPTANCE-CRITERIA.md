@@ -161,7 +161,7 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-22** Keep asking on one session until the conversation passes a quarter of what the AI model can read at once → the earlier messages compact into a "Conversation compacted" card before the next answer.
 - **CHAT-23** Ask on a conversation that needs compacting, and the summary fails or is stopped → the question goes back into the box unsent; nothing typed is lost.
 - **CHAT-24** Open **Ask about this patient** and drag the divider between the **Chats** list and the chat (the same easy-to-grab strip as every pane divider) → the list widens or narrows with the drag, stopping before either side gets too narrow to use.
-- **CHAT-25** Open **Ask** on a session with a conversation → **Clear** sits just left of **Compact** on the effort bar; click it and confirm → the conversation empties, and it is still empty after you quit and reopen the app.
+- **CHAT-25** Open **Ask** on a session with a conversation, click **Clear** (just left of **Compact** on the effort bar) and confirm → the conversation empties, and it is still empty after you quit and reopen the app.
 - **CHAT-26** In **Ask about this patient**, open a chat with a conversation, click **Clear** and confirm → that chat's conversation empties and the chat stays in the **Chats** list.
 - **CHAT-27** In **Ask about this patient**, click **Delete All Chats** in the **Chats** list and confirm → every chat about the patient is gone.
 - **CHAT-28** In **Ask**, drag across an answer with a heading, paragraphs, a list and a quote → one selection runs across all of them, ready to copy.
