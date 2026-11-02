@@ -205,7 +205,7 @@ final class DeviceKeyStoreTests: XCTestCase {
 
     func testAuditKeyQueryIsNonSynchronizable() {
         XCTAssertEqual(AuditKeyManager.keyQuery[kSecAttrSynchronizable as String] as? Bool, false)
-        XCTAssertEqual(AuditKeyManager.keyQuery[kSecAttrAccount as String] as? String, "com.aletheia.audit-hmac-key")
+        XCTAssertEqual(AuditKeyManager.keyQuery[kSecAttrAccount as String] as? String, AuditKeyManager.account)
     }
 
     func testCommonStatusesGetPlainReasons() throws {

@@ -483,8 +483,11 @@ final class AppSettings: ObservableObject {
     /// hosts unit tests, a separate suite emptied at the start of each run. Tests
     /// change the shared settings (a restore picks a new data folder), and those
     /// changes must never reach the preferences a local build opens with.
+    /// A Debug build outside tests uses its own suite (see `DebugBuildIsolation`).
     static let sharedDefaults: UserDefaults = {
-        guard TestHost.isHostingTests() else { return .standard }
+        guard TestHost.isHostingTests() else {
+            return DebugBuildIsolation.defaultsSuite().flatMap(UserDefaults.init(suiteName:)) ?? .standard
+        }
         let suite = "com.astrealabs.aletheia.unit-tests"
         UserDefaults.standard.removePersistentDomain(forName: suite)
         return UserDefaults(suiteName: suite) ?? .standard
@@ -642,7 +645,8 @@ final class AppSettings: ObservableObject {
         if FixtureMode.isActive { return FixtureMode.root }
         #endif
         return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Aletheia/Data", isDirectory: true)
+            .appendingPathComponent("Aletheia", isDirectory: true)
+            .appendingPathComponent(DebugBuildIsolation.dataFolderName(), isDirectory: true)
     }
 
     func useStandardDataRoot() throws {
