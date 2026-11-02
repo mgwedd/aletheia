@@ -12,8 +12,6 @@ final class SessionChatModel: ObservableObject {
     /// composer takes it back so nothing typed is lost.
     @Published var returnedQuestion: String?
     @Published var isSending = false
-    /// What part of the session the last answer read.
-    @Published var coverage: String?
     /// How much this chat's answers say: starts at the Settings default
     /// (`AppSettings.askDepth`) and is changed from the Ask bar.
     @Published var depth: AnswerDepth = .default
@@ -54,7 +52,6 @@ final class SessionChatModel: ObservableObject {
     /// Caveats about the last answer, shown above the composer.
     var notices: [String] {
         var list: [String] = []
-        if let coverage { list.append(coverage) }
         if runner.progress.stats?.possiblyTruncated == true && !isSending {
             list.append(AIRunStats.truncationNotice)
         }
@@ -71,7 +68,6 @@ final class SessionChatModel: ObservableObject {
         if let reply = MyNotesLookup.answer(question: question, notes: material.myNotes) {
             messages.append(userMessage)
             messages.append(ChatMessage(role: .assistant, text: reply, fromMyNotes: true))
-            coverage = nil
             let saved = messages
             appModel.attemptSave("chat") { try store.saveSessionChat(saved, for: self.patient, session: self.session) }
             return
@@ -99,7 +95,6 @@ final class SessionChatModel: ObservableObject {
         let patient = patient!
         let session = session!
         let runner = runner
-        coverage = nil
         runner.start(
             queue: integrations.inferenceQueue,
             kind: .sessionChat,
@@ -127,7 +122,7 @@ final class SessionChatModel: ObservableObject {
                     saveDigest: { try store.saveDigest($0, for: patient, session: session) },
                     sectionCache: .store(store, patient: patient, session: session),
                     live: { started, change in runner.update(started: started, change) },
-                    coverage: { [self] in coverage = $0 }
+                    coverage: { _ in }
                 )
             },
             onReveal: { [self] text in messages.upsert(id: assistantID, role: .assistant, text: text) },
@@ -156,6 +151,16 @@ final class SessionChatModel: ObservableObject {
                 isSending = false
             }
         )
+    }
+
+    /// Empties this session's conversation. Refused while an answer is
+    /// being written; on a failed write the stored conversation stays.
+    func clear() {
+        guard !isSending, let store = appModel.store else { return }
+        let patient = patient!
+        let session = session!
+        appModel.attemptSave("chat") { try store.clearSessionChat(for: patient, session: session) }
+        load()
     }
 
     /// Replaces the conversation so far with the model's summary of it

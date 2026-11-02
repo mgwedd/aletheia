@@ -1406,6 +1406,16 @@ final class Store {
         guard commentStore.saveSessionChat(messages, sessionID: session.id) else { throw DatabaseWriteError.writeFailed }
     }
 
+    /// Empties a session's Ask conversation. Nothing happens (and nothing is
+    /// logged) when it has none. Throws `DatabaseWriteError` when it could not
+    /// be removed.
+    func clearSessionChat(for patient: Patient, session: SessionRecord) throws {
+        guard !loadSessionChat(for: patient, session: session).isEmpty else { return }
+        guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
+        guard commentStore.saveSessionChat([], sessionID: session.id) else { throw DatabaseWriteError.writeFailed }
+        onAudit?(.phiDeleted, session.id.uuidString, AuditDetail.sessionChat)
+    }
+
     /// One-time move of a session's file-based chat into SQLite, then removes the
     /// file. Idempotent: once `chat.json` is gone there's nothing to import. The
     /// file is deleted only after its content is safely written to the DB, so an
@@ -1473,6 +1483,26 @@ final class Store {
     func deleteChatThread(id: UUID, for patient: Patient) throws {
         guard let commentStore else { throw DatabaseWriteError.databaseUnavailable }
         guard commentStore.deleteChatThread(id: id, patientID: patient.id) else { throw DatabaseWriteError.writeFailed }
+    }
+
+    /// Empties a chat thread's conversation, keeping the thread in the list.
+    /// Throws `DatabaseWriteError` when it could not be written.
+    func clearChatThread(_ thread: ChatThread, for patient: Patient) throws {
+        var cleared = thread
+        cleared.messages = []
+        cleared.updatedAt = Date()
+        try saveChatThread(cleared, for: patient)
+        onAudit?(.phiDeleted, thread.id.uuidString, AuditDetail.chatThread)
+    }
+
+    /// Deletes every one of the patient's chat threads. Deletes all it can,
+    /// then throws the first failure.
+    func deleteChatThreads(for patient: Patient) throws {
+        var failure: Error?
+        for thread in loadChatThreads(for: patient) {
+            do { try deleteChatThread(id: thread.id, for: patient) } catch { failure = failure ?? error }
+        }
+        if let failure { throw failure }
     }
 
     /// One-time move of a patient's file-based chat into SQLite, then removes the

@@ -38,6 +38,12 @@ enum HelpTips {
         text: "Compressing the conversation improves the AI's understanding and performance in longer conversations."
     )
 
+    static let clear = HelpTip(
+        id: "chat.clear",
+        heading: "Clear this chat",
+        text: "Deletes every question and answer here. You're asked to confirm first."
+    )
+
     // Settings. Safety and privacy lines (app lock, encryption, backups,
     // what reaches the assistant) stay in the layout; these are the asides.
 
@@ -257,15 +263,72 @@ private struct HoverTipModifier: ViewModifier {
     }
 }
 
+// MARK: - Bar tips
+
+/// Where a bar tip opens: above its control, pointing down at it, so it
+/// covers the chat and never the field below. It shows on every rest, a
+/// little sooner than a first-time tip, like a tooltip.
+enum BarTipPlacement {
+    static let arrowEdge: Edge = .top
+    static let delay: Duration = .milliseconds(600)
+}
+
+extension View {
+    /// `tip` in the app's colors, just above this control, each time the
+    /// pointer rests on it. For the small buttons on a bar, where the system
+    /// tooltip opens under the pointer and a pointer-anchored popover can
+    /// end up far from the button.
+    func barTip(_ tip: HelpTip) -> some View {
+        modifier(BarTipModifier(tip: tip))
+    }
+}
+
+private struct BarTipModifier: ViewModifier {
+    let tip: HelpTip
+
+    @State private var intent = HoverIntent(delay: BarTipPlacement.delay)
+    @State private var pending: Task<Void, Never>?
+    @State private var isPresented = false
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityHint(Text(tip.text))
+            .onHover { inside in inside ? arm() : close() }
+            .popover(isPresented: $isPresented, attachmentAnchor: .rect(.bounds), arrowEdge: BarTipPlacement.arrowEdge) {
+                ThemedTipViewStyle.card(title: Text(tip.heading), message: Text(tip.text))
+            }
+            .onDisappear(perform: close)
+    }
+
+    private func arm() {
+        pending?.cancel()
+        let deadline = intent.enter(at: .now)
+        pending = Task { @MainActor in
+            try? await Task.sleep(until: deadline.instant, clock: .continuous)
+            if !Task.isCancelled, intent.wake(deadline, at: .now) { isPresented = true }
+        }
+    }
+
+    private func close() {
+        pending?.cancel()
+        intent.exit()
+        isPresented = false
+    }
+}
+
 /// The tip in the app's own colors. No close button: like a tooltip, it
 /// closes when the pointer leaves its control (or on Escape).
 private struct ThemedTipViewStyle: TipViewStyle {
     func makeBody(configuration: Configuration) -> some View {
+        Self.card(title: configuration.title, message: configuration.message)
+    }
+
+    static func card(title: Text?, message: Text?) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            configuration.title?
+            title?
                 .font(Theme.Typography.control)
                 .foregroundStyle(Theme.text.color)
-            configuration.message?
+            message?
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)

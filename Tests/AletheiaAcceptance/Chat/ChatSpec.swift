@@ -39,7 +39,7 @@ final class ChatSpec: AcceptanceCase {
         ask.ask("How is she sleeping?")
         try await ask.waitUntilIdle()
 
-        then(ask.pane).showsReadLine()
+        then(ask.pane).showsNoReadLine()
     }
 
     func test_CHAT_04() async throws {
@@ -260,7 +260,7 @@ final class ChatSpec: AcceptanceCase {
     }
 
     func test_CHAT_21() async throws {
-        // That Compact sits on the effort bar, and the notice at the bottom left, is layout: checked by the UI test.
+        // That Compact sits on the effort bar, and the notice under the question box, is layout: checked by the UI test.
         let desk = given.assistantDesk()
         let session = try desk.session(of: try await given.patient(named: "Jane Doe"), saying: [.you("Hello."), .client("Hi.")])
         let ask = desk.askTab(of: session)
@@ -314,6 +314,84 @@ final class ChatSpec: AcceptanceCase {
         then(when.dragChatsListEdge(by: -20)).movesTheListBy(-20)
         then(when.dragChatsListEdge(by: 5000)).staysUsable()
         then(when.dragChatsListEdge(by: -5000)).staysUsable()
+    }
+
+    func test_CHAT_25() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+        desk.model.fallback("She said it was poor.")
+        let ask = desk.askTab(of: session)
+        ask.ask("What did she say about sleep?")
+        try await ask.waitUntilIdle()
+        ask.ask("And about work?")
+        try await ask.waitUntilIdle()
+
+        ask.clear()
+
+        then(ask.pane).isEmpty()
+        then(ask.pane).showsTheEmptyPrompt()
+
+        given.appRelaunched()
+
+        let reopened = given.assistantDesk(model: desk.model).askTab(of: session)
+        then(reopened.pane).isEmpty()
+    }
+
+    func test_CHAT_26() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        _ = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+        desk.model.fallback("She said it was poor.")
+        let chat = desk.patientChat(of: jane)
+        for question in ["First question?", "Second question?"] {
+            chat.startNewThread()
+            chat.ask(question)
+            try await chat.waitUntilIdle()
+        }
+
+        chat.clearOpenThread()
+
+        then(chat.pane).isEmpty()
+        then(chat).listsThreadsNewestFirst([Copy.newChatTitle, "First question?"])
+
+        given.appRelaunched()
+
+        let reopened = given.assistantDesk(model: desk.model).patientChat(of: jane)
+        then(reopened).listsThreadsNewestFirst([Copy.newChatTitle, "First question?"])
+    }
+
+    func test_CHAT_27() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        _ = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+        desk.model.fallback("She said it was poor.")
+        let chat = desk.patientChat(of: jane)
+        for question in ["First question?", "Second question?"] {
+            chat.startNewThread()
+            chat.ask(question)
+            try await chat.waitUntilIdle()
+        }
+
+        chat.deleteAllChats()
+
+        then(chat).listsNoThreads()
+        then(chat.pane).isEmpty()
+
+        given.appRelaunched()
+
+        then(given.assistantDesk(model: desk.model).patientChat(of: jane)).listsNoThreads()
+    }
+
+    func test_CHAT_28() async throws {
+        let desk = given.assistantDesk()
+        let session = try desk.session(of: try await given.patient(named: "Jane Doe"), saying: [.you("Hello."), .client("Hi.")])
+        desk.model.fallback("## Sleep\nShe said it was poor.\n\n- Wakes at 3am\n- Naps after lunch\n\n> I'm always tired.")
+        let ask = desk.askTab(of: session)
+        ask.ask("What did she say about sleep?")
+        try await ask.waitUntilIdle()
+
+        then(ask.pane).selectsAcrossTheAnswer(["Sleep", "She said it was poor.", "Wakes at 3am", "Naps after lunch", "I'm always tired."])
     }
 
     func test_CHAT_29() async throws {

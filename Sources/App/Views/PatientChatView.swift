@@ -45,6 +45,7 @@ struct PatientChatView: View {
     @State private var pendingRetries = PendingRetries<String, () -> Void>()
     @State private var renamingThread: ChatThread?
     @State private var renameText = ""
+    @State private var confirmingDeleteAll = false
     /// The Chats list's width, dragged by its edge; kept per window.
     @SceneStorage("chatThreadsWidth") private var threadListWidth = Double(ChatThreadsLayout.idealWidth)
 
@@ -106,6 +107,12 @@ struct PatientChatView: View {
             chat.reloadThreads()
             integrations.digestScheduler.patientOpened(patient)
         }
+        .confirmationDialog(ChatWords.deleteAllTitle(patientName: patient.name), isPresented: $confirmingDeleteAll, titleVisibility: .visible) {
+            Button(ChatWords.deleteAllButton, role: .destructive) { chat.deleteAllThreads() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(ChatWords.deleteAllMessage)
+        }
         .alert("Rename Chat", isPresented: renamingBinding) {
             TextField.patient("Title", text: $renameText)
             Button("Cancel", role: .cancel) { renamingThread = nil }
@@ -139,6 +146,8 @@ struct PatientChatView: View {
                     busySince: searchingSince,
                     busySteps: searchingNotice == nil ? nil : PatientAskSteps(effort: settings.patientChatEffort, layered: true).gathering,
                     onCompact: { chat.compact($0) },
+                    onClear: { chat.clearSelectedThread() },
+                    clearTitle: ChatWords.clearThreadTitle,
                     progress: chatRunner.progress,
                     effort: $settings.patientChatEffort,
                     effortFeature: .patientChat,
@@ -189,6 +198,13 @@ struct PatientChatView: View {
                 .buttonStyle(.themeIcon)
                 .help("New chat")
                 .disabled(isSending)
+                Button { confirmingDeleteAll = true } label: {
+                    Label(ChatWords.deleteAllChats, systemImage: "trash")
+                }
+                .buttonStyle(.themeIcon)
+                .help(ChatWords.deleteAllChats)
+                .disabled(isSending || threads.isEmpty)
+                .accessibilityIdentifier("chat.delete-all")
             }
             .padding(.leading, 14)
             .padding(.trailing, 8)

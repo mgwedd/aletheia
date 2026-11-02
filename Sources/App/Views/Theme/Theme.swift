@@ -211,6 +211,8 @@ enum Theme {
         static let noteLineSpacing: CGFloat = 6
         static let control = Font.system(size: 13, weight: .medium)
         static let caption = Font.system(size: 12)
+        /// Standing small print, such as the AI accuracy notice.
+        static let finePrint = Font.system(size: 10)
         /// A small uppercase label above a region ("SESSIONS", "COMMENTS").
         static let sectionLabel = Font.system(size: 11, weight: .semibold)
         static let chip = Font.system(size: 11, weight: .semibold)

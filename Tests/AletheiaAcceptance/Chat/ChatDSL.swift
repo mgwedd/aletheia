@@ -18,6 +18,12 @@ extension Then where Subject == AskPane {
         expect(subject.answers.last == text, "expected the answer \"\(text)\", found \(subject.answers)")
     }
 
+    func selectsAcrossTheAnswer(_ pieces: [String]) {
+        let runs = subject.selectableRunsOfLastAnswer
+        expect(runs.contains { run in pieces.allSatisfy { run.contains($0) } },
+               "no single selectable run holds \(pieces); runs: \(runs)")
+    }
+
     func offersCompact() { expect(subject.offersCompact, "Compact is not offered") }
 
     func showsTheAccuracyNotice() {
@@ -41,6 +47,8 @@ extension Then where Subject == AskPane {
         expect(kinds.last?.who == .assistant && asked < kinds.count - 1, "the question has no answer after it")
     }
 
+    func isEmpty() { expect(subject.bubbles.isEmpty, "the conversation still shows \(subject.bubbles)") }
+
     func showsTheEmptyPrompt() {
         expectEqual(subject.emptyTitle, Copy.askEmptyTitle, "the prompt over an empty conversation")
     }
@@ -54,8 +62,8 @@ extension Then where Subject == AskPane {
                "the answer is not streaming with a Stop button (streaming \(subject.isAnswering), Stop \(subject.offersStop))")
     }
 
-    func showsReadLine() {
-        expect(subject.notices.contains { $0.hasPrefix(Copy.readLead) }, "no \"Read:\" line under the answer, notices \(subject.notices)")
+    func showsNoReadLine() {
+        expect(!subject.notices.contains { $0.hasPrefix(Copy.readLead) }, "a \"Read:\" line is still under the answer: \(subject.notices)")
     }
 
     func keepsAnswerSoFar(_ text: String) {
@@ -131,6 +139,8 @@ extension Then where Subject == PatientChatTab {
     func listsThreadsNewestFirst(_ titles: [String]) {
         expectEqual(subject.threadTitles, titles, "the Chats list, newest first")
     }
+
+    func listsNoThreads() { expect(subject.threadTitles.isEmpty, "the Chats list still lists \(subject.threadTitles)") }
 
     func showsPatientGone() {
         expect(subject.windowShowsPatientGone, "the window still shows the patient instead of \"\(Copy.patientGone)\"")

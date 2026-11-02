@@ -111,6 +111,24 @@ final class PatientChatModel: ObservableObject {
         reloadThreads()
     }
 
+    /// Empties the open thread's conversation; the thread stays in the list.
+    func clearSelectedThread() {
+        guard !isSending, let store = appModel.store, let id = selectedThreadID,
+              let thread = threads.first(where: { $0.id == id }) else { return }
+        appModel.attemptSave("chat") { try store.clearChatThread(thread, for: patient) }
+        coverage = nil
+        reloadThreads(preserving: id)
+    }
+
+    /// Deletes every one of the patient's threads.
+    func deleteAllThreads() {
+        guard !isSending, let store = appModel.store else { return }
+        appModel.attemptSave("chat") { try store.deleteChatThreads(for: patient) }
+        selectedThreadID = nil
+        coverage = nil
+        reloadThreads()
+    }
+
     // MARK: - Sending
 
     func send(_ question: String) {
