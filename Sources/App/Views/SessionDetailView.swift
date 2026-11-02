@@ -1503,7 +1503,8 @@ struct SessionDetailView: View {
                         focus: noteFocus,
                         focusToken: noteFocusToken,
                         composingRange: noteComposingRange,
-                        onComposingRectChange: { noteComposerAnchor = $0 }
+                        onComposingRectChange: { noteComposerAnchor = $0 },
+                        follows: noteRunner.isStreaming
                     )
                     .overlay { noteComposerOverlay }
                 } comments: {

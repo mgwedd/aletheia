@@ -20,6 +20,8 @@ final class Integrations: ObservableObject {
     let digests: DigestBuilder
     /// Decides which sessions get a summary, and when (`DigestScheduler`).
     let digestScheduler: DigestScheduler
+    /// The "note ready" notice the main window shows when a note finishes.
+    let noteReady = NoteReadyCenter()
 
     /// Stand-ins for the real engines, set only by tests. Production passes
     /// none, so the real transcriber, built-in model and notifier are used.
@@ -138,6 +140,7 @@ final class Integrations: ObservableObject {
         var service = AssistantService(assistant: makeAssistant(), model: model, systemPrompt: settings.systemPrompt)
         service.budget = selectedModelBudget
         service.clientName = clientName
+        service.readsLongTranscripts = settings.llamaModel.readsLongTranscripts
         service.report = { event in
             if case .finished(let stats) = event {
                 Task { @MainActor in settings.recordSpeeds(model: model, from: stats) }

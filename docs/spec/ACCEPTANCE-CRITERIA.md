@@ -134,6 +134,9 @@ Before you start: a session with a transcript, the AI model downloaded, and a co
 - **NOTE-15** Click **Copy** on a note and paste into a rich-text app → headings and lists come through formatted, and the button shows "Copied".
 - **NOTE-16** Put a line in a transcript telling the AI to ignore instructions, then generate a note → the note summarises normally and ignores it.
 - **NOTE-17** Generate a Detailed note, or a note at Focus, on a session over 30 minutes → the coverage line counts follow-up lookups as well as every part's summary; at Fast, or Concise or Natural at Normal, it counts none.
+- **NOTE-20** Generate a note on a 50-minute session → with the default model the coverage line says every part was summarized plus how many lines were quoted word for word; with MedGemma 27B at Normal it says "Read: the whole transcript, word for word".
+- **NOTE-21** Watch a long note stream past the bottom of the pane → the pane follows the newest text; scroll up and it stays where you put it until you scroll back near the end.
+- **NOTE-22** Let a note finish → if its Notes pane is open it scrolls to the end, and a "SOAP note ready" notice appears in the main window wherever you are; **Open Note** opens that note.
 
 ## 8. Chat and Q&A (CHAT)
 Before you start: a patient with at least two sessions that have transcripts, and the AI model downloaded.

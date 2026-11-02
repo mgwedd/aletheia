@@ -376,6 +376,7 @@ final class SessionNoteModel: ObservableObject {
                     noteCoverage = savedCoverage(for: format)
                 }
                 sessionUpdated()
+                integrations.noteReady.announce(patient: patient, session: session, format: format)
                 let notifier = integrations.makeNotifier()
                 let policy = PatientLabel.Policy.current(showFullName: settings.notificationsShowPatientNames)
                 Task {

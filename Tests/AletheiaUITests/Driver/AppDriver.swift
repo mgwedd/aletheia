@@ -24,6 +24,10 @@ struct ProbeSnapshot: Decodable, Equatable {
     var aiRequests: [String]
     /// Lines the transcript on screen is laid out in.
     var transcriptLines: Int
+    /// Points between the bottom of the note reader's view and the end of the note; nil when none is shown.
+    var noteFromEnd: Int?
+    /// Points the note reader is scrolled down from the top of the note.
+    var noteFromTop: Int?
 }
 
 /// Drives the real Debug app. The test owns the world through the scenario and

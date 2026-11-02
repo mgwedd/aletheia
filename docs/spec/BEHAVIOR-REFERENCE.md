@@ -911,6 +911,14 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-14`
 - **NOT-073** A long-session note at Length Detailed (at Normal or Focus) or at Focus effort reads parts of the transcript in full after the part summaries and risk lines are in, chosen across the whole session, with the room left over; its coverage line adds "and N follow-up lookups". Fast, and Concise or Natural at Normal, make no lookups.
   `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: NOTE-17`
+- **NOT-080** How much of a long session a note reads depends on the model and the effort: any model reads the transcript whole, word for word, when it fits and has at most 3 sections (about 30 minutes); MedGemma 27B reads up to 6 sections (about an hour) whole at Normal, and any length that fits at Focus. Otherwise the note reads every section's summary plus quoted passages, in at most 36,000 characters (96,000 for MedGemma 27B away from Fast).
+  `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: NOTE-20`
+- **NOT-081** The coverage line of a note read in parts says "Read: every part of the session, summarized (N parts), plus P of T transcript lines quoted word for word · <effort>."; one read whole says "Read: the whole transcript, word for word (T lines) · <effort>." Risk-line and check messages follow either.
+  `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-20`
+- **NOT-082** While a note streams, its reader keeps the newest text in view; scrolling more than about two lines up from the end stops this until the reader is back within that distance, and each new note starts following again. When the note finishes, the open reader scrolls to its end.
+  `surface: ui` · `evidence: Sources/App/Views/NoteFollow.swift, Sources/App/Views/NoteReaderView.swift` · `qa: NOTE-21`
+- **NOT-083** When a note finishes, the main window shows a "<format> note ready" notice in its lower-right corner with the patient and session date, **Dismiss** and **Open Note**, which selects the patient and opens the session's Notes tab on that format. The notice stays until dismissed, opened or replaced by the next note; VoiceOver hears its title only. The "Summary ready" notification is still posted as before.
+  `surface: ui` · `evidence: Sources/App/Services/SessionAI/NoteReadyCenter.swift, Sources/App/Views/NoteReadyToast.swift, Sources/App/Views/RootView.swift` · `qa: NOTE-22`
 
 ## Digests (DIG)
 
