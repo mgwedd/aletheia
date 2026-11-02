@@ -131,7 +131,7 @@ final class PromptsTests: XCTestCase {
     func testLongSessionPrefaceIsOutsideTheTags() {
         let prompt = Prompts.progressNote(
             format: .soap, material: .excerpts(digest: "DIGEST", passages: "[00:01] You: PASSAGE"),
-            notes: "", comments: [], patientBackground: "", verbosity: .default, instructions: nil, clientName: "")
+            notes: "", comments: [], patientBackground: "", depth: .default, instructions: nil, clientName: "")
         let preface = try! XCTUnwrap(prompt.range(of: Prompts.longSessionPreface))
         let firstTag = try! XCTUnwrap(prompt.range(of: "<digest>\n"))
         XCTAssertLessThan(preface.upperBound, firstTag.lowerBound)

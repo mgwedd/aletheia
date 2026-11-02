@@ -68,9 +68,9 @@ final class NoteSpec: AcceptanceCase {
         let desk = given.assistantDesk()
         let session = try desk.session(of: try await given.patient(named: "Jane Doe"), saying: [.you("Hello."), .client("Hi.")])
 
-        let menu = desk.notesTab(of: session).lengthMenu
+        let menu = desk.notesTab(of: session).depthMenu
 
-        then(menu).offersTheLengths()
+        then(menu).offersTheDepths()
         then(menu).offersAnAIEffortChoice()
     }
 

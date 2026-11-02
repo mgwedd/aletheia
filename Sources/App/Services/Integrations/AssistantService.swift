@@ -89,7 +89,7 @@ struct AssistantService {
         notes: String = "",
         comments: [SessionComment] = [],
         patientBackground: String = "",
-        verbosity: SummaryVerbosity = .default,
+        depth: AnswerDepth = .default,
         instructions: String? = nil
     ) async throws -> String {
         try await generate(task: .note,
@@ -100,7 +100,7 @@ struct AssistantService {
                 notes: AIContextPolicy.notes(notes, for: .noteGeneration),
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
-                verbosity: verbosity,
+                depth: depth,
                 instructions: instructions,
                 clientName: clientName
             ),
@@ -116,7 +116,7 @@ struct AssistantService {
         notes: String = "",
         comments: [SessionComment] = [],
         patientBackground: String = "",
-        verbosity: SummaryVerbosity = .default,
+        depth: AnswerDepth = .default,
         instructions: String? = nil
     ) -> AsyncThrowingStream<String, Error> {
         run(task: .note,
@@ -127,7 +127,7 @@ struct AssistantService {
                 notes: AIContextPolicy.notes(notes, for: .noteGeneration),
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
-                verbosity: verbosity,
+                depth: depth,
                 instructions: instructions,
                 clientName: clientName
             ),
@@ -141,10 +141,11 @@ struct AssistantService {
         comments: [SessionComment] = [],
         patientBackground: String = "",
         history: [ChatMessage],
-        question: String
+        question: String,
+        depth: AnswerDepth = .default
     ) async throws -> String {
         return try await generate(task: .chat,
-            system: Prompts.chatSystemPrompt(systemPrompt, question: question),
+            system: Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth),
             turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
@@ -158,9 +159,9 @@ struct AssistantService {
         )
     }
 
-    func answerAboutPatient(context: String, history: [ChatMessage], question: String) async throws -> String {
+    func answerAboutPatient(context: String, history: [ChatMessage], question: String, depth: AnswerDepth = .default) async throws -> String {
         try await generate(task: .chat,
-            system: Prompts.chatSystemPrompt(systemPrompt, question: question),
+            system: Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth),
             turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.patientChat(context: context, history: history, question: question, clientName: clientName)
         )
@@ -177,10 +178,11 @@ struct AssistantService {
         comments: [SessionComment] = [],
         patientBackground: String = "",
         history: [ChatMessage],
-        question: String
+        question: String,
+        depth: AnswerDepth = .default
     ) -> AsyncThrowingStream<String, Error> {
         run(task: .chat,
-            system: Prompts.chatSystemPrompt(systemPrompt, question: question),
+            system: Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth),
             turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
@@ -198,8 +200,8 @@ struct AssistantService {
     /// How many characters of session material a patient-wide question can
     /// carry on this Mac, after the instructions, conversation and question
     /// (measured by script, so a conversation in Japanese takes its real share).
-    func patientContextCharacters(history: [ChatMessage], question: String) -> Int {
-        let system = Prompts.chatSystemPrompt(systemPrompt, question: question)
+    func patientContextCharacters(history: [ChatMessage], question: String, depth: AnswerDepth = .default) -> Int {
+        let system = Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth)
         let wrapper = PromptTurn.flattened(
             PromptTurn.recent(history, question: question),
             then: Prompts.patientChat(context: "", history: history, question: question, clientName: clientName))
@@ -210,10 +212,11 @@ struct AssistantService {
     func streamAnswerAboutPatient(
         context: String,
         history: [ChatMessage],
-        question: String
+        question: String,
+        depth: AnswerDepth = .default
     ) -> AsyncThrowingStream<String, Error> {
         run(task: .chat,
-            system: Prompts.chatSystemPrompt(systemPrompt, question: question),
+            system: Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth),
             turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.patientChat(context: context, history: history, question: question, clientName: clientName)
         )

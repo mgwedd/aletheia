@@ -6,7 +6,7 @@ extension Copy {
     static let wholeTranscript = "the whole transcript, word for word"
     static let noteReadyTitle = "SOAP note ready"
     static let followUpLookup = "follow-up lookup"
-    static let lengthChoices = ["Concise", "Natural", "Detailed"]
+    static let depthChoices = ["Concise", "Natural", "Detailed"]
     static let effortChoices = ["Fast", "Normal", "Focus"]
     static let formatNames = ["Summary", "SOAP", "DAP", "BIRP", "GIRP"]
     static let myNotes = "My Notes"

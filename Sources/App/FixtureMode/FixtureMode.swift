@@ -114,8 +114,11 @@ enum FixtureMode {
             if let policy = scenario?.consentPolicy.flatMap(ConsentPolicy.init(rawValue:)) {
                 settings.recordingConsentPolicy = policy
             }
-            if let length = scenario?.noteLength.flatMap(SummaryVerbosity.init(rawValue:)) {
-                settings.summaryVerbosity = length
+            if let depth = scenario?.noteDepth.flatMap(AnswerDepth.init(rawValue:)) {
+                settings.noteDepth = depth
+            }
+            if let depth = scenario?.askDepth.flatMap(AnswerDepth.init(rawValue:)) {
+                settings.askDepth = depth
             }
             if let effort = scenario?.noteEffort.flatMap(AnswerEffort.init(rawValue:)) {
                 settings.noteEffort = effort

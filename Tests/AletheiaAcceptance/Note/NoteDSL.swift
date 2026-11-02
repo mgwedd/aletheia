@@ -2,11 +2,11 @@
 import AppKit
 import Foundation
 
-/// How long the note is.
-enum NoteLength {
+/// How much the note says (its depth).
+enum Depth {
     case concise, natural, detailed
 
-    var setting: SummaryVerbosity {
+    var setting: AnswerDepth {
         switch self {
         case .concise: .concise
         case .natural: .natural
@@ -43,10 +43,10 @@ enum NoteFormat {
     }
 }
 
-extension Then where Subject == LengthMenu {
-    func offersTheLengths() {
-        expect(Copy.lengthChoices.allSatisfy(subject.lengths.contains),
-               "expected the menu to offer \(Copy.lengthChoices), found \(subject.lengths)")
+extension Then where Subject == DepthMenu {
+    func offersTheDepths() {
+        expect(Copy.depthChoices.allSatisfy(subject.depths.contains),
+               "expected the menu to offer \(Copy.depthChoices), found \(subject.depths)")
     }
     func offersAnAIEffortChoice() {
         expect(Copy.effortChoices.allSatisfy(subject.efforts.contains),

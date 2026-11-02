@@ -3,8 +3,8 @@ import XCTest
 
 extension Copy {
     static let notesTab = "Notes"
-    static let lengthButtonPrefix = "Length:"
-    static let lengthChoices = ["Concise", "Natural", "Detailed"]
+    static let depthButtonPrefix = "Depth:"
+    static let depthChoices = ["Concise", "Natural", "Detailed"]
     static let effortChoices = ["Fast", "Normal", "Focus"]
     static let generateButtonPrefix = "Generate "
     static let processingTranscript = "Processing transcript"
@@ -46,7 +46,7 @@ extension Copy {
 struct NotesTabOnScreen {
     let driver: AppDriver
 
-    var lengthButton: XCUIElement { driver.element(id: "notes.length") }
+    var depthButton: XCUIElement { driver.element(id: "notes.depth") }
     var generateButton: XCUIElement { driver.app.buttons["notes.generate"].firstMatch }
     var processingStatus: XCUIElement { driver.status(containing: Copy.processingTranscript) }
     var coverage: XCUIElement { driver.app.staticTexts["notes.coverage"].firstMatch }
@@ -65,7 +65,7 @@ struct NotesTabOnScreen {
 
 extension Given {
     /// Jane Doe with one session, its transcript and nothing else.
-    func aSession(transcript: String, length: String? = nil, effort: String? = nil,
+    func aSession(transcript: String, depth: String? = nil, effort: String? = nil,
                   stageMs: Int? = nil, plansLookups: Bool = false, replies: [String]? = nil,
                   streamsWords: Bool? = nil, holdsOpen: Bool? = nil, modelMissing: Bool? = nil,
                   myNotes: String? = nil, model: String = Copy.smallModel, memoryGB: Int? = nil) {
@@ -77,7 +77,7 @@ extension Given {
             $0.memoryGB = memoryGB
             $0.patients = [.init(name: "Jane Doe", sessions: 1, transcript: transcript, myNotes: myNotes)]
             $0.open = "Jane Doe"
-            $0.noteLength = length
+            $0.noteDepth = depth
             $0.noteEffort = effort
             $0.aiReplies = replies
             $0.aiStreamsWords = streamsWords
@@ -138,17 +138,17 @@ extension When {
         app.tap(Copy.transcriptTab)
     }
 
-    /// Clicks the right-hand end of the Length button, well away from its icon.
-    func clickLengthButtonAwayFromItsIcon(on tab: NotesTabOnScreen) {
-        XCTAssertTrue(app.exists(tab.lengthButton), "no \(Copy.lengthButtonPrefix) button")
-        tab.lengthButton.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).click()
+    /// Clicks the right-hand end of the Depth button, well away from its icon.
+    func clickDepthButtonAwayFromItsIcon(on tab: NotesTabOnScreen) {
+        XCTAssertTrue(app.exists(tab.depthButton), "no \(Copy.depthButtonPrefix) button")
+        tab.depthButton.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).click()
     }
 }
 
 extension Then where Subject == NotesTabOnScreen {
-    func lengthMenuOffers(_ titles: [String]) {
+    func depthMenuOffers(_ titles: [String]) {
         for title in titles where !subject.driver.exists(subject.menuItem(title)) {
-            fail("the Length menu has no \"\(title)\"")
+            fail("the Depth menu has no \"\(title)\"")
         }
     }
 

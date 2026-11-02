@@ -90,7 +90,7 @@ final class LongSessionNoteTests: XCTestCase {
     private func run(
         transcript: String, effort: AnswerEffort = .normal, stored: SessionDigest? = nil, tokens: Int = 8192,
         format: ProgressNoteFormat = .soap, phrases: [String] = defaultPhrases, sectionCache: SectionCacheAccess? = nil,
-        notes: String = "", verbosity: SummaryVerbosity = .default, readsLong: Bool = false,
+        notes: String = "", depth: AnswerDepth = .default, readsLong: Bool = false,
         configure: (StubModel) -> Void = { _ in }
     ) async throws -> Run {
         let stub = StubModel()
@@ -100,7 +100,7 @@ final class LongSessionNoteTests: XCTestCase {
         service.readsLongTranscripts = readsLong
         var coverage: [String] = []
         let stream = LongSessionNote.stream(
-            format: format, transcript: transcript, notes: notes, verbosity: verbosity, effort: effort,
+            format: format, transcript: transcript, notes: notes, depth: depth, effort: effort,
             riskPhrases: phrases, service: service,
             builder: DigestBuilder(queue: InferenceQueue()), sessionID: UUID(),
             loadDigest: { stored }, saveDigest: { _ in }, sectionCache: sectionCache,
@@ -925,17 +925,17 @@ final class LongSessionNoteTests: XCTestCase {
     // MARK: - Lookups at Detailed or Focus
 
     func testLookupsOnlyAtDetailedOrFocus() {
-        XCTAssertTrue(LongSessionNote.looksCloser(effort: .normal, verbosity: .detailed))
-        XCTAssertTrue(LongSessionNote.looksCloser(effort: .focus, verbosity: .concise))
-        XCTAssertTrue(LongSessionNote.looksCloser(effort: .focus, verbosity: .natural))
-        XCTAssertFalse(LongSessionNote.looksCloser(effort: .normal, verbosity: .natural))
-        XCTAssertFalse(LongSessionNote.looksCloser(effort: .normal, verbosity: .concise))
-        XCTAssertFalse(LongSessionNote.looksCloser(effort: .fast, verbosity: .detailed))
+        XCTAssertTrue(LongSessionNote.looksCloser(effort: .normal, depth: .detailed))
+        XCTAssertTrue(LongSessionNote.looksCloser(effort: .focus, depth: .concise))
+        XCTAssertTrue(LongSessionNote.looksCloser(effort: .focus, depth: .natural))
+        XCTAssertFalse(LongSessionNote.looksCloser(effort: .normal, depth: .natural))
+        XCTAssertFalse(LongSessionNote.looksCloser(effort: .normal, depth: .concise))
+        XCTAssertFalse(LongSessionNote.looksCloser(effort: .fast, depth: .detailed))
     }
 
     func testDetailedNoteReadsAPartInFullAfterEverySummary() async throws {
         let text = syntheticTranscript(minutes: 120)
-        let result = try await run(transcript: text, tokens: 65_536, verbosity: .detailed) {
+        let result = try await run(transcript: text, tokens: 65_536, depth: .detailed) {
             $0.planResponse = #"{"calls":[{"tool":"read_section","session":"S1","start":"50:00","end":"52:00"}]}"#
         }
         let plan = try XCTUnwrap(result.plans.first)
@@ -951,8 +951,8 @@ final class LongSessionNoteTests: XCTestCase {
 
     func testNaturalAtNormalAndDetailedAtFastMakeNoLookups() async throws {
         let text = syntheticTranscript(minutes: 120)
-        let natural = try await run(transcript: text, tokens: 65_536, verbosity: .natural)
-        let fast = try await run(transcript: text, effort: .fast, tokens: 65_536, verbosity: .detailed)
+        let natural = try await run(transcript: text, tokens: 65_536, depth: .natural)
+        let fast = try await run(transcript: text, effort: .fast, tokens: 65_536, depth: .detailed)
         XCTAssertTrue(natural.plans.isEmpty)
         XCTAssertTrue(fast.plans.isEmpty)
         XCTAssertFalse(try XCTUnwrap(natural.coverage.last).contains("follow-up"))
@@ -960,7 +960,7 @@ final class LongSessionNoteTests: XCTestCase {
 
     func testFocusPlansLookupsAtAnyLength() async throws {
         let text = syntheticTranscript(minutes: 120)
-        let focus = try await run(transcript: text, effort: .focus, tokens: 65_536, verbosity: .concise)
+        let focus = try await run(transcript: text, effort: .focus, tokens: 65_536, depth: .concise)
         XCTAssertFalse(focus.plans.isEmpty)
     }
 }

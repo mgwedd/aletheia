@@ -219,3 +219,88 @@ extension Then where Subject == ChatsListDrag {
                "the chat narrowed to \(subject.chatAfter), under its \(subject.chatMinimum)")
     }
 }
+
+// MARK: - Depth
+
+extension Then where Subject == DepthControl {
+    func offersTheDepths() {
+        expectEqual(subject.label, Copy.depthLabel, "what the Ask bar's depth control is called")
+        expectEqual(subject.depths, Copy.depthChoices, "what the Ask bar's Depth offers")
+    }
+
+    func hasChosen(_ depth: Depth) {
+        expectEqual(subject.chosen, depth.setting, "the depth picked on the Ask bar")
+    }
+
+    /// The Notes Depth menu and the Ask bar's Depth go by one name and offer the same choices.
+    func matchesTheNoteMenu(_ menu: DepthMenu) {
+        expect(menu.label.hasPrefix("\(subject.label):"),
+               "the note button \"\(menu.label)\" is not called \(subject.label)")
+        expectEqual(menu.depths, subject.depths, "the note Depth menu's choices against the Ask bar's")
+    }
+}
+
+@MainActor
+extension Then where Subject == AssistantDesk {
+    func keepsAskDepthSetting(_ depth: Depth) {
+        expectEqual(subject.askDepthSetting, depth.setting, "Settings → Ask depth")
+    }
+}
+
+extension SteeredModel {
+    /// The requests that answered an Ask question, oldest first.
+    var askRequests: [LocalLLMRequest] { requests.filter { $0.prompt.contains(Copy.questionLead) } }
+    /// The requests that wrote a note, oldest first.
+    var noteRequests: [LocalLLMRequest] { requests.filter { ($0.system + $0.prompt).contains(Copy.noteFormatStillApplies) } }
+}
+
+extension Then where Subject == SteeredModel {
+    /// The latest answer was asked for at `depth`, as guidance only: the depth's
+    /// target and form, the shared clarity rule, and no other depth's guidance.
+    func wasAskedToAnswer(at depth: Depth) {
+        guard let request = subject.askRequests.last else { return fail("no question reached the AI model") }
+        let level = depth.setting
+        expect(request.system.contains(Copy.askTarget(depth)),
+               "the answer was not asked for \"\(Copy.askTarget(depth))\"")
+        expect(request.system.contains(level.guidance(for: .answer)), "the answer was not asked for at \(level.displayName)")
+        expect(request.system.contains(AnswerDepth.clarityRule), "the answer was not given the clarity rule")
+        for other in AnswerDepth.allCases where other != level {
+            expect(!request.system.contains(other.guidance(for: .answer)), "the answer was also asked for at \(other.displayName)")
+        }
+    }
+
+    /// Every depth is sent with the same length limit: depth shapes the prompt, never cuts the answer.
+    func capsEveryDepthAlike() {
+        let caps = Set(subject.askRequests.map(\.sampling.maxTokens))
+        expect(subject.askRequests.count > 1, "fewer than two answers to compare")
+        expectEqual(caps.count, 1, "different length limits across depths: \(caps)")
+    }
+
+    /// The latest answer was told to take its question on its own terms, with the question read last.
+    func wasToldToAnswerOnItsOwnTerms(_ question: String, after earlier: String) {
+        guard let request = subject.askRequests.last else { return fail("no question reached the AI model") }
+        expect(request.system.contains(Copy.onItsOwnTerms), "the answer was not told to answer the latest question on its own terms")
+        expect(request.system.contains(Copy.earlierTurnsAsContext), "the answer was not told to use earlier turns only as context")
+        expect(request.prompt.hasSuffix("\(Copy.questionLead) \(question)"),
+               "the latest question is not the last thing the model reads: \"…\(request.prompt.suffix(120))\"")
+        let inTurns = request.turns.contains { $0.text.contains(earlier) }
+        let beforeQuestion: Bool = {
+            guard let found = request.prompt.range(of: earlier),
+                  let asked = request.prompt.range(of: question, options: .backwards) else { return false }
+            return found.lowerBound < asked.lowerBound
+        }()
+        expect(inTurns || beforeQuestion, "the earlier exchange \"\(earlier)\" is not ahead of the latest question")
+    }
+
+    /// The last note and the last answer were both asked for at `depth`, from the same wording.
+    func gaveNoteAndAnswerTheSameKindOfLimit(_ depth: Depth) {
+        guard let note = subject.noteRequests.last else { return fail("no note reached the AI model") }
+        guard let answer = subject.askRequests.last else { return fail("no question reached the AI model") }
+        let level = depth.setting
+        for (what, text) in [("note", note.system + note.prompt), ("answer", answer.system + answer.prompt)] {
+            expect(text.contains("Depth: \(level.rawValue). "), "the \(what) was not asked for at \(level.displayName)")
+            expect(text.contains(level.form), "the \(what) was not given \(level.displayName)'s form")
+            expect(text.contains(AnswerDepth.clarityRule), "the \(what) was not given the clarity rule")
+        }
+    }
+}

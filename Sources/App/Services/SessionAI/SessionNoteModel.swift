@@ -266,7 +266,7 @@ final class SessionNoteModel: ObservableObject {
         let format = settings.progressNoteFormat
         generatingFormat = format
         noteHighWater = ProgressHighWater()
-        let verbosity = settings.summaryVerbosity
+        let depth = settings.noteDepth
         let instructions = settings.noteInstructions[format.rawValue]
         // Snapshot the inputs now; the request itself is only made when the
         // queue starts this job (it may be waiting behind a chat answer).
@@ -301,7 +301,7 @@ final class SessionNoteModel: ObservableObject {
                     notes: notes,
                     comments: sessionComments,
                     patientBackground: patientBackground,
-                    verbosity: verbosity,
+                    depth: depth,
                     instructions: instructions,
                     effort: effort,
                     riskPhrases: riskPhrases,

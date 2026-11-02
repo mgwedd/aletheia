@@ -787,15 +787,15 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/SpeakerCodes.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-04`
 - **NOT-010** When a note is saved, shown or copied, a first line that is only a chatty preamble such as "Here is a summary:" is removed, provided note content follows it.
   `surface: ui` · `evidence: Sources/App/Services/Markdown/NoteMarkdown.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-04`
-- **NOT-011** A Length menu offers Concise, Natural (the default) and Detailed, and the chosen length controls how long the next generated note is.
-  `surface: ui` · `evidence: Sources/App/Models/SummaryVerbosity.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-06`
-- **NOT-012** The menu button reads "Length: <length> · <effort>" (for example "Length: Natural · Normal"), a click anywhere on it opens the menu, and the menu also offers an "AI effort" choice of Fast, Normal and Focus.
+- **NOT-011** A Depth menu offers Concise, Natural (the default) and Detailed, and the chosen depth controls how much the next generated note says.
+  `surface: ui` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-06`
+- **NOT-012** The menu button reads "Depth: <depth> · <effort>" (for example "Depth: Natural · Normal"), a click anywhere on it opens the menu, and the menu also offers an "AI effort" choice of Fast, Normal and Focus.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Models/AnswerEffort.swift` · `qa: NOTE-06`
-- **NOT-013** Each format's instructions can be edited from the menu ("Edit <format> Prompt…", marked "(customized)" once changed) in a sheet titled "<format> prompt" whose caption says the transcript, your notes and comments, and the length setting are added automatically after the instructions.
+- **NOT-013** Each format's instructions can be edited from the menu ("Edit <format> Prompt…", marked "(customized)" once changed) in a sheet titled "<format> prompt" whose caption says the transcript, your notes and comments, and the depth setting are added automatically after the instructions.
   `surface: ui` · `evidence: Sources/App/Views/NoteInstructionsSheet.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-07`
 - **NOT-014** In the instructions sheet, "Reset to Default" puts the built-in text in the field (disabled when it already matches), Cancel discards, and Save keeps the text; saving blank text or text identical to the default clears the customization.
   `surface: ui` · `evidence: Sources/App/Views/NoteInstructionsSheet.swift, Sources/App/Services/AppSettings.swift` · `qa: NOTE-07`
-- **NOT-015** When the user sets custom instructions for a note format, they replace that format's whole editable instruction text, including its section layout and rules, while the length setting, formatting rules and reference-material handling still apply.
+- **NOT-015** When the user sets custom instructions for a note format, they replace that format's whole editable instruction text, including its section layout and rules, while the depth setting, formatting rules and reference-material handling still apply.
   `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Views/NoteInstructionsSheet.swift` · `qa: NOTE-07`
 - **NOT-016** Each format keeps its own custom instructions, and they persist across relaunch.
   `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Views/NoteInstructionsSheet.swift` · `qa: NOTE-07`
@@ -891,9 +891,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/SpeakerCodes.swift` · `qa: NOTE-04`
 - **NOT-063** When a note is shown, a "Label:" lead-in is bolded, a line holding only "Label:" becomes a subheading, and consecutive prose lines are separated by a blank line.
   `surface: ui` · `evidence: Sources/App/Services/Markdown/NoteMarkdown.swift` · `qa: NOTE-04`
-- **NOT-064** Settings also offers a "Summary length" choice with the same Concise, Natural and Detailed options as the Length menu.
-  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Models/SummaryVerbosity.swift` · `qa: SETTINGS-10`
-- **NOT-065** The Length and AI effort menu is hidden while a note is generating, queued or being edited, and its help text says "Regenerate to apply a change".
+- **NOT-064** Settings also offers a "Note depth" choice with the same Concise, Natural and Detailed options as the Depth menu.
+  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Models/AnswerDepth.swift` · `qa: SETTINGS-10`
+- **NOT-065** The Depth and AI effort menu is hidden while a note is generating, queued or being edited, and its help text says "Regenerate to apply a change".
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-06`
 - **NOT-066** If the AI engine itself is unavailable when generating, an AI-engine problem alert with a retry is shown instead of "Something went wrong".
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-09`
@@ -909,7 +909,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-14`
 - **NOT-072** When risk-flagged lines did not all fit in a long-session note, the coverage line says so and tells the therapist to check the transcript for risk.
   `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-14`
-- **NOT-073** A long-session note at Length Detailed (at Normal or Focus) or at Focus effort reads parts of the transcript in full after the part summaries and risk lines are in, chosen across the whole session, with the room left over; its coverage line adds "and N follow-up lookups". Fast, and Concise or Natural at Normal, make no lookups.
+- **NOT-073** A long-session note at Depth Detailed (at Normal or Focus) or at Focus effort reads parts of the transcript in full after the part summaries and risk lines are in, chosen across the whole session, with the room left over; its coverage line adds "and N follow-up lookups". Fast, and Concise or Natural at Normal, make no lookups.
   `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: NOTE-17`
 - **NOT-080** How much of a long session a note reads depends on the model and the effort: any model reads the transcript whole, word for word, when it fits and has at most 3 sections (about 30 minutes); MedGemma 27B reads up to 6 sections (about an hour) whole at Normal, and any length that fits at Focus. Otherwise the note reads every section's summary plus quoted passages, in at most 36,000 characters (96,000 for MedGemma 27B away from Fast).
   `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: NOTE-20`
@@ -1141,6 +1141,18 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Models/AIRunStats.swift, Sources/App/Views/AIProgressView.swift` · `qa: CHAT-20`
 - **CHT-075** The Compact button sits on the same bar as the AI effort control, apart from it, and "AI generated responses can be inaccurate. Double-check responses." always shows in small muted text at the bottom left of the conversation, in Light, Dark and Increase Contrast.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-21`
+- **CHT-082** Session Ask and patient Ask show a "Depth" control beside the AI effort control with Concise, Natural (the default) and Detailed; it is disabled while an answer is being written, and its help text describes the chosen level.
+  `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift, Sources/App/Models/AnswerDepth.swift` · `qa: CHAT-29`
+- **CHT-083** Settings → Formats has an "Ask depth" choice, kept apart from "Note depth"; each new chat starts at it, and a chat's own Depth changes only that chat.
+  `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/SessionAI/PatientChatModel.swift` · `qa: CHAT-30`
+- **CHT-084** The chosen depth is sent to the model as prompt guidance only: Concise asks for one to three sentences, Natural for a short paragraph or two of plain prose, Detailed for a full answer with headers and lists where they help. No length cap is set and no answer is cut short.
+  `surface: invariant` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Services/Prompts.swift` · `qa: CHAT-31`
+- **CHT-085** Every Ask answer, at every depth, is told to answer the latest question on its own terms, not to restructure, revise or re-summarise earlier answers, to use earlier turns only as context, and that each answer stands on its own. The latest question is the last thing in the prompt, after the earlier conversation.
+  `surface: invariant` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Services/Prompts.swift` · `qa: CHAT-32`
+- **CHT-086** Notes and Ask both call the setting "Depth" and offer the same three options, Concise, Natural and Detailed.
+  `surface: ui` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Views/ChatPaneView.swift, Sources/App/Views/SessionDetailView.swift` · `qa: CHAT-33`
+- **CHT-087** One depth type supplies the guidance for notes and both Ask paths, so the same depth gives the same kind of limit everywhere, each with the same clarity rule (plain words, no filler, never padded to a length).
+  `surface: invariant` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Services/Prompts.swift` · `qa: CHAT-34`
 
 ## AI engine & models (AIE)
 
@@ -2053,7 +2065,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: NOTE-07`
 - **SET-012** When the user manages Risk phrases, they can add a phrase, remove one, and use "Clear All" or "Reset to Defaults", each of which asks for confirmation ("Clear all risk phrases?", "Reset risk phrases?").
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/AppSettings.swift:293` · `qa: SETTINGS-09`
-- **SET-013** When the user opens Formats, they can set the default progress note format and the summary length, and turn on or off comments in drafts, patient background and preparing summaries on battery.
+- **SET-013** When the user opens Formats, they can set the default progress note format, the note depth and the Ask depth, and turn on or off comments in drafts, patient background and preparing summaries on battery.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-10`
 - **SET-014** When the user opens Backups, the pane shows "Keep my data out of Time Machine & iCloud backups" (on by default) and the caption "Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder."
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/BackupExclusion.swift, Sources/App/Services/Store.swift:386` · `qa: BACKUP-01`
