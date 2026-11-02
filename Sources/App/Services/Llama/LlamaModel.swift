@@ -103,6 +103,11 @@ enum LlamaModel: String, CaseIterable, Identifiable, Codable, Hashable {
         }
     }
 
+    /// Whether the model keeps track of a long transcript read in one piece.
+    /// Only the 27B model does; the smaller ones write about part of it, so a
+    /// note gives them section summaries and passages instead (`LongSessionNote.readPlan`).
+    var readsLongTranscripts: Bool { self == .medgemma_27b }
+
     var fileName: String {
         switch self {
         case .llama31_8b: return "meta-llama-3.1-8b-instruct-q4_0.gguf"

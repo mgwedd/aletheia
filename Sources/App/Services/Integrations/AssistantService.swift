@@ -18,6 +18,9 @@ struct AssistantService {
     /// The patient's name, for the prompts' speaker guide: notes and answers
     /// call the call-audio speaker by its first word. Empty means "the client".
     var clientName: String = ""
+    /// Whether the model keeps track of a long transcript read in one piece
+    /// (`LlamaModel.readsLongTranscripts`); a long note reads more of it when it does.
+    var readsLongTranscripts = false
 
     private func checkBudget(system: String, turns: [PromptTurn], prompt: String) throws {
         guard budget.fits(system: system, prompt: PromptTurn.flattened(turns, then: prompt)) else {

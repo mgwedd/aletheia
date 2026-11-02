@@ -96,7 +96,12 @@ struct RootView: View {
         // A records export keeps running while the therapist works; its progress and
         // the finished file are shown here whichever patient is open.
         .overlay(alignment: .bottomTrailing) {
-            ExportStatusToast(center: exports).padding(16)
+            VStack(alignment: .trailing, spacing: 8) {
+                // A finished note is announced here too, so it is seen from any screen.
+                NoteReadyToast(center: integrations.noteReady)
+                ExportStatusToast(center: exports)
+            }
+            .padding(16)
         }
         #if DEBUG
         .overlay(alignment: .topLeading) { if FixtureMode.isActive { FixtureProbeOverlay() } }

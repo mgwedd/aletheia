@@ -112,6 +112,9 @@ final class AssistantDesk {
     fileprivate init(app: InProcessDriver, model: SteeredModel) {
         self.app = app
         self.model = model
+        // The default model, whatever this Mac would pick, so how much of a
+        // long session a note reads doesn't depend on the Mac running the test.
+        app.settings.llamaModel = .medgemma15_4b
         let clock = app.clock
         let integrations = Integrations(
             settings: app.settings, engine: model, notifier: notifier, now: { clock.now })
@@ -127,6 +130,22 @@ final class AssistantDesk {
     }
 
     var settings: AppSettings { app.settings }
+
+    /// Switches to the largest model, the one that keeps track of a long transcript read whole.
+    func usesTheLargeModel() { app.settings.llamaModel = .medgemma_27b }
+
+    /// The "note ready" notice the main window shows, once a note has finished.
+    func waitForTheNoteReadyNotice() async throws -> NoteReadyCenter.Notice {
+        try await waitFor("the note-ready notice") { self.integrations.noteReady.notice != nil }
+        return try XCTUnwrap(integrations.noteReady.notice)
+    }
+
+    /// Clicks Open Note on the notice; the session the app is then asked to show.
+    func opensTheReadyNote() -> AppNavigator.PendingSession? {
+        integrations.noteReady.open()
+        defer { AppNavigator.shared.pendingPatientID = nil; AppNavigator.shared.pendingSession = nil }
+        return AppNavigator.shared.pendingSession
+    }
     var store: Store {
         get throws { try XCTUnwrap(app.appModel.store, "the data folder is not open") }
     }

@@ -57,8 +57,15 @@ extension Then where Subject == DepthMenu {
 extension Then where Subject == NotePane {
     func endsWithACoverageLine() {
         guard let coverage = subject.coverage else { return fail("the note has no coverage line") }
-        expect(coverage.hasPrefix(Copy.coverageLead) && coverage.contains(Copy.coverageCaveat),
-               "expected a coverage line saying what was read, found \"\(coverage)\"")
+        expect(coverage.hasPrefix(Copy.coverageLead) && coverage.contains(Copy.wholeSessionSummary)
+                   && coverage.contains(Copy.quotedLines),
+               "expected a coverage line saying every part was summarized and how many lines were quoted, found \"\(coverage)\"")
+    }
+
+    func saysTheWholeTranscriptWasRead() {
+        guard let coverage = subject.coverage else { return fail("the note has no coverage line") }
+        expect(coverage.hasPrefix(Copy.coverageLead) && coverage.contains(Copy.wholeTranscript),
+               "expected the coverage line to say the whole transcript was read, found \"\(coverage)\"")
     }
 
     func countsFollowUpLookups() {
@@ -192,5 +199,47 @@ extension Then where Subject == SteeredModel {
         }
         expect(last[open.upperBound..<close.lowerBound].contains(line),
                "the line \"\(line)\" is not inside the transcript tags")
+    }
+}
+
+/// Someone reading the Notes pane while a note is written. Their view of the
+/// note applies the app's follow rule to what the pane shows at each look.
+final class NoteReader {
+    private var follow = NoteFollow()
+    private var lastText = ""
+    /// Whether the view went to the end of the note at the last look.
+    private(set) var wentToTheEnd = false
+
+    func looks(at pane: NotePane) {
+        wentToTheEnd = follow.update(writing: pane.isWriting, textGrew: pane.text != lastText)
+        lastText = pane.text
+    }
+
+    /// Scrolls well up from the end of the note.
+    func scrollsUp() { follow.scrolled(distanceFromEnd: 400) }
+}
+
+extension Then where Subject == NoteReader {
+    func keepsTheNewestTextInView() {
+        expect(subject.wentToTheEnd, "the view did not keep up with the note as it was written")
+    }
+
+    func isTakenToTheEnd() {
+        expect(subject.wentToTheEnd, "the view was not taken to the end of the finished note")
+    }
+}
+
+extension Then where Subject == NoteReadyCenter.Notice {
+    func names(_ format: String, for patient: String) {
+        expectEqual(subject.title, format, "the notice's title")
+        expect(subject.detail.hasPrefix(patient), "the notice does not name \(patient): \"\(subject.detail)\"")
+    }
+}
+
+extension Then where Subject == AppNavigator.PendingSession? {
+    func isTheNotesTab(of stored: StoredSession, in format: NoteFormat) {
+        expectEqual(subject, AppNavigator.PendingSession(
+            patientID: stored.patient.id, sessionID: stored.session.id, initialTab: .notes, initialNoteFormat: format.progress),
+            "the session Open Note goes to")
     }
 }

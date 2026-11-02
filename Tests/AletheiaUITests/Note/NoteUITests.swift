@@ -220,6 +220,69 @@ final class NoteUITests: AcceptanceCase {
         then(text).hasTheSoapSections()
     }
 
+    func test_NOTE_20_largeModelReadsALongSessionWhole() {
+        given.aSession(transcript: SessionContent.longTranscript(), model: Copy.largeModel, memoryGB: 64)
+        let tab = when.openNotesTab()
+
+        let coverage = when.generateNote(on: tab)
+
+        then(coverage).coverageSaysTheWholeTranscriptWasRead()
+    }
+
+    func test_NOTE_20_smallModelReadsTheSameSessionInParts() {
+        given.aSession(transcript: SessionContent.longTranscript())
+        let tab = when.openNotesTab()
+
+        let coverage = when.generateNote(on: tab)
+
+        then(coverage).coverageCountsEveryPart()
+    }
+
+    func test_NOTE_21_followsTheNoteUntilTheReaderScrollsUp() {
+        given.aSession(transcript: SessionContent.shortTranscript, stageMs: 30,
+                       replies: [Self.longNote], streamsWords: true, holdsOpen: true)
+        let tab = when.openNotesTab()
+        when.pickFormat("SOAP", on: tab)
+        tab.generateSoapButton.click()
+        then(tab).showsText("Line 40 of the plan.")
+
+        then(tab).keepsTheNewestTextInView()
+
+        when.scrollTheNoteUp(on: tab)
+
+        then(tab).staysWhereTheReaderScrolled(whileShowing: "Line 100 of the plan.")
+    }
+
+    func test_NOTE_22_finishedNoteIsShownToItsEndAndAnnounced() {
+        given.aSession(transcript: SessionContent.shortTranscript, stageMs: 5,
+                       replies: [Self.longNote], streamsWords: true, holdsOpen: false)
+        let tab = when.openNotesTab()
+        when.pickFormat("SOAP", on: tab)
+        tab.generateSoapButton.click()
+
+        then(tab).showsText("Line 120 of the plan.")
+        then(tab).stopIsGone()
+        then(tab).isAtTheEndOfTheNote()
+        then(tab).announcesTheNoteIsReady()
+    }
+
+    func test_NOTE_22_noticeOpensTheNoteFromElsewhere() {
+        given.aSession(transcript: SessionContent.shortTranscript, stageMs: 40,
+                       replies: [Copy.soapReply], streamsWords: true, holdsOpen: false)
+        let tab = when.openNotesTab()
+        when.pickFormat("SOAP", on: tab)
+        tab.generateSoapButton.click()
+        when.openTheTranscript()
+
+        then(tab).announcesTheNoteIsReady()
+        tab.driver.button(Copy.openNote).click()
+
+        then(tab).showsText("Follow up next week.")
+    }
+
+    /// A note far taller than the reader's view.
+    private static let longNote = (1...120).map { "Line \($0) of the plan." }.joined(separator: "\n")
+
     private func generateLongNote(depth: String, effort: String) -> String {
         given.aSession(transcript: SessionContent.longTranscript(), depth: depth, effort: effort,
                        stageMs: 100, plansLookups: true)
