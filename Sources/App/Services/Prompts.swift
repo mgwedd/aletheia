@@ -19,10 +19,12 @@ enum Prompts {
     the material, say so plainly rather than guessing. When you draw on the \
     therapist's own notes or comments, treat them as her clinical judgment.
 
-    Be concise and plain-spoken. You are a support tool, not the clinician: \
-    surface what's in the record and flag things worth her attention, but leave \
-    clinical decisions to her. If a session raises a safety concern (e.g. risk \
-    of harm), point to it directly and factually.
+    Lead with the answer, then only the detail that supports it. Be plain-spoken: \
+    no preamble, no restating the question, no closing summary or offers of \
+    further help. You are a support tool, not the clinician: surface what's in \
+    the record and flag things worth her attention, but leave clinical decisions \
+    to her. If a session raises a safety concern (e.g. risk of harm), point to it \
+    directly and factually.
 
     Answer in clear prose.
     """
@@ -59,10 +61,13 @@ enum Prompts {
         ) != nil
     }
 
-    /// The system prompt for a chat turn: the standing prompt, plus diagram
-    /// guidance only when this question asks for one.
-    static func chatSystemPrompt(_ base: String, question: String) -> String {
-        asksForDiagram(question) ? base + "\n\n" + diagramGuidance : base
+    /// The system prompt for an Ask turn: the standing prompt, the depth's
+    /// instructions for an answer (the same `AnswerDepth` notes are written
+    /// to), plus diagram guidance only when this question asks for one.
+    static func chatSystemPrompt(_ base: String, question: String, depth: AnswerDepth = .default) -> String {
+        var parts = [base, depth.instructions(for: .answer)]
+        if asksForDiagram(question) { parts.append(diagramGuidance) }
+        return parts.joined(separator: "\n\n")
     }
 
     /// How to read a transcript (`[MM:SS] Y: text` turns, as shrunk by
@@ -195,7 +200,7 @@ enum Prompts {
     /// the exact sections the exporter and the payer expect. Grounded strictly
     /// in the transcript and the therapist's own notes/comments; empty sections
     /// are marked rather than filled with guesses. `instructions` replaces the
-    /// format's default instruction text (nil keeps it); the length setting,
+    /// format's default instruction text (nil keeps it); the depth setting,
     /// formatting rules, legend and material are always appended.
     static func progressNote(
         format: ProgressNoteFormat,
@@ -203,13 +208,13 @@ enum Prompts {
         notes: String = "",
         comments: [String] = [],
         patientBackground: String = "",
-        verbosity: SummaryVerbosity = .default,
+        depth: AnswerDepth = .default,
         instructions: String? = nil,
         clientName: String = ""
     ) -> String {
         progressNote(
             format: format, material: .transcript(transcript), notes: notes, comments: comments,
-            patientBackground: patientBackground, verbosity: verbosity, instructions: instructions,
+            patientBackground: patientBackground, depth: depth, instructions: instructions,
             clientName: clientName)
     }
 
@@ -221,16 +226,14 @@ enum Prompts {
         notes: String = "",
         comments: [String] = [],
         patientBackground: String = "",
-        verbosity: SummaryVerbosity = .default,
+        depth: AnswerDepth = .default,
         instructions: String? = nil,
         clientName: String = ""
     ) -> String {
-        let lengthGuidance = format.sections.isEmpty ? verbosity.promptGuidance : verbosity.noteGuidance
         return """
         \(instructions ?? defaultInstructions(for: format))
 
-        \(lengthGuidance)
-        \(SummaryVerbosity.clarityRule)
+        \(depth.instructions(for: format.sections.isEmpty ? .summary : .structuredNote))
 
         \(noteFormattingRules)
 

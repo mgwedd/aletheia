@@ -237,7 +237,7 @@ final class AIProgressTests: XCTestCase {
         let transcript = "今日はとても疲れました。"
         for try await _ in service.streamProgressNote(format: .narrative, transcript: transcript) {}
         let prompt = Prompts.progressNote(
-            format: .narrative, transcript: transcript, notes: "", comments: [], verbosity: .default, instructions: nil)
+            format: .narrative, transcript: transcript, notes: "", comments: [], depth: .default, instructions: nil)
         XCTAssertEqual(events.readingEstimates.first,
                        ContextBudget.estimatedTokens(system: service.systemPrompt, prompt: prompt))
         XCTAssertGreaterThan(try XCTUnwrap(events.readingEstimates.first),
@@ -255,7 +255,7 @@ final class AIProgressTests: XCTestCase {
         XCTAssertEqual(events.readingEstimates.count, 1)
         // The shared estimate is what the progress display shows.
         let prompt = Prompts.progressNote(
-            format: .narrative, transcript: "short", notes: "", comments: [], verbosity: .default, instructions: nil)
+            format: .narrative, transcript: "short", notes: "", comments: [], depth: .default, instructions: nil)
         XCTAssertEqual(events.readingEstimates.first,
                        ContextBudget.estimatedTokens(forCharacters: service.systemPrompt.count + prompt.count))
         XCTAssertEqual(ContextBudget.estimatedTokens(forCharacters: 3_000), 1_000)

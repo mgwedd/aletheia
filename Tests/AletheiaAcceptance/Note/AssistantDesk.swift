@@ -46,11 +46,19 @@ struct NotePane {
     let asksBeforeReplacing: Bool
 }
 
-/// What the Length button's menu offers.
-struct LengthMenu {
+/// What the Depth button's menu offers.
+struct DepthMenu {
     let label: String
-    let lengths: [String]
+    let depths: [String]
     let efforts: [String]
+}
+
+/// The Depth control on the Ask bar: what it is called, what it offers, and what is picked.
+struct DepthControl {
+    let chosen: AnswerDepth
+    var label: String { AnswerDepth.label }
+    var depths: [String] { AnswerDepth.allCases.map(\.displayName) }
+    var chosenName: String { chosen.displayName }
 }
 
 /// What a Copy put on the pasteboard, and what the button then said.
@@ -207,6 +215,9 @@ final class AssistantDesk {
 
     func notesTab(of stored: StoredSession) -> NotesTab { NotesTab(desk: self, stored: stored) }
     func askTab(of stored: StoredSession) -> AskTab { AskTab(desk: self, stored: stored) }
+    /// Sets **Settings → Formats → Ask depth**, where new chats start.
+    func setAskDepth(_ depth: Depth) { settings.askDepth = depth.setting }
+    var askDepthSetting: AnswerDepth { settings.askDepth }
     func patientChat(of patient: Patient) -> PatientChatTab { PatientChatTab(desk: self, patient: patient) }
 
     /// What the screen would put in front of a session's note and chat prompts.
@@ -313,9 +324,9 @@ final class NotesTab {
         desk.settings.setNoteInstructions(Prompts.defaultInstructions(for: format.progress), for: format.progress)
     }
 
-    /// Writes a note at `length` and `effort` and waits for it to end, replacing any note already there.
-    func generate(_ length: NoteLength, at effort: Effort) async throws {
-        chooseLength(length.setting)
+    /// Writes a note at `depth` and `effort` and waits for it to end, replacing any note already there.
+    func generate(_ depth: Depth, at effort: Effort) async throws {
+        chooseDepth(depth.setting)
         chooseEffort(effort)
         model.requestGenerate()
         if model.confirmRegenerate { confirmReplacing() }
@@ -347,14 +358,14 @@ final class NotesTab {
             buttonTitle: model.copyFeedback.title)
     }
 
-    /// What the Length button opens.
-    var lengthMenu: LengthMenu {
-        LengthMenu(
-            label: NoteWords.lengthLabel(length: desk.settings.summaryVerbosity, effort: desk.settings.noteEffort),
-            lengths: NoteWords.lengthChoices, efforts: NoteWords.effortChoices)
+    /// What the Depth button opens.
+    var depthMenu: DepthMenu {
+        DepthMenu(
+            label: NoteWords.depthLabel(depth: desk.settings.noteDepth, effort: desk.settings.noteEffort),
+            depths: NoteWords.depthChoices, efforts: NoteWords.effortChoices)
     }
 
-    func chooseLength(_ length: SummaryVerbosity) { desk.settings.summaryVerbosity = length }
+    func chooseDepth(_ depth: AnswerDepth) { desk.settings.noteDepth = depth }
     func chooseEffort(_ effort: Effort) { desk.settings.noteEffort = effort.setting }
     var effort: AnswerEffort { desk.settings.noteEffort }
 
@@ -460,6 +471,9 @@ final class AskTab {
     func clear() { model.clear() }
     func chooseEffort(_ effort: Effort) { desk.settings.sessionChatEffort = effort.setting }
     var effort: AnswerEffort { desk.settings.sessionChatEffort }
+    /// Picks this chat's Depth on the Ask bar.
+    func chooseDepth(_ depth: Depth) { model.depth = depth.setting }
+    var depthControl: DepthControl { DepthControl(chosen: model.depth) }
 
     var pane: AskPane {
         AskPane(
@@ -562,6 +576,9 @@ final class PatientChatTab {
     func deleteAllChats() { model.deleteAllThreads() }
     func chooseEffort(_ effort: Effort) { desk.settings.patientChatEffort = effort.setting }
     var effort: AnswerEffort { desk.settings.patientChatEffort }
+    /// Picks this chat's Depth on the Ask bar.
+    func chooseDepth(_ depth: Depth) { model.depth = depth.setting }
+    var depthControl: DepthControl { DepthControl(chosen: model.depth) }
 
     // MARK: Reading
 

@@ -22,6 +22,9 @@ final class PatientChatModel: ObservableObject {
     @Published private(set) var searchingSince: Date?
     /// What the last answer read ("Read: ..."), shown under it.
     @Published private(set) var coverage: String?
+    /// How much this chat's answers say: starts at the Settings default
+    /// (`AppSettings.askDepth`) and is changed from the Ask bar.
+    @Published var depth: AnswerDepth = .default
 
     var alert: (AIAlert) -> Void = { _ in }
 
@@ -45,6 +48,7 @@ final class PatientChatModel: ObservableObject {
         self.appModel = appModel
         self.integrations = integrations
         self.settings = settings
+        depth = settings.askDepth
         self.patient = patient
     }
 
@@ -151,7 +155,8 @@ final class PatientChatModel: ObservableObject {
         let service = integrations.makeAssistantService(report: runner.reporter, clientName: patient.name)
         // The whole context is sized from this Mac's budget less the
         // instructions, the conversation and the question.
-        let characterBudget = service.patientContextCharacters(history: history, question: question)
+        let depth = self.depth
+        let characterBudget = service.patientContextCharacters(history: history, question: question, depth: depth)
         guard characterBudget >= Self.minimumContextCharacters else {
             messages.removeAll { $0.id == userMessage.id }
             isSending = false
@@ -187,7 +192,7 @@ final class PatientChatModel: ObservableObject {
             searchingSince = nil
             startAnswer(
                 service: service, context: context, history: history, question: question,
-                effort: effort, totalBudget: characterBudget, askedAt: askedAt,
+                effort: effort, depth: depth, totalBudget: characterBudget, askedAt: askedAt,
                 userMessage: userMessage, assistantID: assistantID, threadID: threadID
             )
         }
@@ -212,7 +217,7 @@ final class PatientChatModel: ObservableObject {
 
     private func startAnswer(
         service: AssistantService, context: PatientContext, history: [ChatMessage], question: String,
-        effort: AnswerEffort, totalBudget: Int, askedAt: Date,
+        effort: AnswerEffort, depth: AnswerDepth, totalBudget: Int, askedAt: Date,
         userMessage: ChatMessage, assistantID: UUID, threadID: UUID
     ) {
         guard let store = appModel.store else { return }
@@ -234,6 +239,7 @@ final class PatientChatModel: ObservableObject {
                     history: history,
                     question: question,
                     effort: effort,
+                    depth: depth,
                     totalBudget: totalBudget,
                     scope: {
                         await Task.detached(priority: .userInitiated) {

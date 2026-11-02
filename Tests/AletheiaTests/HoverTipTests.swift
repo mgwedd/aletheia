@@ -110,7 +110,7 @@ final class HelpTipsTests: XCTestCase {
         for case let url as URL in enumerator where url.pathExtension == "swift" {
             let text = try String(contentsOf: url, encoding: .utf8)
             for phrase in banned where text.contains(phrase) {
-                // Effort and verbosity levels keep their own blurbs; only the note format's is gone.
+                // Effort and depth levels keep their own blurbs; only the note format's is gone.
                 if phrase == "var blurb: String" && !url.lastPathComponent.hasPrefix("ProgressNoteFormat") { continue }
                 offenders.append("\(url.lastPathComponent): \(phrase)")
             }

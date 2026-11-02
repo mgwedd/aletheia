@@ -938,6 +938,7 @@ enum LongSessionChat {
         history: [ChatMessage],
         question: String,
         effort: AnswerEffort = .default,
+        depth: AnswerDepth = .default,
         sessionID: UUID,
         sessionDate: Date = Date(),
         folderName: String = "",
@@ -958,7 +959,7 @@ enum LongSessionChat {
         } catch {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
-        let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question)
+        let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question, depth: depth)
         let turns = PromptTurn.recent(history, question: question)
         func makePrompt(_ material: SessionMaterial) -> String {
             Prompts.sessionChat(
@@ -1172,6 +1173,7 @@ enum PatientChatAnswer {
         history: [ChatMessage],
         question: String,
         effort: AnswerEffort = .default,
+        depth: AnswerDepth = .default,
         totalBudget: Int,
         scope: @escaping () async -> LocalToolScope,
         service: AssistantService,
@@ -1238,7 +1240,7 @@ enum PatientChatAnswer {
                         }
                     }
 
-                    let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question)
+                    let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question, depth: depth)
                     let prompt = Prompts.patientChat(context: finalContext, history: history, question: question, clientName: service.clientName)
                     var chatService = service
                     chatService.systemPrompt = system

@@ -34,6 +34,7 @@ struct AskTabOnScreen {
     var disclaimer: XCUIElement { driver.element(id: "chat.disclaimer") }
     var effortBar: XCUIElement { driver.element(id: "chat.effort") }
     var answerText: XCUIElement { driver.app.textViews.matching(identifier: "chat.answer-text").firstMatch }
+    var depthBar: XCUIElement { driver.element(id: "chat.depth") }
     var compactedCard: XCUIElement { driver.element(id: "chat.compacted") }
     var stop: XCUIElement { driver.app.buttons[Copy.stopButton].firstMatch }
 }
@@ -41,7 +42,8 @@ struct AskTabOnScreen {
 extension Given {
     func aSessionToAskAbout(
         myNotes: String? = nil, chat: [Scenario.ChatSeed]? = nil, replies: [String]? = nil,
-        stageMs: Int? = nil, parts: Int? = nil, contextTokens: Int? = nil, modelMissing: Bool? = nil, rules: [Scenario.AIRule]? = nil
+        stageMs: Int? = nil, parts: Int? = nil, contextTokens: Int? = nil, modelMissing: Bool? = nil, rules: [Scenario.AIRule]? = nil,
+        askDepth: String? = nil
     ) {
         app.seed {
             $0.license = "test"
@@ -55,6 +57,7 @@ extension Given {
             $0.aiParts = parts
             $0.contextTokens = contextTokens
             $0.aiModelMissing = modelMissing
+            $0.askDepth = askDepth
             // With a stage time the answer is written a word at a time, so it is seen being written.
             $0.aiStreamsWords = stageMs != nil ? true : nil
         }
@@ -123,6 +126,7 @@ struct PatientChatOnScreen {
     var deleteAll: XCUIElement { driver.app.buttons["chat.delete-all"].firstMatch }
     /// The open chat, which has the same parts as a session's Ask tab.
     var pane: AskTabOnScreen { AskTabOnScreen(driver: driver) }
+    var depthBar: XCUIElement { driver.element(id: "chat.depth") }
 }
 
 /// The Chats list's width before and after its divider was dragged.
@@ -179,5 +183,54 @@ extension Then where Subject == ChatsListDragOnScreen {
         expect(subject.after >= 200, "the Chats list narrowed to \(subject.after)")
         expect(subject.after <= 320, "the Chats list widened to \(subject.after)")
         expect(subject.window.chat.frame.width >= 360, "the chat narrowed to \(subject.window.chat.frame.width)")
+    }
+}
+
+// MARK: - Depth
+
+extension When {
+    func chooseDepth(_ name: String, on tab: AskTabOnScreen) {
+        app.click(tab.depthBar.buttons[name].firstMatch, "\(name) on the Ask bar's Depth")
+    }
+}
+
+/// A Depth control on an Ask bar.
+struct DepthBarOnScreen {
+    let bar: XCUIElement
+    let driver: AppDriver
+}
+
+extension AskTabOnScreen {
+    var depth: DepthBarOnScreen { DepthBarOnScreen(bar: depthBar, driver: driver) }
+}
+
+extension PatientChatOnScreen {
+    var depth: DepthBarOnScreen { DepthBarOnScreen(bar: depthBar, driver: driver) }
+}
+
+extension Then where Subject == DepthBarOnScreen {
+    func offersTheDepths() {
+        expect(subject.driver.waitFor(subject.bar, timeout: 30), "no Depth control on the Ask bar")
+        for name in Copy.depthChoices {
+            expect(subject.bar.buttons[name].exists, "the Depth control does not offer \(name)")
+        }
+    }
+
+    func hasChosen(_ name: String) {
+        let button = subject.bar.buttons[name].firstMatch
+        let chosen = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: button)
+        expect(XCTWaiter().wait(for: [chosen], timeout: 30) == .completed, "\(name) is not the chosen depth")
+        for other in Copy.depthChoices where other != name {
+            expect(!subject.bar.buttons[other].firstMatch.isSelected, "\(other) is chosen as well as \(name)")
+        }
+    }
+}
+
+extension Then where Subject == AskTabOnScreen {
+    func keepsDepthBesideTheEffort() {
+        let depth = subject.depthBar.frame
+        let effort = subject.effortBar.frame
+        expect(abs(depth.midY - effort.midY) < 24, "Depth is not level with the AI effort: \(depth) vs \(effort)")
+        expect(depth.minX >= effort.maxX, "Depth is not just after the AI effort: \(depth) vs \(effort)")
     }
 }

@@ -90,11 +90,11 @@ struct RiskPhraseList {
 /// The Note format pane's choices, after a relaunch.
 struct NoteFormatChoices {
     let format: ProgressNoteFormat
-    let verbosity: SummaryVerbosity
+    let depth: AnswerDepth
     let includeComments: Bool
     let includeBackground: Bool
     let formatsOffered: [ProgressNoteFormat]
-    let lengthsOffered: [SummaryVerbosity]
+    let depthsOffered: [AnswerDepth]
 }
 
 /// The result of pointing the data folder somewhere.
@@ -331,18 +331,18 @@ extension When {
     }
 
     func setNoteFormat(
-        _ formatName: String, summaryLength lengthName: String, comments: Bool, background: Bool
+        _ formatName: String, noteDepth depthName: String, comments: Bool, background: Bool
     ) -> NoteFormatChoices {
         app.settings.progressNoteFormat = ProgressNoteFormat.allCases.first { $0.displayName == formatName } ?? .default
-        app.settings.summaryVerbosity = SummaryVerbosity.allCases.first { $0.displayName == lengthName } ?? .default
+        app.settings.noteDepth = AnswerDepth.allCases.first { $0.displayName == depthName } ?? .default
         app.settings.includeCommentsInDrafts = comments
         app.settings.includePatientBackground = background
         app.relaunch(tier: app.tier)
         return NoteFormatChoices(
-            format: app.settings.progressNoteFormat, verbosity: app.settings.summaryVerbosity,
+            format: app.settings.progressNoteFormat, depth: app.settings.noteDepth,
             includeComments: app.settings.includeCommentsInDrafts,
             includeBackground: app.settings.includePatientBackground,
-            formatsOffered: ProgressNoteFormat.allCases, lengthsOffered: SummaryVerbosity.allCases)
+            formatsOffered: ProgressNoteFormat.allCases, depthsOffered: AnswerDepth.allCases)
     }
 
     func turnOnRecordingDiagnostics() -> Bool {
@@ -586,12 +586,12 @@ extension Then where Subject == RiskPhraseList {
 }
 
 extension Then where Subject == NoteFormatChoices {
-    func keeps(_ formatName: String, summaryLength lengthName: String, comments: Bool, background: Bool) {
+    func keeps(_ formatName: String, noteDepth depthName: String, comments: Bool, background: Bool) {
         expectEqual(subject.format.displayName, formatName, "the default format")
-        expectEqual(subject.verbosity.displayName, lengthName, "the summary length")
+        expectEqual(subject.depth.displayName, depthName, "the note depth")
         expectEqual(subject.includeComments, comments, "comments in drafts")
         expectEqual(subject.includeBackground, background, "patient background in drafts")
-        expect(subject.formatsOffered.count > 1 && subject.lengthsOffered.count > 1, "there should be choices")
+        expect(subject.formatsOffered.count > 1 && subject.depthsOffered.count > 1, "there should be choices")
     }
 }
 

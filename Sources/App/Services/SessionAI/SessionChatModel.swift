@@ -12,6 +12,9 @@ final class SessionChatModel: ObservableObject {
     /// composer takes it back so nothing typed is lost.
     @Published var returnedQuestion: String?
     @Published var isSending = false
+    /// How much this chat's answers say: starts at the Settings default
+    /// (`AppSettings.askDepth`) and is changed from the Ask bar.
+    @Published var depth: AnswerDepth = .default
 
     var alert: (AIAlert) -> Void = { _ in }
 
@@ -34,6 +37,7 @@ final class SessionChatModel: ObservableObject {
         self.appModel = appModel
         self.integrations = integrations
         self.settings = settings
+        depth = settings.askDepth
         self.patient = patient
         self.session = session
         self.material = material
@@ -86,6 +90,7 @@ final class SessionChatModel: ObservableObject {
         let patientBackground = settings.includePatientBackground ? patient.aiBackgroundBlock : ""
         let history = messages
         let effort = settings.sessionChatEffort
+        let depth = self.depth
         let model = service.model
         let patient = patient!
         let session = session!
@@ -105,6 +110,7 @@ final class SessionChatModel: ObservableObject {
                     history: history,
                     question: question,
                     effort: effort,
+                    depth: depth,
                     sessionID: session.id,
                     sessionDate: session.date,
                     folderName: session.folderName,

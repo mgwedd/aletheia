@@ -57,8 +57,8 @@ final class SettingsSpec: AcceptanceCase {
     }
 
     func test_SETTINGS_10() async throws {
-        then(when.setNoteFormat("SOAP note", summaryLength: "Detailed", comments: false, background: false))
-            .keeps("SOAP note", summaryLength: "Detailed", comments: false, background: false)
+        then(when.setNoteFormat("SOAP note", noteDepth: "Detailed", comments: false, background: false))
+            .keeps("SOAP note", noteDepth: "Detailed", comments: false, background: false)
     }
 
     func test_SETTINGS_11() async throws {

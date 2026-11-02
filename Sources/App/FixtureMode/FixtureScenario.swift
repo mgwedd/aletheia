@@ -80,10 +80,12 @@ struct FixtureScenario: Codable, Equatable {
     /// stays on screen.
     var slowTranscription: Bool?
     /// Settings > Notes: "concise", "natural" or "detailed".
-    var noteLength: String?
+    var noteDepth: String?
     /// AI effort for notes and for Ask: "fast", "normal" or "focus".
     var noteEffort: String?
     var chatEffort: String?
+    /// Settings: the depth a new Ask chat starts at: "concise", "natural" or "detailed".
+    var askDepth: String?
 
     /// What "Import Audio…" is handed instead of the system open panel:
     /// "clip" (a two-second tone), "twoTracks" (a microphone and a call track,
