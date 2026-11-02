@@ -65,7 +65,7 @@ enum LongSessionNote {
         notes: String = "",
         comments: [SessionComment] = [],
         patientBackground: String = "",
-        verbosity: SummaryVerbosity = .default,
+        depth: AnswerDepth = .default,
         instructions: String? = nil,
         effort: AnswerEffort = .default,
         riskPhrases: [String],
@@ -93,7 +93,7 @@ enum LongSessionNote {
             Prompts.progressNote(
                 format: format, material: material, notes: fields.notes, comments: fields.comments,
                 patientBackground: fields.background,
-                verbosity: verbosity, instructions: instructions, clientName: service.clientName)
+                depth: depth, instructions: instructions, clientName: service.clientName)
         }
         let sectionLimit = TranscriptSections.maxCharacters(
             for: service.budget, systemPrompt: service.systemPrompt, clientName: service.clientName)
@@ -165,7 +165,7 @@ enum LongSessionNote {
                     // Detailed or Focus: with every part's summary and the risk lines in, the
                     // model reads parts in full, in the room left over. The risk scan stays fixed.
                     var followUps = ""
-                    if looksCloser(effort: effort, verbosity: verbosity) {
+                    if looksCloser(effort: effort, depth: depth) {
                         let base = Prompts.sessionMaterial(.excerpts(digest: digestText, passages: found.text))
                         let scope = LocalToolScope(sessions: [
                             LocalToolSession(
@@ -345,9 +345,9 @@ enum LongSessionNote {
     }
 
     /// Whether a long-session note reads parts in full after the summaries: at
-    /// Length Detailed or at Focus, never at Fast.
-    nonisolated static func looksCloser(effort: AnswerEffort, verbosity: SummaryVerbosity) -> Bool {
-        effort.maxToolCalls > 0 && (verbosity == .detailed || effort == .focus)
+    /// Depth Detailed or at Focus, never at Fast.
+    nonisolated static func looksCloser(effort: AnswerEffort, depth: AnswerDepth) -> Bool {
+        effort.maxToolCalls > 0 && (depth == .detailed || effort == .focus)
     }
 
     /// What the lookup planner is preparing for. A note covers the whole session, so

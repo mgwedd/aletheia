@@ -23,7 +23,7 @@ struct NoteInstructionsSheet: View {
             Text("\(format.shortName) prompt")
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.text.color)
-            Text("Instructions for drafting this format. The transcript, your notes and comments, and the length setting are added automatically after these.")
+            Text("Instructions for drafting this format. The transcript, your notes and comments, and the depth setting are added automatically after these.")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.muted.color)
                 .fixedSize(horizontal: false, vertical: true)

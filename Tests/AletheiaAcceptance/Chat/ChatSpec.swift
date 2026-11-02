@@ -315,4 +315,110 @@ final class ChatSpec: AcceptanceCase {
         then(when.dragChatsListEdge(by: 5000)).staysUsable()
         then(when.dragChatsListEdge(by: -5000)).staysUsable()
     }
+
+    func test_CHAT_29() async throws {
+        // That the control sits beside the effort on the bar is layout: checked by the UI test.
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+
+        for bar in [desk.askTab(of: session).depthControl, desk.patientChat(of: jane).depthControl] {
+            then(bar).offersTheDepths()
+            then(bar).hasChosen(.natural)
+        }
+    }
+
+    func test_CHAT_30() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+
+        desk.setAskDepth(.concise)
+        let ask = desk.askTab(of: session)
+        let chat = desk.patientChat(of: jane)
+        then(ask.depthControl).hasChosen(.concise)
+        then(chat.depthControl).hasChosen(.concise)
+
+        ask.chooseDepth(.detailed)
+        then(ask.depthControl).hasChosen(.detailed)
+        then(desk).keepsAskDepthSetting(.concise)
+    }
+
+    func test_CHAT_31() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, transcript: AssistantDesk.transcript(minutes: 10, about: "sleep"))
+        desk.model.fallback("She is sleeping a little better.")
+        let ask = desk.askTab(of: session)
+        let chat = desk.patientChat(of: jane)
+
+        for depth in [Depth.concise, .natural, .detailed] {
+            ask.chooseDepth(depth)
+            ask.ask("How is she sleeping?")
+            try await ask.waitUntilIdle()
+            then(desk.model).wasAskedToAnswer(at: depth)
+
+            chat.chooseDepth(depth)
+            chat.ask("How is she sleeping?")
+            try await chat.waitUntilIdle()
+            then(desk.model).wasAskedToAnswer(at: depth)
+        }
+        then(desk.model).capsEveryDepthAlike()
+    }
+
+    func test_CHAT_32() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, transcript: AssistantDesk.transcript(minutes: 10, about: "sleep"))
+        desk.model.fallback("She slept badly most nights, and talked about it at length.")
+        let ask = desk.askTab(of: session)
+        let chat = desk.patientChat(of: jane)
+
+        for tab in [ask.ask, chat.ask] {
+            tab("How did she sleep?")
+        }
+        try await ask.waitUntilIdle()
+        try await chat.waitUntilIdle()
+
+        ask.ask("What did she say about work?")
+        try await ask.waitUntilIdle()
+        then(desk.model).wasToldToAnswerOnItsOwnTerms("What did she say about work?", after: "How did she sleep?")
+
+        chat.ask("What did she say about work?")
+        try await chat.waitUntilIdle()
+        then(desk.model).wasToldToAnswerOnItsOwnTerms("What did she say about work?", after: "How did she sleep?")
+    }
+
+    func test_CHAT_33() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+        let noteMenu = desk.notesTab(of: session).depthMenu
+
+        then(desk.askTab(of: session).depthControl).matchesTheNoteMenu(noteMenu)
+        then(desk.patientChat(of: jane).depthControl).matchesTheNoteMenu(noteMenu)
+    }
+
+    func test_CHAT_34() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, transcript: AssistantDesk.transcript(minutes: 10, about: "sleep"))
+        desk.model.fallback("She is sleeping a little better.")
+        let notes = desk.notesTab(of: session)
+        let ask = desk.askTab(of: session)
+        let chat = desk.patientChat(of: jane)
+
+        for depth in [Depth.concise, .natural, .detailed] {
+            try await notes.generate(depth, at: .normal)
+            ask.chooseDepth(depth)
+            ask.ask("How is she sleeping?")
+            try await ask.waitUntilIdle()
+            then(desk.model).gaveNoteAndAnswerTheSameKindOfLimit(depth)
+
+            chat.chooseDepth(depth)
+            chat.ask("How is she sleeping?")
+            try await chat.waitUntilIdle()
+            then(desk.model).gaveNoteAndAnswerTheSameKindOfLimit(depth)
+        }
+    }
 }

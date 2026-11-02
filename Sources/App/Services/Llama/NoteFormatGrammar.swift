@@ -74,7 +74,7 @@ extension LocalLLMRequest {
         notes: String = "",
         comments: [String] = [],
         patientBackground: String = "",
-        verbosity: SummaryVerbosity = .default,
+        depth: AnswerDepth = .default,
         instructions: String? = nil,
         system: String = ""
     ) -> LocalLLMRequest {
@@ -86,7 +86,7 @@ extension LocalLLMRequest {
                 notes: notes,
                 comments: comments,
                 patientBackground: patientBackground,
-                verbosity: verbosity,
+                depth: depth,
                 instructions: instructions
             ),
             sampling: .deterministic,

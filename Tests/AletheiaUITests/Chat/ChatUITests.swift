@@ -144,6 +144,29 @@ final class ChatUITests: AcceptanceCase {
         then(when.dragChatsListEdge(of: window, by: 3000)).leftBothSidesUsable()
         then(when.dragChatsListEdge(of: window, by: -3000)).leftBothSidesUsable()
     }
+
+    func test_CHAT_29_depthSitsBesideTheEffortWithThreeChoices() {
+        given.aSessionToAskAbout()
+        let tab = when.openAskTab()
+
+        then(tab.depth).offersTheDepths()
+        then(tab.depth).hasChosen("Natural")
+        then(tab).keepsDepthBesideTheEffort()
+
+        let window = when.openPatientChat()
+        then(window.depth).offersTheDepths()
+        then(window.depth).hasChosen("Natural")
+    }
+
+    func test_CHAT_30_askDepthSettingSeedsTheChatAndTheChatCanChangeIt() {
+        given.aSessionToAskAbout(askDepth: "concise")
+        let tab = when.openAskTab()
+        then(tab.depth).hasChosen("Concise")
+
+        when.chooseDepth("Detailed", on: tab)
+
+        then(tab.depth).hasChosen("Detailed")
+    }
 }
 
 extension Then where Subject == AskTabOnScreen {

@@ -9,3 +9,18 @@ extension Copy {
     static let sourcesLead = "Sources:"
     static let patientGone = "This patient is no longer available."
 }
+
+extension Copy {
+    static let depthLabel = "Depth"
+    static let questionLead = "Therapist's question:"
+    static let noteFormatStillApplies = "The note's own format still applies."
+    static let onItsOwnTerms = "Answer the latest question on its own terms."
+    static let earlierTurnsAsContext = "use earlier turns only as context"
+    static func askTarget(_ depth: Depth) -> String {
+        switch depth {
+        case .concise: "one to three sentences"
+        case .natural: "a short paragraph or two"
+        case .detailed: "full answer"
+        }
+    }
+}

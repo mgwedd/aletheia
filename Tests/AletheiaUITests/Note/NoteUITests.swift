@@ -2,13 +2,13 @@ import XCTest
 
 /// The Notes tab in the real app, driven with the scripted AI.
 final class NoteUITests: AcceptanceCase {
-    func test_NOTE_06_wholeLengthButtonOpensMenu() {
+    func test_NOTE_06_wholeDepthButtonOpensMenu() {
         given.aSession(transcript: SessionContent.shortTranscript)
         let tab = when.openNotesTab()
 
-        when.clickLengthButtonAwayFromItsIcon(on: tab)
+        when.clickDepthButtonAwayFromItsIcon(on: tab)
 
-        then(tab).lengthMenuOffers(Copy.lengthChoices + Copy.effortChoices)
+        then(tab).depthMenuOffers(Copy.depthChoices + Copy.effortChoices)
     }
 
     func test_NOTE_14_longSessionStepsThroughProcessingAndEndsWithCoverage() {
@@ -21,29 +21,29 @@ final class NoteUITests: AcceptanceCase {
     }
 
     func test_NOTE_17_detailedNoteCountsFollowUpLookups() {
-        let coverage = generateLongNote(length: "detailed", effort: "normal")
+        let coverage = generateLongNote(depth: "detailed", effort: "normal")
         then(coverage).coverageCountsEveryPart()
         then(coverage).coverageCountsFollowUpLookups(true)
     }
 
     func test_NOTE_17_noteAtFocusCountsFollowUpLookups() {
-        let coverage = generateLongNote(length: "natural", effort: "focus")
+        let coverage = generateLongNote(depth: "natural", effort: "focus")
         then(coverage).coverageCountsFollowUpLookups(true)
     }
 
     func test_NOTE_17_detailedNoteAtFastCountsNone() {
-        let coverage = generateLongNote(length: "detailed", effort: "fast")
+        let coverage = generateLongNote(depth: "detailed", effort: "fast")
         then(coverage).coverageCountsEveryPart()
         then(coverage).coverageCountsFollowUpLookups(false)
     }
 
     func test_NOTE_17_conciseNoteAtNormalCountsNone() {
-        let coverage = generateLongNote(length: "concise", effort: "normal")
+        let coverage = generateLongNote(depth: "concise", effort: "normal")
         then(coverage).coverageCountsFollowUpLookups(false)
     }
 
     func test_NOTE_17_naturalNoteAtNormalCountsNone() {
-        let coverage = generateLongNote(length: "natural", effort: "normal")
+        let coverage = generateLongNote(depth: "natural", effort: "normal")
         then(coverage).coverageCountsFollowUpLookups(false)
     }
 
@@ -106,7 +106,7 @@ final class NoteUITests: AcceptanceCase {
         let tab = when.openNotesTab()
         when.pickFormat("SOAP", on: tab)
 
-        tab.lengthButton.click()
+        tab.depthButton.click()
         tab.menuItem(startingWith: Copy.soapPromptEdit).click()
         let field = tab.driver.app.textViews[Copy.soapPromptSheet].firstMatch
         XCTAssertTrue(tab.driver.exists(field), "the SOAP prompt sheet has no instructions field")
@@ -114,7 +114,7 @@ final class NoteUITests: AcceptanceCase {
         field.typeText(" Keep it to five sentences.")
         tab.driver.button(Copy.save).click()
 
-        tab.lengthButton.click()
+        tab.depthButton.click()
         tab.menuItem(startingWith: Copy.soapPromptEdit).click()
         XCTAssertTrue(tab.driver.exists(tab.driver.button(Copy.resetToDefault)), "no Reset to Default")
         tab.driver.button(Copy.resetToDefault).click()
@@ -220,8 +220,8 @@ final class NoteUITests: AcceptanceCase {
         then(text).hasTheSoapSections()
     }
 
-    private func generateLongNote(length: String, effort: String) -> String {
-        given.aSession(transcript: SessionContent.longTranscript(), length: length, effort: effort,
+    private func generateLongNote(depth: String, effort: String) -> String {
+        given.aSession(transcript: SessionContent.longTranscript(), depth: depth, effort: effort,
                        stageMs: 100, plansLookups: true)
         let tab = when.openNotesTab()
         return when.generateNote(on: tab)
