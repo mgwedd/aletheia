@@ -143,7 +143,10 @@ final class DigestFollowUpTests: XCTestCase {
         service.budget = ContextBudget(tokens: ContextBudget.replyHeadroomTokens + capacity / ContextBudget.charactersPerToken)
         let builder = DigestBuilder(queue: InferenceQueue())
         let text = minutesOfTalk(45)
-        let sections = TranscriptSections.split(text)
+        // Split as the builder does: section size follows the room the budget leaves.
+        let sectionLimit = TranscriptSections.maxCharacters(
+            for: service.budget, systemPrompt: service.systemPrompt, clientName: service.clientName)
+        let sections = TranscriptSections.split(text, maxCharacters: sectionLimit)
         XCTAssertEqual(sections.count, 5)
 
         _ = try await builder.build(transcript: text, service: service)
