@@ -208,7 +208,17 @@ struct NoteReaderView: NSViewRepresentable {
         func followIfNeeded(in textView: NSTextView) {
             let grew = textGrew
             textGrew = false
-            if follow.update(writing: parent.follows, textGrew: grew) { scrollToEnd(textView) }
+            let writing = parent.follows
+            guard follow.update(writing: writing, textGrew: grew) else { return }
+            scrollToEnd(textView)
+            // When the writing stops, the rows around the reader change in the
+            // same update and resize it, so go to the end again once that lands.
+            if !writing {
+                DispatchQueue.main.async { [weak self, weak textView] in
+                    guard let self, let textView else { return }
+                    self.scrollToEnd(textView)
+                }
+            }
         }
 
         private func scrollToEnd(_ textView: NSTextView) {
