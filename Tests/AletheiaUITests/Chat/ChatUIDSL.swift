@@ -16,6 +16,11 @@ extension Copy {
     static let readLead = "Read:"
     static let stopButton = "Stop"
     static let modelMissingTitle = "The AI model isn't downloaded"
+    static let clearButton = "Clear"
+    static let deleteAllButton = "Delete All"
+    static let newChatButton = "New Chat"
+    static let newChatTitle = "New chat"
+    static let noChatSelected = "No Chat Selected"
 }
 
 /// The Ask tab on screen, found by the identifiers the app gives its parts.
@@ -25,8 +30,10 @@ struct AskTabOnScreen {
     var field: XCUIElement { driver.app.textViews["chat.ask-field"].firstMatch }
     var send: XCUIElement { driver.app.buttons["chat.send"].firstMatch }
     var compact: XCUIElement { driver.app.buttons["chat.compact"].firstMatch }
+    var clear: XCUIElement { driver.app.buttons["chat.clear"].firstMatch }
     var disclaimer: XCUIElement { driver.element(id: "chat.disclaimer") }
     var effortBar: XCUIElement { driver.element(id: "chat.effort") }
+    var answerText: XCUIElement { driver.app.textViews.matching(identifier: "chat.answer-text").firstMatch }
     var compactedCard: XCUIElement { driver.element(id: "chat.compacted") }
     var stop: XCUIElement { driver.app.buttons[Copy.stopButton].firstMatch }
 }
@@ -59,6 +66,13 @@ extension When {
         app.ensureLaunched()
         app.tap(Copy.askTab)
         return AskTabOnScreen(driver: app)
+    }
+
+    /// Clicks `button` in the confirmation that a Clear or Delete All button put up.
+    func confirm(_ button: String) {
+        let choice = app.app.buttons
+            .matching(NSPredicate(format: "label == %@ AND identifier != %@", button, "chat.clear")).firstMatch
+        app.click(choice, "\"\(button)\" in the confirmation")
     }
 
     func ask(_ question: String, on tab: AskTabOnScreen) {
@@ -106,6 +120,9 @@ struct PatientChatOnScreen {
     var list: XCUIElement { driver.element(id: "chat-threads-list") }
     var chat: XCUIElement { driver.element(id: "chat-pane") }
     var divider: XCUIElement { driver.element(id: "chat-threads-divider") }
+    var deleteAll: XCUIElement { driver.app.buttons["chat.delete-all"].firstMatch }
+    /// The open chat, which has the same parts as a session's Ask tab.
+    var pane: AskTabOnScreen { AskTabOnScreen(driver: driver) }
 }
 
 /// The Chats list's width before and after its divider was dragged.
@@ -139,6 +156,13 @@ extension Then where Subject == PatientChatOnScreen {
     /// The divider's grab area is wide enough to catch with the mouse.
     func dividerIsEasyToGrab() {
         expect(subject.divider.frame.width >= 12, "the divider's grab area is \(subject.divider.frame.width) wide")
+    }
+}
+
+extension Then where Subject == PatientChatOnScreen {
+    func listsAChat(titled title: String) {
+        let row = subject.list.descendants(matching: .any).matching(NSPredicate(format: "label == %@", title)).firstMatch
+        expect(subject.driver.waitFor(row, timeout: 30), "the Chats list has no chat titled \"\(title)\"")
     }
 }
 

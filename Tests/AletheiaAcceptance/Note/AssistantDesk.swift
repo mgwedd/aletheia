@@ -88,6 +88,17 @@ struct AskPane {
 
     var questions: [String] { bubbles.filter { $0.who == .you }.map(\.text) }
     var answers: [String] { bubbles.filter { $0.who == .assistant }.map(\.text) }
+
+    /// The last answer as the pane sets it: each run of text one drag can
+    /// select, cards (code, diagrams) left out.
+    var selectableRunsOfLastAnswer: [String] {
+        guard let answer = answers.last else { return [] }
+        let look = AnswerText.Look(size: 15, lineSpacing: 0, blockSpacing: 8, listSpacing: 4, ink: Theme.text)
+        return AnswerText.segments(MarkdownParser.parse(answer)).compactMap { segment in
+            guard case let .prose(blocks) = segment else { return nil }
+            return AnswerText.attributed(blocks, look: look).string
+        }
+    }
 }
 
 // MARK: - The desk
@@ -445,6 +456,8 @@ final class AskTab {
     func stop() { model.stop() }
     func cancelWaiting() { model.stop() }
     func compact() { model.compact("") }
+    /// Clicks Clear and confirms.
+    func clear() { model.clear() }
     func chooseEffort(_ effort: Effort) { desk.settings.sessionChatEffort = effort.setting }
     var effort: AnswerEffort { desk.settings.sessionChatEffort }
 
@@ -543,6 +556,10 @@ final class PatientChatTab {
     func compact() { model.compact("") }
     func rename(_ thread: ChatThread, to title: String) { model.rename(thread, to: title) }
     func delete(_ thread: ChatThread) { model.delete(thread) }
+    /// Clicks Clear in the open chat and confirms.
+    func clearOpenThread() { model.clearSelectedThread() }
+    /// Clicks Delete All Chats in the Chats list and confirms.
+    func deleteAllChats() { model.deleteAllThreads() }
     func chooseEffort(_ effort: Effort) { desk.settings.patientChatEffort = effort.setting }
     var effort: AnswerEffort { desk.settings.patientChatEffort }
 

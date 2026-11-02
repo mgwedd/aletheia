@@ -29,10 +29,11 @@ struct AuditDetail: Equatable, ExpressibleByStringLiteral {
     static let comment: AuditDetail = "comment"
     static let audioRecording: AuditDetail = "audio recording"
     static let chatThread: AuditDetail = "chat thread"
+    static let sessionChat: AuditDetail = "session chat"
 
     /// What a record-changing entry may say.
     static let recordKinds: [AuditDetail] = [
-        patient, session, transcript, note, therapistNote, comment, audioRecording, chatThread,
+        patient, session, transcript, note, therapistNote, comment, audioRecording, chatThread, sessionChat,
     ]
 
     // MARK: - Copying

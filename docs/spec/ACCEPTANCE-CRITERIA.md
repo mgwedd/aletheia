@@ -139,7 +139,7 @@ Before you start: a session with a transcript, the AI model downloaded, and a co
 Before you start: a patient with at least two sessions that have transcripts, and the AI model downloaded.
 - **CHAT-01** Open a session's **Ask** tab → it shows "Ask a question about this session" and a question box.
 - **CHAT-02** Type a question and press Return → it appears as a bubble and the answer streams in with a **Stop** button.
-- **CHAT-03** Let the answer finish → a "Read:" line says what part of the session was read.
+- **CHAT-03** Let the answer finish → no "Read:" line repeats the effort under it; the effort bar already says how much was read.
 - **CHAT-04** Click **Stop** mid-answer → the part already shown stays in the conversation.
 - **CHAT-05** Ask while a note is generating → a waiting status with **Cancel** appears, and cancelling removes the unanswered question.
 - **CHAT-06** Quit and reopen, then open the **Ask** tab → the earlier questions and answers are still there.
@@ -157,10 +157,14 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-18** Set a different effort in an **Ask** tab, the patient chat and notes → each keeps its own setting when you switch back.
 - **CHAT-19** Write a line about the client in **My Notes**, then ask "What have I noted about <name>?" in **Ask** → the answer quotes that line at once and says the AI never reads My Notes.
 - **CHAT-20** Ask a question on a long session → the status moves through reading the session part by part, analyzing, and "Preparing the answer" before the answer appears.
-- **CHAT-21** Open **Ask** on a session with a conversation → **Compact** sits on the effort bar, and "AI generated responses can be inaccurate. Double-check responses." shows at the bottom left of the conversation.
+- **CHAT-21** Open **Ask** on a session with a conversation → **Compact** sits on the effort bar, and "AI generated responses can be inaccurate. Double-check responses." shows in small print under the question box, clear of the progress line.
 - **CHAT-22** Keep asking on one session until the conversation passes a quarter of what the AI model can read at once → the earlier messages compact into a "Conversation compacted" card before the next answer.
 - **CHAT-23** Ask on a conversation that needs compacting, and the summary fails or is stopped → the question goes back into the box unsent; nothing typed is lost.
 - **CHAT-24** Open **Ask about this patient** and drag the divider between the **Chats** list and the chat (the same easy-to-grab strip as every pane divider) → the list widens or narrows with the drag, stopping before either side gets too narrow to use.
+- **CHAT-25** Open **Ask** on a session with a conversation → **Clear** sits just left of **Compact** on the effort bar; click it and confirm → the conversation empties, and it is still empty after you quit and reopen the app.
+- **CHAT-26** In **Ask about this patient**, open a chat with a conversation, click **Clear** and confirm → that chat's conversation empties and the chat stays in the **Chats** list.
+- **CHAT-27** In **Ask about this patient**, click **Delete All Chats** in the **Chats** list and confirm → every chat about the patient is gone.
+- **CHAT-28** In **Ask**, drag across an answer with a heading, paragraphs, a list and a quote → one selection runs across all of them, ready to copy.
 
 ## 9. Summaries prepared in the background (DIGEST)
 Before you start: a patient whose sessions have transcripts too long for this Mac to read at once, and the AI model downloaded.

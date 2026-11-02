@@ -1046,7 +1046,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Citations.swift:170-192, Sources/App/Views/PatientChatView.swift` · `qa: CHAT-12`
 - **CHT-031** When some sessions' transcripts could not be read, the what-was-read label says "N sessions could not be read, so answers may be incomplete".
   `surface: ui` · `evidence: Sources/App/Services/Citations.swift:188` · `qa: CHAT-12`
-- **CHT-032** When a session chat answer finishes, it shows a "Read:" line saying what part of the session was read.
+- **CHT-032** When a session chat answer finishes, no "Read:" line is shown under it; the effort bar says how much is read.
   `surface: ui` · `evidence: Sources/App/Services/Digest/LocalToolLoop.swift:1071, Sources/App/Views/SessionDetailView.swift` · `qa: CHAT-03`
 - **CHT-033** When a search finds no match for a word the user asked about, the AI is told to say "no match found in the recorded sessions" rather than that the topic was never discussed.
   `surface: ui` · `evidence: Sources/App/Services/Prompts+Search.swift:8-20` · `qa: CHAT-12`
@@ -1066,6 +1066,14 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/SessionAI/PatientChatModel.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-23`
 - **CHT-077** In the patient chat window, the divider between the Chats list and the chat drags to resize the list (200 to 320 points, leaving the chat at least 360); dragged under its narrowest, the list gives way, then springs back when let go. The width is kept per window, and the grab area is 12 points wide, the same as every pane divider.
   `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift, Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/PaneDividerGrip.swift` · `qa: CHAT-24`
+- **CHT-078** When a session's Ask tab has a conversation, a Clear button sits just left of Compact on the effort bar. After a confirmation, it deletes that session's whole conversation, and the deletion is written to the activity log.
+  `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift, Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/Store.swift` · `qa: CHAT-25`
+- **CHT-079** In the patient chat, Clear (after a confirmation) empties the open chat's conversation and keeps the chat in the Chats list; the deletion is written to the activity log.
+  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift, Sources/App/Services/SessionAI/PatientChatModel.swift, Sources/App/Services/Store.swift` · `qa: CHAT-26`
+- **CHT-080** The Chats list's Delete All Chats button (after a confirmation naming the patient) deletes every chat about the patient; each deletion is written to the activity log. It is off while an answer is being written or when there are no chats.
+  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift, Sources/App/Services/SessionAI/PatientChatModel.swift, Sources/App/Services/Store.swift` · `qa: CHAT-27`
+- **CHT-081** An Ask answer's text (headings, paragraphs, lists and quotes) is set as one selectable run, so one drag selects across blocks; code and diagram cards stand apart. Copying goes through the app's pasteboard and is written to the activity log.
+  `surface: ui` · `evidence: Sources/App/Views/AnswerText.swift, Sources/App/Views/MarkdownMessageView.swift` · `qa: CHAT-28`
 - **CHT-040** When the chat has history, a Compact button appears and compacts the conversation on demand.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:98-101` · `qa: CHAT-13`
 - **CHT-041** When a conversation has been compacted, a "Conversation compacted" card appears and the summary stands in for the older messages.
@@ -1131,7 +1139,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/SessionAI/MyNotesLookup.swift, Sources/App/Services/SessionAI/SessionChatModel.swift` · `qa: CHAT-19`
 - **CHT-074** While the model reads a prompt longer than one batch, the status shows "Reading the session · part N of M", then on the last part "Analyzing <one or two of the question's words found in the session>" (plain matching, never the model), then "Preparing the answer" until the first words appear. Notes show the parts and "Preparing the answer" too.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Models/AIRunStats.swift, Sources/App/Views/AIProgressView.swift` · `qa: CHAT-20`
-- **CHT-075** The Compact button sits on the same bar as the AI effort control, apart from it, and "AI generated responses can be inaccurate. Double-check responses." always shows in small muted text at the bottom left of the conversation, in Light, Dark and Increase Contrast.
+- **CHT-075** The Compact button sits on the same bar as the AI effort control, apart from it, and "AI generated responses can be inaccurate. Double-check responses." always shows in small muted print under the question box, below the conversation and its progress line, in Light, Dark and Increase Contrast.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-21`
 
 ## AI engine & models (AIE)
