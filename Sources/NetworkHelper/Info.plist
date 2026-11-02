@@ -15,9 +15,9 @@
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.70.0</string>
+	<string>2.71.0</string>
 	<key>CFBundleVersion</key>
-	<string>658</string>
+	<string>660</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>XPCService</key>
