@@ -4,7 +4,7 @@ extension Copy {
     static let coverageCaveat = "Details outside those lines may be missing."
     static let wholeSessionSummary = "a summary of the whole session"
     static let followUpLookup = "follow-up lookup"
-    static let lengthChoices = ["Concise", "Natural", "Detailed"]
+    static let depthChoices = ["Concise", "Natural", "Detailed"]
     static let effortChoices = ["Fast", "Normal", "Focus"]
     static let formatNames = ["Summary", "SOAP", "DAP", "BIRP", "GIRP"]
     static let myNotes = "My Notes"

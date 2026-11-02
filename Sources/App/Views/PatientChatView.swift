@@ -142,6 +142,7 @@ struct PatientChatView: View {
                     progress: chatRunner.progress,
                     effort: $settings.patientChatEffort,
                     effortFeature: .patientChat,
+                    depth: $chat.depth,
                     isSessionRecording: recorder.isRecording,
                     returnedQuestion: $chat.returnedQuestion
                 )

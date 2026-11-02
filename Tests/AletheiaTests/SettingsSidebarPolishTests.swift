@@ -23,7 +23,7 @@ final class SettingsSidebarPolishTests: XCTestCase {
         XCTAssertFalse(settings.contains("e.g. kill myself"))
     }
 
-    func testSummaryLengthCaptionIsOnlyTheBlurb() throws {
+    func testNoteDepthCaptionIsOnlyTheBlurb() throws {
         XCTAssertFalse(try source("Sources/App/Views/SettingsView.swift").contains("Clarity comes first"))
     }
 

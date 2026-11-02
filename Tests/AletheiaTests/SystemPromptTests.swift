@@ -18,6 +18,8 @@ final class SystemPromptTests: XCTestCase {
         XCTAssertFalse(Prompts.defaultSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         // Sanity: it carries the app's core guardrail language.
         XCTAssertTrue(Prompts.defaultSystemPrompt.lowercased().contains("never invent"))
+        // It leads with the answer, without filler.
+        XCTAssertTrue(Prompts.defaultSystemPrompt.contains("Lead with the answer"))
     }
 
     func testServiceForwardsSystemPromptOnEveryCall() async throws {
@@ -27,11 +29,12 @@ final class SystemPromptTests: XCTestCase {
         _ = try await service.summarize(transcript: "T")
         XCTAssertEqual(fake.lastSystem, "CUSTOM SYSTEM")
 
+        // Ask adds its depth's instructions after the standing prompt.
         _ = try await service.answerAboutSession(transcript: "T", history: [], question: "Q")
-        XCTAssertEqual(fake.lastSystem, "CUSTOM SYSTEM")
+        XCTAssertEqual(fake.lastSystem, "CUSTOM SYSTEM\n\n" + AnswerDepth.natural.instructions(for: .answer))
 
         _ = try await service.answerAboutPatient(context: "C", history: [], question: "Q")
-        XCTAssertEqual(fake.lastSystem, "CUSTOM SYSTEM")
+        XCTAssertEqual(fake.lastSystem, "CUSTOM SYSTEM\n\n" + AnswerDepth.natural.instructions(for: .answer))
     }
 
     func testServiceDefaultsToDefaultSystemPrompt() async throws {
@@ -75,7 +78,8 @@ final class SystemPromptTests: XCTestCase {
 
     func testChatSystemPromptAddsGuidanceOnlyWhenAsked() {
         let plain = Prompts.chatSystemPrompt("BASE", question: "What did she say about work?")
-        XCTAssertEqual(plain, "BASE")
+        XCTAssertEqual(plain, "BASE\n\n" + AnswerDepth.natural.instructions(for: .answer))
+        XCTAssertFalse(plain.contains(Prompts.diagramGuidance))
 
         let asked = Prompts.chatSystemPrompt("BASE", question: "Draw a diagram of her week")
         XCTAssertTrue(asked.hasPrefix("BASE"))
@@ -87,13 +91,13 @@ final class SystemPromptTests: XCTestCase {
         let service = AssistantService(assistant: fake, model: "m", systemPrompt: "BASE")
 
         _ = try await service.answerAboutSession(transcript: "T", history: [], question: "How was her mood?")
-        XCTAssertEqual(fake.lastSystem, "BASE")
+        XCTAssertEqual(fake.lastSystem?.contains(Prompts.diagramGuidance), false)
 
         _ = try await service.answerAboutSession(transcript: "T", history: [], question: "Draw a diagram of it")
         XCTAssertTrue(fake.lastSystem?.contains(Prompts.diagramGuidance) == true)
 
         _ = try await service.answerAboutPatient(context: "C", history: [], question: "How was her mood?")
-        XCTAssertEqual(fake.lastSystem, "BASE")
+        XCTAssertEqual(fake.lastSystem?.contains(Prompts.diagramGuidance), false)
 
         _ = try await service.answerAboutPatient(context: "C", history: [], question: "visualize her progress")
         XCTAssertTrue(fake.lastSystem?.contains(Prompts.diagramGuidance) == true)

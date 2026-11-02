@@ -122,7 +122,7 @@ Before you start: a session with a transcript, the AI model downloaded, and a co
 - **NOTE-03** Click **Generate SOAP note** → text streams in under a status line with elapsed time, and **Stop** appears.
 - **NOTE-04** Read the finished SOAP note → it has Subjective, Objective, Assessment and Plan, with speakers as "You" and the client's first name.
 - **NOTE-05** Click **Stop** while text is streaming → the text written so far is kept.
-- **NOTE-06** Click anywhere on the **Length** button, not only its icon → its menu opens with Concise, Natural and Detailed and an AI effort choice.
+- **NOTE-06** Click anywhere on the **Depth** button ("Depth: Natural · Normal"), not only its icon → its menu opens with Concise, Natural and Detailed and an AI effort choice.
 - **NOTE-07** Choose **Edit SOAP Prompt…** → a sheet lets you save your own instructions, and **Reset to Default** restores them.
 - **NOTE-08** Request a note while a chat answer is running → a waiting status with **Cancel** appears, and the note starts when the answer ends.
 - **NOTE-09** Move the AI model out of its folder and click **Generate** → an alert says it isn't downloaded and offers **Download Model**.
@@ -161,6 +161,12 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-22** Keep asking on one session until the conversation passes a quarter of what the AI model can read at once → the earlier messages compact into a "Conversation compacted" card before the next answer.
 - **CHAT-23** Ask on a conversation that needs compacting, and the summary fails or is stopped → the question goes back into the box unsent; nothing typed is lost.
 - **CHAT-24** Open **Ask about this patient** and drag the divider between the **Chats** list and the chat (the same easy-to-grab strip as every pane divider) → the list widens or narrows with the drag, stopping before either side gets too narrow to use.
+- **CHAT-29** Open **Ask** on a session, then **Ask about this patient** → the bar shows a **Depth** control next to the effort with Concise, Natural and Detailed, Natural selected.
+- **CHAT-30** Set **Ask depth** to Concise in the **Formats** settings, start a new chat and change its **Depth** to Detailed → the chat opened on Concise, and the setting is still Concise.
+- **CHAT-31** Ask the same question at Concise, Natural and Detailed → the answer runs from a few sentences, to a short paragraph or two, to a full answer with headers and lists where they help.
+- **CHAT-32** Ask a follow-up after a long answer → the new answer takes the new question on its own terms, rather than reworking or re-summarising the earlier one.
+- **CHAT-33** Open the note **Depth** menu and the **Ask** bar's **Depth** → both are called "Depth" and offer the same three options, Concise, Natural and Detailed.
+- **CHAT-34** Pick the same depth for a note and an Ask answer → both follow the same kind of limit (Concise short, Natural plain prose, Detailed full and organized), with no answer cut off to fit.
 
 ## 9. Summaries prepared in the background (DIGEST)
 Before you start: a patient whose sessions have transcripts too long for this Mac to read at once, and the AI model downloaded.
@@ -257,7 +263,7 @@ Before you start: setup finished.
 - **SETTINGS-07** Pick a built-in model → its license link shows before anything downloads.
 - **SETTINGS-08** Start the model download → progress reads "Downloading model…" then "Verifying downloaded model…".
 - **SETTINGS-09** Add and remove a risk phrase → the list updates, and **Reset to Defaults** asks first.
-- **SETTINGS-10** Open **Formats** → you can set the default format and summary length and toggle what drafts include.
+- **SETTINGS-10** Open **Formats** → you can set the default format, the note depth and the Ask depth, and toggle what drafts include.
 - **SETTINGS-11** Turn on "Show recording diagnostics" and record → the recording pane gains a call-audio diagnostics readout.
 - **SETTINGS-12** Open **Licenses & Legal** → the Terms of Use and Privacy Policy links, **Consent Guide…** and third-party notices are there.
 - **SETTINGS-13** Choose an iCloud Drive or cloud-synced folder as the data folder → it is refused, asking for a folder that stays on this Mac; the current folder is kept.

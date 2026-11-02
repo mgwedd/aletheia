@@ -9,7 +9,7 @@ final class AdaptiveActionRowTests: XCTestCase {
 
     @ViewBuilder private var buttons: some View {
         Button {} label: { Label("Regenerate", systemImage: "sparkles") }
-        Menu {} label: { AdaptiveLabel(title: "Length: Concise · Fast", systemImage: "text.alignleft") }
+        Menu {} label: { AdaptiveLabel(title: "Depth: Concise · Fast", systemImage: "text.alignleft") }
             .fixedSize()
         Button {} label: { Label("Edit", systemImage: "pencil") }
         Button {} label: { Label("Copy", systemImage: "doc.on.doc") }
@@ -64,8 +64,8 @@ final class AdaptiveActionRowTests: XCTestCase {
     }
 
     func testAdaptiveLabelShowsOnlyItsIconInTheCompactArrangement() {
-        let full = NSHostingView(rootView: AdaptiveLabel(title: "Length: Concise · Fast", systemImage: "text.alignleft"))
-        let compact = NSHostingView(rootView: AdaptiveLabel(title: "Length: Concise · Fast", systemImage: "text.alignleft")
+        let full = NSHostingView(rootView: AdaptiveLabel(title: "Depth: Concise · Fast", systemImage: "text.alignleft"))
+        let compact = NSHostingView(rootView: AdaptiveLabel(title: "Depth: Concise · Fast", systemImage: "text.alignleft")
             .environment(\.compactActions, true))
         XCTAssertLessThan(compact.fittingSize.width, full.fittingSize.width / 2)
     }
@@ -77,8 +77,8 @@ final class AdaptiveActionRowTests: XCTestCase {
         XCTAssertTrue(source.contains("AdaptiveActionRow {\n                    Text(NoteKind.progress.title).eyebrowStyle()\n                } actions: {"))
         XCTAssertFalse(source.contains("Text(settings.progressNoteFormat.blurb)"))
         XCTAssertTrue(source.contains(".hoverTip(showingMyNotes ? HelpTips.myNotes : nil)"))
-        XCTAssertTrue(source.contains("AdaptiveLabel(\n                title: NoteWords.lengthLabel("),
-                      "the Length menu label should compact with the row")
+        XCTAssertTrue(source.contains("AdaptiveLabel(\n                title: NoteWords.depthLabel("),
+                      "the Depth menu label should compact with the row")
     }
 
     /// Keyboard focus starts on Export, not on the first format row.

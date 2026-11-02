@@ -1387,7 +1387,7 @@ struct SessionDetailView: View {
                         .shortcut(AppHotkey.generateNote, help: "Regenerate the note")
                     }
                     if !noteRunner.isStreaming && !noteRunner.isQueued && !isEditingNote && !note.noteLocked {
-                        noteLengthMenu
+                        noteDepthMenu
                     }
                     if !summaryText.isEmpty && !noteRunner.isStreaming {
                         if hasPreviousNote && !isEditingNote && !noteRunner.isQueued && !note.noteLocked {
@@ -1658,14 +1658,14 @@ struct SessionDetailView: View {
         return max(margin, paneHeight - noteComposerHeight - margin)
     }
 
-    /// Length for every format, effort for long sessions, and the per-format
-    /// prompt. Changing length or effort takes effect on the next Regenerate.
-    private var noteLengthMenu: some View {
+    /// Depth for every format, effort for long sessions, and the per-format
+    /// prompt. Changing depth or effort takes effect on the next Regenerate.
+    private var noteDepthMenu: some View {
         let format = settings.progressNoteFormat
         let customized = settings.noteInstructions[format.rawValue] != nil
         return Menu {
-            Picker(NoteWords.lengthTitle, selection: $settings.summaryVerbosity) {
-                ForEach(SummaryVerbosity.allCases) { level in
+            Picker(NoteWords.depthTitle, selection: $settings.noteDepth) {
+                ForEach(AnswerDepth.allCases) { level in
                     Text(level.displayName).tag(level)
                 }
             }
@@ -1684,7 +1684,7 @@ struct SessionDetailView: View {
         } label: {
             // AdaptiveLabel, not Label: a Menu's label ignores .labelStyle(.iconOnly).
             AdaptiveLabel(
-                title: NoteWords.lengthLabel(length: settings.summaryVerbosity, effort: settings.noteEffort),
+                title: NoteWords.depthLabel(depth: settings.noteDepth, effort: settings.noteEffort),
                 systemImage: "text.alignleft"
             )
         }
@@ -1692,8 +1692,8 @@ struct SessionDetailView: View {
         // menu; the default style only answered clicks on the icon.
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .accessibilityIdentifier("notes.length")
-        .help("How long the note is, and the AI effort for a long session. \(settings.noteEffort.displayName): \(settings.noteEffort.blurb(for: .note)) Regenerate to apply a change.")
+        .accessibilityIdentifier("notes.depth")
+        .help("How much the note says, and the AI effort for a long session. \(settings.noteEffort.displayName): \(settings.noteEffort.blurb(for: .note)) Regenerate to apply a change.")
     }
 
     /// Shown while a note is generated: one line and a bar.
@@ -1782,6 +1782,7 @@ struct SessionDetailView: View {
             onCompact: { chat.compact($0) },
             progress: chatRunner.progress,
             effort: $settings.sessionChatEffort,
+            depth: $chat.depth,
             isSessionRecording: recorder.isRecording,
             returnedQuestion: $chat.returnedQuestion
         )

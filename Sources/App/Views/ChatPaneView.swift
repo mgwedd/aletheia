@@ -76,6 +76,9 @@ struct ChatPaneView: View {
     var effort: Binding<AnswerEffort>? = nil
     /// Which chat the selector applies to, for its description.
     var effortFeature: EffortFeature = .sessionChat
+    /// Optional Concise / Natural / Detailed selector beside it: this chat's
+    /// `AnswerDepth`, seeded from Settings.
+    var depth: Binding<AnswerDepth>? = nil
     /// True while a session is being recorded: the recorder owns the
     /// microphone, so the dictation mic is hidden.
     var isSessionRecording = false
@@ -258,7 +261,7 @@ struct ChatPaneView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if effort != nil || showsCompact {
+            if effort != nil || depth != nil || showsCompact {
                 effortRow(effort)
             }
             HStack(alignment: .bottom, spacing: 10) {
@@ -332,8 +335,9 @@ struct ChatPaneView: View {
         onCompact != nil && ChatMemory.hasHistory(messages)
     }
 
-    /// The bar above the field: the Fast / Normal / Focus selector at the
-    /// leading edge, Compact at the trailing edge.
+    /// The bar above the field: the Fast / Normal / Focus and Concise /
+    /// Natural / Detailed selectors at the leading edge, Compact at the
+    /// trailing edge.
     private func effortRow(_ effort: Binding<AnswerEffort>?) -> some View {
         HStack(spacing: 10) {
             if let effort {
@@ -349,6 +353,20 @@ struct ChatPaneView: View {
                 .help(effort.wrappedValue.blurb(for: effortFeature))
                 .accessibilityLabel(AnswerEffort.label)
                 .accessibilityIdentifier("chat.effort")
+            }
+            if let depth {
+                Text(AnswerDepth.label)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                ThemeSegmentedControl(
+                    options: AnswerDepth.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
+                    selection: depth
+                )
+                .frame(maxWidth: 260)
+                .disabled(isSending)
+                .help(depth.wrappedValue.blurb(for: .ask))
+                .accessibilityLabel(AnswerDepth.label)
+                .accessibilityIdentifier("chat.depth")
             }
             Spacer(minLength: 16)
             if showsCompact {
