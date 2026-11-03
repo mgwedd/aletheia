@@ -108,7 +108,7 @@ final class LocalLLMEngineTests: XCTestCase {
         XCTAssertEqual(digest.temperature, AITask.digest.temperature)
 
         let compaction = LocalLLMSampling.forTask(.compaction)
-        XCTAssertEqual(compaction.maxTokens, 512)
+        XCTAssertEqual(compaction.maxTokens, ContextBudget.replyHeadroomTokens)
         XCTAssertEqual(compaction.temperature, AITask.compaction.temperature)
 
         let overridden = LocalLLMSampling.forTask(.digest, maxTokens: 128)

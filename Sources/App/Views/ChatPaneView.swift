@@ -70,10 +70,8 @@ struct ChatPaneView: View {
     /// Compacts the conversation, with an optional focus: the Compact button
     /// and the `/compact [focus]` command. Nil hides both.
     var onCompact: ((String) -> Void)? = nil
-    /// Empties the conversation, after a confirmation titled `clearTitle`.
-    /// Nil hides the Clear button.
+    /// Empties the conversation, at once: the Clear button. Nil hides it.
     var onClear: (() -> Void)? = nil
-    var clearTitle: String = ChatWords.clearSessionTitle
     /// Live state of the running answer; drives the progress line under the conversation.
     var progress = AIRunProgress()
     /// Optional Fast / Normal / Focus selector shown above the field (#286 Step 5b).
@@ -98,7 +96,6 @@ struct ChatPaneView: View {
     @State private var voiceResetToken = 0
     /// Whether this Mac can dictate, reported by the mic itself.
     @State private var micAvailable = false
-    @State private var confirmingClear = false
 
     /// Small print under the question box; also read by the acceptance harness.
     static let accuracyNotice = "AI generated responses can be inaccurate. Double-check responses."
@@ -131,12 +128,6 @@ struct ChatPaneView: View {
         .onExitCommand(perform: ChatComposerLayout.escapeStops(isSending: isSending, canStop: onStop != nil) ? { _ = escapeStops() } : nil)
         .onAppear(perform: takeReturnedQuestion)
         .onChange(of: returnedQuestion?.wrappedValue) { _, _ in takeReturnedQuestion() }
-        .confirmationDialog(clearTitle, isPresented: $confirmingClear, titleVisibility: .visible) {
-            Button(ChatWords.clear, role: .destructive) { onClear?() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(ChatWords.clearMessage)
-        }
     }
 
     private func takeReturnedQuestion() {
@@ -386,7 +377,7 @@ struct ChatPaneView: View {
             }
             Spacer(minLength: 16)
             if showsClear {
-                Button(ChatWords.clear) { confirmingClear = true }
+                Button(ChatWords.clear) { onClear?() }
                     .buttonStyle(.themed)
                     .controlSize(.small)
                     .disabled(isSending)
@@ -463,7 +454,8 @@ private struct ChatBubble: View {
             // A compaction: what later answers remember of everything above.
             VStack(alignment: .leading, spacing: 8) {
                 Chip(ChatWords.compactedChip)
-                MarkdownMessageView(text: message.text, size: 12, lineSpacing: 0, ink: Theme.muted)
+                MarkdownMessageView(text: ModelReply.plain(message.text), size: 12, lineSpacing: 0, ink: Theme.muted,
+                                    textID: "chat.summary-text")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
             }
@@ -471,7 +463,9 @@ private struct ChatBubble: View {
             .frame(maxWidth: 640, alignment: .leading)
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.line.color))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
+            // Contain, not combine: the summary is AppKit text, which a
+            // combined element leaves out, so VoiceOver would skip it.
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("chat.compacted")
         } else if message.role == .user {
             // The therapist's own words, shown verbatim in a trailing bubble
@@ -489,7 +483,7 @@ private struct ChatBubble: View {
             // The assistant answer, rendered as rich Markdown at reading size
             // (like ChatGPT/Claude) so headings, lists, and code read as a
             // document rather than a cramped bubble of raw markup.
-            MarkdownMessageView(text: message.text)
+            MarkdownMessageView(text: ModelReply.plain(message.text))
                 .font(Theme.Typography.reading)
                 .lineSpacing(Theme.Typography.readingLineSpacing)
                 .foregroundStyle(Theme.text.color)

@@ -39,6 +39,8 @@ struct FixtureScenario: Codable, Equatable {
     struct AIRule: Codable, Equatable {
         var whenPromptContains: String
         var reply: String
+        /// The reply runs to the request's reply limit, as one cut off does.
+        var reachesReplyLimit: Bool? = nil
     }
 
     /// Names the throwaway data folder and defaults domain. Launching again

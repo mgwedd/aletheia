@@ -486,7 +486,7 @@ final class AskTab {
     func stop() { model.stop() }
     func cancelWaiting() { model.stop() }
     func compact() { model.compact("") }
-    /// Clicks Clear and confirms.
+    /// Clicks Clear.
     func clear() { model.clear() }
     func chooseEffort(_ effort: Effort) { desk.settings.sessionChatEffort = effort.setting }
     var effort: AnswerEffort { desk.settings.sessionChatEffort }
@@ -496,9 +496,7 @@ final class AskTab {
 
     var pane: AskPane {
         AskPane(
-            bubbles: model.messages.map {
-                AskPane.Bubble(who: AskTab.who($0.role), text: $0.text)
-            },
+            bubbles: model.messages.map(AskTab.bubble),
             isAnswering: model.runner.isStreaming,
             isWaiting: model.runner.isQueued,
             waitingStatus: model.runner.queuedStatus,
@@ -511,6 +509,13 @@ final class AskTab {
             accuracyNotice: ChatPaneView.accuracyNotice,
             emptyTitle: model.messages.isEmpty ? ChatWords.emptyTitle(about: ChatWords.thisSession) : nil,
             questionInBox: model.returnedQuestion)
+    }
+
+    /// A message as the pane shows it: an answer or a summary read as plain
+    /// text, without any reasoning or template marker a model once wrote in it.
+    fileprivate static func bubble(_ message: ChatMessage) -> AskPane.Bubble {
+        let shown = message.role == .user ? message.text : ModelReply.plain(message.text)
+        return AskPane.Bubble(who: who(message.role), text: shown)
     }
 
     fileprivate static func who(_ role: ChatRole) -> AskPane.Bubble.Who {
@@ -589,7 +594,7 @@ final class PatientChatTab {
     func compact() { model.compact("") }
     func rename(_ thread: ChatThread, to title: String) { model.rename(thread, to: title) }
     func delete(_ thread: ChatThread) { model.delete(thread) }
-    /// Clicks Clear in the open chat and confirms.
+    /// Clicks Clear in the open chat.
     func clearOpenThread() { model.clearSelectedThread() }
     /// Clicks Delete All Chats in the Chats list and confirms.
     func deleteAllChats() { model.deleteAllThreads() }
@@ -605,9 +610,7 @@ final class PatientChatTab {
 
     var pane: AskPane {
         AskPane(
-            bubbles: model.messages.map {
-                AskPane.Bubble(who: AskTab.who($0.role), text: $0.text)
-            },
+            bubbles: model.messages.map(AskTab.bubble),
             isAnswering: model.runner.isStreaming,
             isWaiting: model.runner.isQueued,
             waitingStatus: model.runner.queuedStatus,
@@ -639,6 +642,11 @@ final class PatientChatTab {
         try await desk.waitFor("the conversation to show \"\(text)\"") {
             self.model.messages.contains { $0.text.contains(text) }
         }
+    }
+
+    func waitForAlert() async throws -> ShownAlert {
+        try await desk.waitFor("an alert") { !self.alerts.isEmpty }
+        return alerts[alerts.count - 1]
     }
 }
 

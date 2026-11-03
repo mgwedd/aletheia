@@ -129,7 +129,7 @@ final class ProgressNotePromptTests: XCTestCase {
 
     func testSessionChatAndSummarizeIncludePatientBackground() {
         let bg = "===== Patient background =====\nClinical history:\nPTSD"
-        let chatPrompt = Prompts.sessionChat(transcript: transcript, patientBackground: bg, history: [], question: "Q?")
+        let chatPrompt = Prompts.sessionChat(transcript: transcript, patientBackground: bg, history: [])
         XCTAssertTrue(chatPrompt.contains("===== Patient background ====="))
         XCTAssertTrue(chatPrompt.contains("Clinical history:\nPTSD"))
 

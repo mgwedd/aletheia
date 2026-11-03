@@ -4,6 +4,7 @@ import XCTest
 /// A fake Assistant with no `stream` override, so it exercises the protocol's
 /// default batch-fallback streaming (one final emission). Records the prompt.
 private final class FakeBatchAssistant: Assistant, @unchecked Sendable {
+    var lastSystem: String?
     var lastPrompt: String?
     var response = "final answer"
 
@@ -11,6 +12,7 @@ private final class FakeBatchAssistant: Assistant, @unchecked Sendable {
     func listModels() async throws -> [String] { ["fake"] }
     func hasModel(_ name: String) async -> Bool { true }
     func generate(model: String, system: String, prompt: String) async throws -> String {
+        lastSystem = system
         lastPrompt = prompt
         return response
     }
@@ -69,7 +71,11 @@ final class AssistantServiceStreamingTests: XCTestCase {
             service.streamAnswerAboutSession(transcript: "T", history: [], question: "Q?")
         )
         XCTAssertEqual(values.last, "the streamed answer")
-        XCTAssertEqual(fake.lastPrompt, Prompts.sessionChat(transcript: "T", history: [], question: "Q?"))
+        // The session is in the system turn; the final prompt is the question alone.
+        XCTAssertEqual(fake.lastSystem, Prompts.chatSystem(
+            Prompts.defaultSystemPrompt, question: "Q?",
+            material: Prompts.sessionChat(transcript: "T", history: [])))
+        XCTAssertEqual(fake.lastPrompt, Prompts.chatQuestion("Q?"))
     }
 
     func testStreamPatientForwardsPrompt() async throws {
@@ -79,7 +85,10 @@ final class AssistantServiceStreamingTests: XCTestCase {
         _ = try await collect(
             service.streamAnswerAboutPatient(context: "CTX", history: [], question: "When?")
         )
-        XCTAssertEqual(fake.lastPrompt, Prompts.patientChat(context: "CTX", history: [], question: "When?"))
+        XCTAssertEqual(fake.lastSystem, Prompts.chatSystem(
+            Prompts.defaultSystemPrompt, question: "When?",
+            material: Prompts.patientChat(context: "CTX", history: [])))
+        XCTAssertEqual(fake.lastPrompt, Prompts.chatQuestion("When?"))
     }
 
     func testFormatCommentsRendersQuotedAndUnquoted() {

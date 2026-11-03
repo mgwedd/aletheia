@@ -17,10 +17,11 @@ enum LlamaModel: String, CaseIterable, Identifiable, Codable, Hashable {
     var id: String { rawValue }
 
     /// The model offered by default (and used when a persisted raw value is
-    /// unknown or retired): medical 4B on most Macs, 27B on Apple silicon
-    /// with enough memory for the weights and a useful working context.
+    /// unknown or retired): MedGemma 4B on every Mac. It runs on the Macs
+    /// therapists use alongside their other work; the larger models are
+    /// there to choose, never picked for them.
     static func recommended(for hardware: HardwareCapabilities) -> LlamaModel {
-        hardware.isAppleSilicon && hardware.physicalMemoryGB >= 48 ? .medgemma_27b : .medgemma15_4b
+        .medgemma15_4b
     }
 
     /// The model an earlier version picked for a user who never chose one
@@ -32,7 +33,7 @@ enum LlamaModel: String, CaseIterable, Identifiable, Codable, Hashable {
         return previous.first { $0.isSupported(on: hardware) && isDownloaded($0) }
     }
 
-    /// The default medical model for this Mac.
+    /// The default medical model, the same on every Mac.
     static func medGemma(for hardware: HardwareCapabilities) -> LlamaModel {
         recommended(for: hardware)
     }

@@ -25,7 +25,7 @@ Aletheia is a tool, not legal or clinical advice. Read [CONSENT.md](CONSENT.md) 
 
 ## For therapists
 
-You need a Mac running **macOS 14 or newer**. The default AI download needs about 2.5 GB of disk space on most Macs, or about 16.5 GB on Apple silicon with 48 GB+ memory; transcription needs additional space. Apple silicon with 16 GB of memory gives good results; 8 GB uses the smaller medical model.
+You need a Mac running **macOS 14 or newer**. The default AI download needs about 2.5 GB of disk space; the optional MedGemma 27B text model, offered on Apple silicon with 32 GB+ memory, needs about 16.5 GB; transcription needs additional space. Apple silicon with 16 GB of memory gives good results; the default MedGemma 4B model also runs on 8 GB.
 
 ### 1. Install Aletheia
 
@@ -152,8 +152,7 @@ The only third-party dependencies are the official whisper.cpp and llama.cpp XCF
 
 | Mac | Speech model | AI model |
 |---|---|---|
-| Apple silicon, 48 GB+ | medium.en | MedGemma 27B text |
-| Apple silicon, 16–47 GB | medium.en | MedGemma 1.5 4B |
+| Apple silicon, 16 GB+ | medium.en | MedGemma 1.5 4B |
 | Apple silicon, 8–15 GB | small.en | MedGemma 1.5 4B |
 | Intel, 16 GB+ | small.en | MedGemma 1.5 4B |
 | Other Macs | base.en | MedGemma 1.5 4B |
@@ -252,10 +251,9 @@ Built-in models come from pinned GGUF conversions on Hugging Face and are verifi
 
 | Mac | Default model |
 |---|---|
-| Apple silicon, 48 GB+ | MedGemma 27B text Q4_K_M (~16.5 GB) |
-| All other Macs | MedGemma 1.5 4B Q4_K_M (~2.5 GB) |
+| Every Mac | MedGemma 1.5 4B Q4_K_M (~2.5 GB) |
 
-The picker also offers Apertus 8B MeditronFO Q4_K_M (~5.1 GB) as **Experimental** on Macs with 16 GB+ memory. Its configured context is 64K tokens; the effective prompt budget can be lower on smaller Macs. MedGemma 27B text is selectable on 32 GB+ Apple silicon and becomes the default at 48 GB+. Existing general-model selections remain available to those users. MedLlama 2 and the original MedGemma 4B are retired; saved selections move to the current medical default.
+The picker also offers Apertus 8B MeditronFO Q4_K_M (~5.1 GB) as **Experimental** on Macs with 16 GB+ memory. Its configured context is 64K tokens; the effective prompt budget can be lower on smaller Macs. MedGemma 27B text Q4_K_M (~16.5 GB) is optional on 32 GB+ Apple silicon and is never chosen for you. Existing general-model selections remain available to those users. MedLlama 2 and the original MedGemma 4B are retired; saved selections move to the current medical default.
 
 MedGemma is available for commercial development under Google's Health AI Developer Foundations Terms and Prohibited Use Policy. Review those terms and the distribution notice requirements before a paid release.
 

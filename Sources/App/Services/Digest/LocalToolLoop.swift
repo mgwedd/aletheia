@@ -778,7 +778,7 @@ enum LocalToolLoop {
         Initial material:
         \(initialContext)\(priorBlock)\(historyBlock)
 
-        Therapist's question: \(question)
+        \(Prompts.chatQuestion(question))
         """
     }
 
@@ -959,24 +959,24 @@ enum LongSessionChat {
         } catch {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
-        let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question, depth: depth)
         let turns = PromptTurn.recent(history, question: question)
-        func makePrompt(_ material: SessionMaterial) -> String {
-            Prompts.sessionChat(
+        let prompt = Prompts.chatQuestion(question)
+        func makeSystem(_ material: SessionMaterial) -> String {
+            Prompts.chatSystem(service.systemPrompt, question: question, depth: depth, material: Prompts.sessionChat(
                 material: material,
                 notes: fields.notes,
                 comments: fields.comments,
                 patientBackground: fields.background,
                 history: history,
-                question: question,
                 clientName: service.clientName
-            )
+            ))
         }
-        if service.budget.fits(system: system, prompt: PromptTurn.flattened(turns, then: makePrompt(.transcript(transcript)))) {
+        let whole = makeSystem(.transcript(transcript))
+        if service.budget.fits(system: whole, prompt: PromptTurn.flattened(turns, then: prompt)) {
             coverage(["Read: the whole session · \(effort.displayName).", fields.coverageNote].compactMap { $0 }.joined(separator: " "))
             let words = AIProgressFormat.analyzingWords(question: question, in: transcript)
             live(nil) { $0.analyzing = words }
-            return service.streamAnswer(system: system, turns: turns, prompt: makePrompt(.transcript(transcript)))
+            return service.streamAnswer(system: whole, turns: turns, prompt: prompt)
         }
 
         return AsyncThrowingStream { continuation in
@@ -1007,8 +1007,8 @@ enum LongSessionChat {
                     // Room for material, in characters of this transcript's script.
                     let total = ContextBudget.characters(
                         fitting: service.budget.availableCharacters(
-                            reserving: ContextBudget.weightedLength(of: system)
-                                + ContextBudget.weightedLength(of: PromptTurn.flattened(turns, then: makePrompt(.transcript(""))))
+                            reserving: ContextBudget.weightedLength(of: makeSystem(.transcript("")))
+                                + ContextBudget.weightedLength(of: PromptTurn.flattened(turns, then: prompt))
                                 + headerReserve
                         ),
                         like: transcript
@@ -1116,9 +1116,9 @@ enum LongSessionChat {
                     }
 
                     var chatService = service
-                    chatService.systemPrompt = system
+                    chatService.systemPrompt = makeSystem(.excerpts(digest: digestText, passages: passagesText, followUps: followUps))
                     _ = try await builder.runStage(
-                        makePrompt(.excerpts(digest: digestText, passages: passagesText, followUps: followUps)),
+                        prompt,
                         turns: turns,
                         read: "Reading passages",
                         write: "Writing the answer",
@@ -1240,13 +1240,13 @@ enum PatientChatAnswer {
                         }
                     }
 
-                    let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question, depth: depth)
-                    let prompt = Prompts.patientChat(context: finalContext, history: history, question: question, clientName: service.clientName)
                     var chatService = service
-                    chatService.systemPrompt = system
+                    chatService.systemPrompt = Prompts.chatSystem(
+                        service.systemPrompt, question: question, depth: depth,
+                        material: Prompts.patientChat(context: finalContext, history: history, clientName: service.clientName))
                     live(nil) { $0.steps = steps.writing }
                     _ = try await builder.runStage(
-                        prompt,
+                        Prompts.chatQuestion(question),
                         turns: PromptTurn.recent(history, question: question),
                         read: "Reading what was gathered",
                         write: "Writing the answer",

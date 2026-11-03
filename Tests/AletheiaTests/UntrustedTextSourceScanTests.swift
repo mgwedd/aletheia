@@ -64,7 +64,7 @@ final class UntrustedTextSourceScanTests: XCTestCase {
         let prompts = [
             Prompts.summarize(transcript: hostile),
             Prompts.progressNote(format: .narrative, transcript: hostile),
-            Prompts.sessionChat(transcript: hostile, history: [], question: "q"),
+            Prompts.sessionChat(transcript: hostile, history: []),
             Prompts.sessionMaterial(.excerpts(digest: hostile, passages: hostile, followUps: "")),
             Prompts.sessionDigest(sections: [(anchor: "a", digest: hostile)]),
         ]

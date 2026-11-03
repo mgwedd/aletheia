@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Turns the app's use cases (summarize a session, answer a question about a
 /// session or a whole patient history) into prompts and runs them through
@@ -145,25 +146,26 @@ struct AssistantService {
         depth: AnswerDepth = .default
     ) async throws -> String {
         return try await generate(task: .chat,
-            system: Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth),
-            turns: PromptTurn.recent(history, question: question),
-            prompt: Prompts.sessionChat(
+            system: Prompts.chatSystem(systemPrompt, question: question, depth: depth, material: Prompts.sessionChat(
                 transcript: transcript,
                 notes: AIContextPolicy.notes(notes, for: .sessionChat),
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
                 history: history,
-                question: question,
                 clientName: clientName
-            )
+            )),
+            turns: PromptTurn.recent(history, question: question),
+            prompt: Prompts.chatQuestion(question)
         )
     }
 
     func answerAboutPatient(context: String, history: [ChatMessage], question: String, depth: AnswerDepth = .default) async throws -> String {
         try await generate(task: .chat,
-            system: Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth),
+            system: Prompts.chatSystem(
+                systemPrompt, question: question, depth: depth,
+                material: Prompts.patientChat(context: context, history: history, clientName: clientName)),
             turns: PromptTurn.recent(history, question: question),
-            prompt: Prompts.patientChat(context: context, history: history, question: question, clientName: clientName)
+            prompt: Prompts.chatQuestion(question)
         )
     }
 
@@ -182,17 +184,16 @@ struct AssistantService {
         depth: AnswerDepth = .default
     ) -> AsyncThrowingStream<String, Error> {
         run(task: .chat,
-            system: Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth),
-            turns: PromptTurn.recent(history, question: question),
-            prompt: Prompts.sessionChat(
+            system: Prompts.chatSystem(systemPrompt, question: question, depth: depth, material: Prompts.sessionChat(
                 transcript: transcript,
                 notes: AIContextPolicy.notes(notes, for: .sessionChat),
                 comments: Self.formatComments(comments),
                 patientBackground: patientBackground,
                 history: history,
-                question: question,
                 clientName: clientName
-            )
+            )),
+            turns: PromptTurn.recent(history, question: question),
+            prompt: Prompts.chatQuestion(question)
         )
     }
 
@@ -201,10 +202,10 @@ struct AssistantService {
     /// carry on this Mac, after the instructions, conversation and question
     /// (measured by script, so a conversation in Japanese takes its real share).
     func patientContextCharacters(history: [ChatMessage], question: String, depth: AnswerDepth = .default) -> Int {
-        let system = Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth)
-        let wrapper = PromptTurn.flattened(
-            PromptTurn.recent(history, question: question),
-            then: Prompts.patientChat(context: "", history: history, question: question, clientName: clientName))
+        let system = Prompts.chatSystem(
+            systemPrompt, question: question, depth: depth,
+            material: Prompts.patientChat(context: "", history: history, clientName: clientName))
+        let wrapper = PromptTurn.flattened(PromptTurn.recent(history, question: question), then: Prompts.chatQuestion(question))
         return budget.availableCharacters(
             reserving: ContextBudget.weightedLength(of: system) + ContextBudget.weightedLength(of: wrapper))
     }
@@ -216,16 +217,41 @@ struct AssistantService {
         depth: AnswerDepth = .default
     ) -> AsyncThrowingStream<String, Error> {
         run(task: .chat,
-            system: Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth),
+            system: Prompts.chatSystem(
+                systemPrompt, question: question, depth: depth,
+                material: Prompts.patientChat(context: context, history: history, clientName: clientName)),
             turns: PromptTurn.recent(history, question: question),
-            prompt: Prompts.patientChat(context: context, history: history, question: question, clientName: clientName)
+            prompt: Prompts.chatQuestion(question)
         )
     }
 
     /// Streams a summary that replaces the conversation so far (`/compact`).
+    /// A summary the model was still writing when it reached the reply limit
+    /// fails the stream with `CompactionError.cutOff`: it would stand in for
+    /// messages it doesn't cover.
     func streamCompaction(history: [ChatMessage], focus: String) -> AsyncThrowingStream<String, Error> {
-        run(task: .compaction, system: systemPrompt, turns: PromptTurn.recent(history),
-            prompt: Prompts.compactChat(history: history, focus: focus))
+        let cutOff = OSAllocatedUnfairLock(initialState: false)
+        var counting = self
+        let outer = report
+        counting.report = { event in
+            if case .finished(let stats) = event { cutOff.withLock { $0 = stats.reachedReplyLimit } }
+            outer?(event)
+        }
+        let stream = counting.run(
+            task: .compaction, system: Prompts.compactSystem(systemPrompt, history: history),
+            turns: PromptTurn.recent(history), prompt: Prompts.compactChat(focus: focus))
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    for try await text in stream { continuation.yield(text) }
+                    if cutOff.withLock({ $0 }) { throw CompactionError.cutOff }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     /// Renders stored margin comments into the plain lines the prompt expects.
@@ -249,5 +275,16 @@ struct AssistantService {
 
     private static func oneLine(_ text: String) -> String {
         text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
+    }
+}
+
+/// Why a conversation summary was discarded.
+enum CompactionError: LocalizedError, Equatable, DiscardsPartialReply {
+    /// The model reached the reply limit before finishing the summary.
+    case cutOff
+
+    var errorDescription: String? {
+        "The summary didn't finish, so the conversation was kept as it was. "
+            + "Try Compact again, or name what to keep, like /compact medication."
     }
 }

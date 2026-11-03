@@ -82,6 +82,8 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     private var model: OpaquePointer?
     private var context: OpaquePointer?
     private var adapter: OpaquePointer?
+    /// The loaded model's `replyBans`, as the logit biases that enforce them.
+    private var bans: [llama_logit_bias] = []
 
     private let stateLock = NSLock()
     private var _state: LocalLLMEngineState = .notLoaded
@@ -302,6 +304,13 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
             }
             model = loadedModel
             Self.liveModels.add(1)
+            if let vocab = llama_model_get_vocab(loadedModel) {
+                bans = Self.replyBans(
+                    tokenCount: llama_vocab_n_tokens(vocab),
+                    isControl: { llama_vocab_is_control(vocab, $0) },
+                    endsTurn: { llama_vocab_is_eog(vocab, $0) }
+                ).map { llama_logit_bias(token: $0, bias: -.infinity) }
+            }
             _ = Self.exitGuardInstalled
 
             if let adapterURL {
@@ -407,6 +416,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
             Self.liveModels.add(-1)
         }
         model = nil
+        bans = []
     }
 
     /// Models loaded right now, across every engine.
@@ -466,6 +476,13 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
             throw LocalLLMEngineError.generationFailed("Couldn't create a sampler chain.")
         }
         defer { llama_sampler_free(chain) }
+
+        // First, so no later sampler can pick a banned token (see `replyBans`).
+        if !bans.isEmpty, let ban = bans.withUnsafeBufferPointer({
+            llama_sampler_init_logit_bias(llama_vocab_n_tokens(vocab), Int32($0.count), $0.baseAddress)
+        }) {
+            llama_sampler_chain_add(chain, ban)
+        }
 
         // A grammar constrains the logits *before* the terminal sampler picks
         // a token, so it's added first in the chain — the same ordering
@@ -554,6 +571,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         var batch = llama_batch_get_one(tokenStore + offset, Int32(promptCount - offset))
 
         var produced = 0
+        var finished = false
         while produced < maxTokens {
             if isCancelled() { break }
             guard llama_decode(context, batch) == 0 else {
@@ -570,7 +588,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
             // every sampler in the chain (including the grammar's own
             // state) in one call — no separate "accept" step needed.
             let next = llama_sampler_sample(chain, context, -1)
-            if llama_vocab_is_eog(vocab, next) { break }
+            if llama_vocab_is_eog(vocab, next) { finished = true; break }
             output += piece(for: next, vocab: vocab)
             produced += 1
             onToken?(output)
@@ -582,22 +600,34 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         }
         if let readEnd, !isCancelled() {
             let writeEnd = DispatchTime.now().uptimeNanoseconds
-            let stats = AIRunStats(
+            var stats = AIRunStats(
                 promptTokens: promptCount,
                 promptNanos: Int(readEnd &- readStart),
                 outputTokens: produced,
                 outputNanos: Int(writeEnd &- readEnd)
             )
+            stats.reachedReplyLimit = !finished && produced >= maxTokens
             lastStats = stats
             onStats?(stats)
         }
         return output
     }
 
-    /// Detokenizes a single token to its text piece.
+    /// The tokens a reply may never contain: every control token except those
+    /// that end the turn. A reply is plain text. MedGemma opens a hidden
+    /// reasoning span with a control token (`<unused94>`) on its own; let
+    /// through, its reasoning was shown as the answer, tag and all, and used
+    /// up a summary's length limit before the summary began.
+    static func replyBans(
+        tokenCount: Int32, isControl: (llama_token) -> Bool, endsTurn: (llama_token) -> Bool
+    ) -> [llama_token] {
+        (0..<tokenCount).filter { isControl($0) && !endsTurn($0) }
+    }
+
+    /// Detokenizes a single token to its text piece, as plain text.
     private func piece(for token: llama_token, vocab: OpaquePointer) -> String {
         var buffer = [CChar](repeating: 0, count: 256)
-        let count = llama_token_to_piece(vocab, token, &buffer, Int32(buffer.count), 0, true)
+        let count = llama_token_to_piece(vocab, token, &buffer, Int32(buffer.count), 0, false)
         guard count > 0 else { return "" }
         return String(decoding: buffer[0..<Int(count)].map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }

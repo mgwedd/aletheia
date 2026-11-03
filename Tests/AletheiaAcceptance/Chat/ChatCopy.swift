@@ -25,3 +25,16 @@ extension Copy {
         }
     }
 }
+
+extension Copy {
+    /// A model's hidden reasoning, as a saved reply once held it.
+    static let hiddenReasoning = "The therapist wants it short."
+    static let reasoningOpen = "<unused94>thought "
+    static let reasoningClose = "<unused95>"
+    static let endOfTurn = "<end_of_turn>"
+    static let summaryDidNotFinish =
+        "The summary didn't finish, so the conversation was kept as it was. "
+        + "Try Compact again, or name what to keep, like /compact medication."
+    /// Words in the request that asks the AI to summarize the conversation.
+    static let summaryRequest = "Write a summary that will replace it"
+}

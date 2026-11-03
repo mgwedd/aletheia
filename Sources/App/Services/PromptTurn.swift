@@ -11,13 +11,14 @@ struct PromptTurn: Equatable {
 
     /// The chat messages after the latest summary, as turns, leaving out the
     /// question being sent now (the chat views append it before sending).
+    /// Replies go back as plain answers (`ModelReply`).
     static func recent(_ history: [ChatMessage], question: String? = nil) -> [PromptTurn] {
         var recent = ChatMemory.remembered(history).recent
         if let last = recent.last, last.role == .user, last.text == question { recent.removeLast() }
         return recent.filter(\.reachesModel).compactMap { message in
             switch message.role {
             case .user: return PromptTurn(role: .user, text: message.text)
-            case .assistant: return PromptTurn(role: .assistant, text: message.text)
+            case .assistant: return PromptTurn(role: .assistant, text: ModelReply.plain(message.text))
             case .summary: return nil
             }
         }
