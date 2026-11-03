@@ -50,6 +50,31 @@ enum LlamaRuntime {
         #endif
     }
 
+    /// Frees the built-in model and returns once it is freed (no-op when not linked).
+    static func unloadAllAndWait() async {
+        #if canImport(llama)
+        await LlamaAssistant.unloadAllAndWait()
+        #endif
+    }
+
+    /// Built-in model engines kept for the next request (0 when not linked).
+    static var cachedEngineCount: Int {
+        #if canImport(llama)
+        return LlamaAssistant.cachedEngineCount
+        #else
+        return 0
+        #endif
+    }
+
+    /// Built-in models loaded right now (0 when not linked).
+    static var loadedModelCount: Int {
+        #if canImport(llama)
+        return LlamaEngine.liveModelCount
+        #else
+        return 0
+        #endif
+    }
+
     /// The directory downloaded weights live in, alongside the Whisper models in
     /// Application Support. Weights refresh separately from the app.
     static var modelsDirectory: URL {

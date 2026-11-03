@@ -331,6 +331,8 @@ Before you start: at least one patient and the app unlocked.
 - **MENUBAR-13** Rest the pointer for two seconds on a control with a help tip → a "how this works" popover appears once, just below the pointer, and closes when the pointer leaves the control.
 - **MENUBAR-14** Quit with work running → no alert appears and interrupted work is saved for the next launch.
 - **MENUBAR-15** While a recording is running, open the panel and try to start another → no second recording starts and the first keeps recording.
+- **MENUBAR-16** Quit (⌘Q) right after the built-in model answered → Aletheia closes with no crash report and the model is unloaded first.
+- **MENUBAR-17** Quit Aletheia from Terminal with `kill <pid>` while a session is transcribing → it winds down as it does for ⌘Q: interrupted work is saved for the next launch and no crash report is written.
 
 ## 20. Build and privacy checks from Terminal (BUILD)
 Before you start: the Release app at /Applications/Aletheia.app and the repository checked out.
