@@ -9,6 +9,16 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.72.0] - 2026-11-03
+
+### Added
+- clear Ask chats, plus Ask tips, selection and footer fixes (#552)
+- read long sessions by model size; follow and announce note generation (#554)
+- add answer depth setting (#553)
+
+### Fixed
+- keep Debug builds' data, preferences and activity-log key apart (#551)
+
 ## [2.71.0] - 2026-11-02
 
 ### Added
