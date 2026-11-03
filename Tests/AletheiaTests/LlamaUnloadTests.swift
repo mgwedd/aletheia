@@ -17,6 +17,20 @@ final class LlamaUnloadTests: XCTestCase {
         XCTAssertEqual(LlamaAssistant.cachedEngineCount, 0)
     }
 
+    func testUnloadAllAndWaitEmptiesTheCacheAndLeavesNoModelLoaded() async {
+        LlamaAssistant.unloadAll()
+        LlamaAssistant.cacheForTesting(engine("c"), at: URL(fileURLWithPath: "/nonexistent/c.gguf"))
+        await LlamaAssistant.unloadAllAndWait()
+        XCTAssertEqual(LlamaAssistant.cachedEngineCount, 0)
+        XCTAssertEqual(LlamaEngine.liveModelCount, 0)
+    }
+
+    func testUnloadAndWaitLeavesTheEngineNotLoaded() async {
+        let e = engine("wait")
+        await e.unloadAndWait()
+        XCTAssertEqual(e.state, .notLoaded)
+    }
+
     func testIdleUnloadFiresWhenNoNewRequest() {
         let e = engine("idle")
         e.idleDelay = 0.05

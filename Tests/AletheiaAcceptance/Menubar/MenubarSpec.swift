@@ -146,4 +146,20 @@ final class MenubarSpec: AcceptanceCase {
 
         then(second).offeredNoSecondRecording(whileRecording: first, bench)
     }
+
+    func test_MENUBAR_16() async throws {
+        // Partial: the quit unloads the built-in model. That no crash report
+        // is written needs the real app quitting (MenubarUITests).
+        let outcome = await when.quitRightAfterTheBuiltInModelAnswered()
+
+        then(outcome).unloadedTheBuiltInModelFirst()
+    }
+
+    func test_MENUBAR_17() async throws {
+        let visit = try await given.aPatientWithASession()
+
+        let outcome = await when.sendTheQuitSignal(whileTranscribing: visit)
+
+        then(outcome).woundDownAsForQuit(savingWhileTranscribing: visit)
+    }
 }

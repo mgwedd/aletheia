@@ -190,6 +190,17 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         }
     }
 
+    /// Unloads behind any decode in flight, without blocking the caller's thread.
+    func unloadAndWait() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.teardownOnQueue()
+                self.setState(.notLoaded)
+                continuation.resume()
+            }
+        }
+    }
+
     func generate(_ request: LocalLLMRequest) async throws -> String {
         let cancelled = LlamaEngineCancellationFlag()
         markActive()
@@ -290,6 +301,8 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
                 )
             }
             model = loadedModel
+            Self.liveModels.add(1)
+            _ = Self.exitGuardInstalled
 
             if let adapterURL {
                 guard let loadedAdapter = llama_adapter_lora_init(loadedModel, adapterURL.path) else {
@@ -391,9 +404,26 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         contextTokens = 0
         if let model {
             llama_model_free(model)
+            Self.liveModels.add(-1)
         }
         model = nil
     }
+
+    /// Models loaded right now, across every engine.
+    static var liveModelCount: Int { liveModels.value }
+    private static let liveModels = LiveModelCounter()
+
+    /// At exit, llama.cpp frees its GPU device and aborts (a crash report) if a
+    /// model still holds GPU memory. Quitting unloads every model first; one
+    /// still busy when the quit deadline passes ends the process here instead,
+    /// after the app's own wind-down. Installed after the first model load, so
+    /// it runs before llama.cpp's own exit cleanup (exit runs handlers in
+    /// reverse order of registration).
+    private static let exitGuardInstalled: Void = {
+        atexit {
+            if LlamaEngine.liveModelCount > 0 { _exit(0) }
+        }
+    }()
 
     /// Guards `llama_backend_init()` to exactly one call for the process's
     /// lifetime, regardless of how many `LlamaEngine` instances exist.
@@ -571,6 +601,14 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         guard count > 0 else { return "" }
         return String(decoding: buffer[0..<Int(count)].map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
+}
+
+/// Counts loaded models across engines, from any thread.
+private final class LiveModelCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+    func add(_ delta: Int) { lock.lock(); count += delta; lock.unlock() }
 }
 
 /// A thread-safe one-way "stop" flag for a single `stream(_:)` call — the

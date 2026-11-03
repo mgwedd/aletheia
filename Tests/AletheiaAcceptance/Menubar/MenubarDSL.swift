@@ -31,6 +31,14 @@ struct QuitOutcome {
     let job: BusyJob
 }
 
+/// What a quit right after the built-in model answered left behind.
+struct ModelQuitOutcome {
+    let report: ShutdownCoordinator.Report
+    let enginesBefore: Int
+    let enginesAfter: Int
+    let modelsAfter: Int
+}
+
 /// The Keyboard Shortcuts window as listed.
 struct ShortcutsWindow {
     let groupSizes: [Int]
@@ -140,6 +148,44 @@ extension When {
         return rest
     }
 
+    /// Quit right after the built-in model answered: its engine is still kept
+    /// for the next request when the app's quit runs.
+    func quitRightAfterTheBuiltInModelAnswered() async -> ModelQuitOutcome {
+        #if canImport(llama)
+        let url = URL(fileURLWithPath: "/nonexistent/answered.gguf")
+        LlamaAssistant.cacheForTesting(
+            LlamaEngine(modelURL: url, sampling: LocalLLMSampling(maxTokens: 32)), at: url)
+        #endif
+        let before = LlamaRuntime.cachedEngineCount
+        let coordinator = ShutdownCoordinator(ledger: { nil })
+        coordinator.register(BuiltInModelShutdownJob())
+        let report = await coordinator.shutDown()
+        return ModelQuitOutcome(
+            report: report, enginesBefore: before,
+            enginesAfter: LlamaRuntime.cachedEngineCount, modelsAfter: LlamaRuntime.loadedModelCount)
+    }
+
+    /// Sends this process the signal `kill <pid>` sends, while the patient's
+    /// session is being transcribed. Nil when the signal never reached the quit.
+    func sendTheQuitSignal(whileTranscribing visit: PatientSession) async -> QuitOutcome? {
+        QuitSignals.install()
+        let normalQuit = QuitSignals.onSignal
+        defer { QuitSignals.onSignal = normalQuit }
+        let reached = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+            var answered = false
+            func answer(_ value: Bool) {
+                guard !answered else { return }
+                answered = true
+                done.resume(returning: value)
+            }
+            QuitSignals.onSignal = { answer(true) }
+            kill(getpid(), SIGTERM)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { MainActor.assumeIsolated { answer(false) } }
+        }
+        guard reached else { return nil }
+        return await quit(whileTranscribing: visit)
+    }
+
     /// Quit while the patient's session is being transcribed.
     func quit(whileTranscribing visit: PatientSession) async -> QuitOutcome {
         await quit(withWork: [
@@ -217,6 +263,25 @@ extension When {
         expectEqual(subject.ledger.load(), work, "work listed for the next launch")
         expect(subject.job.wasShutDown, "running work was not wound down")
         expect(!subject.report.timedOut, "the quit waited out its deadline")
+    }
+}
+
+@MainActor extension Then where Subject == ModelQuitOutcome {
+    func unloadedTheBuiltInModelFirst() {
+        expect(subject.enginesBefore > 0, "no built-in model was kept to quit with")
+        expectEqual(subject.enginesAfter, 0, "built-in model engines kept after quitting")
+        expectEqual(subject.modelsAfter, 0, "built-in models still loaded after quitting")
+        expect(!subject.report.timedOut, "the quit waited out its deadline")
+    }
+}
+
+@MainActor extension Then where Subject == QuitOutcome? {
+    func woundDownAsForQuit(savingWhileTranscribing visit: PatientSession) {
+        guard let outcome = subject else {
+            return fail("the quit signal did not reach the app's quit")
+        }
+        Then<QuitOutcome>(subject: outcome, check: check, file: file, line: line)
+            .savedInterruptedWork(whileTranscribing: visit)
     }
 }
 

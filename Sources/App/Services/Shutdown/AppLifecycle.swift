@@ -26,6 +26,7 @@ enum AppLifecycle {
         coordinator.register(integrations.inferenceQueue)
         coordinator.register(exports)
         coordinator.register(SearchSweepShutdownJob(appModel: appModel))
+        coordinator.register(BuiltInModelShutdownJob())
         shutdown = coordinator
 
         resume.start(
@@ -74,6 +75,19 @@ final class SearchSweepShutdownJob: ShutdownJob {
     init(appModel: AppModel) { self.appModel = appModel }
 
     func shutDown() async { await appModel.stopSearchSync() }
+}
+
+/// Frees the built-in model's weights and GPU memory before the process
+/// exits; llama.cpp aborts at exit (a crash report) if a model is still loaded.
+@MainActor
+final class BuiltInModelShutdownJob: ShutdownJob {
+    private let unload: () async -> Void
+
+    init(unload: @escaping () async -> Void = { await LlamaRuntime.unloadAllAndWait() }) {
+        self.unload = unload
+    }
+
+    func shutDown() async { await unload() }
 }
 
 /// At launch, re-queues the work the last quit interrupted, as soon as the
