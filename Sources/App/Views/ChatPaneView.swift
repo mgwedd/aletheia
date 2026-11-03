@@ -462,7 +462,9 @@ private struct ChatBubble: View {
             .frame(maxWidth: 640, alignment: .leading)
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.line.color))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
+            // Contain, not combine: the summary is AppKit text, which a
+            // combined element leaves out, so VoiceOver would skip it.
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("chat.compacted")
         } else if message.role == .user {
             // The therapist's own words, shown verbatim in a trailing bubble
