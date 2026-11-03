@@ -1171,8 +1171,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Models/AIRunStats.swift, Sources/App/Services/Integrations/AITask.swift, Sources/App/Services/Integrations/AssistantService.swift, Sources/App/Views/ChatStreamRunner.swift, Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/SessionAI/PatientChatModel.swift` · `qa: CHAT-37`
 - **CHT-092** The earlier summary that a compaction's prompt carries (the conversation to summarize, in the system turn after the instructions) is plain text (CHT-089), and the conversation turns follow it with the instruction to summarize as the last turn.
   `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/Integrations/AssistantService.swift` · `qa: CHAT-35`
-- **CHT-093** While a summary is being written, the answers above it keep their full width and the "Conversation compacted" card builds below them with nothing drawn over it; the answer text is measured apart from the view that shows it.
-  `surface: ui` · `evidence: Sources/App/Views/AnswerText.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-36`
+- **CHT-093** While a summary is being written, the answers above it keep their full width and the "Conversation compacted" card builds below them with nothing drawn over it; the answer text is measured apart from the view that shows it, and the conversation always leaves room for a scroll bar that takes space, so one appearing doesn't rewrap the answers.
+  `surface: ui` · `evidence: Sources/App/Views/AnswerText.swift, Sources/App/Views/ChatPaneView.swift, Sources/App/Views/BoundedScroll.swift` · `qa: CHAT-36`
 
 ## AI engine & models (AIE)
 

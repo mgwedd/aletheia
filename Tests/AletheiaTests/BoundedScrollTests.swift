@@ -32,6 +32,36 @@ final class BoundedScrollTests: XCTestCase {
         XCTAssertEqual(host.fittingSize.height, 700, accuracy: 1)
     }
 
+    /// A legacy scroller takes its width from the content; an overlay one takes none.
+    func testTheContentLeavesRoomOnlyForAScrollerThatTakesSpace() {
+        XCTAssertEqual(BoundedScrollLayout.scrollerGutter(style: .overlay), 0)
+        XCTAssertEqual(BoundedScrollLayout.scrollerGutter(style: .legacy),
+                       NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy))
+        XCTAssertGreaterThan(BoundedScrollLayout.scrollerGutter(style: .legacy), 0)
+    }
+
+    /// The content is as wide whether it scrolls or not, so a scroller
+    /// appearing never rewraps it.
+    func testTheContentKeepsItsWidthWhenItGrowsLongEnoughToScroll() {
+        func contentWidth(lines: Int) -> CGFloat {
+            var measured: CGFloat = 0
+            let view = BoundedScroll {
+                VStack(spacing: 0) { ForEach(0..<lines, id: \.self) { Text("line \($0)").frame(height: 20) } }
+                    .frame(maxWidth: .infinity)
+                    .background(GeometryReader { geo in Color.clear
+                        .onAppear { measured = geo.size.width }
+                        .onChange(of: geo.size.width) { _, width in measured = width } })
+            }
+            let host = NSHostingView(rootView: view.frame(width: 300, height: 200))
+            host.frame = NSRect(x: 0, y: 0, width: 300, height: 200)
+            for _ in 0..<3 { host.layoutSubtreeIfNeeded(); RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+            return measured
+        }
+        let short = contentWidth(lines: 2), long = contentWidth(lines: 200)
+        XCTAssertEqual(short, 300 - BoundedScrollLayout.scrollerGutter(), accuracy: 1)
+        XCTAssertEqual(long, short, accuracy: 1)
+    }
+
     /// The note tab's reader is an AppKit scroll view, which, like
     /// BoundedScroll, doesn't ask for its text's height.
     func testTheNoteReaderDoesNotAskForItsTextsHeight() {
