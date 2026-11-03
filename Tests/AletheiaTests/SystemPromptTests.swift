@@ -29,12 +29,14 @@ final class SystemPromptTests: XCTestCase {
         _ = try await service.summarize(transcript: "T")
         XCTAssertEqual(fake.lastSystem, "CUSTOM SYSTEM")
 
-        // Ask adds its depth's instructions after the standing prompt.
+        // Ask adds its depth's instructions after the standing prompt, then
+        // the material the answer rests on.
+        let depth = "CUSTOM SYSTEM\n\n" + AnswerDepth.natural.instructions(for: .answer)
         _ = try await service.answerAboutSession(transcript: "T", history: [], question: "Q")
-        XCTAssertEqual(fake.lastSystem, "CUSTOM SYSTEM\n\n" + AnswerDepth.natural.instructions(for: .answer))
+        XCTAssertEqual(fake.lastSystem, depth + "\n\n" + Prompts.sessionChat(transcript: "T", history: []))
 
         _ = try await service.answerAboutPatient(context: "C", history: [], question: "Q")
-        XCTAssertEqual(fake.lastSystem, "CUSTOM SYSTEM\n\n" + AnswerDepth.natural.instructions(for: .answer))
+        XCTAssertEqual(fake.lastSystem, depth + "\n\n" + Prompts.patientChat(context: "C", history: []))
     }
 
     func testServiceDefaultsToDefaultSystemPrompt() async throws {

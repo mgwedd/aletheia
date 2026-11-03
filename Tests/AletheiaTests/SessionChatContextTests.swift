@@ -17,8 +17,7 @@ final class SessionChatContextTests: XCTestCase {
             transcript: "Patient discussed sleep.",
             notes: "She seemed brighter today.",
             comments: ["- On “sleep”: worse since the move"],
-            history: [],
-            question: "How was her mood?"
+            history: []
         )
         XCTAssertTrue(prompt.contains("Therapist's session notes:"))
         XCTAssertTrue(prompt.contains("She seemed brighter today."))
@@ -28,7 +27,7 @@ final class SessionChatContextTests: XCTestCase {
     }
 
     func testPromptOmitsSectionsWhenNoAnnotations() {
-        let prompt = Prompts.sessionChat(transcript: "T", history: [], question: "Q")
+        let prompt = Prompts.sessionChat(transcript: "T", history: [])
         // Assert on the section headers, which only appear when annotations
         // exist — the prompt's static instructions mention "margin comments".
         XCTAssertFalse(prompt.contains("Therapist's session notes:"))
@@ -48,10 +47,14 @@ final class SessionChatContextTests: XCTestCase {
             question: "Q"
         )
 
+        // The material is in the system turn; the final prompt is the question alone.
+        let system = try XCTUnwrap(fake.lastSystem)
         let prompt = try XCTUnwrap(fake.lastPrompt)
-        XCTAssertFalse(prompt.contains("note text"), "the psychotherapy note never reaches the prompt")
-        XCTAssertTrue(prompt.contains("titrate up"))
-        XCTAssertTrue(prompt.contains("meds"))
+        XCTAssertFalse(system.contains("note text"), "the psychotherapy note never reaches the model")
+        XCTAssertFalse(prompt.contains("note text"), "the psychotherapy note never reaches the model")
+        XCTAssertTrue(system.contains("titrate up"))
+        XCTAssertTrue(system.contains("meds"))
+        XCTAssertEqual(prompt, Prompts.chatQuestion("Q"))
     }
 
     @MainActor
@@ -72,8 +75,11 @@ final class SessionChatContextTests: XCTestCase {
             coverage: { _ in }
         )
         for try await _ in stream {}
+        let system = try XCTUnwrap(fake.lastSystem)
         let prompt = try XCTUnwrap(fake.lastPrompt)
-        XCTAssertTrue(prompt.contains("Patient discussed sleep."))
+        XCTAssertTrue(system.contains("Patient discussed sleep."))
+        XCTAssertFalse(system.contains("PRIVATE-PROCESS-NOTE"))
         XCTAssertFalse(prompt.contains("PRIVATE-PROCESS-NOTE"))
+        XCTAssertEqual(prompt, Prompts.chatQuestion("How was her mood?"))
     }
 }

@@ -196,21 +196,23 @@ struct AnswerTextView: NSViewRepresentable {
         apply(to: view, context: context)
     }
 
+    /// Measured on the coordinator's own copy of the text, never the view's:
+    /// SwiftUI asks for sizes at widths it then doesn't use, and laying the
+    /// view's own text out at one of those left it wrapped to that width (a
+    /// narrow column) and drawn past its frame over what sits below it.
     func sizeThatFits(_ proposal: ProposedViewSize, nsView view: AnswerNSTextView, context: Context) -> CGSize? {
         let width = proposal.width ?? 640
-        guard width.isFinite, width > 0,
-              let container = view.textContainer, let layout = view.layoutManager else { return nil }
-        container.size = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
-        layout.ensureLayout(for: container)
-        let height = ceil(layout.usedRect(for: container).height)
-        return CGSize(width: width, height: height)
+        guard width.isFinite, width > 0 else { return nil }
+        return CGSize(width: width, height: context.coordinator.measure.height(atWidth: width))
     }
 
     private func apply(to view: AnswerNSTextView, context: Context) {
         let key = Coordinator.Key(blocks: blocks, look: look)
         guard context.coordinator.applied != key else { return }
         context.coordinator.applied = key
-        view.textStorage?.setAttributedString(AnswerText.attributed(blocks, look: look))
+        let text = AnswerText.attributed(blocks, look: look)
+        view.textStorage?.setAttributedString(text)
+        context.coordinator.measure.storage.setAttributedString(text)
         view.invalidateIntrinsicContentSize()
     }
 
@@ -220,6 +222,27 @@ struct AnswerTextView: NSViewRepresentable {
             let look: AnswerText.Look
         }
         var applied: Key?
+        let measure = TextMeasure()
+    }
+}
+
+/// Lays text out at any width to find its height, apart from the view that
+/// shows it.
+final class TextMeasure {
+    let storage = NSTextStorage()
+    private let layout = NSLayoutManager()
+    private let container = NSTextContainer(size: NSSize(width: 640, height: CGFloat.greatestFiniteMagnitude))
+
+    init() {
+        container.lineFragmentPadding = 0
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+    }
+
+    func height(atWidth width: CGFloat) -> CGFloat {
+        container.size = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        layout.ensureLayout(for: container)
+        return ceil(layout.usedRect(for: container).height)
     }
 }
 

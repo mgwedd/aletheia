@@ -13,7 +13,7 @@ responsibility; the app does not handle them for you.
 ## Before you start
 
 - **macOS 14 or newer.** Apple Silicon with 16 GB of memory gives the best
-  results. 8 GB works with smaller models, which the app picks for you.
+  results. 8 GB works with the default MedGemma 4B model.
 - **Free disk space.** The speech model is roughly 150 MB to 3 GB depending
   on size, and the AI model is about 3 to 6 GB. Both download once.
 - **Nothing else to install.** Speech-to-text and the AI model both run

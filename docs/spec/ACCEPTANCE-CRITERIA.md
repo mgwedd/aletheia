@@ -164,8 +164,8 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-22** Keep asking on one session until the conversation passes a quarter of what the AI model can read at once → the earlier messages compact into a "Conversation compacted" card before the next answer.
 - **CHAT-23** Ask on a conversation that needs compacting, and the summary fails or is stopped → the question goes back into the box unsent; nothing typed is lost.
 - **CHAT-24** Open **Ask about this patient** and drag the divider between the **Chats** list and the chat (the same easy-to-grab strip as every pane divider) → the list widens or narrows with the drag, stopping before either side gets too narrow to use.
-- **CHAT-25** Open **Ask** on a session with a conversation, click **Clear** (just left of **Compact** on the effort bar) and confirm → the conversation empties, and it is still empty after you quit and reopen the app.
-- **CHAT-26** In **Ask about this patient**, open a chat with a conversation, click **Clear** and confirm → that chat's conversation empties and the chat stays in the **Chats** list.
+- **CHAT-25** Open **Ask** on a session with a conversation, click **Clear** (just left of **Compact** on the effort bar) → the conversation empties at once, with no confirmation, and it is still empty after you quit and reopen the app.
+- **CHAT-26** In **Ask about this patient**, open a chat with a conversation, click **Clear** → that chat's conversation empties at once, with no confirmation, and the chat stays in the **Chats** list.
 - **CHAT-27** In **Ask about this patient**, click **Delete All Chats** in the **Chats** list and confirm → every chat about the patient is gone.
 - **CHAT-28** In **Ask**, drag across an answer with a heading, paragraphs, a list and a quote → one selection runs across all of them, ready to copy.
 - **CHAT-29** Open **Ask** on a session, then **Ask about this patient** → the bar shows a **Depth** control next to the effort with Concise, Natural and Detailed, Natural selected.
@@ -174,6 +174,9 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-32** Ask a follow-up after a long answer → the new answer takes the new question on its own terms, rather than reworking or re-summarising the earlier one.
 - **CHAT-33** Open the note **Depth** menu and the **Ask** bar's **Depth** → both are called "Depth" and offer the same three options, Concise, Natural and Detailed.
 - **CHAT-34** Pick the same depth for a note and an Ask answer → both follow the same kind of limit (Concise short, Natural plain prose, Detailed full and organized), with no answer cut off to fit.
+- **CHAT-35** Ask a question, or open a conversation whose saved answers and summary were written with the model's hidden reasoning or internal markers such as `<unused94>` or `<end_of_turn>` → the answers and the summary show only the answer text, and the next question is asked without them.
+- **CHAT-36** With a conversation on screen, click **Compact** → the answers above keep their full width while the summary is written, and the "Conversation compacted" card appears below them with nothing overlapping.
+- **CHAT-37** Click **Compact** and the AI model runs out of room before it finishes the summary → the summary is thrown away, the conversation stays as it was, and a message says "The summary didn't finish, so the conversation was kept as it was. Try Compact again, or name what to keep, like /compact medication."
 
 ## 9. Summaries prepared in the background (DIGEST)
 Before you start: a patient whose sessions have transcripts too long for this Mac to read at once, and the AI model downloaded.
@@ -275,7 +278,7 @@ Before you start: setup finished.
 - **SETTINGS-12** Open **Licenses & Legal** → the Terms of Use and Privacy Policy links, **Consent Guide…** and third-party notices are there.
 - **SETTINGS-13** Choose an iCloud Drive or cloud-synced folder as the data folder → it is refused, asking for a folder that stays on this Mac; the current folder is kept.
 - **SETTINGS-14** Open Aletheia with its data folder now synced → a **Move data to this Mac** sheet offers to copy and verify it, then keep or delete the old one.
-- **SETTINGS-15** Open **AI and models** > **Built-in model** → MedGemma 1.5 4B is the default through 32 GB and on Intel; MedGemma 27B is offered on 32 GB+ Apple silicon and becomes the default at 48 GB+. Both use the Health AI Developer Foundations Terms.
+- **SETTINGS-15** Open **AI and models** > **Built-in model** → MedGemma 1.5 4B is the default on every Mac; MedGemma 27B is offered on 32 GB+ Apple silicon and is never chosen for you. Both use the Health AI Developer Foundations Terms.
 - **SETTINGS-16** Update from a version that defaulted to Llama 3.1 8B (or Gemma 4 E2B), having downloaded it and never chosen a model → **Built-in model** still shows it selected; MedGemma is offered, not switched to. With nothing downloaded, MedGemma is the default.
 - **SETTINGS-17** A model download fails → an alert says why and offers **Try Again**, which starts the download again, and **Report a Bug**.
 

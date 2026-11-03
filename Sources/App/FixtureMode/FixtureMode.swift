@@ -280,7 +280,8 @@ final class FixtureScriptedEngine: LocalLLMEngine {
             model.add(.init(marker: nil, answer: .fails(LocalLLMEngineError.modelNotDownloaded), once: false))
         }
         for rule in rules {
-            model.add(.init(marker: rule.whenPromptContains, answer: .writes(rule.reply), once: false))
+            let answer: ScriptedModel.Answer = rule.reachesReplyLimit == true ? .writesToTheLimit(rule.reply) : .writes(rule.reply)
+            model.add(.init(marker: rule.whenPromptContains, answer: answer, once: false))
         }
     }
 

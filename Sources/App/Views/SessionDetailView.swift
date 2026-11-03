@@ -1782,7 +1782,6 @@ struct SessionDetailView: View {
             notices: chat.notices,
             onCompact: { chat.compact($0) },
             onClear: { chat.clear() },
-            clearTitle: ChatWords.clearSessionTitle,
             progress: chatRunner.progress,
             effort: $settings.sessionChatEffort,
             depth: $chat.depth,

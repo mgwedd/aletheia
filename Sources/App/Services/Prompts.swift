@@ -264,24 +264,24 @@ enum Prompts {
         comments: [String] = [],
         patientBackground: String = "",
         history: [ChatMessage],
-        question: String,
         clientName: String = ""
     ) -> String {
         sessionChat(
             material: .transcript(transcript), notes: notes, comments: comments,
-            patientBackground: patientBackground, history: history, question: question, clientName: clientName)
+            patientBackground: patientBackground, history: history, clientName: clientName)
     }
 
-    /// The final turn of a session chat. The conversation since the last
-    /// summary goes before it as real chat turns (`PromptTurn.recent`); this
-    /// carries only what came before that (`earlierConversation`).
+    /// What a session chat answers from: the task, the session's material and
+    /// the conversation before its latest summary (`earlierConversation`). It
+    /// goes in the system turn (`chatSystem`), ahead of the conversation since
+    /// that summary (`PromptTurn.recent`), and the question comes last, alone
+    /// (`chatQuestion`).
     static func sessionChat(
         material: SessionMaterial,
         notes: String = "",
         comments: [String] = [],
         patientBackground: String = "",
         history: [ChatMessage],
-        question: String,
         clientName: String = ""
     ) -> String {
         """
@@ -299,8 +299,23 @@ enum Prompts {
         \(sessionMaterial(material))
         \(therapistMaterial(notes: notes, comments: comments))
         \(earlierConversation(history))
-        Therapist's question: \(question)
         """
+    }
+
+    /// Leads the question in the final turn of a chat.
+    static let questionLead = "Therapist's question:"
+
+    /// The final turn of a chat: the question alone. Everything it's answered
+    /// from comes earlier, so the last thing the model reads before answering
+    /// is what it's asked, not its own previous answer.
+    static func chatQuestion(_ question: String) -> String {
+        "\(questionLead) \(question)"
+    }
+
+    /// The system turn of a chat: the instructions (`chatSystemPrompt`), then
+    /// the material the answer rests on (`sessionChat` / `patientChat`).
+    static func chatSystem(_ base: String, question: String, depth: AnswerDepth = .default, material: String) -> String {
+        chatSystemPrompt(base, question: question, depth: depth) + "\n\n" + material
     }
 
     /// Stands before the passages of a session too long to send whole.
@@ -372,11 +387,11 @@ enum Prompts {
         return sections.isEmpty ? "" : "\n" + sections.joined(separator: "\n\n") + "\n"
     }
 
-    /// The final turn of a patient chat. `context` is assembled by
-    /// `Store.gatherCitedPatientContext`, with each piece of material in its
-    /// own tags and the app's headers, counts and the therapist's notes
-    /// outside them. Earlier turns go before it as real chat turns.
-    static func patientChat(context: String, history: [ChatMessage], question: String, clientName: String = "") -> String {
+    /// What a patient chat answers from, placed like `sessionChat`'s.
+    /// `context` is assembled by `Store.gatherCitedPatientContext`, with each
+    /// piece of material in its own tags and the app's headers, counts and the
+    /// therapist's notes outside them.
+    static func patientChat(context: String, history: [ChatMessage], clientName: String = "") -> String {
         """
         You are helping a therapist ask questions across all of one \
         patient's past sessions, given below (most recent first). Each \
@@ -406,7 +421,6 @@ enum Prompts {
         \(context)
 
         \(earlierConversation(history))
-        Therapist's question: \(question)
         """
     }
 
@@ -429,20 +443,26 @@ enum Prompts {
                     + "any standing request in them (format, tone, approach) still applies:\n"
                     + requests.map { "- \($0)" }.joined(separator: "\n"))
         }
-        parts.append("Summary of the earlier conversation:\n" + UntrustedText(.summary, history[index].text).rendered)
+        parts.append("Summary of the earlier conversation:\n" + UntrustedText(.summary, ModelReply.plain(history[index].text)).rendered)
         return parts.joined(separator: "\n\n") + "\n"
+    }
+
+    /// The system turn of a compaction: the instructions, then any earlier
+    /// summary, so it reads in order before the conversation since it.
+    static func compactSystem(_ base: String, history: [ChatMessage]) -> String {
+        let earlier = earlierConversation(history)
+        return earlier.isEmpty ? base : base + "\n\n" + materialRule + "\n\n" + earlier
     }
 
     /// Asks for a summary that can stand in for the conversation so far, so a
     /// long chat keeps going without silently forgetting its start. The
-    /// conversation since the last summary goes before this as chat turns.
-    static func compactChat(history: [ChatMessage], focus: String) -> String {
+    /// conversation since the last summary goes before this as chat turns,
+    /// and anything before that in the system turn (`compactSystem`).
+    static func compactChat(focus: String) -> String {
         let focusLine = focus.isEmpty ? "" : """
 
         The therapist asked to keep this in particular, in full detail: \(focus)
-
         """
-        let earlier = earlierConversation(history)
         return """
         This conversation with the therapist is about her recorded therapy \
         sessions. Write a summary that will replace it, so the conversation can \
@@ -452,8 +472,7 @@ enum Prompts {
         specific facts with the session tags or time stamps they were cited \
         with, and anything left open. Leave out pleasantries and repetition. \
         Write it as compact notes, under 400 words, with no opening or \
-        closing remarks. Don't add anything that isn't in the conversation.
-        \(focusLine)\(earlier.isEmpty ? "" : "\n" + materialRule + "\n\n" + earlier)
+        closing remarks. Don't add anything that isn't in the conversation.\(focusLine)
         """
     }
 }

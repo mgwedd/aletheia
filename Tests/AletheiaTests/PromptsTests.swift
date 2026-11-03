@@ -8,9 +8,8 @@ final class PromptsTests: XCTestCase {
     }
 
     func testSessionChatOmitsHistorySectionWhenEmpty() {
-        let prompt = Prompts.sessionChat(transcript: "Some transcript.", history: [], question: "How did they seem?")
+        let prompt = Prompts.sessionChat(transcript: "Some transcript.", history: [])
         XCTAssertTrue(prompt.contains("Some transcript."))
-        XCTAssertTrue(prompt.contains("How did they seem?"))
         XCTAssertFalse(prompt.contains("Recent conversation:"))
     }
 
@@ -22,7 +21,7 @@ final class PromptsTests: XCTestCase {
             ChatMessage(role: .assistant, text: "Earlier answer"),
             ChatMessage(role: .user, text: "Follow-up?"),
         ]
-        let prompt = Prompts.sessionChat(transcript: "T.", history: history, question: "Follow-up?")
+        let prompt = Prompts.sessionChat(transcript: "T.", history: history)
         XCTAssertFalse(prompt.contains("Earlier question"))
         XCTAssertEqual(PromptTurn.recent(history, question: "Follow-up?"), [
             PromptTurn(role: .user, text: "Earlier question"),
@@ -31,7 +30,7 @@ final class PromptsTests: XCTestCase {
     }
 
     func testPatientChatIncludesContextAndCitationInstruction() {
-        let prompt = Prompts.patientChat(context: "===== Session January 1, 2026 =====\nHello.", history: [], question: "When did we last meet?")
+        let prompt = Prompts.patientChat(context: "===== Session January 1, 2026 =====\nHello.", history: [])
         XCTAssertTrue(prompt.contains("Session January 1, 2026"))
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("cite"))
     }
@@ -40,7 +39,7 @@ final class PromptsTests: XCTestCase {
         let t = "[00:01] You: Hello.\n[00:03] Call audio: Hi."
         for prompt in [Prompts.summarize(transcript: t),
                        Prompts.progressNote(format: .soap, transcript: t),
-                       Prompts.sessionChat(transcript: t, history: [], question: "Q?")] {
+                       Prompts.sessionChat(transcript: t, history: [])] {
             XCTAssertTrue(prompt.contains("[00:01] Y: Hello."))
             XCTAssertTrue(prompt.contains("[00:03] C: Hi."))
             XCTAssertFalse(prompt.contains("] You:"))
@@ -66,8 +65,8 @@ final class PromptsTests: XCTestCase {
             Prompts.summarize(transcript: "T."),
             Prompts.progressNote(format: .soap, transcript: "T."),
             Prompts.progressNote(format: .narrative, transcript: "T."),
-            Prompts.sessionChat(transcript: "T.", history: history, question: "Q?"),
-            Prompts.patientChat(context: "===== Session [S1] January 1, 2026 =====\nT.", history: history, question: "Q?"),
+            Prompts.sessionChat(transcript: "T.", history: history),
+            Prompts.patientChat(context: "===== Session [S1] January 1, 2026 =====\nT.", history: history),
         ]
         for prompt in prompts {
             XCTAssertTrue(prompt.contains(Prompts.transcriptLegend))
@@ -98,10 +97,12 @@ final class PromptsTests: XCTestCase {
             ("summarize", Prompts.summarize(transcript: t, patientBackground: "BACKGROUND"), ["transcript"]),
             ("note", Prompts.progressNote(format: .soap, transcript: t, notes: "NOTES", comments: ["COMMENT"], patientBackground: "BACKGROUND"),
              ["transcript"]),
-            ("chat", Prompts.sessionChat(transcript: t, notes: "NOTES", comments: ["COMMENT"], patientBackground: "BACKGROUND", history: history, question: "QUESTION?"),
+            ("chat", Prompts.sessionChat(transcript: t, notes: "NOTES", comments: ["COMMENT"], patientBackground: "BACKGROUND", history: history)
+                + Prompts.chatQuestion("QUESTION?"),
              ["transcript", "summary"]),
-            ("patient", Prompts.patientChat(context: UntrustedText(.digest, "DIGEST").rendered, history: history, question: "QUESTION?"), ["digest", "summary"]),
-            ("compact", Prompts.compactChat(history: history, focus: "FOCUS"), ["summary"]),
+            ("patient", Prompts.patientChat(context: UntrustedText(.digest, "DIGEST").rendered, history: history) + Prompts.chatQuestion("QUESTION?"),
+             ["digest", "summary"]),
+            ("compact", Prompts.compactSystem("BASE", history: history) + Prompts.compactChat(focus: "FOCUS"), ["summary"]),
             ("section", Prompts.sectionDigest(text: t, anchor: "[0:00–5:00]"), ["transcript"]),
             ("session digest", Prompts.sessionDigest(sections: [(anchor: "[0:00–5:00]", digest: "DIGEST")]), ["digest"]),
             ("check", Prompts.noteCheck(draft: "DRAFT", material: .transcript(t)), ["transcript", "draft"]),

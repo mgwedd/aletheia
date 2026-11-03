@@ -264,7 +264,7 @@ final class ChatStreamRunner: ObservableObject {
             // Quitting: keep the saved note or thread as it was rather than
             // saving a half-written answer, and raise nothing.
             if self.queue?.isShutDown == true { return }
-            if let failure = self.failure, self.target.isEmpty {
+            if let failure = self.failure, self.target.isEmpty || failure is DiscardsPartialReply {
                 onError(failure)
             } else {
                 onFinish(self.target)
@@ -280,6 +280,10 @@ final class ChatStreamRunner: ObservableObject {
         }
     }
 }
+
+/// A failure after which the text already written is not kept: the run ends
+/// in `onError`, never `onFinish`. Other failures keep a partial answer.
+protocol DiscardsPartialReply: Error {}
 
 extension Array where Element == ChatMessage {
     /// Insert or replace a message by id, preserving its original timestamp so a
