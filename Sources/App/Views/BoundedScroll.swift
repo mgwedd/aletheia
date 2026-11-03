@@ -26,17 +26,23 @@ enum BoundedScrollLayout {
 struct BoundedScroll<Content: View>: View {
     private let content: Content
     @State private var width: CGFloat?
-    @State private var gutter = BoundedScrollLayout.scrollerGutter()
+    @State private var gutter: CGFloat
 
-    init(@ViewBuilder content: () -> Content) {
+    /// `scrollerGutter` is the room left for the scroller until the system's
+    /// scroller style changes; it is the current style's by default.
+    init(scrollerGutter: CGFloat = BoundedScrollLayout.scrollerGutter(), @ViewBuilder content: () -> Content) {
         self.content = content()
+        _gutter = State(initialValue: scrollerGutter)
     }
 
     var body: some View {
         ScrollView {
-            content.frame(width: width.map { max(0, $0 - gutter) }, alignment: .leading)
+            content.frame(maxWidth: width.map { max(0, $0 - gutter) } ?? .infinity, alignment: .leading)
         }
-        .frame(minHeight: 0, idealHeight: BoundedScrollLayout.idealHeight, maxHeight: .infinity)
+        // A vertical ScrollView takes its content's width. The content's width
+        // comes from this one, so it must take the width it is given instead;
+        // otherwise each pass narrows both by the gutter.
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, idealHeight: BoundedScrollLayout.idealHeight, maxHeight: .infinity)
         .background(GeometryReader { Color.clear.preference(key: BoundedScrollWidth.self, value: $0.size.width) })
         .onPreferenceChange(BoundedScrollWidth.self) { width = $0 }
         .onReceive(NotificationCenter.default.publisher(for: NSScroller.preferredScrollerStyleDidChangeNotification)) { _ in

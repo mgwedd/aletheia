@@ -41,11 +41,11 @@ final class BoundedScrollTests: XCTestCase {
     }
 
     /// The content is as wide whether it scrolls or not, so a scroller
-    /// appearing never rewraps it.
+    /// appearing never rewraps it, whichever kind of scroller the Mac shows.
     func testTheContentKeepsItsWidthWhenItGrowsLongEnoughToScroll() {
-        func contentWidth(lines: Int) -> CGFloat {
+        func contentWidth(lines: Int, gutter: CGFloat) -> CGFloat {
             var measured: CGFloat = 0
-            let view = BoundedScroll {
+            let view = BoundedScroll(scrollerGutter: gutter) {
                 VStack(spacing: 0) { ForEach(0..<lines, id: \.self) { Text("line \($0)").frame(height: 20) } }
                     .frame(maxWidth: .infinity)
                     .background(GeometryReader { geo in Color.clear
@@ -54,12 +54,14 @@ final class BoundedScrollTests: XCTestCase {
             }
             let host = NSHostingView(rootView: view.frame(width: 300, height: 200))
             host.frame = NSRect(x: 0, y: 0, width: 300, height: 200)
-            for _ in 0..<3 { host.layoutSubtreeIfNeeded(); RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+            for _ in 0..<5 { host.layoutSubtreeIfNeeded(); RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
             return measured
         }
-        let short = contentWidth(lines: 2), long = contentWidth(lines: 200)
-        XCTAssertEqual(short, 300 - BoundedScrollLayout.scrollerGutter(), accuracy: 1)
-        XCTAssertEqual(long, short, accuracy: 1)
+        for gutter in [BoundedScrollLayout.scrollerGutter(style: .overlay), BoundedScrollLayout.scrollerGutter(style: .legacy)] {
+            let short = contentWidth(lines: 2, gutter: gutter), long = contentWidth(lines: 200, gutter: gutter)
+            XCTAssertEqual(short, 300 - gutter, accuracy: 1, "gutter \(gutter)")
+            XCTAssertEqual(long, short, accuracy: 1, "gutter \(gutter)")
+        }
     }
 
     /// The note tab's reader is an AppKit scroll view, which, like
