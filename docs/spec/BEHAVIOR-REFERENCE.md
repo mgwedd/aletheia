@@ -2188,6 +2188,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/ExportStatusToast.swift` · `qa: EXPORT-03`
 - **UX-021** When the user presses Escape, a sheet or search closes.
   `surface: ui` · `evidence: Sources/App/Services/ShortcutCatalog.swift:62` · `qa: MENUBAR-11`
+- **UX-022** When the app quits after the built-in model ran, the model is unloaded first and the app closes with no crash report.
+  `surface: background` · `evidence: Sources/App/Services/Shutdown/AppLifecycle.swift, Sources/App/Services/Llama/LlamaEngine.swift` · `qa: MENUBAR-16`
+- **UX-023** When the app receives SIGTERM, SIGINT or SIGHUP, it quits as for ⌘Q, closing any open sheet first, winding down running work and saving interrupted work for the next launch.
+  `surface: background` · `evidence: Sources/App/Services/Shutdown/QuitSignals.swift` · `qa: MENUBAR-17`
 
 ## Legal & consent (LEG)
 
