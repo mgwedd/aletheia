@@ -160,6 +160,7 @@ private extension NSFont {
 struct AnswerTextView: NSViewRepresentable {
     let blocks: [MarkdownBlock]
     let look: AnswerText.Look
+    var identifier = "chat.answer-text"
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -185,7 +186,7 @@ struct AnswerTextView: NSViewRepresentable {
         view.isAutomaticDataDetectionEnabled = false
         view.usesFontPanel = false
         view.selectedTextAttributes = [.backgroundColor: Theme.accentTint.nsColor, .foregroundColor: Theme.text.nsColor]
-        view.setAccessibilityIdentifier("chat.answer-text")
+        view.setAccessibilityIdentifier(identifier)
         view.setContentHuggingPriority(.defaultLow, for: .horizontal)
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         apply(to: view, context: context)

@@ -454,7 +454,8 @@ private struct ChatBubble: View {
             // A compaction: what later answers remember of everything above.
             VStack(alignment: .leading, spacing: 8) {
                 Chip(ChatWords.compactedChip)
-                MarkdownMessageView(text: ModelReply.plain(message.text), size: 12, lineSpacing: 0, ink: Theme.muted)
+                MarkdownMessageView(text: ModelReply.plain(message.text), size: 12, lineSpacing: 0, ink: Theme.muted,
+                                    textID: "chat.summary-text")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
             }
