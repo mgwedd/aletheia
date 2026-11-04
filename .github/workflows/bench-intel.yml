@@ -1,0 +1,337 @@
+name: Benchmarks (Intel)
+
+# Runs the on-device engines on a GitHub-hosted Intel Mac, the one place CI
+# runs the x86_64 build (InferenceBenchmarkTests): Whisper on a synthetic
+# spoken clip and the default MedGemma 1.5 4B (Q4_K_M) on a synthetic
+# transcript. Timings are reported in the step summary.
+#
+# On PRs it is a smoke bench of about 10 minutes: base.en and the app's own
+# path and thread count only. It fails on garbled or empty output, a missed
+# answer check, or a gross speed regression (the floors in
+# InferenceBenchmarkTests). A manual dispatch is the full bench: both GPU
+# paths, small.en, 4 and 8 threads, the prefix-reuse check and the 50-minute
+# workload, taking 1-2 hours. It never runs on PRs.
+#
+# By default it links the runtime the app ships: the zips Package.swift pins
+# (the AVX2 x86_64 build on our runtime-x86avx2-* prerelease), so the numbers
+# describe what users get. A manual dispatch can instead link upstream's own
+# zips (the `// upstream-zip:` pins, SSE3-only on x86_64) for "before"
+# numbers, turn prompt-cache reuse off, and run the 50-minute session workload
+# (SessionWorkloadBenchmarkTests: digest, a Fast note, a first and a follow-up
+# Ask). The swap is local to the run; nothing is published.
+#
+# The `tests` job builds the app on the same runner and runs, against the
+# pinned runtime, only the tests about Intel: the engines, models, prompt
+# cache and hardware checks, and SETTINGS-18/19. The full unit and acceptance
+# suites run on Apple silicon in ci.yml; the slow source scans there have
+# nothing Intel-specific to check, and the job stays under about 10 minutes.
+#
+# Runs on PRs that touch the engines, their settings or this workflow (the
+# `changes` job, scripts/ci-changes.sh inference) and on manual dispatch.
+# Standard runners only (free for this public repo).
+#
+# Supply-chain note: only first-party GitHub actions and Homebrew CLIs, as in
+# bench.yml. Models come from the same pinned Hugging Face commits the app
+# uses, checked against the app's SHA-256 pins.
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      runtime:
+        description: Runtime to link (pinned = what Package.swift pins)
+        type: choice
+        options: [pinned, upstream]
+        default: pinned
+      reuse:
+        description: Reuse the cached prompt prefix
+        type: boolean
+        default: true
+      workload:
+        description: Run the 50-minute session workload
+        type: boolean
+        default: true
+
+concurrency:
+  group: bench-intel-${{ github.ref }}-${{ inputs.runtime }}-${{ inputs.reuse }}-${{ inputs.workload }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Inference benchmark changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      inference: ${{ steps.diff.outputs.inference }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Did engine inputs change?
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: echo "inference=$(./scripts/ci-changes.sh inference "$BASE_SHA")" >> "$GITHUB_OUTPUT"
+
+  intel:
+    name: Benchmarks (Intel)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.inference == 'true') }}
+    runs-on: macos-15-intel
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 300 || 20 }}
+    env:
+      NSUnbufferedIO: "YES"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Describe the runner
+        run: |
+          sysctl -n machdep.cpu.brand_string
+          sysctl -n hw.physicalcpu hw.logicalcpu hw.memsize
+          sysctl -a | grep -E '^hw.optional.(avx|fma|f16c|bmi)' || true
+          system_profiler SPDisplaysDataType || true
+          xcodebuild -version
+
+      - name: Install tools (XcodeGen, xcbeautify)
+        run: brew install xcodegen xcbeautify
+
+      # upstream: point both packages at upstream's own zips (the `// upstream`
+      # pins) for "before" numbers. pinned: what the app ships, unchanged.
+      - name: Choose the runtime
+        env:
+          RUNTIME: ${{ inputs.runtime || 'pinned' }}
+        run: |
+          set -euo pipefail
+          for spec in llama:LlamaCpp whisper:WhisperCpp; do
+            name=${spec%%:*}; pkg=Packages/${spec#*:}/Package.swift
+            read -r _ _ repo tag _ < <(grep -E '^// upstream: ' "$pkg")
+            read -r _ _ zipsha < <(grep -E '^// upstream-zip: ' "$pkg")
+            case "$RUNTIME" in
+              pinned) ;;
+              upstream)
+                sed -i '' -E "s#^([[:space:]]*url: )\"[^\"]+\"#\1\"https://github.com/$repo/releases/download/$tag/$name-$tag-xcframework.zip\"#; s#^([[:space:]]*checksum: )\"[0-9a-f]{64}\"#\1\"$zipsha\"#" "$pkg" ;;
+            esac
+            sed -n '/binaryTarget/,/)/p' "$pkg"
+          done
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Cache Swift packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/SourcePackages
+          key: spm-macos-15-intel-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
+          restore-keys: spm-macos-15-intel-
+
+      - name: Cache models
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: models
+          key: bench-models-${{ hashFiles('Sources/App/Services/WhisperModelPins.swift', 'Sources/App/Services/Llama/LlamaModel.swift') }}
+
+      # URLs and SHA-256s are read from the app's own pins, so the benchmark
+      # uses exactly the bytes users download.
+      - name: Download pinned models
+        run: |
+          set -euo pipefail
+          mkdir -p models
+          pins=Sources/App/Services/WhisperModelPins.swift
+          rev=$(sed -nE 's/.*static let revision = "([0-9a-f]+)".*/\1/p' "$pins")
+          fetch() { # fetch <url> <file> <sha256>
+            if [ ! -f "models/$2" ] || [ "$(shasum -a 256 "models/$2" | cut -d' ' -f1)" != "$3" ]; then
+              curl -fL --retry 3 -o "models/$2" "$1"
+            fi
+            echo "$3  models/$2" | shasum -a 256 -c -
+          }
+          for m in baseEn:base.en smallEn:small.en; do
+            sha=$(sed -nE "s/.*case \.${m%%:*}: return \"([0-9a-f]{64})\".*/\1/p" "$pins")
+            fetch "https://huggingface.co/ggerganov/whisper.cpp/resolve/$rev/ggml-${m#*:}.bin" "ggml-${m#*:}.bin" "$sha"
+          done
+          llama=Sources/App/Services/Llama/LlamaModel.swift
+          lrev=$(sed -nE 's/.*case \.medgemma15_4b: return "([0-9a-f]{40})".*/\1/p' "$llama")
+          lsha=$(sed -nE 's/.*case \.medgemma15_4b: return "([0-9a-f]{64})".*/\1/p' "$llama")
+          fetch "https://huggingface.co/unsloth/medgemma-1.5-4b-it-GGUF/resolve/$lrev/medgemma-1.5-4b-it-Q4_K_M.gguf" \
+            medgemma-1.5-4b-it-Q4_K_M.gguf "$lsha"
+
+      # About 20 seconds of synthetic speech (macOS text-to-speech), 16 kHz mono.
+      - name: Make the speech clip
+        run: |
+          set -euo pipefail
+          cat > clip.txt <<'EOF'
+          Thanks for coming in today. Last time we talked about your sleep and the move to the new flat.
+          This week I want to check how the evening routine is going, and whether the walks after dinner have helped.
+          You mentioned that work has been busy and that you have been waking up early on most days.
+          Let us look at what happens in the hour before bed, and pick one small change to try before we meet again next Tuesday.
+          EOF
+          tr '\n' ' ' < clip.txt | sed 's/  */ /g' > clip.line
+          say -f clip.line -o clip.aiff
+          afconvert -f WAVE -d LEI16@16000 -c 1 clip.aiff clip.wav
+          afinfo clip.wav | grep -E 'duration|Data format'
+
+      # Debug, so @testable works. The engines are the prebuilt, optimized
+      # runtimes either way; the full bench also optimizes the app's Swift.
+      - name: Run inference benchmarks
+        env:
+          EVENT: ${{ github.event_name }}
+          RUNTIME: ${{ inputs.runtime || 'pinned' }}
+          REUSE: ${{ inputs.reuse }}
+          WORKLOAD: ${{ inputs.workload }}
+        run: |
+          set -o pipefail
+          export TEST_RUNNER_ALETHEIA_INFERENCE_BENCH=1
+          export TEST_RUNNER_ALETHEIA_BENCH_RUNTIME="$RUNTIME"
+          tests=(-only-testing:AletheiaTests/InferenceBenchmarkTests)
+          if [ "$EVENT" = workflow_dispatch ]; then
+            export TEST_RUNNER_ALETHEIA_BENCH_PATHS=both
+            export TEST_RUNNER_ALETHEIA_BENCH_THREADS="4 8"
+            export TEST_RUNNER_ALETHEIA_BENCH_BUDGETS="8192 16384"
+            if [ "$REUSE" = false ]; then export TEST_RUNNER_ALETHEIA_BENCH_REUSE=0; fi
+            if [ "$WORKLOAD" = true ]; then export TEST_RUNNER_ALETHEIA_BENCH_WORKLOAD=1; fi
+            tests+=(-only-testing:AletheiaTests/SessionWorkloadBenchmarkTests SWIFT_OPTIMIZATION_LEVEL=-O)
+          else
+            export TEST_RUNNER_ALETHEIA_BENCH_WHISPER_MODELS=base.en
+          fi
+          # The speed floors hold for this runner and the runtime the app ships.
+          if [ "$RUNTIME" = pinned ]; then export TEST_RUNNER_ALETHEIA_BENCH_FLOORS=1; fi
+          export TEST_RUNNER_ALETHEIA_BENCH_CLIP="$PWD/clip.wav"
+          export TEST_RUNNER_ALETHEIA_BENCH_CLIP_TEXT="$(cat clip.line)"
+          export TEST_RUNNER_ALETHEIA_BENCH_WHISPER_DIR="$PWD/models"
+          export TEST_RUNNER_ALETHEIA_BENCH_GGUF="$PWD/models/medgemma-1.5-4b-it-Q4_K_M.gguf"
+          status=0
+          xcodebuild test \
+            -project Aletheia.xcodeproj \
+            -scheme Aletheia \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            "${tests[@]}" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            2>&1 | tee bench.log | xcbeautify --renderer github-actions || status=$?
+          grep -E '^BENCH-INFO' bench.log || true
+          mkdir -p bench
+          grep -o 'BENCH-INFER {.*}' bench.log | sed 's/^BENCH-INFER //' | jq -s . > bench/inference.json
+          exit $status
+
+      - name: Summarize
+        if: ${{ !cancelled() && hashFiles('bench/inference.json') != '' }}
+        env:
+          RUNTIME: ${{ inputs.runtime || 'pinned' }}
+          REUSE: ${{ inputs.reuse }}
+        run: |
+          {
+            echo '### Inference on Intel'
+            grep -E '^BENCH-INFO' bench.log | sed 's/^BENCH-INFO /- /' || true
+            echo
+            echo "Runtime: ${RUNTIME}, prompt-cache reuse: ${REUSE:-true}"
+            echo
+            echo '| Engine | Model | GPU | Threads | Load s | Run s | Speed | Est. 50-min session | Readable |'
+            echo '|---|---|---|---|---|---|---|---|---|'
+            jq -r '.[] | if .kind == "whisper" then
+                "| Whisper | \(.model) | \(.gpu) | | \(.load_s*10|round/10) | \(.run_s*10|round/10) | \(.realtime_factor*100|round/100)× realtime | \(.est_50min_s/60|round) min | \(.readable) (WER \(.wer*100|round)%) |"
+              elif .kind == "llama" then
+                "| llama.cpp | \(.model) | \(.gpu) | \(.threads) | \(.load_s*10|round/10) | \(.run_s*10|round/10) | prefill \(.prefill_tps*10|round/10) tok/s, decode \(.decode_tps*10|round/10) tok/s | | \(.readable) (answer found: \(.answered)) |"
+              else empty end' bench/inference.json
+            jq -r '.[] | select(.kind == "prefix-reuse") |
+              "\nPrefix reuse: \(.total_tokens) prompt tokens, \(.kept_tokens) kept, \(.read_tokens) read; \(.warm_s*10|round/10) s warm vs \(.cold_s*10|round/10) s cold; same output: \(.same_output)"' bench/inference.json
+            if jq -e 'any(.[]; .kind == "workload")' bench/inference.json > /dev/null; then
+              echo
+              echo '| Budget | Stage | Calls | Time | Prompt read | Kept from cache | Written | Prefill tok/s | Decode tok/s |'
+              echo '|---|---|---|---|---|---|---|---|---|'
+              jq -r '.[] | select(.kind == "workload") |
+                "| \(.budget) | \(.stage) | \(.calls) | \(.seconds/6|round/10) min | \(.prompt_tokens) | \(.cached_tokens) | \(.output_tokens) | \(if .prompt_s > 0 then (.prompt_tokens/.prompt_s*10|round/10) else 0 end) | \(if .output_s > 0 then (.output_tokens/.output_s*10|round/10) else 0 end) |"' bench/inference.json
+            fi
+            echo
+            echo '<details><summary>Output text</summary>'
+            echo
+            jq -r '.[] | "- \(.kind) \(.model // .stage // "") \(.budget // "") gpu=\(.gpu // false): \(.text | gsub("\n"; " ") | .[0:400])"' bench/inference.json
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-intel
+          path: |
+            bench/inference.json
+            bench.log
+          retention-days: 30
+
+  # The app built and tested on Intel against the pinned (shipped) runtime:
+  # the tests about Intel, not the full suites (see the header). The benchmark
+  # job above covers loading and running the real models on the same runtime.
+  tests:
+    name: Tests (Intel)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.inference == 'true') }}
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    env:
+      NSUnbufferedIO: "YES"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install tools (XcodeGen, xcbeautify)
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Cache Swift packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/SourcePackages
+          key: spm-macos-15-intel-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
+          restore-keys: spm-macos-15-intel-
+
+      # Engines and runtimes, models and the memory-based advice, the prompt
+      # cache, and the hardware checks behind the Intel CPU path.
+      - name: Run the Intel unit tests
+        run: |
+          set -o pipefail
+          tests=()
+          for t in FineTunedModelTests EmbeddedLlamaFeatureModuleTests BuiltInEngineOnlyTests InferenceQueueTests \
+                   LlamaContextSizeTests LlamaModelTests LlamaPromptCacheTests LlamaPromptTests LlamaUnloadTests \
+                   ModelAdvisorTests WhisperEngineTests WhisperModelDownloaderTests; do
+            tests+=("-only-testing:AletheiaTests/$t")
+          done
+          xcodebuild test \
+            -project Aletheia.xcodeproj \
+            -scheme Aletheia \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            -test-timeouts-enabled YES \
+            "${tests[@]}" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            | xcbeautify --renderer github-actions
+
+      - name: Run the Intel acceptance tests (SETTINGS-18, SETTINGS-19)
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Aletheia.xcodeproj \
+            -scheme AletheiaAcceptance \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            -only-testing:AletheiaAcceptance/SettingsSpec/test_SETTINGS_18 \
+            -only-testing:AletheiaAcceptance/SettingsSpec/test_SETTINGS_19 \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            | xcbeautify --renderer github-actions

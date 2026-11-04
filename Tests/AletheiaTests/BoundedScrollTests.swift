@@ -57,7 +57,14 @@ final class BoundedScrollTests: XCTestCase {
             for _ in 0..<5 { host.layoutSubtreeIfNeeded(); RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
             return measured
         }
-        for gutter in [BoundedScrollLayout.scrollerGutter(style: .overlay), BoundedScrollLayout.scrollerGutter(style: .legacy)] {
+        // The scroll view draws the system's scroller style, so only the
+        // gutters that style allows: with overlay scrollers both (reserving
+        // room is harmless), with legacy ones only the legacy gutter, the one
+        // the view uses then. "No room" beside a legacy scroller never happens.
+        // The style is settled once a scroll view has been laid out.
+        _ = contentWidth(lines: 2, gutter: 0)
+        let styles: [NSScroller.Style] = NSScroller.preferredScrollerStyle == .legacy ? [.legacy] : [.overlay, .legacy]
+        for gutter in styles.map({ BoundedScrollLayout.scrollerGutter(style: $0) }) {
             let short = contentWidth(lines: 2, gutter: gutter), long = contentWidth(lines: 200, gutter: gutter)
             XCTAssertEqual(short, 300 - gutter, accuracy: 1, "gutter \(gutter)")
             XCTAssertEqual(long, short, accuracy: 1, "gutter \(gutter)")

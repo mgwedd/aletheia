@@ -33,7 +33,7 @@ enum LocalLLMEngineError: LocalizedError, Equatable {
         case .modelNotDownloaded:
             return "The AI model isn't downloaded yet. Download it in Settings › AI and models."
         case .outOfMemory:
-            return "There isn't enough free memory to run the AI model right now. Close other apps or switch to the Fast (3B) model in Settings › AI and models."
+            return "There isn't enough free memory to run the AI model right now. Close other apps and try again, or choose MedGemma 1.5 4B, which needs less memory, in Settings › AI and models."
         case .unavailable(let reason),
              .loadFailed(let reason),
              .generationFailed(let reason):

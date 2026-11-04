@@ -118,4 +118,23 @@ final class SettingsSpec: AcceptanceCase {
         then(failed).tryAgainStartsTheDownloadAgain()
         then(failed).reportABugOpensTheBugForm()
     }
+
+    func test_SETTINGS_18() async throws {
+        for memoryGB in [8, 16] {
+            let intel = when.setUpFresh(onIntelMac: true, memoryGB: memoryGB)
+            then(intel).startsWithSpeechModel(Copy.baseSpeechModel)
+            then(intel).startsWithEffort(Copy.fastEffort)
+            then(intel).runsOnTheCPU()
+        }
+        let appleSilicon = when.setUpFresh(onIntelMac: false, memoryGB: 16)
+        then(appleSilicon).startsWithEffort(Copy.normalEffort)
+        then(appleSilicon).runsOnTheGPU()
+    }
+
+    func test_SETTINGS_19() async throws {
+        let oldIntel = when.setUpFresh(onIntelMac: true, memoryGB: 8, withAVX2: false)
+        then(oldIntel).saysItCannotRunSpeechOrTheAI()
+        then(when.setUpFresh(onIntelMac: true, memoryGB: 8)).canRunSpeechAndTheAI()
+        then(when.setUpFresh(onIntelMac: false, memoryGB: 16)).canRunSpeechAndTheAI()
+    }
 }

@@ -1208,8 +1208,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModelDownloader.swift` · `qa: SETTINGS-08`
 - **AIE-012** When a model is offered for download, the model's license name is shown with a link, and for the Llama model an "Acceptable Use Policy" link and "Built with Llama" attribution as well.
   `surface: ui` · `evidence: Sources/App/Views/ModelLicenseLink.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-07`
-- **AIE-013** When a speech-to-text model is recommended, Apple silicon with 16 GB or more gets medium.en, Apple silicon with 8 GB or more small.en, Intel with 16 GB or more small.en, and anything else base.en.
-  `surface: ui` · `evidence: Sources/App/Services/ModelAdvisor.swift, Sources/App/Services/HardwareCapabilities.swift` · `qa: SETTINGS-05`
+- **AIE-013** When a speech-to-text model is recommended, Apple silicon with 16 GB or more gets medium.en, Apple silicon with 8 GB or more small.en, and anything else, Intel included, base.en.
+  `surface: ui` · `evidence: Sources/App/Services/ModelAdvisor.swift, Sources/App/Services/HardwareCapabilities.swift` · `qa: SETTINGS-18`
 - **AIE-014** When the prompt room is set, it scales with the Mac's memory: 16K tokens at 8 GB, 32K at 16 GB, 64K at 32 GB or more, one tier lower on Intel, and never below 8K. The selected model may cap it further; MedGemma 27B uses 32K on 32–47 GB Macs. Digest section caps and chat compaction use the effective budget.
   `surface: invariant` · `evidence: Sources/App/Services/ContextBudget.swift` · `qa: NOTE-14`
 - **AIE-015** When a prompt is over the Mac's budget or the model's own limit, the request fails with an explanatory message rather than being cut short.
@@ -1281,6 +1281,12 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-16`
 - **AIE-049** When a model download fails, an alert says why and offers Try Again, which starts the same download again, Report a Bug and Cancel.
   `surface: ui` · `evidence: Sources/App/Views/ModelDownloadFailureAlert.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-17`
+- **AIE-050** When the app is first set up on an Intel Mac, note, session Ask and patient Ask effort start at Fast; Apple silicon starts at Normal. A choice the user made is kept.
+  `surface: ui` · `evidence: Sources/App/Services/ModelAdvisor.swift, Sources/App/Services/AppSettings.swift` · `qa: SETTINGS-18`
+- **AIE-051** On Intel Macs whisper.cpp and llama.cpp run on the CPU (no GPU layers, no Metal device, library-default attention and KV cache); on Apple silicon both run on Metal with flash attention and a q8_0 KV cache. The Benchmarks (Intel) workflow times both paths on an Intel runner and fails if the CPU path's text is garbled.
+  `surface: invariant` · `evidence: Sources/App/Services/InferenceCompute.swift, Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Services/WhisperTranscriber.swift, .github/workflows/bench-intel.yml` · `qa: SETTINGS-18`
+- **AIE-052** The x86_64 slices of llama.cpp and whisper.cpp are our own build of the pinned upstream commit with AVX2, FMA and F16C (Haswell, 2013, and later); the arm64 slices are upstream's, byte for byte. Intel CPU-path engines use one thread per physical core. On an Intel CPU without AVX2 the engines refuse with a clear reason before any runtime code runs, and AI and models shows it.
+  `surface: invariant` · `evidence: scripts/build-x86-runtime.sh, scripts/check-runtime-pins.sh, Sources/App/Services/InferenceCompute.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-19`
 
 ## Patients (PAT)
 

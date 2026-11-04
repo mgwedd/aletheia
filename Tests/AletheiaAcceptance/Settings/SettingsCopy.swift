@@ -10,4 +10,9 @@ extension Copy {
     static let medGemma27B = "MedGemma 27B text"
     static let apertus8B = "Apertus 8B MeditronFO"
     static let healthAIFoundationsTerms = "Health AI Developer Foundations Terms"
+    static let baseSpeechModel = "Base"
+    static let fastEffort = "Fast"
+    static let normalEffort = "Normal"
+    static let cannotRunSpeechOrAI = "can't run Aletheia's speech recognition or AI"
+    static let needsAVX2 = "AVX2"
 }

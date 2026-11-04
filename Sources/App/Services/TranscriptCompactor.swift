@@ -119,6 +119,11 @@ enum TranscriptCompactor {
     /// a back-channel ("Mm hmm", "Uh huh", "Uh oh") stay, and a line that is
     /// only "hmm"-type is kept whole. Text without filler is returned as is.
     static func removeFiller(_ text: String) -> String {
+        // Every filler token contains one of these; most lines have none, and
+        // skipping the regexes for them keeps a 100-session Ask fast on Intel.
+        guard ["um", "uh", "erm", "hm"].contains(where: { text.range(of: $0, options: .caseInsensitive) != nil }) else {
+            return text
+        }
         let ns = text as NSString
         var result = ""
         var pos = 0
@@ -167,6 +172,13 @@ enum TranscriptCompactor {
 
     /// Sentences repeated back to back, across the segments of one turn.
     private static func collapseLoops(_ segments: inout [Segment]) {
+        // Each sentence ends in a terminator, except at most one tail per
+        // segment. Too few sentences for a loop: the text is only trimmed.
+        let terminators = segments.reduce(0) { $0 + $1.text.reduce(0) { $0 + (".!?…".contains($1) ? 1 : 0) } }
+        guard terminators + segments.count >= minLoopRepeats else {
+            for index in segments.indices { segments[index].text = segments[index].text.trimmingCharacters(in: .whitespaces) }
+            return
+        }
         var units: [(segment: Int, text: String, key: String)] = []
         for (i, segment) in segments.enumerated() {
             let ns = segment.text as NSString

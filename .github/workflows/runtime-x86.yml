@@ -1,0 +1,120 @@
+name: x86_64 runtime (AVX2)
+
+# Builds the AVX2 x86_64 slices of llama.cpp and whisper.cpp from the pinned
+# upstream commits (scripts/build-x86-runtime.sh) and checks that the
+# XCFramework each Package.swift points at is exactly that build:
+#   - the rebuilt zip's SHA-256 equals the Package.swift checksum, so the
+#     hosted binary is the pinned source built by this workflow;
+#   - the arm64 slice is byte-for-byte upstream's (the script checks this).
+# While a Package.swift still points at upstream's own zip, the build is
+# checked and uploaded, and nothing is compared.
+#
+# To move a pin: change the `// upstream:` lines, let this workflow build the
+# zips, attach the `x86-runtime` artifact's zips to a prerelease named
+# runtime-x86avx2-<llama tag>-<whisper tag>, then point url/checksum at them.
+# A prerelease is never "latest", so the app's update check ignores it.
+#
+# Runs on PRs that touch the runtime pins, the script or this workflow (the
+# `changes` job, scripts/ci-changes.sh runtime) and on manual dispatch.
+# Standard runners only (free for this public repo).
+#
+# Supply-chain note: first-party actions only; the sources come from
+# github.com/ggml-org at commits pinned in Package.swift, checked against the
+# release tags. Nothing touches PHI.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: runtime-x86-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Runtime changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      runtime: ${{ steps.diff.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Did the runtime pins change?
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: echo "runtime=$(./scripts/ci-changes.sh runtime "$BASE_SHA")" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: x86_64 runtime (AVX2)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true') }}
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      # The compiler is part of the build: the hosted zips were built with
+      # this Xcode, and the same Xcode rebuilds them byte for byte.
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Describe the toolchain
+        run: |
+          xcodebuild -version
+          ls -d /Applications/Xcode*.app
+          xcrun clang --version
+          cmake --version | head -1
+
+      - name: Build llama.cpp
+        run: scripts/build-x86-runtime.sh llama out
+
+      - name: Build whisper.cpp
+        run: scripts/build-x86-runtime.sh whisper out
+
+      - name: Compare with the pinned XCFrameworks
+        run: |
+          set -euo pipefail
+          status=0
+          for pkg in Packages/LlamaCpp/Package.swift Packages/WhisperCpp/Package.swift; do
+            url=$(sed -nE 's/^[[:space:]]*url: "([^"]+)",?$/\1/p' "$pkg")
+            pinned=$(sed -nE 's/^[[:space:]]*checksum: "([0-9a-f]{64})",?$/\1/p' "$pkg")
+            built_file="out/${url##*/}"
+            case "$url" in
+              *-x86avx2-xcframework.zip)
+                [ -f "$built_file" ] || { echo "::error::$pkg points at ${url##*/}, which this build does not make"; status=1; continue; }
+                built=$(cut -c1-64 "$built_file.sha256")
+                if [ "$built" = "$pinned" ]; then
+                  echo "$pkg: the pinned zip is this build ($built)"
+                else
+                  echo "::error::$pkg pins $pinned, this build of the same source is $built"
+                  status=1
+                fi ;;
+              *) echo "$pkg still uses upstream's zip; built $(cat out/*.sha256 | tr '\n' ' ')" ;;
+            esac
+          done
+          {
+            echo '### x86_64 runtime (AVX2)'
+            echo '```'
+            cat out/*.sha256
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Upload the XCFrameworks
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: x86-runtime
+          path: |
+            out/*.zip
+            out/*.sha256
+            out/*.log
+          retention-days: 30

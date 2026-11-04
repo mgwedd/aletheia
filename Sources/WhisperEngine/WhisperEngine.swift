@@ -42,6 +42,9 @@ public final class WhisperEngine {
     /// The linked whisper.cpp version, e.g. "1.9.5".
     public static var version: String { String(cString: whisper_version()) }
 
+    /// The CPU features the linked runtime was built with (ggml's own list).
+    public static var systemInfo: String { String(cString: whisper_print_system_info()) }
+
     /// Decoder threads. With Metal the encoder runs on the GPU, so this mostly
     /// matters for decoding and for the CPU fallback: use the cores, but leave
     /// two for the app and cap it where whisper.cpp stops scaling.

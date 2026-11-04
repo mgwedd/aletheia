@@ -70,6 +70,30 @@ final class PromptTurnTests: XCTestCase {
         XCTAssertFalse(spy.prompt.contains("CONTEXT-LINE"))
         XCTAssertFalse(spy.prompt.contains("Answer in bullets"))
     }
+
+    /// A follow-up sends the same system turn (instructions and session) as
+    /// the question before it, with the conversation after it, so the engine
+    /// keeps what it already read of the session (`LlamaPromptCache`).
+    func testASessionFollowUpSendsTheSameSystemTurnAsTheQuestionBeforeIt() async throws {
+        let spy = TurnSpy()
+        let service = AssistantService(assistant: spy, model: "m")
+        _ = try await service.answerAboutSession(transcript: "TRANSCRIPT", history: [], question: "How was sleep?")
+        let first = spy.system
+        _ = try await service.answerAboutSession(
+            transcript: "TRANSCRIPT",
+            history: [
+                ChatMessage(role: .user, text: "How was sleep?"),
+                ChatMessage(role: .assistant, text: "Worse since the move."),
+                ChatMessage(role: .user, text: "Since when?"),
+            ],
+            question: "Since when?")
+        XCTAssertTrue(first.contains("TRANSCRIPT"))
+        XCTAssertEqual(spy.system, first)
+        XCTAssertEqual(spy.turns, [
+            PromptTurn(role: .user, text: "How was sleep?"),
+            PromptTurn(role: .assistant, text: "Worse since the move."),
+        ])
+    }
 }
 
 private final class TurnSpy: Assistant, @unchecked Sendable {

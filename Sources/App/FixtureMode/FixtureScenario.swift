@@ -83,6 +83,10 @@ struct FixtureScenario: Codable, Equatable {
     var aiStreamsWords: Bool?
     /// A word-streamed reply stays open after its last word until stopped.
     var aiHoldsOpen: Bool?
+    /// Reports an Intel Mac in place of this one, for the fresh-install defaults.
+    var intel: Bool?
+    /// With `intel`: the CPU lacks AVX2, so speech and the AI can't run.
+    var noAVX2: Bool?
     /// The model's reading window in tokens, in place of the Mac's own.
     var contextTokens: Int?
     /// The headphones tip is still to come before the first recording. Unset:

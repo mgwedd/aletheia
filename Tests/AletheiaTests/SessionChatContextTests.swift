@@ -82,4 +82,38 @@ final class SessionChatContextTests: XCTestCase {
         XCTAssertFalse(prompt.contains("PRIVATE-PROCESS-NOTE"))
         XCTAssertEqual(prompt, Prompts.chatQuestion("How was her mood?"))
     }
+
+    /// A follow-up's system turn (instructions and session) is the same as
+    /// the question before it, so the engine keeps what it already read of
+    /// the session and reads only the conversation and the new question.
+    @MainActor func testAFollowUpSendsTheSameSystemTurnAsTheQuestionBeforeIt() async throws {
+        let fake = CapturingAssistant()
+        let service = AssistantService(assistant: fake, model: "m")
+        func ask(_ history: [ChatMessage], _ question: String) async throws -> String? {
+            let stream = LongSessionChat.stream(
+                transcript: "[00:00] Client: Sleep has been worse since the move.",
+                notes: "Brighter.",
+                history: history,
+                question: question,
+                sessionID: UUID(),
+                service: service,
+                builder: DigestBuilder(queue: InferenceQueue()),
+                loadDigest: { nil },
+                saveDigest: { _ in },
+                live: { _, _ in },
+                coverage: { _ in }
+            )
+            for try await _ in stream {}
+            return fake.lastSystem
+        }
+        let asked = try await ask([], "How is sleep?")
+        let first = try XCTUnwrap(asked)
+        let followUp = try await ask([
+            ChatMessage(role: .user, text: "How is sleep?"),
+            ChatMessage(role: .assistant, text: "Worse since the move."),
+            ChatMessage(role: .user, text: "Since when?"),
+        ], "Since when?")
+        XCTAssertTrue(first.contains("Sleep has been worse since the move."))
+        XCTAssertEqual(followUp, first)
+    }
 }

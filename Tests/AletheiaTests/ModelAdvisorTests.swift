@@ -33,9 +33,49 @@ final class ModelAdvisorTests: XCTestCase {
         XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: hardware(appleSilicon: true, memGB: 16), model: .apertus8b_meditronFO), 32_768)
     }
 
-    func testIntel16GBKeepsTranscriptionLighter() {
-        let r = ModelAdvisor.recommend(for: hardware(appleSilicon: false, memGB: 16))
-        XCTAssertEqual(r.whisperModel, .smallEn)
+    func testIntelGetsBaseTranscriptionAndFastEffort() {
+        for memGB in [8, 16, 32] {
+            let r = ModelAdvisor.recommend(for: hardware(appleSilicon: false, memGB: memGB))
+            XCTAssertEqual(r.whisperModel, .baseEn, "\(memGB) GB")
+            XCTAssertEqual(r.effort, .fast, "\(memGB) GB")
+            XCTAssertEqual(r.medGemmaModel, .medgemma15_4b, "\(memGB) GB")
+        }
+    }
+
+    func testAppleSiliconStartsAtDefaultEffort() {
+        XCTAssertEqual(ModelAdvisor.recommend(for: hardware(appleSilicon: true, memGB: 8)).effort, .default)
+    }
+
+    func testIntelRunsInferenceOnTheCPU() {
+        XCTAssertFalse(InferenceCompute.usesGPU(on: hardware(appleSilicon: false, memGB: 16)))
+        XCTAssertTrue(InferenceCompute.usesGPU(on: hardware(appleSilicon: true, memGB: 16)))
+    }
+
+    func testCPUPathUsesOneThreadPerPhysicalCore() {
+        XCTAssertEqual(InferenceCompute.cpuThreads(physicalCores: 4, activeCores: 8), 4)
+        XCTAssertEqual(InferenceCompute.cpuThreads(physicalCores: 4, activeCores: 4), 4)
+        XCTAssertEqual(InferenceCompute.cpuThreads(physicalCores: 8, activeCores: 2), 2)
+        XCTAssertEqual(InferenceCompute.cpuThreads(physicalCores: 0, activeCores: 0), 1)
+        XCTAssertGreaterThanOrEqual(InferenceCompute.cpuThreads, 1)
+    }
+
+    func testOnlyIntelWithoutAVX2IsRefused() {
+        var oldIntel = hardware(appleSilicon: false, memGB: 8)
+        oldIntel.hasAVX2 = false
+        XCTAssertEqual(InferenceCompute.unsupportedReason(on: oldIntel), InferenceCompute.unsupportedCPUMessage)
+        XCTAssertNil(InferenceCompute.unsupportedReason(on: hardware(appleSilicon: false, memGB: 8)))
+        XCTAssertNil(InferenceCompute.unsupportedReason(on: hardware(appleSilicon: true, memGB: 8)))
+    }
+
+    func testStoredEffortWinsOverIntelDefault() {
+        let suite = "ModelAdvisorTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let intel = hardware(appleSilicon: false, memGB: 8)
+        AppSettings(defaults: defaults, hardware: intel) { _ in false }.noteEffort = .focus
+        let reopened = AppSettings(defaults: defaults, hardware: intel) { _ in false }
+        XCTAssertEqual(reopened.noteEffort, .focus)
+        XCTAssertEqual(reopened.sessionChatEffort, .fast)
     }
 
     func testLowMemoryGetsSmallestModels() {

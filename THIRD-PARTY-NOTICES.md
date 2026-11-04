@@ -7,7 +7,7 @@ Aletheia includes the open-source software listed below and can download the AI 
 ### llama.cpp
 
 - Package: `LlamaCpp` (`Packages/LlamaCpp`)
-- Version: build b11149 (prebuilt `llama-b11149-xcframework.zip`, pinned by SHA-256 checksum)
+- Version: build b11149 (upstream's prebuilt `llama-b11149-xcframework.zip` with its x86_64 slice rebuilt for AVX2, without Metal, from the same commit by `scripts/build-x86-runtime.sh`; the arm64 slice is upstream's; hosted on our prerelease as build runtime-x86avx2-cpu-b11149-b5454; pinned by SHA-256 checksum)
 - Source: https://github.com/ggml-org/llama.cpp/releases/tag/b11149
 - License: MIT License
 - Copyright: Copyright (c) 2023-2026 The ggml authors
@@ -39,7 +39,7 @@ SOFTWARE.
 ### whisper.cpp
 
 - Package: `WhisperCpp` (`Packages/WhisperCpp`)
-- Version: build b5454 (whisper.cpp v1.9.5; prebuilt `whisper-b5454-xcframework.zip`, pinned by SHA-256 checksum)
+- Version: build b5454 (whisper.cpp v1.9.5; upstream's prebuilt `whisper-b5454-xcframework.zip` with its x86_64 slice rebuilt for AVX2, without Metal, from the same commit by `scripts/build-x86-runtime.sh`; the arm64 slice is upstream's; hosted on our prerelease as build runtime-x86avx2-cpu-b11149-b5454; pinned by SHA-256 checksum)
 - Source: https://github.com/ggml-org/whisper.cpp/releases/tag/b5454
 - License: MIT License
 - Copyright: Copyright (c) 2023-2026 The ggml authors

@@ -2,7 +2,7 @@ import Foundation
 
 /// Whisper model choices, ordered smallest/fastest to largest/most accurate.
 /// whisper.cpp runs entirely on-device (no network, no CLI), on the GPU via
-/// Metal. Larger models are slower per minute of audio and more accurate.
+/// Metal on Apple silicon and on the CPU on Intel. Larger models are slower per minute of audio and more accurate.
 enum WhisperModel: String, CaseIterable, Identifiable, Codable, Hashable {
     case baseEn = "base.en"
     case smallEn = "small.en"
@@ -301,8 +301,8 @@ final class AppSettings: ObservableObject {
         let updated = speed(for: model).folding(stats)
         if updated != speed(for: model) { modelSpeeds[model] = updated.stored }
     }
-    /// How much effort each feature puts in (`AnswerEffort`). Stored per
-    /// feature; no control or behaviour reads them yet.
+    /// How much effort each feature puts in (`AnswerEffort`), stored per
+    /// feature. Unset, each starts at this Mac's recommendation.
     @Published var noteEffort: AnswerEffort {
         didSet { defaults.set(noteEffort.rawValue, forKey: Keys.noteEffort) }
     }
@@ -595,9 +595,9 @@ final class AppSettings: ObservableObject {
         noteInstructions = defaults.dictionary(forKey: Keys.noteInstructions) as? [String: String] ?? [:]
         modelSpeeds = defaults.dictionary(forKey: Keys.modelSpeeds) as? [String: [String: Double]] ?? [:]
         riskPhrases = Self.loadRiskPhrases(from: defaults)
-        noteEffort = defaults.string(forKey: Keys.noteEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
-        sessionChatEffort = defaults.string(forKey: Keys.sessionChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
-        patientChatEffort = defaults.string(forKey: Keys.patientChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? .default
+        noteEffort = defaults.string(forKey: Keys.noteEffort).flatMap(AnswerEffort.init(rawValue:)) ?? recommendation.effort
+        sessionChatEffort = defaults.string(forKey: Keys.sessionChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? recommendation.effort
+        patientChatEffort = defaults.string(forKey: Keys.patientChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? recommendation.effort
         summariesPaused = defaults.bool(forKey: Keys.summariesPaused)
         prepareSummariesOnBattery = defaults.bool(forKey: Keys.prepareSummariesOnBattery)
         licenseToken = defaults.string(forKey: Keys.licenseToken) ?? ""

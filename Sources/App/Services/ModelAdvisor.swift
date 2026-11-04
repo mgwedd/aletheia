@@ -3,6 +3,8 @@ import Foundation
 struct ModelRecommendation: Equatable {
     let whisperModel: WhisperModel
     let medGemmaModel: LlamaModel
+    /// The AI effort a fresh install starts each feature at.
+    let effort: AnswerEffort
     let summary: String
 }
 
@@ -19,20 +21,19 @@ enum ModelAdvisor {
             whisper = .mediumEn
         case (true, 8...):
             whisper = .smallEn
-        case (false, 16...):
-            // Capable Intel Mac, but no Neural Engine — keep transcription
-            // lighter so it stays responsive.
-            whisper = .smallEn
-        case (_, 8...):
-            whisper = .baseEn
         default:
-            // 4–6 GB or unknown: smallest everything.
+            // Intel (whisper.cpp runs on the CPU there, see InferenceCompute),
+            // or 4–6 GB: the smallest model keeps a session's transcript
+            // within a few times its length.
             whisper = .baseEn
         }
+        // Intel runs the AI on the CPU, several times slower than Apple
+        // silicon, so a long note or answer starts at one pass.
+        let effort: AnswerEffort = hardware.isAppleSilicon ? .default : .fast
 
         let medGemma = medGemma(for: hardware)
         let summary = "\(hardware.shortDescription) → \(whisper.shortName) transcription and \(LlamaModel.recommended(for: hardware).shortName) for summaries."
-        return ModelRecommendation(whisperModel: whisper, medGemmaModel: medGemma, summary: summary)
+        return ModelRecommendation(whisperModel: whisper, medGemmaModel: medGemma, effort: effort, summary: summary)
     }
 
     /// The curated medical default, the same on every Mac.
