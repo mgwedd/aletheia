@@ -14,6 +14,18 @@ enum InferenceCompute {
     /// This Mac's choice, read once.
     static let usesGPU = usesGPU(on: .current())
 
+    /// Why speech recognition and the AI can't run on this Mac, or nil when
+    /// they can. The x86_64 runtimes use AVX2, so an older Intel CPU would
+    /// crash in them; the engines refuse with this reason instead.
+    static func unsupportedReason(on hardware: HardwareCapabilities) -> String? {
+        hardware.isAppleSilicon || hardware.hasAVX2 ? nil : unsupportedCPUMessage
+    }
+
+    static let unsupportedCPUMessage = "This Mac's processor can't run Aletheia's speech recognition or AI. They need Apple silicon or an Intel processor from 2013 or later (with AVX2)."
+
+    /// This Mac's answer, read once.
+    static let unsupportedReason = unsupportedReason(on: .current())
+
     /// Threads for the CPU path: one per physical core. Hyper-threads share a
     /// core's vector units, so they only add contention to matrix work. A VM
     /// can give the app fewer cores than the host has, so never more than

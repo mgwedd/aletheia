@@ -8,6 +8,10 @@ struct HardwareCapabilities: Equatable {
     let physicalMemoryGB: Int
     let coreCount: Int
     let chipDescription: String
+    /// Whether the CPU has what the x86_64 speech and AI runtimes are built
+    /// for: AVX2, FMA, F16C and BMI2 (Intel Haswell, 2013, and later).
+    /// Always true on Apple silicon.
+    var hasAVX2: Bool = true
 
     static func current() -> HardwareCapabilities {
         let memoryGB = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
@@ -20,9 +24,13 @@ struct HardwareCapabilities: Equatable {
             isAppleSilicon: appleSilicon,
             physicalMemoryGB: memoryGB,
             coreCount: cores,
-            chipDescription: chip
+            chipDescription: chip,
+            hasAVX2: appleSilicon || avx2Features.allSatisfy { sysctlInt($0) == 1 }
         )
     }
+
+    /// The `hw.optional` keys macOS sets to 1 when the CPU has each feature.
+    static let avx2Features = ["hw.optional.avx2_0", "hw.optional.fma", "hw.optional.f16c", "hw.optional.bmi2"]
 
     var shortDescription: String {
         // Lead with the real chip (e.g. "Apple M3 Pro") — captured from
@@ -32,7 +40,7 @@ struct HardwareCapabilities: Equatable {
         "\(chipDescription) · \(coreCount)-core CPU · \(physicalMemoryGB) GB memory"
     }
 
-    private static func sysctlInt(_ name: String) -> Int64? {
+    static func sysctlInt(_ name: String) -> Int64? {
         var value: Int64 = 0
         var size = MemoryLayout<Int64>.size
         return sysctlbyname(name, &value, &size, nil, 0) == 0 ? value : nil

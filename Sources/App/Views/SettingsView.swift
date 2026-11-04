@@ -438,6 +438,16 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var aiPane: some View {
+        if let reason = InferenceCompute.unsupportedReason(on: settings.hardware) {
+            SettingsCard {
+                HStack(alignment: .top, spacing: 10) {
+                    Chip("Not supported", tone: .warn)
+                    SettingsCaption(reason)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("settings.ai.unsupported-cpu")
+            }
+        }
         speechCard
         languageCard
         if Integrations.appleIntelligenceBlocked {

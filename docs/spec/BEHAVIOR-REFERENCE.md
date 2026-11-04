@@ -1265,6 +1265,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/ModelAdvisor.swift, Sources/App/Services/AppSettings.swift` · `qa: SETTINGS-18`
 - **AIE-051** On Intel Macs whisper.cpp and llama.cpp run on the CPU (no GPU layers, no Metal device, library-default attention and KV cache); on Apple silicon both run on Metal with flash attention and a q8_0 KV cache. The Benchmarks (Intel) workflow times both paths on an Intel runner and fails if the CPU path's text is garbled.
   `surface: invariant` · `evidence: Sources/App/Services/InferenceCompute.swift, Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Services/WhisperTranscriber.swift, .github/workflows/bench-intel.yml` · `qa: SETTINGS-18`
+- **AIE-052** The x86_64 slices of llama.cpp and whisper.cpp are our own build of the pinned upstream commit with AVX2, FMA and F16C (Haswell, 2013, and later); the arm64 slices are upstream's, byte for byte. Intel CPU-path engines use one thread per physical core. On an Intel CPU without AVX2 the engines refuse with a clear reason before any runtime code runs, and AI and models shows it.
+  `surface: invariant` · `evidence: scripts/build-x86-runtime.sh, scripts/check-runtime-pins.sh, Sources/App/Services/InferenceCompute.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-19`
 
 ## Patients (PAT)
 

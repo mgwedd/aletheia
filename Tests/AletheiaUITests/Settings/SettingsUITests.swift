@@ -41,4 +41,10 @@ final class SettingsUITests: AcceptanceCase {
         let pane = when.openAIAndModelsSettings()
         then(pane).showsSelectedSpeechModel(Copy.baseSpeechOption)
     }
+
+    func test_SETTINGS_19() {
+        given.anIntelMacWithoutAVX2()
+        let pane = when.openAIAndModelsSettings()
+        then(pane).saysThisMacCannotRunSpeechOrTheAI()
+    }
 }

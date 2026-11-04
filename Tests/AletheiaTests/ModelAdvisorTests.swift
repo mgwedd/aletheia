@@ -59,6 +59,14 @@ final class ModelAdvisorTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(InferenceCompute.cpuThreads, 1)
     }
 
+    func testOnlyIntelWithoutAVX2IsRefused() {
+        var oldIntel = hardware(appleSilicon: false, memGB: 8)
+        oldIntel.hasAVX2 = false
+        XCTAssertEqual(InferenceCompute.unsupportedReason(on: oldIntel), InferenceCompute.unsupportedCPUMessage)
+        XCTAssertNil(InferenceCompute.unsupportedReason(on: hardware(appleSilicon: false, memGB: 8)))
+        XCTAssertNil(InferenceCompute.unsupportedReason(on: hardware(appleSilicon: true, memGB: 8)))
+    }
+
     func testStoredEffortWinsOverIntelDefault() {
         let suite = "ModelAdvisorTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

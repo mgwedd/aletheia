@@ -11,6 +11,7 @@ extension Copy {
     static let apertus8BOption = "Apertus 8B MeditronFO — Experimental, 16 GB+ Macs"
     static let healthAIFoundationsTerms = "Health AI Developer Foundations Terms"
     static let baseSpeechOption = "Base (English)"
+    static let cannotRunSpeechOrAI = "can't run Aletheia's speech recognition or AI"
 }
 
 /// Settings > AI and models on screen.
@@ -27,6 +28,8 @@ struct AIAndModelsPaneOnScreen {
     }
 
     var builtInModelHeader: XCUIElement { driver.element(id: "settings.built-in-model") }
+
+    var unsupportedCPUNotice: XCUIElement { driver.element(id: "settings.ai.unsupported-cpu") }
 
     var speechModelPicker: XCUIElement {
         let identified = driver.element(id: "speech-model-picker")
@@ -55,6 +58,16 @@ extension Given {
 }
 
 extension Given {
+    /// An Intel Mac whose processor lacks AVX2.
+    func anIntelMacWithoutAVX2() {
+        app.seed {
+            $0.license = "test"
+            $0.fileVault = "on"
+            $0.intel = true
+            $0.noAVX2 = true
+        }
+    }
+
     /// A fresh install on an Intel Mac: no speech model or AI effort chosen yet.
     func freshInstallOnAnIntelMac() {
         app.seed {
@@ -98,6 +111,13 @@ extension When {
 extension Then where Subject == AIAndModelsPaneOnScreen {
     func showsLicense(_ name: String) {
         expect(subject.driver.exists(subject.licenseLink(name)), "no \(name) link on AI and models")
+    }
+
+    func saysThisMacCannotRunSpeechOrTheAI() {
+        let notice = subject.unsupportedCPUNotice
+        expect(subject.driver.exists(notice), "no can't-run notice on AI and models")
+        let text = [notice.label, notice.value as? String ?? ""].joined(separator: " ")
+        expect(text.contains(Copy.cannotRunSpeechOrAI), "expected the can't-run reason, got \(text)")
     }
 
     func showsSelectedSpeechModel(_ name: String) {

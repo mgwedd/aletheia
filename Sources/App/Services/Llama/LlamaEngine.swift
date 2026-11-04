@@ -300,6 +300,10 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
 
         setState(.loading)
         do {
+            // Before any llama.cpp code runs: on a CPU without AVX2 it would crash.
+            if let reason = InferenceCompute.unsupportedReason {
+                throw LocalLLMEngineError.unavailable(reason)
+            }
             // llama_backend_init() must run exactly once per process; a
             // `static let` initializer runs at most once even if several
             // engines (or reloads) reach this line, and Swift guarantees

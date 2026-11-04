@@ -165,6 +165,8 @@ struct FreshInstallSetup {
     let sessionAskEffort: String
     let patientAskEffort: String
     let runsOnGPU: Bool
+    /// Why speech and the AI can't run, as Settings and the engines say it; nil when they can.
+    let cannotRunReason: String?
 }
 
 /// License terms for the medical models.
@@ -437,10 +439,10 @@ extension When {
     }
 
     /// Sets the app up for the first time on an Intel or Apple silicon Mac.
-    func setUpFresh(onIntelMac intel: Bool, memoryGB: Int) -> FreshInstallSetup {
+    func setUpFresh(onIntelMac intel: Bool, memoryGB: Int, withAVX2 avx2: Bool = true) -> FreshInstallSetup {
         let hardware = HardwareCapabilities(
             isAppleSilicon: !intel, physicalMemoryGB: memoryGB, coreCount: 4,
-            chipDescription: intel ? "Intel Core i5-Test" : "Apple M-Test")
+            chipDescription: intel ? "Intel Core i5-Test" : "Apple M-Test", hasAVX2: avx2)
         let suite = "acceptance.settings.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -450,7 +452,8 @@ extension When {
             noteEffort: settings.noteEffort.displayName,
             sessionAskEffort: settings.sessionChatEffort.displayName,
             patientAskEffort: settings.patientChatEffort.displayName,
-            runsOnGPU: InferenceCompute.usesGPU(on: hardware))
+            runsOnGPU: InferenceCompute.usesGPU(on: hardware),
+            cannotRunReason: InferenceCompute.unsupportedReason(on: hardware))
     }
 
     /// Opens settings for the first time after an update, on a Mac with this
@@ -508,6 +511,14 @@ extension Then where Subject == FreshInstallSetup {
     }
     func runsOnTheCPU() { expect(!subject.runsOnGPU, "speech and the AI should run on the CPU") }
     func runsOnTheGPU() { expect(subject.runsOnGPU, "speech and the AI should run on the GPU") }
+    func saysItCannotRunSpeechOrTheAI() {
+        let reason = subject.cannotRunReason ?? ""
+        expect(reason.contains(Copy.cannotRunSpeechOrAI), "expected the can't-run reason, got \(reason)")
+        expect(reason.contains(Copy.needsAVX2), "the reason should say what the Mac lacks, got \(reason)")
+    }
+    func canRunSpeechAndTheAI() {
+        expect(subject.cannotRunReason == nil, "no can't-run notice expected, got \(subject.cannotRunReason ?? "")")
+    }
 }
 
 extension Then where Subject == AppearanceChoice {

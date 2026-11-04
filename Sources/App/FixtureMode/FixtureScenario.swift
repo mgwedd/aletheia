@@ -74,6 +74,8 @@ struct FixtureScenario: Codable, Equatable {
     var aiHoldsOpen: Bool?
     /// Reports an Intel Mac in place of this one, for the fresh-install defaults.
     var intel: Bool?
+    /// With `intel`: the CPU lacks AVX2, so speech and the AI can't run.
+    var noAVX2: Bool?
     /// The model's reading window in tokens, in place of the Mac's own.
     var contextTokens: Int?
     /// Settings: background summaries start paused, so a note builds its own.

@@ -2,12 +2,15 @@ import Foundation
 import os
 import WhisperEngine
 
-enum WhisperTranscriberError: LocalizedError {
+enum WhisperTranscriberError: LocalizedError, Equatable {
     case modelNotDownloaded
     case modelSizeMismatch
+    case unsupportedCPU(String)
 
     var errorDescription: String? {
         switch self {
+        case .unsupportedCPU(let reason):
+            return reason
         case .modelNotDownloaded:
             return "The speech-to-text model hasn't been downloaded yet. Open Settings and download it first."
         case .modelSizeMismatch:
@@ -47,6 +50,10 @@ final class WhisperTranscriber: Transcribing {
         callURL: URL?,
         onProgress: @escaping (TranscriptionProgress) -> Void
     ) async throws -> String {
+        // Before any whisper.cpp code runs: on a CPU without AVX2 it would crash.
+        if let reason = InferenceCompute.unsupportedReason {
+            throw WhisperTranscriberError.unsupportedCPU(reason)
+        }
         guard FileManager.default.fileExists(atPath: modelPath.path) else {
             throw WhisperTranscriberError.modelNotDownloaded
         }

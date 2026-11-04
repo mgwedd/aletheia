@@ -91,12 +91,13 @@ enum FixtureMode {
 
     static var hardware: HardwareCapabilities {
         let current = HardwareCapabilities.current()
-        guard scenario?.memoryGB != nil || scenario?.intel != nil else { return current }
+        guard scenario?.memoryGB != nil || scenario?.intel != nil || scenario?.noAVX2 != nil else { return current }
         return HardwareCapabilities(
             isAppleSilicon: scenario?.intel == true ? false : current.isAppleSilicon,
             physicalMemoryGB: scenario?.memoryGB ?? current.physicalMemoryGB,
             coreCount: current.coreCount,
-            chipDescription: current.chipDescription
+            chipDescription: current.chipDescription,
+            hasAVX2: scenario?.noAVX2 == true ? false : current.hasAVX2
         )
     }
 

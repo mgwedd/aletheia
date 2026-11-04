@@ -279,6 +279,7 @@ Before you start: setup finished.
 - **SETTINGS-16** Update from a version that defaulted to Llama 3.1 8B (or Gemma 4 E2B), having downloaded it and never chosen a model → **Built-in model** still shows it selected; MedGemma is offered, not switched to. With nothing downloaded, MedGemma is the default.
 - **SETTINGS-17** A model download fails → an alert says why and offers **Try Again**, which starts the download again, and **Report a Bug**.
 - **SETTINGS-18** A fresh install on an Intel Mac → **Speech recognition** is set to Base and **AI effort** to Fast for notes and Ask. Speech and the AI run on the CPU there.
+- **SETTINGS-19** An Intel Mac whose processor lacks AVX2 (older than 2013) → **AI and models** says this Mac can't run speech recognition or the AI, and transcribing or asking the AI gives that reason instead of crashing. Other Macs see no such notice.
 
 ## 16. Security panel, activity log and Doctor (SECURITY)
 Before you start: a data folder with some activity (unlock, export, delete a patient).
