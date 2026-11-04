@@ -7,12 +7,16 @@ name: Benchmarks (Intel)
 # app uses on Intel (InferenceCompute) gives garbled text; the timings and the
 # other path are reported in the step summary.
 #
-# A manual dispatch can also choose the runtime (the pinned one, upstream's
-# own zips, or the AVX2 slices built here from the pinned source by
-# scripts/build-x86-runtime.sh), turn prompt-cache reuse off, and run the
-# 50-minute session workload (SessionWorkloadBenchmarkTests: digest, a Fast
-# note, a first and a follow-up Ask). Comparing dispatches gives before and
-# after numbers. The swap is local to the run; nothing is published.
+# By default it links the runtime the app ships: the zips Package.swift pins
+# (the AVX2 x86_64 build on our runtime-x86avx2-* prerelease), so the numbers
+# describe what users get. A manual dispatch can instead link upstream's own
+# zips (the `// upstream-zip:` pins, SSE3-only on x86_64) for "before"
+# numbers, turn prompt-cache reuse off, and run the 50-minute session workload
+# (SessionWorkloadBenchmarkTests: digest, a Fast note, a first and a follow-up
+# Ask). The swap is local to the run; nothing is published.
+#
+# The `tests` job builds the app on the same runner and runs the unit and
+# acceptance suites against the pinned runtime.
 #
 # Runs on PRs that touch the engines, their settings or this workflow (the
 # `changes` job, scripts/ci-changes.sh inference) and on manual dispatch.
@@ -32,7 +36,7 @@ on:
       runtime:
         description: Runtime to link (pinned = what Package.swift pins)
         type: choice
-        options: [pinned, upstream, avx2]
+        options: [pinned, upstream]
         default: pinned
       reuse:
         description: Reuse the cached prompt prefix
@@ -93,27 +97,20 @@ jobs:
         run: brew install xcodegen xcbeautify
 
       # upstream: point both packages at upstream's own zips (the `// upstream`
-      # pins). avx2: build the AVX2 slices from the pinned source, unless the
-      # packages already pin them, and link the local build.
+      # pins) for "before" numbers. pinned: what the app ships, unchanged.
       - name: Choose the runtime
         env:
           RUNTIME: ${{ inputs.runtime || 'pinned' }}
         run: |
           set -euo pipefail
           for spec in llama:LlamaCpp whisper:WhisperCpp; do
-            name=${spec%%:*}; dir=Packages/${spec#*:}; pkg=$dir/Package.swift
+            name=${spec%%:*}; pkg=Packages/${spec#*:}/Package.swift
             read -r _ _ repo tag _ < <(grep -E '^// upstream: ' "$pkg")
             read -r _ _ zipsha < <(grep -E '^// upstream-zip: ' "$pkg")
             case "$RUNTIME" in
               pinned) ;;
               upstream)
                 sed -i '' -E "s#^([[:space:]]*url: )\"[^\"]+\"#\1\"https://github.com/$repo/releases/download/$tag/$name-$tag-xcframework.zip\"#; s#^([[:space:]]*checksum: )\"[0-9a-f]{64}\"#\1\"$zipsha\"#" "$pkg" ;;
-              avx2)
-                if ! grep -q 'x86avx2-xcframework.zip' "$pkg"; then
-                  scripts/build-x86-runtime.sh "$name" runtime-out
-                  ditto -x -k "runtime-out/$name-$tag-x86avx2-xcframework.zip" "$dir"
-                  sed -i '' -E "s#^([[:space:]]*)url: \"[^\"]+\",#\1path: \"build-apple/$name.xcframework\"#; /^[[:space:]]*checksum: /d" "$pkg"
-                fi ;;
             esac
             sed -n '/binaryTarget/,/)/p' "$pkg"
           done
@@ -252,3 +249,62 @@ jobs:
             bench/inference.json
             bench.log
           retention-days: 30
+
+  # The app built and tested on Intel against the pinned (shipped) runtime:
+  # the unit suite, then the acceptance suite. The benchmark job above covers
+  # loading and running the real models on the same runtime.
+  tests:
+    name: Tests (Intel)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.inference == 'true') }}
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    env:
+      NSUnbufferedIO: "YES"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install tools (XcodeGen, xcbeautify)
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Cache Swift packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/SourcePackages
+          key: spm-macos-15-intel-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
+          restore-keys: spm-macos-15-intel-
+
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Aletheia.xcodeproj \
+            -scheme Aletheia \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 240 \
+            -only-testing:AletheiaTests \
+            | xcbeautify --renderer github-actions
+
+      - name: Run acceptance suite
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Aletheia.xcodeproj \
+            -scheme AletheiaAcceptance \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            -only-testing:AletheiaAcceptance \
+            | xcbeautify --renderer github-actions

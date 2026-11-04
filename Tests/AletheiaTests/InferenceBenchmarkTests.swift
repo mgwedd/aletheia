@@ -36,6 +36,17 @@ final class InferenceBenchmarkTests: XCTestCase {
         XCTAssertNil(InferenceCompute.unsupportedReason)
     }
 
+    /// The runtimes the app links (Package.swift's pins) run AVX2 and FMA code
+    /// on Intel; upstream's own zips, linked only for "before" numbers, don't.
+    func testTheShippedRuntimesUseAVX2() throws {
+        try XCTSkipIf(HardwareCapabilities.current().isAppleSilicon, "Intel only")
+        try XCTSkipUnless((env["ALETHEIA_BENCH_RUNTIME"] ?? "pinned") == "pinned", "upstream's zips are linked")
+        print("BENCH-INFO whisper \(WhisperEngine.systemInfo)")
+        for (name, info) in [("llama", LlamaEngine.systemInfo), ("whisper", WhisperEngine.systemInfo)] {
+            XCTAssertTrue(info.contains("AVX2 = 1") && info.contains("FMA = 1"), "\(name): \(info)")
+        }
+    }
+
     func testWhisper() throws {
         let clip = URL(fileURLWithPath: try XCTUnwrap(env["ALETHEIA_BENCH_CLIP"]))
         let reference = try XCTUnwrap(env["ALETHEIA_BENCH_CLIP_TEXT"])
@@ -88,9 +99,20 @@ final class InferenceBenchmarkTests: XCTestCase {
             let engine = LlamaEngine(modelURL: gguf, sampling: LocalLLMSampling(maxTokens: 64),
                                      budget: ContextBudget(tokens: 4096), usesGPU: gpu, cpuThreads: threadCount)
             let clock = ContinuousClock()
-            let load = try await clock.measure { try await engine.load() }
             var text = ""
-            let run = try await clock.measure { text = try await engine.generate(request) }
+            let load: Duration, run: Duration
+            do {
+                load = try await clock.measure { try await engine.load() }
+                run = try await clock.measure { text = try await engine.generate(request) }
+            } catch where gpu != InferenceCompute.usesGPU {
+                // The path the app doesn't take here (Metal on an Intel VM can
+                // fail outright): reported, not a failure.
+                report(["kind": "llama", "model": "medgemma-1.5-4b-q4_k_m", "gpu": gpu, "threads": 0, "load_s": 0, "run_s": 0,
+                        "prompt_tokens": 0, "prefill_tps": 0, "output_tokens": 0, "decode_tps": 0,
+                        "readable": false, "answered": false, "text": "error: \(error)"])
+                engine.unload()
+                continue
+            }
             let stats = engine.lastStats
             let promptTokens = stats?.promptTokens ?? 0
             let promptSeconds = Double(stats?.promptNanos ?? 0) / 1e9

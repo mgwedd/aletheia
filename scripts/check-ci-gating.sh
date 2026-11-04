@@ -8,7 +8,7 @@
 #     dev; main pushes and manual runs (workflow_dispatch) add preview, and
 #     the concurrency group keeps a manual run from cancelling a push run.
 #   - cd.yml ("Build & package (macOS)"), bench.yml ("Benchmarks
-#     (informational)"), bench-intel.yml ("Benchmarks (Intel)") and
+#     (informational)"), bench-intel.yml ("Benchmarks (Intel)", "Tests (Intel)") and
 #     runtime-x86.yml ("x86_64 runtime (AVX2)") are gated by a job-level `if:` on an Ubuntu `changes`
 #     job's output, with their job names unchanged. Neither workflow uses
 #     `on.paths` (a path-filtered workflow never reports its check, so a
@@ -350,6 +350,7 @@ def check_gated(path, jobid, jobname, area):
 check_gated(".github/workflows/cd.yml", "package", "Build & package (macOS)", "package")
 check_gated(".github/workflows/bench.yml", "bench", "Benchmarks (informational)", "benchmarks")
 check_gated(".github/workflows/bench-intel.yml", "intel", "Benchmarks (Intel)", "inference")
+check_gated(".github/workflows/bench-intel.yml", "tests", "Tests (Intel)", "inference")
 check_gated(".github/workflows/runtime-x86.yml", "build", "x86_64 runtime (AVX2)", "runtime")
 
 # auto-release.yml: its release commit carries [skip ci], and the tag points at

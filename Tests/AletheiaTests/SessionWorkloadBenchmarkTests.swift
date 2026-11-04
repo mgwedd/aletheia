@@ -154,12 +154,20 @@ final class SessionWorkloadBenchmarkTests: XCTestCase {
         XCTAssertEqual(cold.lastCachedTokens, 0)
         cold.unload()
 
+        // llama.cpp doesn't promise the same logits for different batch
+        // shapes (13 new tokens on a cache vs the whole prompt at once), so a
+        // greedy reply can part ways late, at a near-tie. A broken cache
+        // (wrong positions, a missing window) changes the reply from its first
+        // words, so those must match; whether all of it matched is reported.
+        let reusedWords = InferenceBenchmarkTests.words(reused), freshWords = InferenceBenchmarkTests.words(fresh)
+        let common = zip(reusedWords, freshWords).prefix { $0 == $1 }.count
         report(["kind": "prefix-reuse", "total_tokens": total, "kept_tokens": kept, "read_tokens": read,
                 "warm_s": warmTime.seconds, "cold_s": coldTime.seconds, "same_output": reused == fresh,
-                "text": reused])
+                "same_words": common, "words": freshWords.count, "text": reused, "fresh": fresh])
         XCTAssertGreaterThan(kept, total / 2, "the shared transcript was read again")
         XCTAssertEqual(read, total - kept, "the follow-up read more than its new tokens")
-        XCTAssertEqual(reused, fresh, "reusing the cache changed the answer")
+        XCTAssertGreaterThanOrEqual(common, min(20, freshWords.count),
+                                    "reusing the cache changed the answer:\n\(reused)\n---\n\(fresh)")
     }
 
     private func report(_ fields: [String: Any]) {
