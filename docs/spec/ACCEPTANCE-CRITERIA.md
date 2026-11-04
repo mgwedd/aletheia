@@ -79,6 +79,7 @@ Import Audio… is for trying a build: only a test license offers it, and RECORD
 - **RECORD-22** Click **Import Audio…** and pick two files, a microphone track and a call track (such as the two `.caf` files Aletheia exports) → the one named "call" becomes the call audio, the other the microphone, and neither original is touched.
 - **RECORD-23** Pick three or more files in **Import Audio…** → an alert asks for one file or two, and nothing is saved.
 - **RECORD-24** Open a session with a customer license → it offers **Record Session** but no **Import Audio…**.
+- **RECORD-25** Click **Record Session** for the first time on this Mac → before recording starts, a "Use headphones" alert says that on speakers your client's words can appear twice in the transcript, with **Start Recording** and **Cancel**; it never appears again, and until then the menu bar panel shows the same tip.
 
 
 ## 5. Transcribe (TRANSCRIBE)
@@ -103,6 +104,7 @@ Before you start: a session that has a recording and no transcript.
 - **TRANSCRIBE-18** Transcribe a recording for the first time with raw audio not kept → a one-time notice says the recording was deleted after transcription, and it is not shown again.
 - **TRANSCRIBE-19** Watch the progress band while a session transcribes → its title reads just "Transcribing…", with no date or model name.
 - **TRANSCRIBE-20** Open the transcript of a call where the client spoke at length → each of their turns starts with the client's first name and wraps across the pane like your own.
+- **TRANSCRIBE-21** Transcribe a call taken on speakers, where the client's voice reached your microphone while you also spoke → the client's words appear once, under their first name, and your own words stay under "You", including when you repeat the client back after they finish.
 
 ## 6. Comment on the transcript (COMMENT)
 Before you start: a session with a saved transcript and no comments.
@@ -177,6 +179,7 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-35** Ask a question, or open a conversation whose saved answers and summary were written with the model's hidden reasoning or internal markers such as `<unused94>` or `<end_of_turn>` → the answers and the summary show only the answer text, and the next question is asked without them.
 - **CHAT-36** With a conversation on screen, click **Compact** → the answers above keep their full width while the summary is written, and the "Conversation compacted" card appears below them with nothing overlapping.
 - **CHAT-37** Click **Compact** and the AI model runs out of room before it finishes the summary → the summary is thrown away, the conversation stays as it was, and a message says "The summary didn't finish, so the conversation was kept as it was. Try Compact again, or name what to keep, like /compact medication."
+- **CHAT-38** Ask questions at a chosen depth, including late in a long conversation → each answer follows that depth, speaks to you as "you", makes each point once without restating a list, and suggests no action items unless they were agreed in the session or you asked for them.
 
 ## 9. Summaries prepared in the background (DIGEST)
 Before you start: a patient whose sessions have transcripts too long for this Mac to read at once, and the AI model downloaded.

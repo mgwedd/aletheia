@@ -605,4 +605,28 @@ final class ChatSpec: AcceptanceCase {
         then(reopened.askTab(of: session).pane).isAsItWas(askedBefore)
         then(reopened.patientChat(of: jane).pane).isAsItWas(chattedBefore)
     }
+
+    func test_CHAT_38() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, transcript: AssistantDesk.transcript(minutes: 10, about: "sleep"))
+        desk.model.fallback("Sleep came up first, then work.")
+        let earlier = ["What were the main themes?", "What coping strategies came up?", "How did she sleep?", "What did she say about work?"]
+        let last = "What homework was agreed?"
+
+        let ask = desk.askTab(of: session)
+        let chat = desk.patientChat(of: jane)
+        ask.chooseDepth(.concise)
+        chat.chooseDepth(.concise)
+
+        for (tab, idle) in [(ask.ask, ask.waitUntilIdle), (chat.ask, chat.waitUntilIdle)] {
+            for question in earlier + [last] {
+                tab(question)
+                try await idle()
+            }
+            then(desk.model).wasAskedToAnswer(at: .concise)
+            then(desk.model).remindedOfTheDepthNextToTheQuestion(.concise, last)
+            then(desk.model).wasToldToWriteToYouOnceAndOnlyWhatWasAgreed()
+        }
+    }
 }

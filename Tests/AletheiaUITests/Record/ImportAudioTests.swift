@@ -1,6 +1,6 @@
 import XCTest
 
-/// RECORD-15 to RECORD-24 through the real window. The system open panel
+/// RECORD-15 to RECORD-25 through the real window. The system open panel
 /// cannot be answered by a UI test, so the scenario's `importFile` hands
 /// Import Audio… fixture files at the point where the panel would return them.
 final class ImportAudioTests: XCTestCase {
@@ -20,8 +20,10 @@ final class ImportAudioTests: XCTestCase {
     private let importButton = "Import Audio…"
     private let recordButton = "Record Session"
 
-    private func scenario(consent: Bool, importFile: String?, fileVault: String? = nil, license: String = "test") {
+    private func scenario(consent: Bool, importFile: String?, fileVault: String? = nil, license: String = "test",
+                          headphonesTip: Bool? = nil) {
         app.seed {
+            $0.headphonesTip = headphonesTip
             $0.patients = [.init(name: "Jane Doe", sessions: 1, recordingConsent: consent)]
             $0.importFile = importFile
             $0.fileVault = fileVault
@@ -40,6 +42,17 @@ final class ImportAudioTests: XCTestCase {
     /// An alert's message is a static text whose words sit in its value on macOS, not its label.
     private func alertText(containing words: String) -> XCUIElement {
         app.app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", words, words)).firstMatch
+    }
+
+    /// An alert's button, looked up in the sheet or dialog: the alert's buttons
+    /// are mirrored on the Touch Bar, and that copy can't be clicked.
+    private func alertButton(_ title: String) -> XCUIElement {
+        let sheet = app.app.sheets.buttons[title].firstMatch
+        let dialog = app.app.dialogs.buttons[title].firstMatch
+        let either = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in sheet.exists || dialog.exists }, object: nil)
+        _ = XCTWaiter().wait(for: [either], timeout: 5)
+        return dialog.exists ? dialog : sheet
     }
 
     private func hasRecordingFile(_ probe: ProbeSnapshot) -> Bool {
@@ -132,5 +145,22 @@ final class ImportAudioTests: XCTestCase {
 
         XCTAssertTrue(app.exists(app.button(recordButton)), "the session does not offer \(recordButton)")
         XCTAssertTrue(app.gone(app.button(importButton)), "\(importButton) is offered without a license")
+    }
+
+    /// Cancel only: Start Recording would raise the system's microphone prompt.
+    func test_RECORD_25_firstRecordingAsksForHeadphones() {
+        scenario(consent: true, importFile: nil, headphonesTip: true)
+        app.ensureLaunched()
+
+        app.tap(recordButton)
+
+        XCTAssertTrue(app.exists(app.app.staticTexts["Use headphones"]), "no headphones tip before the first recording")
+        XCTAssertTrue(app.exists(alertText(containing: "their words can appear twice")), "the tip does not say why")
+        XCTAssertTrue(app.exists(app.button("Start Recording")), "the tip offers no Start Recording")
+        app.click(alertButton("Cancel"), "Cancel on the headphones tip")
+
+        XCTAssertTrue(app.gone(app.app.staticTexts["Use headphones"]), "the tip is still up after Cancel")
+        XCTAssertTrue(app.exists(app.button(recordButton)), "Cancel started a recording")
+        XCTAssertFalse(hasRecordingFile(app.probe), "Cancel recorded audio")
     }
 }

@@ -778,7 +778,7 @@ enum LocalToolLoop {
         Initial material:
         \(initialContext)\(priorBlock)\(historyBlock)
 
-        \(Prompts.chatQuestion(question))
+        \(Prompts.questionLine(question))
         """
     }
 
@@ -960,7 +960,7 @@ enum LongSessionChat {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
         let turns = PromptTurn.recent(history, question: question)
-        let prompt = Prompts.chatQuestion(question)
+        let prompt = Prompts.chatQuestion(question, depth: depth)
         func makeSystem(_ material: SessionMaterial) -> String {
             Prompts.chatSystem(service.systemPrompt, question: question, depth: depth, material: Prompts.sessionChat(
                 material: material,
@@ -1246,7 +1246,7 @@ enum PatientChatAnswer {
                         material: Prompts.patientChat(context: finalContext, history: history, clientName: service.clientName))
                     live(nil) { $0.steps = steps.writing }
                     _ = try await builder.runStage(
-                        Prompts.chatQuestion(question),
+                        Prompts.chatQuestion(question, depth: depth),
                         turns: PromptTurn.recent(history, question: question),
                         read: "Reading what was gathered",
                         write: "Writing the answer",

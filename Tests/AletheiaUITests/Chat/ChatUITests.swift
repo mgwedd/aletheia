@@ -275,6 +275,30 @@ final class ChatUITests: AcceptanceCase {
         then(window.depth).hasChosen("Natural")
     }
 
+    func test_CHAT_38_theDepthIsReadRightBeforeTheQuestionLateInAConversation() {
+        let question = "What homework was agreed?"
+        let followed = "Only the wind-down routine was agreed."
+        let missed = "The depth was not next to the question."
+        given.aSessionToAskAbout(
+            chat: [
+                .init(role: "user", text: "What were the main themes?"),
+                .init(role: "assistant", text: "Sleep, then work."),
+                .init(role: "user", text: "What coping strategies came up?"),
+                .init(role: "assistant", text: "Walking the dog."),
+                .init(role: "user", text: "How did she sleep?"),
+                .init(role: "assistant", text: "Badly, about four hours a night."),
+            ],
+            replies: [missed],
+            rules: [.init(whenPromptContains: Copy.conciseDepthBefore(question), reply: followed)],
+            askDepth: "concise")
+        let tab = when.openAskTab()
+
+        when.ask(question, on: tab)
+
+        then(tab).showsText(followed)
+        then(tab).doesNotShowText(missed)
+    }
+
     func test_CHAT_30_askDepthSettingSeedsTheChatAndTheChatCanChangeIt() {
         given.aSessionToAskAbout(askDepth: "concise")
         let tab = when.openAskTab()

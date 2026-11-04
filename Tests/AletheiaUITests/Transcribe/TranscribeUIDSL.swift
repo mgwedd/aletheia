@@ -27,6 +27,19 @@ extension Given {
         }
     }
 
+    /// A call on speakers: Jane's words reach the microphone too, while the
+    /// therapist also speaks, and the recording is imported and transcribed.
+    func aCallOnSpeakers(_ heard: [FixtureScenario.HeardSegment]) {
+        app.seed {
+            $0.license = "test"
+            $0.fileVault = "on"
+            $0.importFile = "clip"
+            $0.heardTracks = heard
+            $0.patients = [.init(name: "Jane Doe", sessions: 1, recordingConsent: true)]
+            $0.open = "Jane Doe"
+        }
+    }
+
     /// A session with a recording being transcribed, never finishing.
     func aSessionBeingTranscribed() {
         app.seed {
@@ -63,6 +76,13 @@ extension Then where Subject == XCUIElement {
 }
 
 extension Then where Subject == TranscriptOnScreen {
+    /// `words` appear on one line only, and it is `speaker`'s.
+    func says(_ words: String, once speaker: String) {
+        let lines = subject.text.components(separatedBy: "\n").filter { $0.contains(words) }
+        expect(lines.count == 1, "\"\(words)\" should appear once: \(lines)")
+        expect(lines.allSatisfy { $0.contains("] \(speaker)") }, "\"\(words)\" is not under \(speaker): \(lines)")
+    }
+
     func clientTurnStartsWithFirstName(_ name: String) {
         expect(subject.text.contains("] \(name):"), "the client's turn does not start with \"\(name)\": \(subject.text.prefix(60))")
         expect(!subject.text.contains(Copy.callAudio), "the transcript still says \"\(Copy.callAudio)\"")

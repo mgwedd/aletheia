@@ -305,4 +305,24 @@ final class RecordSpec: AcceptanceCase {
 
         then(importing).offersRecordButNoImport(for: visit)
     }
+
+    func test_RECORD_25() async throws {
+        let visit = try await given.aPatientWithASession()
+        then(bench).menuBarShowsTheHeadphonesTip(true)
+
+        let first = await when.pressRecordSession(on: bench, visit)
+        then(first).isTheHeadphonesTip()
+        then(bench).isNotRecording()
+        then(bench).menuBarShowsTheHeadphonesTip(false)
+
+        await when.startRecording(from: first, on: bench, visit)
+        then(bench).isRecording(visit)
+        await when.stop(on: bench)
+
+        when.forceQuitAndReopen(bench)
+        let next = try given.anotherSession(for: visit)
+        then(await when.pressRecordSession(on: bench, next)).isNotShown()
+        then(bench).isRecording(next)
+        then(bench).menuBarShowsTheHeadphonesTip(false)
+    }
 }

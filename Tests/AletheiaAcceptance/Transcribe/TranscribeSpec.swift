@@ -263,4 +263,27 @@ final class TranscribeSpec: AcceptanceCase {
 
         then(reading).clientTurnsStartWith("Jane", saying: atLength.trimmingCharacters(in: .whitespaces))
     }
+
+    func test_TRANSCRIBE_21() async throws {
+        let desk = try given.transcriptionDesk(speechModel: .ready)
+        let session = try desk.recordSession(of: try await given.patient(named: "Jane Doe"))
+        let waking = "I keep waking up at three and I can't get back to sleep."
+        let work = "work has been really stressful lately."
+        desk.modelWillHearBothTracks([
+            ("Call audio", 10, 15, waking),
+            ("You", 10, 15, waking),
+            ("Call audio", 18, 21, "And \(work)"),
+            ("You", 18, 23, "Take your time, there's no rush, and \(work)"),
+            ("You", 40, 44, "So you keep waking up at three and can't get back to sleep."),
+        ])
+
+        _ = try await desk.transcribe(session)
+        let reading = try desk.readTranscript(of: session)
+
+        then(reading).says(waking, once: "Jane")
+        then(reading).says(work, once: "Jane")
+        then(reading).says("Take your time, there's no rush", once: "You")
+        then(reading).says("So you keep waking up at three", once: "You")
+        then(reading).neverHas(work, from: "You")
+    }
 }

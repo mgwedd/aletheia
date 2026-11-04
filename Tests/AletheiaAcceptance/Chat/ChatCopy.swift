@@ -13,10 +13,15 @@ extension Copy {
 
 extension Copy {
     static let depthLabel = "Depth"
-    static let questionLead = "Therapist's question:"
+    static let questionLead = "Question:"
     static let noteFormatStillApplies = "The note's own format still applies."
     static let onItsOwnTerms = "Answer the latest question on its own terms."
     static let earlierTurnsAsContext = "use earlier turns only as context"
+    static let writeToYou = "Write to them as \"you\""
+    static let sayEachPointOnce = "Say each point once"
+    static let noSecondList = "don't restate a list as a second list"
+    static let noUnaskedActionItems = "Suggest action items or homework only if they were agreed or you are asked."
+    static let thinSessionShortAnswer = "A thin session gets a short answer."
     static func askTarget(_ depth: Depth) -> String {
         switch depth {
         case .concise: "one to three sentences"

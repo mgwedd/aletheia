@@ -22,6 +22,11 @@ extension Copy {
     static let hiddenReasoningMarkers = ["unused94", "unused95", "end_of_turn", "plan the reply"]
     static let newChatButton = "New Chat"
     static let newChatTitle = "New chat"
+    /// The Concise depth line, as it stands in the final turn right before the question.
+    static func conciseDepthBefore(_ question: String) -> String {
+        "Depth: concise. Answer in one to three sentences. Lead with the point. No headers, no preamble, "
+            + "no recap; use a list only when the content is itself a short list.\nQuestion: \(question)"
+    }
     static let noChatSelected = "No Chat Selected"
 }
 

@@ -219,6 +219,14 @@ final class TranscriptionDesk {
         steered.push(.finish(TranscriptFormatter.format(spoken)))
     }
 
+    /// The speech model will hear these segments on the two tracks, each
+    /// spoken from `from` to `to`, and the app puts the transcript together
+    /// from them as it does from a real recording.
+    func modelWillHearBothTracks(_ segments: [(speaker: String, from: TimeInterval, to: TimeInterval, text: String)]) {
+        let heard = segments.map { TranscribedLine(source: $0.speaker, startTime: $0.from, endTime: $0.to, text: $0.text) }
+        steered.push(.finish(WhisperTranscriber.assemble(heard)))
+    }
+
     func modelWillHearNothing() { steered.push(.finish("")) }
 
     // MARK: Actions
@@ -410,6 +418,22 @@ extension Then where Subject == TranscriptReading {
         expect(!turns.isEmpty, "the client's turn is missing: \(subject.lines)")
         let bad = turns.filter { $0.range(of: #"^\[\d{2}:\d{2}\] "# + NSRegularExpression.escapedPattern(for: name) + ": ", options: .regularExpression) == nil }
         expect(bad.isEmpty, "turns that do not start with \"\(name):\": \(bad)")
+    }
+    /// `text` appears on exactly one line, and that line is `speaker`'s.
+    func says(_ text: String, once speaker: String) {
+        let found = subject.lines.filter { $0.contains(text) }
+        expectEqual(found.count, 1, "\"\(text)\" should appear once, found \(subject.lines)")
+        expect(found.allSatisfy { Self.speaker(of: $0).hasPrefix(speaker) },
+               "\"\(text)\" is not under \(speaker): \(found)")
+    }
+    /// No line of `speaker`'s contains `text`.
+    func neverHas(_ text: String, from speaker: String) {
+        let found = subject.lines.filter { Self.speaker(of: $0).hasPrefix(speaker) && $0.contains(text) }
+        expect(found.isEmpty, "\(speaker) still says \"\(text)\": \(found)")
+    }
+    private static func speaker(of line: String) -> String {
+        let afterStamp = line.split(separator: " ", maxSplits: 1).last.map(String.init) ?? ""
+        return afterStamp.components(separatedBy: ":").first ?? ""
     }
     func neverNamesSpeaker(_ speaker: String) {
         expect(!subject.text.contains("\(speaker):"), "the transcript still names \"\(speaker)\"")
