@@ -12,11 +12,13 @@
 #      tag points at that commit;
 #   3. builds x86_64 only, with upstream's own options plus explicit x86
 #      flags for Haswell and later (SSE4.2, AVX, AVX2, BMI2, FMA, F16C;
-#      GGML_NATIVE off, so the build machine doesn't matter);
+#      GGML_NATIVE off, so the build machine doesn't matter), and without
+#      Metal: the app runs Intel on the CPU, and a Metal build compiles its
+#      shader library at backend start, which takes minutes on an Intel GPU;
 #   4. links the libraries into one dylib, as upstream's build-xcframework.sh
 #      does, and swaps it in for the x86_64 slice with `lipo -replace`;
 #   5. checks that the arm64 slice is byte-for-byte upstream's and that the
-#      new x86_64 slice has AVX2/FMA code;
+#      new x86_64 slice has AVX2/FMA code and doesn't link Metal;
 #   6. writes <name>-<tag>-x86avx2-xcframework.zip (upstream's zip with that
 #      one file replaced) and its SHA-256, the SwiftPM checksum.
 #
@@ -80,8 +82,7 @@ common=(
   -DCMAKE_C_FLAGS="$flags"
   -DCMAKE_CXX_FLAGS="$flags"
   -DBUILD_SHARED_LIBS=OFF
-  -DGGML_METAL=ON
-  -DGGML_METAL_EMBED_LIBRARY=ON
+  -DGGML_METAL=OFF
   -DGGML_BLAS_DEFAULT=ON
   -DGGML_OPENMP=OFF
   -DGGML_NATIVE=OFF
@@ -97,18 +98,18 @@ if [[ "$name" == llama ]]; then
     -DLLAMA_BUILD_MTMD=ON -DLLAMA_OPENSSL=OFF
   )
   libs=(src/Release/libllama.a tools/mtmd/Release/libmtmd.a vendor/hash/Release/libvendor-hash.a)
-  frameworks=(-framework Foundation -framework Metal -framework Accelerate)
+  frameworks=(-framework Foundation -framework Accelerate)
 else
   common+=(
     -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF
-    -DGGML_METAL_USE_BF16=ON -DWHISPER_COREML=ON -DWHISPER_COREML_ALLOW_FALLBACK=ON
+    -DWHISPER_COREML=ON -DWHISPER_COREML_ALLOW_FALLBACK=ON
   )
   libs=(src/Release/libwhisper.a src/Release/libparakeet.a src/Release/libwhisper.coreml.a)
-  frameworks=(-framework Foundation -framework Metal -framework Accelerate -framework CoreML)
+  frameworks=(-framework Foundation -framework Accelerate -framework CoreML)
 fi
 libs+=(
   ggml/src/Release/libggml.a ggml/src/Release/libggml-base.a ggml/src/Release/libggml-cpu.a
-  ggml/src/ggml-metal/Release/libggml-metal.a ggml/src/ggml-blas/Release/libggml-blas.a
+  ggml/src/ggml-blas/Release/libggml-blas.a
 )
 # SOURCE_DATE_EPOCH changes ggml's defaults; the flags above are explicit,
 # but keep the configure identical wherever it runs.
@@ -151,6 +152,7 @@ grep -q 'vfmadd' "$work/x86_64.s" || { echo "x86_64 slice has no FMA code" >&2; 
 grep -q 'vpmaddubsw.*%ymm' "$work/x86_64.s" || { echo "x86_64 slice has no AVX2 code" >&2; exit 1; }
 [[ "$(otool -arch x86_64 -D "$work/fat" | tail -1)" == "@rpath/$name.framework/Versions/Current/$name" ]] \
   || { echo "install name differs from upstream" >&2; exit 1; }
+! otool -arch x86_64 -L "$work/fat" | grep -q 'Metal.framework' || { echo "x86_64 slice links Metal" >&2; exit 1; }
 cp "$work/fat" "$binary"
 
 # 6. Upstream's zip with only that file replaced; a fixed mtime keeps the
