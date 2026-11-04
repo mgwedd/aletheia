@@ -24,6 +24,25 @@ final class TranscribeUITests: AcceptanceCase {
         then(client.transcript).clientTurnStartsWithFirstName("Jane")
         then(client.lines).wrapsAcrossThePaneLike(therapist.lines)
     }
+
+    func test_TRANSCRIBE_21_aCallOnSpeakersShowsTheClientsWordsOnce() {
+        let waking = "I keep waking up at three and I can't get back to sleep."
+        let work = "work has been really stressful lately."
+        given.aCallOnSpeakers([
+            .init(speaker: "Call audio", from: 10, to: 15, text: waking),
+            .init(speaker: "You", from: 10, to: 15, text: waking),
+            .init(speaker: "Call audio", from: 18, to: 21, text: "And \(work)"),
+            .init(speaker: "You", from: 18, to: 23, text: "Take your time, there's no rush, and \(work)"),
+            .init(speaker: "You", from: 40, to: 44, text: "So you keep waking up at three and can't get back to sleep."),
+        ])
+        when.importARecording()
+        let transcript = when.readTranscript().transcript
+
+        then(transcript).says(waking, once: "Jane")
+        then(transcript).says(work, once: "Jane")
+        then(transcript).says("Take your time, there's no rush", once: "You")
+        then(transcript).says("So you keep waking up at three", once: "You")
+    }
 }
 
 extension Then where Subject == String {

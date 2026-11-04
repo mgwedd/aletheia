@@ -367,10 +367,29 @@ extension Then where Subject == SteeredModel {
         guard let request = subject.askRequests.last else { return fail("no question reached the AI model") }
         expect(request.system.contains(Copy.onItsOwnTerms), "the answer was not told to answer the latest question on its own terms")
         expect(request.system.contains(Copy.earlierTurnsAsContext), "the answer was not told to use earlier turns only as context")
-        expect(request.prompt == "\(Copy.questionLead) \(question)",
+        expect(request.prompt.hasSuffix("\n\(Copy.questionLead) \(question)") && !request.prompt.contains(earlier),
                "the latest question is not on its own after the material and earlier turns: \"\(request.prompt.prefix(120))…\"")
         expect(request.turns.contains { $0.text.contains(earlier) },
                "the earlier exchange \"\(earlier)\" is not in the turns ahead of the latest question")
+    }
+
+    /// The latest answer's depth was the last thing the model read before the question.
+    func remindedOfTheDepthNextToTheQuestion(_ depth: Depth, _ question: String) {
+        guard let request = subject.askRequests.last else { return fail("no question reached the AI model") }
+        let lines = request.prompt.components(separatedBy: "\n")
+        expectEqual(lines.last, "\(Copy.questionLead) \(question)", "the question is not the last line of the final turn")
+        let reminder = lines.dropLast().last ?? ""
+        expect(reminder.hasPrefix("Depth: \(depth.setting.rawValue). ") && reminder.contains(Copy.askTarget(depth)),
+               "the line before the question does not give the depth: \"\(reminder)\"")
+    }
+
+    /// The latest answer was told to write to the user as "you", say each
+    /// point once, add no unasked action items, and keep a thin session short.
+    func wasToldToWriteToYouOnceAndOnlyWhatWasAgreed() {
+        guard let request = subject.askRequests.last else { return fail("no question reached the AI model") }
+        for rule in [Copy.writeToYou, Copy.sayEachPointOnce, Copy.noSecondList, Copy.noUnaskedActionItems, Copy.thinSessionShortAnswer] {
+            expect(request.system.contains(rule), "the answer was not told \"\(rule)\"")
+        }
     }
 
     /// The last note and the last answer were both asked for at `depth`, from the same wording.

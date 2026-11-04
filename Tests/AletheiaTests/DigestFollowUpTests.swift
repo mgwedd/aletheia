@@ -55,6 +55,19 @@ final class DigestFollowUpTests: XCTestCase {
         return (patient, session)
     }
 
+    /// A budget with room for the merge instructions plus two section
+    /// digests, not three. The section and merge counts these tests expect
+    /// follow from the system prompt's length, so it is fixed here rather
+    /// than following the default's wording.
+    private func tightService(_ fake: ScriptedAssistant) -> AssistantService {
+        var service = AssistantService(assistant: fake, model: "m")
+        service.systemPrompt = String(repeating: "Ground every answer in the material. ", count: 27)
+        let overhead = service.systemPrompt.count + Prompts.sessionDigest(sections: []).count
+        let capacity = overhead + 2 * 2_040
+        service.budget = ContextBudget(tokens: ContextBudget.replyHeadroomTokens + capacity / ContextBudget.charactersPerToken)
+        return service
+    }
+
     func testReplacingABuildKeepsTheNewBuildsState() async throws {
         let store = Store(root: root)
         let first = minutesOfTalk(25) + "\n[30:00] You: STALL"
@@ -117,11 +130,7 @@ final class DigestFollowUpTests: XCTestCase {
     func testMergeOverBudgetSplitsIntoGroupsThatFit() async throws {
         let fake = ScriptedAssistant()
         fake.replyLength = 2_000
-        var service = AssistantService(assistant: fake, model: "m")
-        // Room for the merge instructions plus two section digests, not three.
-        let overhead = service.systemPrompt.count + Prompts.sessionDigest(sections: []).count
-        let capacity = overhead + 2 * 2_040
-        service.budget = ContextBudget(tokens: ContextBudget.replyHeadroomTokens + capacity / ContextBudget.charactersPerToken)
+        let service = tightService(fake)
         let builder = DigestBuilder(queue: InferenceQueue())
 
         let digest = try await builder.build(transcript: minutesOfTalk(25), service: service)
@@ -136,11 +145,7 @@ final class DigestFollowUpTests: XCTestCase {
     func testMergedAnchorsStayOneFlatRangeAcrossMergeRounds() async throws {
         let fake = ScriptedAssistant()
         fake.replyLength = 2_000
-        var service = AssistantService(assistant: fake, model: "m")
-        // Room for the merge instructions plus two section digests, not three.
-        let overhead = service.systemPrompt.count + Prompts.sessionDigest(sections: []).count
-        let capacity = overhead + 2 * 2_040
-        service.budget = ContextBudget(tokens: ContextBudget.replyHeadroomTokens + capacity / ContextBudget.charactersPerToken)
+        let service = tightService(fake)
         let builder = DigestBuilder(queue: InferenceQueue())
         let text = minutesOfTalk(45)
         // Split as the builder does: section size follows the room the budget leaves.
@@ -212,11 +217,7 @@ final class DigestFollowUpTests: XCTestCase {
     func testStepsCountEveryMergeRoundNotJustTheFinalMerge() async throws {
         let fake = ScriptedAssistant()
         fake.replyLength = 2_000
-        var service = AssistantService(assistant: fake, model: "m")
-        // Room for the merge instructions plus two section digests, not three.
-        let overhead = service.systemPrompt.count + Prompts.sessionDigest(sections: []).count
-        let capacity = overhead + 2 * 2_040
-        service.budget = ContextBudget(tokens: ContextBudget.replyHeadroomTokens + capacity / ContextBudget.charactersPerToken)
+        let service = tightService(fake)
         let builder = DigestBuilder(queue: InferenceQueue())
         let seen = Recorded<AIRunSteps>()
         let live: DigestBuilder.Live = { _, change in

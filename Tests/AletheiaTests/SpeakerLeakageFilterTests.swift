@@ -144,4 +144,69 @@ final class SpeakerLeakageFilterTests: XCTestCase {
         )
         XCTAssertEqual(result, [therapist])
     }
+
+    // MARK: - Echoes inside mixed lines
+
+    private func line(_ source: String, _ text: String, from start: TimeInterval, to end: TimeInterval) -> TranscribedLine {
+        TranscribedLine(source: source, startTime: start, endTime: end, text: text)
+    }
+
+    func testEchoInsideAMixedLineIsCutAndTheTherapistsWordsKept() {
+        let mixed = line("You", "Take your time. So I have been feeling really overwhelmed at work lately", from: 9, to: 14)
+        let result = SpeakerLeakageFilter.removeLeakage(mic: [mixed], call: [line("Call audio", spoken, from: 10, to: 14)])
+        XCTAssertEqual(result.map(\.text), ["Take your time."])
+    }
+
+    func testEchoInTheMiddleOfAMixedLineIsCut() {
+        let mixed = line("You", "Mm, so I have been feeling really overwhelmed at work lately, okay, go on.", from: 9, to: 15)
+        let result = SpeakerLeakageFilter.removeLeakage(mic: [mixed], call: [line("Call audio", spoken, from: 10, to: 14)])
+        XCTAssertEqual(result.map(\.text), ["Mm, okay, go on."])
+    }
+
+    func testOneDifferingWordDoesNotBreakAnEchoedRun() {
+        let mixed = line("You", "Right, take a breath. It is October 12, 2026 and the deadline moved", from: 0, to: 6)
+        let call = line("Call audio", "It is October 12th, 2026 and the deadline moved", from: 2, to: 6)
+        XCTAssertEqual(SpeakerLeakageFilter.removeLeakage(mic: [mixed], call: [call]).map(\.text), ["Right, take a breath."])
+    }
+
+    func testTwoDifferingWordsBreakARun() {
+        // Four shared words, but two words differ among them: not an echoed run.
+        let mine = line("You", "please sit down here with me", from: 0, to: 4)
+        let call = line("Call audio", "please sit up here beside me", from: 0, to: 4)
+        XCTAssertEqual(SpeakerLeakageFilter.removeLeakage(mic: [mine], call: [call]), [mine])
+    }
+
+    func testAFourWordLineIsNeverRemovedWhole() {
+        let mine = line("You", "how did that feel", from: 10, to: 12)
+        let call = line("Call audio", "and how did that feel for you", from: 10, to: 13)
+        XCTAssertEqual(SpeakerLeakageFilter.removeLeakage(mic: [mine], call: [call]), [mine])
+    }
+
+    func testReflectionAfterTheClientStopsIsKept() {
+        // The therapist repeats the client back once the client has stopped,
+        // so the two lines don't overlap in time.
+        let reflection = line("You", "Feeling really overwhelmed at work lately, tell me more", from: 14.5, to: 18)
+        let result = SpeakerLeakageFilter.removeLeakage(mic: [reflection], call: [line("Call audio", spoken, from: 10, to: 14)])
+        XCTAssertEqual(result, [reflection])
+    }
+
+    func testShortSharedPhraseIsKept() {
+        let mine = line("You", "I see, and how did that feel for you", from: 10, to: 13)
+        let call = line("Call audio", "and how did my manager react", from: 10, to: 13)
+        XCTAssertEqual(SpeakerLeakageFilter.removeLeakage(mic: [mine], call: [call]), [mine])
+    }
+
+    func testSameRunFarApartWithinOneLongSegmentIsKept() {
+        // Overlapping segments, but the shared words sit at opposite ends.
+        let mine = line("You", "so I have been feeling really overwhelmed at work lately " + String(repeating: "and then some more words ", count: 8), from: 0, to: 30)
+        let call = line("Call audio", String(repeating: "something else entirely here ", count: 10) + spoken, from: 0, to: 30)
+        XCTAssertEqual(SpeakerLeakageFilter.removeLeakage(mic: [mine], call: [call]), [mine])
+    }
+
+    func testRemoveLeakageDropsWholeEchoesAndLeavesCallUntouched() {
+        let echo = line("You", "so I have been feeling really overwhelmed at work lately", from: 10.3, to: 14)
+        let mine = line("You", "Let's talk about how you have been sleeping this month", from: 20, to: 24)
+        let result = SpeakerLeakageFilter.removeLeakage(mic: [echo, mine], call: [line("Call audio", spoken, from: 10, to: 14)])
+        XCTAssertEqual(result, [mine])
+    }
 }

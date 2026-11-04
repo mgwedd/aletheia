@@ -268,6 +268,7 @@ struct SessionDetailView: View {
     /// kept (see `AudioRetentionPolicy.decision`); shown inline, not as an alert.
     @State private var noSpeechNotice: String?
     @State private var errorMessage: String?
+    @State private var showHeadphonesTip = false
     /// How the last export ended, shown until dismissed.
     @State private var exportResult: SaveOutcome?
     /// Set when note generation or a chat answer failed because the local AI
@@ -277,6 +278,7 @@ struct SessionDetailView: View {
     @State private var confirmationMessage: String?
     @State private var showScheduleSheet = false
     @State private var showRecordingConsent = false
+    @State private var recordAfterConsent = false
     /// What the consent sheet is in front of: recording, importing a file, or a change.
     @State private var consentPurpose: ConsentSheetPurpose = .record
     /// The session's consent line, and whether Change… is offered.
@@ -410,6 +412,12 @@ struct SessionDetailView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .alert(HeadphonesTip.title, isPresented: $showHeadphonesTip) {
+            Button(HeadphonesTip.startButton) { Task { await startRecording() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(HeadphonesTip.message)
+        }
         .aiEngineAlert($engineIncident, retry: {
             for retry in engineRetries.takeAll() { retry() }
         }, discard: {
@@ -439,7 +447,13 @@ struct SessionDetailView: View {
         }
         .dismissOnLock { showScheduleSheet = false; editingInstructions = false; pendingExport = nil; showRecordingConsent = false; showAudioImporter = false }
         .sheet(isPresented: $showScheduleSheet) { scheduleSheet }
-        .sheet(isPresented: $showRecordingConsent) {
+        .sheet(isPresented: $showRecordingConsent, onDismiss: {
+            // Started once the sheet is gone, so an alert it raises (the
+            // headphones tip) isn't lost to the sheet's dismissal.
+            guard recordAfterConsent else { return }
+            recordAfterConsent = false
+            Task { await startRecording() }
+        }) {
             RecordingConsentSheet(
                 purpose: consentPurpose,
                 policy: appModel.consentPolicy(for: patient),
@@ -455,7 +469,7 @@ struct SessionDetailView: View {
                     }
                     refreshConsent()
                     switch consentPurpose {
-                    case .record: Task { await startRecording() }
+                    case .record: recordAfterConsent = true
                     case .importAudio: pickAudioFile()
                     case .change: break
                     }
@@ -1816,6 +1830,10 @@ struct SessionDetailView: View {
         guard !appModel.needsRecordingConsent(patient: patient, session: session) else {
             consentPurpose = .record
             showRecordingConsent = true
+            return
+        }
+        if HeadphonesTip.takeIfDue(settings) {
+            showHeadphonesTip = true
             return
         }
         let micURL = store.micRecordingURL(for: patient, session: session)

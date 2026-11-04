@@ -220,6 +220,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AudioImport.swift` · `qa: RECORD-23`
 - **REC-090** Import Audio… is offered only while a current test license (signed tier "test") is installed. With a customer license, an expired test license or none, the session shows Record Session alone, and starting an import is refused with "Importing audio needs a test license."
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Services/AppModel.swift, Sources/App/Services/License/LicenseState.swift, Sources/App/AletheiaApp.swift` · `qa: RECORD-24`
+- **REC-091** The first Record Session on this Mac shows the "Use headphones" alert (Start Recording, Cancel) before anything is recorded; showing it is remembered in settings, so it never appears again, Cancel included. Until then, the menu bar panel shows the same tip above its start controls, and a recording started from there marks it shown.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Views/RecordingMenuBar.swift, Sources/App/Services/HeadphonesTip.swift` · `qa: RECORD-25`
 
 ## Set-aside recordings (SAR)
 
@@ -479,6 +481,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:44-60` · `qa: TRANSCRIBE-18`
 - **TRN-093** When a call turn is shown under the patient's first name, the turn lays out like any other: it wraps across the pane's width, whatever the name's length.
   `surface: ui` · `evidence: Sources/App/Views/TranscriptTextView.swift` · `qa: TRANSCRIBE-20`
+- **TRN-094** On speakers the call re-enters the microphone. Before cleaning, a microphone segment that repeats the overlapping call speech is dropped, and in a segment that mixes both, any run of four or more words matching call words spoken within 3 seconds of it (one differing word allowed) is cut, keeping the rest. A short shared phrase, or the same words said well after the client, stays.
+  `surface: background` · `evidence: Sources/App/Services/SpeakerLeakageFilter.swift, Sources/App/Services/WhisperTranscriber.swift` · `qa: TRANSCRIBE-21`
 
 ## Encryption at rest (ENC)
 
@@ -1165,7 +1169,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Services/ModelReply.swift` · `qa: CHAT-35`
 - **CHT-089** A reply or summary saved before CHT-088 that holds a reasoning span (closed, or cut off at the end) or a template marker is shown without them in the conversation and the compaction card, and is sent back to the model without them in the turns of the next question and in the compaction prompt.
   `surface: ui` · `evidence: Sources/App/Services/ModelReply.swift, Sources/App/Services/PromptTurn.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-35`
-- **CHT-090** A chat prompt is ordered system, turns, question: the system turn holds the instructions, then the session material (transcript or patient context, therapist notes, comments, background) and, after a compaction, the earlier summary; the conversation since then follows as turns; the question alone, as "Therapist's question: <question>", is the last turn, so the model never reads the material after its own previous answer.
+- **CHT-090** A chat prompt is ordered system, turns, question: the system turn holds the instructions, then the session material (transcript or patient context, therapist notes, comments, background) and, after a compaction, the earlier summary; the conversation since then follows as turns; the question, as "Question: <question>" after the depth's guidance, is the last turn, so the model never reads the material after its own previous answer.
   `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/Integrations/AssistantService.swift, Sources/App/Services/PromptTurn.swift` · `qa: CHAT-32`
 - **CHT-091** The summary a compaction writes gets the full reply room (`ContextBudget.replyHeadroomTokens`), the same as a note or an answer. A summary the engine reports it stopped at the reply limit, rather than finished, is discarded even though text was already shown: the conversation stays as it was and an alert reads "The summary didn't finish, so the conversation was kept as it was. Try Compact again, or name what to keep, like /compact medication."
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Models/AIRunStats.swift, Sources/App/Services/Integrations/AITask.swift, Sources/App/Services/Integrations/AssistantService.swift, Sources/App/Views/ChatStreamRunner.swift, Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/SessionAI/PatientChatModel.swift` · `qa: CHAT-37`
@@ -1173,6 +1177,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/Integrations/AssistantService.swift` · `qa: CHAT-35`
 - **CHT-093** While a summary is being written, the answers above it keep their full width and the "Conversation compacted" card builds below them with nothing drawn over it; the answer text is measured apart from the view that shows it, and the conversation always leaves room for a scroll bar that takes space, so one appearing doesn't rewrap the answers.
   `surface: ui` · `evidence: Sources/App/Views/AnswerText.swift, Sources/App/Views/ChatPaneView.swift, Sources/App/Views/BoundedScroll.swift` · `qa: CHAT-36`
+- **CHT-094** The depth's guidance sits in the final turn, directly before the question, so it is the last instruction the model reads, however long the conversation; the planner's prompt carries the question alone.
+  `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/Integrations/AssistantService.swift, Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: CHAT-38`
+- **CHT-095** The default system prompt writes to the user as "you"; says each point once, never restating a list as a second list; suggests action items or homework only if they were agreed or asked for; and gives a thin session a short answer. A saved prompt equal to an earlier default is replaced by the current one.
+  `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/AppSettings.swift` · `qa: CHAT-38`
 
 ## AI engine & models (AIE)
 

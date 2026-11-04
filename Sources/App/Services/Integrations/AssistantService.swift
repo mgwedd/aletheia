@@ -155,7 +155,7 @@ struct AssistantService {
                 clientName: clientName
             )),
             turns: PromptTurn.recent(history, question: question),
-            prompt: Prompts.chatQuestion(question)
+            prompt: Prompts.chatQuestion(question, depth: depth)
         )
     }
 
@@ -165,7 +165,7 @@ struct AssistantService {
                 systemPrompt, question: question, depth: depth,
                 material: Prompts.patientChat(context: context, history: history, clientName: clientName)),
             turns: PromptTurn.recent(history, question: question),
-            prompt: Prompts.chatQuestion(question)
+            prompt: Prompts.chatQuestion(question, depth: depth)
         )
     }
 
@@ -193,7 +193,7 @@ struct AssistantService {
                 clientName: clientName
             )),
             turns: PromptTurn.recent(history, question: question),
-            prompt: Prompts.chatQuestion(question)
+            prompt: Prompts.chatQuestion(question, depth: depth)
         )
     }
 
@@ -205,7 +205,7 @@ struct AssistantService {
         let system = Prompts.chatSystem(
             systemPrompt, question: question, depth: depth,
             material: Prompts.patientChat(context: "", history: history, clientName: clientName))
-        let wrapper = PromptTurn.flattened(PromptTurn.recent(history, question: question), then: Prompts.chatQuestion(question))
+        let wrapper = PromptTurn.flattened(PromptTurn.recent(history, question: question), then: Prompts.chatQuestion(question, depth: depth))
         return budget.availableCharacters(
             reserving: ContextBudget.weightedLength(of: system) + ContextBudget.weightedLength(of: wrapper))
     }
@@ -221,7 +221,7 @@ struct AssistantService {
                 systemPrompt, question: question, depth: depth,
                 material: Prompts.patientChat(context: context, history: history, clientName: clientName)),
             turns: PromptTurn.recent(history, question: question),
-            prompt: Prompts.chatQuestion(question)
+            prompt: Prompts.chatQuestion(question, depth: depth)
         )
     }
 

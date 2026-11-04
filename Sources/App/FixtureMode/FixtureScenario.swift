@@ -28,6 +28,15 @@ struct FixtureScenario: Codable, Equatable {
         var damaged: Bool?
     }
 
+    /// One segment the speech model hears on one track ("You" for the
+    /// microphone, "Call audio" for the call), spoken from `from` to `to` seconds.
+    struct HeardSegment: Codable, Equatable {
+        var speaker: String
+        var from: Double
+        var to: Double
+        var text: String
+    }
+
     struct ChatSeed: Codable, Equatable {
         /// "user", "assistant" or "summary".
         var role: String
@@ -76,11 +85,18 @@ struct FixtureScenario: Codable, Equatable {
     var aiHoldsOpen: Bool?
     /// The model's reading window in tokens, in place of the Mac's own.
     var contextTokens: Int?
+    /// The headphones tip is still to come before the first recording. Unset:
+    /// it was already shown, so other recording tests don't meet it.
+    var headphonesTip: Bool?
     /// Settings: background summaries start paused, so a note builds its own.
     var summariesPaused: Bool?
     /// Transcription that runs until it is cancelled, so its progress band
     /// stays on screen.
     var slowTranscription: Bool?
+    /// What the speech model hears on the two tracks of an imported
+    /// recording; the app puts the transcript together from it as it does
+    /// from real speech.
+    var heardTracks: [HeardSegment]?
     /// Settings > Notes: "concise", "natural" or "detailed".
     var noteDepth: String?
     /// AI effort for notes and for Ask: "fast", "normal" or "focus".

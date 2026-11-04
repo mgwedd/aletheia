@@ -46,6 +46,36 @@ final class SystemPromptTests: XCTestCase {
         XCTAssertEqual(fake.lastSystem, Prompts.defaultSystemPrompt)
     }
 
+    func testDefaultSystemPromptWritesToYouOnceAndAddsNoUnaskedActionItems() {
+        let prompt = Prompts.defaultSystemPrompt
+        XCTAssertTrue(prompt.contains("Write to them as \"you\""))
+        XCTAssertTrue(prompt.contains("Say each point once"))
+        XCTAssertTrue(prompt.contains("Suggest action items or homework only if they were agreed or you are asked."))
+        XCTAssertTrue(prompt.contains("A thin session gets a short answer."))
+    }
+
+    func testASavedEarlierDefaultPromptBecomesTheCurrentOne() {
+        let suite = "system-prompt-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for retired in Prompts.retiredSystemPrompts {
+            defaults.set(retired, forKey: "systemPrompt")
+            XCTAssertEqual(AppSettings(defaults: defaults).systemPrompt, Prompts.defaultSystemPrompt)
+        }
+        defaults.set("My own prompt.", forKey: "systemPrompt")
+        XCTAssertEqual(AppSettings(defaults: defaults).systemPrompt, "My own prompt.")
+    }
+
+    func testTheHeadphonesTipIsDueOnceAndRemembered() {
+        let suite = "headphones-tip-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertTrue(HeadphonesTip.takeIfDue(settings))
+        XCTAssertFalse(HeadphonesTip.takeIfDue(settings))
+        XCTAssertFalse(HeadphonesTip.takeIfDue(AppSettings(defaults: defaults)))
+    }
+
     // MARK: - Diagrams only on request
 
     func testDefaultSystemPromptDoesNotOfferDiagrams() {

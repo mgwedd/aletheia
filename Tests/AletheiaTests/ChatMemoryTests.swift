@@ -58,7 +58,7 @@ final class ChatMemoryTests: XCTestCase {
         XCTAssertFalse(prompt.contains("Second question"), "later messages go in as turns")
         XCTAssertFalse(prompt.contains("First answer"), "the model's earlier answers are not instructions")
         XCTAssertFalse(prompt.contains("Now?"), "the question is the final turn, not part of the material")
-        XCTAssertEqual(Prompts.chatQuestion("Now?"), "Therapist's question: Now?")
+        XCTAssertEqual(Prompts.chatQuestion("Now?"), AnswerDepth.default.guidance(for: .answer) + "\nQuestion: Now?")
 
         let turns = PromptTurn.recent(history + [ChatMessage(role: .user, text: "Now?")], question: "Now?")
         XCTAssertEqual(turns, [

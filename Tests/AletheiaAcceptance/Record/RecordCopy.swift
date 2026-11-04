@@ -6,4 +6,8 @@ extension Copy {
     static let alreadyHasRecording = "already has a recording"
     static let needsLicenseKey = "needs a license key"
     static let oneFileOrTwo = "Pick one audio file, or two"
+    static let useHeadphones = "Use headphones"
+    static let clientWordsTwice = "your client's voice, so their words can appear twice in the transcript"
+    static let startRecording = "Start Recording"
+    static let cancel = "Cancel"
 }
