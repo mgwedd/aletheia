@@ -7,6 +7,14 @@ import PackageDescription
 //
 // To update: pick the build tag whose commit matches the wanted v-release
 // (v-tags carry no assets), then `swift package compute-checksum <zip>`.
+//
+// The `upstream:` line pins the release tag and the commit it names, and
+// `upstream-zip:` pins upstream's zip. The url/checksum below may instead name
+// our build of that zip with an AVX2 x86_64 slice (arm64 left as upstream's):
+// see scripts/build-x86-runtime.sh and .github/workflows/runtime-x86.yml.
+// scripts/check-runtime-pins.sh keeps these lines and the url in step.
+// upstream: ggml-org/whisper.cpp b5454 d1be6fde11ac6e0407606b4e42fe72d34add8037
+// upstream-zip: e57f8c48933000acabc13bb913fbe82805d483a2deff692cc6738836bd92393b
 let package = Package(
     name: "WhisperCpp",
     platforms: [.macOS(.v14)],

@@ -25,6 +25,17 @@ final class InferenceBenchmarkTests: XCTestCase {
         print("BENCH-INFO ggml \(LlamaEngine.systemInfo)")
     }
 
+    /// The CI Intel runner has AVX2, so the CPU check must say so; this is what
+    /// proves the sysctl keys behind it are the right ones.
+    func testIntelRunnerHasAVX2() throws {
+        let hardware = HardwareCapabilities.current()
+        try XCTSkipIf(hardware.isAppleSilicon, "Intel only")
+        let keys = HardwareCapabilities.avx2Features.map { "\($0)=\(HardwareCapabilities.sysctlInt($0).map(String.init) ?? "missing")" }
+        print("BENCH-INFO cpu-features \(keys.joined(separator: " "))")
+        XCTAssertTrue(hardware.hasAVX2, keys.joined(separator: " "))
+        XCTAssertNil(InferenceCompute.unsupportedReason)
+    }
+
     func testWhisper() throws {
         let clip = URL(fileURLWithPath: try XCTUnwrap(env["ALETHEIA_BENCH_CLIP"]))
         let reference = try XCTUnwrap(env["ALETHEIA_BENCH_CLIP_TEXT"])

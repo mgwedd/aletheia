@@ -64,7 +64,7 @@ jobs:
         run: |
           sysctl -n machdep.cpu.brand_string
           sysctl -n hw.physicalcpu hw.logicalcpu hw.memsize
-          sysctl -a | grep -E '^hw.optional.(avx|fma|f16c)' || true
+          sysctl -a | grep -E '^hw.optional.(avx|fma|f16c|bmi)' || true
           system_profiler SPDisplaysDataType || true
           xcodebuild -version
 

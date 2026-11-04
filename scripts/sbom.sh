@@ -29,7 +29,9 @@ for pkg in sorted(Path("Packages").glob("*/Package.swift")):
     text = pkg.read_text()
     for m in re.finditer(r'\.binaryTarget\(\s*name:\s*"([^"]+)".*?url:\s*"([^"]+)".*?checksum:\s*"([0-9a-f]+)"', text, re.S):
         name, url, checksum = m.groups()
-        ver = re.search(r"/download/([^/]+)/", url)
+        # The upstream build tag, also when the zip is our x86avx2 build of it.
+        up = re.search(r"^// upstream: \S+ (b\d+) [0-9a-f]{40}$", text, re.M)
+        ver = up or re.search(r"/download/([^/]+)/", url)
         components.append(sec("frameworks", type="framework", name=name,
             version=ver.group(1) if ver else "",
             hashes=[{"alg": "SHA-256", "content": checksum}],
