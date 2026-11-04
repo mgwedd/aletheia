@@ -7,6 +7,13 @@ name: Benchmarks (Intel)
 # app uses on Intel (InferenceCompute) gives garbled text; the timings and the
 # other path are reported in the step summary.
 #
+# A manual dispatch can also choose the runtime (the pinned one, upstream's
+# own zips, or the AVX2 slices built here from the pinned source by
+# scripts/build-x86-runtime.sh), turn prompt-cache reuse off, and run the
+# 50-minute session workload (SessionWorkloadBenchmarkTests: digest, a Fast
+# note, a first and a follow-up Ask). Comparing dispatches gives before and
+# after numbers. The swap is local to the run; nothing is published.
+#
 # Runs on PRs that touch the engines, their settings or this workflow (the
 # `changes` job, scripts/ci-changes.sh inference) and on manual dispatch.
 # Standard runners only (free for this public repo).
@@ -21,9 +28,23 @@ on:
       - '**/*.md'
       - 'docs/**'
   workflow_dispatch:
+    inputs:
+      runtime:
+        description: Runtime to link (pinned = what Package.swift pins)
+        type: choice
+        options: [pinned, upstream, avx2]
+        default: pinned
+      reuse:
+        description: Reuse the cached prompt prefix
+        type: boolean
+        default: true
+      workload:
+        description: Run the 50-minute session workload
+        type: boolean
+        default: true
 
 concurrency:
-  group: bench-intel-${{ github.ref }}
+  group: bench-intel-${{ github.ref }}-${{ inputs.runtime }}-${{ inputs.reuse }}-${{ inputs.workload }}
   cancel-in-progress: true
 
 permissions:
@@ -52,7 +73,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.inference == 'true') }}
     runs-on: macos-15-intel
-    timeout-minutes: 120
+    timeout-minutes: 300
     env:
       NSUnbufferedIO: "YES"
     steps:
@@ -70,6 +91,32 @@ jobs:
 
       - name: Install tools (XcodeGen, xcbeautify)
         run: brew install xcodegen xcbeautify
+
+      # upstream: point both packages at upstream's own zips (the `// upstream`
+      # pins). avx2: build the AVX2 slices from the pinned source, unless the
+      # packages already pin them, and link the local build.
+      - name: Choose the runtime
+        env:
+          RUNTIME: ${{ inputs.runtime || 'pinned' }}
+        run: |
+          set -euo pipefail
+          for spec in llama:LlamaCpp whisper:WhisperCpp; do
+            name=${spec%%:*}; dir=Packages/${spec#*:}; pkg=$dir/Package.swift
+            read -r _ _ repo tag _ < <(grep -E '^// upstream: ' "$pkg")
+            read -r _ _ zipsha < <(grep -E '^// upstream-zip: ' "$pkg")
+            case "$RUNTIME" in
+              pinned) ;;
+              upstream)
+                sed -i '' -E "s#^([[:space:]]*url: )\"[^\"]+\"#\1\"https://github.com/$repo/releases/download/$tag/$name-$tag-xcframework.zip\"#; s#^([[:space:]]*checksum: )\"[0-9a-f]{64}\"#\1\"$zipsha\"#" "$pkg" ;;
+              avx2)
+                if ! grep -q 'x86avx2-xcframework.zip' "$pkg"; then
+                  scripts/build-x86-runtime.sh "$name" runtime-out
+                  ditto -x -k "runtime-out/$name-$tag-x86avx2-xcframework.zip" "$dir"
+                  sed -i '' -E "s#^([[:space:]]*)url: \"[^\"]+\",#\1path: \"build-apple/$name.xcframework\"#; /^[[:space:]]*checksum: /d" "$pkg"
+                fi ;;
+            esac
+            sed -n '/binaryTarget/,/)/p' "$pkg"
+          done
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -128,9 +175,18 @@ jobs:
 
       # Debug (so @testable works) but optimized, as in bench.yml.
       - name: Run inference benchmarks
+        env:
+          RUNTIME: ${{ inputs.runtime || 'pinned' }}
+          REUSE: ${{ inputs.reuse }}
+          WORKLOAD: ${{ inputs.workload }}
         run: |
           set -o pipefail
           export TEST_RUNNER_ALETHEIA_INFERENCE_BENCH=1
+          export TEST_RUNNER_ALETHEIA_BENCH_THREADS="4 8"
+          export TEST_RUNNER_ALETHEIA_BENCH_RUNTIME="$RUNTIME"
+          export TEST_RUNNER_ALETHEIA_BENCH_BUDGETS="8192 16384"
+          if [ "$REUSE" = false ]; then export TEST_RUNNER_ALETHEIA_BENCH_REUSE=0; fi
+          if [ "$WORKLOAD" = true ]; then export TEST_RUNNER_ALETHEIA_BENCH_WORKLOAD=1; fi
           export TEST_RUNNER_ALETHEIA_BENCH_CLIP="$PWD/clip.wav"
           export TEST_RUNNER_ALETHEIA_BENCH_CLIP_TEXT="$(cat clip.line)"
           export TEST_RUNNER_ALETHEIA_BENCH_WHISPER_DIR="$PWD/models"
@@ -144,6 +200,7 @@ jobs:
             -derivedDataPath build \
             -skipPackagePluginValidation \
             -only-testing:AletheiaTests/InferenceBenchmarkTests \
+            -only-testing:AletheiaTests/SessionWorkloadBenchmarkTests \
             SWIFT_OPTIMIZATION_LEVEL=-O \
             2>&1 | tee bench.log | xcbeautify --renderer github-actions || status=$?
           grep -E '^BENCH-INFO' bench.log || true
@@ -153,22 +210,36 @@ jobs:
 
       - name: Summarize
         if: ${{ !cancelled() && hashFiles('bench/inference.json') != '' }}
+        env:
+          RUNTIME: ${{ inputs.runtime || 'pinned' }}
+          REUSE: ${{ inputs.reuse }}
         run: |
           {
             echo '### Inference on Intel'
             grep -E '^BENCH-INFO' bench.log | sed 's/^BENCH-INFO /- /' || true
             echo
-            echo '| Engine | Model | GPU | Load s | Run s | Speed | Est. 50-min session | Readable |'
-            echo '|---|---|---|---|---|---|---|---|'
+            echo "Runtime: ${RUNTIME}, prompt-cache reuse: ${REUSE:-true}"
+            echo
+            echo '| Engine | Model | GPU | Threads | Load s | Run s | Speed | Est. 50-min session | Readable |'
+            echo '|---|---|---|---|---|---|---|---|---|'
             jq -r '.[] | if .kind == "whisper" then
-                "| Whisper | \(.model) | \(.gpu) | \(.load_s*10|round/10) | \(.run_s*10|round/10) | \(.realtime_factor*100|round/100)× realtime | \(.est_50min_s/60|round) min | \(.readable) (WER \(.wer*100|round)%) |"
-              else
-                "| llama.cpp | \(.model) | \(.gpu) | \(.load_s*10|round/10) | \(.run_s*10|round/10) | prefill \(.prefill_tps*10|round/10) tok/s, decode \(.decode_tps*10|round/10) tok/s | | \(.readable) (answer found: \(.answered)) |"
-              end' bench/inference.json
+                "| Whisper | \(.model) | \(.gpu) | | \(.load_s*10|round/10) | \(.run_s*10|round/10) | \(.realtime_factor*100|round/100)× realtime | \(.est_50min_s/60|round) min | \(.readable) (WER \(.wer*100|round)%) |"
+              elif .kind == "llama" then
+                "| llama.cpp | \(.model) | \(.gpu) | \(.threads) | \(.load_s*10|round/10) | \(.run_s*10|round/10) | prefill \(.prefill_tps*10|round/10) tok/s, decode \(.decode_tps*10|round/10) tok/s | | \(.readable) (answer found: \(.answered)) |"
+              else empty end' bench/inference.json
+            jq -r '.[] | select(.kind == "prefix-reuse") |
+              "\nPrefix reuse: \(.total_tokens) prompt tokens, \(.kept_tokens) kept, \(.read_tokens) read; \(.warm_s*10|round/10) s warm vs \(.cold_s*10|round/10) s cold; same output: \(.same_output)"' bench/inference.json
+            if jq -e 'any(.[]; .kind == "workload")' bench/inference.json > /dev/null; then
+              echo
+              echo '| Budget | Stage | Calls | Time | Prompt read | Kept from cache | Written | Prefill tok/s | Decode tok/s |'
+              echo '|---|---|---|---|---|---|---|---|---|'
+              jq -r '.[] | select(.kind == "workload") |
+                "| \(.budget) | \(.stage) | \(.calls) | \(.seconds/6|round/10) min | \(.prompt_tokens) | \(.cached_tokens) | \(.output_tokens) | \(if .prompt_s > 0 then (.prompt_tokens/.prompt_s*10|round/10) else 0 end) | \(if .output_s > 0 then (.output_tokens/.output_s*10|round/10) else 0 end) |"' bench/inference.json
+            fi
             echo
             echo '<details><summary>Output text</summary>'
             echo
-            jq -r '.[] | "- \(.kind) \(.model) gpu=\(.gpu): \(.text | gsub("\n"; " ") | .[0:400])"' bench/inference.json
+            jq -r '.[] | "- \(.kind) \(.model // .stage // "") \(.budget // "") gpu=\(.gpu // false): \(.text | gsub("\n"; " ") | .[0:400])"' bench/inference.json
             echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
 

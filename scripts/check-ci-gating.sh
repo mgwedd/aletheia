@@ -95,6 +95,8 @@ self_test() {
     expect inference true  Sources/WhisperEngine/WhisperEngine.swift
     expect inference true  Packages/LlamaCpp/Package.swift
     expect inference true  Tests/AletheiaTests/InferenceBenchmarkTests.swift
+    expect inference true  Tests/AletheiaTests/SessionWorkloadBenchmarkTests.swift
+    expect inference true  Sources/App/Services/Llama/LlamaPromptCache.swift
     expect inference true  .github/workflows/bench-intel.yml
     expect inference false Sources/App/Views/SettingsView.swift Sources/App/Services/Llama/LlamaAssistant.swift README.md
     # runtime

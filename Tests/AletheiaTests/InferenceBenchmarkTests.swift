@@ -80,9 +80,13 @@ final class InferenceBenchmarkTests: XCTestCase {
             prompt: "Transcript:\n\(transcript)\n\nWhat is the name of the client's dog? Then, in two sentences, summarise how the client's week went.",
             sampling: LocalLLMSampling(maxTokens: 64)
         )
-        for gpu in [true, false] {
+        // The CPU path once per thread count in ALETHEIA_BENCH_THREADS (default:
+        // the app's own count), to compare physical cores with all threads.
+        let threads = (env["ALETHEIA_BENCH_THREADS"] ?? "\(InferenceCompute.cpuThreads)").split(separator: " ").compactMap { Int($0) }
+        let runs = [(gpu: true, threads: InferenceCompute.cpuThreads)] + threads.map { (gpu: false, threads: $0) }
+        for (gpu, threadCount) in runs {
             let engine = LlamaEngine(modelURL: gguf, sampling: LocalLLMSampling(maxTokens: 64),
-                                     budget: ContextBudget(tokens: 4096), usesGPU: gpu)
+                                     budget: ContextBudget(tokens: 4096), usesGPU: gpu, cpuThreads: threadCount)
             let clock = ContinuousClock()
             let load = try await clock.measure { try await engine.load() }
             var text = ""
@@ -97,13 +101,13 @@ final class InferenceBenchmarkTests: XCTestCase {
             // and only garbled text fails.
             let readable = Self.looksLikeEnglish(Self.withoutSpecialTokens(text))
             let answered = text.contains("Biscuit")
-            report(["kind": "llama", "model": "medgemma-1.5-4b-q4_k_m", "gpu": gpu, "load_s": load.seconds, "run_s": run.seconds,
+            report(["kind": "llama", "model": "medgemma-1.5-4b-q4_k_m", "gpu": gpu, "threads": gpu ? 0 : threadCount, "load_s": load.seconds, "run_s": run.seconds,
                     "prompt_tokens": promptTokens, "prefill_tps": promptSeconds > 0 ? Double(promptTokens) / promptSeconds : 0,
                     "output_tokens": outputTokens, "decode_tps": outputSeconds > 0 ? Double(outputTokens) / outputSeconds : 0,
                     "readable": readable, "answered": answered, "text": text])
             engine.unload()
             if gpu == InferenceCompute.usesGPU {
-                XCTAssertTrue(readable, "gpu=\(gpu): \(text.debugDescription)")
+                XCTAssertTrue(readable, "gpu=\(gpu) threads=\(threadCount): \(text.debugDescription)")
             }
         }
     }

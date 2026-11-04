@@ -45,7 +45,7 @@ case "$area" in
     # The on-device engines (whisper.cpp, llama.cpp), their GPU/CPU choice and
     # per-Mac defaults, the pinned runtimes, and the Intel benchmark itself.
     inference)
-        pattern='^(Packages/|Sources/WhisperEngine/|Sources/App/Services/Llama/LlamaEngine\.swift$|Sources/App/Services/(WhisperTranscriber|InferenceCompute|ModelAdvisor|HardwareCapabilities)\.swift$|Tests/AletheiaTests/InferenceBenchmarkTests\.swift$|\.github/workflows/bench-intel\.yml$|scripts/ci-changes\.sh$)'
+        pattern='^(Packages/|Sources/WhisperEngine/|Sources/App/Services/Llama/(LlamaEngine|LlamaPromptCache)\.swift$|Sources/App/Services/(WhisperTranscriber|InferenceCompute|ModelAdvisor|HardwareCapabilities)\.swift$|Tests/AletheiaTests/(InferenceBenchmarkTests|SessionWorkloadBenchmarkTests)\.swift$|\.github/workflows/bench-intel\.yml$|scripts/ci-changes\.sh$)'
         ;;
     # Our AVX2 x86_64 build of the llama.cpp / whisper.cpp runtimes: their
     # pins, the build script and its workflow.
