@@ -25,8 +25,8 @@ let package = Package(
         .binaryTarget(
             name: "whisper",
             // Build b5454 = v1.9.5 (commit d1be6fde11ac6e0407606b4e42fe72d34add8037).
-            url: "https://github.com/mgwedd/aletheia/releases/download/runtime-x86avx2-b11149-b5454/whisper-b5454-x86avx2-xcframework.zip",
-            checksum: "68931a6b75752f7cfda5caaa866c39da9a2be9b8559095861cc9a660a1d857fa"
+            url: "https://github.com/mgwedd/aletheia/releases/download/runtime-x86avx2-cpu-b11149-b5454/whisper-b5454-x86avx2-xcframework.zip",
+            checksum: "8e393b89ea2c5b8c5836e15376051d19a79d3a48c4a9cd1843c116dff591fd1b"
         )
     ]
 )
