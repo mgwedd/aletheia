@@ -9,7 +9,8 @@
 # (<name>-<tag>-x86avx2-xcframework.zip on a runtime-x86avx2-* prerelease of
 # this repo, checked against a rebuild by .github/workflows/runtime-x86.yml).
 # Online it also checks that the tag still names the pinned commit, that
-# upstream's zip still has the pinned SHA-256 (the release asset digest), and
+# upstream's zip still has the pinned SHA-256 (the release asset digest), that
+# our build, when pinned, is still on a prerelease with the pinned digest, and
 # asks the GitHub API for:
 #   - the newest published build tag (bNNNN)        -> older pin = drift WARNING
 #   - published security advisories for the repo    -> any that affects the pin
@@ -199,6 +200,26 @@ OUT
   return "$rc"
 }
 
+# check_ours <Package.swift> -> 0 when the url is upstream's, or our release
+# still serves that asset with the pinned SHA-256 (its digest); 1 otherwise.
+check_ours() {
+  local pkg="$1" url sum rel asset d got
+  url=$(field "$pkg" url); sum=$(field "$pkg" checksum)
+  case "$url" in "$OUR_RELEASES"/*) ;; *) return 0 ;; esac
+  rel=${url#"$OUR_RELEASES"/}; asset=${rel#*/}; rel=${rel%%/*}
+  d=$(mktemp -d)
+  api mgwedd/aletheia release "$rel" >"$d/rel.json" || exit 2
+  got=$(python3 -I -c 'import json,sys
+r=json.load(open(sys.argv[1])); a=[x for x in r.get("assets") or [] if x.get("name")==sys.argv[2]]
+print(("pre" if r.get("prerelease") else "not-pre") + " " + ((a[0].get("digest") or "none") if a else "missing"))' "$d/rel.json" "$asset") || got="error"
+  rm -rf "$d"
+  case "$got" in
+    "pre sha256:$sum") echo "==> $rel/$asset: digest matches the pin" ;;
+    not-pre*) echo "ERROR: $pkg: $rel is not a prerelease, so the app's update check could pick it up" >&2; return 1 ;;
+    *) echo "ERROR: $pkg: $rel/$asset is $got, pinned sha256:$sum" >&2; return 1 ;;
+  esac
+}
+
 run() { # [--local] package files...
   local pkg pins fail=0 local_only=0
   [ "${1:-}" = --local ] && { local_only=1; shift; }
@@ -207,6 +228,7 @@ run() { # [--local] package files...
     [ "$local_only" -eq 1 ] && { echo "==> $pkg: $pins"; continue; }
     # shellcheck disable=SC2086
     check_repo $pins || fail=1
+    check_ours "$pkg" || fail=1
   done
   return $fail
 }
@@ -294,7 +316,18 @@ SWIFT
   echo '{"published_at":"2026-05-01T00:00:00Z","assets":[]}' >"$d/o_r.release.b100.json"
   out=$(run "$d/pkg/Package.swift" 2>&1); [ $? -eq 1 ] || { echo "FAIL - a missing upstream zip should fail: $out" >&2; rc=1; }
 
-  # 9. no token and a bash without empty-array support under set -u: the real
+  # 9. our x86avx2 build: the prerelease must serve the pinned digest.
+  echo "{\"published_at\":\"2026-05-01T00:00:00Z\",\"assets\":[{\"name\":\"x-b100-xcframework.zip\",\"digest\":\"sha256:$z\"}]}" >"$d/o_r.release.b100.json"
+  pkgfile "$OUR_RELEASES/runtime-x86avx2-b100-b7/x-b100-x86avx2-xcframework.zip" "$y"
+  echo "{\"prerelease\":true,\"assets\":[{\"name\":\"x-b100-x86avx2-xcframework.zip\",\"digest\":\"sha256:$y\"}]}" >"$d/mgwedd_aletheia.release.runtime-x86avx2-b100-b7.json"
+  out=$(run "$d/pkg/Package.swift" 2>&1); [ $? -eq 0 ] || { echo "FAIL - our build with its digest should pass: $out" >&2; rc=1; }
+  echo "{\"prerelease\":true,\"assets\":[{\"name\":\"x-b100-x86avx2-xcframework.zip\",\"digest\":\"sha256:$z\"}]}" >"$d/mgwedd_aletheia.release.runtime-x86avx2-b100-b7.json"
+  out=$(run "$d/pkg/Package.swift" 2>&1); [ $? -eq 1 ] || { echo "FAIL - our build with another digest should fail: $out" >&2; rc=1; }
+  echo "{\"prerelease\":false,\"assets\":[{\"name\":\"x-b100-x86avx2-xcframework.zip\",\"digest\":\"sha256:$y\"}]}" >"$d/mgwedd_aletheia.release.runtime-x86avx2-b100-b7.json"
+  out=$(run "$d/pkg/Package.swift" 2>&1); [ $? -eq 1 ] || { echo "FAIL - a full release should fail: $out" >&2; rc=1; }
+  pkgfile "$up_url" "$z"
+
+  # 10. no token and a bash without empty-array support under set -u: the real
   #    request path still runs (curl stubbed; prints the URL it was given).
   mkdir -p "$d/bin"; printf '#!/bin/sh\nfor a; do last="$a"; done; echo "$last"\n' >"$d/bin/curl"; chmod +x "$d/bin/curl"
   out=$(FIXTURES="" GITHUB_TOKEN="" GH_TOKEN="" PATH="$d/bin:$PATH" api o/r advisories 2>&1)
