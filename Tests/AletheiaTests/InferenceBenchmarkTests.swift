@@ -13,10 +13,25 @@ import XCTest
 /// - ALETHEIA_BENCH_WHISPER_DIR: folder of `ggml-<model>.bin` files.
 /// - ALETHEIA_BENCH_GGUF: the default MedGemma 4B Q4_K_M.
 ///
+/// - ALETHEIA_BENCH_PATHS: `app` (default) times only the path the app uses on
+///   this Mac (`InferenceCompute.usesGPU`); `both` also times the other one.
+/// - ALETHEIA_BENCH_FLOORS: set on the CI Intel runner with the pinned runtime.
+///   The app's path must then beat floors set well below that runner's numbers
+///   (Whisper base.en 0.21× realtime, llama 34 tok/s prefill and 6.9 decode),
+///   so only a gross regression fails, such as losing the AVX2 build (upstream's
+///   SSE3 slice decodes at 1.3 tok/s).
+///
 /// Each run prints one `BENCH-INFER {json}` line. Only the path the app uses on
-/// this Mac (`InferenceCompute.usesGPU`) must be readable; the other is reported.
+/// this Mac must be readable; the other is reported.
 final class InferenceBenchmarkTests: XCTestCase {
     private var env: [String: String] { ProcessInfo.processInfo.environment }
+    private var gpuPaths: [Bool] {
+        env["ALETHEIA_BENCH_PATHS"] == "both" ? [true, false] : [InferenceCompute.usesGPU]
+    }
+    private var checksFloors: Bool { env["ALETHEIA_BENCH_FLOORS"] != nil }
+    static let maxWhisperRealtimeFactor = 0.6
+    static let minPrefillTokensPerSecond = 12.0
+    static let minDecodeTokensPerSecond = 2.5
 
     override func setUpWithError() throws {
         try XCTSkipUnless(env["ALETHEIA_INFERENCE_BENCH"] != nil, "set ALETHEIA_INFERENCE_BENCH to run")
@@ -57,7 +72,7 @@ final class InferenceBenchmarkTests: XCTestCase {
         for model in models {
             let path = dir.appendingPathComponent("ggml-\(model).bin")
             guard FileManager.default.fileExists(atPath: path.path) else { print("BENCH-INFO missing \(path.path)"); continue }
-            for gpu in [true, false] {
+            for gpu in gpuPaths {
                 let clock = ContinuousClock()
                 var engine: WhisperEngine?
                 let load = clock.measure { engine = try? WhisperEngine(modelPath: path, useGPU: gpu) }
@@ -74,6 +89,9 @@ final class InferenceBenchmarkTests: XCTestCase {
                         "est_50min_s": run.seconds / audioSeconds * 3000, "wer": wer, "readable": readable, "text": text])
                 if gpu == InferenceCompute.usesGPU {
                     XCTAssertTrue(readable, "\(model) gpu=\(gpu): WER \(wer) — \(text)")
+                    if checksFloors && model == "base.en" {
+                        XCTAssertLessThan(run.seconds / audioSeconds, Self.maxWhisperRealtimeFactor, "\(model): too slow")
+                    }
                 }
             }
         }
@@ -94,7 +112,7 @@ final class InferenceBenchmarkTests: XCTestCase {
         // The CPU path once per thread count in ALETHEIA_BENCH_THREADS (default:
         // the app's own count), to compare physical cores with all threads.
         let threads = (env["ALETHEIA_BENCH_THREADS"] ?? "\(InferenceCompute.cpuThreads)").split(separator: " ").compactMap { Int($0) }
-        let runs = [(gpu: true, threads: InferenceCompute.cpuThreads)] + threads.map { (gpu: false, threads: $0) }
+        let runs = gpuPaths.flatMap { gpu in gpu ? [(gpu: true, threads: InferenceCompute.cpuThreads)] : threads.map { (gpu: false, threads: $0) } }
         for (gpu, threadCount) in runs {
             let engine = LlamaEngine(modelURL: gguf, sampling: LocalLLMSampling(maxTokens: 64),
                                      budget: ContextBudget(tokens: 4096), usesGPU: gpu, cpuThreads: threadCount)
@@ -130,6 +148,10 @@ final class InferenceBenchmarkTests: XCTestCase {
             engine.unload()
             if gpu == InferenceCompute.usesGPU {
                 XCTAssertTrue(readable, "gpu=\(gpu) threads=\(threadCount): \(text.debugDescription)")
+                if checksFloors && threadCount == InferenceCompute.cpuThreads {
+                    XCTAssertGreaterThan(promptSeconds > 0 ? Double(promptTokens) / promptSeconds : 0, Self.minPrefillTokensPerSecond, "prefill too slow")
+                    XCTAssertGreaterThan(outputSeconds > 0 ? Double(outputTokens) / outputSeconds : 0, Self.minDecodeTokensPerSecond, "decode too slow")
+                }
             }
         }
     }

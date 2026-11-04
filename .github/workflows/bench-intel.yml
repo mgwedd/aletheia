@@ -1,11 +1,16 @@
 name: Benchmarks (Intel)
 
-# Times the on-device engines on a GitHub-hosted Intel Mac, the one place CI
-# runs the x86_64 build: Whisper (base.en, small.en) on a synthetic spoken clip
-# and the default MedGemma 1.5 4B (Q4_K_M) on a synthetic transcript, each with
-# the GPU on and off (InferenceBenchmarkTests). It fails only when the path the
-# app uses on Intel (InferenceCompute) gives garbled text; the timings and the
-# other path are reported in the step summary.
+# Runs the on-device engines on a GitHub-hosted Intel Mac, the one place CI
+# runs the x86_64 build (InferenceBenchmarkTests): Whisper on a synthetic
+# spoken clip and the default MedGemma 1.5 4B (Q4_K_M) on a synthetic
+# transcript. Timings are reported in the step summary.
+#
+# On PRs it is a smoke bench of about 10 minutes: base.en and the app's own
+# path and thread count only. It fails on garbled or empty output, a missed
+# answer check, or a gross speed regression (the floors in
+# InferenceBenchmarkTests). A manual dispatch is the full bench: both GPU
+# paths, small.en, 4 and 8 threads, the prefix-reuse check and the 50-minute
+# workload, taking 1-2 hours. It never runs on PRs.
 #
 # By default it links the runtime the app ships: the zips Package.swift pins
 # (the AVX2 x86_64 build on our runtime-x86avx2-* prerelease), so the numbers
@@ -15,8 +20,11 @@ name: Benchmarks (Intel)
 # (SessionWorkloadBenchmarkTests: digest, a Fast note, a first and a follow-up
 # Ask). The swap is local to the run; nothing is published.
 #
-# The `tests` job builds the app on the same runner and runs the unit and
-# acceptance suites against the pinned runtime.
+# The `tests` job builds the app on the same runner and runs, against the
+# pinned runtime, only the tests about Intel: the engines, models, prompt
+# cache and hardware checks, and SETTINGS-18/19. The full unit and acceptance
+# suites run on Apple silicon in ci.yml; the slow source scans there have
+# nothing Intel-specific to check, and the job stays under about 10 minutes.
 #
 # Runs on PRs that touch the engines, their settings or this workflow (the
 # `changes` job, scripts/ci-changes.sh inference) and on manual dispatch.
@@ -77,7 +85,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.inference == 'true') }}
     runs-on: macos-15-intel
-    timeout-minutes: 300
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 300 || 20 }}
     env:
       NSUnbufferedIO: "YES"
     steps:
@@ -170,20 +178,31 @@ jobs:
           afconvert -f WAVE -d LEI16@16000 -c 1 clip.aiff clip.wav
           afinfo clip.wav | grep -E 'duration|Data format'
 
-      # Debug (so @testable works) but optimized, as in bench.yml.
+      # Debug, so @testable works. The engines are the prebuilt, optimized
+      # runtimes either way; the full bench also optimizes the app's Swift.
       - name: Run inference benchmarks
         env:
+          EVENT: ${{ github.event_name }}
           RUNTIME: ${{ inputs.runtime || 'pinned' }}
           REUSE: ${{ inputs.reuse }}
           WORKLOAD: ${{ inputs.workload }}
         run: |
           set -o pipefail
           export TEST_RUNNER_ALETHEIA_INFERENCE_BENCH=1
-          export TEST_RUNNER_ALETHEIA_BENCH_THREADS="4 8"
           export TEST_RUNNER_ALETHEIA_BENCH_RUNTIME="$RUNTIME"
-          export TEST_RUNNER_ALETHEIA_BENCH_BUDGETS="8192 16384"
-          if [ "$REUSE" = false ]; then export TEST_RUNNER_ALETHEIA_BENCH_REUSE=0; fi
-          if [ "$WORKLOAD" = true ]; then export TEST_RUNNER_ALETHEIA_BENCH_WORKLOAD=1; fi
+          tests=(-only-testing:AletheiaTests/InferenceBenchmarkTests)
+          if [ "$EVENT" = workflow_dispatch ]; then
+            export TEST_RUNNER_ALETHEIA_BENCH_PATHS=both
+            export TEST_RUNNER_ALETHEIA_BENCH_THREADS="4 8"
+            export TEST_RUNNER_ALETHEIA_BENCH_BUDGETS="8192 16384"
+            if [ "$REUSE" = false ]; then export TEST_RUNNER_ALETHEIA_BENCH_REUSE=0; fi
+            if [ "$WORKLOAD" = true ]; then export TEST_RUNNER_ALETHEIA_BENCH_WORKLOAD=1; fi
+            tests+=(-only-testing:AletheiaTests/SessionWorkloadBenchmarkTests SWIFT_OPTIMIZATION_LEVEL=-O)
+          else
+            export TEST_RUNNER_ALETHEIA_BENCH_WHISPER_MODELS=base.en
+          fi
+          # The speed floors hold for this runner and the runtime the app ships.
+          if [ "$RUNTIME" = pinned ]; then export TEST_RUNNER_ALETHEIA_BENCH_FLOORS=1; fi
           export TEST_RUNNER_ALETHEIA_BENCH_CLIP="$PWD/clip.wav"
           export TEST_RUNNER_ALETHEIA_BENCH_CLIP_TEXT="$(cat clip.line)"
           export TEST_RUNNER_ALETHEIA_BENCH_WHISPER_DIR="$PWD/models"
@@ -196,9 +215,8 @@ jobs:
             -destination 'platform=macOS' \
             -derivedDataPath build \
             -skipPackagePluginValidation \
-            -only-testing:AletheiaTests/InferenceBenchmarkTests \
-            -only-testing:AletheiaTests/SessionWorkloadBenchmarkTests \
-            SWIFT_OPTIMIZATION_LEVEL=-O \
+            "${tests[@]}" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             2>&1 | tee bench.log | xcbeautify --renderer github-actions || status=$?
           grep -E '^BENCH-INFO' bench.log || true
           mkdir -p bench
@@ -251,14 +269,14 @@ jobs:
           retention-days: 30
 
   # The app built and tested on Intel against the pinned (shipped) runtime:
-  # the unit suite, then the acceptance suite. The benchmark job above covers
-  # loading and running the real models on the same runtime.
+  # the tests about Intel, not the full suites (see the header). The benchmark
+  # job above covers loading and running the real models on the same runtime.
   tests:
     name: Tests (Intel)
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.inference == 'true') }}
     runs-on: macos-15-intel
-    timeout-minutes: 120
+    timeout-minutes: 20
     env:
       NSUnbufferedIO: "YES"
     steps:
@@ -279,9 +297,17 @@ jobs:
           key: spm-macos-15-intel-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
           restore-keys: spm-macos-15-intel-
 
-      - name: Run unit tests
+      # Engines and runtimes, models and the memory-based advice, the prompt
+      # cache, and the hardware checks behind the Intel CPU path.
+      - name: Run the Intel unit tests
         run: |
           set -o pipefail
+          tests=()
+          for t in FineTunedModelTests EmbeddedLlamaFeatureModuleTests BuiltInEngineOnlyTests InferenceQueueTests \
+                   LlamaContextSizeTests LlamaModelTests LlamaPromptCacheTests LlamaPromptTests LlamaUnloadTests \
+                   ModelAdvisorTests WhisperEngineTests WhisperModelDownloaderTests; do
+            tests+=("-only-testing:AletheiaTests/$t")
+          done
           xcodebuild test \
             -project Aletheia.xcodeproj \
             -scheme Aletheia \
@@ -290,12 +316,11 @@ jobs:
             -derivedDataPath build \
             -skipPackagePluginValidation \
             -test-timeouts-enabled YES \
-            -default-test-execution-time-allowance 120 \
-            -maximum-test-execution-time-allowance 240 \
-            -only-testing:AletheiaTests \
+            "${tests[@]}" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             | xcbeautify --renderer github-actions
 
-      - name: Run acceptance suite
+      - name: Run the Intel acceptance tests (SETTINGS-18, SETTINGS-19)
         if: ${{ !cancelled() }}
         run: |
           set -o pipefail
@@ -306,5 +331,7 @@ jobs:
             -destination 'platform=macOS' \
             -derivedDataPath build \
             -skipPackagePluginValidation \
-            -only-testing:AletheiaAcceptance \
+            -only-testing:AletheiaAcceptance/SettingsSpec/test_SETTINGS_18 \
+            -only-testing:AletheiaAcceptance/SettingsSpec/test_SETTINGS_19 \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             | xcbeautify --renderer github-actions
