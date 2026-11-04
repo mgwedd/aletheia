@@ -369,8 +369,10 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         params.n_ubatch = 2048
         // With the GPU doing the work, extra CPU threads (and the efficiency
         // cores) only add sync overhead, so use at most half the cores, up to 8.
-        // On Intel that is one thread per physical core, which suits the CPU path.
-        let threads = Int32(max(1, min(8, ProcessInfo.processInfo.activeProcessorCount / 2)))
+        // On the CPU path every physical core does the work.
+        let threads = Int32(usesGPU
+            ? max(1, min(8, ProcessInfo.processInfo.activeProcessorCount / 2))
+            : InferenceCompute.cpuThreads)
         params.n_threads = threads
         params.n_threads_batch = threads
         if !usesGPU { params.op_offload = false }

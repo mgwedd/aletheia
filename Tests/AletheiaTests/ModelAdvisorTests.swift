@@ -51,6 +51,14 @@ final class ModelAdvisorTests: XCTestCase {
         XCTAssertTrue(InferenceCompute.usesGPU(on: hardware(appleSilicon: true, memGB: 16)))
     }
 
+    func testCPUPathUsesOneThreadPerPhysicalCore() {
+        XCTAssertEqual(InferenceCompute.cpuThreads(physicalCores: 4, activeCores: 8), 4)
+        XCTAssertEqual(InferenceCompute.cpuThreads(physicalCores: 4, activeCores: 4), 4)
+        XCTAssertEqual(InferenceCompute.cpuThreads(physicalCores: 8, activeCores: 2), 2)
+        XCTAssertEqual(InferenceCompute.cpuThreads(physicalCores: 0, activeCores: 0), 1)
+        XCTAssertGreaterThanOrEqual(InferenceCompute.cpuThreads, 1)
+    }
+
     func testStoredEffortWinsOverIntelDefault() {
         let suite = "ModelAdvisorTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

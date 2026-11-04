@@ -140,8 +140,10 @@ final class WhisperTranscriber: Transcribing {
             // Blocking for minutes: keep it off the cooperative pool.
             try await Task.detached(priority: .userInitiated) {
                 do {
-                    return try WhisperEngine(modelPath: modelPath, useGPU: InferenceCompute.usesGPU).transcribe(
+                    let gpu = InferenceCompute.usesGPU
+                    return try WhisperEngine(modelPath: modelPath, useGPU: gpu).transcribe(
                         samples: samples,
+                        threads: gpu ? WhisperEngine.recommendedThreads() : InferenceCompute.cpuThreads,
                         onProgress: onProgress,
                         shouldAbort: { cancelled.withLock { $0 } }
                     )

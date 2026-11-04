@@ -21,7 +21,7 @@ final class InferenceBenchmarkTests: XCTestCase {
     override func setUpWithError() throws {
         try XCTSkipUnless(env["ALETHEIA_INFERENCE_BENCH"] != nil, "set ALETHEIA_INFERENCE_BENCH to run")
         let device = MTLCreateSystemDefaultDevice()
-        print("BENCH-INFO cpu=\(HardwareCapabilities.current().shortDescription) metal=\(device?.name ?? "none") appleSilicon=\(HardwareCapabilities.current().isAppleSilicon) appUsesGPU=\(InferenceCompute.usesGPU)")
+        print("BENCH-INFO cpu=\(HardwareCapabilities.current().shortDescription) metal=\(device?.name ?? "none") appleSilicon=\(HardwareCapabilities.current().isAppleSilicon) appUsesGPU=\(InferenceCompute.usesGPU) cpuThreads=\(InferenceCompute.cpuThreads)")
         print("BENCH-INFO ggml \(LlamaEngine.systemInfo)")
     }
 
@@ -42,7 +42,8 @@ final class InferenceBenchmarkTests: XCTestCase {
                 let loaded = try XCTUnwrap(engine, "\(model) gpu=\(gpu) failed to load")
                 var text = ""
                 let run = try clock.measure {
-                    text = try loaded.transcribe(samples: samples).map(\.text).joined(separator: " ")
+                    let threads = gpu ? WhisperEngine.recommendedThreads() : InferenceCompute.cpuThreads
+                    text = try loaded.transcribe(samples: samples, threads: threads).map(\.text).joined(separator: " ")
                 }
                 let wer = Self.wordErrorRate(reference: reference, hypothesis: text)
                 let readable = wer < 0.3
