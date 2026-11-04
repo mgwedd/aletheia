@@ -9,6 +9,12 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.72.2] - 2026-11-04
+
+### Fixed
+- depth next to the question, tighter answers, headphones tip, echo cutting (#558)
+- stop reasoning leaks and repeated answers in Ask; safe compaction (#556)
+
 ## [2.72.1] - 2026-11-03
 
 ### Fixed
