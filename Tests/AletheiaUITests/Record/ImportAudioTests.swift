@@ -44,6 +44,17 @@ final class ImportAudioTests: XCTestCase {
         app.app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", words, words)).firstMatch
     }
 
+    /// An alert's button, looked up in the sheet or dialog: the alert's buttons
+    /// are mirrored on the Touch Bar, and that copy can't be clicked.
+    private func alertButton(_ title: String) -> XCUIElement {
+        let sheet = app.app.sheets.buttons[title].firstMatch
+        let dialog = app.app.dialogs.buttons[title].firstMatch
+        let either = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in sheet.exists || dialog.exists }, object: nil)
+        _ = XCTWaiter().wait(for: [either], timeout: 5)
+        return dialog.exists ? dialog : sheet
+    }
+
     private func hasRecordingFile(_ probe: ProbeSnapshot) -> Bool {
         probe.files.contains { $0.hasSuffix("mic.caf") }
     }
@@ -146,7 +157,7 @@ final class ImportAudioTests: XCTestCase {
         XCTAssertTrue(app.exists(app.app.staticTexts["Use headphones"]), "no headphones tip before the first recording")
         XCTAssertTrue(app.exists(alertText(containing: "their words can appear twice")), "the tip does not say why")
         XCTAssertTrue(app.exists(app.button("Start Recording")), "the tip offers no Start Recording")
-        app.tap("Cancel")
+        app.click(alertButton("Cancel"), "Cancel on the headphones tip")
 
         XCTAssertTrue(app.gone(app.app.staticTexts["Use headphones"]), "the tip is still up after Cancel")
         XCTAssertTrue(app.exists(app.button(recordButton)), "Cancel started a recording")
