@@ -140,10 +140,13 @@ final class WritingToolsBlockTests: XCTestCase {
 
     func testRawTextAPIsOnlyAppearInTheThemeKit() throws {
         var violations: [String] = []
+        // Compiled once: compiling a pattern per line takes minutes on a slow Mac.
+        let compiled = try rawAPIs.map { (regex: try NSRegularExpression(pattern: $0.pattern), use: $0.use) }
         for (path, text) in try appSources() where !path.hasPrefix(kitDirectory) && notPatientData[path] == nil {
             for line in text.components(separatedBy: "\n") {
                 let code = line.components(separatedBy: "//").first ?? ""
-                for api in rawAPIs where code.range(of: api.pattern, options: .regularExpression) != nil {
+                let range = NSRange(code.startIndex..., in: code)
+                for api in compiled where api.regex.firstMatch(in: code, range: range) != nil {
                     violations.append("\(path): `\(line.trimmingCharacters(in: .whitespaces))` — use \(api.use)")
                 }
             }
