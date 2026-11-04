@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Decides whether an expensive macOS CI job is relevant to a change.
 #
-# Usage: scripts/ci-changes.sh <code|benchmarks|package> [BASE_REF [HEAD_REF]]
+# Usage: scripts/ci-changes.sh <code|benchmarks|inference|package> [BASE_REF [HEAD_REF]]
 #
 # Prints `true` or `false` on stdout. Without BASE_REF (push, manual dispatch)
 # it prints `true`: those events always run. With BASE_REF it lists the files
@@ -42,6 +42,11 @@ case "$area" in
     benchmarks)
         pattern='^(Sources/App/Services/Search/|Sources/App/Services/TextSearch\.swift$|Sources/App/Services/TranscriptCompactor\.swift$|Tests/AletheiaTests/[A-Za-z]*(Search|Benchmark|TranscriptCompactor)[A-Za-z]*\.swift$|\.github/workflows/bench\.yml$|scripts/bench-[^/]*$|scripts/ci-changes\.sh$|project\.yml$)'
         ;;
+    # The on-device engines (whisper.cpp, llama.cpp), their GPU/CPU choice and
+    # per-Mac defaults, the pinned runtimes, and the Intel benchmark itself.
+    inference)
+        pattern='^(Packages/|Sources/WhisperEngine/|Sources/App/Services/Llama/LlamaEngine\.swift$|Sources/App/Services/(WhisperTranscriber|InferenceCompute|ModelAdvisor|HardwareCapabilities)\.swift$|Tests/AletheiaTests/InferenceBenchmarkTests\.swift$|\.github/workflows/bench-intel\.yml$|scripts/ci-changes\.sh$)'
+        ;;
     # What changes the packaged app: project definition, packages, entitlements,
     # Info.plist and other resources, the CD/release workflows, and the scripts
     # packaging calls.
@@ -49,7 +54,7 @@ case "$area" in
         pattern='^(project\.yml$|Packages/|Sources/App/Resources/|Sources/NetworkHelper/|Sources/NetworkHelperShared/|\.github/workflows/(cd|release)\.yml$|scripts/(build|apply-release|compute-release|changelog-section|ci-changes|launch-smoke|release-notes)\.sh$)'
         ;;
     *)
-        echo "usage: $0 <code|benchmarks|package> [BASE_REF [HEAD_REF]]" >&2
+        echo "usage: $0 <code|benchmarks|inference|package> [BASE_REF [HEAD_REF]]" >&2
         exit 2
         ;;
 esac

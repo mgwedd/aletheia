@@ -158,6 +158,15 @@ struct OfferedBuiltInModels {
     let medGemmaShortName: String
 }
 
+/// What a fresh install starts with on one kind of Mac.
+struct FreshInstallSetup {
+    let speechModel: String
+    let noteEffort: String
+    let sessionAskEffort: String
+    let patientAskEffort: String
+    let runsOnGPU: Bool
+}
+
 /// License terms for the medical models.
 struct MedicalModelLicenses {
     let medGemma4BLicense: String
@@ -427,6 +436,23 @@ extension When {
             medGemmaShortName: recommendation.medGemmaModel.shortName)
     }
 
+    /// Sets the app up for the first time on an Intel or Apple silicon Mac.
+    func setUpFresh(onIntelMac intel: Bool, memoryGB: Int) -> FreshInstallSetup {
+        let hardware = HardwareCapabilities(
+            isAppleSilicon: !intel, physicalMemoryGB: memoryGB, coreCount: 4,
+            chipDescription: intel ? "Intel Core i5-Test" : "Apple M-Test")
+        let suite = "acceptance.settings.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults, hardware: hardware) { _ in false }
+        return FreshInstallSetup(
+            speechModel: settings.whisperModel.shortName,
+            noteEffort: settings.noteEffort.displayName,
+            sessionAskEffort: settings.sessionChatEffort.displayName,
+            patientAskEffort: settings.patientChatEffort.displayName,
+            runsOnGPU: InferenceCompute.usesGPU(on: hardware))
+    }
+
     /// Opens settings for the first time after an update, on a Mac with this
     /// much memory, with these models (by short name) downloaded and no model
     /// ever chosen.
@@ -469,6 +495,19 @@ extension Then where Subject == SettingsDefaults {
         expect(!subject.keepRawAudio, "keeping raw audio should be off")
         expect(!subject.notificationNames, "names in notifications should be off")
     }
+}
+
+extension Then where Subject == FreshInstallSetup {
+    func startsWithSpeechModel(_ name: String) {
+        expectEqual(subject.speechModel, name, "the speech model on a fresh install")
+    }
+    func startsWithEffort(_ name: String) {
+        expectEqual(subject.noteEffort, name, "the note's AI effort on a fresh install")
+        expectEqual(subject.sessionAskEffort, name, "Ask's AI effort on a fresh install")
+        expectEqual(subject.patientAskEffort, name, "patient Ask's AI effort on a fresh install")
+    }
+    func runsOnTheCPU() { expect(!subject.runsOnGPU, "speech and the AI should run on the CPU") }
+    func runsOnTheGPU() { expect(subject.runsOnGPU, "speech and the AI should run on the GPU") }
 }
 
 extension Then where Subject == AppearanceChoice {

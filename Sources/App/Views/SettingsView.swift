@@ -481,6 +481,7 @@ struct SettingsView: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        .accessibilityIdentifier("speech-model-picker")
                         .frame(width: 280)
                     },
                     license: ModelLicenseLink(settings.whisperModel),

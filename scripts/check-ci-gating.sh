@@ -7,8 +7,8 @@
 #     exists under Tests/AletheiaTests. Pull requests build production and
 #     dev; main pushes and manual runs (workflow_dispatch) add preview, and
 #     the concurrency group keeps a manual run from cancelling a push run.
-#   - cd.yml ("Build & package (macOS)") and bench.yml ("Benchmarks
-#     (informational)") are gated by a job-level `if:` on an Ubuntu `changes`
+#   - cd.yml ("Build & package (macOS)"), bench.yml ("Benchmarks
+#     (informational)") and bench-intel.yml ("Benchmarks (Intel)") are gated by a job-level `if:` on an Ubuntu `changes`
 #     job's output, with their job names unchanged. Neither workflow uses
 #     `on.paths` (a path-filtered workflow never reports its check, so a
 #     required check would stay pending forever); cd.yml's long-standing
@@ -86,6 +86,16 @@ self_test() {
     expect benchmarks true  .github/workflows/bench.yml
     expect benchmarks false Sources/App/Views/SettingsView.swift README.md docs/guide.md
     expect benchmarks false Tests/AletheiaTests/BuildTierTests.swift
+    # inference
+    expect inference true  Sources/App/Services/Llama/LlamaEngine.swift
+    expect inference true  Sources/App/Services/WhisperTranscriber.swift
+    expect inference true  Sources/App/Services/InferenceCompute.swift
+    expect inference true  Sources/App/Services/ModelAdvisor.swift
+    expect inference true  Sources/WhisperEngine/WhisperEngine.swift
+    expect inference true  Packages/LlamaCpp/Package.swift
+    expect inference true  Tests/AletheiaTests/InferenceBenchmarkTests.swift
+    expect inference true  .github/workflows/bench-intel.yml
+    expect inference false Sources/App/Views/SettingsView.swift Sources/App/Services/Llama/LlamaAssistant.swift README.md
     # package
     expect package true  project.yml
     expect package true  Sources/App/Resources/Aletheia.entitlements
@@ -330,6 +340,7 @@ def check_gated(path, jobid, jobname, area):
 
 check_gated(".github/workflows/cd.yml", "package", "Build & package (macOS)", "package")
 check_gated(".github/workflows/bench.yml", "bench", "Benchmarks (informational)", "benchmarks")
+check_gated(".github/workflows/bench-intel.yml", "intel", "Benchmarks (Intel)", "inference")
 
 # auto-release.yml: its release commit carries [skip ci], and the tag points at
 # that commit, so the tag push never starts release.yml. The release build has

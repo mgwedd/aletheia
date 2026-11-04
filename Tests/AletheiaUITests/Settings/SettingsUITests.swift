@@ -33,4 +33,12 @@ final class SettingsUITests: AcceptanceCase {
         let again = when.tryAgain(alert)
         then(again).offers(["Try Again", "Report a Bug"])
     }
+
+    func test_SETTINGS_18() {
+        given.freshInstallOnAnIntelMac()
+        let ask = when.openAskTab()
+        then(ask.effort).hasChosen("Fast")
+        let pane = when.openAIAndModelsSettings()
+        then(pane).showsSelectedSpeechModel(Copy.baseSpeechOption)
+    }
 }

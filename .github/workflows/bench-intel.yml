@@ -1,0 +1,183 @@
+name: Benchmarks (Intel)
+
+# Times the on-device engines on a GitHub-hosted Intel Mac, the one place CI
+# runs the x86_64 build: Whisper (base.en, small.en) on a synthetic spoken clip
+# and the default MedGemma 1.5 4B (Q4_K_M) on a synthetic transcript, each with
+# the GPU on and off (InferenceBenchmarkTests). It fails only when the path the
+# app uses on Intel (InferenceCompute) gives garbled text; the timings and the
+# other path are reported in the step summary.
+#
+# Runs on PRs that touch the engines, their settings or this workflow (the
+# `changes` job, scripts/ci-changes.sh inference) and on manual dispatch.
+# Standard runners only (free for this public repo).
+#
+# Supply-chain note: only first-party GitHub actions and Homebrew CLIs, as in
+# bench.yml. Models come from the same pinned Hugging Face commits the app
+# uses, checked against the app's SHA-256 pins.
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: bench-intel-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Inference benchmark changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      inference: ${{ steps.diff.outputs.inference }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Did engine inputs change?
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: echo "inference=$(./scripts/ci-changes.sh inference "$BASE_SHA")" >> "$GITHUB_OUTPUT"
+
+  intel:
+    name: Benchmarks (Intel)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.inference == 'true') }}
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    env:
+      NSUnbufferedIO: "YES"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Describe the runner
+        run: |
+          sysctl -n machdep.cpu.brand_string
+          sysctl -n hw.physicalcpu hw.logicalcpu hw.memsize
+          sysctl -a | grep -E '^hw.optional.(avx|fma|f16c)' || true
+          system_profiler SPDisplaysDataType || true
+          xcodebuild -version
+
+      - name: Install tools (XcodeGen, xcbeautify)
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Cache Swift packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/SourcePackages
+          key: spm-macos-15-intel-${{ hashFiles('project.yml', 'Packages/WhisperCpp/Package.swift', 'Packages/LlamaCpp/Package.swift') }}
+          restore-keys: spm-macos-15-intel-
+
+      - name: Cache models
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: models
+          key: bench-models-${{ hashFiles('Sources/App/Services/WhisperModelPins.swift', 'Sources/App/Services/Llama/LlamaModel.swift') }}
+
+      # URLs and SHA-256s are read from the app's own pins, so the benchmark
+      # uses exactly the bytes users download.
+      - name: Download pinned models
+        run: |
+          set -euo pipefail
+          mkdir -p models
+          pins=Sources/App/Services/WhisperModelPins.swift
+          rev=$(sed -nE 's/.*static let revision = "([0-9a-f]+)".*/\1/p' "$pins")
+          fetch() { # fetch <url> <file> <sha256>
+            if [ ! -f "models/$2" ] || [ "$(shasum -a 256 "models/$2" | cut -d' ' -f1)" != "$3" ]; then
+              curl -fL --retry 3 -o "models/$2" "$1"
+            fi
+            echo "$3  models/$2" | shasum -a 256 -c -
+          }
+          for m in baseEn:base.en smallEn:small.en; do
+            sha=$(sed -nE "s/.*case \.${m%%:*}: return \"([0-9a-f]{64})\".*/\1/p" "$pins")
+            fetch "https://huggingface.co/ggerganov/whisper.cpp/resolve/$rev/ggml-${m#*:}.bin" "ggml-${m#*:}.bin" "$sha"
+          done
+          llama=Sources/App/Services/Llama/LlamaModel.swift
+          lrev=$(sed -nE 's/.*case \.medgemma15_4b: return "([0-9a-f]{40})".*/\1/p' "$llama")
+          lsha=$(sed -nE 's/.*case \.medgemma15_4b: return "([0-9a-f]{64})".*/\1/p' "$llama")
+          fetch "https://huggingface.co/unsloth/medgemma-1.5-4b-it-GGUF/resolve/$lrev/medgemma-1.5-4b-it-Q4_K_M.gguf" \
+            medgemma-1.5-4b-it-Q4_K_M.gguf "$lsha"
+
+      # About 45 seconds of synthetic speech (macOS text-to-speech), 16 kHz mono.
+      - name: Make the speech clip
+        run: |
+          set -euo pipefail
+          cat > clip.txt <<'EOF'
+          Thanks for coming in today. Last time we talked about your sleep and the move to the new flat.
+          This week I want to check how the evening routine is going, and whether the walks after dinner have helped.
+          You mentioned that work has been busy and that you have been waking up early on most days.
+          Let us look at what happens in the hour before bed, and pick one small change to try before we meet again next Tuesday.
+          EOF
+          tr '\n' ' ' < clip.txt | sed 's/  */ /g' > clip.line
+          say -f clip.line -o clip.aiff
+          afconvert -f WAVE -d LEI16@16000 -c 1 clip.aiff clip.wav
+          afinfo clip.wav | grep -E 'duration|Data format'
+
+      # Debug (so @testable works) but optimized, as in bench.yml.
+      - name: Run inference benchmarks
+        run: |
+          set -o pipefail
+          export TEST_RUNNER_ALETHEIA_INFERENCE_BENCH=1
+          export TEST_RUNNER_ALETHEIA_BENCH_CLIP="$PWD/clip.wav"
+          export TEST_RUNNER_ALETHEIA_BENCH_CLIP_TEXT="$(cat clip.line)"
+          export TEST_RUNNER_ALETHEIA_BENCH_WHISPER_DIR="$PWD/models"
+          export TEST_RUNNER_ALETHEIA_BENCH_GGUF="$PWD/models/medgemma-1.5-4b-it-Q4_K_M.gguf"
+          status=0
+          xcodebuild test \
+            -project Aletheia.xcodeproj \
+            -scheme Aletheia \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            -only-testing:AletheiaTests/InferenceBenchmarkTests \
+            SWIFT_OPTIMIZATION_LEVEL=-O \
+            2>&1 | tee bench.log | xcbeautify --renderer github-actions || status=$?
+          grep -E '^BENCH-INFO' bench.log || true
+          mkdir -p bench
+          grep -o 'BENCH-INFER {.*}' bench.log | sed 's/^BENCH-INFER //' | jq -s . > bench/inference.json
+          exit $status
+
+      - name: Summarize
+        if: ${{ !cancelled() && hashFiles('bench/inference.json') != '' }}
+        run: |
+          {
+            echo '### Inference on Intel'
+            grep -E '^BENCH-INFO' bench.log | sed 's/^BENCH-INFO /- /' || true
+            echo
+            echo '| Engine | Model | GPU | Load s | Run s | Speed | Est. 50-min session | Readable |'
+            echo '|---|---|---|---|---|---|---|---|'
+            jq -r '.[] | if .kind == "whisper" then
+                "| Whisper | \(.model) | \(.gpu) | \(.load_s*10|round/10) | \(.run_s*10|round/10) | \(.realtime_factor*100|round/100)× realtime | \(.est_50min_s/60|round) min | \(.readable) (WER \(.wer*100|round)%) |"
+              else
+                "| llama.cpp | \(.model) | \(.gpu) | \(.load_s*10|round/10) | \(.run_s*10|round/10) | prefill \(.prefill_tps|round) tok/s, decode \(.decode_tps*10|round/10) tok/s | | \(.readable) |"
+              end' bench/inference.json
+            echo
+            echo '<details><summary>Output text</summary>'
+            echo
+            jq -r '.[] | "- \(.kind) \(.model) gpu=\(.gpu): \(.text | gsub("\n"; " ") | .[0:400])"' bench/inference.json
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-intel
+          path: |
+            bench/inference.json
+            bench.log
+          retention-days: 30

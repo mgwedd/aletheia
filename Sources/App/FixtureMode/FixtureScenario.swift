@@ -72,6 +72,8 @@ struct FixtureScenario: Codable, Equatable {
     var aiStreamsWords: Bool?
     /// A word-streamed reply stays open after its last word until stopped.
     var aiHoldsOpen: Bool?
+    /// Reports an Intel Mac in place of this one, for the fresh-install defaults.
+    var intel: Bool?
     /// The model's reading window in tokens, in place of the Mac's own.
     var contextTokens: Int?
     /// Settings: background summaries start paused, so a note builds its own.

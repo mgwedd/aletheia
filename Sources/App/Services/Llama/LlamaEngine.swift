@@ -35,6 +35,9 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     private let expectedModelBytes: Int64?
     /// Loads the weights; replaceable so tests can stop short of the real load.
     private let modelLoader: (URL) -> OpaquePointer?
+    /// Metal (all layers on the GPU, flash attention, q8_0 KV cache) or CPU
+    /// only. Defaults to `InferenceCompute.usesGPU`; the benchmark sets both.
+    let usesGPU: Bool
     /// The sampling this engine was constructed with. Every `generate`/
     /// `stream` call carries its own `LocalLLMRequest.sampling`, which is
     /// what actually drives decoding — this value only sizes the context
@@ -99,13 +102,11 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     }
 
     /// A plain base model, no adapter.
-    init(modelURL: URL, sampling: LocalLLMSampling, budget: ContextBudget = .current) {
-        self.modelURL = modelURL
-        self.adapterURL = nil
-        self.expectedModelBytes = nil
-        self.modelLoader = Self.loadModelFromFile
-        self.defaultSampling = sampling
-        self.budget = budget
+    convenience init(
+        modelURL: URL, sampling: LocalLLMSampling, budget: ContextBudget = .current,
+        usesGPU: Bool = InferenceCompute.usesGPU
+    ) {
+        self.init(modelURL: modelURL, adapterURL: nil, sampling: sampling, budget: budget, usesGPU: usesGPU)
     }
 
     /// A base model with an optional LoRA adapter layered on it at load time.
@@ -115,12 +116,14 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         expectedModelBytes: Int64? = nil,
         sampling: LocalLLMSampling,
         budget: ContextBudget = .current,
-        modelLoader: @escaping (URL) -> OpaquePointer? = LlamaEngine.loadModelFromFile
+        usesGPU: Bool = InferenceCompute.usesGPU,
+        modelLoader: ((URL) -> OpaquePointer?)? = nil
     ) {
         self.modelURL = modelURL
         self.adapterURL = adapterURL
         self.expectedModelBytes = expectedModelBytes
-        self.modelLoader = modelLoader
+        self.usesGPU = usesGPU
+        self.modelLoader = modelLoader ?? { Self.loadModel(at: $0, usesGPU: usesGPU) }
         self.defaultSampling = sampling
         self.budget = budget
     }
@@ -274,8 +277,17 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
 
     // MARK: - Load / unload (queue-confined)
 
-    static let loadModelFromFile: (URL) -> OpaquePointer? = { url in
-        llama_model_load_from_file(url.path, llama_model_default_params())
+    /// On the CPU path the model gets no GPU devices at all (an empty device
+    /// list), so Metal is never set up and no layer or op is offloaded to it.
+    static func loadModel(at url: URL, usesGPU: Bool) -> OpaquePointer? {
+        var params = llama_model_default_params()
+        guard !usesGPU else { return llama_model_load_from_file(url.path, params) }
+        params.n_gpu_layers = 0
+        var noDevices: [ggml_backend_dev_t?] = [nil]
+        return noDevices.withUnsafeMutableBufferPointer { devices in
+            params.devices = devices.baseAddress
+            return llama_model_load_from_file(url.path, params)
+        }
     }
 
     /// Loads weights (and the adapter, if any) unless already `.ready`.
@@ -340,10 +352,11 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         context = nil
         contextTokens = 0
 
-        // Flash attention and a q8_0 KV cache halve the cache's memory (the
-        // limit on a long session) and speed up long-context attention; the
-        // quantized V cache needs flash attention. A model or backend that
-        // can't do that falls back to the library defaults rather than failing.
+        // On the GPU, flash attention and a q8_0 KV cache halve the cache's
+        // memory (the limit on a long session) and speed up long-context
+        // attention; the quantized V cache needs flash attention. A model or
+        // backend that can't do that falls back to the library defaults rather
+        // than failing. The CPU path keeps the library defaults.
         var params = llama_context_default_params()
         params.n_ctx = UInt32(target)
         // n_batch is the most tokens one llama_decode takes (the prefill loop
@@ -351,15 +364,19 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         // on the GPU. 2048 keeps the compute buffer modest.
         params.n_batch = 2048
         params.n_ubatch = 2048
-        // The GPU does the work; extra CPU threads (and the efficiency cores)
-        // only add sync overhead, so use at most half the cores, up to 8.
+        // With the GPU doing the work, extra CPU threads (and the efficiency
+        // cores) only add sync overhead, so use at most half the cores, up to 8.
+        // On Intel that is one thread per physical core, which suits the CPU path.
         let threads = Int32(max(1, min(8, ProcessInfo.processInfo.activeProcessorCount / 2)))
         params.n_threads = threads
         params.n_threads_batch = threads
+        if !usesGPU { params.op_offload = false }
         var fast = params
-        fast.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED
-        fast.type_k = GGML_TYPE_Q8_0
-        fast.type_v = GGML_TYPE_Q8_0
+        if usesGPU {
+            fast.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED
+            fast.type_k = GGML_TYPE_Q8_0
+            fast.type_v = GGML_TYPE_Q8_0
+        }
         guard let created = llama_init_from_model(model, fast) ?? llama_init_from_model(model, params) else {
             throw LocalLLMEngineError.outOfMemory
         }

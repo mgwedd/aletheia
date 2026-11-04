@@ -278,6 +278,7 @@ Before you start: setup finished.
 - **SETTINGS-15** Open **AI and models** > **Built-in model** → MedGemma 1.5 4B is the default through 32 GB and on Intel; MedGemma 27B is offered on 32 GB+ Apple silicon and becomes the default at 48 GB+. Both use the Health AI Developer Foundations Terms.
 - **SETTINGS-16** Update from a version that defaulted to Llama 3.1 8B (or Gemma 4 E2B), having downloaded it and never chosen a model → **Built-in model** still shows it selected; MedGemma is offered, not switched to. With nothing downloaded, MedGemma is the default.
 - **SETTINGS-17** A model download fails → an alert says why and offers **Try Again**, which starts the download again, and **Report a Bug**.
+- **SETTINGS-18** A fresh install on an Intel Mac → **Speech recognition** is set to Base and **AI effort** to Fast for notes and Ask. Speech and the AI run on the CPU there.
 
 ## 16. Security panel, activity log and Doctor (SECURITY)
 Before you start: a data folder with some activity (unlock, export, delete a patient).

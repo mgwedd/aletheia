@@ -10,6 +10,7 @@ extension Copy {
     static let medGemma27BOption = "MedGemma 27B text — higher quality, 32 GB+ Apple silicon"
     static let apertus8BOption = "Apertus 8B MeditronFO — Experimental, 16 GB+ Macs"
     static let healthAIFoundationsTerms = "Health AI Developer Foundations Terms"
+    static let baseSpeechOption = "Base (English)"
 }
 
 /// Settings > AI and models on screen.
@@ -27,6 +28,12 @@ struct AIAndModelsPaneOnScreen {
 
     var builtInModelHeader: XCUIElement { driver.element(id: "settings.built-in-model") }
 
+    var speechModelPicker: XCUIElement {
+        let identified = driver.element(id: "speech-model-picker")
+        let popUp = identified.popUpButtons.firstMatch
+        return popUp.exists ? popUp : identified
+    }
+
     func licenseLink(_ title: String) -> XCUIElement {
         let byId = driver.app.descendants(matching: .any)["model-license-link"]
         if byId.exists { return byId }
@@ -43,6 +50,19 @@ extension Given {
             $0.fileVault = "on"
             $0.memoryGB = gb
             $0.llamaModel = model
+        }
+    }
+}
+
+extension Given {
+    /// A fresh install on an Intel Mac: no speech model or AI effort chosen yet.
+    func freshInstallOnAnIntelMac() {
+        app.seed {
+            $0.license = "test"
+            $0.fileVault = "on"
+            $0.intel = true
+            $0.patients = [.init(name: "Jane Doe", sessions: 1, transcript: SessionContent.shortTranscript)]
+            $0.open = "Jane Doe"
         }
     }
 }
@@ -78,6 +98,13 @@ extension When {
 extension Then where Subject == AIAndModelsPaneOnScreen {
     func showsLicense(_ name: String) {
         expect(subject.driver.exists(subject.licenseLink(name)), "no \(name) link on AI and models")
+    }
+
+    func showsSelectedSpeechModel(_ name: String) {
+        let picker = subject.speechModelPicker
+        expect(subject.driver.exists(picker), "no speech model picker on AI and models")
+        let val = picker.value as? String ?? picker.label
+        expect(val.contains(name), "expected speech model \(name) to be selected, got \(val)")
     }
 
     func showsSelectedModel(_ name: String) {
@@ -137,6 +164,28 @@ extension Then where Subject == DownloadFailureAlertOnScreen {
     func offers(_ titles: [String]) {
         for title in titles {
             expect(subject.driver.exists(subject.button(title)), "no \(title) on the download alert")
+        }
+    }
+}
+
+/// The AI effort control on an Ask bar.
+struct EffortBarOnScreen {
+    let bar: XCUIElement
+    let driver: AppDriver
+}
+
+extension AskTabOnScreen {
+    var effort: EffortBarOnScreen { EffortBarOnScreen(bar: effortBar, driver: driver) }
+}
+
+extension Then where Subject == EffortBarOnScreen {
+    func hasChosen(_ name: String) {
+        expect(subject.driver.waitFor(subject.bar, timeout: 30), "no AI effort control on the Ask bar")
+        let button = subject.bar.buttons[name].firstMatch
+        let chosen = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: button)
+        expect(XCTWaiter().wait(for: [chosen], timeout: 30) == .completed, "\(name) is not the chosen AI effort")
+        for other in Copy.effortChoices where other != name {
+            expect(!subject.bar.buttons[other].firstMatch.isSelected, "\(other) is chosen as well as \(name)")
         }
     }
 }
