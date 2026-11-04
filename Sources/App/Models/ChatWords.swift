@@ -14,12 +14,8 @@ enum ChatWords {
     static let deleteThread = "Delete"
     static let threadMenu = [renameThread, deleteThread]
 
-    /// Clear beside Compact, and its confirmation. `subject` is "this
-    /// session's chat" or "this chat".
+    /// Clear beside Compact: empties the chat at once.
     static let clear = "Clear"
-    static let clearSessionTitle = "Clear this session's chat?"
-    static let clearThreadTitle = "Clear this chat?"
-    static let clearMessage = "Its questions and answers are deleted. This can't be undone."
     /// The Chats list's button that deletes every thread, and its confirmation.
     static let deleteAllChats = "Delete All Chats…"
     static func deleteAllTitle(patientName: String) -> String { "Delete all chats about \(patientName)?" }

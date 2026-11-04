@@ -164,7 +164,8 @@ final class AnswerDepthTests: XCTestCase {
     }
 
     /// Earlier turns come first; the question being asked is the last thing
-    /// the model reads.
+    /// the model reads, alone. The session's text is in the system turn, ahead
+    /// of the earlier answers it could be copied from.
     @MainActor
     func testTheLatestQuestionComesLastInBothAskPaths() async throws {
         let history = [
@@ -172,10 +173,15 @@ final class AnswerDepthTests: XCTestCase {
             ChatMessage(role: .assistant, text: "She slept badly most nights."),
         ]
         let question = "What did she say about work?"
-        let session = try await sessionAsk(depth: .natural, history: history, question: question).prompt
-        let patient = try await patientAsk(depth: .natural, history: history, question: question).prompt
-        for prompt in [session, patient] {
-            XCTAssertTrue(prompt.hasSuffix("Therapist's question: \(question)"), prompt)
+        let session = try await sessionAsk(depth: .natural, history: history, question: question)
+        let patient = try await patientAsk(depth: .natural, history: history, question: question)
+        XCTAssertTrue(session.system.contains("Patient discussed sleep."))
+        XCTAssertTrue(patient.system.contains("I slept badly."))
+        for (system, prompt) in [(session.system, session.prompt), (patient.system, patient.prompt)] {
+            XCTAssertTrue(prompt.hasSuffix(Prompts.chatQuestion(question)), prompt)
+            XCTAssertFalse(system.contains(question), "the question is not in the system turn")
+            XCTAssertFalse(prompt.contains("Patient discussed sleep."))
+            XCTAssertFalse(prompt.contains("I slept badly."))
             let earlier = try XCTUnwrap(prompt.range(of: "She slept badly most nights."))
             let latest = try XCTUnwrap(prompt.range(of: question))
             XCTAssertLessThan(earlier.lowerBound, latest.lowerBound)

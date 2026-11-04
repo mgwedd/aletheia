@@ -147,7 +147,6 @@ struct PatientChatView: View {
                     busySteps: searchingNotice == nil ? nil : PatientAskSteps(effort: settings.patientChatEffort, layered: true).gathering,
                     onCompact: { chat.compact($0) },
                     onClear: { chat.clearSelectedThread() },
-                    clearTitle: ChatWords.clearThreadTitle,
                     progress: chatRunner.progress,
                     effort: $settings.patientChatEffort,
                     effortFeature: .patientChat,

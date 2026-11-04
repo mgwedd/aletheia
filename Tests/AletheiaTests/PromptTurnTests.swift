@@ -60,39 +60,46 @@ final class PromptTurnTests: XCTestCase {
             ChatMessage(role: .assistant, text: "- ok"),
             ChatMessage(role: .user, text: "How was sleep?"),
         ]
-        _ = try await service.answerAboutPatient(context: "C", history: history, question: "How was sleep?")
+        _ = try await service.answerAboutPatient(context: "CONTEXT-LINE", history: history, question: "How was sleep?")
         XCTAssertEqual(spy.turns, [
             PromptTurn(role: .user, text: "Answer in bullets from now on."),
             PromptTurn(role: .assistant, text: "- ok"),
         ])
-        XCTAssertTrue(spy.prompt.hasSuffix("Therapist's question: How was sleep?"))
+        XCTAssertEqual(spy.prompt, Prompts.chatQuestion("How was sleep?"))
+        XCTAssertTrue(spy.system.contains("CONTEXT-LINE"), "the material is in the system turn")
+        XCTAssertFalse(spy.prompt.contains("CONTEXT-LINE"))
         XCTAssertFalse(spy.prompt.contains("Answer in bullets"))
     }
 
-    /// A session Ask writes the conversation into the prompt after the
-    /// session instead of sending chat turns, so a follow-up shares the
-    /// previous prompt's start and the engine reuses what it read.
-    func testASessionAskWritesTheConversationAfterTheSession() async throws {
+    /// A follow-up sends the same system turn (instructions and session) as
+    /// the question before it, with the conversation after it, so the engine
+    /// keeps what it already read of the session (`LlamaPromptCache`).
+    func testASessionFollowUpSendsTheSameSystemTurnAsTheQuestionBeforeIt() async throws {
         let spy = TurnSpy()
         let service = AssistantService(assistant: spy, model: "m")
-        let history = [
-            ChatMessage(role: .user, text: "Answer in bullets from now on."),
-            ChatMessage(role: .assistant, text: "- ok"),
-            ChatMessage(role: .user, text: "How was sleep?"),
-        ]
-        _ = try await service.answerAboutSession(transcript: "TRANSCRIPT", history: history, question: "How was sleep?")
-        XCTAssertEqual(spy.turns, [])
-        let session = try XCTUnwrap(spy.prompt.range(of: "TRANSCRIPT"))
-        let request = try XCTUnwrap(spy.prompt.range(of: "Therapist: Answer in bullets from now on."))
-        XCTAssertLessThan(session.lowerBound, request.lowerBound)
-        XCTAssertTrue(spy.prompt.contains("Assistant: - ok"))
-        XCTAssertTrue(spy.prompt.hasSuffix("Therapist's question: How was sleep?"))
+        _ = try await service.answerAboutSession(transcript: "TRANSCRIPT", history: [], question: "How was sleep?")
+        let first = spy.system
+        _ = try await service.answerAboutSession(
+            transcript: "TRANSCRIPT",
+            history: [
+                ChatMessage(role: .user, text: "How was sleep?"),
+                ChatMessage(role: .assistant, text: "Worse since the move."),
+                ChatMessage(role: .user, text: "Since when?"),
+            ],
+            question: "Since when?")
+        XCTAssertTrue(first.contains("TRANSCRIPT"))
+        XCTAssertEqual(spy.system, first)
+        XCTAssertEqual(spy.turns, [
+            PromptTurn(role: .user, text: "How was sleep?"),
+            PromptTurn(role: .assistant, text: "Worse since the move."),
+        ])
     }
 }
 
 private final class TurnSpy: Assistant, @unchecked Sendable {
     var turns: [PromptTurn] = []
     var prompt = ""
+    var system = ""
     func isReachable() async -> Bool { true }
     func listModels() async throws -> [String] { ["m"] }
     func hasModel(_ name: String) async -> Bool { true }
@@ -109,6 +116,7 @@ private final class TurnSpy: Assistant, @unchecked Sendable {
         model: String, system: String, turns: [PromptTurn], prompt: String, task: AITask, grammar: LocalLLMGrammar?
     ) async throws -> String {
         self.turns = turns
+        self.system = system
         self.prompt = prompt
         return "answer"
     }

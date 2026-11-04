@@ -64,7 +64,8 @@ enum FixtureMode {
 
     /// The transcriber the fixture build uses, or nil for the real one.
     static var transcriber: Transcribing? {
-        scenario?.slowTranscription == true ? FixtureSlowTranscriber() : nil
+        if scenario?.slowTranscription == true { return FixtureSlowTranscriber() }
+        return scenario?.heardTracks.map(FixtureHeardTranscriber.init(segments:))
     }
 
     /// The assistant the fixture build uses: the real prompt-building over the
@@ -128,6 +129,7 @@ enum FixtureMode {
                 settings.sessionChatEffort = effort
             }
             if let paused = scenario?.summariesPaused { settings.summariesPaused = paused }
+            settings.hasSeenHeadphonesTip = scenario?.headphonesTip != true
         }
     }
 
@@ -281,7 +283,8 @@ final class FixtureScriptedEngine: LocalLLMEngine {
             model.add(.init(marker: nil, answer: .fails(LocalLLMEngineError.modelNotDownloaded), once: false))
         }
         for rule in rules {
-            model.add(.init(marker: rule.whenPromptContains, answer: .writes(rule.reply), once: false))
+            let answer: ScriptedModel.Answer = rule.reachesReplyLimit == true ? .writesToTheLimit(rule.reply) : .writes(rule.reply)
+            model.add(.init(marker: rule.whenPromptContains, answer: answer, once: false))
         }
     }
 
@@ -311,6 +314,21 @@ struct FixtureSlowTranscriber: Transcribing {
         while true {
             try await Task.sleep(nanoseconds: 500_000_000)
         }
+    }
+}
+
+/// Transcription that "hears" the scenario's segments and assembles them
+/// with the real post-processing (echo removal, cleaning, formatting).
+struct FixtureHeardTranscriber: Transcribing {
+    let segments: [FixtureScenario.HeardSegment]
+    var isReady: Bool { true }
+
+    func transcribeSession(
+        micURL: URL?, callURL: URL?, onProgress: @escaping (TranscriptionProgress) -> Void
+    ) async throws -> String {
+        WhisperTranscriber.assemble(segments.map {
+            TranscribedLine(source: $0.speaker, startTime: $0.from, endTime: $0.to, text: $0.text)
+        })
     }
 }
 

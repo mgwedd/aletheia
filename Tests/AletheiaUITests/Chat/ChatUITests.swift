@@ -155,7 +155,6 @@ final class ChatUITests: AcceptanceCase {
         then(tab).keepsClearJustLeftOfCompact()
 
         app.click(tab.clear, "Clear button")
-        when.confirm(Copy.clearButton)
 
         then(tab).showsText(Copy.askEmptyTitle)
         then(tab).doesNotShowText("She said it has been poor.")
@@ -175,10 +174,68 @@ final class ChatUITests: AcceptanceCase {
         then(window.pane).showsText("She said it has been poor.")
 
         app.click(window.pane.clear, "Clear button")
-        when.confirm(Copy.clearButton)
 
         then(window.pane).doesNotShowText("She said it has been poor.")
         then(window).listsAChat(titled: Copy.newChatTitle)
+    }
+
+    func test_CHAT_35_noReasoningOrMarkersAreShownInAnswersOrTheSummary() {
+        given.aSessionToAskAbout(chat: [
+            .init(role: "summary", text: "<unused94>thought plan the reply<unused95>Earlier: sleep was poor.<end_of_turn>"),
+            .init(role: "user", text: "What did she say about sleep?"),
+            .init(role: "assistant", text: "<unused94>thought plan the reply<unused95>She said it has been poor.<end_of_turn>"),
+        ])
+        let tab = when.openAskTab()
+
+        then(tab).showsText("She said it has been poor.")
+        then(tab).showsText("Earlier: sleep was poor.")
+        then(tab).showsNoReasoningOrMarkers()
+    }
+
+    func test_CHAT_36_theAnswersKeepTheirWidthWhileTheSummaryIsWritten() {
+        executionTimeAllowance = 120
+        given.aSessionToAskAbout(
+            chat: [
+                .init(role: "user", text: "What did she say about sleep?"),
+                .init(role: "assistant", text: "She said it has been poor, and that it has been getting worse since the move."),
+            ],
+            stageMs: 20,
+            rules: [.init(whenPromptContains: Copy.summaryRequest, reply: "Earlier: sleep was poor.")],
+            holdsOpen: true)
+        let tab = when.openAskTab()
+        XCTAssertTrue(app.waitFor(tab.answerText, timeout: 30), "no answer shown to compact")
+        let before = tab.answerText.frame
+
+        app.click(tab.compact, "Compact button")
+
+        then(tab).showsText("Earlier: sleep was poor.")
+        XCTAssertTrue(app.waitFor(tab.compactedCard, timeout: 30), "no compacted card")
+        then(tab).keepsTheAnswersAsWideAndAboveTheCard(before)
+    }
+
+    func test_CHAT_37_aSummaryCutOffAtTheReplyLimitIsThrownAway() {
+        executionTimeAllowance = 120
+        given.aSessionToAskAbout(
+            chat: [
+                .init(role: "user", text: "What did she say about sleep?"),
+                .init(role: "assistant", text: "She said it has been poor."),
+            ],
+            rules: [.init(whenPromptContains: Copy.summaryRequest, reply: "Earlier: sleep was", reachesReplyLimit: true)])
+        let tab = when.openAskTab()
+        then(tab).showsText("She said it has been poor.")
+
+        app.click(tab.compact, "Compact button")
+
+        then(tab).showsText(Copy.summaryDidNotFinish)
+        then(tab).doesNotShowText("Earlier: sleep was")
+        then(tab).doesNotShowText(Copy.compactedChip)
+        then(tab).showsText("She said it has been poor.")
+
+        app.relaunch()
+
+        let reopened = when.openAskTab()
+        then(reopened).showsText("She said it has been poor.")
+        then(reopened).doesNotShowText("Earlier: sleep was")
     }
 
     func test_CHAT_27_deleteAllChatsEmptiesTheChatsList() {
@@ -216,6 +273,30 @@ final class ChatUITests: AcceptanceCase {
         let window = when.openPatientChat()
         then(window.depth).offersTheDepths()
         then(window.depth).hasChosen("Natural")
+    }
+
+    func test_CHAT_38_theDepthIsReadRightBeforeTheQuestionLateInAConversation() {
+        let question = "What homework was agreed?"
+        let followed = "Only the wind-down routine was agreed."
+        let missed = "The depth was not next to the question."
+        given.aSessionToAskAbout(
+            chat: [
+                .init(role: "user", text: "What were the main themes?"),
+                .init(role: "assistant", text: "Sleep, then work."),
+                .init(role: "user", text: "What coping strategies came up?"),
+                .init(role: "assistant", text: "Walking the dog."),
+                .init(role: "user", text: "How did she sleep?"),
+                .init(role: "assistant", text: "Badly, about four hours a night."),
+            ],
+            replies: [missed],
+            rules: [.init(whenPromptContains: Copy.conciseDepthBefore(question), reply: followed)],
+            askDepth: "concise")
+        let tab = when.openAskTab()
+
+        when.ask(question, on: tab)
+
+        then(tab).showsText(followed)
+        then(tab).doesNotShowText(missed)
     }
 
     func test_CHAT_30_askDepthSettingSeedsTheChatAndTheChatCanChangeIt() {

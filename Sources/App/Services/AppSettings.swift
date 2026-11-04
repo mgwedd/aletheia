@@ -91,6 +91,7 @@ final class AppSettings: ObservableObject {
         static let llamaModel = "llamaModel"
         static let systemPrompt = "systemPrompt"
         static let hasCompletedFirstRun = "hasCompletedFirstRun"
+        static let hasSeenHeadphonesTip = "hasSeenHeadphonesTip"
         static let autoCheckForUpdates = "autoCheckForUpdates"
         static let spotlightIndexingEnabled = "spotlightIndexingEnabled"
         static let appLockEnabled = "appLockEnabled"
@@ -163,6 +164,10 @@ final class AppSettings: ObservableObject {
     }
     @Published var hasCompletedFirstRun: Bool {
         didSet { defaults.set(hasCompletedFirstRun, forKey: Keys.hasCompletedFirstRun) }
+    }
+    /// Whether the headphones tip (`HeadphonesTip`) was shown before a first recording.
+    @Published var hasSeenHeadphonesTip: Bool {
+        didSet { defaults.set(hasSeenHeadphonesTip, forKey: Keys.hasSeenHeadphonesTip) }
     }
     /// Whether to check for software updates automatically on launch and when the app
     /// becomes active. On by default. When off, updates are only checked when the
@@ -543,8 +548,10 @@ final class AppSettings: ObservableObject {
             if storedModel != nil { defaults.set(defaultModel.rawValue, forKey: Keys.llamaModel) }
         }
         let savedPrompt = defaults.string(forKey: Keys.systemPrompt)
-        systemPrompt = (savedPrompt?.isEmpty == false) ? savedPrompt! : Prompts.defaultSystemPrompt
+        systemPrompt = savedPrompt.flatMap { $0.isEmpty || Prompts.retiredSystemPrompts.contains($0) ? nil : $0 }
+            ?? Prompts.defaultSystemPrompt
         hasCompletedFirstRun = defaults.bool(forKey: Keys.hasCompletedFirstRun)
+        hasSeenHeadphonesTip = defaults.bool(forKey: Keys.hasSeenHeadphonesTip)
         localEncryptedBackupEnabled = defaults.bool(forKey: Keys.localEncryptedBackupEnabled)
         keepAudioRecordings = defaults.bool(forKey: Keys.keepAudioRecordings)
         autoTranscribeAfterRecording = Self.resolvedAutoTranscribe(in: defaults)

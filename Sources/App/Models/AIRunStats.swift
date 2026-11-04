@@ -25,6 +25,9 @@ struct AIRunStats: Equatable {
     /// Set only on the engine's mid-read reports (never on the final one):
     /// which batch of the prompt it is feeding the model.
     var prefill: PrefillProgress?
+    /// The reply stopped because it reached the most it may have, not because
+    /// the model finished it: what it wrote is cut off.
+    var reachedReplyLimit = false
 
     /// Prompt tokens read per second. Needs enough tokens to be a real
     /// measurement; a short prompt's timing is mostly noise. Nil for a run that

@@ -29,12 +29,14 @@ final class SystemPromptTests: XCTestCase {
         _ = try await service.summarize(transcript: "T")
         XCTAssertEqual(fake.lastSystem, "CUSTOM SYSTEM")
 
-        // Ask adds its depth's instructions after the standing prompt.
+        // Ask adds its depth's instructions after the standing prompt, then
+        // the material the answer rests on.
+        let depth = "CUSTOM SYSTEM\n\n" + AnswerDepth.natural.instructions(for: .answer)
         _ = try await service.answerAboutSession(transcript: "T", history: [], question: "Q")
-        XCTAssertEqual(fake.lastSystem, "CUSTOM SYSTEM\n\n" + AnswerDepth.natural.instructions(for: .answer))
+        XCTAssertEqual(fake.lastSystem, depth + "\n\n" + Prompts.sessionChat(transcript: "T", history: []))
 
         _ = try await service.answerAboutPatient(context: "C", history: [], question: "Q")
-        XCTAssertEqual(fake.lastSystem, "CUSTOM SYSTEM\n\n" + AnswerDepth.natural.instructions(for: .answer))
+        XCTAssertEqual(fake.lastSystem, depth + "\n\n" + Prompts.patientChat(context: "C", history: []))
     }
 
     func testServiceDefaultsToDefaultSystemPrompt() async throws {
@@ -42,6 +44,36 @@ final class SystemPromptTests: XCTestCase {
         let service = AssistantService(assistant: fake, model: "m")
         _ = try await service.summarize(transcript: "T")
         XCTAssertEqual(fake.lastSystem, Prompts.defaultSystemPrompt)
+    }
+
+    func testDefaultSystemPromptWritesToYouOnceAndAddsNoUnaskedActionItems() {
+        let prompt = Prompts.defaultSystemPrompt
+        XCTAssertTrue(prompt.contains("Write to them as \"you\""))
+        XCTAssertTrue(prompt.contains("Say each point once"))
+        XCTAssertTrue(prompt.contains("Suggest action items or homework only if they were agreed or you are asked."))
+        XCTAssertTrue(prompt.contains("A thin session gets a short answer."))
+    }
+
+    func testASavedEarlierDefaultPromptBecomesTheCurrentOne() {
+        let suite = "system-prompt-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for retired in Prompts.retiredSystemPrompts {
+            defaults.set(retired, forKey: "systemPrompt")
+            XCTAssertEqual(AppSettings(defaults: defaults).systemPrompt, Prompts.defaultSystemPrompt)
+        }
+        defaults.set("My own prompt.", forKey: "systemPrompt")
+        XCTAssertEqual(AppSettings(defaults: defaults).systemPrompt, "My own prompt.")
+    }
+
+    func testTheHeadphonesTipIsDueOnceAndRemembered() {
+        let suite = "headphones-tip-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertTrue(HeadphonesTip.takeIfDue(settings))
+        XCTAssertFalse(HeadphonesTip.takeIfDue(settings))
+        XCTAssertFalse(HeadphonesTip.takeIfDue(AppSettings(defaults: defaults)))
     }
 
     // MARK: - Diagrams only on request

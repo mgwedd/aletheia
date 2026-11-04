@@ -36,7 +36,7 @@ enum ModelAdvisor {
         return ModelRecommendation(whisperModel: whisper, medGemmaModel: medGemma, effort: effort, summary: summary)
     }
 
-    /// The curated medical default for this Mac.
+    /// The curated medical default, the same on every Mac.
     static func medGemma(for hardware: HardwareCapabilities) -> LlamaModel {
         LlamaModel.medGemma(for: hardware)
     }

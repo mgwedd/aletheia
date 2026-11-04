@@ -65,6 +65,22 @@ final class RecordingBench {
         return lastRefusal
     }
 
+    /// What the session view's Record Session button does: once the new-PHI
+    /// gate and the recorder would let it start, the one-time headphones tip
+    /// when it is due (nothing recorded yet), else the recording.
+    func pressRecordSession(patient: Patient, session: SessionRecord) async -> HeadphonesAlert? {
+        if app.appModel.authorizeNewPHI(), recorder.startRefusal() == nil, HeadphonesTip.takeIfDue(app.settings) {
+            return HeadphonesAlert(
+                title: HeadphonesTip.title, message: HeadphonesTip.message,
+                buttons: [HeadphonesTip.startButton, "Cancel"])
+        }
+        await pressRecord(patient: patient, session: session)
+        return nil
+    }
+
+    /// Whether the menu bar panel shows the headphones tip.
+    var menuBarShowsHeadphonesTip: Bool { !app.settings.hasSeenHeadphonesTip }
+
     func sweepAtLaunch() -> OrphanAudioSweep.Result {
         OrphanAudioSweep.sweep(
             store: store, protector: app.appModel.currentProtector,
@@ -120,6 +136,13 @@ extension Given {
 
 // MARK: - When
 
+/// The alert Record Session shows before the first recording on this Mac.
+struct HeadphonesAlert {
+    let title: String
+    let message: String
+    let buttons: [String]
+}
+
 struct ReminderAlert {
     let title: String
     let buttons: [String]
@@ -157,6 +180,16 @@ extension When {
     @discardableResult
     func pressRecord(on bench: RecordingBench, _ visit: PatientSession) async -> String? {
         await bench.pressRecord(patient: visit.patient, session: visit.session)
+    }
+
+    /// Clicks Record Session in the session view.
+    func pressRecordSession(on bench: RecordingBench, _ visit: PatientSession) async -> HeadphonesAlert? {
+        await bench.pressRecordSession(patient: visit.patient, session: visit.session)
+    }
+
+    /// Clicks Start Recording in the headphones alert.
+    func startRecording(from alert: HeadphonesAlert?, on bench: RecordingBench, _ visit: PatientSession) async {
+        _ = await bench.pressRecordSession(patient: visit.patient, session: visit.session)
     }
 
     /// What the two level bars show right now.
@@ -237,6 +270,10 @@ extension When {
     func isNotRecording() {
         expect(!subject.recorder.isRecording, "a recording is running")
         expect(subject.recorder.active == nil, "a session is marked as recording")
+    }
+
+    func menuBarShowsTheHeadphonesTip(_ shows: Bool) {
+        expectEqual(subject.menuBarShowsHeadphonesTip, shows, "the menu bar panel shows the headphones tip")
     }
 
     func metersMove() {
@@ -670,5 +707,17 @@ extension When {
 
     func showsTurnOnFileVaultAlert() {
         expectEqual(subject.app.appModel.fileVaultNotice?.title, Copy.turnOnFileVault, "the FileVault alert")
+    }
+}
+
+extension Then where Subject == HeadphonesAlert? {
+    func isTheHeadphonesTip() {
+        guard let alert = subject else { return fail("Record Session did not show the headphones tip") }
+        expectEqual(alert.title, Copy.useHeadphones, "the alert's title")
+        expect(alert.message.contains(Copy.clientWordsTwice), "the alert does not say why: \"\(alert.message)\"")
+        expectEqual(alert.buttons, [Copy.startRecording, Copy.cancel], "the alert's buttons")
+    }
+    func isNotShown() {
+        expect(subject == nil, "the headphones tip appeared again")
     }
 }

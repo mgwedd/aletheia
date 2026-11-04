@@ -8,6 +8,7 @@ extension Copy {
     static let compactedChip = "Conversation compacted"
     /// Words in the request that asks the AI to summarize the conversation.
     static let summaryRequest = "Write a summary that will replace it"
+    static let summaryDidNotFinish = "The summary didn't finish, so the conversation was kept as it was."
     static let preparingTheAnswer = "Preparing the answer"
     static let readingTheSession = "Reading the session · part 1 of 3"
     static let analyzing = "Analyzing"
@@ -16,10 +17,16 @@ extension Copy {
     static let readLead = "Read:"
     static let stopButton = "Stop"
     static let modelMissingTitle = "The AI model isn't downloaded"
-    static let clearButton = "Clear"
     static let deleteAllButton = "Delete All"
+    /// What a model writes around its answer, and the app must not show.
+    static let hiddenReasoningMarkers = ["unused94", "unused95", "end_of_turn", "plan the reply"]
     static let newChatButton = "New Chat"
     static let newChatTitle = "New chat"
+    /// The Concise depth line, as it stands in the final turn right before the question.
+    static func conciseDepthBefore(_ question: String) -> String {
+        "Depth: concise. Answer in one to three sentences. Lead with the point. No headers, no preamble, "
+            + "no recap; use a list only when the content is itself a short list.\nQuestion: \(question)"
+    }
     static let noChatSelected = "No Chat Selected"
 }
 
@@ -43,7 +50,7 @@ extension Given {
     func aSessionToAskAbout(
         myNotes: String? = nil, chat: [Scenario.ChatSeed]? = nil, replies: [String]? = nil,
         stageMs: Int? = nil, parts: Int? = nil, contextTokens: Int? = nil, modelMissing: Bool? = nil, rules: [Scenario.AIRule]? = nil,
-        askDepth: String? = nil
+        askDepth: String? = nil, holdsOpen: Bool? = nil
     ) {
         app.seed {
             $0.license = "test"
@@ -60,6 +67,8 @@ extension Given {
             $0.askDepth = askDepth
             // With a stage time the answer is written a word at a time, so it is seen being written.
             $0.aiStreamsWords = stageMs != nil ? true : nil
+            // With it, a written answer stays open, so a test can look at the screen while it is being written.
+            $0.aiHoldsOpen = holdsOpen
         }
     }
 }
@@ -71,7 +80,7 @@ extension When {
         return AskTabOnScreen(driver: app)
     }
 
-    /// Clicks `button` in the confirmation that a Clear or Delete All button put up.
+    /// Clicks `button` in the confirmation that Delete All put up.
     func confirm(_ button: String) {
         let choice = app.app.buttons
             .matching(NSPredicate(format: "label == %@ AND identifier != %@", button, "chat.clear")).firstMatch
@@ -103,6 +112,26 @@ extension Then where Subject == AskTabOnScreen {
 
     func doesNotShowText(_ words: String) {
         expect(subject.driver.gone(subject.driver.anything(containing: words)), "\"\(words)\" is still shown")
+    }
+
+    /// Neither the reasoning a model writes before its answer nor its template markers are on screen.
+    func showsNoReasoningOrMarkers() {
+        for marker in Copy.hiddenReasoningMarkers {
+            expect(subject.driver.gone(subject.driver.anything(containing: marker)), "\"\(marker)\" is shown")
+        }
+        let shown = subject.driver.app.textViews.matching(identifier: "chat.answer-text").allElementsBoundByIndex
+            .map { $0.value as? String ?? "" }
+        for marker in Copy.hiddenReasoningMarkers {
+            expect(!shown.contains { $0.contains(marker) }, "an answer reads \"\(shown.joined(separator: " | "))\"")
+        }
+    }
+
+    /// The answers above keep their width while the summary is written, and the card is below them.
+    func keepsTheAnswersAsWideAndAboveTheCard(_ before: CGRect) {
+        let answer = subject.answerText.frame
+        let card = subject.compactedCard.frame
+        expect(abs(answer.width - before.width) < 2, "the answer went from \(before.width) to \(answer.width) wide")
+        expect(answer.maxY <= card.minY + 1, "the answer (\(answer)) runs into the compacted card (\(card))")
     }
 
     func statusReads(_ words: String) {

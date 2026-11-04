@@ -25,6 +25,9 @@ final class ScriptedModel: LocalLLMEngine, @unchecked Sendable {
         case readsInParts(Int, thenWrites: String)
         /// Fails with this error before writing anything.
         case fails(Error)
+        /// Writes this, then reports having written as many tokens as the
+        /// request allows, as a reply cut off at the limit does.
+        case writesToTheLimit(String)
     }
 
     /// How a step of `readsInParts` waits.
@@ -187,7 +190,7 @@ final class ScriptedModel: LocalLLMEngine, @unchecked Sendable {
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    try await self.play(answer, onStats: onStats, into: continuation)
+                    try await self.play(answer, limit: request.sampling.maxTokens, onStats: onStats, into: continuation)
                     self.markFinished()
                     continuation.finish()
                 } catch {
@@ -200,7 +203,7 @@ final class ScriptedModel: LocalLLMEngine, @unchecked Sendable {
     }
 
     private func play(
-        _ answer: Answer, onStats: (@Sendable (AIRunStats) -> Void)?,
+        _ answer: Answer, limit: Int, onStats: (@Sendable (AIRunStats) -> Void)?,
         into continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
         switch answer {
@@ -219,6 +222,12 @@ final class ScriptedModel: LocalLLMEngine, @unchecked Sendable {
         case .writesThenHolds(let text):
             continuation.yield(text)
             await hold()
+        case .writesToTheLimit(let text):
+            try await write(text, into: continuation)
+            var stats = AIRunStats()
+            stats.outputTokens = limit
+            stats.reachedReplyLimit = true
+            onStats?(stats)
         }
     }
 

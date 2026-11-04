@@ -55,24 +55,25 @@ final class LlamaModelTests: XCTestCase {
         HardwareCapabilities(isAppleSilicon: true, physicalMemoryGB: gb, coreCount: 8, chipDescription: "Test")
     }
 
-    func testRecommendedFollowsMemory() {
-        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 8)), .medgemma15_4b)
-        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 16)), .medgemma15_4b)
-        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 32)), .medgemma15_4b)
-        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 48)), .medgemma_27b)
-        XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: 64)), .medgemma_27b)
-        let intel = HardwareCapabilities(isAppleSilicon: false, physicalMemoryGB: 64, coreCount: 8, chipDescription: "Intel")
-        XCTAssertEqual(LlamaModel.recommended(for: intel), .medgemma15_4b)
+    /// The 27B model is there to choose, never picked for anyone: MedGemma 4B
+    /// is the default however much memory the Mac has.
+    func testRecommendedIsMedGemma4BOnEveryMac() {
+        for gb in [8, 16, 32, 48, 64, 128] {
+            XCTAssertEqual(LlamaModel.recommended(for: Self.mac(gb: gb)), .medgemma15_4b, "\(gb) GB Apple silicon")
+        }
+        for gb in [8, 64] {
+            let intel = HardwareCapabilities(isAppleSilicon: false, physicalMemoryGB: gb, coreCount: 8, chipDescription: "Intel")
+            XCTAssertEqual(LlamaModel.recommended(for: intel), .medgemma15_4b, "\(gb) GB Intel")
+        }
     }
 
-    func testMedGemmaSizeFollowsMemory() {
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 8)), .medgemma15_4b)
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 16)), .medgemma15_4b)
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 24)), .medgemma15_4b)
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 31)), .medgemma15_4b)
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 32)), .medgemma15_4b)
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 48)), .medgemma_27b)
-        XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: 64)), .medgemma_27b)
+    /// The default medical model is MedGemma 4B at every size of Mac; the 27B
+    /// model stays available to choose.
+    func testMedGemmaDefaultIsTheSameOnEveryMac() {
+        for gb in [8, 16, 24, 31, 32, 48, 64, 128] {
+            XCTAssertEqual(LlamaModel.medGemma(for: Self.mac(gb: gb)), .medgemma15_4b, "\(gb) GB")
+        }
+        XCTAssertTrue(LlamaModel.medgemma_27b.isSupported(on: Self.mac(gb: 48)), "still there to choose")
     }
 
     func testExperimentalApertusRequiresSixteenGBOnAnyMac() {

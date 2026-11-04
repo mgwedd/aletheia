@@ -235,6 +235,14 @@ struct RecordingMenuBar: View {
             .controlSize(.large)
             .disabled(selectedPatient == nil || !MenuBarContentPolicy.canStartRecording(isLocked: appLock.isLocked, isStarting: recorder.isStarting)
                 || RecordingConsent.menuBarProblem(needsConsent: selectedNeedsConsent, capture: consent) != nil)
+            // The menu has no alert of its own, so the one-time tip reads here
+            // until a recording starts.
+            if !settings.hasSeenHeadphonesTip {
+                Text("\(HeadphonesTip.title). \(HeadphonesTip.message)")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.text.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let startProblem {
                 Text(startProblem)
                     .font(Theme.Typography.caption)
@@ -339,6 +347,7 @@ struct RecordingMenuBar: View {
         )
         // Stay on the menu when it didn't start, so the reason is read here.
         guard startProblem == nil else { return }
+        settings.hasSeenHeadphonesTip = true
         MainWindow.show(openWindow: openWindow, panel: panel)
         AppNavigator.shared.requestOpen(patientID: patient.id)
     }

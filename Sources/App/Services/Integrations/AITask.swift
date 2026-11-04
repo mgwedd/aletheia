@@ -12,12 +12,15 @@ enum AITask: String {
         }
     }
 
-    /// Maximum tokens a reply for this task may generate.
+    /// Maximum tokens a reply for this task may generate. A note, an answer
+    /// or a summary gets all the room the context budget keeps for a reply
+    /// (`ContextBudget.replyHeadroomTokens`): a cap below what the prompt asks
+    /// for cuts the reply off, and a cut-off summary silently replaces the
+    /// conversation it was meant to keep.
     var maxTokens: Int {
         switch self {
-        case .note, .chat: return ContextBudget.replyHeadroomTokens
+        case .note, .chat, .compaction: return ContextBudget.replyHeadroomTokens
         case .digest: return 768
-        case .compaction: return 512
         }
     }
 }

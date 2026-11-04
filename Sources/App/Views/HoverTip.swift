@@ -41,7 +41,7 @@ enum HelpTips {
     static let clear = HelpTip(
         id: "chat.clear",
         heading: "Clear this chat",
-        text: "Deletes every question and answer here. You're asked to confirm first."
+        text: "Deletes every question and answer here, at once."
     )
 
     // Settings. Safety and privacy lines (app lock, encryption, backups,

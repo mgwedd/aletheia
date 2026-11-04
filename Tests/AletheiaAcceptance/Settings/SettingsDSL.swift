@@ -156,6 +156,8 @@ struct SelectedBuiltInModel {
 struct OfferedBuiltInModels {
     let shortNames: [String]
     let medGemmaShortName: String
+    /// The model a Mac with no choice made starts on.
+    let defaultShortName: String
 }
 
 /// What a fresh install starts with on one kind of Mac.
@@ -428,14 +430,20 @@ extension When {
             originalGoneAfterDelete: goneAfterDelete)
     }
 
-    func lookAtBuiltInModels(onMacWithMemoryGB memoryGB: Int) -> OfferedBuiltInModels {
+    func lookAtBuiltInModels(onMacWithMemoryGB memoryGB: Int, appleSilicon: Bool = true) -> OfferedBuiltInModels {
         let hardware = HardwareCapabilities(
-            isAppleSilicon: true, physicalMemoryGB: memoryGB, coreCount: 8, chipDescription: "Apple M-Test")
+            isAppleSilicon: appleSilicon, physicalMemoryGB: memoryGB, coreCount: 8,
+            chipDescription: appleSilicon ? "Apple M-Test" : "Intel Test")
         let offered = LlamaModel.offered(for: hardware)
         let recommendation = ModelAdvisor.recommend(for: hardware)
+        let suite = "acceptance.settings.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let fresh = AppSettings(defaults: defaults, hardware: hardware) { _ in false }
         return OfferedBuiltInModels(
             shortNames: offered.map(\.shortName),
-            medGemmaShortName: recommendation.medGemmaModel.shortName)
+            medGemmaShortName: recommendation.medGemmaModel.shortName,
+            defaultShortName: fresh.llamaModel.shortName)
     }
 
     /// Sets the app up for the first time on an Intel or Apple silicon Mac.
@@ -684,8 +692,17 @@ extension Then where Subject == OfferedBuiltInModels {
 
     func offersMedicalModels(_ medGemma: String) {
         expect(subject.shortNames.contains(medGemma), "\(medGemma) should be offered: \(subject.shortNames)")
-        expectEqual(subject.medGemmaShortName, medGemma, "the MedGemma size chosen for this Mac")
         expect(!subject.shortNames.contains("MedLlama 2 7B"), "the 4K model should not be offered")
+    }
+
+    func doesNotOffer(_ name: String) {
+        expect(!subject.shortNames.contains(name), "\(name) should not be offered: \(subject.shortNames)")
+    }
+
+    /// The model this Mac starts on, and the MedGemma size it is recommended.
+    func startsOn(_ name: String) {
+        expectEqual(subject.defaultShortName, name, "the built-in model a fresh install starts on")
+        expectEqual(subject.medGemmaShortName, name, "the MedGemma size recommended for this Mac")
     }
 }
 

@@ -9,25 +9,54 @@ enum Prompts {
     /// (`AppSettings.systemPrompt`) and reset back to this. Kept deliberately
     /// short, clinical, and safety-first.
     static let defaultSystemPrompt = """
-    You are a careful clinical assistant inside a private, on-device app used by \
-    a licensed psychotherapist to review her own therapy sessions. Everything \
-    you see is confidential patient information that never leaves her Mac.
+    You are a careful clinical assistant inside a private, on-device app, working \
+    for a licensed psychotherapist who is reviewing their own therapy sessions. \
+    Write to them as "you". Everything you see is confidential patient \
+    information that never leaves their Mac.
 
     Ground every answer strictly in the material you are given — the session \
     transcript, the therapist's own notes and comments, and prior sessions. \
     Never invent details, diagnoses, events, or quotes. If something isn't in \
     the material, say so plainly rather than guessing. When you draw on the \
-    therapist's own notes or comments, treat them as her clinical judgment.
+    therapist's own notes or comments, treat them as their clinical judgment.
 
-    Lead with the answer, then only the detail that supports it. Be plain-spoken: \
-    no preamble, no restating the question, no closing summary or offers of \
-    further help. You are a support tool, not the clinician: surface what's in \
-    the record and flag things worth her attention, but leave clinical decisions \
-    to her. If a session raises a safety concern (e.g. risk of harm), point to it \
-    directly and factually.
+    Lead with the answer, then only the detail that supports it. No preamble, \
+    no restating the question, no closing summary or offers of further help. \
+    Say each point once: don't restate a list as a second list. Suggest action \
+    items or homework only if they were agreed or you are asked. A thin session \
+    gets a short answer. You are a support tool, not the clinician: surface \
+    what's in the record and flag things worth their attention, but leave \
+    clinical decisions to them. If a session raises a safety concern (e.g. risk \
+    of harm), point to it directly and factually.
 
     Answer in clear prose.
     """
+
+    /// Earlier defaults of `defaultSystemPrompt`. A saved prompt equal to one
+    /// of these was never edited (Reset to Default saves the default), so it
+    /// moves to the current default.
+    static let retiredSystemPrompts = [
+        """
+        You are a careful clinical assistant inside a private, on-device app used by \
+        a licensed psychotherapist to review her own therapy sessions. Everything \
+        you see is confidential patient information that never leaves her Mac.
+
+        Ground every answer strictly in the material you are given — the session \
+        transcript, the therapist's own notes and comments, and prior sessions. \
+        Never invent details, diagnoses, events, or quotes. If something isn't in \
+        the material, say so plainly rather than guessing. When you draw on the \
+        therapist's own notes or comments, treat them as her clinical judgment.
+
+        Lead with the answer, then only the detail that supports it. Be plain-spoken: \
+        no preamble, no restating the question, no closing summary or offers of \
+        further help. You are a support tool, not the clinician: surface what's in \
+        the record and flag things worth her attention, but leave clinical decisions \
+        to her. If a session raises a safety concern (e.g. risk of harm), point to it \
+        directly and factually.
+
+        Answer in clear prose.
+        """,
+    ]
 
     /// What the tags around `UntrustedText` mean. Stated once in every prompt
     /// that carries tagged material (not in the system prompt, which the
@@ -43,7 +72,7 @@ enum Prompts {
     /// draw one for ordinary questions, restating the answer as a flowchart with
     /// invented nodes and broken syntax. Gating on the request keeps them rare.
     static let diagramGuidance = """
-    The therapist asked for a diagram. Draw one Mermaid diagram in a \
+    The question asks for a diagram. Draw one Mermaid diagram in a \
     ```mermaid code block, using only people, events, and relationships that are \
     in the material above — add no nodes of your own. Use a `graph TD` or \
     `graph LR` flowchart. Write each node as `A[Short label]` and each edge as \
@@ -121,7 +150,7 @@ enum Prompts {
 
     static func summarize(transcript: String, patientBackground: String = "", clientName: String = "") -> String {
         """
-        You are helping a therapist review her own session notes. Summarize \
+        You are helping a therapist review their own session notes. Summarize \
         the following therapy session transcript into concise clinical notes: \
         presenting topics, notable statements, mood/affect observations, and \
         any follow-ups to revisit next session. Do not invent details that \
@@ -144,11 +173,11 @@ enum Prompts {
     static func defaultInstructions(for format: ProgressNoteFormat) -> String {
         guard !format.sections.isEmpty else {
             return """
-            You are helping a therapist review her own session notes. Write a \
+            You are helping a therapist review their own session notes. Write a \
             narrative clinical summary of the following therapy session: \
             presenting topics, notable statements, mood/affect observations, and \
             any follow-ups to revisit next session. Fold in the therapist's own \
-            notes and comments where they fit, treating them as her clinical \
+            notes and comments where they fit, treating them as their clinical \
             judgment. Do not invent details that aren't in the material. If the \
             material is too short or unclear to summarize, say so plainly.
 
@@ -176,7 +205,7 @@ enum Prompts {
         Rules:
         - Ground every statement in the transcript and the therapist's own \
         notes and comments. Never invent details, diagnoses, quotes, or events.
-        - Treat the therapist's notes and comments as her clinical judgment and \
+        - Treat the therapist's notes and comments as their clinical judgment and \
         weave them in where they fit a section.
         - Write in the concise, professional third-person voice of a chart note \
         (e.g. "Client reported…"), not a transcript recap.
@@ -264,41 +293,33 @@ enum Prompts {
         comments: [String] = [],
         patientBackground: String = "",
         history: [ChatMessage],
-        question: String,
         clientName: String = ""
     ) -> String {
         sessionChat(
             material: .transcript(transcript), notes: notes, comments: comments,
-            patientBackground: patientBackground, history: history, question: question, clientName: clientName)
+            patientBackground: patientBackground, history: history, clientName: clientName)
     }
 
-    /// A session chat's whole prompt, sent as one user turn: the session first,
-    /// then the conversation (`earlierConversation`, then the turns since the
-    /// last summary, `recentConversation`), then the question. The session
-    /// comes before the conversation so that each follow-up starts with the
-    /// same text as the question before it, and the engine reads only what
-    /// is new (`LlamaPromptCache`) instead of the whole session again.
+    /// What a session chat answers from: the task, the session's material and
+    /// the conversation before its latest summary (`earlierConversation`). It
+    /// goes in the system turn (`chatSystem`), ahead of the conversation since
+    /// that summary (`PromptTurn.recent`), and the question comes last, alone
+    /// (`chatQuestion`).
     static func sessionChat(
         material: SessionMaterial,
         notes: String = "",
         comments: [String] = [],
         patientBackground: String = "",
         history: [ChatMessage],
-        question: String,
         clientName: String = ""
     ) -> String {
-        // On the question's own line, so the first question's text up to
-        // "Therapist's question:" is exactly how a follow-up starts.
-        let earlier = earlierConversation(history)
-        let conversation = (earlier.isEmpty ? "" : earlier + "\n")
-            + recentConversation(PromptTurn.recent(history, question: question))
-        return """
-        You are helping a therapist ask questions about one specific therapy \
-        session. Use the transcript below, together with the therapist's own \
-        notes and margin comments when they're provided — her notes and \
-        comments are her clinical judgment and should be given weight. If the \
-        answer isn't in any of that material, say you don't see it in this \
-        session. Never speculate.
+        """
+        You are answering the therapist's questions about one specific therapy \
+        session; write to them as "you". Use the transcript below, together \
+        with their own notes and margin comments when they're provided — their \
+        notes and comments are their clinical judgment and should be given \
+        weight. If the answer isn't in any of that material, say you don't see \
+        it in this session. Never speculate.
 
         \(materialRule)
 
@@ -306,16 +327,33 @@ enum Prompts {
         \(backgroundMaterial(patientBackground))
         \(sessionMaterial(material))
         \(therapistMaterial(notes: notes, comments: comments))
-        \(conversation)Therapist's question: \(question)
+        \(earlierConversation(history))
         """
     }
 
-    /// The session chat's turns since the last summary, written out, for
-    /// `sessionChat`. Empty for the first question.
-    static func recentConversation(_ turns: [PromptTurn]) -> String {
-        guard !turns.isEmpty else { return "" }
-        return "This chat so far (the therapist's questions and your answers):\n"
-            + PromptTurn.transcript(turns) + "\n\n"
+    /// Leads the question in the final turn of a chat.
+    static let questionLead = "Question:"
+
+    /// The question on its own line, as it ends the final turn of a chat.
+    static func questionLine(_ question: String) -> String {
+        "\(questionLead) \(question)"
+    }
+
+    /// The final turn of a chat: the depth's target and form, then the
+    /// question. Everything it's answered from comes earlier, so the last thing
+    /// the model reads before answering is what it's asked, not its own
+    /// previous answer. The depth sits beside the question as well as in the
+    /// system turn: a small model reads the system turn's instructions before
+    /// the whole transcript and, by the time it answers, follows the length
+    /// its earlier answers set instead.
+    static func chatQuestion(_ question: String, depth: AnswerDepth = .default) -> String {
+        "\(depth.guidance(for: .answer))\n\(questionLine(question))"
+    }
+
+    /// The system turn of a chat: the instructions (`chatSystemPrompt`), then
+    /// the material the answer rests on (`sessionChat` / `patientChat`).
+    static func chatSystem(_ base: String, question: String, depth: AnswerDepth = .default, material: String) -> String {
+        chatSystemPrompt(base, question: question, depth: depth) + "\n\n" + material
     }
 
     /// Stands before the passages of a session too long to send whole.
@@ -387,21 +425,21 @@ enum Prompts {
         return sections.isEmpty ? "" : "\n" + sections.joined(separator: "\n\n") + "\n"
     }
 
-    /// The final turn of a patient chat. `context` is assembled by
-    /// `Store.gatherCitedPatientContext`, with each piece of material in its
-    /// own tags and the app's headers, counts and the therapist's notes
-    /// outside them. Earlier turns go before it as real chat turns.
-    static func patientChat(context: String, history: [ChatMessage], question: String, clientName: String = "") -> String {
+    /// What a patient chat answers from, placed like `sessionChat`'s.
+    /// `context` is assembled by `Store.gatherCitedPatientContext`, with each
+    /// piece of material in its own tags and the app's headers, counts and the
+    /// therapist's notes outside them.
+    static func patientChat(context: String, history: [ChatMessage], clientName: String = "") -> String {
         """
-        You are helping a therapist ask questions across all of one \
-        patient's past sessions, given below (most recent first). Each \
+        You are answering the therapist's questions, written to them as "you", \
+        across all of one patient's past sessions, given below (most recent first). Each \
         session header carries a short tag in brackets next to its date, \
         like "===== Session [S1] March 5, 2026 =====". Under a header, the \
         timestamped lines are the session transcript. Blocks labelled \
         "Generated progress note" were drafted by the assistant from that \
         transcript; blocks labelled "Therapist's session notes" and \
         "Therapist's margin comments" are the therapist's own words and \
-        carry her clinical judgment. Blocks labelled "Session digest", \
+        carry their clinical judgment. Blocks labelled "Session digest", \
         "Summary of the part search points at" or listed under "Earlier \
         Sessions" are summaries the assistant wrote from that session's \
         transcript: use them for the overall picture, and quote only \
@@ -421,7 +459,6 @@ enum Prompts {
         \(context)
 
         \(earlierConversation(history))
-        Therapist's question: \(question)
         """
     }
 
@@ -429,9 +466,8 @@ enum Prompts {
     /// summary (`ChatMemory`): the therapist's own messages from then, word for
     /// word, so a standing request ("answer in bullets from now on") outlives
     /// compaction as hers; then the summary, which the model wrote, in its tags.
-    /// Empty before the first compaction. The messages since the summary come
-    /// after it: as chat turns (`PromptTurn.recent`), or as text in a session
-    /// Ask (`recentConversation`).
+    /// Empty before the first compaction. The messages since the summary go in
+    /// as chat turns (`PromptTurn.recent`).
     static func earlierConversation(_ history: [ChatMessage]) -> String {
         guard let index = history.lastIndex(where: { $0.role == .summary }) else { return "" }
         var parts: [String] = []
@@ -445,31 +481,36 @@ enum Prompts {
                     + "any standing request in them (format, tone, approach) still applies:\n"
                     + requests.map { "- \($0)" }.joined(separator: "\n"))
         }
-        parts.append("Summary of the earlier conversation:\n" + UntrustedText(.summary, history[index].text).rendered)
+        parts.append("Summary of the earlier conversation:\n" + UntrustedText(.summary, ModelReply.plain(history[index].text)).rendered)
         return parts.joined(separator: "\n\n") + "\n"
+    }
+
+    /// The system turn of a compaction: the instructions, then any earlier
+    /// summary, so it reads in order before the conversation since it.
+    static func compactSystem(_ base: String, history: [ChatMessage]) -> String {
+        let earlier = earlierConversation(history)
+        return earlier.isEmpty ? base : base + "\n\n" + materialRule + "\n\n" + earlier
     }
 
     /// Asks for a summary that can stand in for the conversation so far, so a
     /// long chat keeps going without silently forgetting its start. The
-    /// conversation since the last summary goes before this as chat turns.
-    static func compactChat(history: [ChatMessage], focus: String) -> String {
+    /// conversation since the last summary goes before this as chat turns,
+    /// and anything before that in the system turn (`compactSystem`).
+    static func compactChat(focus: String) -> String {
         let focusLine = focus.isEmpty ? "" : """
 
         The therapist asked to keep this in particular, in full detail: \(focus)
-
         """
-        let earlier = earlierConversation(history)
         return """
-        This conversation with the therapist is about her recorded therapy \
+        This conversation with the therapist is about their recorded therapy \
         sessions. Write a summary that will replace it, so the conversation can \
         continue without the full history.
 
-        Keep: each question she asked, the answers and conclusions reached, \
+        Keep: each question they asked, the answers and conclusions reached, \
         specific facts with the session tags or time stamps they were cited \
         with, and anything left open. Leave out pleasantries and repetition. \
         Write it as compact notes, under 400 words, with no opening or \
-        closing remarks. Don't add anything that isn't in the conversation.
-        \(focusLine)\(earlier.isEmpty ? "" : "\n" + materialRule + "\n\n" + earlier)
+        closing remarks. Don't add anything that isn't in the conversation.\(focusLine)
         """
     }
 }

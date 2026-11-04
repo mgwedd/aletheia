@@ -220,6 +220,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AudioImport.swift` · `qa: RECORD-23`
 - **REC-090** Import Audio… is offered only while a current test license (signed tier "test") is installed. With a customer license, an expired test license or none, the session shows Record Session alone, and starting an import is refused with "Importing audio needs a test license."
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Services/AppModel.swift, Sources/App/Services/License/LicenseState.swift, Sources/App/AletheiaApp.swift` · `qa: RECORD-24`
+- **REC-091** The first Record Session on this Mac shows the "Use headphones" alert (Start Recording, Cancel) before anything is recorded; showing it is remembered in settings, so it never appears again, Cancel included. Until then, the menu bar panel shows the same tip above its start controls, and a recording started from there marks it shown.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Views/RecordingMenuBar.swift, Sources/App/Services/HeadphonesTip.swift` · `qa: RECORD-25`
 
 ## Set-aside recordings (SAR)
 
@@ -479,6 +481,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AudioRetentionPolicy.swift:44-60` · `qa: TRANSCRIBE-18`
 - **TRN-093** When a call turn is shown under the patient's first name, the turn lays out like any other: it wraps across the pane's width, whatever the name's length.
   `surface: ui` · `evidence: Sources/App/Views/TranscriptTextView.swift` · `qa: TRANSCRIBE-20`
+- **TRN-094** On speakers the call re-enters the microphone. Before cleaning, a microphone segment that repeats the overlapping call speech is dropped, and in a segment that mixes both, any run of four or more words matching call words spoken within 3 seconds of it (one differing word allowed) is cut, keeping the rest. A short shared phrase, or the same words said well after the client, stays.
+  `surface: background` · `evidence: Sources/App/Services/SpeakerLeakageFilter.swift, Sources/App/Services/WhisperTranscriber.swift` · `qa: TRANSCRIBE-21`
 
 ## Encryption at rest (ENC)
 
@@ -1074,9 +1078,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/SessionAI/PatientChatModel.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-23`
 - **CHT-077** In the patient chat window, the divider between the Chats list and the chat drags to resize the list (200 to 320 points, leaving the chat at least 360); dragged under its narrowest, the list gives way, then springs back when let go. The width is kept per window, and the grab area is 12 points wide, the same as every pane divider.
   `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift, Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/PaneDividerGrip.swift` · `qa: CHAT-24`
-- **CHT-078** When a session's Ask tab has a conversation, a Clear button sits just left of Compact on the effort bar. After a confirmation, it deletes that session's whole conversation, and the deletion is written to the activity log.
+- **CHT-078** When a session's Ask tab has a conversation, a Clear button sits just left of Compact on the effort bar. It deletes that session's whole conversation at once, with no confirmation (its tip reads "Deletes every question and answer here, at once."), and the deletion is written to the activity log.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift, Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/Store.swift` · `qa: CHAT-25`
-- **CHT-079** In the patient chat, Clear (after a confirmation) empties the open chat's conversation and keeps the chat in the Chats list; the deletion is written to the activity log.
+- **CHT-079** In the patient chat, Clear empties the open chat's conversation at once, with no confirmation, and keeps the chat in the Chats list; the deletion is written to the activity log.
   `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift, Sources/App/Services/SessionAI/PatientChatModel.swift, Sources/App/Services/Store.swift` · `qa: CHAT-26`
 - **CHT-080** The Chats list's Delete All Chats button (after a confirmation naming the patient) deletes every chat about the patient; each deletion is written to the activity log. It is off while an answer is being written or when there are no chats.
   `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift, Sources/App/Services/SessionAI/PatientChatModel.swift, Sources/App/Services/Store.swift` · `qa: CHAT-27`
@@ -1161,6 +1165,22 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Views/ChatPaneView.swift, Sources/App/Views/SessionDetailView.swift` · `qa: CHAT-33`
 - **CHT-087** One depth type supplies the guidance for notes and both Ask paths, so the same depth gives the same kind of limit everywhere, each with the same clarity rule (plain words, no filler, never padded to a length).
   `surface: invariant` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Services/Prompts.swift` · `qa: CHAT-34`
+- **CHT-088** The engine never lets a model write a control token other than end-of-turn, so a reply is plain text: no reasoning span opened by a token like `<unused94>thought` and no chat-template marker (`<start_of_turn>`, `<end_of_turn>`, `<unusedN>`, `<bos>`, `<eos>`, `<|…|>`).
+  `surface: invariant` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Services/ModelReply.swift` · `qa: CHAT-35`
+- **CHT-089** A reply or summary saved before CHT-088 that holds a reasoning span (closed, or cut off at the end) or a template marker is shown without them in the conversation and the compaction card, and is sent back to the model without them in the turns of the next question and in the compaction prompt.
+  `surface: ui` · `evidence: Sources/App/Services/ModelReply.swift, Sources/App/Services/PromptTurn.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-35`
+- **CHT-090** A chat prompt is ordered system, turns, question: the system turn holds the instructions, then the session material (transcript or patient context, therapist notes, comments, background) and, after a compaction, the earlier summary; the conversation since then follows as turns; the question, as "Question: <question>" after the depth's guidance, is the last turn, so the model never reads the material after its own previous answer.
+  `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/Integrations/AssistantService.swift, Sources/App/Services/PromptTurn.swift` · `qa: CHAT-32`
+- **CHT-091** The summary a compaction writes gets the full reply room (`ContextBudget.replyHeadroomTokens`), the same as a note or an answer. A summary the engine reports it stopped at the reply limit, rather than finished, is discarded even though text was already shown: the conversation stays as it was and an alert reads "The summary didn't finish, so the conversation was kept as it was. Try Compact again, or name what to keep, like /compact medication."
+  `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Models/AIRunStats.swift, Sources/App/Services/Integrations/AITask.swift, Sources/App/Services/Integrations/AssistantService.swift, Sources/App/Views/ChatStreamRunner.swift, Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/SessionAI/PatientChatModel.swift` · `qa: CHAT-37`
+- **CHT-092** The earlier summary that a compaction's prompt carries (the conversation to summarize, in the system turn after the instructions) is plain text (CHT-089), and the conversation turns follow it with the instruction to summarize as the last turn.
+  `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/Integrations/AssistantService.swift` · `qa: CHAT-35`
+- **CHT-093** While a summary is being written, the answers above it keep their full width and the "Conversation compacted" card builds below them with nothing drawn over it; the answer text is measured apart from the view that shows it, and the conversation always leaves room for a scroll bar that takes space, so one appearing doesn't rewrap the answers.
+  `surface: ui` · `evidence: Sources/App/Views/AnswerText.swift, Sources/App/Views/ChatPaneView.swift, Sources/App/Views/BoundedScroll.swift` · `qa: CHAT-36`
+- **CHT-094** The depth's guidance sits in the final turn, directly before the question, so it is the last instruction the model reads, however long the conversation; the planner's prompt carries the question alone.
+  `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/Integrations/AssistantService.swift, Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: CHAT-38`
+- **CHT-095** The default system prompt writes to the user as "you"; says each point once, never restating a list as a second list; suggests action items or homework only if they were agreed or asked for; and gives a thin session a short answer. A saved prompt equal to an earlier default is replaced by the current one.
+  `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/AppSettings.swift` · `qa: CHAT-38`
 
 ## AI engine & models (AIE)
 
@@ -1172,7 +1192,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: scripts/check-entitlements.sh, Sources/NetworkHelper/HelperFetcher.swift` · `qa: SETTINGS-06`
 - **AIE-004** When the built-in engine is not linked into a build, AI actions fail with "The built-in AI model isn't available in this build of Aletheia." and no other engine is tried.
   `surface: ui` · `evidence: Sources/App/Services/Integrations/UnavailableAssistant.swift` · `qa: NOTE-09`
-- **AIE-005** The recommended model is MedGemma 1.5 4B (about 2.5 GB) except on Apple silicon with 48 GB or more, which gets MedGemma 27B text (about 16.5 GB), in every build tier.
+- **AIE-005** The recommended model is MedGemma 1.5 4B (about 2.5 GB) on every Mac, in every build tier. Larger models are offered, never chosen for the user.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModel.swift, Sources/App/Services/ModelAdvisor.swift` · `qa: SETTINGS-07`
 - **AIE-006** When the app is installed, the AI model is not bundled, and nothing is fetched until the user starts a download.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModelDownloader.swift` · `qa: SETTINGS-07`
@@ -1255,7 +1275,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/ModelLicenseLink.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-07`
 - **AIE-046** When a background summary job is running and a note or question arrives, the summary yields and the note or question runs next.
   `surface: background` · `evidence: Sources/App/Services/InferenceQueue.swift` · `qa: NOTE-08`
-- **AIE-047** The built-in model picker offers MedGemma 1.5 4B (about 2.5 GB) on every Mac and MedGemma 27B (about 16.5 GB) on 32 GB+ Apple silicon. The 4B is the default through 32 GB and on Intel; 27B is the default at 48 GB+ Apple silicon. Both have a 128K native context and use the Health AI Developer Foundations Terms. Previously selected general models remain available to their users; retired MedLlama 2 and MedGemma 1 4B selections migrate to the new default.
+- **AIE-047** The built-in model picker offers MedGemma 1.5 4B (about 2.5 GB) on every Mac and MedGemma 27B (about 16.5 GB) on 32 GB+ Apple silicon. The 4B is the default on every Mac; 27B is never the default. Both have a 128K native context and use the Health AI Developer Foundations Terms. Previously selected general models remain available to their users; retired MedLlama 2 and MedGemma 1 4B selections migrate to the new default.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModel.swift, Sources/App/Services/ModelAdvisor.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-15`
 - **AIE-048** When no built-in model was ever chosen and the previous default (Llama 3.1 8B from 16 GB, else Gemma 4 E2B) is downloaded while this Mac's MedGemma default is not, that model stays selected and is saved as the choice.
   `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-16`

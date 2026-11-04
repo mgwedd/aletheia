@@ -87,12 +87,19 @@ final class WhisperTranscriber: Transcribing {
             lines += found
         }
 
+        return Self.assemble(lines)
+    }
+
+    /// The stored transcript from both tracks' raw segments.
+    static func assemble(_ segments: [TranscribedLine]) -> String {
+        var lines = segments
         // On speakers the call re-enters the mic and is transcribed twice, so
-        // drop mic lines that repeat the call track's words. Before cleaning:
+        // drop mic lines that repeat the call track's words, and cut the
+        // repeated words out of lines that mix both. Before cleaning:
         // the raw segments are shorter, which keeps the filter's time window
         // tight, and coalescing then sees the timeline without the echoes.
         let callLines = lines.filter { $0.source != "You" }
-        lines = SpeakerLeakageFilter.dropLeakedLines(
+        lines = SpeakerLeakageFilter.removeLeakage(
             mic: lines.filter { $0.source == "You" },
             call: callLines
         ) + callLines

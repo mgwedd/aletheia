@@ -126,6 +126,7 @@ enum AnswerDepth: String, CaseIterable, Identifiable, Codable, Hashable {
     static let conversationRule = """
     Answer the latest question on its own terms. Don't restructure, revise or \
     re-summarise your earlier answers; use earlier turns only as context. Each \
-    answer should stand on its own, so repeat a point if this answer needs it.
+    answer should stand on its own: include what this question needs even if \
+    an earlier answer said it, but say each point only once.
     """
 }

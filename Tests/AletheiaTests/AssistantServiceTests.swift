@@ -44,9 +44,14 @@ final class AssistantServiceTests: XCTestCase {
         let history = [ChatMessage(role: .user, text: "earlier")]
 
         _ = try await service.answerAboutSession(transcript: "T", history: history, question: "Q?")
-        // The earlier messages are already in the prompt, after the session,
-        // so nothing is written before it.
-        XCTAssertEqual(fake.lastPrompt, Prompts.sessionChat(transcript: "T", history: history, question: "Q?"))
+        // The session goes in the system turn. A backend without chat turns
+        // gets the earlier messages written before the question, which is last.
+        XCTAssertEqual(fake.lastSystem, Prompts.chatSystem(
+            Prompts.defaultSystemPrompt, question: "Q?",
+            material: Prompts.sessionChat(transcript: "T", history: history)))
+        XCTAssertEqual(fake.lastPrompt, PromptTurn.flattened(
+            PromptTurn.recent(history, question: "Q?"),
+            then: Prompts.chatQuestion("Q?")))
     }
 
     func testAnswerAboutPatientBuildsPatientPrompt() async throws {
@@ -54,7 +59,10 @@ final class AssistantServiceTests: XCTestCase {
         let service = AssistantService(assistant: fake, model: "m")
 
         _ = try await service.answerAboutPatient(context: "CTX", history: [], question: "When?")
-        XCTAssertEqual(fake.lastPrompt, Prompts.patientChat(context: "CTX", history: [], question: "When?"))
+        XCTAssertEqual(fake.lastSystem, Prompts.chatSystem(
+            Prompts.defaultSystemPrompt, question: "When?",
+            material: Prompts.patientChat(context: "CTX", history: [])))
+        XCTAssertEqual(fake.lastPrompt, Prompts.chatQuestion("When?"))
     }
 }
 

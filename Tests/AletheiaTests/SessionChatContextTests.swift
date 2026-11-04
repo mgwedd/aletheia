@@ -17,8 +17,7 @@ final class SessionChatContextTests: XCTestCase {
             transcript: "Patient discussed sleep.",
             notes: "She seemed brighter today.",
             comments: ["- On “sleep”: worse since the move"],
-            history: [],
-            question: "How was her mood?"
+            history: []
         )
         XCTAssertTrue(prompt.contains("Therapist's session notes:"))
         XCTAssertTrue(prompt.contains("She seemed brighter today."))
@@ -28,7 +27,7 @@ final class SessionChatContextTests: XCTestCase {
     }
 
     func testPromptOmitsSectionsWhenNoAnnotations() {
-        let prompt = Prompts.sessionChat(transcript: "T", history: [], question: "Q")
+        let prompt = Prompts.sessionChat(transcript: "T", history: [])
         // Assert on the section headers, which only appear when annotations
         // exist — the prompt's static instructions mention "margin comments".
         XCTAssertFalse(prompt.contains("Therapist's session notes:"))
@@ -48,10 +47,14 @@ final class SessionChatContextTests: XCTestCase {
             question: "Q"
         )
 
+        // The material is in the system turn; the final prompt is the question alone.
+        let system = try XCTUnwrap(fake.lastSystem)
         let prompt = try XCTUnwrap(fake.lastPrompt)
-        XCTAssertFalse(prompt.contains("note text"), "the psychotherapy note never reaches the prompt")
-        XCTAssertTrue(prompt.contains("titrate up"))
-        XCTAssertTrue(prompt.contains("meds"))
+        XCTAssertFalse(system.contains("note text"), "the psychotherapy note never reaches the model")
+        XCTAssertFalse(prompt.contains("note text"), "the psychotherapy note never reaches the model")
+        XCTAssertTrue(system.contains("titrate up"))
+        XCTAssertTrue(system.contains("meds"))
+        XCTAssertEqual(prompt, Prompts.chatQuestion("Q"))
     }
 
     @MainActor
@@ -72,30 +75,45 @@ final class SessionChatContextTests: XCTestCase {
             coverage: { _ in }
         )
         for try await _ in stream {}
+        let system = try XCTUnwrap(fake.lastSystem)
         let prompt = try XCTUnwrap(fake.lastPrompt)
-        XCTAssertTrue(prompt.contains("Patient discussed sleep."))
+        XCTAssertTrue(system.contains("Patient discussed sleep."))
+        XCTAssertFalse(system.contains("PRIVATE-PROCESS-NOTE"))
         XCTAssertFalse(prompt.contains("PRIVATE-PROCESS-NOTE"))
+        XCTAssertEqual(prompt, Prompts.chatQuestion("How was her mood?"))
     }
 
-    /// A follow-up's prompt starts with the whole of the previous question's
-    /// prompt up to that question, so the engine keeps the session it already
-    /// read and reads only the conversation and the new question.
-    func testAFollowUpStartsWithTheSamePromptAsTheQuestionBeforeIt() {
-        let transcript = "[00:00] Client: Sleep has been worse since the move."
-        let first = Prompts.sessionChat(transcript: transcript, notes: "Brighter.", history: [], question: "How is sleep?")
-        let followUp = Prompts.sessionChat(
-            transcript: transcript, notes: "Brighter.",
-            history: [
-                ChatMessage(role: .user, text: "How is sleep?"),
-                ChatMessage(role: .assistant, text: "Worse since the move."),
-                ChatMessage(role: .user, text: "Since when?"),
-            ],
-            question: "Since when?")
-        let shared = String(first[..<first.range(of: "Therapist's question:")!.lowerBound])
-        XCTAssertTrue(followUp.hasPrefix(shared), "the follow-up does not start with the first question's session text")
-        XCTAssertTrue(followUp.hasSuffix("Therapist's question: Since when?"))
-        let answer = followUp.range(of: "Assistant: Worse since the move.")
-        XCTAssertNotNil(answer, "the earlier answer is missing from the follow-up")
-        XCTAssertEqual(followUp.components(separatedBy: "Since when?").count, 2, "the new question is written twice")
+    /// A follow-up's system turn (instructions and session) is the same as
+    /// the question before it, so the engine keeps what it already read of
+    /// the session and reads only the conversation and the new question.
+    @MainActor func testAFollowUpSendsTheSameSystemTurnAsTheQuestionBeforeIt() async throws {
+        let fake = CapturingAssistant()
+        let service = AssistantService(assistant: fake, model: "m")
+        func ask(_ history: [ChatMessage], _ question: String) async throws -> String? {
+            let stream = LongSessionChat.stream(
+                transcript: "[00:00] Client: Sleep has been worse since the move.",
+                notes: "Brighter.",
+                history: history,
+                question: question,
+                sessionID: UUID(),
+                service: service,
+                builder: DigestBuilder(queue: InferenceQueue()),
+                loadDigest: { nil },
+                saveDigest: { _ in },
+                live: { _, _ in },
+                coverage: { _ in }
+            )
+            for try await _ in stream {}
+            return fake.lastSystem
+        }
+        let asked = try await ask([], "How is sleep?")
+        let first = try XCTUnwrap(asked)
+        let followUp = try await ask([
+            ChatMessage(role: .user, text: "How is sleep?"),
+            ChatMessage(role: .assistant, text: "Worse since the move."),
+            ChatMessage(role: .user, text: "Since when?"),
+        ], "Since when?")
+        XCTAssertTrue(first.contains("Sleep has been worse since the move."))
+        XCTAssertEqual(followUp, first)
     }
 }

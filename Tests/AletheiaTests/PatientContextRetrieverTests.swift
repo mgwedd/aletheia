@@ -185,7 +185,7 @@ final class PatientContextDigestFenceTests: XCTestCase {
         let context = "===== Session [S1] January 1, 2026 =====\nSession digest:\n"
             + UntrustedText(.digest, hostile).rendered
             + "\n\nTherapist's session notes:\nShe seemed tired."
-        let prompt = Prompts.patientChat(context: context, history: [], question: "How is she?")
+        let prompt = Prompts.patientChat(context: context, history: [])
         XCTAssertEqual(prompt.components(separatedBy: "</digest>").count, 2)
         XCTAssertFalse(prompt.contains("<material>\n"))
         let close = try! XCTUnwrap(prompt.range(of: "</digest>"))
