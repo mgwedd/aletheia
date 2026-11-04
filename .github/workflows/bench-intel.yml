@@ -111,7 +111,7 @@ jobs:
           fetch "https://huggingface.co/unsloth/medgemma-1.5-4b-it-GGUF/resolve/$lrev/medgemma-1.5-4b-it-Q4_K_M.gguf" \
             medgemma-1.5-4b-it-Q4_K_M.gguf "$lsha"
 
-      # About 45 seconds of synthetic speech (macOS text-to-speech), 16 kHz mono.
+      # About 20 seconds of synthetic speech (macOS text-to-speech), 16 kHz mono.
       - name: Make the speech clip
         run: |
           set -euo pipefail
