@@ -38,6 +38,13 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     /// Metal (all layers on the GPU, flash attention, q8_0 KV cache) or CPU
     /// only. Defaults to `InferenceCompute.usesGPU`; the benchmark sets both.
     let usesGPU: Bool
+    /// Threads on the CPU path. Defaults to `InferenceCompute.cpuThreads`;
+    /// the benchmark compares other counts.
+    let cpuThreads: Int
+    /// Whether a prompt keeps the prefix it shares with the last one
+    /// (`LlamaPromptCache`). Always on in the app; the benchmark turns it off
+    /// to time the old full read.
+    let reusesPromptCache: Bool
     /// The sampling this engine was constructed with. Every `generate`/
     /// `stream` call carries its own `LocalLLMRequest.sampling`, which is
     /// what actually drives decoding — this value only sizes the context
@@ -62,8 +69,15 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _lastStats }
         set { stateLock.lock(); _lastStats = newValue; stateLock.unlock() }
     }
+    /// How many leading prompt tokens the last request kept from the cache
+    /// instead of reading them (see `LlamaPromptCache`).
+    private(set) var lastCachedTokens: Int {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return _lastCachedTokens }
+        set { stateLock.lock(); _lastCachedTokens = newValue; stateLock.unlock() }
+    }
     private var _contextTokens = 0
     private var _lastPromptTokens = 0
+    private var _lastCachedTokens = 0
     private var _lastStats: AIRunStats?
 
     /// How long the model may sit unused before it is unloaded (the keep-alive window).
@@ -85,6 +99,11 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     private var model: OpaquePointer?
     private var context: OpaquePointer?
     private var adapter: OpaquePointer?
+    /// The tokens in `context`'s KV cache, in position order: the last
+    /// prompt and the reply tokens fed back after it. Only tokens a
+    /// `llama_decode` accepted are added, so it never claims more than the
+    /// cache holds. Queue-confined, like the pointers.
+    private var cachedTokens: [llama_token] = []
 
     private let stateLock = NSLock()
     private var _state: LocalLLMEngineState = .notLoaded
@@ -104,9 +123,11 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     /// A plain base model, no adapter.
     convenience init(
         modelURL: URL, sampling: LocalLLMSampling, budget: ContextBudget = .current,
-        usesGPU: Bool = InferenceCompute.usesGPU
+        usesGPU: Bool = InferenceCompute.usesGPU, cpuThreads: Int = InferenceCompute.cpuThreads,
+        reusesPromptCache: Bool = true
     ) {
-        self.init(modelURL: modelURL, adapterURL: nil, sampling: sampling, budget: budget, usesGPU: usesGPU)
+        self.init(modelURL: modelURL, adapterURL: nil, sampling: sampling, budget: budget, usesGPU: usesGPU,
+                  cpuThreads: cpuThreads, reusesPromptCache: reusesPromptCache)
     }
 
     /// A base model with an optional LoRA adapter layered on it at load time.
@@ -117,12 +138,16 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         sampling: LocalLLMSampling,
         budget: ContextBudget = .current,
         usesGPU: Bool = InferenceCompute.usesGPU,
+        cpuThreads: Int = InferenceCompute.cpuThreads,
+        reusesPromptCache: Bool = true,
         modelLoader: ((URL) -> OpaquePointer?)? = nil
     ) {
         self.modelURL = modelURL
         self.adapterURL = adapterURL
         self.expectedModelBytes = expectedModelBytes
         self.usesGPU = usesGPU
+        self.cpuThreads = cpuThreads
+        self.reusesPromptCache = reusesPromptCache
         self.modelLoader = modelLoader ?? { Self.loadModel(at: $0, usesGPU: usesGPU) }
         self.defaultSampling = sampling
         self.budget = budget
@@ -358,6 +383,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         if let context { llama_free(context) }
         context = nil
         contextTokens = 0
+        cachedTokens = []
 
         // On the GPU, flash attention and a q8_0 KV cache halve the cache's
         // memory (the limit on a long session) and speed up long-context
@@ -376,7 +402,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         // On the CPU path every physical core does the work.
         let threads = Int32(usesGPU
             ? max(1, min(8, ProcessInfo.processInfo.activeProcessorCount / 2))
-            : InferenceCompute.cpuThreads)
+            : cpuThreads)
         params.n_threads = threads
         params.n_threads_batch = threads
         if !usesGPU { params.op_offload = false }
@@ -428,6 +454,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         }
         context = nil
         contextTokens = 0
+        cachedTokens = []
         if let model {
             llama_model_free(model)
             Self.liveModels.add(-1)
@@ -485,8 +512,16 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         lastPromptTokens = tokens.count
         // Sized from the real prompt; throws ContextBudgetError rather than cutting it.
         let context = try contextOnQueue(promptTokens: tokens.count, replyTokens: request.sampling.maxTokens)
-        // Every request starts from an empty cache (the context is reused).
-        llama_memory_clear(llama_get_memory(context), true)
+        // Keep the cached prefix this prompt shares with the last one and read
+        // only the rest; anything else starts from an empty cache.
+        let memory = llama_get_memory(context)
+        var kept = !reusesPromptCache ? 0 : LlamaPromptCache.reusableTokens(
+            cached: cachedTokens, prompt: tokens,
+            cacheStart: llama_memory_seq_pos_min(memory, 0), slidingWindow: llama_model_n_swa(model))
+        if kept > 0, !llama_memory_seq_rm(memory, 0, llama_pos(kept), -1) { kept = 0 }
+        if kept == 0 { llama_memory_clear(memory, true) }
+        cachedTokens = Array(tokens[..<kept])
+        lastCachedTokens = kept
 
         guard let chain = llama_sampler_chain_init(llama_sampler_chain_default_params()) else {
             throw LocalLLMEngineError.generationFailed("Couldn't create a sampler chain.")
@@ -551,10 +586,12 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         // a loop iteration later would read freed stack memory. Back both the
         // prompt and each subsequent single token with one stable heap buffer
         // the batch can safely reference across iterations.
-        let promptCount = tokens.count
+        // Only the tokens after the kept prefix are read.
+        let unread = tokens[kept...]
+        let promptCount = unread.count
         let tokenStore = UnsafeMutablePointer<llama_token>.allocate(capacity: max(promptCount, 1))
         defer { tokenStore.deallocate() }
-        tokens.withUnsafeBufferPointer { src in
+        unread.withUnsafeBufferPointer { src in
             tokenStore.update(from: src.baseAddress!, count: promptCount)
         }
         let readStart = DispatchTime.now().uptimeNanoseconds
@@ -572,6 +609,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
             guard llama_decode(context, llama_batch_get_one(tokenStore + offset, Int32(chunk))) == 0 else {
                 throw LocalLLMEngineError.generationFailed("The model failed to decode a batch.")
             }
+            cachedTokens.append(contentsOf: UnsafeBufferPointer(start: tokenStore + offset, count: chunk))
             offset += chunk
         }
         var lastReport = AIRunStats()
@@ -585,6 +623,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
             guard llama_decode(context, batch) == 0 else {
                 throw LocalLLMEngineError.generationFailed("The model failed to decode a batch.")
             }
+            cachedTokens.append(contentsOf: UnsafeBufferPointer(start: batch.token, count: Int(batch.n_tokens)))
             if readEnd == nil {
                 // The GPU runs the prompt asynchronously: wait for it, so the
                 // read time is the prompt's and not the first token's.
@@ -611,12 +650,14 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         }
         if let readEnd, !isCancelled() {
             let writeEnd = DispatchTime.now().uptimeNanoseconds
-            let stats = AIRunStats(
+            var stats = AIRunStats(
                 promptTokens: promptCount,
                 promptNanos: Int(readEnd &- readStart),
                 outputTokens: produced,
                 outputNanos: Int(writeEnd &- readEnd)
             )
+            stats.cachedPromptTokens = kept
+            stats.reusedPrefix = kept > 0
             lastStats = stats
             onStats?(stats)
         }

@@ -68,6 +68,26 @@ final class PromptTurnTests: XCTestCase {
         XCTAssertTrue(spy.prompt.hasSuffix("Therapist's question: How was sleep?"))
         XCTAssertFalse(spy.prompt.contains("Answer in bullets"))
     }
+
+    /// A session Ask writes the conversation into the prompt after the
+    /// session instead of sending chat turns, so a follow-up shares the
+    /// previous prompt's start and the engine reuses what it read.
+    func testASessionAskWritesTheConversationAfterTheSession() async throws {
+        let spy = TurnSpy()
+        let service = AssistantService(assistant: spy, model: "m")
+        let history = [
+            ChatMessage(role: .user, text: "Answer in bullets from now on."),
+            ChatMessage(role: .assistant, text: "- ok"),
+            ChatMessage(role: .user, text: "How was sleep?"),
+        ]
+        _ = try await service.answerAboutSession(transcript: "TRANSCRIPT", history: history, question: "How was sleep?")
+        XCTAssertEqual(spy.turns, [])
+        let session = try XCTUnwrap(spy.prompt.range(of: "TRANSCRIPT"))
+        let request = try XCTUnwrap(spy.prompt.range(of: "Therapist: Answer in bullets from now on."))
+        XCTAssertLessThan(session.lowerBound, request.lowerBound)
+        XCTAssertTrue(spy.prompt.contains("Assistant: - ok"))
+        XCTAssertTrue(spy.prompt.hasSuffix("Therapist's question: How was sleep?"))
+    }
 }
 
 private final class TurnSpy: Assistant, @unchecked Sendable {

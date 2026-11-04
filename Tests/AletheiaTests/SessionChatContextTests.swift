@@ -76,4 +76,26 @@ final class SessionChatContextTests: XCTestCase {
         XCTAssertTrue(prompt.contains("Patient discussed sleep."))
         XCTAssertFalse(prompt.contains("PRIVATE-PROCESS-NOTE"))
     }
+
+    /// A follow-up's prompt starts with the whole of the previous question's
+    /// prompt up to that question, so the engine keeps the session it already
+    /// read and reads only the conversation and the new question.
+    func testAFollowUpStartsWithTheSamePromptAsTheQuestionBeforeIt() {
+        let transcript = "[00:00] Client: Sleep has been worse since the move."
+        let first = Prompts.sessionChat(transcript: transcript, notes: "Brighter.", history: [], question: "How is sleep?")
+        let followUp = Prompts.sessionChat(
+            transcript: transcript, notes: "Brighter.",
+            history: [
+                ChatMessage(role: .user, text: "How is sleep?"),
+                ChatMessage(role: .assistant, text: "Worse since the move."),
+                ChatMessage(role: .user, text: "Since when?"),
+            ],
+            question: "Since when?")
+        let shared = String(first[..<first.range(of: "Therapist's question:")!.lowerBound])
+        XCTAssertTrue(followUp.hasPrefix(shared), "the follow-up does not start with the first question's session text")
+        XCTAssertTrue(followUp.hasSuffix("Therapist's question: Since when?"))
+        let answer = followUp.range(of: "Assistant: Worse since the move.")
+        XCTAssertNotNil(answer, "the earlier answer is missing from the follow-up")
+        XCTAssertEqual(followUp.components(separatedBy: "Since when?").count, 2, "the new question is written twice")
+    }
 }

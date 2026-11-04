@@ -125,6 +125,19 @@ final class TokenEstimateTests: XCTestCase {
         XCTAssertFalse(AIRunStats(promptTokens: window, expectedPromptTokens: edge).possiblyTruncated)
     }
 
+    /// A follow-up that kept most of its prompt from the cache reads only the
+    /// new part; that is not a cut, and the kept part still fills the window.
+    func testAKeptPrefixCountsTowardsWhatWasRead() {
+        var kept = AIRunStats(promptTokens: 300, expectedPromptTokens: 6_000, contextTokens: 16_384)
+        kept.cachedPromptTokens = 5_700
+        XCTAssertFalse(kept.readLessThanSent)
+        XCTAssertFalse(kept.possiblyTruncated)
+        var full = AIRunStats(promptTokens: 300, expectedPromptTokens: 8_000, contextTokens: 8_192)
+        full.cachedPromptTokens = 7_700
+        XCTAssertTrue(full.nearContextLimit)
+        XCTAssertTrue(AIRunStats(promptTokens: 300, expectedPromptTokens: 6_000, contextTokens: 16_384).readLessThanSent)
+    }
+
     func testTheWindowDecidesWhetherASixThousandTokenReadWasCut() {
         let cut = AIRunStats(promptTokens: 6_200, expectedPromptTokens: 6_000, contextTokens: 8_192)
         XCTAssertTrue(cut.possiblyTruncated)

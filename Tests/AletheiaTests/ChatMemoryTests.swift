@@ -46,15 +46,17 @@ final class ChatMemoryTests: XCTestCase {
 
     /// The final prompt carries the summary (tagged, model-written) and the
     /// therapist's messages from before it (untagged, still in force); the
-    /// messages since the summary are chat turns, not prompt text.
-    func testPromptsCarryTheSummaryAndTheTherapistsEarlierRequests() {
+    /// messages since the summary are written after it, before the question.
+    func testPromptsCarryTheSummaryAndTheTherapistsEarlierRequests() throws {
         let bullets = ChatMessage(role: .user, text: "Answer in bullets from now on.")
         let history = [bullets, a1, summary, q2, ChatMessage(role: .assistant, text: "Second answer")]
         let prompt = Prompts.sessionChat(transcript: "T.", history: history + [ChatMessage(role: .user, text: "Now?")], question: "Now?")
         XCTAssertTrue(prompt.contains("Summary of the earlier conversation:\n<summary>\n\(summary.text)\n</summary>"))
         XCTAssertTrue(prompt.contains("still applies:\n- Answer in bullets from now on."))
         XCTAssertFalse(prompt.contains("<summary>\n- Answer in bullets"), "her request is not inside the summary's tags")
-        XCTAssertFalse(prompt.contains("Second question"), "later messages go in as turns")
+        let summarized = try XCTUnwrap(prompt.range(of: "</summary>"))
+        let later = try XCTUnwrap(prompt.range(of: "Therapist: Second question\nAssistant: Second answer"), "later messages are written out")
+        XCTAssertLessThan(summarized.lowerBound, later.lowerBound)
         XCTAssertFalse(prompt.contains("First answer"), "the model's earlier answers are not instructions")
         XCTAssertEqual(prompt.components(separatedBy: "Now?").count - 1, 1)
         XCTAssertTrue(prompt.hasSuffix("Therapist's question: Now?"))

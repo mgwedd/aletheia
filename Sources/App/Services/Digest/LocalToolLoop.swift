@@ -960,7 +960,8 @@ enum LongSessionChat {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
         let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question, depth: depth)
-        let turns = PromptTurn.recent(history, question: question)
+        // The conversation is written into the prompt after the session
+        // (`Prompts.sessionChat`), so no chat turns are sent.
         func makePrompt(_ material: SessionMaterial) -> String {
             Prompts.sessionChat(
                 material: material,
@@ -972,11 +973,11 @@ enum LongSessionChat {
                 clientName: service.clientName
             )
         }
-        if service.budget.fits(system: system, prompt: PromptTurn.flattened(turns, then: makePrompt(.transcript(transcript)))) {
+        if service.budget.fits(system: system, prompt: makePrompt(.transcript(transcript))) {
             coverage(["Read: the whole session · \(effort.displayName).", fields.coverageNote].compactMap { $0 }.joined(separator: " "))
             let words = AIProgressFormat.analyzingWords(question: question, in: transcript)
             live(nil) { $0.analyzing = words }
-            return service.streamAnswer(system: system, turns: turns, prompt: makePrompt(.transcript(transcript)))
+            return service.streamAnswer(system: system, turns: [], prompt: makePrompt(.transcript(transcript)))
         }
 
         return AsyncThrowingStream { continuation in
@@ -1008,7 +1009,7 @@ enum LongSessionChat {
                     let total = ContextBudget.characters(
                         fitting: service.budget.availableCharacters(
                             reserving: ContextBudget.weightedLength(of: system)
-                                + ContextBudget.weightedLength(of: PromptTurn.flattened(turns, then: makePrompt(.transcript(""))))
+                                + ContextBudget.weightedLength(of: makePrompt(.transcript("")))
                                 + headerReserve
                         ),
                         like: transcript
@@ -1119,7 +1120,6 @@ enum LongSessionChat {
                     chatService.systemPrompt = system
                     _ = try await builder.runStage(
                         makePrompt(.excerpts(digest: digestText, passages: passagesText, followUps: followUps)),
-                        turns: turns,
                         read: "Reading passages",
                         write: "Writing the answer",
                         task: .chat,

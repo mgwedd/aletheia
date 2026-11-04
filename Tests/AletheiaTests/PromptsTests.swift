@@ -14,16 +14,19 @@ final class PromptsTests: XCTestCase {
         XCTAssertFalse(prompt.contains("Recent conversation:"))
     }
 
-    /// Earlier turns are chat turns (sent through the template), not text
-    /// pasted into the final prompt.
-    func testSessionChatSendsHistoryAsTurns() {
+    /// Earlier turns are written after the session and before the question,
+    /// so a follow-up starts with the same text as the question before it.
+    func testSessionChatWritesHistoryAfterTheSession() throws {
         let history = [
             ChatMessage(role: .user, text: "Earlier question"),
             ChatMessage(role: .assistant, text: "Earlier answer"),
             ChatMessage(role: .user, text: "Follow-up?"),
         ]
         let prompt = Prompts.sessionChat(transcript: "T.", history: history, question: "Follow-up?")
-        XCTAssertFalse(prompt.contains("Earlier question"))
+        let session = try XCTUnwrap(prompt.range(of: "T."))
+        let earlier = try XCTUnwrap(prompt.range(of: "Therapist: Earlier question\nAssistant: Earlier answer"))
+        XCTAssertLessThan(session.lowerBound, earlier.lowerBound)
+        XCTAssertTrue(prompt.hasSuffix("Therapist's question: Follow-up?"))
         XCTAssertEqual(PromptTurn.recent(history, question: "Follow-up?"), [
             PromptTurn(role: .user, text: "Earlier question"),
             PromptTurn(role: .assistant, text: "Earlier answer"),

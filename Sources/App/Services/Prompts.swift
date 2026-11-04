@@ -272,9 +272,12 @@ enum Prompts {
             patientBackground: patientBackground, history: history, question: question, clientName: clientName)
     }
 
-    /// The final turn of a session chat. The conversation since the last
-    /// summary goes before it as real chat turns (`PromptTurn.recent`); this
-    /// carries only what came before that (`earlierConversation`).
+    /// A session chat's whole prompt, sent as one user turn: the session first,
+    /// then the conversation (`earlierConversation`, then the turns since the
+    /// last summary, `recentConversation`), then the question. The session
+    /// comes before the conversation so that each follow-up starts with the
+    /// same text as the question before it, and the engine reads only what
+    /// is new (`LlamaPromptCache`) instead of the whole session again.
     static func sessionChat(
         material: SessionMaterial,
         notes: String = "",
@@ -284,7 +287,12 @@ enum Prompts {
         question: String,
         clientName: String = ""
     ) -> String {
-        """
+        // On the question's own line, so the first question's text up to
+        // "Therapist's question:" is exactly how a follow-up starts.
+        let earlier = earlierConversation(history)
+        let conversation = (earlier.isEmpty ? "" : earlier + "\n")
+            + recentConversation(PromptTurn.recent(history, question: question))
+        return """
         You are helping a therapist ask questions about one specific therapy \
         session. Use the transcript below, together with the therapist's own \
         notes and margin comments when they're provided — her notes and \
@@ -298,9 +306,16 @@ enum Prompts {
         \(backgroundMaterial(patientBackground))
         \(sessionMaterial(material))
         \(therapistMaterial(notes: notes, comments: comments))
-        \(earlierConversation(history))
-        Therapist's question: \(question)
+        \(conversation)Therapist's question: \(question)
         """
+    }
+
+    /// The session chat's turns since the last summary, written out, for
+    /// `sessionChat`. Empty for the first question.
+    static func recentConversation(_ turns: [PromptTurn]) -> String {
+        guard !turns.isEmpty else { return "" }
+        return "This chat so far (the therapist's questions and your answers):\n"
+            + PromptTurn.transcript(turns) + "\n\n"
     }
 
     /// Stands before the passages of a session too long to send whole.
@@ -414,8 +429,9 @@ enum Prompts {
     /// summary (`ChatMemory`): the therapist's own messages from then, word for
     /// word, so a standing request ("answer in bullets from now on") outlives
     /// compaction as hers; then the summary, which the model wrote, in its tags.
-    /// Empty before the first compaction. The messages since the summary go in
-    /// as chat turns (`PromptTurn.recent`).
+    /// Empty before the first compaction. The messages since the summary come
+    /// after it: as chat turns (`PromptTurn.recent`), or as text in a session
+    /// Ask (`recentConversation`).
     static func earlierConversation(_ history: [ChatMessage]) -> String {
         guard let index = history.lastIndex(where: { $0.role == .summary }) else { return "" }
         var parts: [String] = []

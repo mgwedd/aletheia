@@ -3,19 +3,23 @@ import Foundation
 /// What a model run reported about itself, from the engine's final report
 /// (prompt and reply token counts and durations; durations in nanoseconds). Any field can be missing, so each is optional.
 struct AIRunStats: Equatable {
+    /// Prompt tokens the engine read for this run (not counting `cachedPromptTokens`).
     var promptTokens: Int?
     var promptNanos: Int?
     var outputTokens: Int?
     var outputNanos: Int?
-    /// Tokens the engine should have had to read for this prompt (the shared
-    /// `ContextBudget.estimatedTokens`, by script), minus any leading part of the prompt it already holds from the
-    /// previous request. 0 when unknown.
+    /// Tokens the whole prompt should come to (the shared
+    /// `ContextBudget.estimatedTokens`, by script), cached part included.
+    /// 0 when unknown.
     var expectedPromptTokens: Int = 0
     /// What the run was for, and whether a prefix
     /// the engine probably still held (it counts the whole prompt
     /// but spends almost no time on the cached part).
     var task: AITask?
     var reusedPrefix = false
+    /// Leading prompt tokens the engine kept from the previous request's cache
+    /// instead of reading them again.
+    var cachedPromptTokens = 0
     /// The window the run was given (the engine's context size); 0 when unknown.
     var contextTokens = 0
     /// Set only on the engine's mid-read reports (never on the final one):
@@ -59,7 +63,7 @@ struct AIRunStats: Equatable {
     /// tokenizer noise) trips it.
     var readLessThanSent: Bool {
         guard let promptTokens, expectedPromptTokens >= 500 else { return false }
-        return promptTokens * 10 < expectedPromptTokens * 6
+        return (promptTokens + cachedPromptTokens) * 10 < expectedPromptTokens * 6
     }
 
     /// The engine read as many tokens as the window holds less the reply room
@@ -70,7 +74,7 @@ struct AIRunStats: Equatable {
     /// is unknown.
     var nearContextLimit: Bool {
         guard let promptTokens, contextTokens > ContextBudget.replyHeadroomTokens else { return false }
-        return promptTokens >= contextTokens - ContextBudget.replyHeadroomTokens
+        return promptTokens + cachedPromptTokens >= contextTokens - ContextBudget.replyHeadroomTokens
     }
 
     /// Shown under an answer or note when `possiblyTruncated`.

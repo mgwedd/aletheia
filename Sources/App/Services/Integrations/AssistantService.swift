@@ -146,7 +146,6 @@ struct AssistantService {
     ) async throws -> String {
         return try await generate(task: .chat,
             system: Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth),
-            turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
                 notes: AIContextPolicy.notes(notes, for: .sessionChat),
@@ -183,7 +182,6 @@ struct AssistantService {
     ) -> AsyncThrowingStream<String, Error> {
         run(task: .chat,
             system: Prompts.chatSystemPrompt(systemPrompt, question: question, depth: depth),
-            turns: PromptTurn.recent(history, question: question),
             prompt: Prompts.sessionChat(
                 transcript: transcript,
                 notes: AIContextPolicy.notes(notes, for: .sessionChat),
