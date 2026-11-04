@@ -3,12 +3,19 @@ import XCTest
 
 extension Copy {
     static let notesTab = "Notes"
-    static let lengthButtonPrefix = "Length:"
-    static let lengthChoices = ["Concise", "Natural", "Detailed"]
+    static let depthButtonPrefix = "Depth:"
+    static let depthChoices = ["Concise", "Natural", "Detailed"]
     static let effortChoices = ["Fast", "Normal", "Focus"]
     static let generateButtonPrefix = "Generate "
     static let processingTranscript = "Processing transcript"
-    static let coverageLead = "Read: a summary of the whole session"
+    static let coverageLead = "Read: every part of the session, summarized"
+    static let wholeTranscriptRead = "Read: the whole transcript, word for word"
+    static let noteReadyTitle = "SOAP note ready"
+    static let openNote = "Open Note"
+    /// The default model on most Macs; it reads a long session in parts.
+    static let smallModel = "medgemma-1.5-4b-it-q4_k_m"
+    /// The large model, which reads an hour-long session whole on a Mac with room for it.
+    static let largeModel = "medgemma-27b-text-it-q4_k_m"
     static let followUpLookup = "follow-up lookup"
     /// What the scripted model answers when asked which parts to read closely.
     static let lookupPlan = #"{"calls":[{"tool":"read_section","session":"S1","start":"00:00","end":"05:00"}]}"#
@@ -39,7 +46,7 @@ extension Copy {
 struct NotesTabOnScreen {
     let driver: AppDriver
 
-    var lengthButton: XCUIElement { driver.element(id: "notes.length") }
+    var depthButton: XCUIElement { driver.element(id: "notes.depth") }
     var generateButton: XCUIElement { driver.app.buttons["notes.generate"].firstMatch }
     var processingStatus: XCUIElement { driver.status(containing: Copy.processingTranscript) }
     var coverage: XCUIElement { driver.app.staticTexts["notes.coverage"].firstMatch }
@@ -52,25 +59,30 @@ struct NotesTabOnScreen {
         driver.app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", prefix)).firstMatch
     }
     var editor: XCUIElement { driver.app.textViews[Copy.editNoteLabel].firstMatch }
+    var reader: XCUIElement { driver.element(id: "notes.reader") }
     var outdatedRegenerate: XCUIElement { driver.button(Copy.regenerate) }
 }
 
 extension Given {
     /// Jane Doe with one session, its transcript and nothing else.
-    func aSession(transcript: String, length: String? = nil, effort: String? = nil,
+    func aSession(transcript: String, depth: String? = nil, effort: String? = nil,
                   stageMs: Int? = nil, plansLookups: Bool = false, replies: [String]? = nil,
-                  streamsWords: Bool? = nil, modelMissing: Bool? = nil, myNotes: String? = nil) {
+                  streamsWords: Bool? = nil, holdsOpen: Bool? = nil, modelMissing: Bool? = nil,
+                  myNotes: String? = nil, model: String = Copy.smallModel, memoryGB: Int? = nil) {
         app.seed {
             $0.license = "test"
             $0.fileVault = "on"
+            // Pinned, so how much of a long session is read does not depend on the Mac running the test.
+            $0.llamaModel = model
+            $0.memoryGB = memoryGB
             $0.patients = [.init(name: "Jane Doe", sessions: 1, transcript: transcript, myNotes: myNotes)]
             $0.open = "Jane Doe"
-            $0.noteLength = length
+            $0.noteDepth = depth
             $0.noteEffort = effort
             $0.aiReplies = replies
             $0.aiStreamsWords = streamsWords
             // Held open so Stop is still there to click once the app goes idle.
-            $0.aiHoldsOpen = streamsWords
+            $0.aiHoldsOpen = holdsOpen ?? streamsWords
             $0.aiModelMissing = modelMissing
             $0.aiStageMs = stageMs
             // A summary built in the background before Generate is pressed
@@ -116,17 +128,27 @@ extension When {
         return shownText(root).joined(separator: "\n")
     }
 
-    /// Clicks the right-hand end of the Length button, well away from its icon.
-    func clickLengthButtonAwayFromItsIcon(on tab: NotesTabOnScreen) {
-        XCTAssertTrue(app.exists(tab.lengthButton), "no \(Copy.lengthButtonPrefix) button")
-        tab.lengthButton.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).click()
+    /// Scrolls the note reader well up from where it is, as a reader would with the wheel.
+    func scrollTheNoteUp(on tab: NotesTabOnScreen) {
+        XCTAssertTrue(app.exists(tab.reader), "no note reader")
+        tab.reader.scroll(byDeltaX: 0, deltaY: 600)
+    }
+
+    func openTheTranscript() {
+        app.tap(Copy.transcriptTab)
+    }
+
+    /// Clicks the right-hand end of the Depth button, well away from its icon.
+    func clickDepthButtonAwayFromItsIcon(on tab: NotesTabOnScreen) {
+        XCTAssertTrue(app.exists(tab.depthButton), "no \(Copy.depthButtonPrefix) button")
+        tab.depthButton.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).click()
     }
 }
 
 extension Then where Subject == NotesTabOnScreen {
-    func lengthMenuOffers(_ titles: [String]) {
+    func depthMenuOffers(_ titles: [String]) {
         for title in titles where !subject.driver.exists(subject.menuItem(title)) {
-            fail("the Length menu has no \"\(title)\"")
+            fail("the Depth menu has no \"\(title)\"")
         }
     }
 
@@ -144,7 +166,11 @@ extension Then where Subject == String {
     }
 
     func coverageCountsEveryPart() {
-        expect(subject.hasPrefix(Copy.coverageLead), "the coverage line does not start with the whole-session summary: \(subject)")
+        expect(subject.hasPrefix(Copy.coverageLead), "the coverage line does not say every part was summarized: \(subject)")
+    }
+
+    func coverageSaysTheWholeTranscriptWasRead() {
+        expect(subject.hasPrefix(Copy.wholeTranscriptRead), "the coverage line does not say the whole transcript was read: \(subject)")
     }
 }
 
@@ -184,6 +210,30 @@ extension Then where Subject == NotesTabOnScreen {
         expect(subject.driver.waitFor(subject.driver.anything(containing: Copy.notDownloaded), timeout: 60),
                "no \"\(Copy.notDownloaded)\" alert")
         expect(subject.driver.exists(subject.driver.button(Copy.downloadModel)), "no \"Download Model\" button")
+    }
+
+    /// The note has run past the reader's view and the view has kept up with its end.
+    func keepsTheNewestTextInView() {
+        subject.driver.waitForProbe(timeout: 60) { ($0.noteFromTop ?? 0) > 0 && ($0.noteFromEnd ?? .max) <= 40 }
+    }
+
+    /// The view stays where the reader scrolled it while the note keeps growing.
+    func staysWhereTheReaderScrolled(whileShowing words: String) {
+        let scrolledUp = subject.driver.waitForProbe(timeout: 30) { ($0.noteFromEnd ?? 0) > 100 }
+        expect(subject.driver.waitFor(subject.driver.anything(containing: words), timeout: 60),
+               "the note never showed \"\(words)\"")
+        let later = subject.driver.probe
+        expect((later.noteFromEnd ?? 0) > (scrolledUp.noteFromEnd ?? 0),
+               "the view moved back to the end while the reader was scrolled up: \(later.noteFromEnd ?? -1) from the end")
+    }
+
+    func isAtTheEndOfTheNote() {
+        subject.driver.waitForProbe(timeout: 30) { ($0.noteFromTop ?? 0) > 0 && ($0.noteFromEnd ?? .max) <= 40 }
+    }
+
+    func announcesTheNoteIsReady() {
+        expect(subject.driver.waitFor(subject.driver.element(id: "noteReady"), timeout: 60), "no note-ready notice")
+        expect(subject.driver.exists(subject.driver.anything(containing: Copy.noteReadyTitle)), "the notice does not say \"\(Copy.noteReadyTitle)\"")
     }
 
     func asksBeforeReplacing() {

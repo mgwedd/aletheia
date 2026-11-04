@@ -90,11 +90,11 @@ struct RiskPhraseList {
 /// The Note format pane's choices, after a relaunch.
 struct NoteFormatChoices {
     let format: ProgressNoteFormat
-    let verbosity: SummaryVerbosity
+    let depth: AnswerDepth
     let includeComments: Bool
     let includeBackground: Bool
     let formatsOffered: [ProgressNoteFormat]
-    let lengthsOffered: [SummaryVerbosity]
+    let depthsOffered: [AnswerDepth]
 }
 
 /// The result of pointing the data folder somewhere.
@@ -156,6 +156,8 @@ struct SelectedBuiltInModel {
 struct OfferedBuiltInModels {
     let shortNames: [String]
     let medGemmaShortName: String
+    /// The model a Mac with no choice made starts on.
+    let defaultShortName: String
 }
 
 /// License terms for the medical models.
@@ -331,18 +333,18 @@ extension When {
     }
 
     func setNoteFormat(
-        _ formatName: String, summaryLength lengthName: String, comments: Bool, background: Bool
+        _ formatName: String, noteDepth depthName: String, comments: Bool, background: Bool
     ) -> NoteFormatChoices {
         app.settings.progressNoteFormat = ProgressNoteFormat.allCases.first { $0.displayName == formatName } ?? .default
-        app.settings.summaryVerbosity = SummaryVerbosity.allCases.first { $0.displayName == lengthName } ?? .default
+        app.settings.noteDepth = AnswerDepth.allCases.first { $0.displayName == depthName } ?? .default
         app.settings.includeCommentsInDrafts = comments
         app.settings.includePatientBackground = background
         app.relaunch(tier: app.tier)
         return NoteFormatChoices(
-            format: app.settings.progressNoteFormat, verbosity: app.settings.summaryVerbosity,
+            format: app.settings.progressNoteFormat, depth: app.settings.noteDepth,
             includeComments: app.settings.includeCommentsInDrafts,
             includeBackground: app.settings.includePatientBackground,
-            formatsOffered: ProgressNoteFormat.allCases, lengthsOffered: SummaryVerbosity.allCases)
+            formatsOffered: ProgressNoteFormat.allCases, depthsOffered: AnswerDepth.allCases)
     }
 
     func turnOnRecordingDiagnostics() -> Bool {
@@ -417,14 +419,20 @@ extension When {
             originalGoneAfterDelete: goneAfterDelete)
     }
 
-    func lookAtBuiltInModels(onMacWithMemoryGB memoryGB: Int) -> OfferedBuiltInModels {
+    func lookAtBuiltInModels(onMacWithMemoryGB memoryGB: Int, appleSilicon: Bool = true) -> OfferedBuiltInModels {
         let hardware = HardwareCapabilities(
-            isAppleSilicon: true, physicalMemoryGB: memoryGB, coreCount: 8, chipDescription: "Apple M-Test")
+            isAppleSilicon: appleSilicon, physicalMemoryGB: memoryGB, coreCount: 8,
+            chipDescription: appleSilicon ? "Apple M-Test" : "Intel Test")
         let offered = LlamaModel.offered(for: hardware)
         let recommendation = ModelAdvisor.recommend(for: hardware)
+        let suite = "acceptance.settings.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let fresh = AppSettings(defaults: defaults, hardware: hardware) { _ in false }
         return OfferedBuiltInModels(
             shortNames: offered.map(\.shortName),
-            medGemmaShortName: recommendation.medGemmaModel.shortName)
+            medGemmaShortName: recommendation.medGemmaModel.shortName,
+            defaultShortName: fresh.llamaModel.shortName)
     }
 
     /// Opens settings for the first time after an update, on a Mac with this
@@ -586,12 +594,12 @@ extension Then where Subject == RiskPhraseList {
 }
 
 extension Then where Subject == NoteFormatChoices {
-    func keeps(_ formatName: String, summaryLength lengthName: String, comments: Bool, background: Bool) {
+    func keeps(_ formatName: String, noteDepth depthName: String, comments: Bool, background: Bool) {
         expectEqual(subject.format.displayName, formatName, "the default format")
-        expectEqual(subject.verbosity.displayName, lengthName, "the summary length")
+        expectEqual(subject.depth.displayName, depthName, "the note depth")
         expectEqual(subject.includeComments, comments, "comments in drafts")
         expectEqual(subject.includeBackground, background, "patient background in drafts")
-        expect(subject.formatsOffered.count > 1 && subject.lengthsOffered.count > 1, "there should be choices")
+        expect(subject.formatsOffered.count > 1 && subject.depthsOffered.count > 1, "there should be choices")
     }
 }
 
@@ -634,8 +642,17 @@ extension Then where Subject == OfferedBuiltInModels {
 
     func offersMedicalModels(_ medGemma: String) {
         expect(subject.shortNames.contains(medGemma), "\(medGemma) should be offered: \(subject.shortNames)")
-        expectEqual(subject.medGemmaShortName, medGemma, "the MedGemma size chosen for this Mac")
         expect(!subject.shortNames.contains("MedLlama 2 7B"), "the 4K model should not be offered")
+    }
+
+    func doesNotOffer(_ name: String) {
+        expect(!subject.shortNames.contains(name), "\(name) should not be offered: \(subject.shortNames)")
+    }
+
+    /// The model this Mac starts on, and the MedGemma size it is recommended.
+    func startsOn(_ name: String) {
+        expectEqual(subject.defaultShortName, name, "the built-in model a fresh install starts on")
+        expectEqual(subject.medGemmaShortName, name, "the MedGemma size recommended for this Mac")
     }
 }
 

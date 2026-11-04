@@ -68,9 +68,9 @@ final class NoteSpec: AcceptanceCase {
         let desk = given.assistantDesk()
         let session = try desk.session(of: try await given.patient(named: "Jane Doe"), saying: [.you("Hello."), .client("Hi.")])
 
-        let menu = desk.notesTab(of: session).lengthMenu
+        let menu = desk.notesTab(of: session).depthMenu
 
-        then(menu).offersTheLengths()
+        then(menu).offersTheDepths()
         then(menu).offersAnAIEffortChoice()
     }
 
@@ -249,5 +249,56 @@ final class NoteSpec: AcceptanceCase {
 
         try await notes.generate(.natural, at: .normal)
         then(notes.pane).countsNoFollowUpLookups()
+    }
+
+    func test_NOTE_20() async throws {
+        let desk = given.assistantDesk()
+        let session = try desk.session(
+            of: try await given.patient(named: "Jane Doe"),
+            transcript: AssistantDesk.transcript(minutes: 50, about: "work"))
+        desk.model.fallback("The client described a stressful week at work.")
+        let notes = desk.notesTab(of: session)
+
+        try await notes.generate(.natural, at: .normal)
+        then(notes.pane).endsWithACoverageLine()
+
+        desk.usesTheLargeModel()
+        try await notes.generate(.natural, at: .normal)
+        then(notes.pane).saysTheWholeTranscriptWasRead()
+    }
+
+    func test_NOTE_21() async throws {
+        let desk = given.assistantDesk()
+        let session = try desk.session(of: try await given.patient(named: "Jane Doe"), saying: [.you("Hello."), .client("Hi.")])
+        desk.model.answer(with: .writesThenWaits("Subjective: The client felt tired."), once: true)
+        let notes = desk.notesTab(of: session)
+        notes.pick(.soap)
+        let reader = NoteReader()
+        reader.looks(at: notes.pane)
+
+        notes.generate()
+        try await notes.waitUntilShowing("Subjective: The client felt tired.")
+        reader.looks(at: notes.pane)
+        then(reader).keepsTheNewestTextInView()
+
+        reader.scrollsUp()
+        desk.model.release()
+        try await notes.waitUntilIdle()
+        reader.looks(at: notes.pane)
+        then(reader).isTakenToTheEnd()
+    }
+
+    func test_NOTE_22() async throws {
+        let desk = given.assistantDesk()
+        let session = try desk.session(of: try await given.patient(named: "Jane Doe"), saying: [.you("Hello."), .client("Hi.")])
+        desk.model.fallback("Subjective: The client's week was hard.")
+        let notes = desk.notesTab(of: session)
+        notes.pick(.soap)
+
+        try await notes.generate(.natural, at: .normal)
+
+        let notice = try await desk.waitForTheNoteReadyNotice()
+        then(notice).names(Copy.noteReadyTitle, for: "Jane Doe")
+        then(desk.opensTheReadyNote()).isTheNotesTab(of: session, in: .soap)
     }
 }

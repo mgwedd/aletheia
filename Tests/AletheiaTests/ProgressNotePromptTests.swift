@@ -67,14 +67,14 @@ final class ProgressNotePromptTests: XCTestCase {
                 transcript: transcript,
                 notes: "My note.",
                 comments: ["A comment."],
-                verbosity: .detailed,
+                depth: .detailed,
                 instructions: "CUSTOM INSTRUCTIONS"
             )
             XCTAssertTrue(prompt.contains("CUSTOM INSTRUCTIONS"))
             XCTAssertFalse(prompt.contains(Prompts.defaultInstructions(for: format)))
             XCTAssertTrue(prompt.contains(Prompts.transcriptLegend))
             XCTAssertTrue(prompt.contains(Prompts.noteFormattingRules))
-            XCTAssertTrue(prompt.contains(SummaryVerbosity.clarityRule))
+            XCTAssertTrue(prompt.contains(AnswerDepth.clarityRule))
             XCTAssertTrue(prompt.contains(transcript))
             XCTAssertTrue(prompt.contains("My note."))
             XCTAssertTrue(prompt.contains("A comment."))
@@ -129,7 +129,7 @@ final class ProgressNotePromptTests: XCTestCase {
 
     func testSessionChatAndSummarizeIncludePatientBackground() {
         let bg = "===== Patient background =====\nClinical history:\nPTSD"
-        let chatPrompt = Prompts.sessionChat(transcript: transcript, patientBackground: bg, history: [], question: "Q?")
+        let chatPrompt = Prompts.sessionChat(transcript: transcript, patientBackground: bg, history: [])
         XCTAssertTrue(chatPrompt.contains("===== Patient background ====="))
         XCTAssertTrue(chatPrompt.contains("Clinical history:\nPTSD"))
 

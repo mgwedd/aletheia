@@ -54,6 +54,8 @@ enum FixtureMode {
 
     /// The transcript view on screen, so the probe can count its laid-out lines.
     @MainActor static weak var transcriptView: NSTextView?
+    /// The note reader on screen, so the probe can say how far its view is from the note's end.
+    @MainActor static weak var noteReaderView: NSTextView?
 
     /// The network helper model downloads use, or nil for the real one.
     static var modelDownloadHelper: NetworkHelping? {
@@ -112,8 +114,11 @@ enum FixtureMode {
             if let policy = scenario?.consentPolicy.flatMap(ConsentPolicy.init(rawValue:)) {
                 settings.recordingConsentPolicy = policy
             }
-            if let length = scenario?.noteLength.flatMap(SummaryVerbosity.init(rawValue:)) {
-                settings.summaryVerbosity = length
+            if let depth = scenario?.noteDepth.flatMap(AnswerDepth.init(rawValue:)) {
+                settings.noteDepth = depth
+            }
+            if let depth = scenario?.askDepth.flatMap(AnswerDepth.init(rawValue:)) {
+                settings.askDepth = depth
             }
             if let effort = scenario?.noteEffort.flatMap(AnswerEffort.init(rawValue:)) {
                 settings.noteEffort = effort
@@ -275,7 +280,8 @@ final class FixtureScriptedEngine: LocalLLMEngine {
             model.add(.init(marker: nil, answer: .fails(LocalLLMEngineError.modelNotDownloaded), once: false))
         }
         for rule in rules {
-            model.add(.init(marker: rule.whenPromptContains, answer: .writes(rule.reply), once: false))
+            let answer: ScriptedModel.Answer = rule.reachesReplyLimit == true ? .writesToTheLimit(rule.reply) : .writes(rule.reply)
+            model.add(.init(marker: rule.whenPromptContains, answer: answer, once: false))
         }
     }
 
@@ -365,7 +371,7 @@ final class FixtureProbeFeed: ObservableObject {
         }.value
         let snapshot = FixtureProbe.Snapshot(
             files: read.0, patients: read.1, aiRequests: FixtureMode.engine.requestTexts,
-            transcriptLines: currentTranscriptLines())
+            transcriptLines: currentTranscriptLines(), noteFromEnd: FixtureProbe.noteFromEnd(), noteFromTop: FixtureProbe.noteFromTop())
         let next = FixtureProbe.encode(snapshot)
         if next != json { json = next }
     }
@@ -402,6 +408,9 @@ enum FixtureProbe {
         var aiRequests: [String]
         /// Lines the transcript on screen is laid out in; 0 when there is none.
         var transcriptLines: Int = 0
+        /// Points between the bottom of the note reader's view and the end of the note; nil when no note is shown.
+        var noteFromEnd: Int? = nil
+        var noteFromTop: Int? = nil
     }
 
     /// Stable text: keys sorted, so equal facts always read the same.
@@ -441,6 +450,19 @@ enum FixtureProbe {
                 sessions: (try? store.listSessions(for: patient).count) ?? 0,
                 consentPolicy: patient.recordingConsentPolicy?.rawValue)
         }
+    }
+
+    @MainActor static func noteFromEnd() -> Int? {
+        guard let view = FixtureMode.noteReaderView, view.window != nil,
+              let clip = view.enclosingScrollView?.contentView else { return nil }
+        return Int((view.frame.height - clip.bounds.maxY).rounded())
+    }
+
+    /// How far the note reader is scrolled down from its top, in points.
+    @MainActor static func noteFromTop() -> Int? {
+        guard let view = FixtureMode.noteReaderView, view.window != nil,
+              let clip = view.enclosingScrollView?.contentView else { return nil }
+        return Int(clip.bounds.minY.rounded())
     }
 
     /// Lines in the laid-out transcript on screen, so a test can tell a turn that wraps

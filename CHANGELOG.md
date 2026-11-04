@@ -9,6 +9,37 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.72.1] - 2026-11-03
+
+### Fixed
+- free the built-in model and wind down on quit signals (#555)
+
+## [2.72.0] - 2026-11-03
+
+### Added
+- clear Ask chats, plus Ask tips, selection and footer fixes (#552)
+- read long sessions by model size; follow and announce note generation (#554)
+- add answer depth setting (#553)
+
+### Fixed
+- keep Debug builds' data, preferences and activity-log key apart (#551)
+
+## [2.71.0] - 2026-11-02
+
+### Added
+- open the session pane only when a session is selected (#549)
+
+## [2.70.0] - 2026-10-31
+
+### Added
+- every leading pane split uses the standard divider (#546)
+
+## [2.69.4] - 2026-10-30
+
+### Fixed
+- keep unit-test settings out of the app's own preferences (#547)
+- model download errors offer Try Again and Report a Bug; tips open at the pointer and close on leave (#545)
+
 ## [2.69.3] - 2026-10-30
 
 ### Fixed

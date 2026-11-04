@@ -44,7 +44,7 @@ enum ChatComposerLayout {
 ///   conversation     questions in trailing bubbles, answers plain on the panel;
 ///                    suggestion pills while the chat is empty
 ///   notices          caller-supplied caveats (coverage, unreadable sessions)
-///   composer         effort bar · field · Send / Stop
+///   composer         effort bar (effort · Clear · Compact) · field · Send / Stop
 struct ChatPaneView: View {
     let title: String
     @Binding var messages: [ChatMessage]
@@ -70,12 +70,17 @@ struct ChatPaneView: View {
     /// Compacts the conversation, with an optional focus: the Compact button
     /// and the `/compact [focus]` command. Nil hides both.
     var onCompact: ((String) -> Void)? = nil
+    /// Empties the conversation, at once: the Clear button. Nil hides it.
+    var onClear: (() -> Void)? = nil
     /// Live state of the running answer; drives the progress line under the conversation.
     var progress = AIRunProgress()
     /// Optional Fast / Normal / Focus selector shown above the field (#286 Step 5b).
     var effort: Binding<AnswerEffort>? = nil
     /// Which chat the selector applies to, for its description.
     var effortFeature: EffortFeature = .sessionChat
+    /// Optional Concise / Natural / Detailed selector beside it: this chat's
+    /// `AnswerDepth`, seeded from Settings.
+    var depth: Binding<AnswerDepth>? = nil
     /// True while a session is being recorded: the recorder owns the
     /// microphone, so the dictation mic is hidden.
     var isSessionRecording = false
@@ -92,7 +97,7 @@ struct ChatPaneView: View {
     /// Whether this Mac can dictate, reported by the mic itself.
     @State private var micAvailable = false
 
-    /// Under every conversation; also read by the acceptance harness.
+    /// Small print under the question box; also read by the acceptance harness.
     static let accuracyNotice = "AI generated responses can be inaccurate. Double-check responses."
 
     private var canSend: Bool {
@@ -102,13 +107,6 @@ struct ChatPaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             conversation
-            Text(Self.accuracyNotice)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.muted.color)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .accessibilityIdentifier("chat.disclaimer")
             if !notices.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(notices, id: \.self) { notice in
@@ -174,9 +172,11 @@ struct ChatPaneView: View {
                         progressIndicator
                             .id("sending-indicator")
                     }
-                    // Zero-height end marker: scrolling to it lands on the true
-                    // bottom, under the stack's spacing, not 20pt short of it.
-                    Color.clear.frame(height: 0).id(Self.bottomID)
+                    // End marker: scrolling to it lands on the true bottom. Its
+                    // height is the room under the last row, so the progress
+                    // line is never clipped; padding below it would leave a
+                    // jump to the latest message short of the end.
+                    Color.clear.frame(height: 16).id(Self.bottomID)
                 }
                 .padding(EdgeInsets(top: 20, leading: 20, bottom: 0, trailing: 20))
                 .background(ChatBottomFollower(followToken: messages.count))
@@ -258,18 +258,24 @@ struct ChatPaneView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if effort != nil || showsCompact {
+            if effort != nil || depth != nil || showsCompact || showsClear {
                 effortRow(effort)
             }
-            HStack(alignment: .bottom, spacing: 10) {
-                inputField
-                if ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .send {
-                    Button("Send", action: send)
-                        .buttonStyle(.themePrimary)
-                        .controlSize(.large)
-                        .disabled(!canSend)
-                        .accessibilityIdentifier("chat.send")
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .bottom, spacing: 10) {
+                    inputField
+                    if ChatComposerLayout.trailingControl(isSending: isSending, canStop: onStop != nil) == .send {
+                        Button("Send", action: send)
+                            .buttonStyle(.themePrimary)
+                            .controlSize(.large)
+                            .disabled(!canSend)
+                            .accessibilityIdentifier("chat.send")
+                    }
                 }
+                Text(Self.accuracyNotice)
+                    .font(Theme.Typography.finePrint)
+                    .foregroundStyle(Theme.muted.color)
+                    .accessibilityIdentifier("chat.disclaimer")
             }
         }
         .padding(.horizontal, 20)
@@ -332,8 +338,13 @@ struct ChatPaneView: View {
         onCompact != nil && ChatMemory.hasHistory(messages)
     }
 
-    /// The bar above the field: the Fast / Normal / Focus selector at the
-    /// leading edge, Compact at the trailing edge.
+    private var showsClear: Bool {
+        onClear != nil && !messages.isEmpty
+    }
+
+    /// The bar above the field: the Fast / Normal / Focus and Concise /
+    /// Natural / Detailed selectors at the leading edge, Clear and Compact
+    /// at the trailing edge.
     private func effortRow(_ effort: Binding<AnswerEffort>?) -> some View {
         HStack(spacing: 10) {
             if let effort {
@@ -350,13 +361,35 @@ struct ChatPaneView: View {
                 .accessibilityLabel(AnswerEffort.label)
                 .accessibilityIdentifier("chat.effort")
             }
+            if let depth {
+                Text(AnswerDepth.label)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.muted.color)
+                ThemeSegmentedControl(
+                    options: AnswerDepth.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
+                    selection: depth
+                )
+                .frame(maxWidth: 260)
+                .disabled(isSending)
+                .help(depth.wrappedValue.blurb(for: .ask))
+                .accessibilityLabel(AnswerDepth.label)
+                .accessibilityIdentifier("chat.depth")
+            }
             Spacer(minLength: 16)
+            if showsClear {
+                Button(ChatWords.clear) { onClear?() }
+                    .buttonStyle(.themed)
+                    .controlSize(.small)
+                    .disabled(isSending)
+                    .barTip(HelpTips.clear)
+                    .accessibilityIdentifier("chat.clear")
+            }
             if showsCompact {
                 Button("Compact") { onCompact?("") }
                     .buttonStyle(.themed)
                     .controlSize(.small)
                     .disabled(isSending)
-                    .hoverTip(HelpTips.compact)
+                    .barTip(HelpTips.compact)
                     .accessibilityIdentifier("chat.compact")
             }
         }
@@ -421,7 +454,8 @@ private struct ChatBubble: View {
             // A compaction: what later answers remember of everything above.
             VStack(alignment: .leading, spacing: 8) {
                 Chip(ChatWords.compactedChip)
-                MarkdownMessageView(text: message.text)
+                MarkdownMessageView(text: ModelReply.plain(message.text), size: 12, lineSpacing: 0, ink: Theme.muted,
+                                    textID: "chat.summary-text")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.muted.color)
             }
@@ -429,7 +463,9 @@ private struct ChatBubble: View {
             .frame(maxWidth: 640, alignment: .leading)
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.line.color))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
+            // Contain, not combine: the summary is AppKit text, which a
+            // combined element leaves out, so VoiceOver would skip it.
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("chat.compacted")
         } else if message.role == .user {
             // The therapist's own words, shown verbatim in a trailing bubble
@@ -447,7 +483,7 @@ private struct ChatBubble: View {
             // The assistant answer, rendered as rich Markdown at reading size
             // (like ChatGPT/Claude) so headings, lists, and code read as a
             // document rather than a cramped bubble of raw markup.
-            MarkdownMessageView(text: message.text)
+            MarkdownMessageView(text: ModelReply.plain(message.text))
                 .font(Theme.Typography.reading)
                 .lineSpacing(Theme.Typography.readingLineSpacing)
                 .foregroundStyle(Theme.text.color)

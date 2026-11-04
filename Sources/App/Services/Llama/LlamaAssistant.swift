@@ -32,6 +32,18 @@ final class LlamaAssistant: Assistant {
         for engine in all { DispatchQueue.global(qos: .userInitiated).async { engine.unload() } }
     }
 
+    /// Frees every loaded model and returns once each is freed (quitting: the
+    /// process must not exit with a model still holding GPU memory).
+    static func unloadAllAndWait() async {
+        enginesLock.lock()
+        let all = Array(engines.values)
+        engines.removeAll()
+        enginesLock.unlock()
+        await withTaskGroup(of: Void.self) { group in
+            for engine in all { group.addTask { await engine.unloadAndWait() } }
+        }
+    }
+
     /// Number of cached engines (for tests).
     static var cachedEngineCount: Int {
         enginesLock.lock()

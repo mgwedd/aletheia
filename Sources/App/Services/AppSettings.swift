@@ -106,7 +106,9 @@ final class AppSettings: ObservableObject {
         static let lastRevocationCheck = "lastRevocationCheck"
         static let licenseGrandfathered = "licenseGrandfathered"
         static let progressNoteFormat = "progressNoteFormat"
-        static let summaryVerbosity = "summaryVerbosity"
+        /// Stored under its old name, so a depth chosen before the rename still loads.
+        static let noteDepth = "summaryVerbosity"
+        static let askDepth = "askDepth"
         static let includeCommentsInDrafts = "includeCommentsInDrafts"
         static let notificationsShowPatientNames = "notificationsShowPatientNames"
         static let skipSingleNoteExportConfirmation = "skipSingleNoteExportConfirmation"
@@ -234,9 +236,14 @@ final class AppSettings: ObservableObject {
     @Published var progressNoteFormat: ProgressNoteFormat {
         didSet { defaults.set(progressNoteFormat.rawValue, forKey: Keys.progressNoteFormat) }
     }
-    /// How long a generated Summary runs (`SummaryVerbosity`). Natural by default.
-    @Published var summaryVerbosity: SummaryVerbosity {
-        didSet { defaults.set(summaryVerbosity.rawValue, forKey: Keys.summaryVerbosity) }
+    /// How much a generated note says (`AnswerDepth`). Natural by default.
+    @Published var noteDepth: AnswerDepth {
+        didSet { defaults.set(noteDepth.rawValue, forKey: Keys.noteDepth) }
+    }
+    /// The depth a new Ask conversation (session or patient) starts at; each
+    /// chat can change its own from the Ask bar. Natural by default.
+    @Published var askDepth: AnswerDepth {
+        didSet { defaults.set(askDepth.rawValue, forKey: Keys.askDepth) }
     }
     /// Whether transcript margin comments are included when drafting progress notes.
     /// On by default.
@@ -483,8 +490,11 @@ final class AppSettings: ObservableObject {
     /// hosts unit tests, a separate suite emptied at the start of each run. Tests
     /// change the shared settings (a restore picks a new data folder), and those
     /// changes must never reach the preferences a local build opens with.
+    /// A Debug build outside tests uses its own suite (see `DebugBuildIsolation`).
     static let sharedDefaults: UserDefaults = {
-        guard TestHost.isHostingTests() else { return .standard }
+        guard TestHost.isHostingTests() else {
+            return DebugBuildIsolation.defaultsSuite().flatMap(UserDefaults.init(suiteName:)) ?? .standard
+        }
         let suite = "com.astrealabs.aletheia.unit-tests"
         UserDefaults.standard.removePersistentDomain(forName: suite)
         return UserDefaults(suiteName: suite) ?? .standard
@@ -561,8 +571,10 @@ final class AppSettings: ObservableObject {
         } else {
             progressNoteFormat = .default
         }
-        summaryVerbosity = defaults.string(forKey: Keys.summaryVerbosity)
-            .flatMap(SummaryVerbosity.init(rawValue:)) ?? .default
+        noteDepth = defaults.string(forKey: Keys.noteDepth)
+            .flatMap(AnswerDepth.init(rawValue:)) ?? .default
+        askDepth = defaults.string(forKey: Keys.askDepth)
+            .flatMap(AnswerDepth.init(rawValue:)) ?? .default
         includeCommentsInDrafts = defaults.object(forKey: Keys.includeCommentsInDrafts) as? Bool ?? true
         skipSingleNoteExportConfirmation = defaults.bool(forKey: Keys.skipSingleNoteExportConfirmation)
         notificationsShowPatientNames = defaults.object(forKey: Keys.notificationsShowPatientNames) as? Bool ?? false
@@ -642,7 +654,8 @@ final class AppSettings: ObservableObject {
         if FixtureMode.isActive { return FixtureMode.root }
         #endif
         return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Aletheia/Data", isDirectory: true)
+            .appendingPathComponent("Aletheia", isDirectory: true)
+            .appendingPathComponent(DebugBuildIsolation.dataFolderName(), isDirectory: true)
     }
 
     func useStandardDataRoot() throws {

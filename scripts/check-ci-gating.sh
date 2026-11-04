@@ -71,6 +71,11 @@ self_test() {
     expect code true  .github/workflows/smoke-test.yml
     expect code true  scripts/build.sh
     expect code true  Sources/App/Views/Notes.md.swift
+    # Bundled into the app by project.yml, so not docs-only.
+    expect code true  TERMS.md
+    expect code true  PRIVACY.md
+    expect code true  THIRD-PARTY-NOTICES.md
+    expect code false docs/TERMS.md SECURITY.md CONSENT.md
     expect benchmarks true  Sources/App/Services/Search/SearchIndex.swift
     expect benchmarks true  Sources/App/Services/TranscriptCompactor.swift
     expect benchmarks true  Sources/App/Services/TextSearch.swift
@@ -280,6 +285,12 @@ if not any("check-ci-gating.sh" in r and "--self-test" not in r for r in guard):
     bad("smoke-test.yml: entitlements-guard job must run scripts/check-ci-gating.sh")
 if not any("check-ci-gating.sh --self-test" in r for r in guard):
     bad("smoke-test.yml: entitlements-guard job must self-test scripts/check-ci-gating.sh")
+# Docs-only changes skip the build, so the document checks run in this
+# always-on Ubuntu job, not in the Swift tests.
+if not any("scripts/check-docs.py" in r and "--self-test" not in r for r in guard):
+    bad("smoke-test.yml: entitlements-guard job must run scripts/check-docs.py")
+if not any("scripts/check-docs.py --self-test" in r for r in guard):
+    bad("smoke-test.yml: entitlements-guard job must self-test scripts/check-docs.py")
 
 # cd.yml / bench.yml: changes job + job-level if, names unchanged
 def check_gated(path, jobid, jobname, area):

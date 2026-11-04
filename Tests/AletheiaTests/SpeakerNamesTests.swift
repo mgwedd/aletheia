@@ -37,8 +37,8 @@ final class SpeakerNamesTests: XCTestCase {
         let prompts = [
             Prompts.summarize(transcript: "T.", clientName: "Jane Doe"),
             Prompts.progressNote(format: .soap, transcript: "T.", clientName: "Jane Doe"),
-            Prompts.sessionChat(transcript: "T.", history: history, question: "Q?", clientName: "Jane Doe"),
-            Prompts.patientChat(context: "T.", history: history, question: "Q?", clientName: "Jane Doe"),
+            Prompts.sessionChat(transcript: "T.", history: history, clientName: "Jane Doe"),
+            Prompts.patientChat(context: "T.", history: history, clientName: "Jane Doe"),
             Prompts.noteCheck(draft: "D", material: .transcript("M"), clientName: "Jane Doe"),
         ]
         for prompt in prompts {

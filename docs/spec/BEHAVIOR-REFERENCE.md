@@ -787,15 +787,15 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/SpeakerCodes.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-04`
 - **NOT-010** When a note is saved, shown or copied, a first line that is only a chatty preamble such as "Here is a summary:" is removed, provided note content follows it.
   `surface: ui` · `evidence: Sources/App/Services/Markdown/NoteMarkdown.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-04`
-- **NOT-011** A Length menu offers Concise, Natural (the default) and Detailed, and the chosen length controls how long the next generated note is.
-  `surface: ui` · `evidence: Sources/App/Models/SummaryVerbosity.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-06`
-- **NOT-012** The menu button reads "Length: <length> · <effort>" (for example "Length: Natural · Normal"), a click anywhere on it opens the menu, and the menu also offers an "AI effort" choice of Fast, Normal and Focus.
+- **NOT-011** A Depth menu offers Concise, Natural (the default) and Detailed, and the chosen depth controls how much the next generated note says.
+  `surface: ui` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-06`
+- **NOT-012** The menu button reads "Depth: <depth> · <effort>" (for example "Depth: Natural · Normal"), a click anywhere on it opens the menu, and the menu also offers an "AI effort" choice of Fast, Normal and Focus.
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Models/AnswerEffort.swift` · `qa: NOTE-06`
-- **NOT-013** Each format's instructions can be edited from the menu ("Edit <format> Prompt…", marked "(customized)" once changed) in a sheet titled "<format> prompt" whose caption says the transcript, your notes and comments, and the length setting are added automatically after the instructions.
+- **NOT-013** Each format's instructions can be edited from the menu ("Edit <format> Prompt…", marked "(customized)" once changed) in a sheet titled "<format> prompt" whose caption says the transcript, your notes and comments, and the depth setting are added automatically after the instructions.
   `surface: ui` · `evidence: Sources/App/Views/NoteInstructionsSheet.swift, Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-07`
 - **NOT-014** In the instructions sheet, "Reset to Default" puts the built-in text in the field (disabled when it already matches), Cancel discards, and Save keeps the text; saving blank text or text identical to the default clears the customization.
   `surface: ui` · `evidence: Sources/App/Views/NoteInstructionsSheet.swift, Sources/App/Services/AppSettings.swift` · `qa: NOTE-07`
-- **NOT-015** When the user sets custom instructions for a note format, they replace that format's whole editable instruction text, including its section layout and rules, while the length setting, formatting rules and reference-material handling still apply.
+- **NOT-015** When the user sets custom instructions for a note format, they replace that format's whole editable instruction text, including its section layout and rules, while the depth setting, formatting rules and reference-material handling still apply.
   `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Views/NoteInstructionsSheet.swift` · `qa: NOTE-07`
 - **NOT-016** Each format keeps its own custom instructions, and they persist across relaunch.
   `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Views/NoteInstructionsSheet.swift` · `qa: NOTE-07`
@@ -891,9 +891,9 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/SpeakerCodes.swift` · `qa: NOTE-04`
 - **NOT-063** When a note is shown, a "Label:" lead-in is bolded, a line holding only "Label:" becomes a subheading, and consecutive prose lines are separated by a blank line.
   `surface: ui` · `evidence: Sources/App/Services/Markdown/NoteMarkdown.swift` · `qa: NOTE-04`
-- **NOT-064** Settings also offers a "Summary length" choice with the same Concise, Natural and Detailed options as the Length menu.
-  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Models/SummaryVerbosity.swift` · `qa: SETTINGS-10`
-- **NOT-065** The Length and AI effort menu is hidden while a note is generating, queued or being edited, and its help text says "Regenerate to apply a change".
+- **NOT-064** Settings also offers a "Note depth" choice with the same Concise, Natural and Detailed options as the Depth menu.
+  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Models/AnswerDepth.swift` · `qa: SETTINGS-10`
+- **NOT-065** The Depth and AI effort menu is hidden while a note is generating, queued or being edited, and its help text says "Regenerate to apply a change".
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-06`
 - **NOT-066** If the AI engine itself is unavailable when generating, an AI-engine problem alert with a retry is shown instead of "Something went wrong".
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift` · `qa: NOTE-09`
@@ -909,8 +909,16 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-14`
 - **NOT-072** When risk-flagged lines did not all fit in a long-session note, the coverage line says so and tells the therapist to check the transcript for risk.
   `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-14`
-- **NOT-073** A long-session note at Length Detailed (at Normal or Focus) or at Focus effort reads parts of the transcript in full after the part summaries and risk lines are in, chosen across the whole session, with the room left over; its coverage line adds "and N follow-up lookups". Fast, and Concise or Natural at Normal, make no lookups.
+- **NOT-073** A long-session note at Depth Detailed (at Normal or Focus) or at Focus effort reads parts of the transcript in full after the part summaries and risk lines are in, chosen across the whole session, with the room left over; its coverage line adds "and N follow-up lookups". Fast, and Concise or Natural at Normal, make no lookups.
   `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: NOTE-17`
+- **NOT-080** How much of a long session a note reads depends on the model and the effort: any model reads the transcript whole, word for word, when it fits and has at most 3 sections (about 30 minutes); MedGemma 27B reads up to 6 sections (about an hour) whole at Normal, and any length that fits at Focus. Otherwise the note reads every section's summary plus quoted passages, in at most 36,000 characters (96,000 for MedGemma 27B away from Fast).
+  `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: NOTE-20`
+- **NOT-081** The coverage line of a note read in parts says "Read: every part of the session, summarized (N parts), plus P of T transcript lines quoted word for word · <effort>."; one read whole says "Read: the whole transcript, word for word (T lines) · <effort>." Risk-line and check messages follow either.
+  `surface: ui` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-20`
+- **NOT-082** While a note streams, its reader keeps the newest text in view; scrolling more than about two lines up from the end stops this until the reader is back within that distance, and each new note starts following again. When the note finishes, the open reader scrolls to its end.
+  `surface: ui` · `evidence: Sources/App/Views/NoteFollow.swift, Sources/App/Views/NoteReaderView.swift` · `qa: NOTE-21`
+- **NOT-083** When a note finishes, the main window shows a "<format> note ready" notice in its lower-right corner with the patient and session date, **Dismiss** and **Open Note**, which selects the patient and opens the session's Notes tab on that format. The notice stays until dismissed, opened or replaced by the next note; VoiceOver hears its title only. The "Summary ready" notification is still posted as before.
+  `surface: ui` · `evidence: Sources/App/Services/SessionAI/NoteReadyCenter.swift, Sources/App/Views/NoteReadyToast.swift, Sources/App/Views/RootView.swift` · `qa: NOTE-22`
 
 ## Digests (DIG)
 
@@ -1046,7 +1054,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/Citations.swift:170-192, Sources/App/Views/PatientChatView.swift` · `qa: CHAT-12`
 - **CHT-031** When some sessions' transcripts could not be read, the what-was-read label says "N sessions could not be read, so answers may be incomplete".
   `surface: ui` · `evidence: Sources/App/Services/Citations.swift:188` · `qa: CHAT-12`
-- **CHT-032** When a session chat answer finishes, it shows a "Read:" line saying what part of the session was read.
+- **CHT-032** When a session chat answer finishes, no "Read:" line is shown under it; the effort bar says how much is read.
   `surface: ui` · `evidence: Sources/App/Services/Digest/LocalToolLoop.swift:1071, Sources/App/Views/SessionDetailView.swift` · `qa: CHAT-03`
 - **CHT-033** When a search finds no match for a word the user asked about, the AI is told to say "no match found in the recorded sessions" rather than that the topic was never discussed.
   `surface: ui` · `evidence: Sources/App/Services/Prompts+Search.swift:8-20` · `qa: CHAT-12`
@@ -1064,6 +1072,16 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/ChatMemory.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-22`
 - **CHT-076** When the compaction a send started fails, is stopped, comes back empty or is cancelled while waiting, the question is not sent and goes back into the empty Ask box.
   `surface: ui` · `evidence: Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/SessionAI/PatientChatModel.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-23`
+- **CHT-077** In the patient chat window, the divider between the Chats list and the chat drags to resize the list (200 to 320 points, leaving the chat at least 360); dragged under its narrowest, the list gives way, then springs back when let go. The width is kept per window, and the grab area is 12 points wide, the same as every pane divider.
+  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift, Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/PaneDividerGrip.swift` · `qa: CHAT-24`
+- **CHT-078** When a session's Ask tab has a conversation, a Clear button sits just left of Compact on the effort bar. It deletes that session's whole conversation at once, with no confirmation (its tip reads "Deletes every question and answer here, at once."), and the deletion is written to the activity log.
+  `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift, Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/Store.swift` · `qa: CHAT-25`
+- **CHT-079** In the patient chat, Clear empties the open chat's conversation at once, with no confirmation, and keeps the chat in the Chats list; the deletion is written to the activity log.
+  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift, Sources/App/Services/SessionAI/PatientChatModel.swift, Sources/App/Services/Store.swift` · `qa: CHAT-26`
+- **CHT-080** The Chats list's Delete All Chats button (after a confirmation naming the patient) deletes every chat about the patient; each deletion is written to the activity log. It is off while an answer is being written or when there are no chats.
+  `surface: ui` · `evidence: Sources/App/Views/PatientChatView.swift, Sources/App/Services/SessionAI/PatientChatModel.swift, Sources/App/Services/Store.swift` · `qa: CHAT-27`
+- **CHT-081** An Ask answer's text (headings, paragraphs, lists and quotes) is set as one selectable run, so one drag selects across blocks; code and diagram cards stand apart. Copying goes through the app's pasteboard and is written to the activity log.
+  `surface: ui` · `evidence: Sources/App/Views/AnswerText.swift, Sources/App/Views/MarkdownMessageView.swift` · `qa: CHAT-28`
 - **CHT-040** When the chat has history, a Compact button appears and compacts the conversation on demand.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift:98-101` · `qa: CHAT-13`
 - **CHT-041** When a conversation has been compacted, a "Conversation compacted" card appears and the summary stands in for the older messages.
@@ -1129,8 +1147,32 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/SessionAI/MyNotesLookup.swift, Sources/App/Services/SessionAI/SessionChatModel.swift` · `qa: CHAT-19`
 - **CHT-074** While the model reads a prompt longer than one batch, the status shows "Reading the session · part N of M", then on the last part "Analyzing <one or two of the question's words found in the session>" (plain matching, never the model), then "Preparing the answer" until the first words appear. Notes show the parts and "Preparing the answer" too.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Models/AIRunStats.swift, Sources/App/Views/AIProgressView.swift` · `qa: CHAT-20`
-- **CHT-075** The Compact button sits on the same bar as the AI effort control, apart from it, and "AI generated responses can be inaccurate. Double-check responses." always shows in small muted text at the bottom left of the conversation, in Light, Dark and Increase Contrast.
+- **CHT-075** The Compact button sits on the same bar as the AI effort control, apart from it, and "AI generated responses can be inaccurate. Double-check responses." always shows in small muted print under the question box, below the conversation and its progress line, in Light, Dark and Increase Contrast.
   `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-21`
+- **CHT-082** Session Ask and patient Ask show a "Depth" control beside the AI effort control with Concise, Natural (the default) and Detailed; it is disabled while an answer is being written, and its help text describes the chosen level.
+  `surface: ui` · `evidence: Sources/App/Views/ChatPaneView.swift, Sources/App/Models/AnswerDepth.swift` · `qa: CHAT-29`
+- **CHT-083** Settings → Formats has an "Ask depth" choice, kept apart from "Note depth"; each new chat starts at it, and a chat's own Depth changes only that chat.
+  `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/SessionAI/PatientChatModel.swift` · `qa: CHAT-30`
+- **CHT-084** The chosen depth is sent to the model as prompt guidance only: Concise asks for one to three sentences, Natural for a short paragraph or two of plain prose, Detailed for a full answer with headers and lists where they help. No length cap is set and no answer is cut short.
+  `surface: invariant` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Services/Prompts.swift` · `qa: CHAT-31`
+- **CHT-085** Every Ask answer, at every depth, is told to answer the latest question on its own terms, not to restructure, revise or re-summarise earlier answers, to use earlier turns only as context, and that each answer stands on its own. The latest question is the last thing in the prompt, after the earlier conversation.
+  `surface: invariant` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Services/Prompts.swift` · `qa: CHAT-32`
+- **CHT-086** Notes and Ask both call the setting "Depth" and offer the same three options, Concise, Natural and Detailed.
+  `surface: ui` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Views/ChatPaneView.swift, Sources/App/Views/SessionDetailView.swift` · `qa: CHAT-33`
+- **CHT-087** One depth type supplies the guidance for notes and both Ask paths, so the same depth gives the same kind of limit everywhere, each with the same clarity rule (plain words, no filler, never padded to a length).
+  `surface: invariant` · `evidence: Sources/App/Models/AnswerDepth.swift, Sources/App/Services/Prompts.swift` · `qa: CHAT-34`
+- **CHT-088** The engine never lets a model write a control token other than end-of-turn, so a reply is plain text: no reasoning span opened by a token like `<unused94>thought` and no chat-template marker (`<start_of_turn>`, `<end_of_turn>`, `<unusedN>`, `<bos>`, `<eos>`, `<|…|>`).
+  `surface: invariant` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Services/ModelReply.swift` · `qa: CHAT-35`
+- **CHT-089** A reply or summary saved before CHT-088 that holds a reasoning span (closed, or cut off at the end) or a template marker is shown without them in the conversation and the compaction card, and is sent back to the model without them in the turns of the next question and in the compaction prompt.
+  `surface: ui` · `evidence: Sources/App/Services/ModelReply.swift, Sources/App/Services/PromptTurn.swift, Sources/App/Views/ChatPaneView.swift` · `qa: CHAT-35`
+- **CHT-090** A chat prompt is ordered system, turns, question: the system turn holds the instructions, then the session material (transcript or patient context, therapist notes, comments, background) and, after a compaction, the earlier summary; the conversation since then follows as turns; the question alone, as "Therapist's question: <question>", is the last turn, so the model never reads the material after its own previous answer.
+  `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/Integrations/AssistantService.swift, Sources/App/Services/PromptTurn.swift` · `qa: CHAT-32`
+- **CHT-091** The summary a compaction writes gets the full reply room (`ContextBudget.replyHeadroomTokens`), the same as a note or an answer. A summary the engine reports it stopped at the reply limit, rather than finished, is discarded even though text was already shown: the conversation stays as it was and an alert reads "The summary didn't finish, so the conversation was kept as it was. Try Compact again, or name what to keep, like /compact medication."
+  `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaEngine.swift, Sources/App/Models/AIRunStats.swift, Sources/App/Services/Integrations/AITask.swift, Sources/App/Services/Integrations/AssistantService.swift, Sources/App/Views/ChatStreamRunner.swift, Sources/App/Services/SessionAI/SessionChatModel.swift, Sources/App/Services/SessionAI/PatientChatModel.swift` · `qa: CHAT-37`
+- **CHT-092** The earlier summary that a compaction's prompt carries (the conversation to summarize, in the system turn after the instructions) is plain text (CHT-089), and the conversation turns follow it with the instruction to summarize as the last turn.
+  `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/Integrations/AssistantService.swift` · `qa: CHAT-35`
+- **CHT-093** While a summary is being written, the answers above it keep their full width and the "Conversation compacted" card builds below them with nothing drawn over it; the answer text is measured apart from the view that shows it, and the conversation always leaves room for a scroll bar that takes space, so one appearing doesn't rewrap the answers.
+  `surface: ui` · `evidence: Sources/App/Views/AnswerText.swift, Sources/App/Views/ChatPaneView.swift, Sources/App/Views/BoundedScroll.swift` · `qa: CHAT-36`
 
 ## AI engine & models (AIE)
 
@@ -1142,7 +1184,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: scripts/check-entitlements.sh, Sources/NetworkHelper/HelperFetcher.swift` · `qa: SETTINGS-06`
 - **AIE-004** When the built-in engine is not linked into a build, AI actions fail with "The built-in AI model isn't available in this build of Aletheia." and no other engine is tried.
   `surface: ui` · `evidence: Sources/App/Services/Integrations/UnavailableAssistant.swift` · `qa: NOTE-09`
-- **AIE-005** The recommended model is MedGemma 1.5 4B (about 2.5 GB) except on Apple silicon with 48 GB or more, which gets MedGemma 27B text (about 16.5 GB), in every build tier.
+- **AIE-005** The recommended model is MedGemma 1.5 4B (about 2.5 GB) on every Mac, in every build tier. Larger models are offered, never chosen for the user.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModel.swift, Sources/App/Services/ModelAdvisor.swift` · `qa: SETTINGS-07`
 - **AIE-006** When the app is installed, the AI model is not bundled, and nothing is fetched until the user starts a download.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModelDownloader.swift` · `qa: SETTINGS-07`
@@ -1225,7 +1267,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/ModelLicenseLink.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-07`
 - **AIE-046** When a background summary job is running and a note or question arrives, the summary yields and the note or question runs next.
   `surface: background` · `evidence: Sources/App/Services/InferenceQueue.swift` · `qa: NOTE-08`
-- **AIE-047** The built-in model picker offers MedGemma 1.5 4B (about 2.5 GB) on every Mac and MedGemma 27B (about 16.5 GB) on 32 GB+ Apple silicon. The 4B is the default through 32 GB and on Intel; 27B is the default at 48 GB+ Apple silicon. Both have a 128K native context and use the Health AI Developer Foundations Terms. Previously selected general models remain available to their users; retired MedLlama 2 and MedGemma 1 4B selections migrate to the new default.
+- **AIE-047** The built-in model picker offers MedGemma 1.5 4B (about 2.5 GB) on every Mac and MedGemma 27B (about 16.5 GB) on 32 GB+ Apple silicon. The 4B is the default on every Mac; 27B is never the default. Both have a 128K native context and use the Health AI Developer Foundations Terms. Previously selected general models remain available to their users; retired MedLlama 2 and MedGemma 1 4B selections migrate to the new default.
   `surface: ui` · `evidence: Sources/App/Services/Llama/LlamaModel.swift, Sources/App/Services/ModelAdvisor.swift, Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-15`
 - **AIE-048** When no built-in model was ever chosen and the previous default (Llama 3.1 8B from 16 GB, else Gemma 4 E2B) is downloaded while this Mac's MedGemma default is not, that model stays selected and is saved as the choice.
   `surface: ui` · `evidence: Sources/App/Services/AppSettings.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-16`
@@ -1337,7 +1379,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
 
 - **SES-001** When the therapist presses New session on a patient's page, and the disk is not known to be unencrypted, a session dated now is created, listed and opened; a further press within 10 seconds of the last one is ignored (file imports are not debounced).
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Services/Store.swift, Sources/App/Services/AppModel.swift` · `qa: SESSION-02`
-- **SES-002** When a patient has no sessions, the session list shows "No Sessions Yet" with a New session button and takes the whole page; the session pane appears once there is a session.
+- **SES-002** When a patient has no sessions, the session list shows "No Sessions Yet" with a New session button and takes the whole page.
   `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift` · `qa: SESSION-01`
 - **SES-003** When a new session is created, its folder is named by its date (yyyy-MM-dd) followed by "_Session", with "_Session-2", "_Session-3" and so on for further sessions on the same day.
   `surface: invariant` · `evidence: Sources/App/Services/Store.swift` · `qa: BUILD-10`
@@ -1411,8 +1453,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/AppModel.swift:548, Sources/App/Services/DiskEncryption.swift:47` · `qa: SESSION-09`
 - **SES-038** When sessions are created by file import, the 10-second debounce on New session does not apply.
   `surface: ui` · `evidence: not yet traced to source` · `qa: SESSION-02`
-- **SES-039** When a patient has sessions, the page opens split evenly between list and session; the divider between them drags to resize the list (at least 300 points, leaving the session at least 360; a page too narrow for both shares its width in that proportion, so the session never runs past the window), and the split is kept per window. Its grab area is 12 points wide, the same as the transcript/comments divider.
-  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift, Sources/App/Views/PaneDividerGrip.swift` · `qa: SESSION-10`
+- **SES-039** When a session is open, the list beside it opens 340 points wide and the session takes the rest; the divider between them drags to resize the list (at least 300 points, leaving the session at least 360; a page too narrow for both shares its width in that proportion, so the session never runs past the window), and the split is kept per window. Dragged under its narrowest, the list gives way, then springs back when let go. Its grab area is 12 points wide, the same as every pane divider.
+  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift, Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/PaneDividerGrip.swift` · `qa: SESSION-10`
+- **SES-040** When no session is open (none chosen yet, or the patient has none), there is no session pane and the session list takes the whole page. Opening a session slides its pane in from the trailing edge as the list narrows to its compact width; the session's Close Session button (or the session leaving the list) slides it back out and the list takes the page again. With Reduce Motion on, the change is instant.
+  `surface: ui` · `evidence: Sources/App/Views/PatientDetailView.swift, Sources/App/Views/PatientPageLayout.swift, Sources/App/Views/LeadingPaneSplit.swift, Sources/App/Views/SessionDetailView.swift` · `qa: SESSION-11`
 
 ## Search (SRC)
 
@@ -2041,7 +2085,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: NOTE-07`
 - **SET-012** When the user manages Risk phrases, they can add a phrase, remove one, and use "Clear All" or "Reset to Defaults", each of which asks for confirmation ("Clear all risk phrases?", "Reset risk phrases?").
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/AppSettings.swift:293` · `qa: SETTINGS-09`
-- **SET-013** When the user opens Formats, they can set the default progress note format and the summary length, and turn on or off comments in drafts, patient background and preparing summaries on battery.
+- **SET-013** When the user opens Formats, they can set the default progress note format, the note depth and the Ask depth, and turn on or off comments in drafts, patient background and preparing summaries on battery.
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift` · `qa: SETTINGS-10`
 - **SET-014** When the user opens Backups, the pane shows "Keep my data out of Time Machine & iCloud backups" (on by default) and the caption "Before a database schema change or an encryption change, Aletheia saves a safety copy of the database in a hidden .backups folder inside your data folder."
   `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/BackupExclusion.swift, Sources/App/Services/Store.swift:386` · `qa: BACKUP-01`
@@ -2156,6 +2200,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/ExportStatusToast.swift` · `qa: EXPORT-03`
 - **UX-021** When the user presses Escape, a sheet or search closes.
   `surface: ui` · `evidence: Sources/App/Services/ShortcutCatalog.swift:62` · `qa: MENUBAR-11`
+- **UX-022** When the app quits after the built-in model ran, the model is unloaded first and the app closes with no crash report.
+  `surface: background` · `evidence: Sources/App/Services/Shutdown/AppLifecycle.swift, Sources/App/Services/Llama/LlamaEngine.swift` · `qa: MENUBAR-16`
+- **UX-023** When the app receives SIGTERM, SIGINT or SIGHUP, it quits as for ⌘Q, closing any open sheet first, winding down running work and saving interrupted work for the next launch.
+  `surface: background` · `evidence: Sources/App/Services/Shutdown/QuitSignals.swift` · `qa: MENUBAR-17`
 
 ## Legal & consent (LEG)
 

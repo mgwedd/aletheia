@@ -118,7 +118,42 @@ final class SteeredModel: LocalLLMEngine, @unchecked Sendable {
     func stream(
         _ request: LocalLLMRequest, onStats: (@Sendable (AIRunStats) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {
-        model.stream(request, onStats: onStats)
+        let inner = model.stream(request, onStats: onStats)
+        guard let limit = replyLimit(for: request) else { return inner }
+        // The run ends having written as much as it was allowed to, as an
+        // engine that stopped at the reply limit reports it.
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    for try await text in inner { continuation.yield(text) }
+                    var stats = AIRunStats()
+                    stats.outputTokens = limit
+                    stats.reachedReplyLimit = true
+                    onStats?(stats)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    // MARK: Reaching the reply limit
+
+    private let limitLock = NSLock()
+    private var limitedMarkers: [String: Int] = [:]
+
+    /// Whatever it is asked with `marker` in it, it is still writing when it
+    /// reaches `tokens`, the most a reply may have.
+    func stopsAtTheReplyLimit(whenAsked marker: String, after tokens: Int) {
+        limitLock.lock(); limitedMarkers[marker] = tokens; limitLock.unlock()
+    }
+
+    private func replyLimit(for request: LocalLLMRequest) -> Int? {
+        let text = Self.text(of: request)
+        limitLock.lock(); defer { limitLock.unlock() }
+        return limitedMarkers.first { text.contains($0.key) }?.value
     }
 }
 

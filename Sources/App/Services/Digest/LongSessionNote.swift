@@ -25,14 +25,41 @@ enum LongSessionNote {
     static let passageFloor = 4_000
     /// The most of the material room the digest may take.
     static let digestShare = 2_500
-    /// A transcript of more than this many digest sections (about ten minutes
-    /// each) is never sent whole, even when it fits: a local model given a long
-    /// transcript in one piece writes about only part of it. The note reads the
-    /// digest of every section and passages instead.
-    static let wholeReadSections = 3
-    /// The most material a note is given on the digest path, in characters, so
-    /// a large window doesn't bury the section digests under passages.
+    /// The most digest sections (about ten minutes each) any model reads whole:
+    /// a small local model given a long transcript in one piece writes about
+    /// only part of it, so past this it reads every section's digest and passages.
+    static let wholeReadFloor = 3
+    /// A model that keeps track of long transcripts reads whole up to about an
+    /// hour at Normal; longer reads cost minutes of prefill a clinician waits on.
+    static let wholeReadLarge = 6
+    /// The most material a small model is given on the digest path, in
+    /// characters, so a large window doesn't bury the section digests under passages.
     static let readRoom = 36_000
+    /// The most material a large model is given on the digest path: about 32K
+    /// tokens, half the largest window the app gives it, so its read stays in minutes.
+    static let largeReadRoom = 96_000
+
+    /// How a note reads the session.
+    enum ReadPlan: Equatable {
+        /// The whole transcript, word for word.
+        case whole
+        /// Every section's digest plus passages, in at most `room` characters.
+        case digest(room: Int)
+    }
+
+    /// How a note reads a transcript of `sections` digest sections, given
+    /// whether the whole transcript `fitsWhole` the budget, the `room` the budget
+    /// leaves for material, whether the model `readsLongTranscripts`, and the effort.
+    /// Small models, and Fast, keep the floor; a large model reads about an hour
+    /// whole at Normal, and at Focus any length that fits.
+    nonisolated static func readPlan(
+        sections: Int, fitsWhole: Bool, room: Int, readsLongTranscripts: Bool, effort: AnswerEffort
+    ) -> ReadPlan {
+        let large = readsLongTranscripts && effort != .fast
+        let wholeLimit = !large ? wholeReadFloor : effort == .focus ? Int.max : wholeReadLarge
+        if fitsWhole && sections <= wholeLimit { return .whole }
+        return .digest(room: min(room, large ? largeReadRoom : readRoom))
+    }
 
     /// How the Focus check ended.
     enum CheckOutcome: Equatable {
@@ -65,7 +92,7 @@ enum LongSessionNote {
         notes: String = "",
         comments: [SessionComment] = [],
         patientBackground: String = "",
-        verbosity: SummaryVerbosity = .default,
+        depth: AnswerDepth = .default,
         instructions: String? = nil,
         effort: AnswerEffort = .default,
         riskPhrases: [String],
@@ -93,12 +120,24 @@ enum LongSessionNote {
             Prompts.progressNote(
                 format: format, material: material, notes: fields.notes, comments: fields.comments,
                 patientBackground: fields.background,
-                verbosity: verbosity, instructions: instructions, clientName: service.clientName)
+                depth: depth, instructions: instructions, clientName: service.clientName)
         }
         let sectionLimit = TranscriptSections.maxCharacters(
             for: service.budget, systemPrompt: service.systemPrompt, clientName: service.clientName)
-        if readsWhole(transcript, maxCharacters: sectionLimit), service.fits(prompt: prompt(.transcript(transcript))) {
-            if let note = fields.coverageNote { coverage(note) }
+        // Room for material, after the instructions, the note's own wrapper and headings,
+        // in characters of this transcript's script.
+        let total = ContextBudget.characters(
+            fitting: service.budget.availableCharacters(
+                reserving: ContextBudget.weightedLength(of: service.systemPrompt)
+                    + ContextBudget.weightedLength(of: prompt(.transcript(""))) + headerReserve),
+            like: transcript)
+        let plan = readPlan(
+            sections: TranscriptSections.split(transcript, maxCharacters: sectionLimit).count,
+            fitsWhole: service.fits(prompt: prompt(.transcript(transcript))), room: total,
+            readsLongTranscripts: service.readsLongTranscripts, effort: effort)
+        guard case .digest(let planRoom) = plan else {
+            coverage(([wholeCoverageLabel(totalLines: nonBlankLines(transcript).count, effort: effort)]
+                + [fields.coverageNote].compactMap { $0 }).joined(separator: " "))
             return service.streamDigest(prompt: prompt(.transcript(transcript)), task: .note, grammar: format.grammar)
         }
 
@@ -109,18 +148,11 @@ enum LongSessionNote {
                         transcript: transcript, service: service, builder: builder, sessionID: sessionID,
                         load: loadDigest, save: saveDigest, sections: sectionCache, live: live)
 
-                    // Room for material, after the instructions, the note's own wrapper and headings,
-                    // in characters of this transcript's script.
-                    let total = ContextBudget.characters(
-                        fitting: service.budget.availableCharacters(
-                            reserving: ContextBudget.weightedLength(of: service.systemPrompt)
-                                + ContextBudget.weightedLength(of: prompt(.transcript(""))) + headerReserve),
-                        like: transcript)
                     let transcriptCopy = transcript
                     let flaggedCost = await offMain { strongCost(in: transcriptCopy, phrases: riskPhrases) }
                     try Task.checkCancellation()
                     // Never short of the risk lines.
-                    var room = min(total, max(readRoom, flaggedCost + digestShare))
+                    var room = min(total, max(planRoom, flaggedCost + digestShare))
                     var checkReserve = 0
                     var plannedCheck: CheckOutcome?
                     if let cap = effort.materialCap(for: .note) {
@@ -165,7 +197,7 @@ enum LongSessionNote {
                     // Detailed or Focus: with every part's summary and the risk lines in, the
                     // model reads parts in full, in the room left over. The risk scan stays fixed.
                     var followUps = ""
-                    if looksCloser(effort: effort, verbosity: verbosity) {
+                    if looksCloser(effort: effort, depth: depth) {
                         let base = Prompts.sessionMaterial(.excerpts(digest: digestText, passages: found.text))
                         let scope = LocalToolScope(sessions: [
                             LocalToolSession(
@@ -345,9 +377,9 @@ enum LongSessionNote {
     }
 
     /// Whether a long-session note reads parts in full after the summaries: at
-    /// Length Detailed or at Focus, never at Fast.
-    nonisolated static func looksCloser(effort: AnswerEffort, verbosity: SummaryVerbosity) -> Bool {
-        effort.maxToolCalls > 0 && (verbosity == .detailed || effort == .focus)
+    /// Depth Detailed or at Focus, never at Fast.
+    nonisolated static func looksCloser(effort: AnswerEffort, depth: AnswerDepth) -> Bool {
+        effort.maxToolCalls > 0 && (depth == .detailed || effort == .focus)
     }
 
     /// What the lookup planner is preparing for. A note covers the whole session, so
@@ -358,9 +390,10 @@ enum LongSessionNote {
             + "spread across the session so no part is left out."
     }
 
-    /// Whether `transcript` is short enough to send whole (if it also fits).
+    /// Whether `transcript` is short enough for any model to read whole (if it
+    /// also fits). The digest scheduler builds digests ahead for the rest.
     nonisolated static func readsWhole(_ transcript: String, maxCharacters: Int = TranscriptSections.maxCharacters) -> Bool {
-        TranscriptSections.split(transcript, maxCharacters: maxCharacters).count <= wholeReadSections
+        TranscriptSections.split(transcript, maxCharacters: maxCharacters).count <= wholeReadFloor
     }
 
     /// Every section's digest in order, each on a line led by its times.
@@ -619,17 +652,22 @@ enum LongSessionNote {
         totalLines: Int, effort: AnswerEffort, lookups: Int = 0, droppedRisk: Int = 0, check: CheckOutcome?
     ) -> String {
         let summary = digestOmitted
-            ? "no summary of the whole session (it didn't fit)"
-            : "a summary of the whole session (\(digestParts) part\(digestParts == 1 ? "" : "s")"
+            ? "no session summary (it didn't fit)"
+            : "every part of the session, summarized (\(digestParts) part\(digestParts == 1 ? "" : "s")"
                 + (digestShortened ? ", shortened to fit" : "") + ")"
-        let followUps = lookups > 0 ? " and \(lookups) follow-up lookup\(lookups == 1 ? "" : "s")" : ""
-        var text = "Read: \(summary) plus \(passageLines) of \(totalLines) transcript lines\(followUps) · \(effort.displayName). "
-            + "Details outside those lines may be missing."
+        let followUps = lookups > 0 ? ", and \(lookups) follow-up lookup\(lookups == 1 ? "" : "s")" : ""
+        var text = "Read: \(summary), plus \(passageLines) of \(totalLines) transcript lines quoted word for word"
+            + "\(followUps) · \(effort.displayName)."
         if droppedRisk > 0 {
             text += " \(droppedRisk) risk-flagged line\(droppedRisk == 1 ? "" : "s") didn't fit or were shortened; check the transcript for risk."
         }
         if let check { text += " " + check.text }
         return text
+    }
+
+    /// The coverage line when the note read the whole transcript.
+    static func wholeCoverageLabel(totalLines: Int, effort: AnswerEffort) -> String {
+        "Read: the whole transcript, word for word (\(totalLines) line\(totalLines == 1 ? "" : "s")) · \(effort.displayName)."
     }
 }
 

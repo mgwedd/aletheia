@@ -57,7 +57,7 @@ final class HoverIntentTests: XCTestCase {
 
 final class HelpTipsTests: XCTestCase {
     private var allTips: [HelpTip] {
-        [HelpTips.myNotes, HelpTips.compact]
+        [HelpTips.myNotes, HelpTips.compact, HelpTips.clear]
             + settingsTips
     }
 
@@ -77,7 +77,7 @@ final class HelpTipsTests: XCTestCase {
     }
 
     func testDistinctTipsHaveDistinctIds() {
-        let ids = ([HelpTips.myNotes, HelpTips.compact] + settingsTips).map(\.id)
+        let ids = ([HelpTips.myNotes, HelpTips.compact, HelpTips.clear] + settingsTips).map(\.id)
         XCTAssertEqual(Set(ids).count, ids.count)
     }
 
@@ -110,7 +110,7 @@ final class HelpTipsTests: XCTestCase {
         for case let url as URL in enumerator where url.pathExtension == "swift" {
             let text = try String(contentsOf: url, encoding: .utf8)
             for phrase in banned where text.contains(phrase) {
-                // Effort and verbosity levels keep their own blurbs; only the note format's is gone.
+                // Effort and depth levels keep their own blurbs; only the note format's is gone.
                 if phrase == "var blurb: String" && !url.lastPathComponent.hasPrefix("ProgressNoteFormat") { continue }
                 offenders.append("\(url.lastPathComponent): \(phrase)")
             }
@@ -136,7 +136,22 @@ final class HelpTipsTests: XCTestCase {
             contentsOf: URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
                 .appendingPathComponent("Sources/App/Views/ChatPaneView.swift"), encoding: .utf8)
-        XCTAssertTrue(pane.contains(".hoverTip(HelpTips.compact"))
+        XCTAssertTrue(pane.contains(".barTip(HelpTips.compact)"))
+    }
+
+    /// Clear and Compact sit side by side on the Ask bar; each has its own
+    /// tip, opened above the button so it points at it and covers the chat,
+    /// not the field.
+    func testAskBarTipsOpenAboveTheirButtons() throws {
+        XCTAssertEqual(BarTipPlacement.arrowEdge, .top)
+        XCTAssertLessThan(BarTipPlacement.delay, HoverIntent.defaultDelay)
+        XCTAssertNotEqual(HelpTips.clear.text, HelpTips.compact.text)
+        let pane = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/App/Views/ChatPaneView.swift"), encoding: .utf8)
+        XCTAssertTrue(pane.contains(".barTip(HelpTips.clear)"))
+        XCTAssertFalse(pane.contains(".help(clearTitle)"), "the system tooltip opens below the pointer")
     }
 
     func testTipsHaveNoRulesOrActions() {

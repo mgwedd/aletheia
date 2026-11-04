@@ -24,12 +24,17 @@ base="${2:-}"
 head="${3:-HEAD}"
 
 invert=0
+bundled=''
 case "$area" in
     # Anything that isn't documentation: Markdown anywhere, docs/, LICENSE and
     # issue templates don't need the app built or tested. True when ANY changed
-    # file falls outside that set.
+    # file falls outside that set. The exception is the Markdown that project.yml
+    # copies into the app (the terms and privacy policy, whose hashes a license
+    # records, and the third-party notices Settings shows): changing one changes
+    # the app, so it counts as code.
     code)
         pattern='(\.md$|^docs/|^LICENSE$|^\.github/ISSUE_TEMPLATE/)'
+        bundled='^(TERMS|PRIVACY|THIRD-PARTY-NOTICES)\.md$'
         invert=1
         ;;
     # Search, index and transcript-compactor sources and their tests, plus the
@@ -60,7 +65,9 @@ if ! files="$(git diff --name-only "$base" "$head" -- 2>/dev/null)"; then
     exit 0
 fi
 
-if [ "$invert" -eq 1 ]; then
+if [ -n "$bundled" ] && grep -Eq "$bundled" <<<"$files"; then
+    echo true
+elif [ "$invert" -eq 1 ]; then
     # True when some changed file is outside the pattern.
     if grep -Evq "$pattern" <<<"$files"; then echo true; else echo false; fi
 elif grep -Eq "$pattern" <<<"$files"; then

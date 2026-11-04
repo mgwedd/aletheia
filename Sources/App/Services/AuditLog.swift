@@ -196,7 +196,8 @@ enum IntegrityVerificationResult: Equatable {
 /// Keychain and key derivation management for the HMAC ledger key.
 enum AuditKeyManager {
     static let service = "Aletheia"
-    static let account = "com.aletheia.audit-hmac-key"
+    /// A Debug build uses its own account (see `DebugBuildIsolation`).
+    static let account = DebugBuildIsolation.auditKeyAccount()
 
     /// Load or create the HMAC key in Keychain.
     static func loadOrCreateKeychainKey() -> SymmetricKey? {
@@ -339,7 +340,7 @@ final class AuditLog {
     }
 
     /// Resolves the HMAC signing key:
-    /// 1. `keyProvider` — the Keychain key (account "com.aletheia.audit-hmac-key",
+    /// 1. `keyProvider` — the Keychain key (account `AuditKeyManager.account`,
     ///    service "Aletheia") unless a test injects another
     /// 2. Derived from the DEK via HKDF (if encrypted and the DEK is available)
     /// 3. nil if neither is available (posture shows unverifiable, mac = NULL)

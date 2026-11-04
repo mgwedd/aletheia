@@ -46,11 +46,19 @@ struct NotePane {
     let asksBeforeReplacing: Bool
 }
 
-/// What the Length button's menu offers.
-struct LengthMenu {
+/// What the Depth button's menu offers.
+struct DepthMenu {
     let label: String
-    let lengths: [String]
+    let depths: [String]
     let efforts: [String]
+}
+
+/// The Depth control on the Ask bar: what it is called, what it offers, and what is picked.
+struct DepthControl {
+    let chosen: AnswerDepth
+    var label: String { AnswerDepth.label }
+    var depths: [String] { AnswerDepth.allCases.map(\.displayName) }
+    var chosenName: String { chosen.displayName }
 }
 
 /// What a Copy put on the pasteboard, and what the button then said.
@@ -88,6 +96,17 @@ struct AskPane {
 
     var questions: [String] { bubbles.filter { $0.who == .you }.map(\.text) }
     var answers: [String] { bubbles.filter { $0.who == .assistant }.map(\.text) }
+
+    /// The last answer as the pane sets it: each run of text one drag can
+    /// select, cards (code, diagrams) left out.
+    var selectableRunsOfLastAnswer: [String] {
+        guard let answer = answers.last else { return [] }
+        let look = AnswerText.Look(size: 15, lineSpacing: 0, blockSpacing: 8, listSpacing: 4, ink: Theme.text)
+        return AnswerText.segments(MarkdownParser.parse(answer)).compactMap { segment in
+            guard case let .prose(blocks) = segment else { return nil }
+            return AnswerText.attributed(blocks, look: look).string
+        }
+    }
 }
 
 // MARK: - The desk
@@ -104,6 +123,9 @@ final class AssistantDesk {
     fileprivate init(app: InProcessDriver, model: SteeredModel) {
         self.app = app
         self.model = model
+        // The default model, whatever this Mac would pick, so how much of a
+        // long session a note reads doesn't depend on the Mac running the test.
+        app.settings.llamaModel = .medgemma15_4b
         let clock = app.clock
         let integrations = Integrations(
             settings: app.settings, engine: model, notifier: notifier, now: { clock.now })
@@ -119,6 +141,22 @@ final class AssistantDesk {
     }
 
     var settings: AppSettings { app.settings }
+
+    /// Switches to the largest model, the one that keeps track of a long transcript read whole.
+    func usesTheLargeModel() { app.settings.llamaModel = .medgemma_27b }
+
+    /// The "note ready" notice the main window shows, once a note has finished.
+    func waitForTheNoteReadyNotice() async throws -> NoteReadyCenter.Notice {
+        try await waitFor("the note-ready notice") { self.integrations.noteReady.notice != nil }
+        return try XCTUnwrap(integrations.noteReady.notice)
+    }
+
+    /// Clicks Open Note on the notice; the session the app is then asked to show.
+    func opensTheReadyNote() -> AppNavigator.PendingSession? {
+        integrations.noteReady.open()
+        defer { AppNavigator.shared.pendingPatientID = nil; AppNavigator.shared.pendingSession = nil }
+        return AppNavigator.shared.pendingSession
+    }
     var store: Store {
         get throws { try XCTUnwrap(app.appModel.store, "the data folder is not open") }
     }
@@ -196,6 +234,9 @@ final class AssistantDesk {
 
     func notesTab(of stored: StoredSession) -> NotesTab { NotesTab(desk: self, stored: stored) }
     func askTab(of stored: StoredSession) -> AskTab { AskTab(desk: self, stored: stored) }
+    /// Sets **Settings → Formats → Ask depth**, where new chats start.
+    func setAskDepth(_ depth: Depth) { settings.askDepth = depth.setting }
+    var askDepthSetting: AnswerDepth { settings.askDepth }
     func patientChat(of patient: Patient) -> PatientChatTab { PatientChatTab(desk: self, patient: patient) }
 
     /// What the screen would put in front of a session's note and chat prompts.
@@ -302,9 +343,9 @@ final class NotesTab {
         desk.settings.setNoteInstructions(Prompts.defaultInstructions(for: format.progress), for: format.progress)
     }
 
-    /// Writes a note at `length` and `effort` and waits for it to end, replacing any note already there.
-    func generate(_ length: NoteLength, at effort: Effort) async throws {
-        chooseLength(length.setting)
+    /// Writes a note at `depth` and `effort` and waits for it to end, replacing any note already there.
+    func generate(_ depth: Depth, at effort: Effort) async throws {
+        chooseDepth(depth.setting)
         chooseEffort(effort)
         model.requestGenerate()
         if model.confirmRegenerate { confirmReplacing() }
@@ -336,14 +377,14 @@ final class NotesTab {
             buttonTitle: model.copyFeedback.title)
     }
 
-    /// What the Length button opens.
-    var lengthMenu: LengthMenu {
-        LengthMenu(
-            label: NoteWords.lengthLabel(length: desk.settings.summaryVerbosity, effort: desk.settings.noteEffort),
-            lengths: NoteWords.lengthChoices, efforts: NoteWords.effortChoices)
+    /// What the Depth button opens.
+    var depthMenu: DepthMenu {
+        DepthMenu(
+            label: NoteWords.depthLabel(depth: desk.settings.noteDepth, effort: desk.settings.noteEffort),
+            depths: NoteWords.depthChoices, efforts: NoteWords.effortChoices)
     }
 
-    func chooseLength(_ length: SummaryVerbosity) { desk.settings.summaryVerbosity = length }
+    func chooseDepth(_ depth: AnswerDepth) { desk.settings.noteDepth = depth }
     func chooseEffort(_ effort: Effort) { desk.settings.noteEffort = effort.setting }
     var effort: AnswerEffort { desk.settings.noteEffort }
 
@@ -445,14 +486,17 @@ final class AskTab {
     func stop() { model.stop() }
     func cancelWaiting() { model.stop() }
     func compact() { model.compact("") }
+    /// Clicks Clear.
+    func clear() { model.clear() }
     func chooseEffort(_ effort: Effort) { desk.settings.sessionChatEffort = effort.setting }
     var effort: AnswerEffort { desk.settings.sessionChatEffort }
+    /// Picks this chat's Depth on the Ask bar.
+    func chooseDepth(_ depth: Depth) { model.depth = depth.setting }
+    var depthControl: DepthControl { DepthControl(chosen: model.depth) }
 
     var pane: AskPane {
         AskPane(
-            bubbles: model.messages.map {
-                AskPane.Bubble(who: AskTab.who($0.role), text: $0.text)
-            },
+            bubbles: model.messages.map(AskTab.bubble),
             isAnswering: model.runner.isStreaming,
             isWaiting: model.runner.isQueued,
             waitingStatus: model.runner.queuedStatus,
@@ -465,6 +509,13 @@ final class AskTab {
             accuracyNotice: ChatPaneView.accuracyNotice,
             emptyTitle: model.messages.isEmpty ? ChatWords.emptyTitle(about: ChatWords.thisSession) : nil,
             questionInBox: model.returnedQuestion)
+    }
+
+    /// A message as the pane shows it: an answer or a summary read as plain
+    /// text, without any reasoning or template marker a model once wrote in it.
+    fileprivate static func bubble(_ message: ChatMessage) -> AskPane.Bubble {
+        let shown = message.role == .user ? message.text : ModelReply.plain(message.text)
+        return AskPane.Bubble(who: who(message.role), text: shown)
     }
 
     fileprivate static func who(_ role: ChatRole) -> AskPane.Bubble.Who {
@@ -543,8 +594,15 @@ final class PatientChatTab {
     func compact() { model.compact("") }
     func rename(_ thread: ChatThread, to title: String) { model.rename(thread, to: title) }
     func delete(_ thread: ChatThread) { model.delete(thread) }
+    /// Clicks Clear in the open chat.
+    func clearOpenThread() { model.clearSelectedThread() }
+    /// Clicks Delete All Chats in the Chats list and confirms.
+    func deleteAllChats() { model.deleteAllThreads() }
     func chooseEffort(_ effort: Effort) { desk.settings.patientChatEffort = effort.setting }
     var effort: AnswerEffort { desk.settings.patientChatEffort }
+    /// Picks this chat's Depth on the Ask bar.
+    func chooseDepth(_ depth: Depth) { model.depth = depth.setting }
+    var depthControl: DepthControl { DepthControl(chosen: model.depth) }
 
     // MARK: Reading
 
@@ -552,9 +610,7 @@ final class PatientChatTab {
 
     var pane: AskPane {
         AskPane(
-            bubbles: model.messages.map {
-                AskPane.Bubble(who: AskTab.who($0.role), text: $0.text)
-            },
+            bubbles: model.messages.map(AskTab.bubble),
             isAnswering: model.runner.isStreaming,
             isWaiting: model.runner.isQueued,
             waitingStatus: model.runner.queuedStatus,
@@ -586,6 +642,11 @@ final class PatientChatTab {
         try await desk.waitFor("the conversation to show \"\(text)\"") {
             self.model.messages.contains { $0.text.contains(text) }
         }
+    }
+
+    func waitForAlert() async throws -> ShownAlert {
+        try await desk.waitFor("an alert") { !self.alerts.isEmpty }
+        return alerts[alerts.count - 1]
     }
 }
 

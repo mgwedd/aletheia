@@ -57,8 +57,8 @@ final class SettingsSpec: AcceptanceCase {
     }
 
     func test_SETTINGS_10() async throws {
-        then(when.setNoteFormat("SOAP note", summaryLength: "Detailed", comments: false, background: false))
-            .keeps("SOAP note", summaryLength: "Detailed", comments: false, background: false)
+        then(when.setNoteFormat("SOAP note", noteDepth: "Detailed", comments: false, background: false))
+            .keeps("SOAP note", noteDepth: "Detailed", comments: false, background: false)
     }
 
     func test_SETTINGS_11() async throws {
@@ -86,8 +86,18 @@ final class SettingsSpec: AcceptanceCase {
             .offersMedicalModels(Copy.medGemma4B)
         then(when.lookAtBuiltInModels(onMacWithMemoryGB: 16))
             .includesModel(Copy.apertus8B)
+        then(when.lookAtBuiltInModels(onMacWithMemoryGB: 16))
+            .doesNotOffer(Copy.medGemma27B)
+        then(when.lookAtBuiltInModels(onMacWithMemoryGB: 32))
+            .offersMedicalModels(Copy.medGemma27B)
         then(when.lookAtBuiltInModels(onMacWithMemoryGB: 48))
             .offersMedicalModels(Copy.medGemma27B)
+        then(when.lookAtBuiltInModels(onMacWithMemoryGB: 64, appleSilicon: false))
+            .doesNotOffer(Copy.medGemma27B)
+        for memoryGB in [8, 16, 32, 48, 64, 128] {
+            then(when.lookAtBuiltInModels(onMacWithMemoryGB: memoryGB)).startsOn(Copy.medGemma4B)
+        }
+        then(when.lookAtBuiltInModels(onMacWithMemoryGB: 64, appleSilicon: false)).startsOn(Copy.medGemma4B)
         then(when.lookAtMedicalModelLicenses())
             .usesTerms(medGemmaTerms: Copy.healthAIFoundationsTerms)
     }

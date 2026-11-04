@@ -39,7 +39,7 @@ final class ChatSpec: AcceptanceCase {
         ask.ask("How is she sleeping?")
         try await ask.waitUntilIdle()
 
-        then(ask.pane).showsReadLine()
+        then(ask.pane).showsNoReadLine()
     }
 
     func test_CHAT_04() async throws {
@@ -260,7 +260,7 @@ final class ChatSpec: AcceptanceCase {
     }
 
     func test_CHAT_21() async throws {
-        // That Compact sits on the effort bar, and the notice at the bottom left, is layout: checked by the UI test.
+        // That Compact sits on the effort bar, and the notice under the question box, is layout: checked by the UI test.
         let desk = given.assistantDesk()
         let session = try desk.session(of: try await given.patient(named: "Jane Doe"), saying: [.you("Hello."), .client("Hi.")])
         let ask = desk.askTab(of: session)
@@ -307,5 +307,302 @@ final class ChatSpec: AcceptanceCase {
         then(ask.pane).hasNotCompacted()
         then(ask.pane).neverAsked("And about work?")
         then(ask.pane).hasInTheBox("And about work?")
+    }
+
+    func test_CHAT_24() async throws {
+        then(when.dragChatsListEdge(by: 60)).movesTheListBy(60)
+        then(when.dragChatsListEdge(by: -20)).movesTheListBy(-20)
+        then(when.dragChatsListEdge(by: 5000)).staysUsable()
+        then(when.dragChatsListEdge(by: -5000)).staysUsable()
+    }
+
+    func test_CHAT_25() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+        desk.model.fallback("She said it was poor.")
+        let ask = desk.askTab(of: session)
+        ask.ask("What did she say about sleep?")
+        try await ask.waitUntilIdle()
+        ask.ask("And about work?")
+        try await ask.waitUntilIdle()
+
+        ask.clear()
+
+        then(ask.pane).isEmpty()
+        then(ask.pane).showsTheEmptyPrompt()
+
+        given.appRelaunched()
+
+        let reopened = given.assistantDesk(model: desk.model).askTab(of: session)
+        then(reopened.pane).isEmpty()
+    }
+
+    func test_CHAT_26() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        _ = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+        desk.model.fallback("She said it was poor.")
+        let chat = desk.patientChat(of: jane)
+        for question in ["First question?", "Second question?"] {
+            chat.startNewThread()
+            chat.ask(question)
+            try await chat.waitUntilIdle()
+        }
+
+        chat.clearOpenThread()
+
+        then(chat.pane).isEmpty()
+        then(chat).listsThreadsNewestFirst([Copy.newChatTitle, "First question?"])
+
+        given.appRelaunched()
+
+        let reopened = given.assistantDesk(model: desk.model).patientChat(of: jane)
+        then(reopened).listsThreadsNewestFirst([Copy.newChatTitle, "First question?"])
+    }
+
+    func test_CHAT_27() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        _ = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+        desk.model.fallback("She said it was poor.")
+        let chat = desk.patientChat(of: jane)
+        for question in ["First question?", "Second question?"] {
+            chat.startNewThread()
+            chat.ask(question)
+            try await chat.waitUntilIdle()
+        }
+
+        chat.deleteAllChats()
+
+        then(chat).listsNoThreads()
+        then(chat.pane).isEmpty()
+
+        given.appRelaunched()
+
+        then(given.assistantDesk(model: desk.model).patientChat(of: jane)).listsNoThreads()
+    }
+
+    func test_CHAT_28() async throws {
+        let desk = given.assistantDesk()
+        let session = try desk.session(of: try await given.patient(named: "Jane Doe"), saying: [.you("Hello."), .client("Hi.")])
+        desk.model.fallback("## Sleep\nShe said it was poor.\n\n- Wakes at 3am\n- Naps after lunch\n\n> I'm always tired.")
+        let ask = desk.askTab(of: session)
+        ask.ask("What did she say about sleep?")
+        try await ask.waitUntilIdle()
+
+        then(ask.pane).selectsAcrossTheAnswer(["Sleep", "She said it was poor.", "Wakes at 3am", "Naps after lunch", "I'm always tired."])
+    }
+
+    func test_CHAT_29() async throws {
+        // That the control sits beside the effort on the bar is layout: checked by the UI test.
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+
+        for bar in [desk.askTab(of: session).depthControl, desk.patientChat(of: jane).depthControl] {
+            then(bar).offersTheDepths()
+            then(bar).hasChosen(.natural)
+        }
+    }
+
+    func test_CHAT_30() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+
+        desk.setAskDepth(.concise)
+        let ask = desk.askTab(of: session)
+        let chat = desk.patientChat(of: jane)
+        then(ask.depthControl).hasChosen(.concise)
+        then(chat.depthControl).hasChosen(.concise)
+
+        ask.chooseDepth(.detailed)
+        then(ask.depthControl).hasChosen(.detailed)
+        then(desk).keepsAskDepthSetting(.concise)
+    }
+
+    func test_CHAT_31() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, transcript: AssistantDesk.transcript(minutes: 10, about: "sleep"))
+        desk.model.fallback("She is sleeping a little better.")
+        let ask = desk.askTab(of: session)
+        let chat = desk.patientChat(of: jane)
+
+        for depth in [Depth.concise, .natural, .detailed] {
+            ask.chooseDepth(depth)
+            ask.ask("How is she sleeping?")
+            try await ask.waitUntilIdle()
+            then(desk.model).wasAskedToAnswer(at: depth)
+
+            chat.chooseDepth(depth)
+            chat.ask("How is she sleeping?")
+            try await chat.waitUntilIdle()
+            then(desk.model).wasAskedToAnswer(at: depth)
+        }
+        then(desk.model).capsEveryDepthAlike()
+    }
+
+    func test_CHAT_32() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, transcript: AssistantDesk.transcript(minutes: 10, about: "sleep"))
+        desk.model.fallback("She slept badly most nights, and talked about it at length.")
+        let ask = desk.askTab(of: session)
+        let chat = desk.patientChat(of: jane)
+
+        for tab in [ask.ask, chat.ask] {
+            tab("How did she sleep?")
+        }
+        try await ask.waitUntilIdle()
+        try await chat.waitUntilIdle()
+
+        ask.ask("What did she say about work?")
+        try await ask.waitUntilIdle()
+        then(desk.model).wasToldToAnswerOnItsOwnTerms("What did she say about work?", after: "How did she sleep?")
+
+        chat.ask("What did she say about work?")
+        try await chat.waitUntilIdle()
+        then(desk.model).wasToldToAnswerOnItsOwnTerms("What did she say about work?", after: "How did she sleep?")
+    }
+
+    func test_CHAT_33() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+        let noteMenu = desk.notesTab(of: session).depthMenu
+
+        then(desk.askTab(of: session).depthControl).matchesTheNoteMenu(noteMenu)
+        then(desk.patientChat(of: jane).depthControl).matchesTheNoteMenu(noteMenu)
+    }
+
+    func test_CHAT_34() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, transcript: AssistantDesk.transcript(minutes: 10, about: "sleep"))
+        desk.model.fallback("She is sleeping a little better.")
+        let notes = desk.notesTab(of: session)
+        let ask = desk.askTab(of: session)
+        let chat = desk.patientChat(of: jane)
+
+        for depth in [Depth.concise, .natural, .detailed] {
+            try await notes.generate(depth, at: .normal)
+            ask.chooseDepth(depth)
+            ask.ask("How is she sleeping?")
+            try await ask.waitUntilIdle()
+            then(desk.model).gaveNoteAndAnswerTheSameKindOfLimit(depth)
+
+            chat.chooseDepth(depth)
+            chat.ask("How is she sleeping?")
+            try await chat.waitUntilIdle()
+            then(desk.model).gaveNoteAndAnswerTheSameKindOfLimit(depth)
+        }
+    }
+
+    func test_CHAT_35() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, transcript: AssistantDesk.transcript(minutes: 10, about: "sleep"))
+        desk.model.fallback(ModelMarkers.reply("She said it was poor."))
+        desk.model.summarizesConversation(as: ModelMarkers.reply("Earlier: sleep was poor."))
+        let ask = desk.askTab(of: session)
+        let chat = desk.patientChat(of: jane)
+
+        ask.ask("What did she say about sleep?")
+        try await ask.waitUntilIdle()
+        then(ask.pane).showsAnswer("She said it was poor.")
+        then(ask.pane).showsNoReasoningOrMarkers()
+
+        ask.ask("And about work?")
+        try await ask.waitUntilIdle()
+        ask.compact()
+        try await ask.waitUntilIdle()
+        then(ask.pane).showsSummary("Earlier: sleep was poor.")
+        then(ask.pane).showsNoReasoningOrMarkers()
+        ask.ask("And about the move?")
+        try await ask.waitUntilIdle()
+
+        chat.startNewThread()
+        chat.ask("What did she say about sleep?")
+        try await chat.waitUntilIdle()
+        chat.ask("And about work?")
+        try await chat.waitUntilIdle()
+        then(chat.pane).showsNoReasoningOrMarkers()
+        chat.compact()
+        try await chat.waitUntilIdle()
+        then(chat.pane).showsNoReasoningOrMarkers()
+
+        then(desk.model).wasSentNoReasoningOrMarkers()
+
+        given.appRelaunched()
+
+        let reopened = given.assistantDesk(model: desk.model)
+        then(reopened.askTab(of: session).pane).showsNoReasoningOrMarkers()
+        then(reopened.patientChat(of: jane).pane).showsNoReasoningOrMarkers()
+    }
+
+    func test_CHAT_36() async throws {
+        // That the answers keep their width and nothing overlaps is layout: checked by the UI test.
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, saying: [.you("Hello."), .client("Hi.")])
+        desk.model.fallback("She said it was poor.")
+        desk.model.summarizesConversationSlowly(as: "Earlier: sleep was poor.")
+        let ask = desk.askTab(of: session)
+        ask.ask("What did she say about sleep?")
+        try await ask.waitUntilIdle()
+        ask.ask("And about work?")
+        try await ask.waitUntilIdle()
+
+        ask.compact()
+        try await ask.waitUntilShowing("Earlier: sleep was poor.")
+
+        then(ask.pane).showsTheCardBelowTheAnswers(4)
+
+        desk.model.moveOn()
+        try await ask.waitUntilIdle()
+
+        then(ask.pane).showsCompactedCardReplacingEarlier()
+    }
+
+    func test_CHAT_37() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, transcript: AssistantDesk.transcript(minutes: 10, about: "sleep"))
+        desk.model.fallback("She said it was poor.")
+        desk.model.runsOutOfRoomSummarizing(after: "Earlier: sleep was")
+        let ask = desk.askTab(of: session)
+        let chat = desk.patientChat(of: jane)
+        ask.ask("What did she say about sleep?")
+        try await ask.waitUntilIdle()
+        ask.ask("And about work?")
+        try await ask.waitUntilIdle()
+        chat.startNewThread()
+        chat.ask("What did she say about sleep?")
+        try await chat.waitUntilIdle()
+        chat.ask("And about work?")
+        try await chat.waitUntilIdle()
+        let askedBefore = ask.pane
+        let chattedBefore = chat.pane
+
+        ask.compact()
+        let askAlert = try await ask.waitForAlert()
+        try await ask.waitUntilIdle()
+        chat.compact()
+        let chatAlert = try await chat.waitForAlert()
+        try await chat.waitUntilIdle()
+
+        then(askAlert).saysTheSummaryDidNotFinish()
+        then(chatAlert).saysTheSummaryDidNotFinish()
+        then(ask.pane).isAsItWas(askedBefore)
+        then(chat.pane).isAsItWas(chattedBefore)
+        then(desk.model).wasAskedToSummarize()
+
+        given.appRelaunched()
+
+        let reopened = given.assistantDesk(model: desk.model)
+        then(reopened.askTab(of: session).pane).isAsItWas(askedBefore)
+        then(reopened.patientChat(of: jane).pane).isAsItWas(chattedBefore)
     }
 }

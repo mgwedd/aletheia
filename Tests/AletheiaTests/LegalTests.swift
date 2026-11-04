@@ -1,6 +1,8 @@
 import XCTest
 @testable import Aletheia
 
+/// The code side of the policies. What the documents say is checked by
+/// scripts/check-docs.py, which reads the values below from this source.
 final class LegalTests: XCTestCase {
     func testNotAcceptedWhenRecordIsEmpty() {
         XCTAssertFalse(Legal.isAccepted(""))
@@ -21,341 +23,28 @@ final class LegalTests: XCTestCase {
         XCTAssertTrue(Legal.privacyURL.absoluteString.hasSuffix("/PRIVACY.md"))
     }
 
-    /// The Terms cover the license key and what expiry or revocation blocks,
-    /// and the Privacy Policy discloses the revocation-list download.
-    func testPoliciesDescribeTheLicenseKeyAndRevocationList() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let terms = try String(contentsOf: root.appendingPathComponent("TERMS.md"), encoding: .utf8)
-        for phrase in ["License key", "do not share, transfer, or publish", "revoke", "Pre-release versions",
-                       "open, read, search, export, and\ndelete"] {
-            XCTAssertTrue(terms.contains(phrase), phrase)
-        }
-        let privacy = try String(contentsOf: root.appendingPathComponent("PRIVACY.md"), encoding: .utf8)
-        XCTAssertTrue(privacy.contains("License revocation list"))
-        XCTAssertTrue(privacy.contains("`astrealabs.com`"))
-        XCTAssertTrue(privacy.contains("contains no license key or other identifier"))
-        XCTAssertTrue(terms.contains("14-day grace period"))
-        // Revocation is not instant: it waits for the next daily list.
-        XCTAssertTrue(terms.contains("when the\nApp next receives the list") || terms.contains("when the App next receives the list"))
-        XCTAssertTrue(terms.contains("a revoked key has no grace period"))
-        XCTAssertTrue(terms.contains("never require a license key, with no time limit"))
-        XCTAssertFalse(terms.contains("end your use of the App"))
-        // The license backend exists, so the policy must not deny having one.
-        XCTAssertFalse(privacy.contains("developer backend"))
-        XCTAssertFalse(privacy.contains("developer\nbackend"))
-        XCTAssertFalse(privacy.contains("cannot see who uses"))
-    }
-
-    /// The acceptance version must move whenever a policy's "Last updated" date
-    /// does, or users keep an acceptance of the old text.
-    func testCurrentVersionIsNotOlderThanThePublishedPolicies() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        for path in ["TERMS.md", "PRIVACY.md"] {
-            let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-            let date = try XCTUnwrap(
-                text.firstMatch(of: /_Last updated: (\d{4}-\d{2}-\d{2})_/)?.1, path)
-            XCTAssertGreaterThanOrEqual(Legal.currentVersion, String(date), path)
-        }
-    }
-
-    func testPublishedPrivacyAndSafeguardDocsDescribeCurrentBackupState() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        for path in ["PRIVACY.md", "docs/HIPAA-SAFEGUARDS.md"] {
-            let text = Self.withoutSettingTitle(try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8))
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("iCloud backup"), path)
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("end-to-end encrypted backup to your own iCloud"), path)
-        }
-    }
-
-    /// The security and encryption docs must match what the app does: backups
-    /// are local only (Back Up Now), the app lock does not engage on hide, the
-    /// encryption pane is titled "Encryption", and the plaintext search index
-    /// is disclosed.
-    func testSecurityAndEncryptionDocsMatchShippedBehavior() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        for path in ["PRIVACY.md", "SECURITY.md", "docs/ENCRYPTION.md", "docs/HIPAA-SAFEGUARDS.md"] {
-            let text = Self.withoutSettingTitle(try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8))
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("iCloud backup"), path)
-            XCTAssertFalse(text.contains("Extra Encryption"), path)
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("re-locks when it's hidden"), path)
-            XCTAssertFalse(text.contains("Backup also offers"), path)
-        }
-        // Ollama support was removed; the built-in engine is the only AI path.
-        for path in ["PRIVACY.md", "TERMS.md", "SECURITY.md", "README.md", "docs/ENCRYPTION.md",
-                     "docs/HIPAA-SAFEGUARDS.md", "docs/DESIGN-DECISIONS.md"] {
-            let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("ollama"), path)
-            XCTAssertFalse(text.contains("11434"), path)
-        }
+    /// The documents name these panes.
+    func testSettingsPaneTitlesTheDocsName() {
         XCTAssertEqual(SettingsPane.encryption.title, "Encryption")
         XCTAssertEqual(SettingsPane.backups.title, "Backups")
-        for path in ["SECURITY.md", "docs/ENCRYPTION.md", "docs/HIPAA-SAFEGUARDS.md"] {
-            let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-            XCTAssertTrue(text.contains("search.sqlite"), path)
-        }
     }
 
-    /// The docs quote the Settings switch that keeps the data folder out of
-    /// iCloud and Time Machine backups; that title is not an offer of an iCloud backup.
-    static func withoutSettingTitle(_ text: String) -> String {
-        let flat = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return flat.replacingOccurrences(of: BackupExclusion.settingTitle, with: "")
-    }
-
-    /// The legal documents describe backups as local-only: no iCloud backup is offered.
-    func testDocumentsDoNotOfferAnICloudBackup() throws {
-        for name in ["PRIVACY.md", "TERMS.md", "SECURITY.md"] {
-            let text = Self.withoutSettingTitle(try doc(name)).lowercased()
-            XCTAssertFalse(text.contains("icloud backup"), "\(name) must not offer an iCloud backup")
-            XCTAssertFalse(text.contains("backup to your own"), "\(name) must not describe an upload")
-        }
-        XCTAssertFalse(try doc("TERMS.md").contains("does not back up your data on its own"))
-    }
-
-    /// The docs describe the local Back Up Now feature and its limits.
-    func testDocsDescribeLocalBackUpNow() throws {
-        for path in ["PRIVACY.md", "SECURITY.md", "TERMS.md", "docs/HIPAA-SAFEGUARDS.md"] {
-            let text = try doc(path)
-            XCTAssertTrue(text.localizedCaseInsensitiveContains("Back Up Now"), path)
-        }
-        XCTAssertFalse(try doc("SECURITY.md").contains("not connected to the app"))
-        XCTAssertFalse(try doc("docs/HIPAA-SAFEGUARDS.md").contains("not connected to the user interface"))
-        for path in ["PRIVACY.md", "SECURITY.md", "docs/HIPAA-SAFEGUARDS.md"] {
-            let text = try doc(path)
-            XCTAssertTrue(text.localizedCaseInsensitiveContains("Restore from backup"), path)
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("no restore screen"), path)
-        }
-    }
-
-    /// Support questions go to a private address, never a public issue tracker,
-    /// and the Terms name a governing law.
-    func testSupportIsPrivateAndTermsNameAGoverningLaw() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        for path in ["TERMS.md", "PRIVACY.md", "docs/SETUP-GUIDE.md"] {
-            let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("open an issue"), path)
-            XCTAssertFalse(text.contains("github.com/mgwedd/aletheia/issues"), path)
-            XCTAssertTrue(text.contains("support@astrealabs.com"), path)
-        }
-        let terms = try String(contentsOf: root.appendingPathComponent("TERMS.md"), encoding: .utf8)
-        XCTAssertTrue(terms.contains("laws of the State of Wyoming"))
-        XCTAssertFalse(terms.contains("Specify the governing jurisdiction"))
-    }
-
-    // MARK: - Documents match shipped behavior
-
-    private func doc(_ path: String) throws -> String {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        return try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-    }
-
-    /// The privacy policy must disclose the feedback form and name only the
-    /// query fields the link can actually carry.
-    func testPrivacyPolicyDisclosesTheFeedbackForm() throws {
-        let privacy = try doc("PRIVACY.md")
+    /// The privacy policy names only the query fields the feedback link can carry.
+    func testFeedbackLinkMatchesThePrivacyPolicy() {
         XCTAssertEqual(FeedbackLink.formURL.absoluteString, "https://astrealabs.com/feedback")
-        XCTAssertTrue(privacy.contains("astrealabs.com/feedback"))
         XCTAssertEqual(FeedbackLink.allowedQueryKeys, ["project", "type", "environment"])
-        let setup = try doc("docs/SETUP-GUIDE.md")
-        XCTAssertTrue(setup.contains("Report a Bug"))
     }
 
-    /// The network description in every document matches the helper design:
-    /// the app has no network entitlement and the helper makes the only calls.
-    func testDocsDescribeTheNetworkHelperConsistently() throws {
-        let entitlements = try doc("Sources/App/Resources/Aletheia.entitlements")
-        XCTAssertFalse(entitlements.contains("<key>com.apple.security.network.client</key>"))
-        for path in ["PRIVACY.md", "SECURITY.md", "docs/HIPAA-SAFEGUARDS.md"] {
-            let text = try doc(path)
-            XCTAssertTrue(text.localizedCaseInsensitiveContains("helper"), path)
-            XCTAssertTrue(text.contains("Hugging Face"), path)
-        }
-        XCTAssertTrue(try doc("docs/SETUP-GUIDE.md").contains("network helper"))
-    }
-
-    /// Export All Records is documented wherever backups or exports are, and
-    /// the control it names exists.
-    func testDocsNameTheExportAllRecordsControl() throws {
-        let settings = try doc("Sources/App/Views/SettingsView.swift")
-        XCTAssertTrue(settings.contains("Export All Records"))
-        for path in ["PRIVACY.md", "SECURITY.md", "TERMS.md", "docs/HIPAA-SAFEGUARDS.md", "docs/SETUP-GUIDE.md"] {
-            XCTAssertTrue(try doc(path).contains("Export All Records"), path)
-        }
-    }
-
-    /// Numbers quoted in the documents come from the code that enforces them.
-    func testDocsQuoteTheEnforcedPassphraseMinimumAndIdleLock() throws {
+    /// The documents quote "12 characters" and "15 minutes"; these are the
+    /// values they quote.
+    func testEnforcedPassphraseMinimumAndIdleLockMatchTheDocs() {
         XCTAssertEqual(PassphraseStrength.requiredLength, 12)
         XCTAssertEqual(IdleAutoLockTimeout.defaultTimeout, .fifteenMinutes)
-        for path in ["SECURITY.md", "docs/ENCRYPTION.md"] {
-            XCTAssertTrue(try doc(path).contains("12 characters"), path)
-        }
-        for path in ["SECURITY.md", "docs/HIPAA-SAFEGUARDS.md"] {
-            XCTAssertTrue(try doc(path).contains("15 minutes"), path)
-        }
     }
 
-    /// The audit-log description names the ledger, not the old text file, and
-    /// does not promise events the app never records.
-    func testAuditLogDocsMatchTheLedger() throws {
+    /// The audit-log documents do not promise events the app never records.
+    func testAuditActionsTheDocsDoNotPromise() {
         let never: [AuditAction] = [.phiViewed, .aiInference, .phiCopied, .backupRestored, .noteSigned]
         XCTAssertEqual(never.count, 5)
-        for path in ["SECURITY.md", "docs/HIPAA-SAFEGUARDS.md"] {
-            let text = try doc(path)
-            XCTAssertTrue(text.contains("audit_events") || text.localizedCaseInsensitiveContains("tamper-evident"), path)
-            XCTAssertFalse(text.contains("no tamper-evident"), path)
-            XCTAssertFalse(text.contains("no integrity seal"), path)
-        }
-        XCTAssertFalse(try doc("docs/ENCRYPTION.md").contains("audit.log`, which"))
-    }
-
-    /// The threat model exists, SECURITY.md links it, and it names the
-    /// boundaries the code enforces.
-    func testThreatModelExistsAndSecurityLinksIt() throws {
-        XCTAssertTrue(try doc("SECURITY.md").contains("docs/THREAT-MODEL.md"))
-        let text = try doc("docs/THREAT-MODEL.md")
-        for needle in ["Sources/NetworkHelper", "no network entitlement", "SHA-256", "FileVault", "Out of scope"] {
-            XCTAssertTrue(text.contains(needle), needle)
-        }
-    }
-
-    /// The data folder must be on this Mac, so no document may say the picker
-    /// opens in or suggests iCloud Drive.
-    func testDocsDoNotSuggestICloudForTheDataFolder() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let docsDir = root.appendingPathComponent("docs")
-        let extra = try FileManager.default.contentsOfDirectory(atPath: docsDir.path)
-            .filter { $0.hasSuffix(".md") }.map { "docs/\($0)" }
-        let paths = ["README.md", "PRIVACY.md", "SECURITY.md"] + extra
-        XCTAssertTrue(paths.contains("docs/SETUP-GUIDE.md"))
-        let banned = ["opens in icloud drive", "suggests icloud", "suggests it", "icloud drive or any folder",
-                      "icloud drive when it is available", "keep downloaded"]
-        for path in paths {
-            let text = try doc(path).lowercased()
-            for phrase in banned {
-                XCTAssertFalse(text.contains(phrase), "\(path) contains \"\(phrase)\"")
-            }
-        }
-        XCTAssertTrue(try doc("README.md").contains("Use the standard location"))
-    }
-
-    /// The entitlement comments must not describe the picker as opening in iCloud Drive.
-    func testEntitlementsCommentsDoNotMentionICloudDrive() throws {
-        for path in ["Sources/App/Resources/Aletheia.entitlements", "Sources/App/Resources/AletheiaDev.entitlements"] {
-            let text = try doc(path).lowercased()
-            XCTAssertFalse(text.contains("icloud"), path)
-        }
-    }
-
-    func testTermsNameTheEntity() throws {
-        let terms = try doc("TERMS.md")
-        XCTAssertTrue(terms.contains("Astrea Labs LLC, a Wyoming limited liability company"))
-        XCTAssertFalse(terms.localizedCaseInsensitiveContains("the developer"))
-        XCTAssertTrue(terms.contains("12 months"))
-        XCTAssertTrue(terms.contains("AS IS"))
-        XCTAssertTrue(terms.contains("State of Wyoming"))
-        XCTAssertFalse(terms.localizedCaseInsensitiveContains("arbitration"))
-    }
-
-    /// The company, not a person, owns the app and is the party in every legal text.
-    func testTheCompanyIsTheOwnerEverywhere() throws {
-        XCTAssertTrue(try doc("LICENSE").contains("Copyright (c) 2026 Astrea Labs LLC."))
-        XCTAssertTrue(try doc("PRIVACY.md").contains("Astrea Labs LLC,\na Wyoming limited liability company"))
-        XCTAssertTrue(try doc("Sources/App/Resources/Info.plist").contains("Astrea Labs LLC"))
-        for path in ["LICENSE", "TERMS.md", "PRIVACY.md", "SECURITY.md", "docs/HIPAA-SAFEGUARDS.md",
-                     "Sources/App/Resources/Info.plist"] {
-            let text = try doc(path)
-            XCTAssertFalse(text.contains("Michael"), path)
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("the developer"), path)
-        }
-    }
-
-    func testTermsCoverRecordingConsentAndExports() throws {
-        let terms = try doc("TERMS.md")
-        for phrase in ["consent of every party", "24-word recovery key", "at least 12 characters",
-                       "plaintext files", "macOS 14 or later", "installing App updates"] {
-            XCTAssertTrue(terms.contains(phrase), "TERMS.md lacks \"\(phrase)\"")
-        }
-        for phrase in ["PDF", "Markdown", "calendar", "Export All Records"] {
-            XCTAssertTrue(terms.contains(phrase), phrase)
-        }
-        for banned in ["pending counsel", "draft", "template"] {
-            XCTAssertFalse(terms.localizedCaseInsensitiveContains(banned), banned)
-        }
-    }
-
-    /// Ollama was removed; no document may offer it.
-    func testConsentDocsMentionNoOllama() throws {
-        let docsDir = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("docs")
-        let extra = try FileManager.default.contentsOfDirectory(atPath: docsDir.path)
-            .filter { $0.hasSuffix(".md") }.map { "docs/\($0)" }
-        for path in ["CONSENT.md"] + consentGuidePaths + extra {
-            XCTAssertFalse(try doc(path).localizedCaseInsensitiveContains("ollama"), path)
-        }
-    }
-
-    /// The consent guide's screen and the text it shows.
-    private let consentGuidePaths = ["Sources/App/Views/ConsentGuideView.swift", "Sources/App/Services/ConsentGuideContent.swift"]
-
-    private func consentGuide() throws -> String {
-        try consentGuidePaths.map { try doc($0) }.joined(separator: "\n")
-    }
-
-    func testConsentGuideAvoidsAbsoluteClaims() throws {
-        let text = try consentGuide()
-        XCTAssertFalse(text.contains("100%"))
-        XCTAssertFalse(text.lowercased().contains("strictly"))
-        XCTAssertFalse(text.contains("never sent"))
-        XCTAssertTrue(text.contains("Time Machine"))
-    }
-
-    private let consentKeyPhrases = [
-        "California Penal Code §632",
-        "Washington RCW 9.73.030",
-        "Connecticut Gen. Stat. §52-570d",
-        "not a complete list",
-        "Before we start, I would like to record today's session so that I can write my clinical notes.",
-        "The recording stays on my computer, where AI software turns it into a transcript and a draft of my notes.",
-        "Do you agree to be recorded?",
-        "you can ask me to pause or stop at any time",
-    ]
-
-    func testConsentDocsListExampleAllPartyStatutes() throws {
-        let texts = [("CONSENT.md", try doc("CONSENT.md")), ("the consent guide", try consentGuide())]
-        for (path, text) in texts {
-            for phrase in consentKeyPhrases.prefix(4) {
-                XCTAssertTrue(text.contains(phrase), "\(path) lacks \"\(phrase)\"")
-            }
-            XCTAssertTrue(text.localizedCaseInsensitiveContains("examples"), path)
-        }
-    }
-
-    func testConsentGuideMatchesConsentMd() throws {
-        let md = try doc("CONSENT.md").replacingOccurrences(of: "\n> ", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "  ", with: " ")
-        let view = try consentGuide()
-        for phrase in consentKeyPhrases {
-            XCTAssertTrue(view.contains(phrase), "The consent guide lacks \"\(phrase)\"")
-            XCTAssertTrue(md.contains(phrase), "CONSENT.md lacks \"\(phrase)\"")
-        }
-    }
-
-    /// Statements that used to be true and are not any more.
-    func testDocsHaveNoStaleClaims() throws {
-        for path in ["PRIVACY.md", "SECURITY.md", "docs/HIPAA-SAFEGUARDS.md", "docs/ENCRYPTION.md", "docs/SETUP-GUIDE.md"] {
-            let text = try doc(path)
-            XCTAssertFalse(text.contains("can't verify"), path)
-            XCTAssertFalse(text.contains("cannot verify"), path)
-        }
     }
 }

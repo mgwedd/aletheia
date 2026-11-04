@@ -54,7 +54,7 @@ Always read the transcript and note before relying on them: names and clinical t
 
 ## Getting started (therapists)
 
-You need macOS 14 or newer. Apple silicon with 16 GB of memory gives good results; 8 GB uses a smaller model. The AI model takes about 2.5 GB on most Macs (16.5 GB on Apple silicon with 48 GB+ memory), plus space for transcription.
+You need macOS 14 or newer. Apple silicon with 16 GB of memory gives good results; the default MedGemma 4B model also runs on 8 GB. The AI model takes about 2.5 GB; the optional MedGemma 27B text model, offered on Apple silicon with 32 GB+ memory, takes about 16.5 GB. Transcription needs additional space.
 
 1. Apply for the beta; you receive a license key and a download link by email.
 2. Open the `.dmg` and drag **Aletheia** into **Applications**.

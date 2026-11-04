@@ -125,12 +125,33 @@ private struct OptionalLineSpacing: ViewModifier {
 struct MarkdownMessageView: View {
     let text: String
     var style: MarkdownTextStyle = .reading
+    /// The prose's point size, line spacing and color. Prose is set as
+    /// AppKit text (`AnswerTextView`), so it doesn't take SwiftUI's font.
+    var size: CGFloat = 15
+    var lineSpacing: CGFloat = Theme.Typography.readingLineSpacing
+    var ink: Theme.ColorToken = Theme.text
+    /// The accessibility identifier of the prose: answers by default.
+    var textID = "chat.answer-text"
+
+    private var look: AnswerText.Look {
+        AnswerText.Look(
+            size: size, serif: style == .note,
+            lineSpacing: style.lineSpacing ?? lineSpacing,
+            blockSpacing: style.blockSpacing, listSpacing: style.listSpacing,
+            ink: ink
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: style.blockSpacing) {
-            let blocks = MarkdownParser.parse(style.prepared(text))
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                view(for: block)
+            let segments = AnswerText.segments(MarkdownParser.parse(style.prepared(text)))
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                switch segment {
+                case let .prose(blocks):
+                    AnswerTextView(blocks: blocks, look: look, identifier: textID)
+                case let .card(block):
+                    view(for: block)
+                }
             }
         }
         .selectablePatientText()

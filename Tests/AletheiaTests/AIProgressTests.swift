@@ -237,7 +237,7 @@ final class AIProgressTests: XCTestCase {
         let transcript = "今日はとても疲れました。"
         for try await _ in service.streamProgressNote(format: .narrative, transcript: transcript) {}
         let prompt = Prompts.progressNote(
-            format: .narrative, transcript: transcript, notes: "", comments: [], verbosity: .default, instructions: nil)
+            format: .narrative, transcript: transcript, notes: "", comments: [], depth: .default, instructions: nil)
         XCTAssertEqual(events.readingEstimates.first,
                        ContextBudget.estimatedTokens(system: service.systemPrompt, prompt: prompt))
         XCTAssertGreaterThan(try XCTUnwrap(events.readingEstimates.first),
@@ -255,7 +255,7 @@ final class AIProgressTests: XCTestCase {
         XCTAssertEqual(events.readingEstimates.count, 1)
         // The shared estimate is what the progress display shows.
         let prompt = Prompts.progressNote(
-            format: .narrative, transcript: "short", notes: "", comments: [], verbosity: .default, instructions: nil)
+            format: .narrative, transcript: "short", notes: "", comments: [], depth: .default, instructions: nil)
         XCTAssertEqual(events.readingEstimates.first,
                        ContextBudget.estimatedTokens(forCharacters: service.systemPrompt.count + prompt.count))
         XCTAssertEqual(ContextBudget.estimatedTokens(forCharacters: 3_000), 1_000)
@@ -474,6 +474,55 @@ final class AIProgressTests: XCTestCase {
         report(.prefill(PrefillProgress(part: 2, total: 6)))
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(runner.progress.prefill, PrefillProgress(part: 2, total: 6))
+    }
+
+    // MARK: Failing after some text
+
+    private struct CutOff: DiscardsPartialReply {}
+    private struct Broke: Error {}
+
+    @MainActor
+    private func endOfRun(failingWith error: Error) async -> (finished: [String], errors: [Error]) {
+        let runner = ChatStreamRunner()
+        var finished: [String] = []
+        var errors: [Error] = []
+        runner.start(
+            queue: InferenceQueue(), kind: .note, label: "run",
+            makeStream: {
+                AsyncThrowingStream { continuation in
+                    continuation.yield("half a sum")
+                    continuation.finish(throwing: error)
+                }
+            },
+            onReveal: { _ in },
+            onError: { errors.append($0) },
+            onFinish: { finished.append($0) }
+        )
+        for _ in 0..<400 where finished.isEmpty && errors.isEmpty { try? await Task.sleep(nanoseconds: 5_000_000) }
+        return (finished, errors)
+    }
+
+    /// A failure that discards what was written ends in the error, never as a
+    /// finished reply, even after text arrived (a cut-off summary).
+    @MainActor
+    func testFailureThatDiscardsPartialTextEndsInTheErrorAfterText() async {
+        let end = await endOfRun(failingWith: CutOff())
+        XCTAssertEqual(end.finished, [])
+        XCTAssertEqual(end.errors.count, 1)
+        XCTAssertTrue(end.errors.first is CutOff)
+    }
+
+    /// Any other failure after text keeps the partial answer.
+    @MainActor
+    func testOtherFailureAfterTextKeepsThePartialReply() async {
+        let end = await endOfRun(failingWith: Broke())
+        XCTAssertEqual(end.finished, ["half a sum"])
+        XCTAssertTrue(end.errors.isEmpty)
+    }
+
+    func testCompactionErrorDiscardsPartialText() {
+        let error: Error = CompactionError.cutOff
+        XCTAssertTrue(error is DiscardsPartialReply)
     }
 }
 

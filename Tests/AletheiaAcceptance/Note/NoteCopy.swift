@@ -1,10 +1,12 @@
 extension Copy {
     static let processingTranscript = "Processing transcript"
     static let coverageLead = "Read:"
-    static let coverageCaveat = "Details outside those lines may be missing."
-    static let wholeSessionSummary = "a summary of the whole session"
+    static let quotedLines = "transcript lines quoted word for word"
+    static let wholeSessionSummary = "every part of the session, summarized"
+    static let wholeTranscript = "the whole transcript, word for word"
+    static let noteReadyTitle = "SOAP note ready"
     static let followUpLookup = "follow-up lookup"
-    static let lengthChoices = ["Concise", "Natural", "Detailed"]
+    static let depthChoices = ["Concise", "Natural", "Detailed"]
     static let effortChoices = ["Fast", "Normal", "Focus"]
     static let formatNames = ["Summary", "SOAP", "DAP", "BIRP", "GIRP"]
     static let myNotes = "My Notes"

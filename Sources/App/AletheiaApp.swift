@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor func applicationDidFinishLaunching(_ notification: Notification) {
         TestHost.concealWindowsWhenHostingTests()
+        QuitSignals.install()
         #if DEBUG
         HarnessRun.runIfRequested()
         #endif

@@ -39,6 +39,8 @@ struct FixtureScenario: Codable, Equatable {
     struct AIRule: Codable, Equatable {
         var whenPromptContains: String
         var reply: String
+        /// The reply runs to the request's reply limit, as one cut off does.
+        var reachesReplyLimit: Bool? = nil
     }
 
     /// Names the throwaway data folder and defaults domain. Launching again
@@ -80,10 +82,12 @@ struct FixtureScenario: Codable, Equatable {
     /// stays on screen.
     var slowTranscription: Bool?
     /// Settings > Notes: "concise", "natural" or "detailed".
-    var noteLength: String?
+    var noteDepth: String?
     /// AI effort for notes and for Ask: "fast", "normal" or "focus".
     var noteEffort: String?
     var chatEffort: String?
+    /// Settings: the depth a new Ask chat starts at: "concise", "natural" or "detailed".
+    var askDepth: String?
 
     /// What "Import Audio…" is handed instead of the system open panel:
     /// "clip" (a two-second tone), "twoTracks" (a microphone and a call track,

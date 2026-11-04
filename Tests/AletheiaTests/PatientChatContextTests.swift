@@ -256,7 +256,7 @@ final class PatientChatContextTests: XCTestCase {
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: "zeppelin", characterBudget: Self.tight)
         XCTAssertTrue(context.text.contains("Search results (3 sessions searched; \(Prompts.countsNote)):\n- \"zeppelin\": 0 matches"))
 
-        let prompt = Prompts.patientChat(context: context.text, history: [], question: "zeppelin?")
+        let prompt = Prompts.patientChat(context: context.text, history: [])
         XCTAssertTrue(prompt.contains("- \"zeppelin\": 0 matches"))
         XCTAssertTrue(prompt.contains("no match found in the recorded sessions"))
         XCTAssertFalse(prompt.contains("say you don't see that in the recorded sessions"))
@@ -347,12 +347,12 @@ final class PatientChatContextTests: XCTestCase {
             ChatMessage(role: .assistant, text: "Earlier answer"),
             ChatMessage(role: .user, text: question),
         ]
-        let prompt = Prompts.patientChat(context: "CTX", history: history, question: question)
-        XCTAssertEqual(occurrences(of: question, in: prompt), 1)
+        let material = Prompts.patientChat(context: "CTX", history: history)
+        XCTAssertEqual(occurrences(of: question, in: material), 0, "the question is the final turn, not material")
         // The earlier exchange goes in as chat turns, without the question.
         let turns = PromptTurn.recent(history, question: question)
         XCTAssertEqual(turns.map(\.text), ["Earlier question", "Earlier answer"])
-        XCTAssertEqual(occurrences(of: question, in: PromptTurn.flattened(turns, then: prompt)), 1)
+        XCTAssertEqual(occurrences(of: question, in: PromptTurn.flattened(turns, then: Prompts.chatQuestion(question))), 1)
     }
 
     func testQuestionAppearsOnceWithPriorHistoryOnly() {
@@ -361,12 +361,13 @@ final class PatientChatContextTests: XCTestCase {
             ChatMessage(role: .user, text: "Earlier question"),
             ChatMessage(role: .assistant, text: "Earlier answer"),
         ]
-        let prompt = Prompts.patientChat(context: "CTX", history: history, question: question)
-        XCTAssertEqual(occurrences(of: question, in: prompt), 1)
+        let material = Prompts.patientChat(context: "CTX", history: history)
+        XCTAssertEqual(occurrences(of: question, in: material), 0)
+        XCTAssertEqual(occurrences(of: question, in: Prompts.chatQuestion(question)), 1)
     }
 
     func testPromptNamesEachKindOfMaterial() {
-        let prompt = Prompts.patientChat(context: "CTX", history: [], question: "Q")
+        let prompt = Prompts.patientChat(context: "CTX", history: [])
         XCTAssertTrue(prompt.contains("transcript"))
         XCTAssertTrue(prompt.contains("Generated progress note"))
         XCTAssertTrue(prompt.contains("Therapist's session notes"))
@@ -451,8 +452,10 @@ final class PatientChatContextTests: XCTestCase {
 
         let context = store.gatherCitedPatientContext(for: patient, relevantTo: question, characterBudget: characters)
 
-        let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question)
-        let prompt = Prompts.patientChat(context: context.text, history: [], question: question)
+        let system = Prompts.chatSystem(
+            service.systemPrompt, question: question,
+            material: Prompts.patientChat(context: context.text, history: []))
+        let prompt = Prompts.chatQuestion(question)
         XCTAssertTrue(budget.fits(promptCharacters: system.count + prompt.count), "never over budget through patient chat")
         XCTAssertLessThanOrEqual(context.text.count, characters)
         XCTAssertGreaterThan(context.coverage.openingSessions, 0, "no summaries yet: openings fill their room")
@@ -811,8 +814,10 @@ final class PatientChatContextTests: XCTestCase {
         for question in ["When did kayaking come up?", "How has she been doing?"] {
             let budget = service.patientContextCharacters(history: [], question: question)
             let context = store.gatherCitedPatientContext(for: patient, relevantTo: question, characterBudget: budget)
-            let system = Prompts.chatSystemPrompt(service.systemPrompt, question: question)
-            let prompt = Prompts.patientChat(context: context.text, history: [], question: question)
+            let system = Prompts.chatSystem(
+                service.systemPrompt, question: question,
+                material: Prompts.patientChat(context: context.text, history: []))
+            let prompt = Prompts.chatQuestion(question)
             XCTAssertLessThanOrEqual(context.text.count, budget, question)
             XCTAssertTrue(service.budget.fits(promptCharacters: system.count + prompt.count), question)
             XCTAssertFalse(context.coverage.wholeTranscripts, question)

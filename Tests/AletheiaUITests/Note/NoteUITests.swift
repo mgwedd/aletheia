@@ -2,13 +2,13 @@ import XCTest
 
 /// The Notes tab in the real app, driven with the scripted AI.
 final class NoteUITests: AcceptanceCase {
-    func test_NOTE_06_wholeLengthButtonOpensMenu() {
+    func test_NOTE_06_wholeDepthButtonOpensMenu() {
         given.aSession(transcript: SessionContent.shortTranscript)
         let tab = when.openNotesTab()
 
-        when.clickLengthButtonAwayFromItsIcon(on: tab)
+        when.clickDepthButtonAwayFromItsIcon(on: tab)
 
-        then(tab).lengthMenuOffers(Copy.lengthChoices + Copy.effortChoices)
+        then(tab).depthMenuOffers(Copy.depthChoices + Copy.effortChoices)
     }
 
     func test_NOTE_14_longSessionStepsThroughProcessingAndEndsWithCoverage() {
@@ -21,29 +21,29 @@ final class NoteUITests: AcceptanceCase {
     }
 
     func test_NOTE_17_detailedNoteCountsFollowUpLookups() {
-        let coverage = generateLongNote(length: "detailed", effort: "normal")
+        let coverage = generateLongNote(depth: "detailed", effort: "normal")
         then(coverage).coverageCountsEveryPart()
         then(coverage).coverageCountsFollowUpLookups(true)
     }
 
     func test_NOTE_17_noteAtFocusCountsFollowUpLookups() {
-        let coverage = generateLongNote(length: "natural", effort: "focus")
+        let coverage = generateLongNote(depth: "natural", effort: "focus")
         then(coverage).coverageCountsFollowUpLookups(true)
     }
 
     func test_NOTE_17_detailedNoteAtFastCountsNone() {
-        let coverage = generateLongNote(length: "detailed", effort: "fast")
+        let coverage = generateLongNote(depth: "detailed", effort: "fast")
         then(coverage).coverageCountsEveryPart()
         then(coverage).coverageCountsFollowUpLookups(false)
     }
 
     func test_NOTE_17_conciseNoteAtNormalCountsNone() {
-        let coverage = generateLongNote(length: "concise", effort: "normal")
+        let coverage = generateLongNote(depth: "concise", effort: "normal")
         then(coverage).coverageCountsFollowUpLookups(false)
     }
 
     func test_NOTE_17_naturalNoteAtNormalCountsNone() {
-        let coverage = generateLongNote(length: "natural", effort: "normal")
+        let coverage = generateLongNote(depth: "natural", effort: "normal")
         then(coverage).coverageCountsFollowUpLookups(false)
     }
 
@@ -106,7 +106,7 @@ final class NoteUITests: AcceptanceCase {
         let tab = when.openNotesTab()
         when.pickFormat("SOAP", on: tab)
 
-        tab.lengthButton.click()
+        tab.depthButton.click()
         tab.menuItem(startingWith: Copy.soapPromptEdit).click()
         let field = tab.driver.app.textViews[Copy.soapPromptSheet].firstMatch
         XCTAssertTrue(tab.driver.exists(field), "the SOAP prompt sheet has no instructions field")
@@ -114,7 +114,7 @@ final class NoteUITests: AcceptanceCase {
         field.typeText(" Keep it to five sentences.")
         tab.driver.button(Copy.save).click()
 
-        tab.lengthButton.click()
+        tab.depthButton.click()
         tab.menuItem(startingWith: Copy.soapPromptEdit).click()
         XCTAssertTrue(tab.driver.exists(tab.driver.button(Copy.resetToDefault)), "no Reset to Default")
         tab.driver.button(Copy.resetToDefault).click()
@@ -220,8 +220,71 @@ final class NoteUITests: AcceptanceCase {
         then(text).hasTheSoapSections()
     }
 
-    private func generateLongNote(length: String, effort: String) -> String {
-        given.aSession(transcript: SessionContent.longTranscript(), length: length, effort: effort,
+    func test_NOTE_20_largeModelReadsALongSessionWhole() {
+        given.aSession(transcript: SessionContent.longTranscript(), model: Copy.largeModel, memoryGB: 64)
+        let tab = when.openNotesTab()
+
+        let coverage = when.generateNote(on: tab)
+
+        then(coverage).coverageSaysTheWholeTranscriptWasRead()
+    }
+
+    func test_NOTE_20_smallModelReadsTheSameSessionInParts() {
+        given.aSession(transcript: SessionContent.longTranscript())
+        let tab = when.openNotesTab()
+
+        let coverage = when.generateNote(on: tab)
+
+        then(coverage).coverageCountsEveryPart()
+    }
+
+    func test_NOTE_21_followsTheNoteUntilTheReaderScrollsUp() {
+        given.aSession(transcript: SessionContent.shortTranscript, stageMs: 30,
+                       replies: [Self.longNote], streamsWords: true, holdsOpen: true)
+        let tab = when.openNotesTab()
+        when.pickFormat("SOAP", on: tab)
+        tab.generateSoapButton.click()
+        then(tab).showsText("Line 40 of the plan.")
+
+        then(tab).keepsTheNewestTextInView()
+
+        when.scrollTheNoteUp(on: tab)
+
+        then(tab).staysWhereTheReaderScrolled(whileShowing: "Line 100 of the plan.")
+    }
+
+    func test_NOTE_22_finishedNoteIsShownToItsEndAndAnnounced() {
+        given.aSession(transcript: SessionContent.shortTranscript, stageMs: 5,
+                       replies: [Self.longNote], streamsWords: true, holdsOpen: false)
+        let tab = when.openNotesTab()
+        when.pickFormat("SOAP", on: tab)
+        tab.generateSoapButton.click()
+
+        then(tab).showsText("Line 120 of the plan.")
+        then(tab).stopIsGone()
+        then(tab).isAtTheEndOfTheNote()
+        then(tab).announcesTheNoteIsReady()
+    }
+
+    func test_NOTE_22_noticeOpensTheNoteFromElsewhere() {
+        given.aSession(transcript: SessionContent.shortTranscript, stageMs: 40,
+                       replies: [Copy.soapReply], streamsWords: true, holdsOpen: false)
+        let tab = when.openNotesTab()
+        when.pickFormat("SOAP", on: tab)
+        tab.generateSoapButton.click()
+        when.openTheTranscript()
+
+        then(tab).announcesTheNoteIsReady()
+        tab.driver.button(Copy.openNote).click()
+
+        then(tab).showsText("Follow up next week.")
+    }
+
+    /// A note far taller than the reader's view.
+    private static let longNote = (1...120).map { "Line \($0) of the plan." }.joined(separator: "\n")
+
+    private func generateLongNote(depth: String, effort: String) -> String {
+        given.aSession(transcript: SessionContent.longTranscript(), depth: depth, effort: effort,
                        stageMs: 100, plansLookups: true)
         let tab = when.openNotesTab()
         return when.generateNote(on: tab)

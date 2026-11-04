@@ -17,7 +17,7 @@ struct SessionListPage {
     let button: String
     /// Whether the session pane sits beside the list.
     let showsSessionPane: Bool
-    /// The list's width as it opens on a page `pageWidth` wide.
+    /// The list's width on a page `pageWidth` wide.
     let listWidth: CGFloat
     let pageWidth: CGFloat
 }
@@ -105,22 +105,41 @@ extension When {
     /// The patient page's width in these checks: a typical window, less the sidebar.
     static let pageWidth: CGFloat = 1100
 
-    /// Opens a patient page and reads what the empty session list says.
+    /// Opens a patient page, with no session open yet, and reads it.
     func openPatientPage(of patient: Patient) throws -> SessionListPage {
+        try patientPage(of: patient, sessionOpen: false)
+    }
+
+    /// Clicks `session` in the patient's list and reads the page.
+    func openSession(_ session: SessionRecord, of patient: Patient) throws -> SessionListPage {
+        let listed = try XCTUnwrap(app.appModel.store).listSessions(for: patient)
+        XCTAssertTrue(listed.contains { $0.id == session.id }, "the session is not in the list")
+        return try patientPage(of: patient, sessionOpen: true)
+    }
+
+    /// Clicks **Close Session** on the open session and reads the page.
+    func closeTheSession(of patient: Patient) throws -> SessionListPage {
+        try patientPage(of: patient, sessionOpen: false)
+    }
+
+    private func patientPage(of patient: Patient, sessionOpen: Bool) throws -> SessionListPage {
         let count = try XCTUnwrap(app.appModel.store).listSessions(for: patient).count
+        let showsPane = PatientPageLayout.showsSessionPane(hasOpenSession: sessionOpen)
         return SessionListPage(
             showsEmptyState: SessionListEmptyState.isShown(sessionCount: count),
             title: SessionListEmptyState.title,
             button: SessionListEmptyState.newSessionButton,
-            showsSessionPane: PatientPageLayout.showsSessionPane(sessionCount: count),
-            listWidth: PatientPageLayout.listWidth(share: PatientPageLayout.defaultListShare, total: Self.pageWidth),
+            showsSessionPane: showsPane,
+            listWidth: showsPane
+                ? PatientPageLayout.listWidth(proposed: PatientPageLayout.defaultListWidth, total: Self.pageWidth)
+                : Self.pageWidth,
             pageWidth: Self.pageWidth)
     }
 
     /// Drags the divider on a patient page `pageWidth` points wide by `points`
     /// (positive to the right), starting from the list's default width.
     func dragColumnDivider(by points: CGFloat, pageWidth: CGFloat = When.pageWidth) -> ColumnDrag {
-        let before = PatientPageLayout.listWidth(share: PatientPageLayout.defaultListShare, total: pageWidth)
+        let before = PatientPageLayout.listWidth(proposed: PatientPageLayout.defaultListWidth, total: pageWidth)
         return ColumnDrag(
             pageWidth: pageWidth,
             listBefore: before,
@@ -205,17 +224,24 @@ extension Then where Subject == SessionListPage {
     }
 
     func showsNoEmptySessionPaneBesideIt() {
-        expect(!subject.showsSessionPane, "an empty session pane sits beside a list with no sessions")
+        expect(!subject.showsSessionPane, "a session pane sits beside the list with no session open")
+    }
+
+    func fillsThePageWithTheList() {
+        expectEqual(subject.listWidth, subject.pageWidth, "the list's width with no session open")
     }
 
     func showsTheSessionBesideTheList() {
-        expect(subject.showsSessionPane, "no session pane beside a list with sessions")
+        expect(subject.showsSessionPane, "no session pane beside the list with a session open")
     }
 
-    func splitsThePageEvenly() {
+    /// The list narrows to a compact column (300 to 360 points) and the
+    /// session takes the rest, most of the page.
+    func givesTheSessionMostOfThePage() {
         let session = subject.pageWidth - subject.listWidth - 1
-        expect(abs(subject.listWidth - session) <= 1,
-               "the list opens \(subject.listWidth) wide beside a session \(session) wide")
+        expect((300...360).contains(subject.listWidth), "the list opens \(subject.listWidth) wide")
+        expect(session >= 0.6 * subject.pageWidth,
+               "the session opens \(session) wide on a page \(subject.pageWidth) wide")
     }
 }
 

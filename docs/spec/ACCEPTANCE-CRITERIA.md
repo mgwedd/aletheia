@@ -49,7 +49,8 @@ Before you start: a patient with no sessions.
 - **SESSION-07** Choose **Remind Me** > Tomorrow (dev build) → Reminders gains a "Follow up" item that names no patient.
 - **SESSION-08** Run the Shortcuts action "Show Today's Sessions" (dev build) → sessions are listed by initials, and when locked it refuses.
 - **SESSION-09** With FileVault off, click **New session** → an alert asks you to turn on FileVault and no session is created.
-- **SESSION-10** Open a patient with a session and drag the divider between the session list and the session (an easy-to-grab strip, as wide as every pane divider) → the page starts split evenly, and the list widens or narrows with the drag, stopping before either side gets too narrow to use.
+- **SESSION-10** Open a session and drag the divider between the session list and the session (an easy-to-grab strip, as wide as every pane divider) → the list starts as a compact column with the session taking most of the page, and the list widens or narrows with the drag, stopping before either side gets too narrow to use.
+- **SESSION-11** Open a patient whose sessions are all closed, open one session, then click **Close Session** → with no session open the list fills the page, with no empty session pane beside it; an open session slides in beside the list and takes most of the page while the list narrows to a compact column; closing it gives the list the whole page again. With Reduce Motion on, the change is instant.
 
 ## 4. Record a session (RECORD)
 Before you start: a session with no transcript, a Mac that can play some audio, and microphone and call-audio permissions not yet decided.
@@ -121,7 +122,7 @@ Before you start: a session with a transcript, the AI model downloaded, and a co
 - **NOTE-03** Click **Generate SOAP note** → text streams in under a status line with elapsed time, and **Stop** appears.
 - **NOTE-04** Read the finished SOAP note → it has Subjective, Objective, Assessment and Plan, with speakers as "You" and the client's first name.
 - **NOTE-05** Click **Stop** while text is streaming → the text written so far is kept.
-- **NOTE-06** Click anywhere on the **Length** button, not only its icon → its menu opens with Concise, Natural and Detailed and an AI effort choice.
+- **NOTE-06** Click anywhere on the **Depth** button ("Depth: Natural · Normal"), not only its icon → its menu opens with Concise, Natural and Detailed and an AI effort choice.
 - **NOTE-07** Choose **Edit SOAP Prompt…** → a sheet lets you save your own instructions, and **Reset to Default** restores them.
 - **NOTE-08** Request a note while a chat answer is running → a waiting status with **Cancel** appears, and the note starts when the answer ends.
 - **NOTE-09** Move the AI model out of its folder and click **Generate** → an alert says it isn't downloaded and offers **Download Model**.
@@ -133,12 +134,15 @@ Before you start: a session with a transcript, the AI model downloaded, and a co
 - **NOTE-15** Click **Copy** on a note and paste into a rich-text app → headings and lists come through formatted, and the button shows "Copied".
 - **NOTE-16** Put a line in a transcript telling the AI to ignore instructions, then generate a note → the note summarises normally and ignores it.
 - **NOTE-17** Generate a Detailed note, or a note at Focus, on a session over 30 minutes → the coverage line counts follow-up lookups as well as every part's summary; at Fast, or Concise or Natural at Normal, it counts none.
+- **NOTE-20** Generate a note on a 50-minute session → with the default model the coverage line says every part was summarized plus how many lines were quoted word for word; with MedGemma 27B at Normal it says "Read: the whole transcript, word for word".
+- **NOTE-21** Watch a long note stream past the bottom of the pane → the pane follows the newest text; scroll up and it stays where you put it until you scroll back near the end.
+- **NOTE-22** Let a note finish → if its Notes pane is open it scrolls to the end, and a "SOAP note ready" notice appears in the main window wherever you are; **Open Note** opens that note.
 
 ## 8. Chat and Q&A (CHAT)
 Before you start: a patient with at least two sessions that have transcripts, and the AI model downloaded.
 - **CHAT-01** Open a session's **Ask** tab → it shows "Ask a question about this session" and a question box.
 - **CHAT-02** Type a question and press Return → it appears as a bubble and the answer streams in with a **Stop** button.
-- **CHAT-03** Let the answer finish → a "Read:" line says what part of the session was read.
+- **CHAT-03** Let the answer finish → no "Read:" line repeats the effort under it; the effort bar already says how much was read.
 - **CHAT-04** Click **Stop** mid-answer → the part already shown stays in the conversation.
 - **CHAT-05** Ask while a note is generating → a waiting status with **Cancel** appears, and cancelling removes the unanswered question.
 - **CHAT-06** Quit and reopen, then open the **Ask** tab → the earlier questions and answers are still there.
@@ -156,9 +160,23 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-18** Set a different effort in an **Ask** tab, the patient chat and notes → each keeps its own setting when you switch back.
 - **CHAT-19** Write a line about the client in **My Notes**, then ask "What have I noted about <name>?" in **Ask** → the answer quotes that line at once and says the AI never reads My Notes.
 - **CHAT-20** Ask a question on a long session → the status moves through reading the session part by part, analyzing, and "Preparing the answer" before the answer appears.
-- **CHAT-21** Open **Ask** on a session with a conversation → **Compact** sits on the effort bar, and "AI generated responses can be inaccurate. Double-check responses." shows at the bottom left of the conversation.
+- **CHAT-21** Open **Ask** on a session with a conversation → **Compact** sits on the effort bar, and "AI generated responses can be inaccurate. Double-check responses." shows in small print under the question box, clear of the progress line.
 - **CHAT-22** Keep asking on one session until the conversation passes a quarter of what the AI model can read at once → the earlier messages compact into a "Conversation compacted" card before the next answer.
 - **CHAT-23** Ask on a conversation that needs compacting, and the summary fails or is stopped → the question goes back into the box unsent; nothing typed is lost.
+- **CHAT-24** Open **Ask about this patient** and drag the divider between the **Chats** list and the chat (the same easy-to-grab strip as every pane divider) → the list widens or narrows with the drag, stopping before either side gets too narrow to use.
+- **CHAT-25** Open **Ask** on a session with a conversation, click **Clear** (just left of **Compact** on the effort bar) → the conversation empties at once, with no confirmation, and it is still empty after you quit and reopen the app.
+- **CHAT-26** In **Ask about this patient**, open a chat with a conversation, click **Clear** → that chat's conversation empties at once, with no confirmation, and the chat stays in the **Chats** list.
+- **CHAT-27** In **Ask about this patient**, click **Delete All Chats** in the **Chats** list and confirm → every chat about the patient is gone.
+- **CHAT-28** In **Ask**, drag across an answer with a heading, paragraphs, a list and a quote → one selection runs across all of them, ready to copy.
+- **CHAT-29** Open **Ask** on a session, then **Ask about this patient** → the bar shows a **Depth** control next to the effort with Concise, Natural and Detailed, Natural selected.
+- **CHAT-30** Set **Ask depth** to Concise in the **Formats** settings, start a new chat and change its **Depth** to Detailed → the chat opened on Concise, and the setting is still Concise.
+- **CHAT-31** Ask the same question at Concise, Natural and Detailed → the answer runs from a few sentences, to a short paragraph or two, to a full answer with headers and lists where they help.
+- **CHAT-32** Ask a follow-up after a long answer → the new answer takes the new question on its own terms, rather than reworking or re-summarising the earlier one.
+- **CHAT-33** Open the note **Depth** menu and the **Ask** bar's **Depth** → both are called "Depth" and offer the same three options, Concise, Natural and Detailed.
+- **CHAT-34** Pick the same depth for a note and an Ask answer → both follow the same kind of limit (Concise short, Natural plain prose, Detailed full and organized), with no answer cut off to fit.
+- **CHAT-35** Ask a question, or open a conversation whose saved answers and summary were written with the model's hidden reasoning or internal markers such as `<unused94>` or `<end_of_turn>` → the answers and the summary show only the answer text, and the next question is asked without them.
+- **CHAT-36** With a conversation on screen, click **Compact** → the answers above keep their full width while the summary is written, and the "Conversation compacted" card appears below them with nothing overlapping.
+- **CHAT-37** Click **Compact** and the AI model runs out of room before it finishes the summary → the summary is thrown away, the conversation stays as it was, and a message says "The summary didn't finish, so the conversation was kept as it was. Try Compact again, or name what to keep, like /compact medication."
 
 ## 9. Summaries prepared in the background (DIGEST)
 Before you start: a patient whose sessions have transcripts too long for this Mac to read at once, and the AI model downloaded.
@@ -255,12 +273,12 @@ Before you start: setup finished.
 - **SETTINGS-07** Pick a built-in model → its license link shows before anything downloads.
 - **SETTINGS-08** Start the model download → progress reads "Downloading model…" then "Verifying downloaded model…".
 - **SETTINGS-09** Add and remove a risk phrase → the list updates, and **Reset to Defaults** asks first.
-- **SETTINGS-10** Open **Formats** → you can set the default format and summary length and toggle what drafts include.
+- **SETTINGS-10** Open **Formats** → you can set the default format, the note depth and the Ask depth, and toggle what drafts include.
 - **SETTINGS-11** Turn on "Show recording diagnostics" and record → the recording pane gains a call-audio diagnostics readout.
 - **SETTINGS-12** Open **Licenses & Legal** → the Terms of Use and Privacy Policy links, **Consent Guide…** and third-party notices are there.
 - **SETTINGS-13** Choose an iCloud Drive or cloud-synced folder as the data folder → it is refused, asking for a folder that stays on this Mac; the current folder is kept.
 - **SETTINGS-14** Open Aletheia with its data folder now synced → a **Move data to this Mac** sheet offers to copy and verify it, then keep or delete the old one.
-- **SETTINGS-15** Open **AI and models** > **Built-in model** → MedGemma 1.5 4B is the default through 32 GB and on Intel; MedGemma 27B is offered on 32 GB+ Apple silicon and becomes the default at 48 GB+. Both use the Health AI Developer Foundations Terms.
+- **SETTINGS-15** Open **AI and models** > **Built-in model** → MedGemma 1.5 4B is the default on every Mac; MedGemma 27B is offered on 32 GB+ Apple silicon and is never chosen for you. Both use the Health AI Developer Foundations Terms.
 - **SETTINGS-16** Update from a version that defaulted to Llama 3.1 8B (or Gemma 4 E2B), having downloaded it and never chosen a model → **Built-in model** still shows it selected; MedGemma is offered, not switched to. With nothing downloaded, MedGemma is the default.
 - **SETTINGS-17** A model download fails → an alert says why and offers **Try Again**, which starts the download again, and **Report a Bug**.
 
@@ -316,6 +334,8 @@ Before you start: at least one patient and the app unlocked.
 - **MENUBAR-13** Rest the pointer for two seconds on a control with a help tip → a "how this works" popover appears once, just below the pointer, and closes when the pointer leaves the control.
 - **MENUBAR-14** Quit with work running → no alert appears and interrupted work is saved for the next launch.
 - **MENUBAR-15** While a recording is running, open the panel and try to start another → no second recording starts and the first keeps recording.
+- **MENUBAR-16** Quit (⌘Q) right after the built-in model answered → Aletheia closes with no crash report and the model is unloaded first.
+- **MENUBAR-17** Quit Aletheia from Terminal with `kill <pid>` while a session is transcribing → it winds down as it does for ⌘Q: interrupted work is saved for the next launch and no crash report is written.
 
 ## 20. Build and privacy checks from Terminal (BUILD)
 Before you start: the Release app at /Applications/Aletheia.app and the repository checked out.

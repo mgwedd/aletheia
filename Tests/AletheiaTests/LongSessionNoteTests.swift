@@ -90,15 +90,17 @@ final class LongSessionNoteTests: XCTestCase {
     private func run(
         transcript: String, effort: AnswerEffort = .normal, stored: SessionDigest? = nil, tokens: Int = 8192,
         format: ProgressNoteFormat = .soap, phrases: [String] = defaultPhrases, sectionCache: SectionCacheAccess? = nil,
-        notes: String = "", verbosity: SummaryVerbosity = .default, configure: (StubModel) -> Void = { _ in }
+        notes: String = "", depth: AnswerDepth = .default, readsLong: Bool = false,
+        configure: (StubModel) -> Void = { _ in }
     ) async throws -> Run {
         let stub = StubModel()
         configure(stub)
         var service = AssistantService(assistant: stub, model: "m")
         service.budget = ContextBudget(tokens: tokens)
+        service.readsLongTranscripts = readsLong
         var coverage: [String] = []
         let stream = LongSessionNote.stream(
-            format: format, transcript: transcript, notes: notes, verbosity: verbosity, effort: effort,
+            format: format, transcript: transcript, notes: notes, depth: depth, effort: effort,
             riskPhrases: phrases, service: service,
             builder: DigestBuilder(queue: InferenceQueue()), sessionID: UUID(),
             loadDigest: { stored }, saveDigest: { _ in }, sectionCache: sectionCache,
@@ -122,7 +124,8 @@ final class LongSessionNoteTests: XCTestCase {
         let result = try await run(transcript: text, effort: .focus)
         XCTAssertEqual(result.prompts, [Prompts.progressNote(format: .soap, transcript: text)])
         XCTAssertEqual(result.snapshots, ["DRAFT NOTE"])
-        XCTAssertTrue(result.coverage.isEmpty)
+        XCTAssertEqual(result.coverage, [LongSessionNote.wholeCoverageLabel(
+            totalLines: LongSessionNote.nonBlankLines(text).count, effort: .focus)])
     }
 
     func testOverflowUsesDigestAndPassagesWithinBudget() async throws {
@@ -171,10 +174,9 @@ final class LongSessionNoteTests: XCTestCase {
         let text = syntheticTranscript(minutes: 120)
         let result = try await run(transcript: text, stored: storedDigest(for: text))
         let notice = try XCTUnwrap(result.coverage.first)
-        XCTAssertTrue(notice.hasPrefix("Read: a summary of the whole session"))
-        XCTAssertTrue(notice.contains("of 360 transcript lines"))
+        XCTAssertTrue(notice.hasPrefix("Read: every part of the session, summarized"))
+        XCTAssertTrue(notice.contains("of 360 transcript lines quoted word for word"))
         XCTAssertTrue(notice.contains("Normal"))
-        XCTAssertTrue(notice.contains("may be missing"))
         let sent = try XCTUnwrap(result.prompts.last?.components(separatedBy: "Passages from the original transcript:\n").last)
         // The prompt carries the passages compacted (same-speaker lines merged), so count
         // the transcript lines whose text is in it.
@@ -568,7 +570,7 @@ final class LongSessionNoteTests: XCTestCase {
         let cut = LongSessionNote.coverageLabel(digestParts: 3, digestShortened: true, passageLines: 5, totalLines: 90, effort: .normal, check: nil)
         XCTAssertTrue(cut.contains("(3 parts, shortened to fit)"))
         let gone = LongSessionNote.coverageLabel(digestParts: 3, digestOmitted: true, passageLines: 5, totalLines: 90, effort: .normal, check: nil)
-        XCTAssertTrue(gone.contains("no summary of the whole session"))
+        XCTAssertTrue(gone.contains("no session summary (it didn't fit)"))
         XCTAssertFalse(gone.contains("shortened"))
     }
 
@@ -823,10 +825,91 @@ final class LongSessionNoteTests: XCTestCase {
         let result = try await run(transcript: text, tokens: 65_536)
         let final = try XCTUnwrap(result.prompts.last)
         let sections = TranscriptSections.split(text).count
-        XCTAssertGreaterThan(sections, LongSessionNote.wholeReadSections)
+        XCTAssertGreaterThan(sections, LongSessionNote.wholeReadFloor)
         XCTAssertFalse(final.contains(text), "not sent whole")
         XCTAssertEqual(final.components(separatedBy: "section digest").count - 1, sections, "one digest per section")
         XCTAssertTrue(final.contains("think about hurting myself"), "risk lines are still read from the transcript")
+    }
+
+    // MARK: - Read plan
+
+    private func plan(
+        sections: Int, fits: Bool = true, room: Int = 200_000, large: Bool, effort: AnswerEffort = .normal
+    ) -> LongSessionNote.ReadPlan {
+        LongSessionNote.readPlan(sections: sections, fitsWhole: fits, room: room, readsLongTranscripts: large, effort: effort)
+    }
+
+    func testSmallModelsKeepTheFloorAtEveryEffort() {
+        for effort in AnswerEffort.allCases {
+            XCTAssertEqual(plan(sections: 3, large: false, effort: effort), .whole)
+            XCTAssertEqual(plan(sections: 4, large: false, effort: effort), .digest(room: LongSessionNote.readRoom))
+        }
+    }
+
+    func testALargeModelReadsAnHourWholeAtNormal() {
+        XCTAssertEqual(plan(sections: 6, large: true), .whole)
+        XCTAssertEqual(plan(sections: 7, large: true), .digest(room: LongSessionNote.largeReadRoom))
+    }
+
+    func testALargeModelReadsAnyLengthThatFitsWholeAtFocus() {
+        XCTAssertEqual(plan(sections: 12, large: true, effort: .focus), .whole)
+        XCTAssertEqual(plan(sections: 12, fits: false, large: true, effort: .focus), .digest(room: LongSessionNote.largeReadRoom))
+    }
+
+    func testFastKeepsTheFloorOnALargeModel() {
+        XCTAssertEqual(plan(sections: 4, large: true, effort: .fast), .digest(room: LongSessionNote.readRoom))
+    }
+
+    func testNothingIsReadWholeThatDoesNotFit() {
+        XCTAssertEqual(plan(sections: 1, fits: false, large: false), .digest(room: LongSessionNote.readRoom))
+    }
+
+    func testTheDigestRoomNeverExceedsTheBudget() {
+        XCTAssertEqual(plan(sections: 9, room: 20_000, large: true), .digest(room: 20_000))
+        XCTAssertEqual(plan(sections: 9, room: 20_000, large: false), .digest(room: 20_000))
+    }
+
+    func testALargeModelSendsAnHourLongSessionWhole() async throws {
+        let text = syntheticTranscript(minutes: 60)
+        let small = try await run(transcript: text, tokens: 65_536)
+        XCTAssertFalse(try XCTUnwrap(small.prompts.last).contains(text), "a small model reads the digest")
+
+        let large = try await run(transcript: text, tokens: 65_536, readsLong: true)
+        XCTAssertEqual(large.prompts, [Prompts.progressNote(format: .soap, transcript: text)])
+        XCTAssertEqual(large.coverage, [LongSessionNote.wholeCoverageLabel(
+            totalLines: LongSessionNote.nonBlankLines(text).count, effort: .normal)])
+    }
+
+    func testALargeModelGetsMoreOfALongerSession() async throws {
+        let text = syntheticTranscript(minutes: 300)
+        let digest = storedDigest(for: text)
+        let small = try await run(transcript: text, stored: digest, tokens: 65_536)
+        let large = try await run(transcript: text, stored: digest, tokens: 65_536, readsLong: true)
+        XCTAssertGreaterThan(try XCTUnwrap(large.prompts.last).count, try XCTUnwrap(small.prompts.last).count)
+    }
+
+    // MARK: - Coverage wording
+
+    func testCoverageSaysEveryPartWasSummarizedAndCountsQuotedLines() {
+        let label = LongSessionNote.coverageLabel(digestParts: 6, passageLines: 67, totalLines: 198, effort: .normal, check: nil)
+        XCTAssertEqual(label, "Read: every part of the session, summarized (6 parts), plus 67 of 198 transcript lines quoted word for word · Normal.")
+        let lookups = LongSessionNote.coverageLabel(digestParts: 6, passageLines: 67, totalLines: 198, effort: .focus, lookups: 2, check: .ran)
+        XCTAssertEqual(lookups, "Read: every part of the session, summarized (6 parts), plus 67 of 198 transcript lines quoted word for word, "
+            + "and 2 follow-up lookups · Focus. Checked against the passages.")
+    }
+
+    func testCoverageKeepsTheRiskWarningAndCheckOutcomeWordForWord() {
+        let label = LongSessionNote.coverageLabel(
+            digestParts: 3, passageLines: 5, totalLines: 90, effort: .focus, droppedRisk: 2, check: .alteredRisk)
+        XCTAssertTrue(label.hasSuffix(" 2 risk-flagged lines didn't fit or were shortened; check the transcript for risk. "
+            + LongSessionNote.CheckOutcome.alteredRisk.text))
+    }
+
+    func testAWholeReadSaysSoPlainly() {
+        XCTAssertEqual(LongSessionNote.wholeCoverageLabel(totalLines: 198, effort: .normal),
+                       "Read: the whole transcript, word for word (198 lines) · Normal.")
+        XCTAssertEqual(LongSessionNote.wholeCoverageLabel(totalLines: 1, effort: .fast),
+                       "Read: the whole transcript, word for word (1 line) · Fast.")
     }
 
     func testShortenedDigestKeepsBothEnds() {
@@ -842,17 +925,17 @@ final class LongSessionNoteTests: XCTestCase {
     // MARK: - Lookups at Detailed or Focus
 
     func testLookupsOnlyAtDetailedOrFocus() {
-        XCTAssertTrue(LongSessionNote.looksCloser(effort: .normal, verbosity: .detailed))
-        XCTAssertTrue(LongSessionNote.looksCloser(effort: .focus, verbosity: .concise))
-        XCTAssertTrue(LongSessionNote.looksCloser(effort: .focus, verbosity: .natural))
-        XCTAssertFalse(LongSessionNote.looksCloser(effort: .normal, verbosity: .natural))
-        XCTAssertFalse(LongSessionNote.looksCloser(effort: .normal, verbosity: .concise))
-        XCTAssertFalse(LongSessionNote.looksCloser(effort: .fast, verbosity: .detailed))
+        XCTAssertTrue(LongSessionNote.looksCloser(effort: .normal, depth: .detailed))
+        XCTAssertTrue(LongSessionNote.looksCloser(effort: .focus, depth: .concise))
+        XCTAssertTrue(LongSessionNote.looksCloser(effort: .focus, depth: .natural))
+        XCTAssertFalse(LongSessionNote.looksCloser(effort: .normal, depth: .natural))
+        XCTAssertFalse(LongSessionNote.looksCloser(effort: .normal, depth: .concise))
+        XCTAssertFalse(LongSessionNote.looksCloser(effort: .fast, depth: .detailed))
     }
 
     func testDetailedNoteReadsAPartInFullAfterEverySummary() async throws {
         let text = syntheticTranscript(minutes: 120)
-        let result = try await run(transcript: text, tokens: 65_536, verbosity: .detailed) {
+        let result = try await run(transcript: text, tokens: 65_536, depth: .detailed) {
             $0.planResponse = #"{"calls":[{"tool":"read_section","session":"S1","start":"50:00","end":"52:00"}]}"#
         }
         let plan = try XCTUnwrap(result.plans.first)
@@ -868,8 +951,8 @@ final class LongSessionNoteTests: XCTestCase {
 
     func testNaturalAtNormalAndDetailedAtFastMakeNoLookups() async throws {
         let text = syntheticTranscript(minutes: 120)
-        let natural = try await run(transcript: text, tokens: 65_536, verbosity: .natural)
-        let fast = try await run(transcript: text, effort: .fast, tokens: 65_536, verbosity: .detailed)
+        let natural = try await run(transcript: text, tokens: 65_536, depth: .natural)
+        let fast = try await run(transcript: text, effort: .fast, tokens: 65_536, depth: .detailed)
         XCTAssertTrue(natural.plans.isEmpty)
         XCTAssertTrue(fast.plans.isEmpty)
         XCTAssertFalse(try XCTUnwrap(natural.coverage.last).contains("follow-up"))
@@ -877,7 +960,7 @@ final class LongSessionNoteTests: XCTestCase {
 
     func testFocusPlansLookupsAtAnyLength() async throws {
         let text = syntheticTranscript(minutes: 120)
-        let focus = try await run(transcript: text, effort: .focus, tokens: 65_536, verbosity: .concise)
+        let focus = try await run(transcript: text, effort: .focus, tokens: 65_536, depth: .concise)
         XCTAssertFalse(focus.plans.isEmpty)
     }
 }

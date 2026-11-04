@@ -749,13 +749,23 @@ struct SettingsView: View {
         }
         SettingsHairline()
         VStack(alignment: .leading, spacing: 6) {
-            Text("Summary length").eyebrowStyle()
+            Text("Note depth").eyebrowStyle()
             ThemeSegmentedControl(
-                options: SummaryVerbosity.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
-                selection: $settings.summaryVerbosity
+                options: AnswerDepth.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
+                selection: $settings.noteDepth
             )
-            .accessibilityLabel("Summary length")
-            SettingsCaption(settings.summaryVerbosity.blurb)
+            .accessibilityLabel("Note depth")
+            SettingsCaption(settings.noteDepth.blurb(for: .note))
+        }
+        SettingsHairline()
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Ask depth").eyebrowStyle()
+            ThemeSegmentedControl(
+                options: AnswerDepth.allCases.map { ThemeTab(value: $0, title: $0.displayName) },
+                selection: $settings.askDepth
+            )
+            .accessibilityLabel("Ask depth")
+            SettingsCaption(settings.askDepth.blurb(for: .ask) + " New chats start here; change a chat's own from the Ask bar.")
         }
         SettingsHairline()
         SettingsSwitchRow(

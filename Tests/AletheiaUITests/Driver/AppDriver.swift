@@ -24,6 +24,10 @@ struct ProbeSnapshot: Decodable, Equatable {
     var aiRequests: [String]
     /// Lines the transcript on screen is laid out in.
     var transcriptLines: Int
+    /// Points between the bottom of the note reader's view and the end of the note; nil when none is shown.
+    var noteFromEnd: Int?
+    /// Points the note reader is scrolled down from the top of the note.
+    var noteFromTop: Int?
 }
 
 /// Drives the real Debug app. The test owns the world through the scenario and
@@ -198,6 +202,14 @@ final class AppDriver {
     func becomesEnabled(_ element: XCUIElement, _ enabled: Bool) -> Bool {
         wait(for: element, "isEnabled == \(enabled ? "true" : "false")", timeout: Self.timeout)
             || timedOut("waited for this to be \(enabled ? "enabled" : "disabled"): \(element)")
+    }
+
+    /// Waits for the layout to settle into `condition` and says whether it
+    /// did. The caller asserts afterwards, with its own message.
+    @discardableResult
+    func settles(_ condition: @escaping () -> Bool) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)
+        return XCTWaiter().wait(for: [expectation], timeout: Self.timeout) == .completed
     }
 
     private func wait(for element: XCUIElement, _ predicate: String, timeout: TimeInterval) -> Bool {

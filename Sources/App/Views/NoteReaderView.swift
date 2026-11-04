@@ -14,6 +14,8 @@ import AppKit
 ///    and opening the note at a search match flashes the match the same way.
 ///  - Reports `selection` and `selectionRange` so the toolbar's "Comment"
 ///    button can enable and anchor an inline composer card.
+///  - While a note is written it keeps the newest text in view until the
+///    therapist scrolls up (`NoteFollow`), and goes to the end when it finishes.
 #if canImport(AppKit)
 struct NoteReaderView: NSViewRepresentable {
     let text: String
@@ -28,6 +30,9 @@ struct NoteReaderView: NSViewRepresentable {
     var focusToken: Int = 0
     var composingRange: NSRange? = nil
     var onComposingRectChange: (CGRect?) -> Void = { _ in }
+    /// A note is being written into the reader: keep its newest text in view,
+    /// and go to its end when the writing stops.
+    var follows = false
 
     /// The note as the reader shows it: Markdown rendered to styled text.
     /// Selections, quote offsets and highlights are positions in its string,
@@ -44,6 +49,7 @@ struct NoteReaderView: NSViewRepresentable {
         scroll.hasHorizontalScroller = false
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
+        scroll.setAccessibilityIdentifier("notes.reader")
 
         let contentSize = scroll.contentSize
         let textView = ClickReportingTextView(frame: NSRect(origin: .zero, size: contentSize))
@@ -81,10 +87,13 @@ struct NoteReaderView: NSViewRepresentable {
         }
 
         context.coordinator.textView = textView
+        #if DEBUG
+        FixtureMode.noteReaderView = textView
+        #endif
         scroll.contentView.postsBoundsChangedNotifications = true
         textView.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(
-            context.coordinator, selector: #selector(Coordinator.viewportChanged(_:)),
+            context.coordinator, selector: #selector(Coordinator.scrolled(_:)),
             name: NSView.boundsDidChangeNotification, object: scroll.contentView
         )
         NotificationCenter.default.addObserver(
@@ -100,6 +109,7 @@ struct NoteReaderView: NSViewRepresentable {
         guard let textView = scroll.documentView as? NSTextView else { return }
         context.coordinator.parent = self
         context.coordinator.sync(into: textView)
+        context.coordinator.followIfNeeded(in: textView)
         context.coordinator.flashIfNeeded(in: textView, focus: focus, focusToken: focusToken)
         context.coordinator.updateComposing(in: textView, composingRange: composingRange)
     }
@@ -129,6 +139,9 @@ struct NoteReaderView: NSViewRepresentable {
         private var appliedComposingRange: NSRange?
         private var lastReportedRect: CGRect?
         private var isApplyingProgrammaticChange = false
+        private var follow = NoteFollow()
+        private var textGrew = false
+        private var isScrollingProgrammatically = false
 
         init(_ parent: NoteReaderView) { self.parent = parent }
 
@@ -140,6 +153,7 @@ struct NoteReaderView: NSViewRepresentable {
             if textChanged || anchorsChanged {
                 applyFormattedContent(to: textView)
             }
+            if textChanged { textGrew = true }
         }
 
         private func applyFormattedContent(to textView: NSTextView) {
@@ -187,6 +201,45 @@ struct NoteReaderView: NSViewRepresentable {
                 textView.scrollRangeToVisible(range)
             }
             reportComposingRect(for: textView)
+        }
+
+        /// Keeps the newest text in view while a note is written, unless the
+        /// therapist has scrolled up, and goes to the end when the writing stops.
+        func followIfNeeded(in textView: NSTextView) {
+            let grew = textGrew
+            textGrew = false
+            let writing = parent.follows
+            guard follow.update(writing: writing, textGrew: grew) else { return }
+            scrollToEnd(textView)
+            // When the writing stops, the rows around the reader change in the
+            // same update and resize it, so go to the end again once that lands.
+            if !writing {
+                DispatchQueue.main.async { [weak self, weak textView] in
+                    guard let self, let textView else { return }
+                    self.scrollToEnd(textView)
+                }
+            }
+        }
+
+        private func scrollToEnd(_ textView: NSTextView) {
+            guard let scroll = textView.enclosingScrollView, let container = textView.textContainer else { return }
+            textView.layoutManager?.ensureLayout(for: container)
+            let clip = scroll.contentView
+            let bottom = max(0, textView.frame.height - clip.bounds.height)
+            guard abs(clip.bounds.origin.y - bottom) > 0.5 else { return }
+            isScrollingProgrammatically = true
+            defer { isScrollingProgrammatically = false }
+            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: bottom))
+            scroll.reflectScrolledClipView(clip)
+        }
+
+        /// The view moved: a scroll by the therapist decides whether to keep following.
+        @objc func scrolled(_ notification: Notification) {
+            if !isScrollingProgrammatically && !isApplyingProgrammaticChange,
+               let textView, let clip = textView.enclosingScrollView?.contentView {
+                follow.scrolled(distanceFromEnd: textView.frame.height - clip.bounds.maxY)
+            }
+            viewportChanged(notification)
         }
 
         /// Scrolls to and flashes the focus once per token. A request that comes

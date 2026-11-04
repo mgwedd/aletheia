@@ -97,14 +97,31 @@ final class SessionSpec: AcceptanceCase {
 
     func test_SESSION_10() async throws {
         let jane = try await given.patient(named: "Jane Doe")
-        try when.clickNewSession(for: jane)
-        let page = try when.openPatientPage(of: jane)
+        let session = try when.clickNewSession(for: jane)
+        let page = try when.openSession(session, of: jane)
         then(page).showsTheSessionBesideTheList()
-        then(page).splitsThePageEvenly()
+        then(page).givesTheSessionMostOfThePage()
 
         then(when.dragColumnDivider(by: 120)).movesTheListBy(120)
-        then(when.dragColumnDivider(by: -60)).movesTheListBy(-60)
+        then(when.dragColumnDivider(by: -30)).movesTheListBy(-30)
         then(when.dragColumnDivider(by: 5000)).stopsBeforeEitherSideIsTooNarrow()
         then(when.dragColumnDivider(by: -5000)).stopsBeforeEitherSideIsTooNarrow()
+    }
+
+    func test_SESSION_11() async throws {
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try when.clickNewSession(for: jane)
+
+        let page = try when.openPatientPage(of: jane)
+        then(page).showsNoEmptySessionPaneBesideIt()
+        then(page).fillsThePageWithTheList()
+
+        let opened = try when.openSession(session, of: jane)
+        then(opened).showsTheSessionBesideTheList()
+        then(opened).givesTheSessionMostOfThePage()
+
+        let closed = try when.closeTheSession(of: jane)
+        then(closed).showsNoEmptySessionPaneBesideIt()
+        then(closed).fillsThePageWithTheList()
     }
 }

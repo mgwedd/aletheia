@@ -100,6 +100,9 @@ struct SessionDetailView: View {
     var initialNoteFormat: ProgressNoteFormat? = nil
     var initialShowingMyNotes: Bool = false
     var navigationToken: Int = 0
+    /// Closes the session, giving the patient's page back its full width.
+    /// `nil` where there is nothing to close back to.
+    var onClose: (() -> Void)? = nil
 
     init(
         patient: Patient,
@@ -111,7 +114,8 @@ struct SessionDetailView: View {
         initialSearchFocus: SearchMatchFocus? = nil,
         initialNoteFormat: ProgressNoteFormat? = nil,
         initialShowingMyNotes: Bool = false,
-        navigationToken: Int = 0
+        navigationToken: Int = 0,
+        onClose: (() -> Void)? = nil
     ) {
         self.patient = patient
         self.session = session
@@ -123,6 +127,7 @@ struct SessionDetailView: View {
         self.initialNoteFormat = initialNoteFormat
         self.initialShowingMyNotes = initialShowingMyNotes
         self.navigationToken = navigationToken
+        self.onClose = onClose
         self._selectedTab = State(initialValue: initialTab)
         self._showingMyNotes = State(initialValue: initialShowingMyNotes)
         self._focusedCommentID = State(initialValue: initialFocusedCommentID)
@@ -467,17 +472,28 @@ struct SessionDetailView: View {
     /// Title and consent line on one row when they fit; in a narrow column the
     /// consent line goes under the title, wrapping if it must.
     private var header: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                headerTitle
-                Spacer(minLength: 0)
-                consentStatus(alignment: .trailing).fixedSize()
+        HStack(spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    headerTitle
+                    Spacer(minLength: 0)
+                    consentStatus(alignment: .trailing).fixedSize()
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    headerTitle
+                    consentStatus(alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            VStack(alignment: .leading, spacing: 4) {
-                headerTitle
-                consentStatus(alignment: .leading)
+            if let onClose {
+                Button(action: onClose) {
+                    Label("Close Session", systemImage: "xmark")
+                }
+                .buttonStyle(.themeIcon)
+                .controlSize(.small)
+                .help("Close this session")
+                .accessibilityIdentifier("session-close")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 6)
@@ -1371,7 +1387,7 @@ struct SessionDetailView: View {
                         .shortcut(AppHotkey.generateNote, help: "Regenerate the note")
                     }
                     if !noteRunner.isStreaming && !noteRunner.isQueued && !isEditingNote && !note.noteLocked {
-                        noteLengthMenu
+                        noteDepthMenu
                     }
                     if !summaryText.isEmpty && !noteRunner.isStreaming {
                         if hasPreviousNote && !isEditingNote && !noteRunner.isQueued && !note.noteLocked {
@@ -1487,7 +1503,8 @@ struct SessionDetailView: View {
                         focus: noteFocus,
                         focusToken: noteFocusToken,
                         composingRange: noteComposingRange,
-                        onComposingRectChange: { noteComposerAnchor = $0 }
+                        onComposingRectChange: { noteComposerAnchor = $0 },
+                        follows: noteRunner.isStreaming
                     )
                     .overlay { noteComposerOverlay }
                 } comments: {
@@ -1642,14 +1659,14 @@ struct SessionDetailView: View {
         return max(margin, paneHeight - noteComposerHeight - margin)
     }
 
-    /// Length for every format, effort for long sessions, and the per-format
-    /// prompt. Changing length or effort takes effect on the next Regenerate.
-    private var noteLengthMenu: some View {
+    /// Depth for every format, effort for long sessions, and the per-format
+    /// prompt. Changing depth or effort takes effect on the next Regenerate.
+    private var noteDepthMenu: some View {
         let format = settings.progressNoteFormat
         let customized = settings.noteInstructions[format.rawValue] != nil
         return Menu {
-            Picker(NoteWords.lengthTitle, selection: $settings.summaryVerbosity) {
-                ForEach(SummaryVerbosity.allCases) { level in
+            Picker(NoteWords.depthTitle, selection: $settings.noteDepth) {
+                ForEach(AnswerDepth.allCases) { level in
                     Text(level.displayName).tag(level)
                 }
             }
@@ -1668,7 +1685,7 @@ struct SessionDetailView: View {
         } label: {
             // AdaptiveLabel, not Label: a Menu's label ignores .labelStyle(.iconOnly).
             AdaptiveLabel(
-                title: NoteWords.lengthLabel(length: settings.summaryVerbosity, effort: settings.noteEffort),
+                title: NoteWords.depthLabel(depth: settings.noteDepth, effort: settings.noteEffort),
                 systemImage: "text.alignleft"
             )
         }
@@ -1676,8 +1693,8 @@ struct SessionDetailView: View {
         // menu; the default style only answered clicks on the icon.
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .accessibilityIdentifier("notes.length")
-        .help("How long the note is, and the AI effort for a long session. \(settings.noteEffort.displayName): \(settings.noteEffort.blurb(for: .note)) Regenerate to apply a change.")
+        .accessibilityIdentifier("notes.depth")
+        .help("How much the note says, and the AI effort for a long session. \(settings.noteEffort.displayName): \(settings.noteEffort.blurb(for: .note)) Regenerate to apply a change.")
     }
 
     /// Shown while a note is generated: one line and a bar.
@@ -1764,8 +1781,10 @@ struct SessionDetailView: View {
             queuedStatus: chatRunner.queuedStatus,
             notices: chat.notices,
             onCompact: { chat.compact($0) },
+            onClear: { chat.clear() },
             progress: chatRunner.progress,
             effort: $settings.sessionChatEffort,
+            depth: $chat.depth,
             isSessionRecording: recorder.isRecording,
             returnedQuestion: $chat.returnedQuestion
         )
