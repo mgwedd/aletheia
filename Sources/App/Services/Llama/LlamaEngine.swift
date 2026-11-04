@@ -277,6 +277,9 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
 
     // MARK: - Load / unload (queue-confined)
 
+    /// The CPU features and backends llama.cpp was built with, for the benchmark.
+    static var systemInfo: String { String(cString: llama_print_system_info()) }
+
     /// On the CPU path the model gets no GPU devices at all (an empty device
     /// list), so Metal is never set up and no layer or op is offloaded to it.
     static func loadModel(at url: URL, usesGPU: Bool) -> OpaquePointer? {
@@ -577,6 +580,9 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
                 throw LocalLLMEngineError.generationFailed("The model failed to decode a batch.")
             }
             if readEnd == nil {
+                // The GPU runs the prompt asynchronously: wait for it, so the
+                // read time is the prompt's and not the first token's.
+                llama_synchronize(context)
                 readEnd = DispatchTime.now().uptimeNanoseconds
                 var done = AIRunStats()
                 done.prefill = PrefillProgress(part: parts, total: parts, complete: true)

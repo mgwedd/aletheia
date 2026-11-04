@@ -163,7 +163,7 @@ jobs:
             jq -r '.[] | if .kind == "whisper" then
                 "| Whisper | \(.model) | \(.gpu) | \(.load_s*10|round/10) | \(.run_s*10|round/10) | \(.realtime_factor*100|round/100)× realtime | \(.est_50min_s/60|round) min | \(.readable) (WER \(.wer*100|round)%) |"
               else
-                "| llama.cpp | \(.model) | \(.gpu) | \(.load_s*10|round/10) | \(.run_s*10|round/10) | prefill \(.prefill_tps|round) tok/s, decode \(.decode_tps*10|round/10) tok/s | | \(.readable) |"
+                "| llama.cpp | \(.model) | \(.gpu) | \(.load_s*10|round/10) | \(.run_s*10|round/10) | prefill \(.prefill_tps*10|round/10) tok/s, decode \(.decode_tps*10|round/10) tok/s | | \(.readable) (answer found: \(.answered)) |"
               end' bench/inference.json
             echo
             echo '<details><summary>Output text</summary>'
