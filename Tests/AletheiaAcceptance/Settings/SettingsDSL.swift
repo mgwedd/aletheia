@@ -167,6 +167,8 @@ struct FreshInstallSetup {
     let sessionAskEffort: String
     let patientAskEffort: String
     let runsOnGPU: Bool
+    /// The most the AI reads at once, in tokens, with the default model.
+    let readingBudgetTokens: Int
     /// Why speech and the AI can't run, as Settings and the engines say it; nil when they can.
     let cannotRunReason: String?
 }
@@ -461,6 +463,7 @@ extension When {
             sessionAskEffort: settings.sessionChatEffort.displayName,
             patientAskEffort: settings.patientChatEffort.displayName,
             runsOnGPU: InferenceCompute.usesGPU(on: hardware),
+            readingBudgetTokens: ModelAdvisor.contextBudgetTokens(for: hardware, model: settings.llamaModel),
             cannotRunReason: InferenceCompute.unsupportedReason(on: hardware))
     }
 
@@ -519,6 +522,9 @@ extension Then where Subject == FreshInstallSetup {
     }
     func runsOnTheCPU() { expect(!subject.runsOnGPU, "speech and the AI should run on the CPU") }
     func runsOnTheGPU() { expect(subject.runsOnGPU, "speech and the AI should run on the GPU") }
+    func readsAtMost(tokens: Int) {
+        expectEqual(subject.readingBudgetTokens, tokens, "the most the AI reads at once")
+    }
     func saysItCannotRunSpeechOrTheAI() {
         let reason = subject.cannotRunReason ?? ""
         expect(reason.contains(Copy.cannotRunSpeechOrAI), "expected the can't-run reason, got \(reason)")

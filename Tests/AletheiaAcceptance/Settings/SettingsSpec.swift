@@ -120,15 +120,17 @@ final class SettingsSpec: AcceptanceCase {
     }
 
     func test_SETTINGS_18() async throws {
-        for memoryGB in [8, 16] {
+        for memoryGB in [8, 16, 32, 64] {
             let intel = when.setUpFresh(onIntelMac: true, memoryGB: memoryGB)
             then(intel).startsWithSpeechModel(Copy.baseSpeechModel)
             then(intel).startsWithEffort(Copy.fastEffort)
             then(intel).runsOnTheCPU()
+            then(intel).readsAtMost(tokens: 8_192)
         }
         let appleSilicon = when.setUpFresh(onIntelMac: false, memoryGB: 16)
         then(appleSilicon).startsWithEffort(Copy.normalEffort)
         then(appleSilicon).runsOnTheGPU()
+        then(appleSilicon).readsAtMost(tokens: 32_768)
     }
 
     func test_SETTINGS_19() async throws {

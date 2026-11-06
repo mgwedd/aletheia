@@ -163,11 +163,12 @@ final class AIProgressTests: XCTestCase {
         XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac(4)), 8_192)
     }
 
-    func testIntelIsOneTierLowerWithAFloor() {
-        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac(8, appleSilicon: false)), 8_192)
-        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac(16, appleSilicon: false)), 16_384)
-        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac(32, appleSilicon: false)), 32_768)
-        XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac(4, appleSilicon: false)), 8_192)
+    func testIntelStaysAt8KWhateverItsMemory() {
+        for gb in [4, 8, 16, 32, 64, 128] {
+            XCTAssertEqual(ModelAdvisor.contextBudgetTokens(for: mac(gb, appleSilicon: false)), 8_192, "\(gb) GB")
+            XCTAssertEqual(
+                ModelAdvisor.contextBudgetTokens(for: mac(gb, appleSilicon: false), model: .medgemma_27b), 8_192, "\(gb) GB, 27B")
+        }
     }
 
 
