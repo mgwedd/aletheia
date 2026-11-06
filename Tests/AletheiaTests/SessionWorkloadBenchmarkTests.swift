@@ -170,6 +170,40 @@ final class SessionWorkloadBenchmarkTests: XCTestCase {
                                     "reusing the cache changed the answer:\n\(reused)\n---\n\(fresh)")
     }
 
+    /// A note written under its format's grammar is the same, word for word,
+    /// whether the engine checks the grammar on the top candidates first or on
+    /// the whole vocabulary for every token; only the time differs.
+    func testAGrammarNoteIsTheSameWhenTheGrammarChecksOnlyTheTopTokens() async throws {
+        let gguf = URL(fileURLWithPath: try XCTUnwrap(env["ALETHEIA_BENCH_GGUF"]))
+        let grammar = try XCTUnwrap(ProgressNoteFormat.soap.grammar)
+        var sampling = LocalLLMSampling.forTask(.note, maxTokens: 160)
+        sampling.seed = 42
+        let request = LocalLLMRequest(
+            system: "You write a therapist's SOAP progress note from a session transcript.",
+            prompt: "Transcript:\n\(SyntheticSession.transcript(minutes: 4))\n\nWrite the note.",
+            sampling: sampling, grammar: grammar)
+        func write(checkingTopTokens: Bool) async throws -> (text: String, stats: AIRunStats?) {
+            let engine = LlamaEngine(modelURL: gguf, sampling: sampling, budget: ContextBudget(tokens: 4096),
+                                     usesGPU: InferenceCompute.usesGPU, checksGrammarOnTopTokens: checkingTopTokens)
+            try await engine.load()
+            defer { engine.unload() }
+            let text = try await engine.generate(request)
+            return (text, engine.lastStats)
+        }
+
+        let whole = try await write(checkingTopTokens: false)
+        let top = try await write(checkingTopTokens: true)
+        func rate(_ stats: AIRunStats?) -> Double {
+            guard let stats, let nanos = stats.outputNanos, nanos > 0 else { return 0 }
+            return Double(stats.outputTokens ?? 0) / (Double(nanos) / 1e9)
+        }
+        report(["kind": "grammar-top-tokens", "same_output": whole.text == top.text,
+                "output_tokens": top.stats?.outputTokens ?? 0,
+                "whole_vocab_tok_s": rate(whole.stats), "top_tokens_tok_s": rate(top.stats), "text": top.text])
+        XCTAssertTrue(top.text.hasPrefix("## "), "the grammar didn't shape the note:\n\(top.text)")
+        XCTAssertEqual(top.text, whole.text)
+    }
+
     private func report(_ fields: [String: Any]) {
         let data = try! JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])
         print("BENCH-INFER \(String(decoding: data, as: UTF8.self))")
