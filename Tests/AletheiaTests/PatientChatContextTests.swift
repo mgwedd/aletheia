@@ -790,6 +790,33 @@ final class PatientChatContextTests: XCTestCase {
         XCTAssertEqual(context.coverage.openingSessions, 0)
     }
 
+    /// The compaction cache changes speed, never the context: a second gather,
+    /// and one after a transcript edit, match a gather from a cold cache.
+    func testGatheredContextIsTheSameWithAWarmCacheAndAfterAnEdit() throws {
+        let patient = try store.createPatient(name: "Jane Doe")
+        var sessions: [SessionRecord] = []
+        for day in 1...6 {
+            let session = try store.createSession(for: patient, on: date(2026, 1, day))
+            try store.saveTranscript(dayTranscript(day, lines: 40), for: patient, session: session)
+            sessions.append(session)
+        }
+        let question = "What did we talk about last time?"
+        func gather() -> String {
+            store.gatherCitedPatientContext(for: patient, relevantTo: question, characterBudget: Self.tight).text
+        }
+        TranscriptCompactor.clearCache()
+        let cold = gather()
+        XCTAssertGreaterThan(TranscriptCompactor.cacheCount, 0)
+        XCTAssertEqual(gather(), cold)
+
+        try store.saveTranscript(
+            "[00:01] You: A brand new opening about kayaking.", for: patient, session: sessions[5])
+        let edited = gather()
+        XCTAssertNotEqual(edited, cold)
+        TranscriptCompactor.clearCache()
+        XCTAssertEqual(gather(), edited)
+    }
+
     // MARK: - Scale
 
     /// 100 sessions of about an hour each (~60,000 characters, ~6M in all): the

@@ -45,6 +45,10 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     /// (`LlamaPromptCache`). Always on in the app; the benchmark turns it off
     /// to time the old full read.
     let reusesPromptCache: Bool
+    /// Whether a grammar-constrained, sampled reply checks the grammar on the
+    /// top-k candidates first (`GrammarSampling`). Always on in the app; the
+    /// benchmark turns it off to compare against checking the whole vocabulary.
+    let checksGrammarOnTopTokens: Bool
     /// The sampling this engine was constructed with. Every `generate`/
     /// `stream` call carries its own `LocalLLMRequest.sampling`, which is
     /// what actually drives decoding — this value only sizes the context
@@ -126,10 +130,11 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
     convenience init(
         modelURL: URL, sampling: LocalLLMSampling, budget: ContextBudget = .current,
         usesGPU: Bool = InferenceCompute.usesGPU, cpuThreads: Int = InferenceCompute.cpuThreads,
-        reusesPromptCache: Bool = true
+        reusesPromptCache: Bool = true, checksGrammarOnTopTokens: Bool = true
     ) {
         self.init(modelURL: modelURL, adapterURL: nil, sampling: sampling, budget: budget, usesGPU: usesGPU,
-                  cpuThreads: cpuThreads, reusesPromptCache: reusesPromptCache)
+                  cpuThreads: cpuThreads, reusesPromptCache: reusesPromptCache,
+                  checksGrammarOnTopTokens: checksGrammarOnTopTokens)
     }
 
     /// A base model with an optional LoRA adapter layered on it at load time.
@@ -142,6 +147,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         usesGPU: Bool = InferenceCompute.usesGPU,
         cpuThreads: Int = InferenceCompute.cpuThreads,
         reusesPromptCache: Bool = true,
+        checksGrammarOnTopTokens: Bool = true,
         modelLoader: ((URL) -> OpaquePointer?)? = nil
     ) {
         self.modelURL = modelURL
@@ -150,6 +156,7 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         self.usesGPU = usesGPU
         self.cpuThreads = cpuThreads
         self.reusesPromptCache = reusesPromptCache
+        self.checksGrammarOnTopTokens = checksGrammarOnTopTokens
         self.modelLoader = modelLoader ?? { Self.loadModel(at: $0, usesGPU: usesGPU) }
         self.defaultSampling = sampling
         self.budget = budget
@@ -549,7 +556,9 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         // a token, so it's added first in the chain — the same ordering
         // llama.h's own sampling-API doc comment uses for top_k/top_p ahead
         // of the terminal greedy/dist sampler.
+        var grammarIndex: Int32?
         if let grammar = request.grammar {
+            grammarIndex = llama_sampler_chain_n(chain)
             guard let grammarSampler = llama_sampler_init_grammar(vocab, grammar.gbnf, "root") else {
                 throw LocalLLMEngineError.generationFailed(
                     "The \"\(grammar.label)\" grammar failed to parse."
@@ -562,8 +571,15 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
         // only scans the top candidates instead of a 128k–256k vocabulary (see
         // llama.h's note on llama_sampler_init_penalties). Grammar still runs
         // first above so top-k only keeps grammar-valid tokens.
-        if !request.sampling.isGreedy, let topK = llama_sampler_init_top_k(40) {
+        var topKIndex: Int32?
+        if !request.sampling.isGreedy, let topK = llama_sampler_init_top_k(GrammarSampling.topK) {
+            topKIndex = llama_sampler_chain_n(chain)
             llama_sampler_chain_add(chain, topK)
+        }
+        // The grammar right before top-k: check it on the top-k first.
+        var screen: GrammarSampling?
+        if checksGrammarOnTopTokens, let grammarIndex, topKIndex == grammarIndex + 1 {
+            screen = GrammarSampling(chain: chain, grammarIndex: grammarIndex, vocabSize: Int(llama_vocab_n_tokens(vocab)))
         }
 
         // Apply repeat penalty when enabled (> 1.0) so 3B/8B models don't get
@@ -655,7 +671,8 @@ final class LlamaEngine: LocalLLMEngine, @unchecked Sendable {
             // to the last token's logits, picks one, and feeds it back to
             // every sampler in the chain (including the grammar's own
             // state) in one call — no separate "accept" step needed.
-            let next = llama_sampler_sample(chain, context, -1)
+            let next = screen?.sample(logits: llama_get_logits_ith(context, -1))
+                ?? llama_sampler_sample(chain, context, -1)
             if llama_vocab_is_eog(vocab, next) { finished = true; break }
             output += piece(for: next, vocab: vocab)
             produced += 1
@@ -729,4 +746,75 @@ private final class LlamaEngineCancellationFlag: @unchecked Sendable {
         lock.unlock()
     }
 }
+/// Samples a grammar-constrained reply the way the chain does, without running
+/// the grammar over the whole vocabulary for every token.
+///
+/// The chain applies the bans, the grammar (every token in the vocabulary,
+/// about 262k for Gemma, checked against the grammar's state: most of a note's
+/// time per token), then top-k, then the rest. When every one of the top-k
+/// candidates is allowed by the grammar, those same k candidates come out of
+/// the chain's order too: the grammar only removes tokens below them. So this
+/// takes top-k first and checks only those k against the grammar. If all pass,
+/// the rest of the chain runs on exactly the candidates the chain would have
+/// had; if any fails, the token is sampled the chain's way from the start. The
+/// reply is the same, token for token and for the same seed (two candidates
+/// with exactly equal logits may be ordered differently, as in any sort).
+/// Every sampler then accepts the token, as `llama_sampler_sample` does.
+///
+/// Queue-confined, with the engine that made it; one per request.
+final class GrammarSampling {
+    static let topK: Int32 = 40
+
+    private let chain: UnsafeMutablePointer<llama_sampler>
+    private let grammarIndex: Int32
+    private let vocabSize: Int
+    private let candidates: UnsafeMutablePointer<llama_token_data>
+    /// Tokens sampled, and how many needed the whole-vocabulary check (for tests).
+    private(set) var sampled = 0
+    private(set) var fullChecks = 0
+
+    init(chain: UnsafeMutablePointer<llama_sampler>, grammarIndex: Int32, vocabSize: Int) {
+        self.chain = chain
+        self.grammarIndex = grammarIndex
+        self.vocabSize = vocabSize
+        candidates = .allocate(capacity: vocabSize)
+    }
+
+    deinit { candidates.deallocate() }
+
+    /// The next token from the last decoded position's `logits`, accepted by every sampler.
+    func sample(logits: UnsafeMutablePointer<Float>?) -> llama_token? {
+        guard let logits else { return nil }
+        sampled += 1
+        let count = llama_sampler_chain_n(chain)
+        var array = fill(logits)
+        // The bans, as the chain runs them.
+        for i in 0..<grammarIndex { llama_sampler_apply(llama_sampler_chain_get(chain, i), &array) }
+        let grammar = llama_sampler_chain_get(chain, grammarIndex)
+        let topK = llama_sampler_chain_get(chain, grammarIndex + 1)
+        llama_sampler_apply(topK, &array)
+        llama_sampler_apply(grammar, &array)
+        if (0..<array.size).contains(where: { array.data[$0].logit == -Float.infinity }) {
+            // The grammar ruled out one of the top-k: the chain's way, from the start.
+            fullChecks += 1
+            array = fill(logits)
+            for i in 0..<grammarIndex { llama_sampler_apply(llama_sampler_chain_get(chain, i), &array) }
+            llama_sampler_apply(grammar, &array)
+            llama_sampler_apply(topK, &array)
+        }
+        for i in (grammarIndex + 2)..<count { llama_sampler_apply(llama_sampler_chain_get(chain, i), &array) }
+        guard array.selected >= 0, array.selected < array.size else { return nil }
+        let token = array.data[Int(array.selected)].id
+        llama_sampler_accept(chain, token)
+        return token
+    }
+
+    private func fill(_ logits: UnsafeMutablePointer<Float>) -> llama_token_data_array {
+        for id in 0..<vocabSize {
+            candidates[id] = llama_token_data(id: llama_token(id), logit: logits[id], p: 0)
+        }
+        return llama_token_data_array(data: candidates, size: vocabSize, selected: -1, sorted: false)
+    }
+}
+
 #endif

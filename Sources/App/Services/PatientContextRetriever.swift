@@ -90,7 +90,7 @@ enum PatientContextRetriever {
         let usable = transcripts.filter {
             !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && (search.dateRange?.contains($0.date) ?? true)
-        }.map { TranscriptDocument(date: $0.date, text: TranscriptCompactor.compact($0.text)) }
+        }.map { TranscriptDocument(date: $0.date, text: TranscriptCompactor.compactCached($0.text)) }
         guard !usable.isEmpty else { return Selection(excerpts: [], hitsShown: 0, whole: true, fullTexts: true) }
         func newestFirst() -> Selection {
             let kept = wholeExcerpts(usable, budget: characterBudget, labels: labels)

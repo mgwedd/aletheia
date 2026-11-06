@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Shrinks a stored transcript for the model, and only for the model: the
@@ -27,6 +28,49 @@ enum TranscriptCompactor {
     /// Most words in a sentence that counts as a repeatable phrase.
     static let maxLoopWords = 8
     static let minLoopRepeats = 5
+
+    // MARK: - Cache
+
+    /// `compact` of whole stored transcripts, kept in memory only so an Ask over
+    /// a long history doesn't re-compact every session each time. Keyed by a
+    /// SHA-256 of the transcript text, so an edited transcript can never get an
+    /// old result and no text is kept as a key. Cleared when the app locks or
+    /// the encryption state changes, and when a patient is deleted; emptied
+    /// whole when it passes `cacheLimit` characters.
+    private static let cache = NSLock()
+    nonisolated(unsafe) private static var cached: [SHA256.Digest: String] = [:]
+    nonisolated(unsafe) private static var cachedCharacters = 0
+    static let cacheLimit = 64_000_000
+
+    /// Same result as `compact`, remembered by the transcript's content.
+    static func compactCached(_ transcript: String) -> String {
+        let key = SHA256.hash(data: Data(transcript.utf8))
+        cache.lock()
+        let hit = cached[key]
+        cache.unlock()
+        if let hit { return hit }
+        let result = compact(transcript)
+        cache.lock()
+        if cachedCharacters + result.utf8.count > cacheLimit { cached.removeAll(); cachedCharacters = 0 }
+        if cached.updateValue(result, forKey: key) == nil { cachedCharacters += result.utf8.count }
+        cache.unlock()
+        return result
+    }
+
+    /// Forgets every cached result (PHI must not outlive the lock).
+    static func clearCache() {
+        cache.lock()
+        cached.removeAll()
+        cachedCharacters = 0
+        cache.unlock()
+    }
+
+    /// Entries held, for tests.
+    static var cacheCount: Int {
+        cache.lock()
+        defer { cache.unlock() }
+        return cached.count
+    }
 
     static func compact(_ transcript: String) -> String {
         var out: [String] = []
