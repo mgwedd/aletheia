@@ -17,3 +17,7 @@ extension Copy {
     static let copied = "Copied"
     static let bullet = "•"
 }
+
+extension Copy {
+    static let summaryReadyTitle = "Summary ready"
+}

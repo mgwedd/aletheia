@@ -125,6 +125,7 @@ final class AppSettings: ObservableObject {
         static let patientChatEffort = "patientChatEffort"
         static let summariesPaused = "summariesPaused"
         static let prepareSummariesOnBattery = "prepareSummariesOnBattery"
+        static let summarizesAfterRecording = "summarizesAfterRecording"
         static let localEncryptedBackupEnabled = "localEncryptedBackupEnabled"
         static let keepAudioRecordings = "keepAudioRecordings"
         static let autoTranscribeAfterRecording = "autoTranscribeAfterRecording"
@@ -322,6 +323,13 @@ final class AppSettings: ObservableObject {
     /// Power Mode still pauses them either way.
     @Published var prepareSummariesOnBattery: Bool {
         didSet { defaults.set(prepareSummariesOnBattery, forKey: Keys.prepareSummariesOnBattery) }
+    }
+    /// Whether a recording's summary (its progress note) is written on its own
+    /// once the recording is transcribed, as a draft, with a notification when
+    /// it is ready. Off by default; first run suggests it on Intel Macs, where a
+    /// note takes minutes. Background work: it waits like the summaries do.
+    @Published var summarizesAfterRecording: Bool {
+        didSet { defaults.set(summarizesAfterRecording, forKey: Keys.summarizesAfterRecording) }
     }
     /// Phrases whose lines a long session's note always includes first (and warns
     /// about if they don't fit). Plain text, not PHI. Never set means the built-in
@@ -600,6 +608,7 @@ final class AppSettings: ObservableObject {
         patientChatEffort = defaults.string(forKey: Keys.patientChatEffort).flatMap(AnswerEffort.init(rawValue:)) ?? recommendation.effort
         summariesPaused = defaults.bool(forKey: Keys.summariesPaused)
         prepareSummariesOnBattery = defaults.bool(forKey: Keys.prepareSummariesOnBattery)
+        summarizesAfterRecording = defaults.bool(forKey: Keys.summarizesAfterRecording)
         licenseToken = defaults.string(forKey: Keys.licenseToken) ?? ""
         revokedLicenseIDs = defaults.stringArray(forKey: Keys.revokedLicenseIDs) ?? []
         lastRevocationIssuedAt = defaults.integer(forKey: Keys.lastRevocationIssuedAt)

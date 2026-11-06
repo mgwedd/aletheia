@@ -171,6 +171,16 @@ struct FreshInstallSetup {
     let readingBudgetTokens: Int
     /// Why speech and the AI can't run, as Settings and the engines say it; nil when they can.
     let cannotRunReason: String?
+    /// Whether "Write the summary after recording" starts on.
+    let summarizesAfterRecording: Bool
+    /// The setup sheet's suggestion to turn it on, when the sheet offers it.
+    let summarySuggestion: SummarySuggestion?
+}
+
+/// The setup sheet's suggestion to write the summary after recording.
+struct SummarySuggestion {
+    let title: String
+    let detail: String
 }
 
 /// License terms for the medical models.
@@ -464,7 +474,10 @@ extension When {
             patientAskEffort: settings.patientChatEffort.displayName,
             runsOnGPU: InferenceCompute.usesGPU(on: hardware),
             readingBudgetTokens: ModelAdvisor.contextBudgetTokens(for: hardware, model: settings.llamaModel),
-            cannotRunReason: InferenceCompute.unsupportedReason(on: hardware))
+            cannotRunReason: InferenceCompute.unsupportedReason(on: hardware),
+            summarizesAfterRecording: settings.summarizesAfterRecording,
+            summarySuggestion: FirstRunSummaryStep.isOffered(isAppleSilicon: hardware.isAppleSilicon)
+                ? SummarySuggestion(title: FirstRunSummaryStep.title, detail: FirstRunSummaryStep.detail) : nil)
     }
 
     /// Opens settings for the first time after an update, on a Mac with this
@@ -529,6 +542,20 @@ extension Then where Subject == FreshInstallSetup {
         let reason = subject.cannotRunReason ?? ""
         expect(reason.contains(Copy.cannotRunSpeechOrAI), "expected the can't-run reason, got \(reason)")
         expect(reason.contains(Copy.needsAVX2), "the reason should say what the Mac lacks, got \(reason)")
+    }
+    func leavesTheSummaryAfterRecordingOff() {
+        expect(!subject.summarizesAfterRecording, "\(Copy.summarizeAfterRecording) should be off on a fresh install")
+    }
+    func suggestsWritingTheSummaryAfterRecording() {
+        guard let suggestion = subject.summarySuggestion else {
+            XCTFail("the setup sheet should suggest writing the summary after recording"); return
+        }
+        expectEqual(suggestion.title, Copy.summarySuggestionTitle, "the suggestion's title")
+        expect(suggestion.detail.contains(Copy.summariesTakeAWhile), "the suggestion should say summaries take a while: \(suggestion.detail)")
+        expect(suggestion.detail.contains(Copy.notificationWhenReady), "the suggestion should mention the notification: \(suggestion.detail)")
+    }
+    func doesNotSuggestWritingTheSummaryAfterRecording() {
+        expect(subject.summarySuggestion == nil, "the setup sheet should not suggest writing the summary after recording")
     }
     func canRunSpeechAndTheAI() {
         expect(subject.cannotRunReason == nil, "no can't-run notice expected, got \(subject.cannotRunReason ?? "")")

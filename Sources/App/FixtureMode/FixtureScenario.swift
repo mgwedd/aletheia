@@ -94,6 +94,8 @@ struct FixtureScenario: Codable, Equatable {
     var headphonesTip: Bool?
     /// Settings: background summaries start paused, so a note builds its own.
     var summariesPaused: Bool?
+    /// Settings: "Write the summary after recording" starts on.
+    var summarizesAfterRecording: Bool?
     /// Transcription that runs until it is cancelled, so its progress band
     /// stays on screen.
     var slowTranscription: Bool?

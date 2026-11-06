@@ -89,6 +89,16 @@ struct FirstRunEncryptionStep: Equatable {
     }
 }
 
+/// Setup's suggestion to write each recording's summary on its own. Offered on
+/// Intel Macs only, where a note takes minutes; it is a suggestion, off until
+/// the person turns it on, and never blocks "Finish setup".
+enum FirstRunSummaryStep {
+    static let title = "After recording, write the summary automatically"
+    static let detail = "Summaries take a while on this Mac. With this on, Aletheia writes each session's summary as a draft once its recording is transcribed, and sends a notification when it's ready to review."
+
+    static func isOffered(isAppleSilicon: Bool) -> Bool { !isAppleSilicon }
+}
+
 /// What the Data folder step of setup says.
 enum FirstRunDataFolder {
     static let rule = "Client records stay in one folder on this Mac. It can't be in iCloud Drive, Dropbox, Google Drive, OneDrive or Box, or on a network drive, and an external disk works only if it's encrypted."

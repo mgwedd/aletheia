@@ -62,6 +62,9 @@ enum FixtureMode {
         scenario?.modelDownloadFails == true ? FixtureUnreachableHelper() : nil
     }
 
+    /// The real notifier, with every notification also kept for the probe.
+    static let notifier = FixtureNotifier()
+
     /// The transcriber the fixture build uses, or nil for the real one.
     static var transcriber: Transcribing? {
         if scenario?.slowTranscription == true { return FixtureSlowTranscriber() }
@@ -129,6 +132,7 @@ enum FixtureMode {
                 settings.sessionChatEffort = effort
             }
             if let paused = scenario?.summariesPaused { settings.summariesPaused = paused }
+            if let on = scenario?.summarizesAfterRecording { settings.summarizesAfterRecording = on }
             settings.hasSeenHeadphonesTip = scenario?.headphonesTip != true
         }
     }
@@ -389,7 +393,8 @@ final class FixtureProbeFeed: ObservableObject {
         }.value
         let snapshot = FixtureProbe.Snapshot(
             files: read.0, patients: read.1, aiRequests: FixtureMode.engine.requestTexts,
-            transcriptLines: currentTranscriptLines(), noteFromEnd: FixtureProbe.noteFromEnd(), noteFromTop: FixtureProbe.noteFromTop())
+            transcriptLines: currentTranscriptLines(), noteFromEnd: FixtureProbe.noteFromEnd(), noteFromTop: FixtureProbe.noteFromTop(),
+            notifications: FixtureMode.notifier.posted)
         let next = FixtureProbe.encode(snapshot)
         if next != json { json = next }
     }
@@ -429,6 +434,8 @@ enum FixtureProbe {
         /// Points between the bottom of the note reader's view and the end of the note; nil when no note is shown.
         var noteFromEnd: Int? = nil
         var noteFromTop: Int? = nil
+        /// Every notification posted, as "title: body", oldest first.
+        var notifications: [String] = []
     }
 
     /// Stable text: keys sorted, so equal facts always read the same.
@@ -508,4 +515,23 @@ struct FixtureUnreachableHelper: NetworkHelping {
         throw unreachable
     }
 }
+
+/// Posts through the real notifier and keeps what was posted, for the probe.
+final class FixtureNotifier: AppNotifying, @unchecked Sendable {
+    private let real = UserNotificationService()
+    private let lock = NSLock()
+    private var kept: [String] = []
+
+    var posted: [String] { lock.lock(); defer { lock.unlock() }; return kept }
+
+    func requestAuthorization() async { await real.requestAuthorization() }
+
+    func post(_ content: AppNotificationContent) async {
+        lock.lock()
+        kept.append("\(content.title): \(content.body)")
+        lock.unlock()
+        await real.post(content)
+    }
+}
+
 #endif

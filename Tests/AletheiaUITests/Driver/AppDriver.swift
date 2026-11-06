@@ -28,6 +28,8 @@ struct ProbeSnapshot: Decodable, Equatable {
     var noteFromEnd: Int?
     /// Points the note reader is scrolled down from the top of the note.
     var noteFromTop: Int?
+    /// Every notification the app posted, as "title: body", oldest first.
+    var notifications: [String] = []
 }
 
 /// Drives the real Debug app. The test owns the world through the scenario and

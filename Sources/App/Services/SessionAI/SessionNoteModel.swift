@@ -35,6 +35,9 @@ final class SessionNoteModel: ObservableObject {
 
     /// Set when the person pressed Stop or Cancel; read when the run ends.
     var noteStopping = false
+    /// A stopped run saves nothing and posts nothing (a background draft that
+    /// gave way to a recording). Otherwise a stopped note keeps what was written.
+    var discardsStoppedNote = false
 
     /// Where alerts go (the screen shows them).
     var alert: (AIAlert) -> Void = { _ in }
@@ -339,6 +342,13 @@ final class SessionNoteModel: ObservableObject {
                 }
             },
             onFinish: { [self] raw in
+                if noteStopping, discardsStoppedNote {
+                    if settings.progressNoteFormat == format {
+                        summaryText = savedNote(for: format)
+                        noteCoverage = savedCoverage(for: format)
+                    }
+                    return
+                }
                 // Save the tidied text, so copy, export and edit see the same
                 // paragraphs and labels the pane shows.
                 let final = SpeakerCodes.scrub(NoteMarkdown.tidy(raw), clientName: patient.name)

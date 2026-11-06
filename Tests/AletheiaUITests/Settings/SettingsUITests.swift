@@ -48,4 +48,12 @@ final class SettingsUITests: AcceptanceCase {
         let pane = when.openAIAndModelsSettings()
         then(pane).saysThisMacCannotRunSpeechOrTheAI()
     }
+
+    func test_SETTINGS_20_writingTheSummaryAfterRecordingStartsOff() {
+        given.freshInstallOnAnIntelMac()
+        then(when.openGeneralSettings()).summarizeAfterRecordingIsOff()
+
+        given.freshInstallOnAnAppleSiliconMac()
+        then(when.openGeneralSettings()).summarizeAfterRecordingIsOff()
+    }
 }

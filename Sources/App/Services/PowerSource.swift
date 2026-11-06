@@ -1,7 +1,7 @@
 import Foundation
 import IOKit.ps
 
-/// Whether this Mac is running on battery or in Low Power Mode, for work that
+/// Whether this Mac is running on battery, in Low Power Mode or hot, for work that
 /// can wait (background summaries). Read-only system state; nothing is sent anywhere.
 enum PowerSource {
     /// True on battery power. False on AC, on a desktop Mac, or if the system
@@ -14,5 +14,10 @@ enum PowerSource {
 
     static var isLowPowerMode: Bool {
         ProcessInfo.processInfo.isLowPowerModeEnabled
+    }
+
+    /// True when macOS reports serious or critical thermal pressure.
+    static var isUnderThermalPressure: Bool {
+        ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
     }
 }

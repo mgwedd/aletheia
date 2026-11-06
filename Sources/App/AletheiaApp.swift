@@ -130,7 +130,9 @@ struct AletheiaApp: App {
             appModel?.recordAudit(.securitySettingChanged, detail: detail)
         }
         #if DEBUG
-        let integrations = Integrations(settings: settings, transcriber: FixtureMode.transcriber)
+        let integrations = Integrations(
+            settings: settings, transcriber: FixtureMode.transcriber,
+            notifier: FixtureMode.isActive ? FixtureMode.notifier : nil)
         #else
         let integrations = Integrations(settings: settings)
         #endif
@@ -214,7 +216,10 @@ struct AletheiaApp: App {
         _appLock = StateObject(wrappedValue: appLock)
 
         // Background summaries: only when nothing else is using the model, no
-        // recording or transcription is running and the app is unlocked.
+        // recording or transcription is running and the app is unlocked. The
+        // notes "Write the summary after recording" asks for wait the same way.
+        integrations.digestScheduler.drafter = AutoNoteDrafter(
+            appModel: appModel, integrations: integrations, settings: settings)
         integrations.digestScheduler.attach(
             context: { [weak appModel, weak integrations] in
                 guard let appModel, let integrations, let store = appModel.store else { return nil }
@@ -227,7 +232,8 @@ struct AletheiaApp: App {
                     recording: recorder?.isBusy ?? false,
                     transcribing: transcription?.isBusy ?? false,
                     lowPowerMode: PowerSource.isLowPowerMode,
-                    onBattery: PowerSource.isOnBattery
+                    onBattery: PowerSource.isOnBattery,
+                    thermalPressure: PowerSource.isUnderThermalPressure
                 )
             }
         )

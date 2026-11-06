@@ -20,6 +20,7 @@ Before you start: a Release build and a throwaway data folder, with no earlier A
 - **SETUP-12** Finish setup, then open a build with newer terms → the **Set up Aletheia** sheet returns until the new terms are accepted, and each acceptance is dated on this Mac.
 - **SETUP-13** Read the Data folder step → it recommends the standard location on this Mac and says any other folder must be on this Mac, not in iCloud Drive, Dropbox, Google Drive, OneDrive or Box or on a network drive, and on an encrypted disk if external.
 - **SETUP-14** With the terms already accepted, click **Use the standard location** → the sheet stays up and says where client records will be kept until you click **Finish setup**.
+- **SETUP-15** A fresh install on an Intel Mac → the setup sheet suggests "After recording, write the summary automatically", says summaries take a while on this Mac and a notification comes when one is ready, and leaves it off until you turn it on. Apple silicon Macs don't see the suggestion.
 
 ## 2. Add a patient (PATIENT)
 Before you start: setup finished, a data folder chosen, and the disk encrypted with FileVault.
@@ -139,6 +140,8 @@ Before you start: a session with a transcript, the AI model downloaded, and a co
 - **NOTE-20** Generate a note on a 50-minute session → with the default model the coverage line says every part was summarized plus how many lines were quoted word for word; with MedGemma 27B at Normal it says "Read: the whole transcript, word for word".
 - **NOTE-21** Watch a long note stream past the bottom of the pane → the pane follows the newest text; scroll up and it stays where you put it until you scroll back near the end.
 - **NOTE-22** Let a note finish → if its Notes pane is open it scrolls to the end, and a "SOAP note ready" notice appears in the main window wherever you are; **Open Note** opens that note.
+- **NOTE-23** Turn on **Write the summary after recording** in **General**, then record a session and let it transcribe → its summary is written on its own as an unsigned draft, and a "Summary ready" notification arrives with no patient name or initials. While summaries are paused it waits until they're resumed.
+- **NOTE-24** With **Write the summary after recording** off, record a session and let it transcribe → no summary is written and no "Summary ready" notification arrives.
 
 ## 8. Chat and Q&A (CHAT)
 Before you start: a patient with at least two sessions that have transcripts, and the AI model downloaded.
@@ -286,6 +289,7 @@ Before you start: setup finished.
 - **SETTINGS-17** A model download fails → an alert says why and offers **Try Again**, which starts the download again, and **Report a Bug**.
 - **SETTINGS-18** A fresh install on an Intel Mac → **Speech recognition** is set to Base and **AI effort** to Fast for notes and Ask. Speech and the AI run on the CPU there, and the AI reads at most 8K tokens at once whatever the Mac's memory, so even a short session is summarized in parts before Ask reads it.
 - **SETTINGS-19** An Intel Mac whose processor lacks AVX2 (older than 2013) → **AI and models** says this Mac can't run speech recognition or the AI, and transcribing or asking the AI gives that reason instead of crashing. Other Macs see no such notice.
+- **SETTINGS-20** A fresh install on any Mac, Intel or Apple silicon → **Write the summary after recording** in **General** is off.
 
 ## 16. Security panel, activity log and Doctor (SECURITY)
 Before you start: a data folder with some activity (unlock, export, delete a patient).

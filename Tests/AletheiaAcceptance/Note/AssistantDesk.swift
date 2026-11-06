@@ -120,7 +120,7 @@ final class AssistantDesk {
     let notifier = QuietNotifier()
     let integrations: Integrations
 
-    fileprivate init(app: InProcessDriver, model: SteeredModel) {
+    fileprivate init(app: InProcessDriver, model: SteeredModel, transcriber: Transcribing? = nil) {
         self.app = app
         self.model = model
         // The default model, whatever this Mac would pick, so how much of a
@@ -128,7 +128,7 @@ final class AssistantDesk {
         app.settings.llamaModel = .medgemma15_4b
         let clock = app.clock
         let integrations = Integrations(
-            settings: app.settings, engine: model, notifier: notifier, now: { clock.now })
+            settings: app.settings, transcriber: transcriber, engine: model, notifier: notifier, now: { clock.now })
         self.integrations = integrations
         // At teardown: let held answers finish, then stop the scheduler and the
         // queue together (as quitting does) and wait for both.
@@ -654,7 +654,7 @@ final class PatientChatTab {
 
 extension Given {
     /// The AI side of the app, with the model as the test steers it.
-    func assistantDesk(model: SteeredModel = SteeredModel()) -> AssistantDesk {
-        AssistantDesk(app: app, model: model)
+    func assistantDesk(model: SteeredModel = SteeredModel(), transcriber: Transcribing? = nil) -> AssistantDesk {
+        AssistantDesk(app: app, model: model, transcriber: transcriber)
     }
 }

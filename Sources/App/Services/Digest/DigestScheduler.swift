@@ -36,6 +36,8 @@ final class DigestScheduler: ObservableObject {
     private let settings: AppSettings
     /// Where the "still paused" alert goes; set by `Integrations`.
     var notifier: AppNotifying?
+    /// Writes the notes asked for by "Write the summary after recording"; set by the app.
+    var drafter: AutoNoteDrafter?
     private var context: () -> Context? = { nil }
     /// Recording, transcription, lock and power state (the scheduler adds the
     /// model, the user's pause, "Prepare now" and failures itself).
@@ -56,6 +58,15 @@ final class DigestScheduler: ObservableObject {
     private var loopID = UUID()
     private var scanning: Task<Void, Never>?
     private var poller: Task<Void, Never>?
+    /// Sessions whose note is to be written on its own, oldest first.
+    private var noteWork: [(patient: Patient, session: SessionRecord)] = []
+    /// How many sessions' notes are waiting to be written (or being written).
+    var notesWanted: Int { noteWork.count }
+    /// The session whose note is being written for `noteWork`.
+    private var draftingSessionID: UUID?
+    /// Patients being looked at again (`patientOpened`): a session's note waits
+    /// until it is known whether its summary is needed first.
+    private var looking: Set<UUID> = []
     private var watchers: [AnyCancellable] = []
 
     /// The clock for the scan interval and failure back-off.
@@ -127,6 +138,15 @@ final class DigestScheduler: ObservableObject {
         sessionOpened(patient: patient, session: session)
     }
 
+    /// A recording was transcribed and "Write the summary after recording" is
+    /// on: its note is written when the background work may run, after its
+    /// summary if it needs one, and before other sessions' summaries.
+    func noteWanted(patient: Patient, session: SessionRecord) {
+        guard !noteWork.contains(where: { $0.session.id == session.id }) else { return }
+        noteWork.append((patient, session))
+        evaluate()
+    }
+
     /// The patient's page or chat is open: their sessions go first, and their
     /// sessions are looked at again (one patient, not the whole library).
     func patientOpened(_ patient: Patient) {
@@ -135,10 +155,12 @@ final class DigestScheduler: ObservableObject {
         guard let ctx = context() else { return }
         let store = ctx.store
         let room = ctx.service.budget.availableCharacters(reserving: DigestSchedulePolicy.promptOverhead)
+        looking.insert(patient.id)
         Task { [weak self] in
             let result = await Task.detached(priority: .utility) {
                 DigestScheduler.scanSessions(store: store, patients: [patient], room: room)
             }.value
+            self?.looking.remove(patient.id)
             self?.merge(result, patient: patient.id)
             self?.evaluate()
         }
@@ -185,13 +207,20 @@ final class DigestScheduler: ObservableObject {
         if settings.prepareSummariesOnBattery { now.onBattery = false }
         now.preparingNow = preparingNow
         now.recentFailure = lastFailure.map { self.now().timeIntervalSince($0) < DigestSchedulePolicy.failureBackoff } ?? false
-        let running = queue.running.map { $0.kind != .digest } ?? false
-        now.modelBusy = running || queue.waiting.contains { $0.kind != .digest }
+        // Other AI work, apart from the note written here: that note waits for
+        // it, and the summaries wait for both.
+        let draftLabel = drafter?.runningLabel
+        func other(_ job: InferenceQueue.JobInfo) -> Bool { job.kind != .digest && job.label != draftLabel }
+        let otherBusy = queue.running.map(other) ?? false || queue.waiting.contains(where: other)
+        now.modelBusy = otherBusy || (drafter?.isRunning ?? false)
         if wasLocked && !now.locked { needsScan = true }
         wasLocked = now.locked
 
         let reason = DigestSchedulePolicy.pauseReason(now)
         if pauseReason != reason { pauseReason = reason }
+        var forNote = now
+        forNote.modelBusy = otherBusy
+        evaluateNote(reason: DigestSchedulePolicy.pauseReason(forNote))
 
         // Looking for work reads and decrypts transcripts but asks nothing of the
         // model, so it runs even while paused, except while locked, recording or transcribing.
@@ -208,6 +237,49 @@ final class DigestScheduler: ObservableObject {
         loopID = id
         loop = Task { [weak self] in
             await self?.run(id: id)
+        }
+    }
+
+    /// Starts, stops or finishes the note "Write the summary after recording"
+    /// asked for. It gives way like the summaries do; other AI work only holds
+    /// back its start, since the queue runs one job at a time anyway.
+    private func evaluateNote(reason: DigestPauseReason?) {
+        guard let drafter else { return }
+        guard settings.summarizesAfterRecording else {
+            noteWork = []
+            if draftingSessionID != nil { drafter.stopAndDiscard() }
+            if !drafter.isRunning { draftingSessionID = nil; drafter.clear() }
+            return
+        }
+        if let id = draftingSessionID {
+            if drafter.isRunning {
+                // Gave way: nothing is kept, and the note is written again later.
+                if let reason, reason != .modelBusy {
+                    drafter.stopAndDiscard()
+                    draftingSessionID = nil
+                }
+                return
+            }
+            noteWork.removeAll { $0.session.id == id }
+            draftingSessionID = nil
+            drafter.clear()
+        }
+        // A stopped note still winding down.
+        if drafter.isRunning { return }
+        drafter.clear()
+        guard reason == nil, scanning == nil else { return }
+        // Its summary first, when it needs one, so the note doesn't wait behind
+        // a summary it would build itself.
+        guard let next = noteWork.first(where: { item in
+            !looking.contains(item.patient.id) && buildingSessionID != item.session.id
+                && !work.contains { $0.sessionID == item.session.id }
+        }) else { return }
+        guard drafter.wants(patient: next.patient, session: next.session) else {
+            noteWork.removeAll { $0.session.id == next.session.id }
+            return
+        }
+        if drafter.start(patient: next.patient, session: next.session) {
+            draftingSessionID = next.session.id
         }
     }
 
