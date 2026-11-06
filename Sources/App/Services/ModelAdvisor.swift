@@ -42,8 +42,10 @@ enum ModelAdvisor {
     }
 
     /// Memory-based maximum context. The 27B's weights leave less room for a
-    /// cache at 32 GB, so its window stays at 32K until 48 GB. Intel gets one
-    /// tier lower. The engine still checks the real tokenizer and GGUF limit.
+    /// cache at 32 GB, so its window stays at 32K until 48 GB. Intel runs the
+    /// AI on the CPU, where a bigger window makes the first answer minutes
+    /// slower, so it stays at 8K whatever its memory. The engine still checks
+    /// the real tokenizer and GGUF limit.
     static func contextBudgetTokens(for hardware: HardwareCapabilities, model: LlamaModel? = nil) -> Int {
         let tokens: Int
         switch hardware.physicalMemoryGB {
@@ -52,7 +54,7 @@ enum ModelAdvisor {
         case 8...: tokens = 16_384
         default: tokens = 8_192
         }
-        let hardwareTokens = hardware.isAppleSilicon ? tokens : max(8_192, tokens / 2)
+        let hardwareTokens = hardware.isAppleSilicon ? tokens : 8_192
         guard let model else { return hardwareTokens }
         let modelMemoryCap = model == .medgemma_27b && hardware.physicalMemoryGB < 48 ? 32_768 : hardwareTokens
         return min(hardwareTokens, modelMemoryCap, model.contextWindowTokens)

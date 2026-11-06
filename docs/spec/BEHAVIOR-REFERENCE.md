@@ -1068,7 +1068,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/UntrustedText.swift, Sources/App/Services/Prompts.swift` · `qa: NOTE-16`
 - **CHT-036** When a session is too long for what this Mac can read at once, the question fails with a message beginning "This session is longer than this Mac can read at once", instead of silently dropping text.
   `surface: ui` · `evidence: Sources/App/Services/ContextBudget.swift` · `qa: NOTE-14`
-- **CHT-037** When the reading budget is set, it scales with the Mac's memory: 16K tokens at 8 GB, 32K at 16 GB, 64K at 32 GB or more, one tier lower on Intel Macs, and never below 8K. It is capped by the selected model's context and at 32K for MedGemma 27B on 32–47 GB Macs. Chat compaction uses this same effective budget.
+- **CHT-037** When the reading budget is set, it scales with the Mac's memory: 16K tokens at 8 GB, 32K at 16 GB, 64K at 32 GB or more, a flat 8K on Intel Macs whatever their memory, and never below 8K. It is capped by the selected model's context and at 32K for MedGemma 27B on 32–47 GB Macs. Chat compaction uses this same effective budget.
   `surface: invariant` · `evidence: Sources/App/Services/ContextBudget.swift, Sources/App/Services/HardwareCapabilities.swift` · `qa: CHAT-12`
 - **CHT-038** When one therapist-typed field (question, notes, comments or background) is longer than 300,000 characters (about 100 pages), the request is refused with a message.
   `surface: ui` · `evidence: Sources/App/Services/TherapistInput.swift` · `qa: NOTE-14`
@@ -1210,7 +1210,7 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/ModelLicenseLink.swift, Sources/App/Services/Llama/LlamaModel.swift` · `qa: SETTINGS-07`
 - **AIE-013** When a speech-to-text model is recommended, Apple silicon with 16 GB or more gets medium.en, Apple silicon with 8 GB or more small.en, and anything else, Intel included, base.en.
   `surface: ui` · `evidence: Sources/App/Services/ModelAdvisor.swift, Sources/App/Services/HardwareCapabilities.swift` · `qa: SETTINGS-18`
-- **AIE-014** When the prompt room is set, it scales with the Mac's memory: 16K tokens at 8 GB, 32K at 16 GB, 64K at 32 GB or more, one tier lower on Intel, and never below 8K. The selected model may cap it further; MedGemma 27B uses 32K on 32–47 GB Macs. Digest section caps and chat compaction use the effective budget.
+- **AIE-014** When the prompt room is set, it scales with the Mac's memory: 16K tokens at 8 GB, 32K at 16 GB, 64K at 32 GB or more, a flat 8K on Intel whatever its memory, and never below 8K. The selected model may cap it further; MedGemma 27B uses 32K on 32–47 GB Macs. Digest section caps and chat compaction use the effective budget.
   `surface: invariant` · `evidence: Sources/App/Services/ContextBudget.swift` · `qa: NOTE-14`
 - **AIE-015** When a prompt is over the Mac's budget or the model's own limit, the request fails with an explanatory message rather than being cut short.
   `surface: invariant` · `evidence: Sources/App/Services/ContextBudget.swift, Sources/App/Services/Llama/LlamaContextSize.swift` · `qa: NOTE-14`
