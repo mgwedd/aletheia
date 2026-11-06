@@ -420,6 +420,7 @@ final class Store {
 
         // Remove patient directory and all session files from disk
         try fileManager.removeItem(at: dir)
+        TranscriptCompactor.clearCache()
 
         // Remove unreadable records cache entries matching this patient or its folder
         recordUnreadable([], replacing: { $0.patientId == patient.id || $0.folder.path.hasPrefix(dir.path) })
