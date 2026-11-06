@@ -9,6 +9,16 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.73.0] - 2026-11-06
+
+### Added
+- run speech and the AI on the CPU on Intel Macs, with Intel defaults (#557)
+
+### Fixed
+- check a note's grammar on the top candidates first (#561)
+- cache compacted transcripts across Ask context builds (#560)
+- keep the AI's reading budget at 8K on every Intel Mac (#559)
+
 ## [2.72.2] - 2026-11-04
 
 ### Fixed
