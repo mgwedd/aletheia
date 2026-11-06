@@ -196,4 +196,61 @@ final class TranscriptCompactorTests: XCTestCase {
         XCTAssertEqual(seconds, seconds.sorted())
         XCTAssertTrue(zip(seconds, seconds.dropFirst()).allSatisfy { $1 - $0 <= 120 })
     }
+
+    // MARK: - Cache
+
+    private let cacheSample = [
+        "[00:01] You: Um, how was your week?",
+        "[00:05] You: Anything new?",
+        "[00:09] Call audio: Pretty good.",
+    ].joined(separator: "\n")
+
+    func testCachedCompactionMatchesUncachedAndIsRemembered() {
+        TranscriptCompactor.clearCache()
+        XCTAssertEqual(TranscriptCompactor.compactCached(cacheSample), TranscriptCompactor.compact(cacheSample))
+        XCTAssertEqual(TranscriptCompactor.cacheCount, 1)
+        XCTAssertEqual(TranscriptCompactor.compactCached(cacheSample), TranscriptCompactor.compact(cacheSample))
+        XCTAssertEqual(TranscriptCompactor.cacheCount, 1)
+    }
+
+    /// A save or edit changes the text, and the text is the key: no stale result.
+    func testEditedTranscriptNeverGetsTheOldCompaction() {
+        TranscriptCompactor.clearCache()
+        let before = TranscriptCompactor.compactCached(cacheSample)
+        let edited = cacheSample + "\n[00:15] You: Edited afterwards."
+        let after = TranscriptCompactor.compactCached(edited)
+        XCTAssertNotEqual(after, before)
+        XCTAssertEqual(after, TranscriptCompactor.compact(edited))
+        XCTAssertTrue(after.contains("Edited afterwards."))
+    }
+
+    func testClearCacheEmptiesIt() {
+        _ = TranscriptCompactor.compactCached(cacheSample)
+        TranscriptCompactor.clearCache()
+        XCTAssertEqual(TranscriptCompactor.cacheCount, 0)
+    }
+
+    func testDeletingAPatientClearsTheCache() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CompactorCache-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = Store(root: root)
+        let patient = try store.createPatient(name: "Jane Doe")
+        _ = TranscriptCompactor.compactCached(cacheSample)
+        XCTAssertGreaterThan(TranscriptCompactor.cacheCount, 0)
+        try store.deletePatient(patient)
+        XCTAssertEqual(TranscriptCompactor.cacheCount, 0)
+    }
+
+    func testLockClearsTheCache() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CompactorLock-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manager = EncryptionManager(dataRootProvider: { root })
+        try manager.enable(passphrase: "test-passphrase-1", iterations: 100_000)
+        _ = TranscriptCompactor.compactCached(cacheSample)
+        XCTAssertGreaterThan(TranscriptCompactor.cacheCount, 0)
+        manager.lock()
+        XCTAssertEqual(TranscriptCompactor.cacheCount, 0)
+    }
 }
