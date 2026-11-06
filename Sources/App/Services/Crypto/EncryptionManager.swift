@@ -285,6 +285,7 @@ final class EncryptionManager: ObservableObject {
         self.dek = dek
         state = .unlocked
         let result = DataMigrator.migrate(root: root, from: .passthrough, to: protector)
+        TranscriptCompactor.clearCache()
         SessionSearch.deleteIndex()   // built while the folder was plaintext; the sweep rebuilds it
         onProtectionChanged?()
         SessionSearch.openIndex()
@@ -307,6 +308,7 @@ final class EncryptionManager: ObservableObject {
         try FileManager.default.removeItem(at: root.appendingPathComponent(Keystore.fileName))
         dek = nil
         state = .disabled
+        TranscriptCompactor.clearCache()
         SessionSearch.deleteIndex()   // the folder is plaintext now, but don't leave a copy behind; the sweep rebuilds it
         onProtectionChanged?()
         SessionSearch.openIndex()
@@ -420,6 +422,7 @@ final class EncryptionManager: ObservableObject {
         guard dek != nil else { return }
         dek = nil
         state = .lockedNeedsPassphrase
+        TranscriptCompactor.clearCache()
         SessionSearch.deleteIndex()   // plaintext transcript text: gone while locked, rebuilt on unlock
         LlamaRuntime.unloadAll()   // the built-in model's KV cache holds the last transcript
         onProtectionChanged?()
