@@ -518,19 +518,19 @@ struct FixtureUnreachableHelper: NetworkHelping {
 
 /// Posts through the real notifier and keeps what was posted, for the probe.
 final class FixtureNotifier: AppNotifying, @unchecked Sendable {
-    private let real = UserNotificationService()
     private let lock = NSLock()
     private var kept: [String] = []
 
     var posted: [String] { lock.lock(); defer { lock.unlock() }; return kept }
 
-    func requestAuthorization() async { await real.requestAuthorization() }
+    /// Never asks the system: on a fresh Mac its permission prompt waits for an
+    /// answer no test gives, and whatever awaited it would stall.
+    func requestAuthorization() async {}
 
     func post(_ content: AppNotificationContent) async {
         lock.lock()
         kept.append("\(content.title): \(content.body)")
         lock.unlock()
-        await real.post(content)
     }
 }
 
