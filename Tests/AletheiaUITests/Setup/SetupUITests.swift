@@ -21,4 +21,14 @@ final class SetupUITests: AcceptanceCase {
         when.finishSetup(on: sheet)
         then(sheet).isGone()
     }
+
+    func test_SETUP_15_intelSetupSuggestsWritingTheSummaryAfterRecording() {
+        given.setupOnAnIntelMac(true)
+        then(when.lookAtSetup()).suggestsWritingTheSummaryAfterRecording()
+    }
+
+    func test_SETUP_15_appleSiliconSetupDoesNotSuggestIt() {
+        given.setupOnAnIntelMac(false)
+        then(when.lookAtSetup()).doesNotSuggestWritingTheSummaryAfterRecording()
+    }
 }

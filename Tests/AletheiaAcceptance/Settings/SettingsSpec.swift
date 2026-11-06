@@ -139,4 +139,9 @@ final class SettingsSpec: AcceptanceCase {
         then(when.setUpFresh(onIntelMac: true, memoryGB: 8)).canRunSpeechAndTheAI()
         then(when.setUpFresh(onIntelMac: false, memoryGB: 16)).canRunSpeechAndTheAI()
     }
+
+    func test_SETTINGS_20() async throws {
+        then(when.setUpFresh(onIntelMac: true, memoryGB: 8)).leavesTheSummaryAfterRecordingOff()
+        then(when.setUpFresh(onIntelMac: false, memoryGB: 16)).leavesTheSummaryAfterRecordingOff()
+    }
 }

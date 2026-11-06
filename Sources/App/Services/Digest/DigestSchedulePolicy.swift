@@ -11,6 +11,8 @@ struct DigestActivity: Equatable {
     var userPaused = false
     var lowPowerMode = false
     var onBattery = false
+    /// macOS reports serious or critical thermal pressure.
+    var thermalPressure = false
     /// A build failed a short while ago (`DigestSchedulePolicy.failureBackoff`).
     var recentFailure = false
     /// "Prepare now": run despite the user's pause, battery, Low Power Mode
@@ -20,7 +22,7 @@ struct DigestActivity: Equatable {
 
 /// Why summaries are not being prepared right now.
 enum DigestPauseReason: Equatable {
-    case locked, recording, transcribing, modelBusy, user, lowPowerMode, battery, failure
+    case locked, recording, transcribing, modelBusy, thermal, user, lowPowerMode, battery, failure
 
     /// The words after "Summaries: 62 of 100 ready · ".
     var text: String {
@@ -29,6 +31,7 @@ enum DigestPauseReason: Equatable {
         case .recording: return "paused while recording"
         case .transcribing: return "paused while transcribing"
         case .modelBusy: return "paused while the AI is working"
+        case .thermal: return "paused while the Mac is hot"
         case .user: return "paused"
         case .lowPowerMode: return "paused in Low Power Mode"
         case .battery: return "paused on battery"
@@ -40,7 +43,7 @@ enum DigestPauseReason: Equatable {
     var canPrepareNow: Bool {
         switch self {
         case .user, .lowPowerMode, .battery, .failure: return true
-        case .locked, .recording, .transcribing, .modelBusy: return false
+        case .locked, .recording, .transcribing, .modelBusy, .thermal: return false
         }
     }
 }
@@ -58,7 +61,8 @@ enum DigestSchedulePolicy {
     static let rescanInterval: TimeInterval = 900
 
     /// Why to pause, or nil to run. A recording, the lock, a transcription and
-    /// other AI work always win: the summaries are background work. After those,
+    /// other AI work always win: the summaries are background work. So does a
+    /// hot Mac, which "Prepare now" doesn't override either. After those,
     /// the conservative defaults: the user's pause, Low Power Mode, battery and a
     /// recent failure, which "Prepare now" overrides.
     static func pauseReason(_ a: DigestActivity) -> DigestPauseReason? {
@@ -66,6 +70,7 @@ enum DigestSchedulePolicy {
         if a.recording { return .recording }
         if a.transcribing { return .transcribing }
         if a.modelBusy { return .modelBusy }
+        if a.thermalPressure { return .thermal }
         if a.preparingNow { return nil }
         if a.userPaused { return .user }
         if a.lowPowerMode { return .lowPowerMode }

@@ -289,4 +289,20 @@ final class NoteUITests: AcceptanceCase {
         let tab = when.openNotesTab()
         return when.generateNote(on: tab)
     }
+
+    func test_NOTE_23_summaryIsWrittenAfterRecordingAndAnnounced() {
+        given.aSessionToRecord(summarizeAfterRecording: true)
+
+        let session = when.importARecordingAndLetItTranscribe()
+
+        then(session).writesTheSummaryAndAnnouncesItWithoutNaming("Jane Doe")
+    }
+
+    func test_NOTE_24_withTheSettingOffNoSummaryIsWritten() {
+        given.aSessionToRecord(summarizeAfterRecording: false)
+
+        let session = when.importARecordingAndLetItTranscribe()
+
+        then(session).writesNoSummary()
+    }
 }

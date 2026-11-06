@@ -75,6 +75,12 @@ struct FirstRunView: View {
                         encryptionSection
                     }
 
+                    if FirstRunSummaryStep.isOffered(isAppleSilicon: settings.hardware.isAppleSilicon) {
+                        hairline
+
+                        summarySection
+                    }
+
                     hairline
 
                     legalSection
@@ -238,6 +244,29 @@ struct FirstRunView: View {
         .sheet(isPresented: $showEncryptionSetup) {
             EncryptionSetupSheet()
                 .environmentObject(encryption)
+        }
+    }
+
+    /// The Intel-only suggestion to write each recording's summary on its own.
+    private var summarySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Summaries")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.text.color)
+            Toggle(isOn: $settings.summarizesAfterRecording) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(FirstRunSummaryStep.title)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.text.color)
+                    Text(FirstRunSummaryStep.detail)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.muted.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(Theme.accent.color)
+            .accessibilityIdentifier("setup-auto-summary")
         }
     }
 

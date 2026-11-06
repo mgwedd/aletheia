@@ -301,4 +301,33 @@ final class NoteSpec: AcceptanceCase {
         then(notice).names(Copy.noteReadyTitle, for: "Jane Doe")
         then(desk.opensTheReadyNote()).isTheNotesTab(of: session, in: .soap)
     }
+
+    func test_NOTE_23() async throws {
+        let summaries = try await given.autoSummaries()
+        summaries.summarizeAfterRecording(true)
+        summaries.pauseSummaries()
+
+        let session = try await summaries.recordAndTranscribe()
+        try await summaries.waitUntilTheSummaryIsHeld()
+        await summaries.letTheBackgroundWorkLookAgain()
+        then(try summaries.result(for: session)).hasNoSummary()
+
+        summaries.resumeSummaries()
+        try await summaries.waitForTheSummary(of: session)
+        let result = try summaries.result(for: session)
+        then(result).hasAnUnsignedAIDraft()
+        then(result).announcedTheSummaryWithoutTheName("Jane Doe")
+    }
+
+    func test_NOTE_24() async throws {
+        let summaries = try await given.autoSummaries()
+        summaries.summarizeAfterRecording(false)
+
+        let session = try await summaries.recordAndTranscribe()
+        await summaries.letTheBackgroundWorkLookAgain()
+        let result = try summaries.result(for: session)
+        then(result).hasNoSummary()
+        then(result).isNotWaitingToBeWritten()
+        then(result).announcedNoSummary()
+    }
 }

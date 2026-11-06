@@ -15,3 +15,9 @@ extension Copy {
     static let rowSpeechModel = "Transcription model"
     static let rowAI = "AI summaries & chat"
 }
+
+extension Copy {
+    static let summarySuggestionTitle = "After recording, write the summary automatically"
+    static let summariesTakeAWhile = "Summaries take a while on this Mac"
+    static let notificationWhenReady = "sends a notification when it's ready"
+}

@@ -923,6 +923,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/NoteFollow.swift, Sources/App/Views/NoteReaderView.swift` · `qa: NOTE-21`
 - **NOT-083** When a note finishes, the main window shows a "<format> note ready" notice in its lower-right corner with the patient and session date, **Dismiss** and **Open Note**, which selects the patient and opens the session's Notes tab on that format. The notice stays until dismissed, opened or replaced by the next note; VoiceOver hears its title only. The "Summary ready" notification is still posted as before.
   `surface: ui` · `evidence: Sources/App/Services/SessionAI/NoteReadyCenter.swift, Sources/App/Views/NoteReadyToast.swift, Sources/App/Views/RootView.swift` · `qa: NOTE-22`
+- **NOT-084** With "Write the summary after recording" on, once a recording's transcript is saved the session's note is written in the chosen format at the note effort, after the session's summary if it needs one and before other sessions' summaries, saved as an unsigned AI draft, and "Summary ready" is posted through `PatientLabel` (no name or initials unless names are opted in and the app is unlocked). A session that already has a note in that format, or a signed note, is skipped.
+  `surface: background` · `evidence: Sources/App/Services/SessionAI/AutoNoteDrafter.swift, Sources/App/Services/Digest/DigestScheduler.swift, Sources/App/Services/TranscriptionCoordinator.swift` · `qa: NOTE-23`
+- **NOT-085** The note "Write the summary after recording" asks for waits by the summaries' rules (`DigestSchedulePolicy.pauseReason`): it does not start while recording, transcribing, locked, paused, in Low Power Mode, on battery (unless summaries may run on battery), hot or while other AI work runs. If a recording, transcription, the lock, the pause, power or heat arrives while it is being written, it stops, keeps nothing and is written again later. With the setting off nothing is written.
+  `surface: background` · `evidence: Sources/App/Services/Digest/DigestScheduler.swift, Sources/App/Services/SessionAI/SessionNoteModel.swift` · `qa: NOTE-24`
 
 ## Digests (DIG)
 
@@ -956,6 +960,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/Digest/DigestScheduler.swift` · `qa: DIGEST-01`
 - **DIG-015** Summary building never runs while the app is locked, while a recording is in progress, while a transcription is running, or while a note or question is running or waiting; "Prepare now" cannot override these.
   `surface: background` · `evidence: Sources/App/Services/Digest/DigestSchedulePolicy.swift, Sources/App/AletheiaApp.swift` · `qa: DIGEST-03`
+- **DIG-033** Background summaries also pause while macOS reports serious or critical thermal pressure ("paused while the Mac is hot"); "Prepare now" doesn't override it.
+  `surface: background` · `evidence: Sources/App/Services/Digest/DigestSchedulePolicy.swift, Sources/App/Services/PowerSource.swift, Sources/App/AletheiaApp.swift` · `qa: NOTE-23`
 - **DIG-016** Summary building also pauses while the user has paused it, in Low Power Mode, on battery power (unless "Prepare summaries on battery" is on; Low Power Mode still pauses), and for 10 minutes after a failed build.
   `surface: background` · `evidence: Sources/App/Services/Digest/DigestSchedulePolicy.swift, Sources/App/Services/PowerSource.swift` · `qa: DIGEST-03`
 - **DIG-017** A pause cancels the build in progress (finished sections are kept) and building resumes by itself when the reason ends, except a pause the user chose, which stays until Resume is pressed.
@@ -2072,6 +2078,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Services/FirstRunGate.swift, Sources/App/Views/FirstRunView.swift` · `qa: SETUP-13`
 - **STP-030** When a data folder is chosen, the step stays on the sheet and says "Client records will be kept in the standard location on this Mac." (or the chosen folder's path) and "You can move it later in Settings."; the sheet stays up until Finish setup, even when the terms were already accepted.
   `surface: ui` · `evidence: Sources/App/Services/FirstRunGate.swift, Sources/App/Views/FirstRunView.swift` · `qa: SETUP-14`
+- **STP-031** On an Intel Mac the setup sheet has a Summaries step with a switch, off by default, "After recording, write the summary automatically", explaining that summaries take a while on this Mac and that a notification comes when one is ready. Apple silicon doesn't show the step.
+  `surface: ui` · `evidence: Sources/App/Services/FirstRunGate.swift, Sources/App/Views/FirstRunView.swift` · `qa: SETUP-15`
 
 ## Settings (SET)
 
@@ -2169,6 +2177,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/AppSettings.swift` · `qa: SETTINGS-04`
 - **SET-048** In Settings > License key, **Get a Key…** opens https://astrealabs.com/aletheia/beta in the default browser, where a key is applied for or a lost one recovered, and the caption under it reads "Opens astrealabs.com/aletheia/beta in your browser, where you apply for a key or recover a lost one. Nothing from this Mac is sent. For help, copy the support address and write from your mail app; never include patient information."
   `surface: ui` · `evidence: Sources/App/Views/LicenseViews.swift` · `qa: LICENSE-01`
+- **SET-049** Settings > General has a **Write the summary after recording** switch, off by default on every Mac. On, each recording's summary is written as a draft once it is transcribed (NOT-084).
+  `surface: ui` · `evidence: Sources/App/Views/SettingsView.swift, Sources/App/Services/AppSettings.swift` · `qa: SETTINGS-20`
 
 ## Appearance, accessibility & shortcuts (UX)
 

@@ -15,4 +15,5 @@ extension Copy {
     static let normalEffort = "Normal"
     static let cannotRunSpeechOrAI = "can't run Aletheia's speech recognition or AI"
     static let needsAVX2 = "AVX2"
+    static let summarizeAfterRecording = "Write the summary after recording"
 }

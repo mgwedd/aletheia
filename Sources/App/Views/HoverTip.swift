@@ -47,6 +47,12 @@ enum HelpTips {
     // Settings. Safety and privacy lines (app lock, encryption, backups,
     // what reaches the assistant) stay in the layout; these are the asides.
 
+    static let summarizeAfterRecording = HelpTip(
+        id: "settings.summarizeAfterRecording",
+        heading: "Write the summary after recording",
+        text: "Once a recording is transcribed, writes its summary as a draft for you to review and sends a notification when it's ready. It waits while you record or transcribe, while Aletheia is locked, on battery and when the Mac is hot, like the background summaries, and Pause stops it too."
+    )
+
     static let autoTranscribe = HelpTip(
         id: "settings.autoTranscribe",
         heading: "Transcribe automatically",

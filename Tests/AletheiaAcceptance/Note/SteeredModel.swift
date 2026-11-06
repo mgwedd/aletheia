@@ -162,6 +162,8 @@ final class QuietNotifier: AppNotifying, @unchecked Sendable {
     private let lock = NSLock()
     private var posted: [AppNotificationContent] = []
     var titles: [String] { lock.lock(); defer { lock.unlock() }; return posted.map(\.title) }
+    /// Each notification as "title: body".
+    var shown: [String] { lock.lock(); defer { lock.unlock() }; return posted.map { "\($0.title): \($0.body)" } }
     func requestAuthorization() async {}
     func post(_ content: AppNotificationContent) async {
         lock.lock(); posted.append(content); lock.unlock()

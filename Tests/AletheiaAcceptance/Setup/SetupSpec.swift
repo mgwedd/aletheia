@@ -129,4 +129,11 @@ final class SetupSpec: AcceptanceCase {
         when.finishSetup()
         then(when.openFirstRunGate()).sheetIsGone()
     }
+
+    func test_SETUP_15() async throws {
+        let intel = when.setUpFresh(onIntelMac: true, memoryGB: 8)
+        then(intel).suggestsWritingTheSummaryAfterRecording()
+        then(intel).leavesTheSummaryAfterRecordingOff()
+        then(when.setUpFresh(onIntelMac: false, memoryGB: 16)).doesNotSuggestWritingTheSummaryAfterRecording()
+    }
 }

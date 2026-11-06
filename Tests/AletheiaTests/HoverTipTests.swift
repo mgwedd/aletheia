@@ -63,7 +63,7 @@ final class HelpTipsTests: XCTestCase {
 
     private var settingsTips: [HelpTip] {
         [HelpTips.autoTranscribe, HelpTips.aiInstructions, HelpTips.defaultNoteFormat,
-         HelpTips.includeComments, HelpTips.summariesOnBattery]
+         HelpTips.includeComments, HelpTips.summariesOnBattery, HelpTips.summarizeAfterRecording]
     }
 
     func testIdsAreFixed() {
@@ -72,7 +72,7 @@ final class HelpTipsTests: XCTestCase {
         XCTAssertEqual(HelpTips.compact.id, "chat.compact")
         XCTAssertEqual(settingsTips.map(\.id), [
             "settings.autoTranscribe", "settings.aiInstructions", "settings.defaultNoteFormat",
-            "settings.includeComments", "settings.summariesOnBattery",
+            "settings.includeComments", "settings.summariesOnBattery", "settings.summarizeAfterRecording",
         ])
     }
 

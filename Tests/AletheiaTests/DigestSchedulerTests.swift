@@ -74,6 +74,15 @@ final class DigestSchedulePolicyTests: XCTestCase {
 
     // MARK: Which sessions need a summary
 
+    func testThermalPressurePausesAndPrepareNowDoesNotOverrideIt() {
+        XCTAssertEqual(DigestSchedulePolicy.pauseReason(DigestActivity(thermalPressure: true)), .thermal)
+        XCTAssertEqual(DigestSchedulePolicy.pauseReason(DigestActivity(thermalPressure: true, preparingNow: true)), .thermal)
+        XCTAssertEqual(DigestPauseReason.thermal.text, "paused while the Mac is hot")
+        XCTAssertFalse(DigestPauseReason.thermal.canPrepareNow)
+        // Work the clinician is doing still comes first.
+        XCTAssertEqual(DigestSchedulePolicy.pauseReason(DigestActivity(recording: true, thermalPressure: true)), .recording)
+    }
+
     func testOnlySessionsThatCannotBeReadWholeNeedASummary() {
         // Short session, short history: read whole everywhere.
         XCTAssertFalse(DigestSchedulePolicy.needsSummary(transcriptCharacters: 5_000, historyCharacters: 20_000, room: 30_000))

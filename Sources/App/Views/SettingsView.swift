@@ -223,6 +223,11 @@ struct SettingsView: View {
             tip: HelpTips.autoTranscribe,
             isOn: $settings.autoTranscribeAfterRecording
         )
+        SettingsSwitchRow(
+            title: "Write the summary after recording",
+            tip: HelpTips.summarizeAfterRecording,
+            isOn: $settings.summarizesAfterRecording
+        )
         SettingsRow(title: "Appearance") {
             ThemeSegmentedControl(
                 options: [AppearancePreference.light, .system, .dark].map { ThemeTab(value: $0, title: $0.title) },
