@@ -68,13 +68,16 @@ extension Given {
         }
     }
 
-    /// A fresh install on an Intel Mac: no speech model or AI effort chosen yet.
+    /// A fresh install on an Intel Mac with plenty of memory: no speech model
+    /// or AI effort chosen yet, and one session that fits a 16K window but not 8K.
     func freshInstallOnAnIntelMac() {
         app.seed {
             $0.license = "test"
             $0.fileVault = "on"
             $0.intel = true
-            $0.patients = [.init(name: "Jane Doe", sessions: 1, transcript: SessionContent.shortTranscript)]
+            $0.memoryGB = 32
+            $0.aiReplies = ["The client talked about how the week went at work and at home."]
+            $0.patients = [.init(name: "Jane Doe", sessions: 1, transcript: DigestContent.longTranscript())]
             $0.open = "Jane Doe"
         }
     }
@@ -105,6 +108,13 @@ extension When {
         XCTAssertTrue(app.exists(pane.builtInModelHeader), "no Built-in model header on AI and models")
         XCTAssertTrue(app.exists(pane.modelPicker), "no built-in model picker on AI and models")
         return pane
+    }
+}
+
+extension Then where Subject == SummariesOnScreen {
+    /// The session is read in parts: it didn't fit what the AI reads at once.
+    func summarizesTheSessionInParts() {
+        expect(subject.driver.waitFor(subject.row, timeout: 30), "no Summaries row: the session was read whole")
     }
 }
 

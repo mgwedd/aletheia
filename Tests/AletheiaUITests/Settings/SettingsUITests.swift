@@ -36,6 +36,7 @@ final class SettingsUITests: AcceptanceCase {
 
     func test_SETTINGS_18() {
         given.freshInstallOnAnIntelMac()
+        then(when.openSummaries()).summarizesTheSessionInParts()
         let ask = when.openAskTab()
         then(ask.effort).hasChosen("Fast")
         let pane = when.openAIAndModelsSettings()

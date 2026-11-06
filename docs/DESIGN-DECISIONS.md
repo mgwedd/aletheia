@@ -29,7 +29,7 @@ flowchart TD
 
 | Part | Limit | Source |
 |---|---|---|
-| Transcript text, all sessions together | Mac-dependent: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB+ (Intel one tier lower) | `ModelAdvisor.contextBudgetTokens` |
+| Transcript text, all sessions together | Mac-dependent: 16K tokens on 8 GB, 32K on 16 GB, 64K on 32 GB+ (Intel a flat 8K) | `ModelAdvisor.contextBudgetTokens` |
 | Characters per token | ~3 characters | `ContextBudget.charactersPerToken` |
 | Extras per session (notes, comments, generated notes) | 3,000 chars, ordered therapist words first | `Store.patientChatSessionExtrasLimit` |
 | Patient background | none | `Patient.aiBackgroundBlock` |
