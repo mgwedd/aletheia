@@ -73,4 +73,12 @@ final class CommentSpec: AcceptanceCase {
 
         then(try when.lookAtCommentsRail(of: subject)).hasNoCards()
     }
+
+    func test_COMMENT_09() async throws {
+        let button = when.selectAFewWords(buttonSize: CGSize(width: 150, height: 34))
+
+        then(button).isShown()
+        then(button).sitsJustAboveSelection()
+        then(button).staysInsidePane()
+    }
 }

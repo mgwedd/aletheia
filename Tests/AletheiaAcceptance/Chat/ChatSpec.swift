@@ -629,4 +629,23 @@ final class ChatSpec: AcceptanceCase {
             then(desk.model).wasToldToWriteToYouOnceAndOnlyWhatWasAgreed()
         }
     }
+
+    func test_CHAT_39() async throws {
+        let desk = given.assistantDesk()
+        let jane = try await given.patient(named: "Jane Doe")
+        let session = try desk.session(of: jane, saying: [.you("How did the week go?"), .client("The quiet in the new flat keeps me up.")])
+        desk.model.fallback("She said the new flat is too quiet to sleep.")
+        desk.model.summarizesConversation(as: "Asked what the session was about: sleep in the new flat.")
+        let ask = desk.askTab(of: session)
+        ask.ask("What was the session about?")
+        try await ask.waitUntilIdle()
+
+        ask.compact()
+        try await ask.waitUntilIdle()
+
+        then(desk.model).wasAskedToSummarizeOnly(
+            question: "What was the session about?", answer: "She said the new flat is too quiet to sleep.",
+            notTheTranscript: "The quiet in the new flat keeps me up.")
+        then(ask.pane).showsCompactedCardReplacingEarlier()
+    }
 }

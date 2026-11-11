@@ -175,37 +175,38 @@ final class TranscriptSplitTests: XCTestCase {
 final class CommentButtonPlacementTests: XCTestCase {
     private typealias Placement = CommentButtonPlacement
     private let pane = CGSize(width: 600, height: 400)
+    private let size = CGSize(width: 108, height: 30)
 
     func testSitsAboveTheSelectionsFirstLine() {
-        let origin = Placement.origin(anchor: CGRect(x: 100, y: 100, width: 80, height: 20), in: pane)
-        XCTAssertEqual(origin, CGPoint(x: 100, y: 100 - Placement.gap - Placement.size.height))
+        let origin = Placement.origin(anchor: CGRect(x: 100, y: 100, width: 80, height: 20), size: size, in: pane)
+        XCTAssertEqual(origin, CGPoint(x: 100, y: 100 - Placement.gap - size.height))
     }
 
     func testDropsBelowWhenThereIsNoRoomAbove() {
-        let origin = Placement.origin(anchor: CGRect(x: 50, y: 10, width: 80, height: 20), in: pane)
+        let origin = Placement.origin(anchor: CGRect(x: 50, y: 10, width: 80, height: 20), size: size, in: pane)
         XCTAssertEqual(origin, CGPoint(x: 50, y: 10 + 20 + Placement.gap))
     }
 
     func testStaysInsideThePaneHorizontally() {
-        let right = Placement.origin(anchor: CGRect(x: 590, y: 100, width: 5, height: 20), in: pane)
-        XCTAssertEqual(right?.x, pane.width - Placement.size.width - Placement.margin)
-        let left = Placement.origin(anchor: CGRect(x: -20, y: 100, width: 5, height: 20), in: pane)
+        let right = Placement.origin(anchor: CGRect(x: 590, y: 100, width: 5, height: 20), size: size, in: pane)
+        XCTAssertEqual(right?.x, pane.width - size.width - Placement.margin)
+        let left = Placement.origin(anchor: CGRect(x: -20, y: 100, width: 5, height: 20), size: size, in: pane)
         XCTAssertEqual(left?.x, Placement.margin)
     }
 
     func testStaysInsideThePaneVertically() {
         // A selection line at the very bottom, with no room above or below.
-        let origin = Placement.origin(anchor: CGRect(x: 10, y: 20, width: 80, height: 370), in: pane)
-        XCTAssertEqual(origin?.y, pane.height - Placement.size.height - Placement.margin)
+        let origin = Placement.origin(anchor: CGRect(x: 10, y: 20, width: 80, height: 370), size: size, in: pane)
+        XCTAssertEqual(origin?.y, pane.height - size.height - Placement.margin)
     }
 
     func testHiddenWhenTheLineHasScrolledOutOfView() {
-        XCTAssertNil(Placement.origin(anchor: CGRect(x: 0, y: -50, width: 80, height: 20), in: pane))
-        XCTAssertNil(Placement.origin(anchor: CGRect(x: 0, y: 400, width: 80, height: 20), in: pane))
+        XCTAssertNil(Placement.origin(anchor: CGRect(x: 0, y: -50, width: 80, height: 20), size: size, in: pane))
+        XCTAssertNil(Placement.origin(anchor: CGRect(x: 0, y: 400, width: 80, height: 20), size: size, in: pane))
     }
 
     func testHiddenWhenThePaneCannotHoldIt() {
-        XCTAssertNil(Placement.origin(anchor: CGRect(x: 0, y: 100, width: 10, height: 20), in: CGSize(width: 100, height: 400)))
+        XCTAssertNil(Placement.origin(anchor: CGRect(x: 0, y: 100, width: 10, height: 20), size: size, in: CGSize(width: 100, height: 400)))
     }
 
     func testVisibleOnlyForASelectionInASavedReadableTranscript() {

@@ -227,6 +227,7 @@ struct SessionDetailView: View {
     /// reported by the text view (nil until it has been placed).
     @State private var composerAnchor: CGRect?
     @State private var composerHeight: CGFloat = 230
+    @State private var commentButtonSize = CommentButtonPlacement.estimatedSize
     @State private var inlineCommentBody = ""
     @State private var noteSelection = ""
     @State private var noteSelectionRange: NSRange?
@@ -1096,7 +1097,7 @@ struct SessionDetailView: View {
             isReadable: transcriptReadError == nil
         ), let anchor = transcriptSelectionRect {
             GeometryReader { proxy in
-                if let origin = CommentButtonPlacement.origin(anchor: anchor, in: proxy.size) {
+                if let origin = CommentButtonPlacement.origin(anchor: anchor, size: commentButtonSize, in: proxy.size) {
                     Button {
                         beginInlineComment()
                     } label: {
@@ -1105,10 +1106,17 @@ struct SessionDetailView: View {
                     .buttonStyle(.themed)
                     .keyboardShortcut("m", modifiers: [.command, .option])
                     .help("Comment on the selected passage (\u{2325}\u{2318}M)")
-                    .frame(width: CommentButtonPlacement.size.width, height: CommentButtonPlacement.size.height)
+                    // Sized by its own label, so the whole word always shows.
+                    .fixedSize()
+                    .background(
+                        GeometryReader { button in
+                            Color.clear.preference(key: CommentButtonSizeKey.self, value: button.size)
+                        }
+                    )
                     .offset(x: origin.x, y: origin.y)
                 }
             }
+            .onPreferenceChange(CommentButtonSizeKey.self) { commentButtonSize = $0 }
         }
     }
 
@@ -2058,6 +2066,12 @@ struct SessionDetailView: View {
 private struct ComposerHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 230
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Carries the floating Comment button's measured size up to the overlay that places it.
+private struct CommentButtonSizeKey: PreferenceKey {
+    static var defaultValue = CommentButtonPlacement.estimatedSize
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
 }
 
 /// The card the inline comment composer shows under a transcript passage: the

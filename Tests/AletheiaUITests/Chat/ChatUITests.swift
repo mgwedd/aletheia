@@ -213,6 +213,23 @@ final class ChatUITests: AcceptanceCase {
         then(tab).keepsTheAnswersAsWideAndAboveTheCard(before)
     }
 
+    func test_CHAT_39_compactSumsUpTheConversationNotTheSession() {
+        executionTimeAllowance = 120
+        given.aSessionToAskAbout(
+            chat: [
+                .init(role: "user", text: "What was the session about?"),
+                .init(role: "assistant", text: "Sleep in the new flat."),
+            ],
+            rules: [.init(whenPromptContains: "Therapist: What was the session about?", reply: "Asked what the session was about: sleep.")])
+        let tab = when.openAskTab()
+        then(tab).showsText("Sleep in the new flat.")
+
+        app.click(tab.compact, "Compact button")
+
+        then(tab).showsText("Asked what the session was about: sleep.")
+        XCTAssertTrue(app.waitFor(tab.compactedCard, timeout: 30), "no compacted card")
+    }
+
     func test_CHAT_37_aSummaryCutOffAtTheReplyLimitIsThrownAway() {
         executionTimeAllowance = 120
         given.aSessionToAskAbout(

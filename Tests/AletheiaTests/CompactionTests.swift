@@ -84,20 +84,31 @@ final class CompactionTests: XCTestCase {
         XCTAssertEqual(backend.system, Prompts.compactSystem(service.systemPrompt, history: history))
         XCTAssertTrue(backend.system.contains("<summary>\nEarlier: asked about sleep.\n</summary>"))
         XCTAssertTrue(backend.system.contains("- Answer in bullets from now on."))
-        XCTAssertEqual(backend.prompt, Prompts.compactChat(focus: "napping"))
-        XCTAssertFalse(backend.prompt.contains("Earlier: asked about sleep."), "the summary is not in the final prompt")
-        XCTAssertEqual(backend.turns, [
+        XCTAssertEqual(backend.prompt, Prompts.compactChat([
             PromptTurn(role: .user, text: "Does she nap?"),
             PromptTurn(role: .assistant, text: "Yes, most afternoons."),
-        ])
+        ], focus: "napping"))
+        XCTAssertTrue(backend.prompt.contains("<chat>\nTherapist: Does she nap?\nAssistant: Yes, most afternoons.\n</chat>"),
+                      "the conversation since the summary is quoted in the instruction")
+        XCTAssertFalse(backend.prompt.contains("Earlier: asked about sleep."), "the summary is not in the final prompt")
+        XCTAssertEqual(backend.turns, [], "the conversation is quoted, not sent as turns")
     }
 
     func testFocusLineIsInTheInstructionOnlyWhenGiven() {
-        let focused = Prompts.compactChat(focus: "medication changes")
+        let focused = Prompts.compactChat([], focus: "medication changes")
         XCTAssertTrue(focused.contains("The therapist asked to keep this in particular, in full detail: medication changes"))
         XCTAssertTrue(focused.hasSuffix("in full detail: medication changes"), "the focus is the last thing the model reads")
-        XCTAssertFalse(Prompts.compactChat(focus: "").contains("in particular"))
-        XCTAssertTrue(Prompts.compactChat(focus: "").contains("Write a summary that will replace it"))
+        XCTAssertFalse(Prompts.compactChat([], focus: "").contains("in particular"))
+        XCTAssertTrue(Prompts.compactChat([], focus: "").contains("notes on this chat that will replace it"))
+    }
+
+    /// A small model asked about "therapy sessions" with "time stamps" wrote out
+    /// a made-up session instead of summing up the chat (issue 563).
+    func testInstructionAsksForTheChatNotTheSession() {
+        let prompt = Prompts.compactChat([PromptTurn(role: .user, text: "What was it about?")], focus: "")
+        XCTAssertTrue(prompt.contains("For each question the therapist asked, write one bullet"))
+        XCTAssertTrue(prompt.contains("Don't reproduce or rewrite the session transcript."))
+        XCTAssertFalse(prompt.contains("recorded therapy sessions"))
     }
 
     func testSystemTurnIsJustTheInstructionsBeforeAnySummary() {

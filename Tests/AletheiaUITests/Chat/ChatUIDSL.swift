@@ -7,7 +7,7 @@ extension Copy {
     static let disclaimer = "AI generated responses can be inaccurate. Double-check responses."
     static let compactedChip = "Conversation compacted"
     /// Words in the request that asks the AI to summarize the conversation.
-    static let summaryRequest = "Write a summary that will replace it"
+    static let summaryRequest = "notes on this chat that will replace it"
     static let summaryDidNotFinish = "The summary didn't finish, so the conversation was kept as it was."
     static let preparingTheAnswer = "Preparing the answer"
     static let readingTheSession = "Reading the session · part 1 of 3"

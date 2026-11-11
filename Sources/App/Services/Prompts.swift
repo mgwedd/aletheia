@@ -492,25 +492,31 @@ enum Prompts {
         return earlier.isEmpty ? base : base + "\n\n" + materialRule + "\n\n" + earlier
     }
 
-    /// Asks for a summary that can stand in for the conversation so far, so a
+    /// Asks for notes that can stand in for the conversation so far, so a
     /// long chat keeps going without silently forgetting its start. The
-    /// conversation since the last summary goes before this as chat turns,
-    /// and anything before that in the system turn (`compactSystem`).
-    static func compactChat(focus: String) -> String {
+    /// conversation since the last summary is quoted here, and anything
+    /// before that is in the system turn (`compactSystem`). Quoting it, and
+    /// asking for one bullet per question, keeps a small model summarizing
+    /// the chat rather than writing out a session.
+    static func compactChat(_ conversation: [PromptTurn], focus: String) -> String {
         let focusLine = focus.isEmpty ? "" : """
 
         The therapist asked to keep this in particular, in full detail: \(focus)
         """
         return """
-        This conversation with the therapist is about their recorded therapy \
-        sessions. Write a summary that will replace it, so the conversation can \
-        continue without the full history.
+        Here is your chat with the therapist so far:
 
-        Keep: each question they asked, the answers and conclusions reached, \
-        specific facts with the session tags or time stamps they were cited \
-        with, and anything left open. Leave out pleasantries and repetition. \
-        Write it as compact notes, under 400 words, with no opening or \
-        closing remarks. Don't add anything that isn't in the conversation.\(focusLine)
+        <chat>
+        \(PromptTurn.transcript(conversation))
+        </chat>
+
+        Write short notes on this chat that will replace it, so the chat can \
+        continue without it. For each question the therapist asked, write one \
+        bullet: the question, then the answer or conclusion in a sentence or \
+        two, keeping any session tags or time stamps the answer cited. Then add \
+        a bullet for anything left open, if there is any. Use only what the \
+        chat says. Don't reproduce or rewrite the session transcript. Under 200 \
+        words, with no opening or closing remarks.\(focusLine)
         """
     }
 }

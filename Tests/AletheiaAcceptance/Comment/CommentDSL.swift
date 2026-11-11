@@ -16,6 +16,7 @@ struct CommentedSession {
 struct FloatingCommentButton {
     let anchor: CGRect
     let pane: CGSize
+    let size: CGSize
     let origin: CGPoint?
     let visible: Bool
 }
@@ -63,12 +64,12 @@ extension Given {
 
 extension When {
     /// Selects a few words partway down the transcript pane.
-    func selectAFewWords() -> FloatingCommentButton {
+    func selectAFewWords(buttonSize: CGSize = CGSize(width: 108, height: 30)) -> FloatingCommentButton {
         let anchor = CGRect(x: 120, y: 200, width: 160, height: 18)
         let paneSize = CGSize(width: 600, height: 500)
         return FloatingCommentButton(
-            anchor: anchor, pane: paneSize,
-            origin: CommentButtonPlacement.origin(anchor: anchor, in: paneSize),
+            anchor: anchor, pane: paneSize, size: buttonSize,
+            origin: CommentButtonPlacement.origin(anchor: anchor, size: buttonSize, in: paneSize),
             visible: CommentButtonPlacement.isVisible(
                 hasSelection: true, isDirty: false, isComposing: false, isReadable: true))
     }
@@ -149,9 +150,16 @@ extension When {
 extension Then where Subject == FloatingCommentButton {
     func sitsJustAboveSelection() {
         guard let origin = subject.origin else { return fail("expected the Comment button to be placed, it was not") }
-        expectEqual(origin.y, subject.anchor.minY - CommentButtonPlacement.gap - CommentButtonPlacement.size.height,
+        expectEqual(origin.y, subject.anchor.minY - CommentButtonPlacement.gap - subject.size.height,
                     "the button's top edge (just above the selection)")
         expectEqual(origin.x, subject.anchor.minX, "the button's left edge (the selection's start)")
+    }
+
+    /// Inside the pane, whatever the button's width.
+    func staysInsidePane() {
+        guard let origin = subject.origin else { return fail("expected the Comment button to be placed, it was not") }
+        expect(origin.x >= 0 && origin.x + subject.size.width <= subject.pane.width,
+               "the button spans x \(origin.x) to \(origin.x + subject.size.width) in a pane \(subject.pane.width) wide")
     }
 
     func isShown() { expect(subject.visible, "expected the Comment button to show for a selection") }

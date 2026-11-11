@@ -111,15 +111,16 @@ enum TranscriptSplit {
 
 /// Where the floating Comment button sits relative to the selection.
 enum CommentButtonPlacement {
-    static let size = CGSize(width: 108, height: 30)
+    /// Stands in until the button has been measured; placement uses the real size.
+    static let estimatedSize = CGSize(width: 130, height: 34)
     static let gap: CGFloat = 6
     static let margin: CGFloat = 8
 
     /// The button's top-left corner for a selection whose first line is `anchor`
     /// (in the pane's coordinates): above that line when there is room, else
     /// below it, kept inside the pane. Nil when the line has scrolled out of
-    /// view or the pane is too narrow to hold the button.
-    static func origin(anchor: CGRect, in pane: CGSize) -> CGPoint? {
+    /// view or the pane is too narrow to hold a button of `size` (its measured size).
+    static func origin(anchor: CGRect, size: CGSize, in pane: CGSize) -> CGPoint? {
         guard anchor.maxY > 0, anchor.minY < pane.height,
               pane.width >= size.width + 2 * margin else { return nil }
         let above = anchor.minY - gap - size.height
