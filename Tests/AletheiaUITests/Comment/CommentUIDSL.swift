@@ -6,18 +6,23 @@ extension Copy {
 }
 
 /// The floating Comment button on screen, with the words selected above it.
+/// On macOS a button is one element with no text inside it, so the label is
+/// judged by the button's width.
 struct CommentButtonOnScreen {
     let driver: AppDriver
 
     var button: XCUIElement { driver.button(Copy.commentButton) }
-    /// The word inside the button.
-    var label: XCUIElement { button.staticTexts[Copy.commentButton].firstMatch }
 
-    /// How wide "Comment" is when nothing limits it, in the button's font
-    /// (13 point, medium weight).
-    var wordWidth: CGFloat {
+    /// The least width that shows the icon and the whole word: "Comment" and
+    /// its icon in the button's font (13 point, medium), the gap a label puts
+    /// between them (at least 8 points), and the button's padding (12 points
+    /// a side).
+    var neededWidth: CGFloat {
         let font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        return (Copy.commentButton as NSString).size(withAttributes: [.font: font]).width
+        let word = (Copy.commentButton as NSString).size(withAttributes: [.font: font]).width
+        let icon = NSImage(systemSymbolName: "text.bubble", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .medium))?.size.width ?? 0
+        return icon + 8 + word + 2 * 12
     }
 }
 
@@ -51,16 +56,10 @@ extension Then where Subject == CommentButtonOnScreen {
         expect(subject.driver.exists(subject.button), "no Comment button appeared for the selection")
     }
 
-    /// The word fits inside the button: the text is as wide as "Comment" laid
-    /// out without limits, and the button's edges clear it on both sides.
+    /// The button is wide enough for its icon, the whole word and its padding.
     func showsItsWholeLabel() {
-        expect(subject.driver.exists(subject.label), "no \"\(Copy.commentButton)\" text inside the button")
-        let word = subject.wordWidth
-        let label = subject.label.frame
-        let button = subject.button.frame
-        expect(label.width >= word - 1,
-               "the label is \(label.width) wide; \"\(Copy.commentButton)\" needs \(word) (button \(button))")
-        expect(label.minX >= button.minX && label.maxX <= button.maxX,
-               "the label (\(label.minX) to \(label.maxX)) spills out of the button (\(button.minX) to \(button.maxX))")
+        let width = subject.button.frame.width
+        expect(width >= subject.neededWidth,
+               "the button is \(width) wide; its icon and \"\(Copy.commentButton)\" need \(subject.neededWidth)")
     }
 }
