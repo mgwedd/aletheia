@@ -290,6 +290,43 @@ final class NoteUITests: AcceptanceCase {
         return when.generateNote(on: tab)
     }
 
+    func test_NOTE_25_checkThatCopiesTheSessionKeepsTheDraft() {
+        let draft = "The client described a stressful week at work."
+        given.aSession(transcript: SessionContent.longTranscript(), depth: "natural", effort: "focus",
+                       stageMs: 100, replies: [draft],
+                       answers: [.init(whenPromptContains: Copy.checkPrompt, reply: Copy.echoedTranscript)])
+        let tab = when.openNotesTab()
+
+        let coverage = when.generateNote(on: tab)
+
+        then(coverage).coverageSaysTheCheckReturnedTheSessionMaterial()
+        then(tab).showsText(draft)
+        then(tab).showsNo(Copy.echoedLine)
+    }
+
+    func test_NOTE_26_summaryIsAskedForLastAtTheConciseLength() {
+        summaryIsAskedForLast(depth: "concise", length: "Aim for roughly 80–150 words")
+    }
+
+    func test_NOTE_26_summaryIsAskedForLastAtTheDetailedLength() {
+        summaryIsAskedForLast(depth: "detailed", length: "Aim for roughly 300–600 words")
+    }
+
+    /// The scripted model writes the marked reply only when the prompt ends by
+    /// asking for the summary of the whole session at `length`.
+    private func summaryIsAskedForLast(depth: String, length: String) {
+        let reply = "The summary was asked for at the \(depth) length."
+        let ask = "\(Copy.summaryTask) in your own words, without copying the material. \(length)"
+        given.aSession(transcript: SessionContent.shortTranscript, depth: depth, replies: ["Asked some other way."],
+                       answers: [.init(whenPromptContains: ask, reply: reply)])
+        let tab = when.openNotesTab()
+        when.pickFormat("Summary", on: tab)
+
+        tab.generateButton.click()
+
+        then(tab).showsText(reply)
+    }
+
     func test_NOTE_23_summaryIsWrittenAfterRecordingAndAnnounced() {
         given.aSessionToRecord(summarizeAfterRecording: true)
 

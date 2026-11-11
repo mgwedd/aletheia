@@ -128,6 +128,18 @@ final class PromptsTests: XCTestCase {
         XCTAssertTrue(note.contains("Therapist's session notes:\nNOTES"))
     }
 
+    /// The note is asked for last, after all the material, with the depth's length.
+    func testTheNotePromptEndsByAskingForTheNoteAtItsLength() {
+        for depth in AnswerDepth.allCases {
+            let summary = Prompts.progressNote(format: .narrative, transcript: "[00:01] Y: LINE", notes: "NOTES", depth: depth)
+            let task = try! XCTUnwrap(Prompts.noteTask(format: .narrative, depth: depth))
+            XCTAssertTrue(summary.hasSuffix("\n\n" + task))
+            XCTAssertTrue(summary.hasSuffix(depth.target(for: .summary)))
+            XCTAssertTrue(task.hasPrefix("Now write a summary of the whole session"))
+            XCTAssertNil(Prompts.noteTask(format: .soap, depth: depth))
+        }
+    }
+
     /// The long-session preface is an instruction: stated once, outside the tags.
     func testLongSessionPrefaceIsOutsideTheTags() {
         let prompt = Prompts.progressNote(

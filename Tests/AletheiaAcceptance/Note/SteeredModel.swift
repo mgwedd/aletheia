@@ -75,6 +75,11 @@ final class SteeredModel: LocalLLMEngine, @unchecked Sendable {
         answer("notes on this chat that will replace it", with: .writes(text))
     }
 
+    /// Asked to check a draft note, it sends back the session's transcript lines instead.
+    func returnsTheTranscriptWhenAskedToCheck() {
+        answer("Check every statement in the draft", with: .writes(Copy.echoedTranscript))
+    }
+
     /// Every request fails as it does when the model file is not on this Mac.
     func failsAsNotDownloaded() { answer(nil, with: .fails(LocalLLMEngineError.modelNotDownloaded)) }
 

@@ -267,6 +267,37 @@ final class NoteSpec: AcceptanceCase {
         then(notes.pane).saysTheWholeTranscriptWasRead()
     }
 
+    func test_NOTE_25() async throws {
+        let desk = given.assistantDesk()
+        let session = try desk.session(
+            of: try await given.patient(named: "Jane Doe"),
+            transcript: AssistantDesk.transcript(minutes: 45, about: "work"))
+        desk.model.returnsTheTranscriptWhenAskedToCheck()
+        desk.model.fallback("The client described a stressful week at work.")
+        let notes = desk.notesTab(of: session)
+        notes.pick(.summary)
+
+        try await notes.generate(.natural, at: .focus)
+
+        then(notes.pane).keepsTheDraftWithNoTranscriptLines("The client described a stressful week at work.")
+        then(notes.pane).saysTheCheckReturnedTheSessionMaterial()
+    }
+
+    func test_NOTE_26() async throws {
+        let desk = given.assistantDesk()
+        let session = try desk.session(
+            of: try await given.patient(named: "Jane Doe"),
+            saying: [.you("How was your week?"), .client("Busy at work.")])
+        desk.model.fallback("The client had a busy week at work.")
+        let notes = desk.notesTab(of: session)
+        notes.pick(.summary)
+
+        for depth in [Depth.concise, .natural, .detailed] {
+            try await notes.generate(depth, at: .normal)
+            then(desk.model).endsByAskingForTheSummary(at: depth)
+        }
+    }
+
     func test_NOTE_21() async throws {
         let desk = given.assistantDesk()
         let session = try desk.session(of: try await given.patient(named: "Jane Doe"), saying: [.you("Hello."), .client("Hi.")])

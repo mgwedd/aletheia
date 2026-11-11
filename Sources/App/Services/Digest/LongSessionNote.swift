@@ -63,7 +63,7 @@ enum LongSessionNote {
 
     /// How the Focus check ended.
     enum CheckOutcome: Equatable {
-        case ran, noRoom, tooLong, failed, incomplete, alteredRisk, stopped
+        case ran, noRoom, tooLong, failed, incomplete, alteredRisk, copiedSource, stopped
 
         var text: String {
             switch self {
@@ -73,6 +73,7 @@ enum LongSessionNote {
             case .failed: return "The check didn't run (it failed), so this is the unchecked draft."
             case .incomplete: return "The check's result looked incomplete, so this is the unchecked draft."
             case .alteredRisk: return "The check's correction changed a risk statement, so it was skipped and this is the unchecked draft."
+            case .copiedSource: return "The check returned the session material instead of a note, so this is the unchecked draft."
             case .stopped: return "Stopped before the check finished; this is the unchecked draft."
             }
         }
@@ -281,7 +282,9 @@ enum LongSessionNote {
     }
 
     /// A corrected note is taken only if it is at least 60% as long as the draft,
-    /// keeps every section heading line, and leaves risk statements alone: every
+    /// holds no transcript lines or material tags the draft didn't (so the source is
+    /// never taken for a note), keeps every section heading line, and leaves
+    /// risk statements alone: every
     /// draft sentence with a risk phrase must be in the correction word
     /// for word, in the same section, and the correction may add no such
     /// sentence of its own (so no flipped, dropped, moved or invented denial).
@@ -296,6 +299,7 @@ enum LongSessionNote {
         _ corrected: String, draft: String, format: ProgressNoteFormat, phrases: [String]
     ) -> CheckOutcome? {
         guard corrected.count * 10 >= draft.count * 6 else { return .incomplete }
+        if copiesSource(corrected, draft: draft) { return .copiedSource }
         guard headingLines(draft, format).isSubset(of: headingLines(corrected, format)) else { return .incomplete }
         let matcher = RiskPhraseMatcher(phrases)
         let before = Set(sentences(draft, format, matcher: nil))
@@ -303,6 +307,21 @@ enum LongSessionNote {
         if sentences(draft, format, matcher: matcher).contains(where: { !after.contains($0) }) { return .alteredRisk }
         if sentences(corrected, format, matcher: matcher).contains(where: { !before.contains($0) }) { return .alteredRisk }
         return nil
+    }
+
+    /// Whether `corrected` holds material the draft didn't: a material tag, or
+    /// a time-stamped transcript line.
+    private nonisolated static func copiesSource(_ corrected: String, draft: String) -> Bool {
+        func marks(_ text: String) -> Int {
+            let tags = UntrustedText.Kind.allCases.reduce(0) {
+                $0 + text.lowercased().components(separatedBy: "<\($1.rawValue)>").count - 1
+            }
+            let lines = text.split(separator: "\n").filter {
+                $0.trimmingCharacters(in: .whitespaces).range(of: #"^\[\d{1,3}:\d{2}(:\d{2})?\]"#, options: .regularExpression) != nil
+            }.count
+            return tags + lines
+        }
+        return marks(corrected) > marks(draft)
     }
 
     /// Which of the format's headings stand on a line of their own in `text`.
@@ -695,6 +714,9 @@ extension Prompts {
 
         Draft note:
         \(UntrustedText(.draft, draft).rendered)
+
+        Now return the draft note above with your corrections, and nothing \
+        else: no transcript lines, digest or tags.
         """
     }
 }

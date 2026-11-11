@@ -453,6 +453,30 @@ final class LongSessionNoteTests: XCTestCase {
         XCTAssertTrue(custom.text.contains("goldfish situation"))
     }
 
+    func testACheckThatSendsBackTheSessionIsNotTaken() {
+        let draft = "The client talked about trust with her mother and a hard week at work."
+        let echoed = "<transcript>\n[15:44] You: Yeah, trust.\n[15:50] Client: It was hard.\n</transcript>"
+        XCTAssertEqual(LongSessionNote.rejection(echoed, draft: draft, format: .narrative, phrases: defaultPhrases), .copiedSource)
+        let untagged = "[15:44] You: Yeah, trust with her mother.\n[15:50] Client: A hard week at work, yes."
+        XCTAssertEqual(LongSessionNote.rejection(untagged, draft: draft, format: .narrative, phrases: defaultPhrases), .copiedSource)
+        let fixed = "The client talked about trust with her mother and a difficult week at work."
+        XCTAssertNil(LongSessionNote.rejection(fixed, draft: draft, format: .narrative, phrases: defaultPhrases))
+        XCTAssertTrue(LongSessionNote.CheckOutcome.copiedSource.text.contains("returned the session material"))
+    }
+
+    func testACheckKeepsATimeStampTheDraftAlreadyHad() {
+        let draft = "[12:30] She said the week was hard.\nShe plans to rest."
+        let fixed = "[12:30] She said the week was difficult.\nShe plans to rest."
+        XCTAssertNil(LongSessionNote.rejection(fixed, draft: draft, format: .narrative, phrases: []))
+    }
+
+    func testTheCheckPromptEndsByAskingForTheNoteAlone() {
+        let prompt = Prompts.noteCheck(draft: "DRAFT", material: .transcript("[00:01] Y: LINE"))
+        let draft = try! XCTUnwrap(prompt.range(of: "</draft>"))
+        let ask = try! XCTUnwrap(prompt.range(of: "Now return the draft note above with your corrections"))
+        XCTAssertLessThan(draft.upperBound, ask.lowerBound)
+    }
+
     func testTheAlteredRiskRuleUsesTheGivenList() {
         let draft = "## Subjective\nShe slept badly all week. Her goldfish died last week.\n\n## Plan\nTry the sleep diary next week."
         let corrected = draft.replacingOccurrences(of: " Her goldfish died last week.", with: "")
