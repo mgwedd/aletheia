@@ -16,6 +16,12 @@ extension Copy {
     static let downloadModel = "Download Model"
     static let copied = "Copied"
     static let bullet = "•"
+    /// What a check sends back when it copies the session instead of correcting the note.
+    static let echoedTranscript = "<transcript>\n[15:44] You: Trust, yes.\n[15:50] Jane: It has been hard.\n</transcript>"
+    static let echoedLine = "[15:44]"
+    static let checkCopiedSource = "The check returned the session material instead of a note"
+    static let summaryTask = "Now write a summary of the whole session"
+    static let summaryLengths: [Depth: String] = [.concise: "80–150 words", .natural: "150–300 words", .detailed: "300–600 words"]
 }
 
 extension Copy {

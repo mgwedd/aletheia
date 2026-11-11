@@ -271,7 +271,21 @@ enum Prompts {
         \(legend(clientName: clientName))
         \(backgroundMaterial(patientBackground))
         \(sessionMaterial(material))
-        \(therapistMaterial(notes: notes, comments: comments))
+        \(therapistMaterial(notes: notes, comments: comments))\(noteTask(format: format, depth: depth).map { "\n\n" + $0 } ?? "")
+        """
+    }
+
+    /// Ends the note prompt, after all the material: what to write and how
+    /// long. A small model given only the instructions before a long session
+    /// forgets the length by the time it writes, and can carry on from the
+    /// material instead of writing the note (as Ask does, CHT-094). Only a
+    /// Summary needs it: a sectioned note's headings already anchor it, and a
+    /// tight budget keeps its room for the material.
+    static func noteTask(format: ProgressNoteFormat, depth: AnswerDepth) -> String? {
+        guard format.sections.isEmpty else { return nil }
+        return """
+        Now write a summary of the whole session in your own words, without \
+        copying the material. \(depth.target(for: .summary))
         """
     }
 
