@@ -158,6 +158,17 @@ extension Then where Subject == NotePane {
         expectEqual(subject.shown, text, "the note")
     }
 
+    func keepsTheDraftWithNoTranscriptLines(_ draft: String) {
+        expect(subject.shown.contains(draft), "the draft is gone: the note reads \"\(subject.shown)\"")
+        expect(!subject.shown.contains(Copy.echoedLine) && !subject.shown.contains("<transcript"),
+               "transcript lines reached the note: \"\(subject.shown)\"")
+    }
+
+    func saysTheCheckReturnedTheSessionMaterial() {
+        guard let coverage = subject.coverage else { return fail("the note has no coverage line") }
+        expect(coverage.contains(Copy.checkCopiedSource), "the coverage line doesn't say the check copied the session: \"\(coverage)\"")
+    }
+
     func keepsTheMarkdown(_ markdown: String) {
         expect(subject.text.contains(markdown), "the saved note lost \"\(markdown)\": it reads \"\(subject.text)\"")
     }
@@ -189,6 +200,19 @@ extension Then where Subject == CopiedNote {
 extension Then where Subject == SteeredModel {
     func askedWith(_ text: String) {
         expect(subject.requestTexts.last?.contains(text) == true, "the last request does not contain \"\(text)\"")
+    }
+
+    /// The last request ends, after the session, by asking for the summary at `depth`'s length.
+    func endsByAskingForTheSummary(at depth: Depth) {
+        guard let last = subject.requestTexts.last,
+              let task = last.range(of: Copy.summaryTask, options: .backwards),
+              let material = last.range(of: "</transcript>", options: .backwards) else {
+            return fail("the request doesn't ask for a summary of the whole session")
+        }
+        expect(material.upperBound <= task.lowerBound, "the summary is asked for before the session, not after it")
+        let tail = last[task.lowerBound...]
+        expect(tail.contains(Copy.summaryLengths[depth] ?? "?"),
+               "the closing request doesn't give the \(depth) length: \"\(tail)\"")
     }
 
     func sentTheTranscriptAsMaterial(containing line: String) {

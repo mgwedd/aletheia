@@ -927,6 +927,10 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/SessionAI/AutoNoteDrafter.swift, Sources/App/Services/Digest/DigestScheduler.swift, Sources/App/Services/TranscriptionCoordinator.swift` · `qa: NOTE-23`
 - **NOT-085** The note "Write the summary after recording" asks for waits by the summaries' rules (`DigestSchedulePolicy.pauseReason`): it does not start while recording, transcribing, locked, paused, in Low Power Mode, on battery (unless summaries may run on battery), hot or while other AI work runs. If a recording, transcription, the lock, the pause, power or heat arrives while it is being written, it stops, keeps nothing and is written again later. With the setting off nothing is written.
   `surface: background` · `evidence: Sources/App/Services/Digest/DigestScheduler.swift, Sources/App/Services/SessionAI/SessionNoteModel.swift` · `qa: NOTE-24`
+- **NOT-086** The Focus check's correction is taken only if it holds no material tag or time-stamped transcript line the draft didn't, Otherwise the draft is kept and the coverage line ends "The check returned the session material instead of a note, so this is the unchecked draft." The check prompt ends, after the draft, by asking for the corrected note alone.
+  `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-25`
+- **NOT-087** A Summary prompt ends, after the session and the therapist's material, by asking for a summary of the whole session in the model's own words, not a copy of the material, with the depth's length target (`AnswerDepth.target`): about 80–150, 150–300 or 300–600 words. Sectioned notes don't add it; their headings anchor them and a tight budget keeps the room for risk lines. A small model given the target only before a long session wrote about the same length at every depth.
+  `surface: background` · `evidence: Sources/App/Services/Prompts.swift` · `qa: NOTE-26`
 
 ## Digests (DIG)
 
