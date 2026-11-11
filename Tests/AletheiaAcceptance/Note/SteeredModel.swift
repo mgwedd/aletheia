@@ -72,7 +72,7 @@ final class SteeredModel: LocalLLMEngine, @unchecked Sendable {
 
     /// Asked to summarize a conversation so far, it writes `text`.
     func summarizesConversation(as text: String) {
-        answer("Write a summary that will replace it", with: .writes(text))
+        answer("notes on this chat that will replace it", with: .writes(text))
     }
 
     /// Every request fails as it does when the model file is not on this Mac.

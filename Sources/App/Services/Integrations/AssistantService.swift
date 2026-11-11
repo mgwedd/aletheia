@@ -239,7 +239,7 @@ struct AssistantService {
         }
         let stream = counting.run(
             task: .compaction, system: Prompts.compactSystem(systemPrompt, history: history),
-            turns: PromptTurn.recent(history), prompt: Prompts.compactChat(focus: focus))
+            turns: [], prompt: Prompts.compactChat(PromptTurn.recent(history), focus: focus))
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {

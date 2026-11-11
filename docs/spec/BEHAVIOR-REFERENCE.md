@@ -1187,6 +1187,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/Integrations/AssistantService.swift, Sources/App/Services/Digest/LocalToolLoop.swift` · `qa: CHAT-38`
 - **CHT-095** The default system prompt writes to the user as "you"; says each point once, never restating a list as a second list; suggests action items or homework only if they were agreed or asked for; and gives a thin session a short answer. A saved prompt equal to an earlier default is replaced by the current one.
   `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/AppSettings.swift` · `qa: CHAT-38`
+- **CHT-096** Compact quotes the conversation since the last summary in its instruction and asks for one bullet per question (the question, then its answer or conclusion) plus anything left open, without writing out the session transcript; the conversation is not also sent as chat turns.
+  `surface: invariant` · `evidence: Sources/App/Services/Prompts.swift, Sources/App/Services/Integrations/AssistantService.swift` · `qa: CHAT-39`
 
 ## AI engine & models (AIE)
 
@@ -1665,6 +1667,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift` · `qa: COMMENT-02`
 - **CMT-033** When a patient is deleted, the comments on all of their sessions are purged from the database.
   `surface: background` · `evidence: Sources/App/Services/Store.swift:390, Sources/App/Services/CommentStore.swift:229` · `qa: COMMENT-08`
+- **CMT-034** The floating Comment button sizes itself to its label, and is placed and kept inside the pane by its measured size, so its whole label always shows.
+  `surface: ui` · `evidence: Sources/App/Views/SessionDetailView.swift, Sources/App/Services/TranscriptSplit.swift` · `qa: COMMENT-09`
 
 ## Export & archive (EXP)
 

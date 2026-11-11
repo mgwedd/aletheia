@@ -102,7 +102,7 @@ final class PromptsTests: XCTestCase {
              ["transcript", "summary"]),
             ("patient", Prompts.patientChat(context: UntrustedText(.digest, "DIGEST").rendered, history: history) + Prompts.chatQuestion("QUESTION?"),
              ["digest", "summary"]),
-            ("compact", Prompts.compactSystem("BASE", history: history) + Prompts.compactChat(focus: "FOCUS"), ["summary"]),
+            ("compact", Prompts.compactSystem("BASE", history: history) + Prompts.compactChat(PromptTurn.recent(history), focus: "FOCUS"), ["summary"]),
             ("section", Prompts.sectionDigest(text: t, anchor: "[0:00–5:00]"), ["transcript"]),
             ("session digest", Prompts.sessionDigest(sections: [(anchor: "[0:00–5:00]", digest: "DIGEST")]), ["digest"]),
             ("check", Prompts.noteCheck(draft: "DRAFT", material: .transcript(t)), ["transcript", "draft"]),

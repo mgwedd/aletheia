@@ -82,10 +82,10 @@ final class ChatMemoryTests: XCTestCase {
     /// therapist's earlier requests are in the system turn, so the instruction
     /// is the last thing the model reads.
     func testCompactionPromptCarriesTheFocusAndEarlierRequests() {
-        let prompt = Prompts.compactChat(focus: "sleep")
+        let prompt = Prompts.compactChat(PromptTurn.recent([q1, a1]), focus: "sleep")
         XCTAssertTrue(prompt.contains("in full detail: sleep"))
-        XCTAssertFalse(prompt.contains("First question"), "the conversation goes in as turns")
-        XCTAssertFalse(Prompts.compactChat(focus: "").contains("in full detail"))
+        XCTAssertTrue(prompt.contains("First question"), "the conversation is quoted in the instruction")
+        XCTAssertFalse(Prompts.compactChat([], focus: "").contains("in full detail"))
 
         let base = "BASE INSTRUCTIONS"
         XCTAssertEqual(Prompts.compactSystem(base, history: [q1, a1]), base, "no summary yet, nothing to add")
@@ -94,7 +94,7 @@ final class ChatMemoryTests: XCTestCase {
         XCTAssertTrue(again.contains("- Be brief."))
         XCTAssertTrue(again.contains("<summary>\n\(summary.text)\n</summary>"))
         XCTAssertTrue(again.contains(Prompts.materialRule))
-        let later = Prompts.compactChat(focus: "")
+        let later = Prompts.compactChat(PromptTurn.recent([ChatMessage(role: .user, text: "Be brief."), summary, q2]), focus: "")
         XCTAssertFalse(later.contains("<summary>"), "the earlier summary is not in the final instruction")
         XCTAssertFalse(later.contains(Prompts.materialRule))
         XCTAssertEqual(PromptTurn.recent([ChatMessage(role: .user, text: "Be brief."), summary, q2]), [PromptTurn(role: .user, text: "Second question")])

@@ -41,5 +41,5 @@ extension Copy {
         "The summary didn't finish, so the conversation was kept as it was. "
         + "Try Compact again, or name what to keep, like /compact medication."
     /// Words in the request that asks the AI to summarize the conversation.
-    static let summaryRequest = "Write a summary that will replace it"
+    static let summaryRequest = "notes on this chat that will replace it"
 }

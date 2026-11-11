@@ -117,6 +117,7 @@ Before you start: a session with a saved transcript and no comments.
 - **COMMENT-06** Edit a card, then click **Resolve** → it moves into a collapsed "Resolved (N)" section, and **Reopen** brings it back.
 - **COMMENT-07** Click **Delete** on a card → it disappears at once with no confirmation.
 - **COMMENT-08** Delete a patient → her comments are gone and no longer listed for any session.
+- **COMMENT-09** Select a few words in the transcript → the floating **Comment** button shows its whole label, not cut off.
 
 ## 7. Draft and edit progress notes (NOTE)
 Before you start: a session with a transcript, the AI model downloaded, and a comment and patient background containing a distinctive fact.
@@ -183,6 +184,7 @@ Before you start: a patient with at least two sessions that have transcripts, an
 - **CHAT-36** With a conversation on screen, click **Compact** → the answers above keep their full width while the summary is written, and the "Conversation compacted" card appears below them with nothing overlapping.
 - **CHAT-37** Click **Compact** and the AI model runs out of room before it finishes the summary → the summary is thrown away, the conversation stays as it was, and a message says "The summary didn't finish, so the conversation was kept as it was. Try Compact again, or name what to keep, like /compact medication."
 - **CHAT-38** Ask questions at a chosen depth, including late in a long conversation → each answer follows that depth, speaks to you as "you", makes each point once without restating a list, and suggests no action items unless they were agreed in the session or you asked for them.
+- **CHAT-39** Ask a question about a session, then click **Compact** → the "Conversation compacted" card sums up your questions and the answers you got, not the session itself; the transcript is not written out again.
 
 ## 9. Summaries prepared in the background (DIGEST)
 Before you start: a patient whose sessions have transcripts too long for this Mac to read at once, and the AI model downloaded.

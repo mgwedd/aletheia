@@ -195,6 +195,17 @@ extension Then where Subject == SteeredModel {
     func wasAskedToSummarize() {
         expect(subject.requests.contains { $0.prompt.contains(Copy.summaryRequest) }, "the model was never asked to summarize")
     }
+
+    /// Asked to summarize, the model was sent the conversation and not the session it was about.
+    func wasAskedToSummarizeOnly(question: String, answer: String, notTheTranscript line: String) {
+        let summaries = subject.requests.filter { $0.prompt.contains(Copy.summaryRequest) }
+        expect(!summaries.isEmpty, "the model was never asked to summarize")
+        for request in summaries {
+            let sent = ([request.system, request.prompt] + request.turns.map(\.text)).joined(separator: "\n")
+            expect(sent.contains(question) && sent.contains(answer), "the summary request left out the conversation")
+            expect(!sent.contains(line), "the summary request carried the session transcript")
+        }
+    }
 }
 
 @MainActor
@@ -222,7 +233,7 @@ extension Then where Subject == AssistantDesk {
 extension SteeredModel {
     /// Asked to summarize a conversation so far, it fails.
     func failsToSummarize() {
-        answer("Write a summary that will replace it", with: .fails(SummaryFailed()))
+        answer("notes on this chat that will replace it", with: .fails(SummaryFailed()))
     }
 
     /// Answers every question with text just past a quarter of the window of
