@@ -931,6 +931,8 @@ IDs are a theme prefix plus a three-digit number (for example EXP-029) and never
   `surface: background` · `evidence: Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-25`
 - **NOT-087** A Summary prompt ends, after the session and the therapist's material, by asking for a summary of the whole session in the model's own words, not a copy of the material, with the depth's length target (`AnswerDepth.target`): about 80–150, 150–300 or 300–600 words. Sectioned notes don't add it; their headings anchor them and a tight budget keeps the room for risk lines. A small model given the target only before a long session wrote about the same length at every depth.
   `surface: background` · `evidence: Sources/App/Services/Prompts.swift` · `qa: NOTE-26`
+- **NOT-088** A Summary longer than its depth's ceiling (`AnswerDepth.summaryWordCeiling`: 150, 300 or 600 words) keeps its leading whole sentences within the ceiling, then every later sentence with a risk phrase; nothing is cut mid-sentence and the first sentence always stays. The trim applies to every snapshot as the note writes and to the saved note. Sectioned notes are not trimmed. A small model told the target still wrote about the same length at every depth.
+  `surface: background` · `evidence: Sources/App/Services/Digest/SummaryLength.swift, Sources/App/Services/Digest/LongSessionNote.swift` · `qa: NOTE-27`
 
 ## Digests (DIG)
 

@@ -164,6 +164,18 @@ extension Then where Subject == NotePane {
                "transcript lines reached the note: \"\(subject.shown)\"")
     }
 
+    /// The Summary keeps its whole sentences up to `words`, drops the rest, and
+    /// still holds `risk`, which came after the limit.
+    func keepsWholeSentences(upTo words: Int, andTheRiskSentence risk: String) {
+        let shown = subject.shown
+        expect(shown.contains(Copy.lastSentenceWithinConcise), "the note lost a sentence within the limit: \"\(shown)\"")
+        expect(!shown.contains(Copy.firstSentencePastConcise), "the note runs past \(words) words: \"\(shown)\"")
+        expect(shown.contains(risk), "the note dropped the risk statement: \"\(shown)\"")
+        let rest = shown.replacingOccurrences(of: risk, with: "")
+        expect(rest.split(whereSeparator: \.isWhitespace).count <= words, "the note runs past \(words) words: \"\(shown)\"")
+        expect(shown.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("."), "the note ends mid-sentence: \"\(shown)\"")
+    }
+
     func saysTheCheckReturnedTheSessionMaterial() {
         guard let coverage = subject.coverage else { return fail("the note has no coverage line") }
         expect(coverage.contains(Copy.checkCopiedSource), "the coverage line doesn't say the check copied the session: \"\(coverage)\"")
