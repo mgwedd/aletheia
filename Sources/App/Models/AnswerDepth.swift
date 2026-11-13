@@ -23,7 +23,9 @@ enum DepthFeature: CaseIterable {
 /// carries `instructions(for:)`, a target for its kind of output plus a form
 /// line, then the shared `clarityRule`. Ask adds `conversationRule`, so each answer
 /// takes its own question on its own terms. Depth sets
-/// no token cap: a reply is never cut off to meet it.
+/// no token cap: a reply is never cut off mid-sentence to meet it. A Summary
+/// longer than `summaryWordCeiling` keeps its whole sentences up to it
+/// (`SummaryLength`).
 ///
 ///     concise  ── genuinely short: what's needed, nothing more
 ///     natural  ── normal prose, the way a colleague writes (default)
@@ -61,6 +63,15 @@ enum AnswerDepth: String, CaseIterable, Identifiable, Codable, Hashable {
     }
 
     // MARK: - What the model is told
+
+    /// The most words a Summary note keeps: the top of `target(for: .summary)`.
+    var summaryWordCeiling: Int {
+        switch self {
+        case .concise: return 150
+        case .natural: return 300
+        case .detailed: return 600
+        }
+    }
 
     /// How much to write for `output`.
     func target(for output: DepthOutput) -> String {

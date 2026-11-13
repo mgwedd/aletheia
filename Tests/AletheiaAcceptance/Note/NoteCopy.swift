@@ -22,6 +22,13 @@ extension Copy {
     static let checkCopiedSource = "The check returned the session material instead of a note"
     static let summaryTask = "Now write a summary of the whole session"
     static let summaryLengths: [Depth: String] = [.concise: "80–150 words", .natural: "150–300 words", .detailed: "300–600 words"]
+    /// A Summary of 20 ten-word sentences (200 words) that ends with a risk statement.
+    static let overlongSummary = (1...20).map { "Topic \($0) came up and was discussed at some length." }
+        .joined(separator: " ") + " " + riskSentence
+    static let riskSentence = "The client denied suicidal thoughts."
+    /// The last sentence within Concise's 150 words, and the first past it.
+    static let lastSentenceWithinConcise = "Topic 15 came up"
+    static let firstSentencePastConcise = "Topic 16 came up"
 }
 
 extension Copy {

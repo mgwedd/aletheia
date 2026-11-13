@@ -109,6 +109,11 @@ enum LongSessionNote {
         coverage: @escaping (String) -> Void
     ) -> AsyncThrowingStream<String, Error> {
         let notes = AIContextPolicy.notes(notes, for: .noteGeneration)
+        // A Summary keeps to its depth's word range.
+        func held(_ written: AsyncThrowingStream<String, Error>) -> AsyncThrowingStream<String, Error> {
+            guard format.sections.isEmpty else { return written }
+            return SummaryLength.held(written, ceiling: depth.summaryWordCeiling, phrases: riskPhrases)
+        }
         let fields: TherapistFields
         do {
             fields = try TherapistFields(
@@ -139,10 +144,10 @@ enum LongSessionNote {
         guard case .digest(let planRoom) = plan else {
             coverage(([wholeCoverageLabel(totalLines: nonBlankLines(transcript).count, effort: effort)]
                 + [fields.coverageNote].compactMap { $0 }).joined(separator: " "))
-            return service.streamDigest(prompt: prompt(.transcript(transcript)), task: .note, grammar: format.grammar)
+            return held(service.streamDigest(prompt: prompt(.transcript(transcript)), task: .note, grammar: format.grammar))
         }
 
-        return AsyncThrowingStream { continuation in
+        return held(AsyncThrowingStream { continuation in
             let task = Task { @MainActor in
                 do {
                     let digest = try await currentDigest(
@@ -254,7 +259,7 @@ enum LongSessionNote {
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
-        }
+        })
     }
 
     /// One call that corrects `draft` against `material`. The corrected note is

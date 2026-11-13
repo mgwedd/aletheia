@@ -327,6 +327,18 @@ final class NoteUITests: AcceptanceCase {
         then(tab).showsText(reply)
     }
 
+    func test_NOTE_27_conciseSummaryKeepsWholeSentencesAndRisk() {
+        given.aSession(transcript: SessionContent.shortTranscript, depth: "concise", replies: [Copy.overlongSummary])
+        let tab = when.openNotesTab()
+        when.pickFormat("Summary", on: tab)
+
+        tab.generateButton.click()
+
+        then(tab).showsText(Copy.riskSentence)
+        then(tab).showsText(Copy.lastSentenceWithinConcise)
+        then(tab).showsNo(Copy.firstSentencePastConcise)
+    }
+
     func test_NOTE_23_summaryIsWrittenAfterRecordingAndAnnounced() {
         given.aSessionToRecord(summarizeAfterRecording: true)
 

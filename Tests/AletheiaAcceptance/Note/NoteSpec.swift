@@ -298,6 +298,20 @@ final class NoteSpec: AcceptanceCase {
         }
     }
 
+    func test_NOTE_27() async throws {
+        let desk = given.assistantDesk()
+        let session = try desk.session(
+            of: try await given.patient(named: "Jane Doe"),
+            saying: [.you("How was your week?"), .client("Busy at work.")])
+        desk.model.fallback(Copy.overlongSummary)
+        let notes = desk.notesTab(of: session)
+        notes.pick(.summary)
+
+        try await notes.generate(.concise, at: .normal)
+
+        then(notes.pane).keepsWholeSentences(upTo: 150, andTheRiskSentence: Copy.riskSentence)
+    }
+
     func test_NOTE_21() async throws {
         let desk = given.assistantDesk()
         let session = try desk.session(of: try await given.patient(named: "Jane Doe"), saying: [.you("Hello."), .client("Hi.")])

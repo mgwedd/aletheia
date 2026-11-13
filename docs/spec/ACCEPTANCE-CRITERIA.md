@@ -145,6 +145,7 @@ Before you start: a session with a transcript, the AI model downloaded, and a co
 - **NOTE-24** With **Write the summary after recording** off, record a session and let it transcribe → no summary is written and no "Summary ready" notification arrives.
 - **NOTE-25** Generate a Summary at Focus on a session over 30 minutes when the check sends back transcript lines instead of a note → the note keeps its draft with no transcript lines, and the coverage line says the check returned the session material.
 - **NOTE-26** Generate a Summary at Concise, Natural or Detailed → after the session, the AI is asked last for a summary of the whole session at that depth's length (about 80–150, 150–300 or 300–600 words).
+- **NOTE-27** Generate a Summary at Concise when the AI writes more than 150 words → the note keeps its whole sentences up to 150 words and ends on a full sentence, and a later sentence with a risk phrase stays in.
 
 ## 8. Chat and Q&A (CHAT)
 Before you start: a patient with at least two sessions that have transcripts, and the AI model downloaded.
