@@ -9,6 +9,13 @@ Commit](https://www.conventionalcommits.org/) messages since the previous tag �
 don't edit it in pull requests. Write a good commit subject (`feat: …`,
 `fix: …`) and the release automation adds the entry for you.
 
+## [2.74.1] - 2026-11-13
+
+### Fixed
+- keep a Summary to its depth's length (#566)
+- keep a Focus check from replacing a Summary with the transcript (#565)
+- Compact sums up the Ask chat, and Comment shows its whole label (#564)
+
 ## [2.74.0] - 2026-11-06
 
 ### Added
